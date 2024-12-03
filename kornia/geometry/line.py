@@ -35,6 +35,7 @@ class ParametrizedLine(Module):
             >>> o = torch.tensor([0.0, 0.0])
             >>> d = torch.tensor([1.0, 1.0])
             >>> l = ParametrizedLine(o, d)
+
         """
         super().__init__()
         self._origin = Parameter(origin)
@@ -78,6 +79,7 @@ class ParametrizedLine(Module):
             >>> p0 = torch.tensor([0.0, 0.0])
             >>> p1 = torch.tensor([1.0, 1.0])
             >>> l = ParametrizedLine.through(p0, p1)
+
         """
         return ParametrizedLine(p0, normalize((p1 - p0), p=2, dim=-1))
 
@@ -95,6 +97,7 @@ class ParametrizedLine(Module):
             >>> p1 = torch.tensor([1.0, 1.0])
             >>> l = ParametrizedLine.through(p0, p1)
             >>> p2 = l.point_at(0.1)
+
         """
         return self.origin + self.direction * t
 
@@ -103,6 +106,7 @@ class ParametrizedLine(Module):
 
         Args:
             point: the point to be projected.
+
         """
         return self.origin + (self.direction @ (point - self.origin)) * self.direction
 
@@ -112,6 +116,7 @@ class ParametrizedLine(Module):
 
         Args:
             point: the point to calculate the distance onto the line.
+
         """
         diff: Tensor = point - self.origin
         return squared_norm(diff - (self.direction @ diff) * self.direction)
@@ -122,6 +127,7 @@ class ParametrizedLine(Module):
 
         Args:
             point: the point to calculate the distance into the line.
+
         """
         return self.squared_distance(point).sqrt()
 
@@ -140,6 +146,7 @@ class ParametrizedLine(Module):
         Return:
             - the lambda value used to compute the look at point.
             - the intersected point.
+
         """
         dot_prod = batched_dot_product(plane.normal.data, self.direction.data)
         dot_prod_mask = dot_prod.abs() >= eps
@@ -173,6 +180,7 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLi
         >>> line = fit_line(points, weights)
         >>> line.direction.shape
         torch.Size([2, 3])
+
     """
     KORNIA_CHECK_IS_TENSOR(points, "points must be a tensor")
     KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])

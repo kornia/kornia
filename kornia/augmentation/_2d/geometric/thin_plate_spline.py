@@ -35,6 +35,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         >>> aug = RandomThinPlateSpline(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

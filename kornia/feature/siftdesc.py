@@ -25,6 +25,7 @@ def get_sift_pooling_kernel(ksize: int = 25) -> Tensor:
 
     Returns:
         the pooling kernel with shape :math:`(ksize, ksize)`.
+
     """
     ks_2: float = float(ksize) / 2.0
     xc2 = ks_2 - (torch.arange(ksize).float() + 0.5 - ks_2).abs()
@@ -41,6 +42,7 @@ def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tup
 
     Returns:
         ksize, stride, pad.
+
     """
     ksize: int = 2 * int(patch_size / (num_spatial_bins + 1))
     stride: int = patch_size // num_spatial_bins
@@ -76,6 +78,7 @@ class SIFTDescriptor(Module):
         >>> input = torch.rand(23, 1, 32, 32)
         >>> SIFT = SIFTDescriptor(32, 8, 4)
         >>> descs = SIFT(input) # 23x128
+
     """
 
     def __repr__(self) -> str:
@@ -205,6 +208,7 @@ class DenseSIFTDescriptor(Module):
         >>> input =  torch.rand(2, 1, 200, 300)
         >>> SIFT = DenseSIFTDescriptor()
         >>> descs = SIFT(input) # 2x128x194x294
+
     """
 
     def __repr__(self) -> str:

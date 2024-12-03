@@ -23,6 +23,7 @@ class DepthEstimation(HFONNXComunnityModel):
         Returns:
             list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`, where :math:`D` is the
             number of detections in the given image, :math:`6` represents class id, score, and `xywh` bounding box.
+
         """
         if isinstance(
             images,
@@ -60,6 +61,7 @@ class DepthEstimation(HFONNXComunnityModel):
 
         Returns:
             output tensor.
+
         """
         if depth_maps is None:
             depth_maps = self(images)
@@ -94,6 +96,7 @@ class DepthEstimation(HFONNXComunnityModel):
 
         Returns:
             output tensor.
+
         """
         outputs = self.visualize(images, depth_maps, output_type, depth_type=depth_type, max_depth=max_depth)
         self._save_outputs(images, directory, suffix="_src")

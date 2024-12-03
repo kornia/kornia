@@ -19,6 +19,7 @@ class AffineTransform:
             >>> AffineTransform().distort(params, points)
             x: 4.0
             y: 8.0
+
         """
         fx, fy, cx, cy = params[..., 0], params[..., 1], params[..., 2], params[..., 3]
         u = points.x * fx + cx
@@ -41,6 +42,7 @@ class AffineTransform:
             >>> AffineTransform().undistort(params, points)
             x: -2.0
             y: -1.0
+
         """
         fx, fy, cx, cy = params[..., 0], params[..., 1], params[..., 2], params[..., 3]
         x = (points.x - cx) / fx

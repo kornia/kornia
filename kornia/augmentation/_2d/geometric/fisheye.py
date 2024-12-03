@@ -36,6 +36,7 @@ class RandomFisheye(AugmentationBase2D):
         >>> aug = RandomFisheye(center_x, center_y, gamma, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

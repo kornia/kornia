@@ -18,6 +18,7 @@ def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
 
     Returns:
         the wrapped function after input is validated.
+
     """
 
     @wraps(f)
@@ -41,6 +42,7 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
 
     Returns:
         the wrapped function after input is validated.
+
     """
 
     @wraps(f)
@@ -85,10 +87,11 @@ def _infer_batch_shape3d(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.S
 def _transform_input_by_shape(input: Tensor, reference_shape: Tensor, match_channel: bool = True) -> Tensor:
     """Reshape an input tensor to have the same dimensions as the reference_shape.
 
-    Arguments
+    Arguments:
         input: tensor to be transformed
         reference_shape: shape used as reference
         match_channel: if True, C_{src} == C_{ref}. otherwise, no constrain. C =1 by default
+
     """
     B = reference_shape[-4] if len(reference_shape) >= 4 else None
     C = reference_shape[-3] if len(reference_shape) >= 3 else None
@@ -113,10 +116,11 @@ def _transform_input_by_shape(input: Tensor, reference_shape: Tensor, match_chan
 def _transform_input3d_by_shape(input: Tensor, reference_shape: Tensor, match_channel: bool = True) -> Tensor:
     """Reshape an input tensor to have the same dimensions as the reference_shape.
 
-    Arguments
+    Arguments:
         input: tensor to be transformed
         reference_shape: shape used as reference
         match_channel: if True, C_{src} == C_{ref}. otherwise, no constrain. C =1 by default
+
     """
     B = reference_shape[-5] if len(reference_shape) >= 5 else None
     C = reference_shape[-4] if len(reference_shape) >= 4 else None
@@ -140,11 +144,13 @@ def _transform_input3d_by_shape(input: Tensor, reference_shape: Tensor, match_ch
 
 def _transform_input(input: Tensor) -> Tensor:
     r"""Reshape an input tensor to be (*, C, H, W). Accept either (H, W), (C, H, W) or (*, C, H, W).
+
     Args:
         input: Tensor
 
     Returns:
         Tensor
+
     """
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
@@ -163,11 +169,13 @@ def _transform_input(input: Tensor) -> Tensor:
 
 def _transform_input3d(input: Tensor) -> Tensor:
     r"""Reshape an input tensor to be (*, C, D, H, W). Accept either (D, H, W), (C, D, H, W) or (*, C, D, H, W).
+
     Args:
         input: Tensor
 
     Returns:
         Tensor
+
     """
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
@@ -200,12 +208,14 @@ def _transform_output_shape(
     output: Tensor, shape: Tuple[int, ...], *, reference_shape: Optional[Tensor] = None
 ) -> Tensor:
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
+
     Args:
         input: Tensor
         shape: List/tuple of int
 
     Returns:
         Tensor
+
     """
     out_tensor = output.clone()
 
@@ -241,12 +251,14 @@ def _validate_input_shape(input: Tensor, channel_index: int, number: int) -> boo
     e.g. to check if an input is channel first.
     If channel first, the second channel of an RGB input shall be fixed to 3. To verify using:
         _validate_input_shape(input, 1, 3)
+
     Args:
         input: Tensor
         channel_index: int
         number: int
     Returns:
         bool
+
     """
     return input.shape[channel_index] == number
 
@@ -369,8 +381,8 @@ def override_parameters(
         if_none_exist: behaviour if the key in `params_override` does not exist in `params`.
             'raise' | 'ignore'.
         in_place: if to override in-place or not.
-    """
 
+    """
     if params_override is None:
         return params
     out = params if in_place else deepcopy_dict(params)
@@ -415,6 +427,7 @@ def preprocess_boxes(input: Union[Tensor, Boxes], mode: str = "vertices_plus") -
         coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of a box is defined as
         ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
         `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
+
     """
     # TODO: We may allow list here.
     # input is BxNx4x2 or Boxes.
@@ -447,7 +460,8 @@ def preprocess_classes(input: Tensor) -> Tensor:
 
 class MultiprocessWrapper:
     """Utility class which when used as a base class, makes the class work with the 'spawn' multiprocessing
-    context."""
+    context.
+    """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         args = tuple(arg.clone() if isinstance(arg, torch.Tensor) else arg for arg in args)

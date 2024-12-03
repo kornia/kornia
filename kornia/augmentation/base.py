@@ -51,6 +51,7 @@ class _BasicAugmentationBase(Module):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to
           the batch form ``False``.
+
     """
 
     # TODO: Hard to support. Many codes are not ONNX-friendly that contains lots of if-else blocks, etc.
@@ -130,6 +131,7 @@ class _BasicAugmentationBase(Module):
 
         Note:
             The generated random numbers are not reproducible across different devices and dtypes.
+
         """
         self.device = device
         self.dtype = dtype
@@ -222,6 +224,7 @@ class _BasicAugmentationBase(Module):
             By default, all the overwriting parameters in kwargs will not be recorded
             as in ``self._params``. If you wish it to be recorded, you may pass
             ``save_kwargs=True`` additionally.
+
         """
         in_tensor = self.__unpack_input__(input)
         input_shape = in_tensor.shape
@@ -252,6 +255,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+
     """
 
     def apply_transform(

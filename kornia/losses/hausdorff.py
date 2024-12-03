@@ -25,6 +25,7 @@ class _HausdorffERLossBase(Module):
 
     Returns:
         Estimated Hausdorff Loss.
+
     """
 
     conv: Callable[..., Tensor]
@@ -86,6 +87,7 @@ class _HausdorffERLossBase(Module):
 
         Returns:
             Estimated Hausdorff Loss.
+
         """
         if not (pred.shape[2:] == target.shape[2:] and pred.size(0) == target.size(0) and target.size(1) == 1):
             raise ValueError(
@@ -156,6 +158,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
         >>> input = torch.randn(5, 3, 20, 20)
         >>> target = (torch.rand(5, 1, 20, 20) * 2).long()
         >>> res = hdloss(input, target)
+
     """
 
     conv = torch.conv2d
@@ -177,6 +180,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
 
         Returns:
             Estimated Hausdorff Loss.
+
         """
         if pred.dim() != 4:
             raise ValueError(f"Only 2D images supported. Got {pred.dim()}.")
@@ -222,6 +226,7 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
         >>> input = torch.randn(5, 3, 20, 20, 20)
         >>> target = (torch.rand(5, 1, 20, 20, 20) * 2).long()
         >>> res = hdloss(input, target)
+
     """
 
     conv = torch.conv3d
@@ -247,6 +252,7 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
 
         Returns:
             Estimated Hausdorff Loss.
+
         """
         if pred.dim() != 5:
             raise ValueError(f"Only 3D images supported. Got {pred.dim()}.")

@@ -30,12 +30,12 @@ class Denormalize(IntensityAugmentationBase2D):
         This function internally uses :func:`kornia.enhance.denormalize`.
 
     Examples:
-
         >>> norm = Denormalize(mean=torch.zeros(1, 4), std=torch.ones(1, 4))
         >>> x = torch.rand(1, 4, 3, 3)
         >>> out = norm(x)
         >>> out.shape
         torch.Size([1, 4, 3, 3])
+
     """
 
     def __init__(

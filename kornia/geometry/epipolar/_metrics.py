@@ -23,6 +23,7 @@ def sampson_epipolar_distance(
 
     Returns:
         the computed Sampson distance with shape :math:`(*, N)`.
+
     """
     if not isinstance(Fm, Tensor):
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
@@ -74,6 +75,7 @@ def symmetrical_epipolar_distance(
 
     Returns:
         the computed Symmetrical distance with shape :math:`(*, N)`.
+
     """
     if not isinstance(Fm, Tensor):
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
@@ -127,6 +129,7 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
 
     Returns:
         the computed Symmetrical distance with shape :math:`(*, N)`.
+
     """
     KORNIA_CHECK_IS_TENSOR(pts1)
     KORNIA_CHECK_IS_TENSOR(pts2)
@@ -160,6 +163,7 @@ def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
 
     Returns:
         the computed Symmetrical distance with shape :math:`(*, N)`.
+
     """
     KORNIA_CHECK_IS_TENSOR(pts1)
     KORNIA_CHECK_IS_TENSOR(pts2)

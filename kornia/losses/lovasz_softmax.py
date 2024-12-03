@@ -54,6 +54,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
         >>> output = lovasz_softmax_loss(pred, target)
         >>> output.backward()
+
     """
     KORNIA_CHECK_SHAPE(pred, ["B", "N", "H", "W"])
 
@@ -157,6 +158,7 @@ class LovaszSoftmaxLoss(nn.Module):
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
         >>> output = criterion(pred, target)
         >>> output.backward()
+
     """
 
     def __init__(self, weight: Optional[Tensor] = None) -> None:

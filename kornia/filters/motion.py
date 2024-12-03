@@ -37,6 +37,7 @@ class MotionBlur(Module):
         >>> input = torch.rand(2, 4, 5, 7)
         >>> motion_blur = MotionBlur(3, 35., 0.5)
         >>> output = motion_blur(input)  # 2x4x5x7
+
     """
 
     def __init__(
@@ -84,6 +85,7 @@ class MotionBlur3D(Module):
         >>> input = torch.rand(2, 4, 5, 7, 9)
         >>> motion_blur = MotionBlur3D(3, 35., 0.5)
         >>> output = motion_blur(input)  # 2x4x5x7x9
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1, -1]
@@ -162,6 +164,7 @@ def motion_blur(
         >>> out_1 = motion_blur(input, 5, torch.tensor([90., 180,]), torch.tensor([1., -1.]))
         >>> torch.allclose(out_1[0], out_1[1])
         False
+
     """
     kernel = get_motion_kernel2d(kernel_size, angle, direction, mode)
     return filter2d(input, kernel, border_type)
@@ -204,6 +207,7 @@ def motion_blur3d(
         >>> out_1 = motion_blur3d(input, 5, torch.tensor([[0., 90., 90.], [90., 180., 0.]]), torch.tensor([1., -1.]))
         >>> torch.allclose(out_1[0], out_1[1])
         False
+
     """
     kernel = get_motion_kernel3d(kernel_size, angle, direction, mode)
     return filter3d(input, kernel, border_type)

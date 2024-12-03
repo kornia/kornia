@@ -25,6 +25,7 @@ def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -
 
     Returns:
         tensor [BxNx3].
+
     """
     # depth (scale) in coord_max is represented as (float) index, not the scale yet.
     # we will interpolate the scale using pytorch.grid_sample function
@@ -73,6 +74,7 @@ class ScaleSpaceDetector(Module):
             which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
         minima_are_also_good: if True, then both response function minima and maxima are detected
             Useful for symmetric response functions like DoG or Hessian. Default is False
+
     """
 
     def __init__(
@@ -228,6 +230,7 @@ class ScaleSpaceDetector(Module):
         Returns:
             lafs: shape [BxNx2x3]. Detected local affine frames.
             responses: shape [BxNx1]. Response function values for corresponding lafs
+
         """
         responses, lafs = self.detect(img, self.num_features, mask)
         lafs = self.aff(lafs, img)
@@ -269,6 +272,7 @@ class MultiResolutionDetector(Module):
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
             which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
+
     """
 
     def __init__(
@@ -399,6 +403,7 @@ class MultiResolutionDetector(Module):
         Returns:
             lafs: shape [1xNx2x3]. Detected local affine frames.
             responses: shape [1xNx1]. Response function values for corresponding lafs
+
         """
         KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])
         responses, lafs = self.detect(img, mask)

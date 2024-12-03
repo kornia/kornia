@@ -51,6 +51,7 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str], raises: bool = True) -> bool
         >>> x = torch.rand(2, 3, 4, 4)
         >>> KORNIA_CHECK_SHAPE(x, ["2", "3", "H", "W"])  # explicit
         True
+
     """
     if "*" == shape[0]:
         shape_to_check = shape[1:]
@@ -98,6 +99,7 @@ def KORNIA_CHECK(condition: bool, msg: Optional[str] = None, raises: bool = True
         >>> x = torch.rand(2, 3, 3)
         >>> KORNIA_CHECK(x.shape[-2:] == (3, 3), "Invalid homography")
         True
+
     """
     if not condition:
         if raises:
@@ -112,6 +114,7 @@ def KORNIA_UNWRAP(maybe_obj: object, typ: Any) -> Any:
     Args:
         maybe_obj: the object to unwrap.
         typ: expected type after unwrap.
+
     """
     # TODO: this function will change after kornia/pr#1987
     return cast(typ, maybe_obj)
@@ -138,6 +141,7 @@ def KORNIA_CHECK_TYPE(
     Example:
         >>> KORNIA_CHECK_TYPE("foo", str, "Invalid string")
         True
+
     """
     # TODO: Move to use typeguard here dropping support for JIT
     if not isinstance(x, typ):
@@ -162,6 +166,7 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: Optional[str] = None, raises: bool = 
         >>> x = torch.rand(2, 3, 3)
         >>> KORNIA_CHECK_IS_TENSOR(x, "Invalid tensor")
         True
+
     """
     # TODO: Move to use typeguard here dropping support for JIT
     if not isinstance(x, Tensor):
@@ -190,6 +195,7 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[object]], raises: bool =
         False
         >>> KORNIA_CHECK_IS_LIST_OF_TENSOR([x])
         True
+
     """
     are_tensors = isinstance(x, list) and all(isinstance(d, Tensor) for d in x)
     if not are_tensors:
@@ -216,6 +222,7 @@ def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
         >>> x2 = torch.rand(1, 3, 1)
         >>> KORNIA_CHECK_SAME_DEVICE(x1, x2)
         True
+
     """
     if x.device != y.device:
         if raises:
@@ -240,6 +247,7 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: Optional[str] = None, 
         >>> x2 = torch.rand(1, 3, 1)
         >>> KORNIA_CHECK_SAME_DEVICES([x1, x2], "Tensors not in the same device")
         True
+
     """
     KORNIA_CHECK(isinstance(tensors, list) and len(tensors) >= 1, "Expected a list with at least one element", raises)
     if not all(tensors[0].device == x.device for x in tensors):
@@ -266,6 +274,7 @@ def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
         >>> x2 = torch.rand(2, 3, 3)
         >>> KORNIA_CHECK_SAME_SHAPE(x1, x2)
         True
+
     """
     if x.shape != y.shape:
         if raises:
@@ -289,6 +298,7 @@ def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None, raises: bool = T
         >>> img = torch.rand(2, 3, 4, 4)
         >>> KORNIA_CHECK_IS_COLOR(img, "Image is not color")
         True
+
     """
     if len(x.shape) < 3 or x.shape[-3] != 3:
         if raises:
@@ -312,6 +322,7 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None, raises: bool = Tr
         >>> img = torch.rand(2, 1, 4, 4)
         >>> KORNIA_CHECK_IS_GRAY(img, "Image is not grayscale")
         True
+
     """
     if len(x.shape) < 2 or (len(x.shape) >= 3 and x.shape[-3] != 1):
         if raises:
@@ -335,6 +346,7 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None, raises: 
         >>> img = torch.rand(2, 3, 4, 4)
         >>> KORNIA_CHECK_IS_COLOR_OR_GRAY(img, "Image is not color orgrayscale")
         True
+
     """
     if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
         if raises:
@@ -361,6 +373,7 @@ def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: Optional[str] = None, raises: bool = T
         >>> img = torch.rand(2, 3, 4, 4)
         >>> KORNIA_CHECK_IS_IMAGE(img, "It is not an image")
         True
+
     """
     res = KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises=raises)
 
@@ -400,6 +413,7 @@ def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor, raises: bool 
         >>> dm = torch.rand(4, 8)
         >>> KORNIA_CHECK_DM_DESC(desc1, desc2, dm)
         True
+
     """
     if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
         if raises:
@@ -425,5 +439,6 @@ def KORNIA_CHECK_LAF(laf: Tensor, raises: bool = True) -> bool:
         >>> lafs = torch.rand(2, 10, 2, 3)
         >>> KORNIA_CHECK_LAF(lafs)
         True
+
     """
     return KORNIA_CHECK_SHAPE(laf, ["B", "N", "2", "3"], raises)

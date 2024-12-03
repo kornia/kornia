@@ -1,6 +1,7 @@
 """Linear Transformer proposed in "Transformers are RNNs: Fast Autoregressive Transformers with Linear Attention"
 Modified from: https://github.com/idiap/fast-
-transformers/blob/master/fast_transformers/attention/linear_attention.py."""
+transformers/blob/master/fast_transformers/attention/linear_attention.py.
+"""
 
 from typing import Optional
 
@@ -35,8 +36,10 @@ class LinearAttention(Module):
             values: [N, S, H, D]
             q_mask: [N, L]
             kv_mask: [N, S]
+
         Returns:
             queried_values: (N, L, H, D)
+
         """
         Q = self.feature_map(queries)
         K = self.feature_map(keys)
@@ -79,8 +82,10 @@ class FullAttention(Module):
             values: [N, S, H, D]
             q_mask: [N, L]
             kv_mask: [N, S]
+
         Returns:
             queried_values: (N, L, H, D)
+
         """
         # Compute the unnormalized attention and apply the masks
         QK = torch.einsum("nlhd,nshd->nlsh", queries, keys)

@@ -54,8 +54,8 @@ def dilation(
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(3, 3)
         >>> dilated_img = dilation(tensor, kernel)
-    """
 
+    """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
@@ -147,8 +147,8 @@ def erosion(
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(5, 5)
         >>> output = erosion(tensor, kernel)
-    """
 
+    """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
@@ -241,8 +241,8 @@ def opening(
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(3, 3)
         >>> opened_img = opening(tensor, kernel)
-    """
 
+    """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
@@ -318,8 +318,8 @@ def closing(
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(3, 3)
         >>> closed_img = closing(tensor, kernel)
-    """
 
+    """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
@@ -397,8 +397,8 @@ def gradient(
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(3, 3)
         >>> gradient_img = gradient(tensor, kernel)
-    """
 
+    """
     return dilation(
         tensor,
         kernel=kernel,
@@ -465,8 +465,8 @@ def top_hat(
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(3, 3)
         >>> top_hat_img = top_hat(tensor, kernel)
-    """
 
+    """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
@@ -536,8 +536,8 @@ def bottom_hat(
         >>> tensor = torch.rand(1, 3, 5, 5)
         >>> kernel = torch.ones(3, 3)
         >>> bottom_hat_img = bottom_hat(tensor, kernel)
-    """
 
+    """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 

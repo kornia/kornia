@@ -31,6 +31,7 @@ class RayDataset(Dataset[RayGroup]):
         ndc: convert ray parameters to normalized device coordinates: bool
         device: device for ray tensors: Union[str, torch.device]
         dtype: type of ray tensors: torch.dtype
+
     """
 
     def __init__(
@@ -51,6 +52,7 @@ class RayDataset(Dataset[RayGroup]):
 
         Args:
             num_img_rays: If not None, number of rays to randomly cast from each camera: math: `(B)`.
+
         """
         if num_img_rays is None:
             self._init_uniform_ray_dataset()
@@ -63,6 +65,7 @@ class RayDataset(Dataset[RayGroup]):
 
         Args:
             imgs: List of image tensors or image paths: Images
+
         """
         self._check_image_type_consistency(imgs)
 
@@ -83,6 +86,7 @@ class RayDataset(Dataset[RayGroup]):
 
         Args:
             num_img_rays: If not None, number of rays to randomly cast from each camers: math: `(B)`.
+
         """
         self._ray_sampler = RandomRaySampler(
             self._min_depth, self._max_depth, self._ndc, device=self._device, dtype=self._dtype
@@ -135,6 +139,7 @@ class RayDataset(Dataset[RayGroup]):
         Return:
             A ray parameter object that includes ray origins, directions, and rgb values at the ray 2d pixel
             coordinates: RayGroup
+
         """
         if not isinstance(self._ray_sampler, RaySampler):
             raise TypeError("Ray sampler is not initiate yet, please run self.init_ray_dataset() before use it.")
@@ -160,6 +165,7 @@ def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shuffle
         dataset: A ray dataset: RayDataset
         batch_size: Number of rays to sample in a batch: int
         shuffle: Whether to shuffle rays or sample then sequentially: bool
+
     """
 
     def collate_rays(items: List[RayGroup]) -> RayGroup:

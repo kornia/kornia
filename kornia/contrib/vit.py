@@ -198,6 +198,7 @@ class VisionTransformer(Module):
         >>> vit = VisionTransformer(image_size=224, patch_size=16)
         >>> vit(img).shape
         torch.Size([1, 197, 768])
+
     """
 
     def __init__(
@@ -255,12 +256,14 @@ class VisionTransformer(Module):
             variant: ViT model variant e.g. ``vit_b/16``.
             pretrained: whether to load pre-trained AugReg weights.
             kwargs: other keyword arguments that will be passed to :func:`kornia.contrib.vit.VisionTransformer`.
+
         Returns:
             The respective ViT model
 
         Example:
             >>> from kornia.contrib import VisionTransformer
             >>> vit_model = VisionTransformer.from_config("vit_b/16", pretrained=True)
+
         """
         model_type, patch_size_str = variant.split("/")
         patch_size = int(patch_size_str)

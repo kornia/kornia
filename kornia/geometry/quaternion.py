@@ -53,6 +53,7 @@ class Quaternion(Module):
                 [0., 0., 0.],
                 [0., 0., 0.],
                 [0., 0., 0.]], grad_fn=<SliceBackward0>)
+
     """
 
     def __init__(self, data: Tensor) -> None:
@@ -66,6 +67,7 @@ class Quaternion(Module):
             >>> q = Quaternion(data)
             >>> q.shape
             (2, 4)
+
         """
         super().__init__()
         # KORNIA_CHECK_SHAPE(data, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
@@ -84,6 +86,7 @@ class Quaternion(Module):
             >>> q = Quaternion.identity()
             >>> -q.data
             tensor([-1., -0., -0., -0.], grad_fn=<NegBackward0>)
+
         """
         return Quaternion(-self.data)
 
@@ -100,6 +103,7 @@ class Quaternion(Module):
             >>> q3.data
             Parameter containing:
             tensor([3., 0., 1., 1.], requires_grad=True)
+
         """
         KORNIA_CHECK_TYPE(right, Quaternion)
         return Quaternion(self.data + right.data)
@@ -117,6 +121,7 @@ class Quaternion(Module):
             >>> q3.data
             Parameter containing:
             tensor([1., 0., 1., 1.], requires_grad=True)
+
         """
         KORNIA_CHECK_TYPE(right, Quaternion)
         return Quaternion(self.data - right.data)
@@ -147,6 +152,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion(tensor([1., .5, 0., 0.]))
             >>> q_pow = q**2
+
         """
         theta = self.polar_angle[..., None]
         vec_norm = self.vec.norm(dim=-1, keepdim=True)
@@ -229,6 +235,7 @@ class Quaternion(Module):
             >>> q = Quaternion.identity()
             >>> q.polar_angle
             tensor(0., grad_fn=<AcosBackward0>)
+
         """
         return (self.scalar / self.norm()).acos()
 
@@ -242,6 +249,7 @@ class Quaternion(Module):
             tensor([[1., 0., 0.],
                     [0., 1., 0.],
                     [0., 0., 1.]], grad_fn=<ViewBackward0>)
+
         """
         return quaternion_to_rotation_matrix(self.data)
 
@@ -258,6 +266,7 @@ class Quaternion(Module):
             >>> q.data
             Parameter containing:
             tensor([[1., 0., 0., 0.]], requires_grad=True)
+
         """
         return cls(rotation_matrix_to_quaternion(matrix))
 
@@ -276,6 +285,7 @@ class Quaternion(Module):
             >>> q.data
             Parameter containing:
             tensor([0.8776, 0.0000, 0.4794, 0.0000], requires_grad=True)
+
         """
         w, x, y, z = quaternion_from_euler(roll=roll, pitch=pitch, yaw=yaw)
         q = stack((w, x, y, z), -1)
@@ -293,6 +303,7 @@ class Quaternion(Module):
             tensor(1.5708, grad_fn=<AsinBackward0>)
             >>> yaw
             tensor(2.2143, grad_fn=<Atan2Backward0>)
+
         """
         return euler_from_quaternion(self.w, self.x, self.y, self.z)
 
@@ -309,6 +320,7 @@ class Quaternion(Module):
             >>> q.data
             Parameter containing:
             tensor([[0.8776, 0.4794, 0.0000, 0.0000]], requires_grad=True)
+
         """
         return cls(axis_angle_to_quaternion(axis_angle))
 
@@ -320,6 +332,7 @@ class Quaternion(Module):
             >>> axis_angle = q.to_axis_angle()
             >>> axis_angle
             tensor([0., 0., 0.], grad_fn=<AsStridedBackward0>)
+
         """
         return quaternion_to_axis_angle(self.data)
 
@@ -337,6 +350,7 @@ class Quaternion(Module):
             >>> q.data
             Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
+
         """
         data = tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
@@ -358,6 +372,7 @@ class Quaternion(Module):
             >>> q.data
             Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
+
         """
         return cls(tensor([w, x, y, z]))
 
@@ -377,6 +392,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.random()
             >>> q = Quaternion.random(batch_size=2)
+
         """
         rand_shape = (batch_size,) if batch_size is not None else ()
 
@@ -400,6 +416,7 @@ class Quaternion(Module):
             >>> q0 = Quaternion.identity()
             >>> q1 = Quaternion(torch.tensor([1., .5, 0., 0.]))
             >>> q2 = q0.slerp(q1, .3)
+
         """
         KORNIA_CHECK_TYPE(q1, Quaternion)
         q0 = self.normalize()

@@ -40,6 +40,7 @@ def geman_mcclure_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> T
         >>> img2 = torch.randn(2, 3, 32, 32)
         >>> output = geman_mcclure_loss(img1, img2, reduction="mean")
         >>> output.backward()
+
     """
     KORNIA_CHECK_IS_TENSOR(img1)
 
@@ -103,6 +104,7 @@ class GemanMcclureLoss(Module):
         >>> img2 = torch.randn(2, 3, 32, 2107)
         >>> output = criterion(img1, img2)
         >>> output.backward()
+
     """
 
     def __init__(self, reduction: str = "none") -> None:

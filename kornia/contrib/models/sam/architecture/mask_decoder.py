@@ -33,6 +33,7 @@ class MaskDecoder(Module):
             activation: the type of activation to use when upscaling masks
             iou_head_depth: the depth of the MLP used to predict mask quality
             iou_head_hidden_dim: the hidden dimension of the MLP used to predict mask quality
+
         """
         super().__init__()
         self.transformer_dim = transformer_dim
@@ -77,6 +78,7 @@ class MaskDecoder(Module):
         Returns:
             batched predicted masks
             batched predictions of mask quality
+
         """
         masks, iou_pred = self.predict_masks(
             image_embeddings=image_embeddings,

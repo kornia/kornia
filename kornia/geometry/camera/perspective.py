@@ -27,6 +27,7 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
         >>> K = torch.eye(3)[None]
         >>> project_points(X, K)
         tensor([[5.6088, 8.6827]])
+
     """
     # projection eq. [u, v, w]' = K * [x y z 1]'
     # u = fx * X / Z + cx
@@ -64,6 +65,7 @@ def unproject_points(
         >>> K = torch.eye(3)[None]
         >>> unproject_points(x, depth, K)
         tensor([[0.4963, 0.7682, 1.0000]])
+
     """
     if not isinstance(depth, torch.Tensor):
         raise TypeError(f"Input depth type is not a torch.Tensor. Got {type(depth)}")

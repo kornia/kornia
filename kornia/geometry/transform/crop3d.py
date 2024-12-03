@@ -70,6 +70,7 @@ def crop_and_resize3d(
         <BLANKLINE>
                   [[37.0000, 39.0000],
                    [45.0000, 47.0000]]]]])
+
     """
     if not isinstance(tensor, (torch.Tensor)):
         raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
@@ -153,6 +154,7 @@ def center_crop3d(
         <BLANKLINE>
                   [[37.0000, 38.0000],
                    [41.0000, 42.0000]]]]])
+
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
@@ -297,6 +299,7 @@ def crop_by_boxes3d(
                   [[37., 38., 39.],
                    [41., 42., 43.],
                    [45., 46., 47.]]]]])
+
     """
     validate_bbox3d(src_box)
     validate_bbox3d(dst_box)
@@ -350,6 +353,7 @@ def crop_by_transform_mat3d(
 
     Returns:
         the output tensor with patches.
+
     """
     # simulate broadcasting
     dst_trans_src = transform.expand(tensor.shape[0], -1, -1)

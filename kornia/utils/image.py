@@ -32,6 +32,7 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> Tensor:
         >>> img = np.ones((4, 4, 3))
         >>> image_to_tensor(img, keepdim=False).shape
         torch.Size([1, 3, 4, 4])
+
     """
     if len(image.shape) > 4 or len(image.shape) < 2:
         raise ValueError("Input size must be a two, three or four dimensional array")
@@ -69,6 +70,7 @@ def image_list_to_tensor(images: List[Any]) -> Tensor:
         >>> imgs = [np.ones((4, 4, 1)), np.zeros((4, 4, 1))]
         >>> image_list_to_tensor(imgs).shape
         torch.Size([2, 1, 4, 4])
+
     """
     if not images:
         raise ValueError("Input list of numpy images is empty")
@@ -90,6 +92,7 @@ def _to_bchw(tensor: Tensor) -> Tensor:
 
     Returns:
         input tensor of the form :math:`(B, C, H, W)`.
+
     """
     if not isinstance(tensor, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
@@ -117,6 +120,7 @@ def _to_bcdhw(tensor: Tensor) -> Tensor:
 
     Returns:
         input tensor of the form :math:`(B, C, D, H, W)`.
+
     """
     if not isinstance(tensor, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
@@ -159,6 +163,7 @@ def tensor_to_image(tensor: Tensor, keepdim: bool = False, force_contiguous: boo
         >>> img = torch.ones(3, 4, 4)
         >>> tensor_to_image(img).shape
         (4, 4, 3)
+
     """
     if not isinstance(tensor, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
@@ -201,6 +206,7 @@ class ImageToTensor(nn.Module):
 
     Args:
         keepdim: If ``False`` unsqueeze the input image to match the shape :math:`(B, H, W, C)`.
+
     """
 
     def __init__(self, keepdim: bool = False) -> None:
@@ -221,6 +227,7 @@ def make_grid(tensor: Tensor, n_row: Optional[int] = None, padding: int = 2) -> 
 
     Returns:
         Tensor: The combined image grid.
+
     """
     if not isinstance(tensor, torch.Tensor):
         raise TypeError("Input tensor must be a PyTorch tensor.")

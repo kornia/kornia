@@ -28,6 +28,7 @@ def batched_forward(
         >>> desc_batched = batched_forward(sift, patches, torch.device('cpu'), 128)
         >>> desc = sift(patches)
         >>> assert torch.allclose(desc, desc_batched)
+
     """
     model_dev = model.to(device)
     B: int = len(data)

@@ -19,8 +19,8 @@ def marginal_pdf(values: Tensor, bins: Tensor, sigma: Tensor, epsilon: float = 1
         Tuple[Tensor, Tensor]:
           - Tensor: shape [BxN].
           - Tensor: shape [BxNxNUM_BINS].
-    """
 
+    """
     if not isinstance(values, Tensor):
         raise TypeError(f"Input values type is not a Tensor. Got {type(values)}")
 
@@ -60,6 +60,7 @@ def joint_pdf(kernel_values1: Tensor, kernel_values2: Tensor, epsilon: float = 1
 
     Returns:
         shape [BxNUM_BINSxNUM_BINS].
+
     """
     if not isinstance(kernel_values1, Tensor):
         raise TypeError(f"Input kernel_values1 type is not a Tensor. Got {type(kernel_values1)}")
@@ -106,6 +107,7 @@ def histogram(x: Tensor, bins: Tensor, bandwidth: Tensor, epsilon: float = 1e-10
         >>> hist = histogram(x, bins, bandwidth=torch.tensor(0.9))
         >>> hist.shape
         torch.Size([1, 128])
+
     """
     pdf, _ = marginal_pdf(x.unsqueeze(2), bins, bandwidth, epsilon)
 
@@ -134,8 +136,8 @@ def histogram2d(x1: Tensor, x2: Tensor, bins: Tensor, bandwidth: Tensor, epsilon
         >>> hist = histogram2d(x1, x2, bins, bandwidth=torch.tensor(0.9))
         >>> hist.shape
         torch.Size([2, 128, 128])
-    """
 
+    """
     _, kernel_values1 = marginal_pdf(x1.unsqueeze(2), bins, bandwidth, epsilon)
     _, kernel_values2 = marginal_pdf(x2.unsqueeze(2), bins, bandwidth, epsilon)
 
@@ -183,6 +185,7 @@ def image_histogram2d(
         Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,
           :math:`(B, C, bins)`, if return_pdf is ``True``. Tensor of zeros with shape
           of the histogram otherwise.
+
     """
     if image is not None and not isinstance(image, Tensor):
         raise TypeError(f"Input image type is not a Tensor. Got {type(image)}.")

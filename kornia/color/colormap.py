@@ -46,6 +46,7 @@ class ColorMapType(Enum):
 
         Returns:
             The base colormap.
+
         """
         return {
             "autumn": cm_data.get_autumn_base,
@@ -75,6 +76,7 @@ class ColorMapType(Enum):
 
         Returns:
             A list containing the names of enumeration members.
+
         """
         return [c.name for c in cls]
 
@@ -104,6 +106,7 @@ class ColorMap:
         tensor([[0.0000, 0.0000, 0.1250, 0.3750, 0.6250, 0.8750, 1.0000, 1.0000],
                 [0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
                 [1.0000, 1.0000, 0.8750, 0.6250, 0.3750, 0.1250, 0.0000, 0.0000]])
+
     """
 
     def __init__(
@@ -145,6 +148,7 @@ class ColorMap:
 
         Returns:
             A tensor representing the colormap.
+
         """
         tensor_colors = tensor(list(base_colormap), dtype=self._dtype, device=self._device).T
         return interpolate(tensor_colors[None, ...], size=num_colors, mode="linear")[0, ...]
@@ -154,6 +158,7 @@ class ColorMap:
 
         Returns:
             Number of colors in the colormap.
+
         """
         return self.colors.shape[-1]
 
@@ -191,8 +196,8 @@ def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
                  [[0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000]]]])
-    """
 
+    """
     KORNIA_CHECK(isinstance(input_tensor, Tensor), f"`input_tensor` must be a Tensor. Got: {type(input_tensor)}")
     valid_types = [torch.half, torch.float, torch.double, torch.uint8, torch.int, torch.long, torch.short]
     KORNIA_CHECK(
@@ -254,6 +259,7 @@ class ApplyColorMap(Module):
                  [[0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000]]]])
+
     """
 
     def __init__(
@@ -274,6 +280,7 @@ class ApplyColorMap(Module):
 
         Returns:
             The output tensor representing the image with the applied colormap.
+
         """
         return apply_colormap(input_tensor, self.colormap)
 

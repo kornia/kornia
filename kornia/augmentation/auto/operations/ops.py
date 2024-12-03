@@ -36,6 +36,7 @@ class AutoContrast(OperationBase):
             applied according to he augmentation sampling range.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
+
     """
 
     def __init__(
@@ -59,6 +60,7 @@ class Brightness(OperationBase):
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
+
     """
 
     def __init__(
@@ -87,6 +89,7 @@ class Contrast(OperationBase):
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
+
     """
 
     def __init__(
@@ -115,6 +118,7 @@ class Hue(OperationBase):
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
+
     """
 
     def __init__(
@@ -143,6 +147,7 @@ class Saturate(OperationBase):
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
+
     """
 
     def __init__(
@@ -175,6 +180,7 @@ class Equalize(OperationBase):
 
     Note:
         STE gradient estimator applied for back propagation.
+
     """
 
     def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
@@ -194,6 +200,7 @@ class Gray(OperationBase):
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+
     """
 
     def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
@@ -212,6 +219,7 @@ class Invert(OperationBase):
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+
     """
 
     def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
@@ -236,6 +244,7 @@ class Posterize(OperationBase):
 
     Note:
         STE gradient estimator applied for back propagation.
+
     """
 
     @staticmethod
@@ -273,6 +282,7 @@ class Solarize(OperationBase):
 
     Note:
         STE gradient estimator applied for back propagation.
+
     """
 
     def __init__(
@@ -305,6 +315,7 @@ class SolarizeAdd(OperationBase):
 
     Note:
         STE gradient estimator applied for back propagation.
+
     """
 
     def __init__(
@@ -334,6 +345,7 @@ class Sharpness(OperationBase):
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
+
     """
 
     def __init__(
@@ -359,6 +371,7 @@ class HorizontalFlip(OperationBase):
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+
     """
 
     def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
@@ -376,6 +389,7 @@ class VerticalFlip(OperationBase):
     Args:
         initial_magnitude: the initial magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+
     """
 
     def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
@@ -397,6 +411,7 @@ class Rotate(OperationBase):
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
+
     """
 
     def __init__(
@@ -430,6 +445,7 @@ class ShearX(OperationBase):
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
+
     """
 
     @staticmethod
@@ -469,6 +485,7 @@ class ShearY(OperationBase):
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
+
     """
 
     @staticmethod
@@ -513,6 +530,7 @@ class TranslateX(OperationBase):
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
+
     """
 
     def __init__(
@@ -546,6 +564,7 @@ class TranslateY(OperationBase):
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
+
     """
 
     def __init__(

@@ -34,6 +34,7 @@ def spatial_gradient(input: Tensor, mode: str = "sobel", order: int = 1, normali
         >>> output = spatial_gradient(input)  # 1x3x2x4x4
         >>> output.shape
         torch.Size([1, 3, 2, 4, 4])
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -72,6 +73,7 @@ def spatial_gradient3d(input: Tensor, mode: str = "diff", order: int = 1) -> Ten
         >>> output = spatial_gradient3d(input)
         >>> output.shape
         torch.Size([1, 4, 3, 2, 4, 4])
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "D", "H", "W"])
@@ -137,6 +139,7 @@ def sobel(input: Tensor, normalized: bool = True, eps: float = 1e-6) -> Tensor:
         >>> output = sobel(input)  # 1x3x4x4
         >>> output.shape
         torch.Size([1, 3, 4, 4])
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -172,6 +175,7 @@ class SpatialGradient(Module):
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
         >>> output = SpatialGradient()(input)  # 1x3x2x4x4
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
@@ -209,6 +213,7 @@ class SpatialGradient3d(Module):
         >>> output = SpatialGradient3d()(input)
         >>> output.shape
         torch.Size([1, 4, 3, 2, 4, 4])
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1, -1]
@@ -244,6 +249,7 @@ class Sobel(Module):
     Examples:
         >>> input = torch.rand(1, 3, 4, 4)
         >>> output = Sobel()(input)  # 1x3x4x4
+
     """
 
     def __init__(self, normalized: bool = True, eps: float = 1e-6) -> None:

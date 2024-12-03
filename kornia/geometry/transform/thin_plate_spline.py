@@ -14,7 +14,8 @@ __all__ = ["get_tps_transform", "warp_points_tps", "warp_image_tps"]
 
 def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
     r"""Compute the pairwise squared euclidean distance matrices :math:`(B, N, M)` between two tensors with shapes
-    (B, N, C) and (B, M, C)."""
+    (B, N, C) and (B, M, C).
+    """
     # ||t1-t2||^2 = (t1-t2)^T(t1-t2) = t1^T*t1 + t2^T*t2 - 2*t1^T*t2
     t1_sq: torch.Tensor = tensor1.mul(tensor1).sum(dim=-1, keepdim=True)
     t2_sq: torch.Tensor = tensor2.mul(tensor2).sum(dim=-1, keepdim=True).transpose(1, 2)
@@ -57,6 +58,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
 
     .. note::
         This function is often used in conjunction with :func:`warp_points_tps`, :func:`warp_image_tps`.
+
     """
     if not isinstance(points_src, torch.Tensor):
         raise TypeError(f"Input points_src is not torch.Tensor. Got {type(points_src)}")
@@ -123,6 +125,7 @@ def warp_points_tps(
 
     .. note::
         This function is often used in conjunction with :func:`get_tps_transform`.
+
     """
     if not isinstance(points_src, torch.Tensor):
         raise TypeError(f"Input points_src is not torch.Tensor. Got {type(points_src)}")
@@ -200,6 +203,7 @@ def warp_image_tps(
 
     .. note::
         This function is often used in conjunction with :func:`get_tps_transform`.
+
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input image is not torch.Tensor. Got {type(image)}")

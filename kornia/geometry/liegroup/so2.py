@@ -31,6 +31,7 @@ class So2(Module):
         >>> So2(torch.complex(real, imag))
         Parameter containing:
         tensor([1.+2.j], requires_grad=True)
+
     """
 
     def __init__(self, z: Tensor) -> None:
@@ -47,6 +48,7 @@ class So2(Module):
             >>> So2(torch.complex(real, imag)).z
             Parameter containing:
             tensor(1.+2.j, requires_grad=True)
+
         """
         super().__init__()
         KORNIA_CHECK_IS_TENSOR(z)
@@ -74,6 +76,7 @@ class So2(Module):
 
         Return:
             The resulting So2 transformation.
+
         """
         z = self.z
         if isinstance(right, So2):
@@ -112,6 +115,7 @@ class So2(Module):
             >>> s
             Parameter containing:
             tensor([4.6329e-05+1.j], requires_grad=True)
+
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         check_so2_theta_shape(theta)
@@ -125,6 +129,7 @@ class So2(Module):
             >>> imag = torch.tensor([3.0])
             >>> So2(torch.complex(real, imag)).log()
             tensor([1.2490], grad_fn=<Atan2Backward0>)
+
         """
         return self.z.imag.atan2(self.z.real)
 
@@ -140,6 +145,7 @@ class So2(Module):
             >>> So2.hat(theta)
             tensor([[0.0000, 1.5707],
                     [1.5707, 0.0000]])
+
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         check_so2_theta_shape(theta)
@@ -160,6 +166,7 @@ class So2(Module):
             >>> omega = So2.hat(v)
             >>> So2.vee(omega)
             tensor([1., 1., 1.])
+
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         check_so2_matrix_shape(omega)
@@ -174,6 +181,7 @@ class So2(Module):
             >>> m
             tensor([[1., -0.],
                     [0., 1.]], grad_fn=<StackBackward0>)
+
         """
         row0 = stack((self.z.real, -self.z.imag), -1)
         row1 = stack((self.z.imag, self.z.real), -1)
@@ -192,6 +200,7 @@ class So2(Module):
             >>> s.z
             Parameter containing:
             tensor(1.+0.j, requires_grad=True)
+
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         check_so2_matrix_shape(matrix)
@@ -213,6 +222,7 @@ class So2(Module):
             >>> s
             Parameter containing:
             tensor([1.+0.j, 1.+0.j], requires_grad=True)
+
         """
         real_data = tensor(1.0, device=device, dtype=dtype)
         imag_data = tensor(0.0, device=device, dtype=dtype)
@@ -230,6 +240,7 @@ class So2(Module):
             >>> s.inverse().z
             Parameter containing:
             tensor(1.+0.j, requires_grad=True)
+
         """
         return So2(1 / self.z)
 
@@ -245,6 +256,7 @@ class So2(Module):
         Example:
             >>> s = So2.random()
             >>> s = So2.random(batch_size=3)
+
         """
         if batch_size is not None:
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
@@ -263,6 +275,7 @@ class So2(Module):
             >>> s.adjoint()
             tensor([[1., -0.],
                     [0., 1.]], grad_fn=<StackBackward0>)
+
         """
         batch_size = len(self.z) if len(self.z.shape) > 0 else None
         return self.identity(batch_size, self.z.device, self.z.real.dtype).matrix()

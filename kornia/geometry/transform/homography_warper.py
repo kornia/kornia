@@ -41,6 +41,7 @@ class HomographyWarper(BaseWarper):
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         normalized_coordinates: whether to use a grid with normalized coordinates.
         align_corners: interpolation flag.
+
     """
 
     _warped_grid: Optional[Tensor]
@@ -76,6 +77,7 @@ class HomographyWarper(BaseWarper):
               has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
               The homography assumes normalized coordinates [-1, 1] if
               normalized_coordinates is True.
+
         """
         self._warped_grid = warp_grid(self.grid, src_homo_dst)
 
@@ -104,6 +106,7 @@ class HomographyWarper(BaseWarper):
             >>> # precomputing the warp
             >>> warper.precompute_warp_grid(homography)
             >>> output = warper(input)  # NxCxHxW
+
         """
         _warped_grid = self._warped_grid
         if src_homo_dst is not None:

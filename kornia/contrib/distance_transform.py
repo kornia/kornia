@@ -26,6 +26,7 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
         >>> tensor = torch.zeros(1, 1, 5, 5)
         >>> tensor[:,:, 1, 2] = 1
         >>> dt = kornia.contrib.distance_transform(tensor)
+
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"image type is not a torch.Tensor. Got {type(image)}")
@@ -77,6 +78,7 @@ class DistanceTransform(nn.Module):
     Args:
         kernel_size: size of the convolution kernel.
         h: value that influence the approximation of the min function.
+
     """
 
     def __init__(self, kernel_size: int = 3, h: float = 0.35) -> None:

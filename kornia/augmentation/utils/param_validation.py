@@ -113,6 +113,7 @@ def _tuple_range_reader(
     tensor([[0.2000, 0.3000],
             [0.2000, 0.3000],
             [0.2000, 0.3000]])
+
     """
     target_shape = torch.Size([target_size, 2])
 

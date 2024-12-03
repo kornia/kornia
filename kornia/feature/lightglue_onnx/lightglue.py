@@ -33,6 +33,7 @@ class OnnxLightGlue:
           are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. `Note that FP16 requires CUDA.`
           Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
         device: Device to run inference on.
+
     """
 
     MODEL_URLS: ClassVar[dict[str, str]] = {
@@ -108,6 +109,7 @@ class OnnxLightGlue:
             ``matches`` (`int64`): :math:`(S, 2)`
 
             ``scores`` (`float32`): :math:`(S)`
+
         """
         # Input validation.
         for key in self.required_data_keys:

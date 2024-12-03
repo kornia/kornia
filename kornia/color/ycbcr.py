@@ -27,6 +27,7 @@ def rgb_to_ycbcr(image: Tensor) -> Tensor:
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_ycbcr(input)  # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -57,6 +58,7 @@ def rgb_to_y(image: Tensor) -> Tensor:
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_y(input)  # 2x1x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -86,6 +88,7 @@ def ycbcr_to_rgb(image: Tensor) -> Tensor:
     Examples:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = ycbcr_to_rgb(input)  # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -123,6 +126,7 @@ class RgbToYcbcr(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> ycbcr = RgbToYcbcr()
         >>> output = ycbcr(input)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -148,6 +152,7 @@ class YcbcrToRgb(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = YcbcrToRgb()
         >>> output = rgb(input)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]

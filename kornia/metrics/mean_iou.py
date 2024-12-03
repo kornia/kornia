@@ -27,6 +27,7 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
         >>> target = torch.tensor([[0, 1, 0]])
         >>> mean_iou(logits, target, num_classes=3)
         tensor([[1., 1., 1.]])
+
     """
     if not torch.is_tensor(pred) and pred.dtype is not torch.int64:
         raise TypeError(f"Input pred type is not a torch.Tensor with torch.int64 dtype. Got {type(pred)}")
@@ -75,6 +76,7 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor) -> torch.Tensor:
         >>> mean_iou_bbox(boxes_1, boxes_2)
         tensor([[0.3333, 0.0000],
                 [0.1429, 0.2500]])
+
     """
     # TODO: support more box types. e.g. xywh,
     if not (((boxes_1[:, 2] - boxes_1[:, 0]) > 0).all() or ((boxes_1[:, 3] - boxes_1[:, 1]) > 0).all()):

@@ -51,6 +51,7 @@ class RandomHue(IntensityAugmentationBase2D):
         >>> aug = RandomHue((-0.2,0.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

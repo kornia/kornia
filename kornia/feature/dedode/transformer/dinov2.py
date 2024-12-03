@@ -63,27 +63,27 @@ class DinoVisionTransformer(nn.Module):
         ffn_layer="mlp",
         block_chunks=1,
     ):
-        """
-        Args:
-            img_size (int, tuple): input image size
-            patch_size (int, tuple): patch size
-            in_chans (int): number of input channels
-            embed_dim (int): embedding dimension
-            depth (int): depth of transformer
-            num_heads (int): number of attention heads
-            mlp_ratio (int): ratio of mlp hidden dim to embedding dim
-            qkv_bias (bool): enable bias for qkv if True
-            proj_bias (bool): enable bias for proj in attn if True
-            ffn_bias (bool): enable bias for ffn if True
-            drop_path_rate (float): stochastic depth rate
-            drop_path_uniform (bool): apply uniform drop rate across blocks
-            weight_init (str): weight init scheme
-            init_values (float): layer-scale init values
-            embed_layer (nn.Module): patch embedding layer
-            act_layer (nn.Module): MLP activation layer
-            block_fn (nn.Module): transformer block class
-            ffn_layer (str): "mlp", "swiglu", "swiglufused" or "identity"
-            block_chunks: (int) split block sequence into block_chunks units for FSDP wrap
+        """Args:
+        img_size (int, tuple): input image size
+        patch_size (int, tuple): patch size
+        in_chans (int): number of input channels
+        embed_dim (int): embedding dimension
+        depth (int): depth of transformer
+        num_heads (int): number of attention heads
+        mlp_ratio (int): ratio of mlp hidden dim to embedding dim
+        qkv_bias (bool): enable bias for qkv if True
+        proj_bias (bool): enable bias for proj in attn if True
+        ffn_bias (bool): enable bias for ffn if True
+        drop_path_rate (float): stochastic depth rate
+        drop_path_uniform (bool): apply uniform drop rate across blocks
+        weight_init (str): weight init scheme
+        init_values (float): layer-scale init values
+        embed_layer (nn.Module): patch embedding layer
+        act_layer (nn.Module): MLP activation layer
+        block_fn (nn.Module): transformer block class
+        ffn_layer (str): "mlp", "swiglu", "swiglufused" or "identity"
+        block_chunks: (int) split block sequence into block_chunks units for FSDP wrap
+
         """
         super().__init__()
         norm_layer = partial(nn.LayerNorm, eps=1e-6)

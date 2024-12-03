@@ -28,6 +28,7 @@ def download_image(url: str, save_to: str) -> None:
     Args:
         url: The URL of the image to download.
         save_to: The file path where the downloaded image will be saved.
+
     """
     im = Image.open(requests.get(url, stream=True, timeout=30).raw)  # type:ignore
     im.save(save_to)
@@ -64,6 +65,7 @@ def get_sample_images(
         torch.Tensor | list[torch.Tensor]:
             If `resize` is provided, returns a single stacked tensor with shape (B, C, H, W).
             Otherwise, returns a list of tensors, each with its original shape (C, H, W).
+
     """
     if cache_dir is None:
         cache_dir = ".kornia_hub/images"

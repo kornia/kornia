@@ -37,6 +37,7 @@ class ONNXExportMixin:
 
     Note:
         - If `ONNX_EXPORTABLE` is False, indicating that the object cannot be exported to ONNX.
+
     """
 
     ONNX_EXPORTABLE: bool = True
@@ -84,6 +85,7 @@ class ONNXExportMixin:
             - A dummy input tensor is created based on the provided or default input shape.
             - Dynamic axes for input and output tensors are configured where dimensions are marked `-1`.
             - The model is exported with `torch.onnx.export`, with constant folding enabled and opset version set to 17.
+
         """
         if not self.ONNX_EXPORTABLE:
             raise RuntimeError("This object cannot be exported to ONNX.")
@@ -162,6 +164,7 @@ class ONNXRuntimeMixin:
 
         Returns:
             ort.InferenceSession: The ONNXRuntime session optimized for inference.
+
         """
         if session_options is None:
             sess_options = ort.SessionOptions()  # type:ignore
@@ -179,6 +182,7 @@ class ONNXRuntimeMixin:
         Args:
             session: ort.InferenceSession
                 The custom ONNXRuntime session to be set for inference.
+
         """
         self._session = session
 
@@ -187,6 +191,7 @@ class ONNXRuntimeMixin:
 
         Returns:
             ort.InferenceSession: The current ONNXRuntime session.
+
         """
         return self._session
 
@@ -208,6 +213,7 @@ class ONNXRuntimeMixin:
 
         Args:
             device_id: Select GPU to execute.
+
         """
         self._session.set_providers(["CUDAExecutionProvider"], provider_options=[{"device_id": device_id, **kwargs}])
 
@@ -220,6 +226,7 @@ class ONNXRuntimeMixin:
 
         Args:
             device_id: select GPU to execute.
+
         """
         self._session.set_providers(
             ["TensorrtExecutionProvider"], provider_options=[{"device_id": device_id, **kwargs}]
@@ -235,6 +242,7 @@ class ONNXRuntimeMixin:
         Args:
             device_type: CPU, NPU, GPU, GPU.0, GPU.1 based on the available GPUs, NPU, Any valid Hetero combination,
                 Any valid Multi or Auto devices combination.
+
         """
         self._session.set_providers(
             ["OpenVINOExecutionProvider"], provider_options=[{"device_type": device_type, **kwargs}]
@@ -248,6 +256,7 @@ class ONNXRuntimeMixin:
 
         Returns:
             list: The outputs from the ONNX model inference.
+
         """
         ort_inputs = self._session.get_inputs()
         ort_input_values = {ort_inputs[i].name: inputs[i] for i in range(len(ort_inputs))}
@@ -269,6 +278,7 @@ class ONNXMixin:
 
         Returns:
             onnx.ModelProto: The loaded ONNX model.
+
         """
         if isinstance(arg, str):
             return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir)
@@ -290,6 +300,7 @@ class ONNXMixin:
 
         Returns:
             list[onnx.ModelProto]: The loaded ONNX models as a list of ONNX graphs.
+
         """
         op_list = []
         for arg in args:
@@ -311,6 +322,7 @@ class ONNXMixin:
 
         Returns:
             onnx.ModelProto: The combined ONNX model as a single ONNX graph.
+
         """
         if len(args) == 0:
             raise ValueError("No operators found.")
@@ -339,6 +351,7 @@ class ONNXMixin:
         Args:
             file_path:
                 The file path to export the combined ONNX model.
+
         """
         onnx.save(op, file_path, **kwargs)  # type:ignore
 
@@ -353,6 +366,7 @@ class ONNXMixin:
             additional_metadata:
                 A list of tuples representing additional metadata to add to the combined ONNX model.
                 Example: [("version", 0.1)], [("date", 20240909)].
+
         """
         op = kornia.onnx.utils.add_metadata(op, additional_metadata)
         return op
@@ -368,6 +382,7 @@ class ONNXMixin:
         Args:
             target_ir_version: The target IR version to convert to.
             target_opset_version: The target OPSET version to convert to.
+
         """
         if op.ir_version != target_ir_version or op.opset_import[0].version != target_opset_version:
             # Check if all ops are supported in the current IR version

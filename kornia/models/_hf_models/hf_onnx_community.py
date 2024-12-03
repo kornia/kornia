@@ -23,6 +23,7 @@ class HFONNXComunnityModelLoader:
         cache_dir: The directory where models are cached locally.
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         with_data: Whether to download the model weights such as `model.onnx_data`.
+
     """
 
     def __init__(
@@ -106,6 +107,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
 
         Returns:
             The resized images.
+
         """
         if isinstance(target_images, Tensor):
             return resize(images, target_images.shape[-2:])
@@ -131,6 +133,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
                 If to save the model or load it.
             additional_metadata:
                 Additional metadata to add to the ONNX model.
+
         """
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}.onnx"

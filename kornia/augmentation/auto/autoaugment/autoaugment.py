@@ -116,6 +116,7 @@ class AutoAugment(PolicyAugmentBase):
         >>> aug = K.AugmentationSequential(AutoAugment())
         >>> aug(in_tensor).shape
         torch.Size([5, 3, 30, 30])
+
     """
 
     def __init__(

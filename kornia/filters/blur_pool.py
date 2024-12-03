@@ -48,6 +48,7 @@ class BlurPool2D(Module):
         tensor([[[[0.3125, 0.0625, 0.0000],
                   [0.0625, 0.3750, 0.0625],
                   [0.0000, 0.0625, 0.3125]]]])
+
     """
 
     def __init__(self, kernel_size: tuple[int, int] | int, stride: int = 2) -> None:
@@ -93,6 +94,7 @@ class MaxBlurPool2D(Module):
         >>> seq(input)
         tensor([[[[0.5625, 0.3125],
                   [0.3125, 0.8750]]]])
+
     """
 
     def __init__(
@@ -167,6 +169,7 @@ def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int =
         tensor([[[[0.3125, 0.0625, 0.0000],
                   [0.0625, 0.3750, 0.0625],
                   [0.0000, 0.0625, 0.3125]]]])
+
     """
     kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
         (input.size(1), 1, 1, 1)
@@ -200,6 +203,7 @@ def max_blur_pool2d(
         >>> max_blur_pool2d(input, 3)
         tensor([[[[0.5625, 0.3125],
                   [0.3125, 0.8750]]]])
+
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
@@ -253,6 +257,7 @@ def edge_aware_blur_pool2d(
 
     Returns:
         The blurred tensor of shape :math:`(B, C, H, W)`.
+
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(edge_threshold > 0.0, f"edge threshold should be positive, but got '{edge_threshold}'")

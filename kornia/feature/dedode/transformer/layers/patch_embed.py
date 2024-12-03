@@ -24,8 +24,7 @@ def make_2tuple(x):
 
 
 class PatchEmbed(nn.Module):
-    """
-    2D image to patch embedding: (B,C,H,W) -> (B,N,D)
+    """2D image to patch embedding: (B,C,H,W) -> (B,N,D)
 
     Args:
         img_size: Image size.
@@ -33,6 +32,7 @@ class PatchEmbed(nn.Module):
         in_chans: Number of input image channels.
         embed_dim: Number of linear projection output channels.
         norm_layer: Normalization layer.
+
     """
 
     def __init__(

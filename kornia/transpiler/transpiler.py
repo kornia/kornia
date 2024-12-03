@@ -27,6 +27,7 @@ def to_jax() -> ModuleType:
         import jax
         input = jax.random.normal(jax.random.key(42), shape=(2, 3, 4, 5))
         gray = jax_kornia.color.gray.rgb_to_grayscale(input)
+
     """
     return ivy.transpile(
         kornia,
@@ -59,6 +60,7 @@ def to_numpy() -> ModuleType:
 
     Note:
         Ivy does not currently support transpiling trainable modules to NumPy.
+
     """
     return ivy.transpile(
         kornia,
@@ -88,6 +90,7 @@ def to_tensorflow() -> ModuleType:
         import tensorflow as tf
         input = tf.random.normal((2, 3, 4, 5))
         gray = tf_kornia.color.gray.rgb_to_grayscale(input)
+
     """
     return ivy.transpile(
         kornia,

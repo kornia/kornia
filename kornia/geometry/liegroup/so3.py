@@ -27,6 +27,7 @@ class So3(Module):
         >>> s.q
         Parameter containing:
         tensor([1., 0., 0., 0.], requires_grad=True)
+
     """
 
     def __init__(self, q: Quaternion) -> None:
@@ -44,6 +45,7 @@ class So3(Module):
             Parameter containing:
             tensor([[1., 1., 1., 1.],
                     [1., 1., 1., 1.]], requires_grad=True)
+
         """
         super().__init__()
         KORNIA_CHECK_TYPE(q, Quaternion)
@@ -63,6 +65,7 @@ class So3(Module):
 
         Return:
             The resulting So3 transformation.
+
         """
         # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L98
         if isinstance(right, So3):
@@ -100,6 +103,7 @@ class So3(Module):
             Parameter containing:
             tensor([[1., 0., 0., 0.],
                     [1., 0., 0., 0.]], requires_grad=True)
+
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         theta = batched_dot_product(v, v).sqrt()[..., None]
@@ -122,6 +126,7 @@ class So3(Module):
             >>> So3(q).log()
             tensor([[0., 0., 0.],
                     [0., 0., 0.]], grad_fn=<WhereBackward0>)
+
         """
         theta = batched_dot_product(self.q.vec, self.q.vec).sqrt()
         # NOTE: this differs from https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L33
@@ -146,6 +151,7 @@ class So3(Module):
             tensor([[[ 0., -1.,  1.],
                      [ 1.,  0., -1.],
                      [-1.,  1.,  0.]]])
+
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         if isinstance(v, Tensor):
@@ -176,6 +182,7 @@ class So3(Module):
             >>> omega = So3.hat(v)
             >>> So3.vee(omega)
             tensor([[1., 1., 1.]])
+
         """
         # KORNIA_CHECK_SHAPE(omega, ["B", "3", "3"])  # FIXME: resolve shape bugs. @edgarriba
         a, b, c = omega[..., 2, 1], omega[..., 0, 2], omega[..., 1, 0]
@@ -198,6 +205,7 @@ class So3(Module):
             tensor([[1., 0., 0.],
                     [0., 1., 0.],
                     [0., 0., 1.]], grad_fn=<StackBackward0>)
+
         """
         w = self.q.w[..., None]
         x, y, z = self.q.x[..., None], self.q.y[..., None], self.q.z[..., None]
@@ -228,6 +236,7 @@ class So3(Module):
             >>> s
             Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
+
         """
         return cls(Quaternion.from_matrix(matrix))
 
@@ -244,6 +253,7 @@ class So3(Module):
             >>> s
             Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
+
         """
         # KORNIA_CHECK_SHAPE(wxyz, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
         return cls(Quaternion(wxyz))
@@ -268,6 +278,7 @@ class So3(Module):
             Parameter containing:
             tensor([[1., 0., 0., 0.],
                     [1., 0., 0., 0.]], requires_grad=True)
+
         """
         return cls(Quaternion.identity(batch_size, device, dtype))
 
@@ -279,6 +290,7 @@ class So3(Module):
             >>> s.inverse()
             Parameter containing:
             tensor([1., -0., -0., -0.], requires_grad=True)
+
         """
         return So3(self.q.conj())
 
@@ -294,6 +306,7 @@ class So3(Module):
         Example:
             >>> s = So3.random()
             >>> s = So3.random(batch_size=3)
+
         """
         return cls(Quaternion.random(batch_size, device, dtype))
 
@@ -303,6 +316,7 @@ class So3(Module):
 
         Args:
             x: the x-axis rotation angle.
+
         """
         zs = zeros_like(x)
         return cls.exp(stack((x, zs, zs), -1))
@@ -313,6 +327,7 @@ class So3(Module):
 
         Args:
             y: the y-axis rotation angle.
+
         """
         zs = zeros_like(y)
         return cls.exp(stack((zs, y, zs), -1))
@@ -323,6 +338,7 @@ class So3(Module):
 
         Args:
             z: the z-axis rotation angle.
+
         """
         zs = zeros_like(z)
         return cls.exp(stack((zs, zs, z), -1))
@@ -336,6 +352,7 @@ class So3(Module):
             tensor([[1., 0., 0.],
                     [0., 1., 0.],
                     [0., 0., 1.]], grad_fn=<StackBackward0>)
+
         """
         return self.matrix()
 
@@ -352,6 +369,7 @@ class So3(Module):
             tensor([[-0.0687,  0.5556, -0.0141],
                     [-0.2267,  0.1779,  0.6236],
                     [ 0.5074,  0.3629,  0.5890]])
+
         """
         # KORNIA_CHECK_SHAPE(vec, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         R_skew = vector_to_skew_symmetric_matrix(vec)
@@ -366,6 +384,7 @@ class So3(Module):
 
         Args:
             vec: the input point of shape :math:`(B, 3)`.
+
         """
         return So3.right_jacobian(vec)
 
@@ -382,6 +401,7 @@ class So3(Module):
             tensor([[-0.0687, -0.2267,  0.5074],
                     [ 0.5556,  0.1779,  0.3629],
                     [-0.0141,  0.6236,  0.5890]])
+
         """
         # KORNIA_CHECK_SHAPE(vec, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         R_skew = vector_to_skew_symmetric_matrix(vec)
@@ -396,5 +416,6 @@ class So3(Module):
 
         Args:
             vec: the input point of shape :math:`(B, 3)`.
+
         """
         return So3.left_jacobian(vec)

@@ -46,6 +46,7 @@ class TrivialAugment(PolicyAugmentBase):
         >>> aug = K.AugmentationSequential(TrivialAugment())
         >>> aug(in_tensor).shape
         torch.Size([5, 3, 30, 30])
+
     """
 
     def __init__(

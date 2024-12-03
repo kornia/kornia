@@ -35,6 +35,7 @@ def median_blur(input: Tensor, kernel_size: tuple[int, int] | int) -> Tensor:
         >>> output = median_blur(input, (3, 3))
         >>> output.shape
         torch.Size([2, 4, 5, 7])
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -72,6 +73,7 @@ class MedianBlur(Module):
         >>> output = blur(input)
         >>> output.shape
         torch.Size([2, 4, 5, 7])
+
     """
 
     def __init__(self, kernel_size: tuple[int, int] | int) -> None:

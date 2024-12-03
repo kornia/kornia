@@ -1,6 +1,7 @@
 """Based on the code from
 https://github.com/PaddlePaddle/PaddleDetection/blob/ec37e66685f3bc5a38cd13f60685acea175922e1/
-ppdet/modeling/transformers/hybrid_encoder.py."""
+ppdet/modeling/transformers/hybrid_encoder.py.
+"""
 
 from __future__ import annotations
 
@@ -135,6 +136,7 @@ class AIFI(Module):
 
         Returns:
             positional embeddings, shape :math:`(H * W, 1, C)`
+
         """
         xs = torch.arange(w, device=device, dtype=dtype)
         ys = torch.arange(h, device=device, dtype=dtype)

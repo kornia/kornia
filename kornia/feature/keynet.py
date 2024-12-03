@@ -125,6 +125,7 @@ class KeyNet(Module):
     Shape:
         - Input: :math:`(B, 1, H, W)`
         - Output: :math:`(B, 1, H, W)`
+
     """
 
     def __init__(self, pretrained: bool = False, keynet_conf: KeyNet_conf = keynet_default_config) -> None:
@@ -149,9 +150,7 @@ class KeyNet(Module):
         self.eval()
 
     def forward(self, x: Tensor) -> Tensor:
-        """
-        x - input image
-        """
+        """X - input image"""
         shape_im = x.shape
         feats: List[Tensor] = [self.feature_extractor(x)]
         for _ in range(1, self.num_levels):
@@ -180,6 +179,7 @@ class KeyNetDetector(MultiResolutionDetector):
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
             which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
+
     """
 
     def __init__(

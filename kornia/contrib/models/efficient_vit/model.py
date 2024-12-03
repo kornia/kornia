@@ -24,6 +24,7 @@ class EfficientViTConfig:
 
     Args:
         checkpoint: URL or local path of model weights.
+
     """
 
     checkpoint: str = field(default_factory=_get_base_url)
@@ -37,6 +38,7 @@ class EfficientViTConfig:
         Args:
             model_type: model type, one of :obj:`"b1"`, :obj:`"b2"`, :obj:`"b3"`.
             resolution: input resolution, one of :obj:`224`, :obj:`256`, :obj:`288`.
+
         """
         return cls(checkpoint=_get_base_url(model_type=model_type, resolution=resolution))
 
@@ -57,6 +59,7 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
 
         Returns:
             EfficientViT: the EfficientViT model.
+
         """
         # load the model from the checkpoint
         try:
@@ -85,6 +88,7 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
 
         Returns:
             Dict[str, Tensor]: a dictionary containing the features.
+
         """
         feats = self.backbone(images)
         return feats

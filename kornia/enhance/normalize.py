@@ -38,6 +38,7 @@ class Normalize(Module):
         >>> out = Normalize(mean, std)(x)
         >>> out.shape
         torch.Size([1, 4, 3, 3])
+
     """
 
     def __init__(
@@ -98,6 +99,7 @@ def normalize(data: Tensor, mean: Tensor, std: Tensor) -> Tensor:
         >>> out = normalize(x, mean, std)
         >>> out.shape
         torch.Size([1, 4, 3, 3])
+
     """
     shape = data.shape
 
@@ -165,6 +167,7 @@ class Denormalize(Module):
         >>> out = Denormalize(mean, std)(x)
         >>> out.shape
         torch.Size([1, 4, 3, 3, 3])
+
     """
 
     def __init__(self, mean: Union[Tensor, float], std: Union[Tensor, float]) -> None:
@@ -209,6 +212,7 @@ def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, flo
         >>> out = denormalize(x, mean, std)
         >>> out.shape
         torch.Size([1, 4, 3, 3, 3])
+
     """
     shape = data.shape
 
@@ -271,6 +275,7 @@ def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps
         tensor(-1.)
         >>> x_norm.max()
         tensor(1.0000)
+
     """
     if not isinstance(x, Tensor):
         raise TypeError(f"data should be a tensor. Got: {type(x)}.")

@@ -48,6 +48,7 @@ def js_div_loss_2d(pred: Tensor, target: Tensor, reduction: str = "mean") -> Ten
         >>> loss = js_div_loss_2d(pred, pred)
         >>> loss.item()
         0.0
+
     """
     return _reduce_loss(_js_div_2d(target, pred), reduction)
 
@@ -69,5 +70,6 @@ def kl_div_loss_2d(pred: Tensor, target: Tensor, reduction: str = "mean") -> Ten
         >>> loss = kl_div_loss_2d(pred, pred)
         >>> loss.item()
         0.0
+
     """
     return _reduce_loss(_kl_div_2d(target, pred), reduction)

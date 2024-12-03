@@ -55,6 +55,7 @@ def crop_and_resize(
         >>> crop_and_resize(input, boxes, (2, 2), mode='nearest', align_corners=True)
         tensor([[[[ 6.,  7.],
                   [10., 11.]]]])
+
     """
     if not isinstance(input_tensor, Tensor):
         raise TypeError(f"Input tensor type is not a Tensor. Got {type(input_tensor)}")
@@ -118,6 +119,7 @@ def center_crop(
         >>> center_crop(input, (2, 4), mode='nearest', align_corners=True)
         tensor([[[[ 5.,  6.,  7.,  8.],
                   [ 9., 10., 11., 12.]]]])
+
     """
     if not isinstance(input_tensor, Tensor):
         raise TypeError(f"Input tensor type is not a Tensor. Got {type(input_tensor)}")
@@ -218,6 +220,7 @@ def crop_by_boxes(
     Note:
         If the src_box is smaller than dst_box, the following error will be thrown.
         RuntimeError: solve_cpu: For batch 0: U(2,2) is zero, singular U.
+
     """
     if validate_boxes:
         validate_bbox(src_box)
@@ -266,6 +269,7 @@ def crop_by_transform_mat(
 
     Returns:
         the output tensor with patches.
+
     """
     # simulate broadcasting
     dst_trans_src = as_tensor(
@@ -310,6 +314,7 @@ def crop_by_indices(
             No effect for upscaling.
         shape_compensation: if the cropped slice sizes are not exactly align `size`, the image can either be padded
             or resized.
+
     """
     KORNIA_CHECK_SHAPE(input_tensor, ["B", "C", "H", "W"])
     KORNIA_CHECK_SHAPE(src_box, ["B", "4", "2"])

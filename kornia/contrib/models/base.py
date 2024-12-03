@@ -20,8 +20,8 @@ class ModelBase(ABC, Module, Generic[ModelConfig]):
         Args:
             checkpoint: The url or filepath for the respective checkpoint
             device: The desired device to load the weights and move the model
-        """
 
+        """
         if os.path.isfile(checkpoint):
             with open(checkpoint, "rb") as f:
                 state_dict = torch.load(f, map_location=device)
@@ -37,6 +37,7 @@ class ModelBase(ABC, Module, Generic[ModelConfig]):
 
         Args:
             config: The specifications for the model be build/loaded
+
         """
         raise NotImplementedError
 

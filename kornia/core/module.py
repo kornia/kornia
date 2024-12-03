@@ -37,6 +37,7 @@ class ImageModuleMixIn:
 
         Returns:
             Callable: Decorated function with converted input and output types.
+
         """
 
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
@@ -91,6 +92,7 @@ class ImageModuleMixIn:
 
         Returns:
             bool: True if valid, False otherwise.
+
         """
         if isinstance(arg, (str,)) and os.path.exists(arg):
             return True
@@ -113,6 +115,7 @@ class ImageModuleMixIn:
 
         Returns:
             Tensor: The converted tensor.
+
         """
         if isinstance(x, (str,)):
             return kornia.io.load_image(x, kornia.io.ImageLoadType.UNCHANGED) / 255
@@ -132,6 +135,7 @@ class ImageModuleMixIn:
 
         Returns:
             np.array: The converted numpy array.
+
         """
         if isinstance(x, (Tensor,)):
             return x.cpu().detach().numpy()
@@ -149,6 +153,7 @@ class ImageModuleMixIn:
 
         Returns:
             Image.Image: The converted PIL image.
+
         """
         if isinstance(x, (Tensor,)):
             x = x.cpu().detach() * 255
@@ -187,6 +192,7 @@ class ImageModuleMixIn:
         Args:
             n_row: Number of images displayed in each row of the grid.
             backend: visualization backend. Only PIL is supported now.
+
         """
         if self._output_image is None:
             raise ValueError("No pre-computed images found. Needs to execute first.")
@@ -213,6 +219,7 @@ class ImageModuleMixIn:
         Args:
             name: Directory to save the images.
             n_row: Number of images displayed in each row of the grid.
+
         """
         if name is None:
             name = f"Kornia-{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}.jpg"
@@ -235,6 +242,7 @@ class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
     Note:
         The additional add-on features increase the use of memories. To restore the
         original behaviour, you may set `disable_features = True`.
+
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -264,8 +272,8 @@ class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
 
         Returns:
             Callable: Decorated function with converted input and output types.
-        """
 
+        """
         # Wrap the forward method with the decorator
         if not self._disable_features:
             decorated_forward = self.convert_input_output(
@@ -291,6 +299,7 @@ class ImageSequential(Sequential, ImageModuleMixIn, ONNXExportMixin):
     Note:
         The additional add-on features increase the use of memories. To restore the
         original behaviour, you may set `disable_features = True`.
+
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -320,8 +329,8 @@ class ImageSequential(Sequential, ImageModuleMixIn, ONNXExportMixin):
 
         Returns:
             Callable: Decorated function with converted input and output types.
-        """
 
+        """
         # Wrap the forward method with the decorator
         if not self._disable_features:
             decorated_forward = self.convert_input_output(

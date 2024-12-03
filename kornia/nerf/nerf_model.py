@@ -32,6 +32,7 @@ class MLP(Module):
             num_units: Number of sub-units.
             num_unit_layers: Number of fully connected layers in each sub-unit.
             num_hidden: Layer hidden dimensions.
+
         """
         super().__init__()
         self._num_unit_layers = num_unit_layers
@@ -66,6 +67,7 @@ class NerfModel(Module):
         num_unit_layers: Number of fully connected layers in each sub-unit.
         num_hidden: Layer hidden dimensions.
         log_space_encoding: Whether to apply log spacing for encoding.
+
     """
 
     def __init__(
@@ -108,6 +110,7 @@ class NerfModel(Module):
 
         Returns:
             Rendered image pixels :math:`(B, 3)`.
+
         """
         # Sample xyz for ray parameters
         batch_size = origins.shape[0]
@@ -158,6 +161,7 @@ class NerfModelRenderer:
             image_size: image size.
             device: device to run the model on.
             dtype: dtype to run the model on.
+
         """
         self._nerf_model = nerf_model
         self._image_size = image_size
@@ -175,6 +179,7 @@ class NerfModelRenderer:
         Returns:
             - Pixels grid: Tensor (1, H, W, 2)
             - Ones: Tensor (H*W, 1)
+
         """
         height, width = self._image_size
         pixels_grid: Tensor = create_meshgrid(
@@ -194,6 +199,7 @@ class NerfModelRenderer:
 
         Returns:
             Rendered image with shape :math:`(H, W, 3)`.
+
         """
         # create ray for this camera
         rays: Ray = self._create_rays(camera)
@@ -211,6 +217,7 @@ class NerfModelRenderer:
 
         Args:
             camera: camera for image rendering: PinholeCamera.
+
         """
         height, width = self._image_size
 

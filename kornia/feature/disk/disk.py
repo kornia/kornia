@@ -28,6 +28,7 @@ class DISK(Module):
         >>> disk = DISK.from_pretrained('depth')
         >>> images = torch.rand(1, 3, 256, 256)
         >>> features = disk(images)
+
     """
 
     def __init__(self, desc_dim: int = 128, unet: None | Module = None) -> None:
@@ -51,6 +52,7 @@ class DISK(Module):
             A tuple of dense detection scores and descriptors.
             Shapes are :math:`(B, 1, H, W)` and :math:`(B, D, H, W)`, where
             :math:`D` is the descriptor dimension.
+
         """
         unet_output = self.unet(images)
 
@@ -84,6 +86,7 @@ class DISK(Module):
 
         Returns:
             A list of length :math:`B` containing the detected features.
+
         """
         B = images.shape[0]
         if pad_if_not_divisible:
@@ -120,6 +123,7 @@ class DISK(Module):
 
         Returns:
             The pretrained model.
+
         """
         urls = {
             "depth": "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",

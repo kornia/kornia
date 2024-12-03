@@ -30,6 +30,7 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
         boxes: a tensor containing the coordinates of the bounding boxes to be extracted. The tensor must have the shape
             of Bx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right, bottom-right,
             bottom-left. The coordinates must be in the x, y order.
+
     """
     if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([4, 2])):
         return False
@@ -62,6 +63,7 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
             of Bx8x3, where each box is defined in the following ``clockwise`` order: front-top-left, front-top-right,
             front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right, back-bottom-left.
             The coordinates must be in the x, y, z order.
+
     """
     if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([8, 3])):
         raise AssertionError(f"Box shape must be (B, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
@@ -114,6 +116,7 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         ... ]])  # 2x4x2
         >>> infer_bbox_shape(boxes)
         (tensor([2., 2.]), tensor([2., 3.]))
+
     """
     validate_bbox(boxes)
     width: torch.Tensor = boxes[:, 1, 0] - boxes[:, 0, 0] + 1
@@ -154,6 +157,7 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
         ...         [ 3, 54, 65]]]) # 2x8x3
         >>> infer_bbox_shape3d(boxes)
         (tensor([31, 61]), tensor([21, 51]), tensor([11, 41]))
+
     """
     validate_bbox3d(boxes)
 
@@ -198,6 +202,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
                  [0., 1., 1., 1., 0.],
                  [0., 0., 0., 0., 0.],
                  [0., 0., 0., 0., 0.]]])
+
     """
     validate_bbox(boxes)
     # zero padding the surroundings
@@ -259,6 +264,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
                    [0., 0., 0., 0., 0.],
                    [0., 0., 0., 0., 0.],
                    [0., 0., 0., 0., 0.]]]]])
+
     """
     validate_bbox3d(boxes)
     mask = zeros((len(boxes), *size))
@@ -322,6 +328,7 @@ def bbox_generator(
                  [3, 0],
                  [3, 3],
                  [1, 3]]])
+
     """
     if not (x_start.shape == y_start.shape and x_start.dim() in [0, 1]):
         raise AssertionError(f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}.")
@@ -402,6 +409,7 @@ def bbox_generator3d(
                  [43,  4, 65],
                  [43, 54, 65],
                  [ 3, 54, 65]]])
+
     """
     if not (x_start.shape == y_start.shape == z_start.shape and x_start.dim() in [0, 1]):
         raise AssertionError(
@@ -461,8 +469,8 @@ def transform_bbox(
 
     Returns:
         The set of transformed points in the specified mode
-    """
 
+    """
     if not isinstance(mode, str):
         raise TypeError(f"Mode must be a string. Got {type(mode)}")
 
@@ -524,6 +532,7 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         >>> scores = torch.tensor([0.9, 0.8, 0.7, 0.9])
         >>> nms(boxes, scores, iou_threshold=0.8)
         tensor([0, 3, 1])
+
     """
     if len(boxes.shape) != 2 and boxes.shape[-1] != 4:
         raise ValueError(f"boxes expected as Nx4. Got: {boxes.shape}.")

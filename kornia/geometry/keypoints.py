@@ -19,6 +19,7 @@ class Keypoints:
     Args:
         keypoints: Raw tensor or a list of Tensors with the Nx2 coordinates
         raise_if_not_floating_point: will raise if the Tensor isn't float
+
     """
 
     def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True) -> None:
@@ -102,6 +103,7 @@ class Keypoints:
 
         Args:
             padding_size: (B, 4)
+
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
@@ -114,6 +116,7 @@ class Keypoints:
 
         Args:
             padding_size: (B, 4)
+
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
@@ -130,6 +133,7 @@ class Keypoints:
 
         Returns:
             The transformed keypoints.
+
         """
         if not 2 <= M.ndim <= 3 or M.shape[-2:] != (3, 3):
             raise ValueError(f"The transformation matrix shape must be (3, 3) or (B, 3, 3). Got {M.shape}.")
@@ -159,6 +163,7 @@ class Keypoints:
 
         Returns:
             Keypoints tensor :math:`(B, N, 2)`
+
         """
         if as_padded_sequence:
             raise NotImplementedError
@@ -213,6 +218,7 @@ class Keypoints3D:
     Args:
         keypoints: Raw tensor or a list of Tensors with the Nx3 coordinates
         raise_if_not_floating_point: will raise if the Tensor isn't float
+
     """
 
     def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True) -> None:
@@ -263,6 +269,7 @@ class Keypoints3D:
 
         Args:
             padding_size: (B, 6)
+
         """
         raise NotImplementedError
 
@@ -271,6 +278,7 @@ class Keypoints3D:
 
         Args:
             padding_size: (B, 6)
+
         """
         raise NotImplementedError
 
@@ -283,6 +291,7 @@ class Keypoints3D:
 
         Returns:
             The transformed keypoints.
+
         """
         raise NotImplementedError
 
@@ -304,6 +313,7 @@ class Keypoints3D:
 
         Returns:
             Keypoints tensor :math:`(B, N, 3)`
+
         """
         if as_padded_sequence:
             raise NotImplementedError

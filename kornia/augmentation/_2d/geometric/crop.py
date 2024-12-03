@@ -70,6 +70,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         >>> aug = RandomCrop((2, 2), p=1., cropping_mode="resample")
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

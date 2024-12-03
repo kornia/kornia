@@ -20,7 +20,8 @@ class TestDisk(BaseTester):
 
     def test_smoke_n_detections(self, dtype, device):
         """Unless we give it an actual image and use pretrained weights, we can't expect the number of detections
-        to really match the limit."""
+        to really match the limit.
+        """
         disk = DISK().to(device, dtype)
         inp = torch.ones(1, 3, 64, 64, device=device, dtype=dtype)
         output = disk(inp, n=100)

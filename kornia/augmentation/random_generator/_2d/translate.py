@@ -27,6 +27,7 @@ class TranslateGenerator(RandomGeneratorBase):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU in float32. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+
     """
 
     def __init__(

@@ -12,13 +12,13 @@ class PositionEncodingSine(Module):
     pe: Tensor
 
     def __init__(self, d_model: int, max_shape: Tuple[int, int] = (256, 256), temp_bug_fix: bool = True) -> None:
-        """
-        Args:
-            max_shape (tuple): for 1/8 featmap, the max length of 256 corresponds to 2048 pixels
-            temp_bug_fix (bool): As noted in this [issue](https://github.com/zju3dv/LoFTR/issues/41),
-                the original implementation of LoFTR includes a bug in the pos-enc impl, which has little impact
-                on the final performance. For now, we keep both impls for backward compatibility.
-                We will remove the buggy impl after re-training all variants of our released models.
+        """Args:
+        max_shape (tuple): for 1/8 featmap, the max length of 256 corresponds to 2048 pixels
+        temp_bug_fix (bool): As noted in this [issue](https://github.com/zju3dv/LoFTR/issues/41),
+            the original implementation of LoFTR includes a bug in the pos-enc impl, which has little impact
+            on the final performance. For now, we keep both impls for backward compatibility.
+            We will remove the buggy impl after re-training all variants of our released models.
+
         """
         super().__init__()
         self.d_model = d_model
@@ -60,9 +60,9 @@ class PositionEncodingSine(Module):
         self.pe = self._create_position_encoding(max_shape).to(self.pe.device)
 
     def forward(self, x: Tensor) -> Tensor:
-        """
-        Args:
-            x: [N, C, H, W]
+        """Args:
+        x: [N, C, H, W]
+
         """
         if x.size(2) > self.pe.size(2) or x.size(3) > self.pe.size(3):
             max_shape = (max(x.size(2), self.pe.size(2)), max(x.size(3), self.pe.size(3)))

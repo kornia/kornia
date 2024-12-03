@@ -30,6 +30,7 @@ class ONNXLoader(CachedDownloader):
 
         Returns:
             dict[str, Any]: The loaded preprocessor config.
+
         """
         if url.startswith(("http:", "https:")):
             file_path = cls.download_to_cache(
@@ -65,6 +66,7 @@ class ONNXLoader(CachedDownloader):
 
         Returns:
             onnx.ModelProto: The loaded ONNX model.
+
         """
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
@@ -115,6 +117,7 @@ class ONNXLoader(CachedDownloader):
 
         Returns:
             A list of all files in the repository as dictionaries containing file details.
+
         """
         url = f"https://huggingface.co/api/models/kornia/ONNX_models/tree/main/{folder}"
 
@@ -155,6 +158,7 @@ def io_name_conversion(
     Args:
         onnx_model: The ONNX model to convert.
         io_name_mapping: A dictionary mapping the original input and output names to the new ones.
+
     """
     # Convert I/O nodes
     for i in range(len(onnx_model.graph.input)):
@@ -196,6 +200,7 @@ def add_metadata(
 
     Returns:
         The ONNX model with the added metadata.
+
     """
     if additional_metadata is None:
         additional_metadata = []

@@ -33,6 +33,7 @@ class PromptEncoder(Module):
             input_image_size: The padded size of the image as input to the image encoder, as (H, W).
             mask_in_chans: The number of hidden channels used for encoding input masks.
             activation: The activation to use when encoding input masks.
+
         """
         super().__init__()
         self.embed_dim = embed_dim
@@ -63,6 +64,7 @@ class PromptEncoder(Module):
 
         Returns:
             Positional encoding with shape 1x(embed_dim)x(embedding_h)x(embedding_w)
+
         """
         return self.pe_layer(self.image_embedding_size)[None, ...]
 
@@ -125,6 +127,7 @@ class PromptEncoder(Module):
             - sparse embeddings for the points and boxes, with shape BxNx(embed_dim), where N is determined by the
             number of input points and boxes.
             - dense embeddings for the masks, in the shape Bx(embed_dim)x(embed_H)x(embed_W)
+
         """
         bs = self._get_batch_size(points, boxes, masks)
         sparse_embeddings = torch.empty((bs, 0, self.embed_dim), device=self._get_device())

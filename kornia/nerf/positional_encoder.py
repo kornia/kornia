@@ -24,6 +24,7 @@ class PositionalEncoder(nn.Module):
             num_dims: Number of input dimensions (channels): int
             num_freqs: Number of frequency bands for encoding span: int
             log_space: Whether frequency sampling should be log spaced: bool
+
         """
         super().__init__()
         self._num_dims = num_dims
@@ -56,6 +57,7 @@ class PositionalEncoder(nn.Module):
 
         Returns:
             Tensor with encoded position/direction: Tensor
+
         """
         if x.ndim < 1:
             raise ValueError("Input tensor represents a scalar")

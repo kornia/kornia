@@ -28,6 +28,7 @@ class Vflip(Module):
         tensor([[[[0., 1., 1.],
                   [0., 0., 0.],
                   [0., 0., 0.]]]])
+
     """
 
     def forward(self, input: Tensor) -> Tensor:
@@ -59,6 +60,7 @@ class Hflip(Module):
         tensor([[[[0., 0., 0.],
                   [0., 0., 0.],
                   [1., 1., 0.]]]])
+
     """
 
     def forward(self, input: Tensor) -> Tensor:
@@ -87,6 +89,7 @@ class Rot180(Module):
         tensor([[[[1., 1., 0.],
                   [0., 0., 0.],
                   [0., 0., 0.]]]])
+
     """
 
     def forward(self, input: Tensor) -> Tensor:
@@ -108,6 +111,7 @@ def rot180(input: Tensor) -> Tensor:
 
     Returns:
         The rotated image tensor.
+
     """
     return torch.flip(input, [-2, -1])
 
@@ -124,6 +128,7 @@ def hflip(input: Tensor) -> Tensor:
 
     Returns:
         The horizontally flipped image tensor.
+
     """
     return input.flip(-1).contiguous()
 
@@ -140,5 +145,6 @@ def vflip(input: Tensor) -> Tensor:
 
     Returns:
         The vertically flipped image tensor.
+
     """
     return input.flip(-2).contiguous()

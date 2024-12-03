@@ -17,8 +17,7 @@ class FineMatching(Module):
         super().__init__()
 
     def forward(self, feat_f0: Tensor, feat_f1: Tensor, data: dict[str, Any]) -> None:
-        """
-        Args:
+        """Args:
             feat0 (torch.Tensor): [M, WW, C]
             feat1 (torch.Tensor): [M, WW, C]
             data (dict)
@@ -27,6 +26,7 @@ class FineMatching(Module):
                 'expec_f' (torch.Tensor): [M, 3],
                 'mkpts0_f' (torch.Tensor): [M, 2],
                 'mkpts1_f' (torch.Tensor): [M, 2]}
+
         """
         M, WW, C = feat_f0.shape
         W = int(math.sqrt(WW))

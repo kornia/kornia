@@ -31,6 +31,7 @@ class SemanticSegmentation(ModelBase):
 
         Returns:
             output tensor.
+
         """
         outputs: Union[Tensor, list[Tensor]]
 
@@ -64,6 +65,7 @@ class SemanticSegmentation(ModelBase):
 
         Returns:
             A tensor of shape (num_classes, 3) representing the color map.
+
         """
         if colormap == "random":
             # Generate a color for each class
@@ -90,6 +92,7 @@ class SemanticSegmentation(ModelBase):
             ValueError: If the shape of the semantic mask is not of shape (C, H, W) or (B, C, H, W).
             ValueError: If the shape of the colors is not of shape (num_classes, 3).
             ValueError: If only muliclass segmentation is supported. Please ensure a softmax is used, or submit a PR.
+
         """
         if semantic_mask.dim() == 3:
             channel_dim = 0
@@ -138,6 +141,7 @@ class SemanticSegmentation(ModelBase):
             output_type: The type of output, can be "torch" or "PIL".
             colormap: The colormap to use, can be "random" or a custom color map.
             manual_seed: The manual seed to use for the colormap.
+
         """
         if semantic_masks is None:
             semantic_masks = self.forward(images)
@@ -185,8 +189,8 @@ class SemanticSegmentation(ModelBase):
             output_type: The type of output, can be "torch" or "PIL".
             colormap: The colormap to use, can be "random" or a custom color map.
             manual_seed: The manual seed to use for the colormap.
-        """
 
+        """
         colored_masks = self.visualize(images, semantic_masks, output_type, colormap=colormap, manual_seed=manual_seed)
         overlaid: Union[Tensor, list[Tensor]]
         if isinstance(images, Tensor) and isinstance(colored_masks, Tensor):

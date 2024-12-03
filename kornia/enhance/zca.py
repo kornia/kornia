@@ -25,8 +25,7 @@ class ZCAWhitening(Module):
     where :math:`U` are the eigenvectors of :math:`\Sigma` and :math:`S` contain the corresponding
     eigenvalues of :math:`\Sigma`. After the transform is applied, the output is reshaped to same shape.
 
-    args:
-
+    Args:
         dim: Determines the dimension that represents the samples axis.
         eps: a small number used for numerical stability.
         unbiased: Whether to use the biased estimate of the covariance matrix.
@@ -53,14 +52,13 @@ class ZCAWhitening(Module):
         >>> x_whiten = zca(x, include_fit = True) # Includes the fitting step
 
     Note:
-
         This implementation uses :py:meth:`~torch.svd` which yields NaNs in the backwards step
         if the singular values are not unique. See `here <https://pytorch.org/docs/stable/torch.html#torch.svd>`_ for
         more information.
 
     References:
-
         [1] `Stanford PCA & ZCA whitening tutorial <http://ufldl.stanford.edu/tutorial/unsupervised/PCAWhitening/>`_
+
     """
 
     def __init__(
@@ -89,11 +87,11 @@ class ZCAWhitening(Module):
         r"""Fit ZCA whitening matrices to the data.
 
         Args:
-
             x: Input data.
 
         returns:
             Returns a fitted ZCAWhiten object instance.
+
         """
         T, mean, T_inv = zca_mean(x, self.dim, self.unbiased, self.eps, self.compute_inv)
 
@@ -122,6 +120,7 @@ class ZCAWhitening(Module):
 
         Returns:
             The transformed data.
+
         """
         if include_fit:
             self.fit(x)
@@ -141,6 +140,7 @@ class ZCAWhitening(Module):
 
         Returns:
             Original data.
+
         """
         if not self.fitted:
             raise RuntimeError("Needs to be fitted first before running. Please call fit or set include_fit to True.")
@@ -193,8 +193,8 @@ def zca_mean(
         >>> x = torch.rand(3,20,2,2)
         >>> transform_matrix, mean_vector, inv_transform = zca_mean(x, dim = 1, return_inverse = True)
         >>> # transform_matrix.size() equals (12,12) and the mean vector.size equal (1,12)
-    """
 
+    """
     if not isinstance(inp, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(inp)}")
 
@@ -280,6 +280,7 @@ def zca_whiten(inp: Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e
         tensor([[ 0.0000,  1.1547],
                 [ 1.0000, -0.5773],
                 [-1.0000, -0.5773]])
+
     """
     if not isinstance(inp, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(inp)}")
@@ -339,6 +340,7 @@ def linear_transform(inp: Tensor, transform_matrix: Tensor, mean_vector: Tensor,
         >>> out = linear_transform(inp, transform_mat, mean)
         >>> print(out.shape, out.unique()) # Should a be (10,2) tensor of 2s
         torch.Size([10, 2]) tensor([2.])
+
     """
     inp_size = inp.size()
 

@@ -44,6 +44,7 @@ def box_blur(
         >>> output = box_blur(input, (3, 3))  # 2x4x5x7
         >>> output.shape
         torch.Size([2, 4, 5, 7])
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
 
@@ -93,6 +94,7 @@ class BoxBlur(Module):
         >>> output = blur(input)  # 2x4x5x7
         >>> output.shape
         torch.Size([2, 4, 5, 7])
+
     """
 
     def __init__(

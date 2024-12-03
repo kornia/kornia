@@ -41,6 +41,7 @@ class Se3(Module):
         >>> s.t
         Parameter containing:
         tensor([1., 1., 1.], requires_grad=True)
+
     """
 
     def __init__(self, rotation: Quaternion | So3, translation: Vector3 | Tensor) -> None:
@@ -62,6 +63,7 @@ class Se3(Module):
             >>> s.t
             Parameter containing:
             tensor([[1., 1., 1.]], requires_grad=True)
+
         """
         super().__init__()
         # KORNIA_CHECK_TYPE(rotation, (Quaternion, So3))
@@ -101,6 +103,7 @@ class Se3(Module):
 
         Return:
             The resulting Se3 transformation.
+
         """
         so3 = self.so3
         t = self.t
@@ -135,7 +138,7 @@ class Se3(Module):
 
     @property
     def rotation(self) -> So3:
-        """Return the underlying rotation(So3)."""
+        """Return the underlying `rotation(So3)`."""
         return self._rotation
 
     @property
@@ -159,6 +162,7 @@ class Se3(Module):
             >>> s.t
             Parameter containing:
             tensor([[0., 0., 0.]], requires_grad=True)
+
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "6"])  # FIXME: resolve shape bugs. @edgarriba
         upsilon = v[..., :3]
@@ -183,6 +187,7 @@ class Se3(Module):
             >>> q = Quaternion.identity()
             >>> Se3(q, torch.zeros(3)).log()
             tensor([0., 0., 0., 0., 0., 0.], grad_fn=<CatBackward0>)
+
         """
         omega = self.r.log()
         theta = batched_dot_product(omega, omega).sqrt()
@@ -215,6 +220,7 @@ class Se3(Module):
                      [ 1.,  0., -1.,  1.],
                      [-1.,  1.,  0.,  1.],
                      [ 0.,  0.,  0.,  0.]]])
+
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "6"])  # FIXME: resolve shape bugs. @edgarriba
         upsilon, omega = v[..., :3], v[..., 3:]
@@ -236,6 +242,7 @@ class Se3(Module):
             >>> omega_hat = Se3.hat(v)
             >>> Se3.vee(omega_hat)
             tensor([[1., 1., 1., 1., 1., 1.]])
+
         """
         # KORNIA_CHECK_SHAPE(omega, ["B", "4", "4"])  # FIXME: resolve shape bugs. @edgarriba
         head = omega[..., :3, -1]
@@ -258,6 +265,7 @@ class Se3(Module):
             x: 0.0
             y: 0.0
             z: 0.0
+
         """
         t = tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
@@ -275,6 +283,7 @@ class Se3(Module):
                     [0., 1., 0., 1.],
                     [0., 0., 1., 1.],
                     [0., 0., 0., 1.]], grad_fn=<CopySlices>)
+
         """
         rt = concatenate((self.r.matrix(), self.t.data[..., None]), -1)
         rt_4x4 = pad(rt, (0, 0, 0, 1))  # add last row zeros
@@ -296,6 +305,7 @@ class Se3(Module):
             >>> s.t
             Parameter containing:
             tensor([0., 0., 0.], requires_grad=True)
+
         """
         # KORNIA_CHECK_SHAPE(matrix, ["B", "4", "4"])  # FIXME: resolve shape bugs. @edgarriba
         r = So3.from_matrix(matrix[..., :3, :3])
@@ -319,6 +329,7 @@ class Se3(Module):
             x: 0.0
             y: 0.0
             z: 1.0
+
         """
         # KORNIA_CHECK_SHAPE(qxyz, ["B", "7"])  # FIXME: resolve shape bugs. @edgarriba
         q, xyz = qxyz[..., :4], qxyz[..., 4:]
@@ -336,6 +347,7 @@ class Se3(Module):
             >>> s_inv.t
             Parameter containing:
             tensor([-1., -1., -1.], requires_grad=True)
+
         """
         r_inv = self.r.inverse()
         _t = -1 * self.t
@@ -354,6 +366,7 @@ class Se3(Module):
         Example:
             >>> s = Se3.random()
             >>> s = Se3.random(batch_size=3)
+
         """
         shape: tuple[int, ...]
         if batch_size is None:
@@ -371,6 +384,7 @@ class Se3(Module):
 
         Args:
             x: the x-axis rotation angle.
+
         """
         zs = zeros_like(x)
         return cls(So3.rot_x(x), stack((zs, zs, zs), -1))
@@ -381,6 +395,7 @@ class Se3(Module):
 
         Args:
             y: the y-axis rotation angle.
+
         """
         zs = zeros_like(y)
         return cls(So3.rot_y(y), stack((zs, zs, zs), -1))
@@ -391,6 +406,7 @@ class Se3(Module):
 
         Args:
             z: the z-axis rotation angle.
+
         """
         zs = zeros_like(z)
         return cls(So3.rot_z(z), stack((zs, zs, zs), -1))
@@ -403,6 +419,7 @@ class Se3(Module):
             x: the x-axis translation.
             y: the y-axis translation.
             z: the z-axis translation.
+
         """
         KORNIA_CHECK(x.shape == y.shape)
         KORNIA_CHECK(y.shape == z.shape)
@@ -417,6 +434,7 @@ class Se3(Module):
 
         Args:
             x: the x-axis translation.
+
         """
         zs = zeros_like(x)
         return cls.trans(x, zs, zs)
@@ -427,6 +445,7 @@ class Se3(Module):
 
         Args:
             y: the y-axis translation.
+
         """
         zs = zeros_like(y)
         return cls.trans(zs, y, zs)
@@ -437,6 +456,7 @@ class Se3(Module):
 
         Args:
             z: the z-axis translation.
+
         """
         zs = zeros_like(z)
         return cls.trans(zs, zs, z)
@@ -453,6 +473,7 @@ class Se3(Module):
                     [0., 0., 0., 1., 0., 0.],
                     [0., 0., 0., 0., 1., 0.],
                     [0., 0., 0., 0., 0., 1.]], grad_fn=<CatBackward0>)
+
         """
         R = self.so3.matrix()
         z = zeros_like(R)

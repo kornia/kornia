@@ -18,6 +18,7 @@ class Lambda(Module):
         >>> f = Lambda(lambda x: kornia.color.rgb_to_grayscale(x))
         >>> f(x).shape
         torch.Size([1, 1, 5, 5])
+
     """
 
     def __init__(self, func: Callable[..., Tensor]) -> None:

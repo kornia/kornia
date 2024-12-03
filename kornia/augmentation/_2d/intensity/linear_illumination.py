@@ -51,6 +51,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         >>> aug = RandomLinearIllumination(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(
@@ -109,7 +110,6 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
-
         return input.add(params["gradient"].to(input)).clamp(0, 1)
 
 
@@ -158,6 +158,7 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         >>> aug = RandomLinearCornerIllumination(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

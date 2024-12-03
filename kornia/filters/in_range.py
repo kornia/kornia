@@ -44,7 +44,7 @@ def in_range(
         A binary mask :math:`(*, 1, H, W)` of input indicating whether elements are within the range
         or filtered input image :math:`(*, *, H, W)`.
 
-    Raises
+    Raises:
         ValueError: If the shape of `lower`, `upper`, and `input` image channels do not match.
 
     .. note::
@@ -88,6 +88,7 @@ def in_range(
                 [[[0., 0., 0.],
                   [1., 0., 0.],
                   [0., 0., 1.]]]])
+
     """
     input_shape = input.shape
 
@@ -160,6 +161,7 @@ class InRange(Module):
         tensor([[[[1., 1., 0.],
                   [0., 0., 0.],
                   [0., 1., 1.]]]])
+
     """
 
     def __init__(

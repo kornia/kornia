@@ -67,7 +67,7 @@ def gaussian(
     device: Optional[Device] = None,
     dtype: Optional[Dtype] = None,
 ) -> Tensor:
-    """Compute the gaussian values based on the window and sigma values.
+    r"""Compute the gaussian values based on the window and sigma values.
 
     Args:
         window_size: the size which drives the filter amount.
@@ -76,10 +76,11 @@ def gaussian(
         If a tensor, should be in a shape :math:`(B, 1)`
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
+
     Returns:
         A tensor withshape :math:`(B, \text{kernel_size})`, with Gaussian values.
-    """
 
+    """
     if isinstance(sigma, float):
         sigma = tensor([[sigma]], device=device, dtype=dtype)
 
@@ -115,9 +116,11 @@ def gaussian_discrete_erf(
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
+
     Returns:
         A tensor withshape :math:`(B, \text{kernel_size})`, with discrete Gaussian values computed by approximation of
         the error function.
+
     """
     if isinstance(sigma, float):
         sigma = tensor([[sigma]], device=device, dtype=dtype)
@@ -242,9 +245,11 @@ def gaussian_discrete(
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
+
     Returns:
         A tensor withshape :math:`(B, \text{kernel_size})`, with discrete Gaussian values computed by modified Bessel
         function.
+
     """
     if isinstance(sigma, float):
         sigma = tensor([[sigma]], device=device, dtype=dtype)
@@ -281,9 +286,11 @@ def get_box_kernel1d(kernel_size: int, *, device: Optional[Device] = None, dtype
         kernel_size: the size of the kernel.
         device: the desired device of returned tensor.
         dtype: the desired data type of returned tensor.
+
     Returns:
         A tensor with shape :math:`(1, \text{kernel\_size})`, filled with the value
         :math:`\frac{1}{\text{kernel\_size}}`.
+
     """
     scale = tensor(1.0 / kernel_size, device=device, dtype=dtype)
     return scale.expand(1, kernel_size)
@@ -298,9 +305,11 @@ def get_box_kernel2d(
         kernel_size: the size of the kernel.
         device: the desired device of returned tensor.
         dtype: the desired data type of returned tensor.
+
     Returns:
         A tensor with shape :math:`(1, \text{kernel\_size}[0], \text{kernel\_size}[1])`,
         filled with the value :math:`\frac{1}{\text{kernel\_size}[0] \times \text{kernel\_size}[1]}`.
+
     """
     ky, kx = _unpack_2d_ks(kernel_size)
     scale = tensor(1.0 / (kx * ky), device=device, dtype=dtype)
@@ -487,7 +496,8 @@ def get_spatial_gradient_kernel3d(
     mode: str, order: int, device: Optional[Device] = None, dtype: Optional[Dtype] = None
 ) -> Tensor:
     r"""Function that returns kernel for 1st or 2nd order scale pyramid gradients, using one of the following
-    operators: sobel, diff."""
+    operators: sobel, diff.
+    """
     KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
     KORNIA_CHECK(order in {1, 2}, f"Order should be 1 or 2. Got {order}")
 
@@ -529,6 +539,7 @@ def get_gaussian_kernel1d(
         >>> get_gaussian_kernel1d(5, torch.tensor([[1.5], [0.7]]))
         tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201],
                 [0.0096, 0.2054, 0.5699, 0.2054, 0.0096]])
+
     """
     _check_kernel_size(kernel_size, allow_even=force_even)
 
@@ -543,7 +554,7 @@ def get_gaussian_discrete_kernel1d(
     device: Optional[Device] = None,
     dtype: Optional[Dtype] = None,
 ) -> Tensor:
-    """Function that returns Gaussian filter coefficients based on the modified Bessel functions.
+    r"""Function that returns Gaussian filter coefficients based on the modified Bessel functions.
 
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
@@ -565,6 +576,7 @@ def get_gaussian_discrete_kernel1d(
         >>> get_gaussian_discrete_kernel1d(5, torch.tensor([[1.5],[2.4]]))
         tensor([[0.1096, 0.2323, 0.3161, 0.2323, 0.1096],
                 [0.1635, 0.2170, 0.2389, 0.2170, 0.1635]])
+
     """
     _check_kernel_size(kernel_size, allow_even=force_even)
 
@@ -579,7 +591,7 @@ def get_gaussian_erf_kernel1d(
     device: Optional[Device] = None,
     dtype: Optional[Dtype] = None,
 ) -> Tensor:
-    """Function that returns Gaussian filter coefficients by interpolating the error function.
+    r"""Function that returns Gaussian filter coefficients by interpolating the error function.
 
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
@@ -601,6 +613,7 @@ def get_gaussian_erf_kernel1d(
         >>> get_gaussian_erf_kernel1d(5, torch.tensor([[1.5], [2.1]]))
         tensor([[0.1226, 0.2331, 0.2887, 0.2331, 0.1226],
                 [0.1574, 0.2198, 0.2456, 0.2198, 0.1574]])
+
     """
     _check_kernel_size(kernel_size, allow_even=force_even)
 
@@ -647,6 +660,7 @@ def get_gaussian_kernel2d(
                  [0.0351, 0.0683, 0.0853, 0.0683, 0.0351],
                  [0.0281, 0.0547, 0.0683, 0.0547, 0.0281],
                  [0.0144, 0.0281, 0.0351, 0.0281, 0.0144]]])
+
     """
     if isinstance(sigma, tuple):
         sigma = tensor([sigma], device=device, dtype=dtype)
@@ -705,6 +719,7 @@ def get_gaussian_kernel3d(
         torch.Size([1, 3, 3, 3])
         >>> get_gaussian_kernel3d((3, 7, 5), torch.tensor([[1.5, 1.5, 1.5]])).shape
         torch.Size([1, 3, 7, 5])
+
     """
     if isinstance(sigma, tuple):
         sigma = tensor([sigma], device=device, dtype=dtype)
@@ -743,6 +758,7 @@ def get_laplacian_kernel1d(
         tensor([ 1., -2.,  1.])
         >>> get_laplacian_kernel1d(5)
         tensor([ 1.,  1., -4.,  1.,  1.])
+
     """
     # TODO: add default dtype as None when kornia relies on torch > 1.12
 
@@ -778,6 +794,7 @@ def get_laplacian_kernel2d(
                 [  1.,   1., -24.,   1.,   1.],
                 [  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1.,   1.,   1.,   1.]])
+
     """
     # TODO: add default dtype as None when kornia relies on torch > 1.12
 
@@ -824,6 +841,7 @@ def get_pascal_kernel_2d(
             [3., 9., 9., 3.],
             [3., 9., 9., 3.],
             [1., 3., 3., 1.]])
+
     """
     ky, kx = _unpack_2d_ks(kernel_size)
     ax = get_pascal_kernel_1d(kx, device=device, dtype=dtype)
@@ -862,6 +880,7 @@ def get_pascal_kernel_1d(
     tensor([1., 4., 6., 4., 1.])
     >>> get_pascal_kernel_1d(6)
     tensor([ 1.,  5., 10., 10.,  5.,  1.])
+
     """
     pre: list[float] = []
     cur: list[float] = []
@@ -920,7 +939,7 @@ def get_hysteresis_kernel(device: Optional[Device] = None, dtype: Optional[Dtype
 
 
 def get_hanning_kernel1d(kernel_size: int, device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
-    """Returns Hanning (also known as Hann) kernel, used in signal processing and KCF tracker.
+    r"""Returns Hanning (also known as Hann) kernel, used in signal processing and KCF tracker.
 
     .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
                \\qquad 0 \\leq n \\leq M-1
@@ -939,6 +958,7 @@ def get_hanning_kernel1d(kernel_size: int, device: Optional[Device] = None, dtyp
     Examples:
         >>> get_hanning_kernel1d(4)
         tensor([0.0000, 0.7500, 0.7500, 0.0000])
+
     """
     _check_kernel_size(kernel_size, 2, allow_even=True)
 
@@ -950,7 +970,7 @@ def get_hanning_kernel1d(kernel_size: int, device: Optional[Device] = None, dtyp
 def get_hanning_kernel2d(
     kernel_size: tuple[int, int] | int, device: Optional[Device] = None, dtype: Optional[Dtype] = None
 ) -> Tensor:
-    """Returns 2d Hanning kernel, used in signal processing and KCF tracker.
+    r"""Returns 2d Hanning kernel, used in signal processing and KCF tracker.
 
     Args:
         kernel_size: The size of the kernel for the filter. It should be positive.
@@ -960,6 +980,7 @@ def get_hanning_kernel2d(
     Returns:
         2D tensor with Hanning filter coefficients. Shape: math:`(\text{kernel_size[0], kernel_size[1]})`
         .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+
     """
     kernel_size = _unpack_2d_ks(kernel_size)
     _check_kernel_size(kernel_size, 2, allow_even=True)

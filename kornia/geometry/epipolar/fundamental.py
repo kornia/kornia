@@ -29,6 +29,7 @@ def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]
     Returns:
        tuple containing the normalized points in the shape :math:`(B, N, 2)` and the transformation matrix
        in the shape :math:`(B, 3, 3)`.
+
     """
     if len(points.shape) != 3:
         raise AssertionError(points.shape)
@@ -64,6 +65,7 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
 
     Returns:
         the normalized transformation matrix with same shape as the input.
+
     """
     if len(M.shape) < 2:
         raise AssertionError(M.shape)
@@ -82,6 +84,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
 
     Returns:
         the computed fundamental matrix with shape :math:`(B, 3*m, 3), Valid values of m are 1, 2 or 3`
+
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "7", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "7", "2"])
@@ -178,6 +181,7 @@ def run_8point(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = Non
 
     Returns:
         the computed fundamental matrix with shape :math:`(B, 3, 3)`.
+
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "N", "2"])
@@ -227,8 +231,7 @@ def run_8point(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = Non
 def find_fundamental(
     points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None, method: Literal["8POINT", "7POINT"] = "8POINT"
 ) -> Tensor:
-    r"""
-    Args:
+    r"""Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
@@ -261,6 +264,7 @@ def compute_correspond_epilines(points: Tensor, F_mat: Tensor) -> Tensor:
         a tensor with shape :math:`(*, N, 3)` containing a vector of the epipolar
         lines corresponding to the points to the other image. Each line is described as
         :math:`ax + by + c = 0` and encoding the vectors as :math:`(a, b, c)`.
+
     """
     KORNIA_CHECK_SHAPE(points, ["*", "N", "DIM"])
     if points.shape[-1] == 2:
@@ -293,6 +297,7 @@ def get_perpendicular(lines: Tensor, points: Tensor) -> Tensor:
         a tensor with shape :math:`(*, N, 3)` containing a vector of the epipolar
         perpendicular lines. Each line is described as
         :math:`ax + by + c = 0` and encoding the vectors as :math:`(a, b, c)`.
+
     """
     KORNIA_CHECK_SHAPE(lines, ["*", "N", "3"])
     KORNIA_CHECK_SHAPE(points, ["*", "N", "two"])
@@ -319,6 +324,7 @@ def get_closest_point_on_epipolar_line(pts1: Tensor, pts2: Tensor, Fm: Tensor) -
 
     Returns:
         point on epipolar line :math:`(*, N, 2)`.
+
     """
     if not isinstance(Fm, Tensor):
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
@@ -346,6 +352,7 @@ def fundamental_from_essential(E_mat: Tensor, K1: Tensor, K2: Tensor) -> Tensor:
 
     Returns:
         The fundamental matrix with shape :math:`(*, 3, 3)`.
+
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(K1, ["*", "3", "3"])
@@ -370,6 +377,7 @@ def fundamental_from_projections(P1: Tensor, P2: Tensor) -> Tensor:
 
     Returns:
          The fundamental matrix with shape :math:`(*, 3, 3)`.
+
     """
     KORNIA_CHECK_SHAPE(P1, ["*", "3", "4"])
     KORNIA_CHECK_SHAPE(P2, ["*", "3", "4"])

@@ -27,7 +27,8 @@ class BaseModel(Module):
 
 class Homography(BaseModel):
     r"""Homography geometric model to be used together with ImageRegistrator module for the optimization-based
-    image registration."""
+    image registration.
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -46,6 +47,7 @@ class Homography(BaseModel):
 
         Returns:
             Homography matrix with shape :math:`(1, 3, 3)`.
+
         """
         return torch.unsqueeze(self.model / self.model[2, 2], dim=0)  # 1x3x3
 
@@ -54,6 +56,7 @@ class Homography(BaseModel):
 
         Returns:
             Homography martix with shape :math:`(1, 3, 3)`.
+
         """
         return torch.unsqueeze(torch.inverse(self.model), dim=0)
 
@@ -66,6 +69,7 @@ class Similarity(BaseModel):
         rotation: if True, the rotation is optimizable, else constant zero.
         scale: if True, the scale is optimizable, else constant zero.
         shift: if True, the shift is optimizable, else constant one.
+
     """
 
     def __init__(self, rotation: bool = True, scale: bool = True, shift: bool = True) -> None:
@@ -100,6 +104,7 @@ class Similarity(BaseModel):
 
         Returns:
             Similarity with shape :math:`(1, 3, 3)`
+
         """
         rot = self.scale * angle_to_rotation_matrix(self.rot)
         out = convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
@@ -110,6 +115,7 @@ class Similarity(BaseModel):
 
         Returns:
             Similarity with shape :math:`(1, 3, 3)`
+
         """
         return torch.inverse(self.forward())
 
@@ -133,6 +139,7 @@ class ImageRegistrator(Module):
         >>> img_dst = torch.rand(1, 1, 32, 32)
         >>> registrator = ImageRegistrator('similarity')
         >>> homo = registrator.register(img_src, img_dst)
+
     """
 
     # TODO: resolve better type, potentially using factory.
@@ -216,6 +223,7 @@ class ImageRegistrator(Module):
         Returns:
             the transformation between two images, shape depends on the model,
             typically [1x3x3] tensor for string model_types.
+
         """
         self.reset_model()
         # ToDo: better parameter passing to optimizer

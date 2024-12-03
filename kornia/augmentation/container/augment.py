@@ -200,6 +200,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         >>> out = aug_dict(data)
         >>> out.keys()
         dict_keys(['image', 'mask', 'mask-b', 'bbox', 'bbox-other'])
+
     """
 
     input_dtype = None
@@ -484,8 +485,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         Returns:
             Callable: Decorated function with converted input and output types.
-        """
 
+        """
         # Wrap the forward method with the decorator
         if not self._disable_features:
             # TODO: Some more behaviour for AugmentationSequential needs to be revisited later

@@ -33,6 +33,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_luv(input)  # 2x3x4x5
+
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
@@ -85,6 +86,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = luv_to_rgb(input)  # 2x3x4x5
+
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
@@ -145,6 +147,7 @@ class RgbToLuv(Module):
         [2] https://www.easyrgb.com/en/math.php
 
         [3] http://www.poynton.com/ColorFAQ.html
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -175,6 +178,7 @@ class LuvToRgb(Module):
         [2] https://www.easyrgb.com/en/math.php
 
         [3] http://www.poynton.com/ColorFAQ.html
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]

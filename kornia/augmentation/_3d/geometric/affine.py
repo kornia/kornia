@@ -79,6 +79,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         >>> aug = RandomAffine3D((15., 20., 20.), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

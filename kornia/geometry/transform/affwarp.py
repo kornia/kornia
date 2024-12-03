@@ -146,6 +146,7 @@ def affine(
         >>> out = affine(img, aff)
         >>> print(out.shape)
         torch.Size([1, 2, 3, 5])
+
     """
     # warping needs data in the shape of BCHW
     is_unbatched: bool = tensor.ndimension() == 3
@@ -196,6 +197,7 @@ def affine3d(
         >>> out = affine3d(img, aff)
         >>> print(out.shape)
         torch.Size([1, 2, 4, 3, 5])
+
     """
     # warping needs data in the shape of BCDHW
     is_unbatched: bool = tensor.ndimension() == 4
@@ -260,6 +262,7 @@ def rotate(
         >>> out = rotate(img, angle)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
+
     """
     if not isinstance(tensor, Tensor):
         raise TypeError(f"Input tensor type is not a Tensor. Got {type(tensor)}")
@@ -318,6 +321,7 @@ def rotate3d(
 
     Returns:
         Tensor: The rotated tensor with shape as input.
+
     """
     if not isinstance(tensor, Tensor):
         raise TypeError(f"Input tensor type is not a Tensor. Got {type(tensor)}")
@@ -384,6 +388,7 @@ def translate(
         >>> out = translate(img, translation)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
+
     """
     if not isinstance(tensor, Tensor):
         raise TypeError(f"Input tensor type is not a Tensor. Got {type(tensor)}")
@@ -437,6 +442,7 @@ def scale(
         >>> out = scale(img, scale_factor)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
+
     """
     if not isinstance(tensor, Tensor):
         raise TypeError(f"Input tensor type is not a Tensor. Got {type(tensor)}")
@@ -493,6 +499,7 @@ def shear(
         >>> out = shear(img, shear_factor)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
+
     """
     if not isinstance(tensor, Tensor):
         raise TypeError(f"Input tensor type is not a Tensor. Got {type(tensor)}")
@@ -558,6 +565,7 @@ def resize(
         >>> out = resize(img, (6, 8))
         >>> print(out.shape)
         torch.Size([1, 3, 6, 8])
+
     """
     if not isinstance(input, Tensor):
         raise TypeError(f"Input tensor type is not a Tensor. Got {type(input)}")
@@ -629,8 +637,8 @@ def resize_to_be_divisible(
 
     Returns:
         Tensor: The resized tensor.
-    """
 
+    """
     if isinstance(input, Tensor) and len(input.shape) == 4:
         height, width = input.shape[2], input.shape[3]
     if isinstance(input, Tensor) and len(input.shape) == 3:
@@ -672,6 +680,7 @@ def rescale(
         >>> out = rescale(img, (2, 3))
         >>> print(out.shape)
         torch.Size([1, 3, 8, 12])
+
     """
     if isinstance(factor, float):
         factor_vert = factor_horz = factor
@@ -711,6 +720,7 @@ class Resize(Module):
     .. raw:: html
 
         <gradio-app src="kornia/kornia-resize-antialias"></gradio-app>
+
     """
 
     def __init__(
@@ -772,6 +782,7 @@ class Affine(Module):
         >>> out = Affine(angle)(img)
         >>> print(out.shape)
         torch.Size([1, 2, 3, 5])
+
     """
 
     def __init__(
@@ -857,6 +868,7 @@ class Rescale(Module):
         >>> out = Rescale((2, 3))(img)
         >>> print(out.shape)
         torch.Size([1, 3, 8, 12])
+
     """
 
     def __init__(
@@ -902,6 +914,7 @@ class Rotate(Module):
         >>> out = Rotate(angle)(img)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
+
     """
 
     def __init__(
@@ -945,6 +958,7 @@ class Translate(Module):
         >>> out = Translate(translation)(img)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
+
     """
 
     def __init__(
@@ -986,6 +1000,7 @@ class Scale(Module):
         >>> out = Scale(scale_factor)(img)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
+
     """
 
     def __init__(
@@ -1029,6 +1044,7 @@ class Shear(Module):
         >>> out = Shear(shear_factor)(img)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
+
     """
 
     def __init__(

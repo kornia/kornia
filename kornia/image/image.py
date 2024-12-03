@@ -55,6 +55,7 @@ class Image:
         >>> assert img.channels == 3
         >>> assert img.width == 5
         >>> assert img.height == 4
+
     """
 
     def __init__(self, data: Tensor, pixel_format: PixelFormat, layout: ImageLayout) -> None:
@@ -64,6 +65,7 @@ class Image:
             data: a torch tensor containing the image data.
             pixel_format: the pixel format of the image.
             layout: a dataclass containing the image layout information.
+
         """
         # TODO: move this to a function KORNIA_CHECK_IMAGE_LAYOUT
         if layout.channels_order == ChannelsOrder.CHANNELS_FIRST:
@@ -93,6 +95,7 @@ class Image:
 
         Returns:
             Image: the image moved to the given device and dtype.
+
         """
         if device is not None and isinstance(device, torch.dtype):
             dtype, device = device, None
@@ -191,6 +194,7 @@ class Image:
             >>> assert img.channels == 3
             >>> assert img.width == 5
             >>> assert img.height == 4
+
         """
         if channels_order == ChannelsOrder.CHANNELS_LAST:
             image_size = ImageSize(height=data.shape[0], width=data.shape[1])
@@ -224,6 +228,7 @@ class Image:
         Example:
             >>> x = np.ones((4, 5, 3))
             >>> img = Image.from_dlpack(x.__dlpack__())
+
         """
         _data: Tensor = from_dlpack(data)
 
@@ -248,6 +253,7 @@ class Image:
 
         Args:
             file_path: the path to the file to read the image from.
+
         """
         # TODO: allow user to specify the desired type and device
         data: Tensor = load_image(file_path, desired_type=ImageLoadType.RGB8, device="cpu")
@@ -273,6 +279,7 @@ class Image:
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
             >>> img = Image.from_numpy(data)
             >>> img.write("test.jpg")
+
         """
         data = self.data
         if self.channels_order == ChannelsOrder.CHANNELS_LAST:
@@ -291,5 +298,6 @@ class Image:
             img.print()
 
         .. image:: https://github.com/kornia/data/blob/main/print_image.png?raw=true
+
         """
         print(image_to_string(self.data, max_width))

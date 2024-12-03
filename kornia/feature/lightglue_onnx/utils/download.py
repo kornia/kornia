@@ -39,6 +39,7 @@ def download_onnx_from_url(
 
     Example:
         >>> model = download_onnx_from_url('https://github.com/fabio-sim/LightGlue-ONNX/releases/download/v1.0.0/disk_lightglue_fused_fp16.onnx')
+
     """
     if model_dir is None:
         hub_dir = get_dir()

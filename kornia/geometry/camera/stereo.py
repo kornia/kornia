@@ -17,6 +17,7 @@ class StereoException(Exception):
             msg: Custom message to add to the general message.
             *args:
             **kwargs:
+
         """
         doc_help = (
             "\n Please check documents here: "
@@ -37,6 +38,7 @@ class StereoCamera:
               of shape :math:`(B, 3, 4)`
             rectified_right_camera: The rectified right camera projection matrix
               of shape :math:`(B, 3, 4)`
+
         """
         self._check_stereo_camera(rectified_left_camera, rectified_right_camera)
         self.rectified_left_camera: Tensor = rectified_left_camera
@@ -56,6 +58,7 @@ class StereoCamera:
               of shape :math:`(B, 3, 4)`
             rectified_right_camera: The rectified right camera projection matrix
               of shape :math:`(B, 3, 4)`
+
         """
         # Ensure correct shapes
         if len(rectified_left_camera.shape) != 3:
@@ -113,6 +116,7 @@ class StereoCamera:
 
         Returns:
            scalar with the batch size
+
         """
         return self.rectified_left_camera.shape[0]
 
@@ -125,6 +129,7 @@ class StereoCamera:
 
         Returns:
             tensor of shape :math:`(B)`
+
         """
         return self.rectified_left_camera[..., 0, 0]
 
@@ -137,6 +142,7 @@ class StereoCamera:
 
         Returns:
             tensor of shape :math:`(B)`
+
         """
         return self.rectified_left_camera[..., 1, 1]
 
@@ -146,6 +152,7 @@ class StereoCamera:
 
         Returns:
             tensor of shape :math:`(B)`
+
         """
         return self.rectified_left_camera[..., 0, 2]
 
@@ -155,6 +162,7 @@ class StereoCamera:
 
         Returns:
             tensor of shape :math:`(B)`
+
         """
         return self.rectified_right_camera[..., 0, 2]
 
@@ -167,6 +175,7 @@ class StereoCamera:
 
         Returns:
             tensor of shape :math:`(B)`
+
         """
         return self.rectified_left_camera[..., 1, 2]
 
@@ -176,6 +185,7 @@ class StereoCamera:
 
         Returns:
             Tensor of shape :math:`(B)`
+
         """
         return -self.rectified_right_camera[..., 0, 3] / self.fx
 
@@ -189,6 +199,7 @@ class StereoCamera:
 
         Return:
             The Q matrix of shape :math:`(B, 4, 4)`.
+
         """
         return self._Q_matrix
 
@@ -197,6 +208,7 @@ class StereoCamera:
 
         Returns:
             The Q matrix of shape :math:`(B, 4, 4)`.
+
         """
         Q = zeros((self.batch_size, 4, 4), device=self.device, dtype=self.dtype)
         baseline: Tensor = -self.tx
@@ -217,6 +229,7 @@ class StereoCamera:
 
         Returns:
             The 3D point cloud of shape :math:`(B, H, W, 3)`
+
         """
         return reproject_disparity_to_3D(disparity_tensor, self.Q)
 
@@ -226,6 +239,7 @@ def _check_disparity_tensor(disparity_tensor: Tensor) -> None:
 
     Args:
         disparity_tensor: The disparity tensor of shape :math:`(B, 1, H, W)`.
+
     """
     if not isinstance(disparity_tensor, Tensor):
         raise StereoException(
@@ -253,6 +267,7 @@ def _check_Q_matrix(Q_matrix: Tensor) -> None:
 
     Args:
         Q_matrix: The Q matrix for reprojecting disparity to a point cloud of shape :math:`(B, 4, 4)`
+
     """
     if not isinstance(Q_matrix, Tensor):
         raise StereoException(f"Expected 'Q_matrix' to be an instance of Tensor but got {type(Q_matrix)}.")
@@ -278,6 +293,7 @@ def reproject_disparity_to_3D(disparity_tensor: Tensor, Q_matrix: Tensor) -> Ten
 
     Returns:
         The 3D point cloud of shape :math:`(B, H, W, 3)`
+
     """
     _check_Q_matrix(Q_matrix)
     _check_disparity_tensor(disparity_tensor)

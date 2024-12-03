@@ -33,6 +33,7 @@ class FaceDetectorResult:
 
     Args:
         data: the encoded results coming from the feature detector with shape :math:`(14,)`.
+
     """
 
     def __init__(self, data: torch.Tensor) -> None:
@@ -70,6 +71,7 @@ class FaceDetectorResult:
 
         Args:
             keypoint: the keypoint type to return the position.
+
         """
         if keypoint == FaceKeypoint.EYE_LEFT:
             out = self._data[..., (4, 5)]
@@ -143,6 +145,7 @@ class FaceDetector(nn.Module):
         >>> img = torch.rand(1, 3, 320, 320)
         >>> detect = FaceDetector()
         >>> res = detect(img)
+
     """
 
     def __init__(
@@ -218,6 +221,7 @@ class FaceDetector(nn.Module):
 
         Return:
             List[torch.Tensor]: list with the boxes found on each image. :math:`Bx(N,15)`.
+
         """
         img = self.preprocess(image)
         out = self.model(img)
@@ -349,6 +353,7 @@ def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> 
 
     Return:
         Tensor containing decoded bounding box predictions.
+
     """
     boxes = torch.cat(
         (

@@ -29,6 +29,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             Other versions may be pointed to by `target_ir_version` and `target_opset_version`.
         target_ir_version: The target IR version to convert to.
         target_opset_version: The target OPSET version to convert to.
+
     """
 
     def __init__(
@@ -65,6 +66,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         Args:
             target_ir_version: The target IR version to convert to.
             target_opset_version: The target OPSET version to convert to.
+
         """
         # TODO: maybe another logic for versioning.
         if target_ir_version is None:

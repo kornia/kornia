@@ -19,6 +19,7 @@ class DISKFeatures:
         detection_scores: Tensor of shape :math:`(N,)` where the detection score can be interpreted as
                           the log-probability of keeping a keypoint after it has been proposed (see the paper
                           section *Method → Feature distribution* for details).
+
     """
 
     keypoints: Tensor
@@ -53,6 +54,7 @@ class DISKFeatures:
 
         Returns:
             A new DISKFeatures object with tensors of appropriate type and location.
+
         """
         return DISKFeatures(
             self.keypoints.to(*args, **kwargs),

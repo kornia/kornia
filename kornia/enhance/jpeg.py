@@ -69,6 +69,7 @@ def _patchify_8x8(input: Tensor) -> Tensor:
 
     Returns:
         output (Tensor): Image patchify of the shape :math:`(B, N, 8, 8)`.
+
     """
     # Get input shape
     B, H, W = input.shape
@@ -85,6 +86,7 @@ def _unpatchify_8x8(input: Tensor, H: int, W: int) -> Tensor:
 
     Returns:
         output (Tensor): Image patchify of the shape :math:`(B, H, W)`.
+
     """
     # Get input shape
     B, N = input.shape[:2]
@@ -101,6 +103,7 @@ def _dct_8x8(input: Tensor) -> Tensor:
 
     Returns:
         output (Tensor): DCT output tensor of the shape :math:`(B, N, 8, 8)`.
+
     """
     # Get dtype and device
     dtype: Dtype = input.dtype
@@ -125,6 +128,7 @@ def _idct_8x8(input: Tensor) -> Tensor:
 
     Returns:
         output (Tensor): DCT output tensor of the shape :math:`(B, N, 8, 8)`.
+
     """
     # Get dtype and device
     dtype: Dtype = input.dtype
@@ -153,6 +157,7 @@ def _jpeg_quality_to_scale(
 
     Returns:
         scale (Tensor): Scaling factor to be applied to quantization matrix. Same shape as input.
+
     """
     # Get scale
     scale: Tensor = differentiable_polynomial_floor(
@@ -179,6 +184,7 @@ def _quantize(
 
     Returns:
         output (Tensor): Quantized output tensor of the shape :math:`(B, N, 8, 8)`.
+
     """
     # Scale quantization table
     quantization_table_scaled: Tensor = (
@@ -208,6 +214,7 @@ def _dequantize(
 
     Returns:
         output (Tensor): Quantized output tensor of the shape :math:`(B, N, 8, 8)`.
+
     """
     # Scale quantization table
     quantization_table_scaled: Tensor = (
@@ -230,6 +237,7 @@ def _chroma_subsampling(input_ycbcr: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         output_y (Tensor): Y component (not-subsampled), shape is :math:`(B, H, W)`.
         output_cb (Tensor): Cb component (subsampled), shape is :math:`(B, H // 2, W // 2)`.
         output_cr (Tensor): Cr component (subsampled), shape is :math:`(B, H // 2, W // 2)`.
+
     """
     # Get components
     output_y: Tensor = input_ycbcr[:, 0]
@@ -261,6 +269,7 @@ def _chroma_upsampling(input_c: Tensor) -> Tensor:
 
     Returns:
         output_c (Tensor): Upsampled C(b or r) component of the shape :math:`(B, H * 2, W * 2)`.
+
     """
     # Upsample component
     output_c: Tensor = rescale(
@@ -291,6 +300,7 @@ def _jpeg_encode(
         y_encoded (Tensor): Encoded Y component of the shape :math:`(B, N, 8, 8)`.
         cb_encoded (Tensor): Encoded Cb component of the shape :math:`(B, N, 8, 8)`.
         cr_encoded (Tensor): Encoded Cr component of the shape :math:`(B, N, 8, 8)`.
+
     """
     # Convert RGB image to YCbCr.
     image_ycbcr: Tensor = rgb_to_ycbcr(image_rgb)
@@ -343,6 +353,7 @@ def _jpeg_decode(
 
     Returns:
         rgb_decoded (Tensor): Decompressed RGB image of the shape :math:`(B, 3, H, W)`.
+
     """
     # Dequantize inputs
     input_y = _dequantize(
@@ -382,6 +393,7 @@ def _perform_padding(image: Tensor) -> tuple[Tensor, int, int]:
         image_padded: Padded image of the shape :math:`(*, 3, H_{new}, W_{new})`.
         h_pad: Padded pixels along the horizontal axis.
         w_pad: Padded pixels along the vertical axis.
+
     """
     # Get spatial dimensions of the image
     H, W = image.shape[-2:]
@@ -446,7 +458,6 @@ def jpeg_codec_differentiable(
         JPEG coded image of the shape :math:`(B, 3, H, W)`
 
     Example:
-
         To perform JPEG coding with the standard quantization tables just provide a JPEG quality
 
         >>> img = torch.rand(3, 3, 64, 64, requires_grad=True, dtype=torch.float)
@@ -472,6 +483,7 @@ def jpeg_codec_differentiable(
         >>> quantization_table_c = torch.randint(1, 256, size=(3, 8, 8), dtype=torch.float)
         >>> img_jpeg = jpeg_codec_differentiable(img, jpeg_quality, quantization_table_y, quantization_table_c)
         >>> img_jpeg.sum().backward()
+
     """
     # Check that inputs are tensors
     KORNIA_CHECK_IS_TENSOR(image_rgb)
@@ -593,7 +605,6 @@ class JPEGCodecDifferentiable(Module):
         - jpeg_quality: :math:`(1)` or :math:`(B)` (if used batch dim. needs to match w/ image_rgb).
 
     Example:
-
         You can use the differentiable JPEG module with standard quantization tables by
 
         >>> diff_jpeg_module = JPEGCodecDifferentiable()
@@ -621,6 +632,7 @@ class JPEGCodecDifferentiable(Module):
         >>> jpeg_quality = torch.tensor((99.0, 1.0), requires_grad=True)
         >>> img_jpeg = diff_jpeg_module(img, jpeg_quality)
         >>> img_jpeg.sum().backward()
+
     """
 
     def __init__(

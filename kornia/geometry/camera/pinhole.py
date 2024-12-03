@@ -23,6 +23,7 @@ class PinholeCamera:
     .. note::
         We assume that the class attributes are in batch form in order to take
         advantage of PyTorch parallelism to boost computing performance.
+
     """
 
     def __init__(self, intrinsics: Tensor, extrinsics: Tensor, height: Tensor, width: Tensor) -> None:
@@ -70,6 +71,7 @@ class PinholeCamera:
 
         Returns:
             Device type
+
         """
         return self._intrinsics.device
 
@@ -79,6 +81,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B, 4, 4)`.
+
         """
         if not self._check_valid_params(self._intrinsics, "intrinsics"):
             raise AssertionError
@@ -90,6 +93,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B, 4, 4)`.
+
         """
         if not self._check_valid_params(self._extrinsics, "extrinsics"):
             raise AssertionError
@@ -101,6 +105,7 @@ class PinholeCamera:
 
         Returns:
             scalar with the batch size.
+
         """
         return self.intrinsics.shape[0]
 
@@ -110,6 +115,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B)`.
+
         """
         return self.intrinsics[..., 0, 0]
 
@@ -119,6 +125,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B)`.
+
         """
         return self.intrinsics[..., 1, 1]
 
@@ -128,6 +135,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B)`.
+
         """
         return self.intrinsics[..., 0, 2]
 
@@ -137,6 +145,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B)`.
+
         """
         return self.intrinsics[..., 1, 2]
 
@@ -146,6 +155,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B)`.
+
         """
         return self.extrinsics[..., 0, -1]
 
@@ -161,6 +171,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B)`.
+
         """
         return self.extrinsics[..., 1, -1]
 
@@ -176,6 +187,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B)`.
+
         """
         return self.extrinsics[..., 2, -1]
 
@@ -191,6 +203,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B, 3, 4)`.
+
         """
         return self.extrinsics[..., :3, :4]
 
@@ -200,6 +213,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B, 3, 3)`.
+
         """
         return self.intrinsics[..., :3, :3]
 
@@ -209,6 +223,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B, 3, 3)`.
+
         """
         return self.extrinsics[..., :3, :3]
 
@@ -218,6 +233,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B, 3, 1)`.
+
         """
         return self.extrinsics[..., :3, -1:]
 
@@ -234,6 +250,7 @@ class PinholeCamera:
 
         Returns:
             tensor of shape :math:`(B, 4, 4)`.
+
         """
         return self.intrinsics.inverse()
 
@@ -247,6 +264,7 @@ class PinholeCamera:
 
         Returns:
             the camera model with scaled parameters.
+
         """
         # scale the intrinsic parameters
         intrinsics: Tensor = self.intrinsics.clone()
@@ -269,6 +287,7 @@ class PinholeCamera:
 
         Returns:
             the camera model with scaled parameters.
+
         """
         # scale the intrinsic parameters
         self.intrinsics[..., 0, 0] *= scale_factor
@@ -300,6 +319,7 @@ class PinholeCamera:
             >>> pinhole = kornia.geometry.camera.PinholeCamera(K, E, h, w)
             >>> pinhole.project(X)
             tensor([[5.6088, 8.6827]])
+
         """
         P = self.intrinsics @ self.extrinsics
         return convert_points_from_homogeneous(transform_points(P, point_3d))
@@ -332,6 +352,7 @@ class PinholeCamera:
             >>> pinhole = kornia.geometry.camera.PinholeCamera(K, E, h, w)
             >>> pinhole.unproject(x, depth)
             tensor([[0.4963, 0.7682, 1.0000]])
+
         """
         P = self.intrinsics @ self.extrinsics
         P_inv = _torch_inverse_cast(P)
@@ -389,6 +410,7 @@ class PinholeCamerasList(PinholeCamera):
 
     Args:
         pinholes_list: a python tuple or list containing a set of `PinholeCamera` instances.
+
     """
 
     def __init__(self, pinholes_list: Iterable[PinholeCamera]) -> None:
@@ -456,6 +478,7 @@ def pinhole_matrix(pinholes: Tensor, eps: float = 1e-6) -> Tensor:
                  [1.0000e-06, 7.6822e-01, 1.3203e-01, 1.0000e-06],
                  [1.0000e-06, 1.0000e-06, 1.0000e+00, 1.0000e-06],
                  [1.0000e-06, 1.0000e-06, 1.0000e-06, 1.0000e+00]]])
+
     """
     # warnings.warn("pinhole_matrix will be deprecated in version 0.2, "
     #              "use PinholeCamera.camera_matrix instead",
@@ -500,6 +523,7 @@ def inverse_pinhole_matrix(pinhole: Tensor, eps: float = 1e-6) -> Tensor:
                  [ 0.0000,  1.3017, -0.1719,  0.0000],
                  [ 0.0000,  0.0000,  1.0000,  0.0000],
                  [ 0.0000,  0.0000,  0.0000,  1.0000]]])
+
     """
     # warnings.warn("inverse_pinhole_matrix will be deprecated in version 0.2, "
     #              "use PinholeCamera.intrinsics_inverse() instead",
@@ -544,6 +568,7 @@ def scale_pinhole(pinholes: Tensor, scale: Tensor) -> Tensor:
         >>> scale_pinhole(pinhole_i, scales)  # Nx12
         tensor([[0.9925, 1.5364, 0.1770, 0.2641, 0.6148, 1.2682, 0.4901, 0.8964, 0.4556,
                  0.6323, 0.3489, 0.4017]])
+
     """
     # warnings.warn("scale_pinhole will be deprecated in version 0.2, "
     #              "use PinholeCamera.scale() instead",
@@ -566,6 +591,7 @@ def get_optical_pose_base(pinholes: Tensor) -> Tensor:
 
     Returns:
         tensor of extrinsic transformation matrices of size (N, 4, 4).
+
     """
     if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
         raise AssertionError(pinholes.shape)
@@ -613,6 +639,7 @@ def homography_i_H_ref(pinhole_i: Tensor, pinhole_ref: Tensor) -> Tensor:
         pinhole_i = torch.rand(1, 12)    # Nx12
         pinhole_ref = torch.rand(1, 12)  # Nx12
         homography_i_H_ref(pinhole_i, pinhole_ref)  # Nx4x4
+
     """
     # TODO: Add doctest once having `rtvec_to_pose`.
     if not (len(pinhole_i.shape) == 2 and pinhole_i.shape[1] == 12):
@@ -639,6 +666,7 @@ def pixel2cam(depth: Tensor, intrinsics_inv: Tensor, pixel_coords: Tensor) -> Te
 
     Returns:
         tensor of shape BxHxWx3 with (x, y, z) cam coordinates.
+
     """
     if not len(depth.shape) == 4 and depth.shape[1] == 1:
         raise ValueError(f"Input depth has to be in the shape of Bx1xHxW. Got {depth.shape}")
@@ -665,6 +693,7 @@ def cam2pixel(cam_coords_src: Tensor, dst_proj_src: Tensor, eps: float = 1e-12) 
 
     Returns:
         tensor of shape BxHxWx2 with (u, v) pixel coordinates.
+
     """
     if not len(cam_coords_src.shape) == 4 and cam_coords_src.shape[3] == 3:
         raise ValueError(f"Input cam_coords_src has to be in the shape of BxHxWx3. Got {cam_coords_src.shape}")

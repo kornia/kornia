@@ -40,6 +40,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
         ...     (torch.tensor([-0.5, 0.5]), "factor_2", 0.1, (-1., 1.)),
         ... )(torch.Size([2]))
         {'factor_1': tensor([0.7196, 0.7307]), 'factor_2': tensor([ 0.3278, -0.3657])}
+
     """
 
     def __init__(self, *samplers: ParameterBound) -> None:

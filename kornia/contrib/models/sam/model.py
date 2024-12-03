@@ -54,6 +54,7 @@ class SamConfig:
         encoder_depth: Depth of ViT.
         encoder_num_heads: Number of attention heads in each ViT block.
         encoder_global_attn_indexes: Encoder indexes for blocks using global attention.
+
     """
 
     model_type: Optional[str | int | SamModelType] = None
@@ -79,8 +80,8 @@ class Sam(ModelBase[SamConfig]):
                            prediction.
             prompt_encoder: Encodes various types of input prompts.
             mask_decoder: Predicts masks from the image embeddings and encoded prompts.
-        """
 
+        """
         super().__init__()
         self.image_encoder = image_encoder
         self.prompt_encoder = prompt_encoder
@@ -99,6 +100,7 @@ class Sam(ModelBase[SamConfig]):
 
         Returns:
             The respective SAM model
+
         """
         if name in ["vit_b", "vit_l", "vit_h", "mobile_sam"]:
             return Sam.from_config(SamConfig(name))
@@ -112,12 +114,14 @@ class Sam(ModelBase[SamConfig]):
         Args:
             config: The SamConfig data structure. If the model_type is available, build from it, otherwise will use
                     the parameters set.
+
         Returns:
             The respective SAM model
 
         Example:
             >>> from kornia.contrib.models.sam import SamConfig
             >>> sam_model = Sam.from_config(SamConfig('vit_b'))
+
         """
         model_type = config.model_type
 
@@ -254,8 +258,8 @@ class Sam(ModelBase[SamConfig]):
                           subsequent iterations of prediction. Where :math:`K` is the number of input prompts,
                           :math:`C` is determined by multimask_output, and :math:`H=W=256` are the model output size.
                 - scores: The model's predictions of mask quality (iou prediction), in shape BxC.
-        """
 
+        """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
         KORNIA_CHECK(
             images.shape[0] == len(batched_prompts),

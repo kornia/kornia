@@ -63,6 +63,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         >>> aug = RandomMotionBlur(3, 35., 0.5, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

@@ -58,6 +58,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         >>> out = mosaic(input, boxes)
         >>> out[0].shape, out[1].shape
         (torch.Size([8, 3, 300, 300]), torch.Size([8, 8, 4]))
+
     """
 
     def __init__(

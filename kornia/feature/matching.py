@@ -36,6 +36,7 @@ def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
         dm: Tensor containing the distances from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
+
     """
     if dm_ is None:
         dm = _cdist(desc1, desc2)
@@ -51,6 +52,7 @@ def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
     Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
+
     """
     dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
     idxs = torch.empty(0, 2, device=dm.device, dtype=torch.long)
@@ -71,6 +73,7 @@ def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple
     Returns:
         - Descriptor distance of matching descriptors, shape of :math:`(B1, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B1, 2)`.
+
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
@@ -98,6 +101,7 @@ def match_mnn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tupl
         - Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B3, 2)`,
           where 0 <= B3 <= min(B1, B2)
+
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
@@ -138,6 +142,7 @@ def match_snn(desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor
         - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
           where 0 <= B3 <= B1.
+
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
@@ -175,6 +180,7 @@ def match_smnn(desc1: Tensor, desc2: Tensor, th: float = 0.95, dm: Optional[Tens
         - Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2,
           shape of :math:`(B3, 2)` where 0 <= B3 <= B1.
+
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
@@ -245,6 +251,7 @@ def match_fginn(
         - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
           where 0 <= B3 <= B1.
+
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
@@ -297,6 +304,7 @@ class DescriptorMatcher(Module):
     Args:
         match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`.
         th: threshold on distance ratio, or other quality measure.
+
     """
 
     def __init__(self, match_mode: str = "snn", th: float = 0.8) -> None:
@@ -309,8 +317,7 @@ class DescriptorMatcher(Module):
         self.th = th
 
     def forward(self, desc1: Tensor, desc2: Tensor) -> Tuple[Tensor, Tensor]:
-        """
-        Args:
+        """Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
 
@@ -318,6 +325,7 @@ class DescriptorMatcher(Module):
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2,
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+
         """
         if self.match_mode == "nn":
             out = match_nn(desc1, desc2)
@@ -371,6 +379,7 @@ class DescriptorMatcherWithSteerer(Module):
         ...     )
         >>> # print(f"{idxs.shape[0]} tentative matches with steered DeDoDe")
         >>> # print(f"at rotation of {num_rot * 360 / steerer_order} degrees")
+
     """
 
     def __init__(
@@ -416,8 +425,7 @@ class DescriptorMatcherWithSteerer(Module):
         normalize: bool = False,
         subset_size: Optional[int] = None,
     ) -> Tuple[Tensor, Tensor, Optional[int]]:
-        """
-        Args:
+        """Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             normalize: bool to decide whether to normalize descriptors to unit norm.
@@ -431,6 +439,7 @@ class DescriptorMatcherWithSteerer(Module):
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
             - Number of global rotations from desc1 to desc2, in terms of `self.steerer_order`
                 (will be `None` if `self.steer_mode` is `local`).
+
         """
         rot1to2 = None
 
@@ -483,6 +492,7 @@ class GeometryAwareDescriptorMatcher(Module):
     Args:
         match_mode: type of matching, can be `fginn`.
         th: threshold on distance ratio, or other quality measure.
+
     """
 
     known_modes: ClassVar[List[str]] = ["fginn", "adalam"]
@@ -496,8 +506,7 @@ class GeometryAwareDescriptorMatcher(Module):
         self.params = params or {}
 
     def forward(self, desc1: Tensor, desc2: Tensor, lafs1: Tensor, lafs2: Tensor) -> Tuple[Tensor, Tensor]:
-        """
-        Args:
+        """Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
@@ -507,6 +516,7 @@ class GeometryAwareDescriptorMatcher(Module):
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2,
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+
         """
         if self.match_mode == "fginn":
             params = _get_default_fginn_params()

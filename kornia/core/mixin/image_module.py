@@ -31,6 +31,7 @@ class ImageModuleMixIn:
 
         Returns:
             Callable: Decorated function with converted input and output types.
+
         """
 
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
@@ -85,6 +86,7 @@ class ImageModuleMixIn:
 
         Returns:
             bool: True if valid, False otherwise.
+
         """
         if isinstance(arg, (str,)) and os.path.exists(arg):
             return True
@@ -107,6 +109,7 @@ class ImageModuleMixIn:
 
         Returns:
             Tensor: The converted tensor.
+
         """
         if isinstance(x, (str,)):
             from kornia.io import ImageLoadType, load_image  # pylint: disable=C0415
@@ -130,6 +133,7 @@ class ImageModuleMixIn:
 
         Returns:
             np.array: The converted numpy array.
+
         """
         if isinstance(x, (Tensor,)):
             return x.cpu().detach().numpy()
@@ -147,6 +151,7 @@ class ImageModuleMixIn:
 
         Returns:
             Image.Image: The converted PIL image.
+
         """
         if isinstance(x, (Tensor,)):
             x = x.cpu().detach() * 255
@@ -185,6 +190,7 @@ class ImageModuleMixIn:
         Args:
             n_row: Number of images displayed in each row of the grid.
             backend: visualization backend. Only PIL is supported now.
+
         """
         if self._output_image is None:
             raise ValueError("No pre-computed images found. Needs to execute first.")
@@ -213,6 +219,7 @@ class ImageModuleMixIn:
         Args:
             name: Directory to save the images.
             n_row: Number of images displayed in each row of the grid.
+
         """
         from kornia.io import write_image  # pylint: disable=C0415
         from kornia.utils.image import make_grid  # pylint: disable=C0415

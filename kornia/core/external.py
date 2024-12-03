@@ -20,6 +20,7 @@ class LazyLoader:
     Attributes:
         module_name: The name of the module to be lazily loaded.
         module: The actual module object, initialized to None and loaded upon first access.
+
     """
 
     auto_install: bool = False
@@ -32,6 +33,7 @@ class LazyLoader:
             dev_dependency: If the dependency is required in the dev environment.
                 If True, the module will be loaded in the dev environment.
                 If False, the module will not be loaded in the dev environment.
+
         """
         self.module_name = module_name
         self.module: Optional[ModuleType] = None
@@ -107,6 +109,7 @@ class LazyLoader:
 
         Returns:
             The requested attribute of the loaded module.
+
         """
         self._load()
         return getattr(self.module, item)
@@ -119,6 +122,7 @@ class LazyLoader:
 
         Returns:
             list: The list of attributes of the loaded module.
+
         """
         self._load()
         return dir(self.module)

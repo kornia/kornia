@@ -19,6 +19,7 @@ class AugmentationBase3D(_AugmentationBase):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         same_on_batch: apply the same transformation across the batch.
+
     """
 
     def validate_tensor(self, input: Tensor) -> None:
@@ -54,6 +55,7 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
+
     """
 
     _transform_matrix: Optional[Tensor]

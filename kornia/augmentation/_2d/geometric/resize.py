@@ -22,6 +22,7 @@ class Resize(GeometricAugmentationBase2D):
         p: probability of the augmentation been applied.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
+
     """
 
     def __init__(
@@ -100,6 +101,7 @@ class LongestMaxSize(Resize):
 
     Args:
         max_size: maximum size of the image after the transformation.
+
     """
 
     def __init__(
@@ -118,6 +120,7 @@ class SmallestMaxSize(Resize):
 
     Args:
         max_size: maximum size of the image after the transformation.
+
     """
 
     def __init__(

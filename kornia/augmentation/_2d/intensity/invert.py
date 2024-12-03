@@ -38,6 +38,7 @@ class RandomInvert(IntensityAugmentationBase2D):
         >>> aug = RandomInvert(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

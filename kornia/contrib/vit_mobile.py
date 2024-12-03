@@ -75,6 +75,7 @@ class Transformer(Module):
         dim_head: head size.
         mlp_dim: dimension of the FeedForward layer.
         dropout: dropout ratio, defaults to 0.
+
     """
 
     def __init__(self, dim: int, depth: int, heads: int, dim_head: int, mlp_dim: int, dropout: float = 0.0) -> None:
@@ -108,6 +109,7 @@ class MV2Block(Module):
         oup: output channel.
         stride: stride for convolution, defaults to 1, set to 2 if down-sample.
         expansion: expansion ratio for hidden dimension, defaults to 4.
+
     """
 
     def __init__(self, inp: int, oup: int, stride: int = 1, expansion: int = 4) -> None:
@@ -160,6 +162,7 @@ class MobileViTBlock(Module):
         patch_size: patch size for folding and unfloding.
         mlp_dim: dimension of the FeedForward layer in Transformer.
         dropout: dropout ratio, defaults to 0.
+
     """
 
     def __init__(
@@ -230,6 +233,7 @@ class MobileViT(Module):
         >>> mvit = MobileViT(mode='xxs')
         >>> mvit(img).shape
         torch.Size([1, 320, 8, 8])
+
     """
 
     def __init__(

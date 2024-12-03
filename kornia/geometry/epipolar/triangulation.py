@@ -31,6 +31,7 @@ def triangulate_points(
 
     Returns:
         The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.
+
     """
     KORNIA_CHECK_SHAPE(P1, ["*", "3", "4"])
     KORNIA_CHECK_SHAPE(P2, ["*", "3", "4"])

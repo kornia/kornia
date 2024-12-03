@@ -27,6 +27,7 @@ def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch
         <BLANKLINE>
                  [[1.0000e-06, 1.0000e-06],
                   [1.0000e+00, 1.0000e-06]]]])
+
     """
     if not isinstance(labels, Tensor):
         raise TypeError(f"Input labels type is not a Tensor. Got {type(labels)}")

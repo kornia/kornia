@@ -23,6 +23,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
             Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         target_ir_version: The target IR version to convert to.
         target_opset_version: The target OPSET version to convert to.
+
     """
 
     def __init__(
@@ -64,5 +65,6 @@ def load(model_name: Union[onnx.ModelProto, str]) -> ONNXModule:  # type:ignore
         model_name: The name of the model to load. For Hugging Face-hosted models,
             use the format 'hf://model_name'. Valid `model_name` can be found on
             https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
+
     """
     return ONNXModule(model_name)

@@ -32,6 +32,7 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
 
     Reference:
         https://link.springer.com/content/pdf/10.1007/s11263-010-0390-2.pdf
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_IS_TENSOR(target)
@@ -81,6 +82,7 @@ class AEPE(nn.Module):
         >>> input2 = torch.rand(1, 4, 5, 2)
         >>> epe = AEPE(reduction="mean")
         >>> epe = epe(input1, input2)
+
     """
 
     def __init__(self, reduction: str = "mean") -> None:

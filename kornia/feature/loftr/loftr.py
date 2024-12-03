@@ -73,6 +73,7 @@ class LoFTR(Module):
         >>> input = {"image0": img1, "image1": img2}
         >>> loftr = LoFTR('outdoor')
         >>> out = loftr(input)
+
     """
 
     def __init__(self, pretrained: Optional[str] = "outdoor", config: dict[str, Any] = default_cfg) -> None:
@@ -101,8 +102,7 @@ class LoFTR(Module):
         self.eval()
 
     def forward(self, data: dict[str, Tensor]) -> dict[str, Tensor]:
-        """
-        Args:
+        """Args:
             data: dictionary containing the input data in the following format:
 
         Keyword Args:
@@ -116,6 +116,7 @@ class LoFTR(Module):
             - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
             - ``confidence``, confidence score [0, 1] :math:`(NC)`.
             - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
+
         """
         # 1. Local Feature CNN
         _data: dict[str, Tensor | int | torch.Size] = {

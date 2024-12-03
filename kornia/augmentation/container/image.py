@@ -93,6 +93,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         >>> out= aug_list(input)
         >>> out.shape
         torch.Size([2, 3, 5, 6])
+
     """
 
     def __init__(
@@ -159,6 +160,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         Note:
             Mix augmentations (e.g. RandomMixUp) will be only applied once even in a random forward.
+
         """
         if isinstance(self.random_apply, tuple):
             num_samples = int(torch.randint(*self.random_apply, (1,)).item())
@@ -246,6 +248,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
+
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")
@@ -298,6 +301,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 if strict is set to True.
 
         Note: patch processing would break the continuity of labels (e.g. bbounding boxes, masks).
+
         """
         for arg in self.children():
             if isinstance(arg, (ImageSequential,)) and not arg.is_intensity_only(strict):
@@ -327,8 +331,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         Returns:
             Callable: Decorated function with converted input and output types.
-        """
 
+        """
         # Wrap the forward method with the decorator
         if not self._disable_features:
             decorated_forward = self.convert_input_output(
@@ -349,6 +353,7 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
 
     Note:
        Augmentations that change the image size must provide the parameter `output_size`.
+
     """
     if param.data is None:
         return batch_shape

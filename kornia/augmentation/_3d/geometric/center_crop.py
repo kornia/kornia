@@ -56,6 +56,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         >>> aug = CenterCrop3D(24, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

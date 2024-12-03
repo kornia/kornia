@@ -37,6 +37,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
         >>> out = jigsaw(input)
         >>> out.shape
         torch.Size([8, 3, 256, 256])
+
     """
 
     def __init__(

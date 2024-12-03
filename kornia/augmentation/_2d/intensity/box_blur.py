@@ -34,6 +34,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         >>> aug = RandomBoxBlur((7, 7), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

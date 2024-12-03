@@ -83,6 +83,7 @@ def filter2d(
                   [0., 5., 5., 5., 0.],
                   [0., 5., 5., 5., 0.],
                   [0., 0., 0., 0., 0.]]]])
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -184,6 +185,7 @@ def filter2d_separable(
                   [0., 5., 5., 5., 0.],
                   [0., 5., 5., 5., 0.],
                   [0., 0., 0., 0., 0.]]]])
+
     """
     out_x = filter2d(input, kernel_x[..., None, :], border_type, normalized, padding)
     out = filter2d(out_x, kernel_y[..., None], border_type, normalized, padding)
@@ -249,6 +251,7 @@ def filter3d(input: Tensor, kernel: Tensor, border_type: str = "replicate", norm
                    [0., 5., 5., 5., 0.],
                    [0., 5., 5., 5., 0.],
                    [0., 0., 0., 0., 0.]]]]])
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "D", "H", "W"])

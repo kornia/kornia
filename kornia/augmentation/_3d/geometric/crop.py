@@ -60,6 +60,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         >>> aug = RandomCrop3D((24, 24, 24), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

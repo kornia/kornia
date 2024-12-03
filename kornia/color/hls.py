@@ -28,6 +28,7 @@ def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_hls(input)  # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -104,6 +105,7 @@ def hls_to_rgb(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = hls_to_rgb(input)  # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -146,6 +148,7 @@ class RgbToHls(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> hls = RgbToHls()
         >>> output = hls(input)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -174,6 +177,7 @@ class HlsToRgb(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = HlsToRgb()
         >>> output = rgb(input)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]

@@ -109,6 +109,7 @@ def window_partition(x: Tensor, window_size: int) -> tuple[Tensor, tuple[int, in
     Returns:
         windows: windows after partition with [B * num_windows, window_size, window_size, C].
         (Hp, Wp): padded height and width before partition
+
     """
     B, H, W, C = x.shape
 
@@ -134,6 +135,7 @@ def window_unpartition(windows: Tensor, window_size: int, pad_hw: tuple[int, int
 
     Returns:
         x: unpartitioned sequences with [B, H, W, C].
+
     """
     Hp, Wp = pad_hw
     H, W = hw

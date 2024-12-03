@@ -11,6 +11,7 @@ def arange_sequence(ranges: Tensor) -> Tensor:
 
     Example:
     [2, 5, 1, 2] -> [0, 1, 0, 1, 2, 3, 4, 0, 0, 1]
+
     """
     maxcnt = torch.max(ranges).item()
     numuni = ranges.shape[0]
@@ -38,8 +39,7 @@ def orientation_diff(o1: Tensor, o2: Tensor) -> Tensor:
 
 
 def piecewise_arange(piecewise_idxer: Tensor) -> Tensor:
-    """
-    count repeated indices
+    """Count repeated indices
     Example:
     [0, 0, 0, 3, 3, 3, 3, 1, 1, 2] -> [0, 1, 2, 0, 1, 2, 3, 0, 1, 0]
     """

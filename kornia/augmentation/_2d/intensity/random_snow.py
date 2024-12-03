@@ -31,6 +31,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         >>> output = snow(inputs)
         >>> output.shape
         torch.Size([2, 3, 4, 4])
+
     """
 
     def __init__(

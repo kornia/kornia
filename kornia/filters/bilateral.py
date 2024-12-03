@@ -19,8 +19,7 @@ def _bilateral_blur(
     border_type: str = "reflect",
     color_distance_type: str = "l1",
 ) -> Tensor:
-    "Single implementation for both Bilateral Filter and Joint Bilateral Filter"
-
+    """Single implementation for both Bilateral Filter and Joint Bilateral Filter"""
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     if guidance is not None:
@@ -105,6 +104,7 @@ def bilateral_blur(
         >>> output = bilateral_blur(input, (3, 3), 0.1, (1.5, 1.5))
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
     return _bilateral_blur(input, None, kernel_size, sigma_color, sigma_space, border_type, color_distance_type)
 
@@ -150,6 +150,7 @@ def joint_bilateral_blur(
         >>> output = joint_bilateral_blur(input, guidance, (3, 3), 0.1, (1.5, 1.5))
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
     return _bilateral_blur(input, guidance, kernel_size, sigma_color, sigma_space, border_type, color_distance_type)
 
@@ -216,6 +217,7 @@ class BilateralBlur(_BilateralBlur):
         >>> output = blur(input)
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
 
     def forward(self, input: Tensor) -> Tensor:
@@ -258,6 +260,7 @@ class JointBilateralBlur(_BilateralBlur):
         >>> output = blur(input, guidance)
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
 
     def forward(self, input: Tensor, guidance: Tensor) -> Tensor:

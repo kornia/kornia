@@ -98,6 +98,7 @@ class StableDiffusionDissolving(ImageModule):
     Args:
         version: the version of the stable diffusion model.
         **kwargs: additional arguments for `.from_pretrained`.
+
     """
 
     def __init__(self, version: str = "2.1", **kwargs: Any):

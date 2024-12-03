@@ -72,6 +72,7 @@ class RandomAffine(GeometricAugmentationBase2D):
         >>> aug = RandomAffine((-15., 20.), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

@@ -19,13 +19,13 @@ class PassLAF(nn.Module):
     """Dummy module to use instead of local feature orientation or affine shape estimator."""
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
+        """Args:
             laf: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 
         Returns:
             LAF, unchanged :math:`(B, N, 2, 3)`
+
         """
         return laf
 
@@ -39,6 +39,7 @@ class PatchDominantGradientOrientation(nn.Module):
         patch_size: size of the (square) input patch.
         num_angular_bins: number of histogram bins.
         eps: for safe division, and arctan.
+
     """
 
     def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, eps: float = 1e-8) -> None:
@@ -59,12 +60,12 @@ class PatchDominantGradientOrientation(nn.Module):
         )
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
+        """Args:
             patch: :math:`(B, 1, H, W)`
 
         Returns:
             angle in radians: :math:`(B)`
+
         """
         KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
         _, CH, W, H = patch.size()
@@ -130,6 +131,7 @@ class OriNet(nn.Module):
         >>> input = torch.rand(16, 1, 32, 32)
         >>> orinet = OriNet()
         >>> angle = orinet(input) # 16
+
     """
 
     def __init__(self, pretrained: bool = False, eps: float = 1e-8) -> None:
@@ -175,12 +177,12 @@ class OriNet(nn.Module):
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
+        """Args:
             patch: :math:`(B, 1, H, W)`
 
         Returns:
             angle in radians: :math:`(B)`
+
         """
         xy = self.features(self._normalize_input(patch)).view(-1, 2)
         angle = torch.atan2(xy[:, 0] + 1e-8, xy[:, 1] + self.eps)
@@ -198,6 +200,7 @@ class LAFOrienter(nn.Module):
         num_angular_bins:
         angle_detector: Patch orientation estimator, e.g. :class:`~kornia.feature.PatchDominantGradientOrientation`
           or OriNet.
+
     """  # pylint: disable
 
     def __init__(
@@ -216,13 +219,13 @@ class LAFOrienter(nn.Module):
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, angle_detector={self.angle_detector})"
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
+        """Args:
             laf: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 
         Returns:
             LAF_out: :math:`(B, N, 2, 3)`
+
         """
         KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])

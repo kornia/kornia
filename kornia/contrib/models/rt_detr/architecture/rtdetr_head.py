@@ -23,6 +23,7 @@ def _inverse_sigmoid(x: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
 
     Returns:
         output tensor
+
     """
     out = x.clip(min=0.0, max=1.0)
     return torch.log(out.clip(min=eps) / (1.0 - out).clip(min=eps))
@@ -43,6 +44,7 @@ def _deformable_attention_kernel(
 
     Returns:
         output, shape (N, Lq, n_head * C)
+
     """
     bs, _, n_head, c = value.shape
     _, Len_q, _, n_levels, n_points, _ = sampling_locations.shape
@@ -99,8 +101,7 @@ class MultiScaleDeformableAttention(Module):
     def forward(
         self, query: Tensor, reference_points: Tensor, value: Tensor, value_spatial_shapes: list[tuple[int, int]]
     ) -> Tensor:
-        """
-        Args:
+        """Args:
             query: shape (N, Lq, C)
             reference_points: shape (N, Lq, n_levels, 4)
             value: shape (N, Lv, C)
@@ -108,6 +109,7 @@ class MultiScaleDeformableAttention(Module):
 
         Returns:
             output, shape (N, Lq, C)
+
         """
         N, Lenq, _ = query.shape
         _, Len_v, _ = value.shape
@@ -439,6 +441,7 @@ class RTDETRHead(Module):
 
         Returns:
             logit of anchors and mask
+
         """
         # TODO: might make this (or some parts of it) into a separate reusable function
         anchors_list: list[Tensor] = []

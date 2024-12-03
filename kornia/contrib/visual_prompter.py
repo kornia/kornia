@@ -16,7 +16,7 @@ from kornia.geometry.keypoints import Keypoints
 
 
 class VisualPrompter:
-    """This class allow the user to run multiple query with multiple prompts for a model.
+    r"""This class allow the user to run multiple query with multiple prompts for a model.
 
     At the moment, we just support the SAM model. The model is loaded based on the given config.
 
@@ -48,6 +48,7 @@ class VisualPrompter:
         >>> prediction = prompter.predict(boxes=boxes)
         >>> prediction.logits.shape
         torch.Size([1, 3, 256, 256])
+
     """
 
     def __init__(
@@ -94,8 +95,8 @@ class VisualPrompter:
 
         Returns:
             The image preprocessed (normalized if has mean and str available and padded to encoder size)
-        """
 
+        """
         if isinstance(mean, Tensor) and isinstance(std, Tensor):
             x = normalize(x, mean, std)
         elif isinstance(self.pixel_mean, Tensor) and isinstance(self.pixel_std, Tensor):
@@ -118,6 +119,7 @@ class VisualPrompter:
             image: RGB image. Normally images with range of [0-1], the model preprocess normalize the
                    pixel values with the mean and std defined in its initialization. Expected to be into a float32
                    dtype. Shape :math:`(3, H, W)`.
+
         """
         KORNIA_CHECK_SHAPE(image, ["3", "H", "W"])
 
@@ -247,10 +249,11 @@ class VisualPrompter:
                               multimask_output=False can give better results.
             output_original_size: If true, the logits of `SegmentationResults` will be post-process to match the
                                   original input image size.
+
         Returns:
             A prediction with the logits and scores (IoU of each predicted mask)
-        """
 
+        """
         KORNIA_CHECK(self.is_image_set, "An image must be set with `self.set_image(...)` before `predict` be called!")
 
         prompts = self.preprocess_prompts(keypoints, keypoints_labels, boxes, masks)
@@ -320,8 +323,8 @@ class VisualPrompter:
             >>> # prompter = VisualPrompter()
             >>> # prompter.compile() # You should have torch >= 2.0.0 installed
             >>> # Use the prompter methods ...
-        """
 
+        """
         # self.set_image = torch.compile(  # type: ignore[method-assign]
         #     self.set_image,
         #     fullgraph=fullgraph,

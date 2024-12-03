@@ -107,6 +107,7 @@ class PatchSequential(ImageSequential):
         >>> out = seq(input)
         >>> out.shape
         torch.Size([2, 3, 224, 224])
+
     """
 
     def __init__(
@@ -202,6 +203,7 @@ class PatchSequential(ImageSequential):
             <BLANKLINE>
             <BLANKLINE>
                      [[[31, 32, 33]]]]])
+
         """
         if pad is not None:
             input = fpad(input, list(pad))
@@ -225,6 +227,7 @@ class PatchSequential(ImageSequential):
                       [ 4,  5,  6,  7],
                       [ 8,  9, 10, 11],
                       [12, 13, 14, 15]]]])
+
         """
         if grid_size is None:
             grid_size = self.grid_size
@@ -260,6 +263,7 @@ class PatchSequential(ImageSequential):
         Args:
             batch_shape: 5-dim shape arranged as :math:``(N, B, C, H, W)``, in which N represents
                 the number of sequence.
+
         """
         if not self.same_on_batch and self.random_apply:
             # diff_on_batch and random_apply => patch-wise augmentation
