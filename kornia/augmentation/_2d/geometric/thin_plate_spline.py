@@ -62,4 +62,4 @@ class RandomThinPlateSpline(AugmentationBase2D):
         dst = params["dst"].to(input)
         # NOTE: warp_image_tps need to use inverse parameters
         kernel, affine = get_tps_transform(dst, src)
-        return warp_image_tps(input, src, kernel, affine, flags["align_corners"])
+        return warp_image_tps(input, src, kernel, affine, flags["align_corners"], flags["padding_mode"])

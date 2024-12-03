@@ -167,6 +167,7 @@ def warp_image_tps(
     kernel_weights: torch.Tensor,
     affine_weights: torch.Tensor,
     align_corners: bool = False,
+    padding_mode: str = "zeros",
 ) -> torch.Tensor:
     r"""Warp an image tensor according to the thin plate spline transform defined by kernel centers, kernel weights,
     and affine weights.
@@ -186,6 +187,7 @@ def warp_image_tps(
         kernel_weights: tensor of kernl weights :math:`(B, K, 2)`.
         affine_weights: tensor of affine weights :math:`(B, 3, 2)`.
         align_corners: interpolation flag used by `grid_sample`.
+        padding_mode: padding flag used by `grid_sample`.
 
     Returns:
         warped image tensor :math:`(B, C, H, W)`.
@@ -230,6 +232,6 @@ def warp_image_tps(
     coords = coords.reshape(-1, 2).expand(batch_size, -1, -1)
     warped: torch.Tensor = warp_points_tps(coords, kernel_centers, kernel_weights, affine_weights)
     warped = warped.view(-1, h, w, 2)
-    warped_image: torch.Tensor = nn.functional.grid_sample(image, warped, align_corners=align_corners)
+    warped_image: torch.Tensor = nn.functional.grid_sample(image, warped, padding_mode=padding_mode, align_corners=align_corners)
 
     return warped_image
