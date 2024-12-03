@@ -30,9 +30,3 @@ repos:
           - "ans,hist,laf,cofusion"
           - --skip
           - "*.bib,*.ipynb"
-
-  - repo: https://github.com/PyCQA/docformatter
-    rev: 06907d0
-    hooks:
-      - id: docformatter
-        args: [--in-place, --config, ./pyproject.toml, --wrap-summaries=115, --wrap-descriptions=120]

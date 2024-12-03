@@ -105,7 +105,7 @@ select = [
   # "ANN",  # flake8-annotations
   # "ARG",  # flake8-unused-arguments
   # "COM",  # flake8-commas
-  # "D",    # pydocstyle
+  "D",    # pydocstyle
   # "DJ",   # flake8-django
   # "EM",   # flake8-errmsg
   # "ERA",  # eradicate
@@ -138,6 +138,7 @@ ignore = [
   "UP007",   # Prefer Optional[], Union[] over | due to torch jit scripting
   "UP006",   # Prefer List[], over list due to torch jit scripting
   "UP035",   # Ignore deprecated typing because of jit scripting
+  'D100', 'D101', 'D102','D103', 'D104', 'D105', 'D107', 'D203', 'D204', 'D205', 'D213', 'D400', 'D401', 'D404', 'D406', 'D407', 'D415', 'D417'# docs -- TODO: unconment some of these rules..
 ]
 
 [tool.ruff.lint.isort]
@@ -252,5 +253,4 @@ module = "kornia.feature.dedode.transformer.*"
 ignore_errors = true
 
 [tool.pydocstyle]
-ignore = ['D105', 'D107', 'D203', 'D204', 'D213', 'D406', 'D407']
 match = '.*\.py'
