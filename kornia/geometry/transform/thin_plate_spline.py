@@ -232,6 +232,8 @@ def warp_image_tps(
     coords = coords.reshape(-1, 2).expand(batch_size, -1, -1)
     warped: torch.Tensor = warp_points_tps(coords, kernel_centers, kernel_weights, affine_weights)
     warped = warped.view(-1, h, w, 2)
-    warped_image: torch.Tensor = nn.functional.grid_sample(image, warped, padding_mode=padding_mode, align_corners=align_corners)
+    warped_image: torch.Tensor = nn.functional.grid_sample(
+        image, warped, padding_mode=padding_mode, align_corners=align_corners
+    )
 
     return warped_image
