@@ -133,7 +133,7 @@ class EfficientViTBackbone(nn.Module):
         output_dict = {"input": x}
         output_dict["stage0"] = x = self.input_stem(x)
         for stage_id, stage in enumerate(self.stages, 1):
-            output_dict["stage%d" % stage_id] = x = stage(x)
+            output_dict[f"stage{stage_id}"] = x = stage(x)
         output_dict["stage_final"] = x
         return output_dict
 
@@ -301,7 +301,7 @@ class EfficientViTLargeBackbone(nn.Module):
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         output_dict = {"input": x}
         for stage_id, stage in enumerate(self.stages):
-            output_dict["stage%d" % stage_id] = x = stage(x)
+            output_dict[f"stage{stage_id}"] = x = stage(x)
         output_dict["stage_final"] = x
         return output_dict
 

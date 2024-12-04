@@ -15,14 +15,14 @@ from .projection import depth_from_point, projection_from_KRt
 from .triangulation import triangulate_points
 
 __all__ = [
-    "find_essential",
-    "essential_from_fundamental",
     "decompose_essential_matrix",
+    "decompose_essential_matrix_no_svd",
     "essential_from_Rt",
+    "essential_from_fundamental",
+    "find_essential",
     "motion_from_essential",
     "motion_from_essential_choose_solution",
     "relative_camera_motion",
-    "decompose_essential_matrix_no_svd",
 ]
 
 

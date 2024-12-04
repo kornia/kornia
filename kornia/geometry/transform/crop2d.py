@@ -9,7 +9,7 @@ from kornia.geometry.bbox import infer_bbox_shape, validate_bbox
 from .affwarp import resize
 from .imgwarp import get_perspective_transform, warp_affine
 
-__all__ = ["crop_and_resize", "crop_by_boxes", "crop_by_transform_mat", "crop_by_indices", "center_crop"]
+__all__ = ["center_crop", "crop_and_resize", "crop_by_boxes", "crop_by_indices", "crop_by_transform_mat"]
 
 
 def crop_and_resize(

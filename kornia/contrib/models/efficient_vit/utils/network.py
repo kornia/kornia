@@ -18,7 +18,7 @@ def get_same_padding(kernel_size: Union[int, tuple[int, ...]]) -> Union[int, tup
 def build_kwargs_from_config(config: dict[str, Any], target_func: Any) -> dict[str, Any]:
     valid_keys = list(signature(target_func).parameters)
     kwargs = {}
-    for key in config:
+    for key, value in config.items():
         if key in valid_keys:
-            kwargs[key] = config[key]
+            kwargs[key] = value
     return kwargs

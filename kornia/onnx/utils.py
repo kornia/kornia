@@ -12,7 +12,7 @@ from kornia.core.external import numpy as np
 from kornia.core.external import onnx, requests
 from kornia.utils.download import CachedDownloader
 
-__all__ = ["ONNXLoader", "io_name_conversion", "add_metadata"]
+__all__ = ["ONNXLoader", "add_metadata", "io_name_conversion"]
 
 logger = logging.getLogger(__name__)
 

@@ -9,18 +9,18 @@ from .ssim import SSIM, ssim
 from .ssim3d import SSIM3D, ssim3d
 
 __all__ = [
-    "accuracy",
-    "AverageMeter",
-    "confusion_matrix",
-    "aepe",
     "AEPE",
+    "SSIM",
+    "SSIM3D",
+    "AverageMeter",
+    "accuracy",
+    "aepe",
     "average_endpoint_error",
+    "confusion_matrix",
+    "mean_average_precision",
     "mean_iou",
     "mean_iou_bbox",
-    "mean_average_precision",
     "psnr",
     "ssim",
     "ssim3d",
-    "SSIM",
-    "SSIM3D",
 ]

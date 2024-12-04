@@ -22,7 +22,7 @@ from kornia.utils.misc import (
     differentiable_polynomial_rounding,
 )
 
-__all__ = ["jpeg_codec_differentiable", "JPEGCodecDifferentiable"]
+__all__ = ["JPEGCodecDifferentiable", "jpeg_codec_differentiable"]
 
 
 def _get_default_qt_y(device: Device, dtype: Dtype) -> Tensor:

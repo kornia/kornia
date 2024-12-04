@@ -14,11 +14,11 @@ from kornia.models.base import ModelBase
 from kornia.utils.draw import draw_rectangle
 
 __all__ = [
-    "BoundingBoxDataFormat",
     "BoundingBox",
-    "results_from_detections",
+    "BoundingBoxDataFormat",
     "ObjectDetector",
     "ObjectDetectorResult",
+    "results_from_detections",
 ]
 
 

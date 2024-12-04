@@ -10,16 +10,16 @@ from kornia.core import arange, ones_like, stack, where, zeros
 from .linalg import transform_points
 
 __all__ = [
-    "validate_bbox",
-    "validate_bbox3d",
-    "infer_bbox_shape",
-    "infer_bbox_shape3d",
-    "bbox_to_mask",
-    "bbox_to_mask3d",
     "bbox_generator",
     "bbox_generator3d",
-    "transform_bbox",
+    "bbox_to_mask",
+    "bbox_to_mask3d",
+    "infer_bbox_shape",
+    "infer_bbox_shape3d",
     "nms",
+    "transform_bbox",
+    "validate_bbox",
+    "validate_bbox3d",
 ]
 
 

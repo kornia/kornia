@@ -13,23 +13,23 @@ from kornia.utils.misc import eye_like
 from .imgwarp import get_affine_matrix2d, get_projective_transform, get_rotation_matrix2d, warp_affine, warp_affine3d
 
 __all__ = [
+    "Affine",
+    "Rescale",
+    "Resize",
+    "Rotate",
+    "Scale",
+    "Shear",
+    "Translate",
     "affine",
     "affine3d",
-    "scale",
-    "rotate",
-    "rotate3d",
-    "translate",
-    "shear",
+    "rescale",
     "resize",
     "resize_to_be_divisible",
-    "rescale",
-    "Scale",
-    "Rotate",
-    "Translate",
-    "Shear",
-    "Resize",
-    "Rescale",
-    "Affine",
+    "rotate",
+    "rotate3d",
+    "scale",
+    "shear",
+    "translate",
 ]
 
 # utilities to compute affine matrices
