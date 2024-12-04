@@ -507,11 +507,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 if output_type == "tensor":
                     self._output_image = _output_image
                     if isinstance(_output_image, dict):
-                        self._output_image[original_keys[idx]] = self._detach_tensor_to_cpu(
-                            _output_image[original_keys[idx]]
-                        )
+                        self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
                     else:
-                        self._output_image[idx] = self._detach_tensor_to_cpu(_output_image[idx])
+                        self._output_image[idx] = _output_image[idx]
                 elif isinstance(_output_image, dict):
                     self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
                 else:
