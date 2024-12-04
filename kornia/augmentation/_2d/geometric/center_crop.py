@@ -58,6 +58,7 @@ class CenterCrop(GeometricAugmentationBase2D):
         >>> aug = CenterCrop(2, p=1., cropping_mode="resample")
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

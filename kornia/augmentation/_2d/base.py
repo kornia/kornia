@@ -25,6 +25,7 @@ class AugmentationBase2D(_AugmentationBase):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
+
     """
 
     def validate_tensor(self, input: Tensor) -> None:
@@ -57,6 +58,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
+
     """
 
     _transform_matrix: Optional[Tensor]

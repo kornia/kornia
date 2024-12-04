@@ -91,8 +91,8 @@ def vgg11(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
 
     .. autoclass:: torchvision.models.VGG11_Weights
         :members:
-    """
 
+    """
     return _vgg("A", False, weights, **kwargs)
 
 
@@ -114,8 +114,8 @@ def vgg11_bn(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
 
     .. autoclass:: torchvision.models.VGG11_BN_Weights
         :members:
-    """
 
+    """
     return _vgg("A", True, weights, **kwargs)
 
 
@@ -137,8 +137,8 @@ def vgg13(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
 
     .. autoclass:: torchvision.models.VGG13_Weights
         :members:
-    """
 
+    """
     return _vgg("B", False, weights, **kwargs)
 
 
@@ -160,8 +160,8 @@ def vgg13_bn(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
 
     .. autoclass:: torchvision.models.VGG13_BN_Weights
         :members:
-    """
 
+    """
     return _vgg("B", True, weights, **kwargs)
 
 
@@ -183,8 +183,8 @@ def vgg16(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
 
     .. autoclass:: torchvision.models.VGG16_Weights
         :members:
-    """
 
+    """
     return _vgg("D", False, weights, **kwargs)
 
 
@@ -206,8 +206,8 @@ def vgg16_bn(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
 
     .. autoclass:: torchvision.models.VGG16_BN_Weights
         :members:
-    """
 
+    """
     return _vgg("D", True, weights, **kwargs)
 
 
@@ -229,8 +229,8 @@ def vgg19(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
 
     .. autoclass:: torchvision.models.VGG19_Weights
         :members:
-    """
 
+    """
     return _vgg("E", False, weights, **kwargs)
 
 
@@ -252,6 +252,6 @@ def vgg19_bn(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
 
     .. autoclass:: torchvision.models.VGG19_BN_Weights
         :members:
-    """
 
+    """
     return _vgg("E", True, weights, **kwargs)

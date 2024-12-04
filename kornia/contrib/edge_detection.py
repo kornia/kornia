@@ -17,6 +17,7 @@ class EdgeDetector(Module):
         >>> out = detect(img)
         >>> out.shape
         torch.Size([1, 1, 320, 320])
+
     """
 
     def __init__(self) -> None:

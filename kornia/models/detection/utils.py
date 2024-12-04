@@ -13,6 +13,7 @@ class BoxFiltering(Module, ONNXExportMixin):
         confidence_threshold: an 0-d scalar that represents the desired threshold.
         classes_to_keep: a 1-d list of classes to keep. If None, keep all classes.
         filter_as_zero: whether to filter boxes as zero.
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, -1, 6]
@@ -57,6 +58,7 @@ class BoxFiltering(Module, ONNXExportMixin):
                 detections as input.
                 If `filter_as_zero` is False, return a list of tensors of shape [D, 6], where D is the number of
                 valid detections for each element in the batch.
+
         """
         # Apply confidence filtering
         zero_tensor = tensor(0.0, device=boxes.device, dtype=boxes.dtype)

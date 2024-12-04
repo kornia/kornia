@@ -32,6 +32,7 @@ class STEFunction(Function):
         >>> loss.backward()
         >>> input.grad
         tensor([0.2500, 0.2500, 0.2500, 0.2500])
+
     """
 
     @staticmethod
@@ -100,6 +101,7 @@ class StraightThroughEstimator(nn.Module):
                   [0.0566, 0.0626, 0.0626, 0.0626],
                   [0.0626, 0.0626, 0.0626, 0.0566],
                   [0.0422, 0.0566, 0.0626, 0.0422]]]])
+
     """
 
     def __init__(self, target_fn: nn.Module, grad_fn: Optional[Callable[..., Any]] = None) -> None:

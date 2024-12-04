@@ -55,6 +55,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         >>> aug = RandomRotation(degrees=45.0, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     # Note: Extra params, center=None, fill=0 in TorchVision
@@ -158,6 +159,7 @@ class RandomRotation90(GeometricAugmentationBase2D):
         >>> aug = RandomRotation90(times=(-1, 1), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

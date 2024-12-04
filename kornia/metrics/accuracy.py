@@ -16,6 +16,7 @@ def accuracy(pred: Tensor, target: Tensor, topk: Tuple[int, ...] = (1,)) -> List
         >>> target = torch.tensor([[1]])
         >>> accuracy(logits, target)
         [tensor(100.)]
+
     """
     maxk = min(max(topk), pred.size()[1])
     batch_size = target.size(0)

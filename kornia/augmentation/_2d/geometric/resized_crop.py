@@ -58,6 +58,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), p=1., cropping_mode="resample")
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

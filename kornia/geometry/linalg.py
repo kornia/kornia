@@ -41,6 +41,7 @@ def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
         >>> trans_01 = torch.eye(4)  # 4x4
         >>> trans_12 = torch.eye(4)  # 4x4
         >>> trans_02 = compose_transformations(trans_01, trans_12)  # 4x4
+
     """
     KORNIA_CHECK_IS_TENSOR(trans_01)
     KORNIA_CHECK_IS_TENSOR(trans_12)
@@ -93,6 +94,7 @@ def inverse_transformation(trans_12: Tensor) -> Tensor:
     Example:
         >>> trans_12 = torch.rand(1, 4, 4)  # Nx4x4
         >>> trans_21 = inverse_transformation(trans_12)  # Nx4x4
+
     """
     KORNIA_CHECK_IS_TENSOR(trans_12)
 
@@ -137,6 +139,7 @@ def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
         >>> trans_01 = torch.eye(4)  # 4x4
         >>> trans_02 = torch.eye(4)  # 4x4
         >>> trans_12 = relative_transformation(trans_01, trans_02)  # 4x4
+
     """
     KORNIA_CHECK_IS_TENSOR(trans_01)
     KORNIA_CHECK_IS_TENSOR(trans_02)
@@ -159,6 +162,7 @@ def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
         trans_01: tensor for transformations of shape
           :math:`(B, D+1, D+1)`.
         points_1: tensor of points of shape :math:`(B, N, D)`.
+
     Returns:
         a tensor of N-dimensional points.
 
@@ -166,10 +170,10 @@ def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
         - Output: :math:`(B, N, D)`
 
     Examples:
-
         >>> points_1 = torch.rand(2, 4, 3)  # BxNx3
         >>> trans_01 = torch.eye(4).view(1, 4, 4)  # Bx4x4
         >>> points_0 = transform_points(trans_01, points_1)  # BxNx3
+
     """
     KORNIA_CHECK_IS_TENSOR(trans_01)
     KORNIA_CHECK_IS_TENSOR(points_1)
@@ -211,6 +215,7 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
 
     Returns:
         the computed distance with shape :math:`(*, N)`.
+
     """
     KORNIA_CHECK_IS_TENSOR(point)
     KORNIA_CHECK_IS_TENSOR(line)
@@ -249,6 +254,7 @@ def euclidean_distance(x: Tensor, y: Tensor, keepdim: bool = False, eps: float =
         y: second set of points of shape :math:`(*, N)`.
         keepdim: whether to keep the dimension after reduction.
         eps: small value to have numerical stability.
+
     """
     KORNIA_CHECK_SHAPE(x, ["*", "N"])
     KORNIA_CHECK_SHAPE(y, ["*", "N"])

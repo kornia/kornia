@@ -26,6 +26,7 @@ def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = N
 
     Returns:
         conv_kernel [2x1xhxw]
+
     """
     if device is None:
         device = torch.device("cpu")
@@ -46,6 +47,7 @@ def _get_center_kernel2d(h: int, w: int, device: Optional[torch.device] = None) 
 
     Returns:
         conv_kernel [2x2xhxw].
+
     """
     if device is None:
         device = torch.device("cpu")
@@ -80,6 +82,7 @@ def _get_center_kernel3d(d: int, h: int, w: int, device: Optional[torch.device] 
 
     Returns:
         conv_kernel [3x3xdxhxw].
+
     """
     if device is None:
         torch.device("cpu")
@@ -119,6 +122,7 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int, device: Optional[torch.dev
 
     Returns:
         conv_kernel [3x1xdxhxw]
+
     """
     if device is None:
         device = torch.device("cpu")
@@ -287,6 +291,7 @@ def conv_soft_argmax2d(
     Examples:
         >>> input = torch.randn(20, 16, 50, 32)
         >>> nms_coords, nms_val = conv_soft_argmax2d(input, (3,3), (2,2), (1,1), output_value=True)
+
     """
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
@@ -407,6 +412,7 @@ def conv_soft_argmax3d(
     Examples:
         >>> input = torch.randn(20, 16, 3, 50, 32)
         >>> nms_coords, nms_val = conv_soft_argmax3d(input, (3, 3, 3), (1, 2, 2), (0, 1, 1))
+
     """
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
@@ -501,6 +507,7 @@ def spatial_soft_argmax2d(
         ... [0., 0., 0.]]]])
         >>> spatial_soft_argmax2d(input, normalized_coordinates=False)
         tensor([[[1.0000, 1.0000]]])
+
     """
     if temperature is None:
         temperature = tensor(1.0)
@@ -563,6 +570,7 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
     Examples:
         >>> input = torch.randn(20, 16, 3, 50, 32)
         >>> nms_coords, nms_val = conv_quad_interp3d(input, 1.0)
+
     """
     if not torch.is_tensor(input):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")

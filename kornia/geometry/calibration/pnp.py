@@ -21,6 +21,7 @@ def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> 
     Returns:
        Tuple containing the normalized points in the shape :math:`(B, N, D)` and the transformation matrix
        in the shape :math:`(B, D+1, D+1)`.
+
     """
     KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])
     x_mean = torch.mean(points, dim=1, keepdim=True)  # Bx1xD
@@ -113,6 +114,7 @@ def solve_pnp_dlt(
         tensor([[[ 0.9392, -0.3432, -0.0130,  1.6734],
                  [ 0.3390,  0.9324, -0.1254, -4.3634],
                  [ 0.0552,  0.1134,  0.9920,  3.7785]]], dtype=torch.float64)
+
     """
     # This function was implemented based on ideas inspired from multiple references.
     # ============

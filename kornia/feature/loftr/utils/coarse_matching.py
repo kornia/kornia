@@ -52,6 +52,7 @@ def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:
 
     Args:
         p_m0, p_m1 (torch.Tensor): padded masks
+
     """
     h0s, w0s = p_m0.sum(1).max(-1)[0], p_m0.sum(-1).max(-1)[0]
     h1s, w1s = p_m1.sum(1).max(-1)[0], p_m1.sum(-1).max(-1)[0]
@@ -94,8 +95,7 @@ class CoarseMatching(Module):
         mask_c0: Optional[Tensor] = None,
         mask_c1: Optional[Tensor] = None,
     ) -> None:
-        """
-        Args:
+        """Args:
             feat0 (torch.Tensor): [N, L, C]
             feat1 (torch.Tensor): [N, S, C]
             data (dict)
@@ -111,6 +111,7 @@ class CoarseMatching(Module):
                 'mkpts1_c' (torch.Tensor): [M, 2],
                 'mconf' (torch.Tensor): [M]}
             NOTE: M' != M during training.
+
         """
         _, L, S, _ = feat_c0.size(0), feat_c0.size(1), feat_c1.size(1), feat_c0.size(2)
 
@@ -151,10 +152,10 @@ class CoarseMatching(Module):
 
     @torch.no_grad()
     def get_coarse_match(self, conf_matrix: Tensor, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
-        """
-        Args:
+        """Args:
             conf_matrix (torch.Tensor): [N, L, S]
             data (dict): with keys ['hw0_i', 'hw1_i', 'hw0_c', 'hw1_c']
+
         Returns:
             coarse_matches (dict): {
                 'b_ids' (torch.Tensor): [M'],
@@ -165,6 +166,7 @@ class CoarseMatching(Module):
                 'mkpts0_c' (torch.Tensor): [M, 2],
                 'mkpts1_c' (torch.Tensor): [M, 2],
                 'mconf' (torch.Tensor): [M]}
+
         """
         axes_lengths = {
             "h0c": data["hw0_c"][0],

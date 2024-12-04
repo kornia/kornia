@@ -59,6 +59,7 @@ class PyrDown(Module):
     Examples:
         >>> input = torch.rand(1, 2, 4, 4)
         >>> output = PyrDown()(input)  # 1x2x2x2
+
     """
 
     def __init__(self, border_type: str = "reflect", align_corners: bool = False, factor: float = 2.0) -> None:
@@ -90,6 +91,7 @@ class PyrUp(Module):
     Examples:
         >>> input = torch.rand(1, 2, 4, 4)
         >>> output = PyrUp()(input)  # 1x2x8x8
+
     """
 
     def __init__(self, border_type: str = "reflect", align_corners: bool = False) -> None:
@@ -126,6 +128,7 @@ class ScalePyramid(Module):
     Examples:
         >>> input = torch.rand(2, 4, 100, 100)
         >>> sp, sigmas, pds = ScalePyramid(3, 15)(input)
+
     """
 
     def __init__(
@@ -248,6 +251,7 @@ def pyrdown(input: Tensor, border_type: str = "reflect", align_corners: bool = F
         >>> pyrdown(input, align_corners=True)
         tensor([[[[ 3.7500,  5.2500],
                   [ 9.7500, 11.2500]]]])
+
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
@@ -288,6 +292,7 @@ def pyrup(input: Tensor, border_type: str = "reflect", align_corners: bool = Fal
                   [1.0000, 1.1250, 1.3750, 1.5000],
                   [1.5000, 1.6250, 1.8750, 2.0000],
                   [1.7500, 1.8750, 2.1250, 2.2500]]]])
+
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
@@ -324,6 +329,7 @@ def build_pyramid(
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
+
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
@@ -377,8 +383,8 @@ def build_laplacian_pyramid(
 
     Return:
         Output: :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
-    """
 
+    """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(
         isinstance(max_level, int) or max_level < 0,
@@ -420,6 +426,7 @@ def upscale_double(x: Tensor) -> Tensor:
     Shape:
         - Input: :math:`(*, H, W)`
         - Output :math:`(*, H, W)`
+
     """
     KORNIA_CHECK_IS_TENSOR(x)
     KORNIA_CHECK_SHAPE(x, ["*", "H", "W"])

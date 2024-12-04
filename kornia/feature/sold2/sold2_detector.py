@@ -35,6 +35,7 @@ class SOLD2_detector(Module):
         >>> img = torch.rand(1, 1, 512, 512)
         >>> sold2_detector = SOLD2_detector()
         >>> line_segments = sold2_detector(img)["line_segments"]
+
     """
 
     def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
@@ -77,14 +78,14 @@ class SOLD2_detector(Module):
         return state_dict
 
     def forward(self, img: Tensor) -> Dict[str, Any]:
-        """
-        Args:
+        """Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
 
         Return:
             - ``line_segments``: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
             - ``junction_heatmap``: raw junction heatmap of shape :math:`(B, H, W)`.
             - ``line_heatmap``: raw line heatmap of shape :math:`(B, H, W)`.
+
         """
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         outputs = {}
@@ -132,6 +133,7 @@ class LineSegmentDetectionModule:
         >>> module = LineSegmentDetectionModule(config)
         >>> junctions, heatmap = torch.rand(10, 2), torch.rand(256, 256)
         >>> line_map, junctions, _ = module.detect(junctions, heatmap)
+
     """
 
     def __init__(self, config: Optional[LineDetectorCfg] = None) -> None:

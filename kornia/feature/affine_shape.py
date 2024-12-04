@@ -31,6 +31,7 @@ class PatchAffineShapeEstimator(nn.Module):
     Args:
         patch_size: the input image patch size.
         eps: for safe division.
+
     """
 
     def __init__(self, patch_size: int = 19, eps: float = 1e-10) -> None:
@@ -45,8 +46,7 @@ class PatchAffineShapeEstimator(nn.Module):
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, eps={self.eps})"
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
+        """Args:
             patch: :math:`(B, 1, H, W)`
 
         Returns:
@@ -92,6 +92,7 @@ class LAFAffineShapeEstimator(nn.Module):
         patch_size: the input image patch size.
         affine_shape_detector: Patch affine shape estimator, :class:`~kornia.feature.PatchAffineShapeEstimator`.
         preserve_orientation: if True, the original orientation is preserved.
+
     """  # pylint: disable
 
     def __init__(
@@ -119,13 +120,13 @@ class LAFAffineShapeEstimator(nn.Module):
         )
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
+        """Args:
             LAF: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 
         Returns:
             LAF_out: :math:`(B, N, 2, 3)`
+
         """
         KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
@@ -157,6 +158,7 @@ class LAFAffNetShapeEstimator(nn.Module):
 
     Args:
         pretrained: Download and set pretrained weights to the model.
+
     """
 
     def __init__(self, pretrained: bool = False, preserve_orientation: bool = True) -> None:
@@ -211,13 +213,13 @@ class LAFAffNetShapeEstimator(nn.Module):
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
+        """Args:
             LAF: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 
         Returns:
             LAF_out: :math:`(B, N, 2, 3)`
+
         """
         KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])

@@ -66,6 +66,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

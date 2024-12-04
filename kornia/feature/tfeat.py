@@ -32,6 +32,7 @@ class TFeat(nn.Module):
         >>> input = torch.rand(16, 1, 32, 32)
         >>> tfeat = TFeat()
         >>> descs = tfeat(input) # 16x128
+
     """
 
     patch_size = 32

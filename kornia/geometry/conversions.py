@@ -73,6 +73,7 @@ def rad2deg(tensor: Tensor) -> Tensor:
         >>> input = tensor(3.1415926535)
         >>> rad2deg(input)
         tensor(180.)
+
     """
     if not isinstance(tensor, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
@@ -93,6 +94,7 @@ def deg2rad(tensor: Tensor) -> Tensor:
         >>> input = tensor(180.)
         >>> deg2rad(input)
         tensor(3.1416)
+
     """
     if not isinstance(tensor, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
@@ -115,6 +117,7 @@ def pol2cart(rho: Tensor, phi: Tensor) -> tuple[Tensor, Tensor]:
         >>> rho = torch.rand(1, 3, 3)
         >>> phi = torch.rand(1, 3, 3)
         >>> x, y = pol2cart(rho, phi)
+
     """
     if not (isinstance(rho, Tensor) & isinstance(phi, Tensor)):
         raise TypeError(f"Input type is not a Tensor. Got {type(rho)}, {type(phi)}")
@@ -140,6 +143,7 @@ def cart2pol(x: Tensor, y: Tensor, eps: float = 1.0e-8) -> tuple[Tensor, Tensor]
         >>> x = torch.rand(1, 3, 3)
         >>> y = torch.rand(1, 3, 3)
         >>> rho, phi = cart2pol(x, y)
+
     """
     if not (isinstance(x, Tensor) & isinstance(y, Tensor)):
         raise TypeError(f"Input type is not a Tensor. Got {type(x)}, {type(y)}")
@@ -163,6 +167,7 @@ def convert_points_from_homogeneous(points: Tensor, eps: float = 1e-8) -> Tensor
         >>> input = tensor([[0., 0., 1.]])
         >>> convert_points_from_homogeneous(input)
         tensor([[0., 0.]])
+
     """
     if not isinstance(points, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(points)}")
@@ -195,6 +200,7 @@ def convert_points_to_homogeneous(points: Tensor) -> Tensor:
         >>> input = tensor([[0., 0.]])
         >>> convert_points_to_homogeneous(input)
         tensor([[0., 0., 1.]])
+
     """
     if not isinstance(points, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(points)}")
@@ -226,6 +232,7 @@ def convert_affinematrix_to_homography(A: Tensor) -> Tensor:
         tensor([[[1., 0., 0.],
                  [0., 1., 0.],
                  [0., 0., 1.]]])
+
     """
     if not isinstance(A, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(A)}")
@@ -254,6 +261,7 @@ def convert_affinematrix_to_homography3d(A: Tensor) -> Tensor:
                  [0., 1., 0., 0.],
                  [0., 0., 1., 0.],
                  [0., 0., 0., 1.]]])
+
     """
     if not isinstance(A, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(A)}")
@@ -285,6 +293,7 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
         tensor([[[ 1.0000e+00,  0.0000e+00,  0.0000e+00],
                  [ 0.0000e+00, -3.6200e-06, -1.0000e+00],
                  [ 0.0000e+00,  1.0000e+00, -3.6200e-06]]])
+
     """
     if not isinstance(axis_angle, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(axis_angle)}")
@@ -368,6 +377,7 @@ def rotation_matrix_to_axis_angle(rotation_matrix: Tensor) -> Tensor:
         ...                       [0., 1., 0.]])
         >>> rotation_matrix_to_axis_angle(input)
         tensor([1.5708, 0.0000, 0.0000])
+
     """
     if not isinstance(rotation_matrix, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(rotation_matrix)}")
@@ -401,6 +411,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: Tensor, eps: float = 1.0e-8) 
         ...                       [0., 0., 1.]])
         >>> rotation_matrix_to_quaternion(input, eps=torch.finfo(input.dtype).eps)
         tensor([1., 0., 0., 0.])
+
     """
     if not isinstance(rotation_matrix, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(rotation_matrix)}")
@@ -474,6 +485,7 @@ def normalize_quaternion(quaternion: Tensor, eps: float = 1.0e-12) -> Tensor:
         >>> quaternion = tensor((1., 0., 1., 0.))
         >>> normalize_quaternion(quaternion)
         tensor([0.7071, 0.0000, 0.7071, 0.0000])
+
     """
     if not isinstance(quaternion, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(quaternion)}")
@@ -506,6 +518,7 @@ def quaternion_to_rotation_matrix(quaternion: Tensor) -> Tensor:
         tensor([[-1.,  0.,  0.],
                 [ 0., -1.,  0.],
                 [ 0.,  0.,  1.]])
+
     """
     if not isinstance(quaternion, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(quaternion)}")
@@ -580,6 +593,7 @@ def quaternion_to_axis_angle(quaternion: Tensor) -> Tensor:
         >>> quaternion = tensor((1., 0., 0., 0.))
         >>> quaternion_to_axis_angle(quaternion)
         tensor([0., 0., 0.])
+
     """
     if not torch.is_tensor(quaternion):
         raise TypeError(f"Input type is not a Tensor. Got {type(quaternion)}")
@@ -638,6 +652,7 @@ def quaternion_log_to_exp(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
         >>> quaternion = tensor((0., 0., 0.))
         >>> quaternion_log_to_exp(quaternion, eps=torch.finfo(quaternion.dtype).eps)
         tensor([1., 0., 0., 0.])
+
     """
     if not isinstance(quaternion, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(quaternion)}")
@@ -676,6 +691,7 @@ def quaternion_exp_to_log(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
         >>> quaternion = tensor((1., 0., 0., 0.))
         >>> quaternion_exp_to_log(quaternion, eps=torch.finfo(quaternion.dtype).eps)
         tensor([0., 0., 0.])
+
     """
     if not isinstance(quaternion, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(quaternion)}")
@@ -724,6 +740,7 @@ def axis_angle_to_quaternion(axis_angle: Tensor) -> Tensor:
         >>> axis_angle = tensor((0., 1., 0.))
         >>> axis_angle_to_quaternion(axis_angle)
         tensor([0.8776, 0.0000, 0.4794, 0.0000])
+
     """
     if not torch.is_tensor(axis_angle):
         raise TypeError(f"Input type is not a Tensor. Got {type(axis_angle)}")
@@ -777,6 +794,7 @@ def euler_from_quaternion(w: Tensor, x: Tensor, y: Tensor, z: Tensor) -> tuple[T
 
     Return:
         A tuple with euler angles`roll`, `pitch`, `yaw`.
+
     """
     KORNIA_CHECK(w.shape == x.shape)
     KORNIA_CHECK(x.shape == y.shape)
@@ -811,6 +829,7 @@ def quaternion_from_euler(roll: Tensor, pitch: Tensor, yaw: Tensor) -> tuple[Ten
 
     Return:
         A tuple with quaternion coefficients in order of `wxyz`.
+
     """
     KORNIA_CHECK(roll.shape == pitch.shape)
     KORNIA_CHECK(pitch.shape == yaw.shape)
@@ -856,6 +875,7 @@ def normalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: i
         >>> coords = tensor([[50., 100.]])
         >>> normalize_pixel_coordinates(coords, 100, 50)
         tensor([[1.0408, 1.0202]])
+
     """
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
@@ -891,6 +911,7 @@ def denormalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width:
         >>> coords = tensor([[-1., -1.]])
         >>> denormalize_pixel_coordinates(coords, 100, 50)
         tensor([[0., 0.]])
+
     """
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
@@ -918,6 +939,7 @@ def normalize_pixel_coordinates3d(
 
     Return:
         the normalized pixel coordinates.
+
     """
     if pixel_coordinates.shape[-1] != 3:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
@@ -947,6 +969,7 @@ def denormalize_pixel_coordinates3d(
 
     Return:
         the denormalized pixel coordinates.
+
     """
     if pixel_coordinates.shape[-1] != 3:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
@@ -972,6 +995,7 @@ def angle_to_rotation_matrix(angle: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(1, 3)  # Nx3
         >>> output = angle_to_rotation_matrix(input)  # Nx3x2x2
+
     """
     ang_rad = deg2rad(angle)
     cos_a: Tensor = cos(ang_rad)
@@ -992,6 +1016,7 @@ def normalize_homography(
 
     Returns:
         the normalized homography of shape :math:`(B, 3, 3)`.
+
     """
     if not isinstance(dst_pix_trans_src_pix, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(dst_pix_trans_src_pix)}")
@@ -1030,6 +1055,7 @@ def normal_transform_pixel(
 
     Returns:
         normalized transform with shape :math:`(1, 3, 3)`.
+
     """
     tr_mat = tensor([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)  # 3x3
 
@@ -1061,6 +1087,7 @@ def normal_transform_pixel3d(
 
     Returns:
         normalized transform with shape :math:`(1, 4, 4)`.
+
     """
     tr_mat = tensor(
         [[1.0, 0.0, 0.0, -1.0], [0.0, 1.0, 0.0, -1.0], [0.0, 0.0, 1.0, -1.0], [0.0, 0.0, 0.0, 1.0]],
@@ -1093,6 +1120,7 @@ def denormalize_homography(
 
     Returns:
         the denormalized homography of shape :math:`(B, 3, 3)`.
+
     """
     if not isinstance(dst_pix_trans_src_pix, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(dst_pix_trans_src_pix)}")
@@ -1130,6 +1158,7 @@ def normalize_homography3d(
 
     Shape:
         Output: :math:`(B, 4, 4)`
+
     """
     if not isinstance(dst_pix_trans_src_pix, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(dst_pix_trans_src_pix)}")
@@ -1167,6 +1196,7 @@ def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor) ->
         >>> K = torch.eye(3)[None]
         >>> normalize_points_with_intrinsics(X, K)
         tensor([[0.4963, 0.7682]])
+
     """
     KORNIA_CHECK_SHAPE(point_2d, ["*", "2"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
@@ -1200,6 +1230,7 @@ def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Ten
         >>> K = torch.eye(3)[None]
         >>> denormalize_points_with_intrinsics(X, K)
         tensor([[0.4963, 0.7682]])
+
     """
     KORNIA_CHECK_SHAPE(point_2d_norm, ["*", "2"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
@@ -1244,6 +1275,7 @@ def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
                  [0., 1., 0., 1.],
                  [0., 0., 1., 1.],
                  [0., 0., 0., 1.]]])
+
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1269,6 +1301,7 @@ def matrix4x4_to_Rt(extrinsics: Tensor) -> tuple[Tensor, Tensor]:
                  [0., 0., 1.]]]), tensor([[[0.],
                  [0.],
                  [0.]]]))
+
     """
     KORNIA_CHECK_SHAPE(extrinsics, ["B", "4", "4"])
     R, t = extrinsics[:, :3, :3], extrinsics[:, :3, 3:]
@@ -1294,6 +1327,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
                  [ 0., -1.,  0.,  0.],
                  [ 0.,  0., -1.,  0.],
                  [ 0.,  0.,  0.,  1.]]])
+
     """
     KORNIA_CHECK_SHAPE(extrinsics_graphics, ["B", "4", "4"])
     invert_yz = tensor(
@@ -1326,6 +1360,7 @@ def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tens
                  [ 0.,  0., -1.]]]), tensor([[[1.],
                  [1.],
                  [1.]]]))
+
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1351,6 +1386,7 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
                  [ 0., -1.,  0.,  0.],
                  [ 0.,  0., -1.,  0.],
                  [ 0.,  0.,  0.,  1.]]])
+
     """
     KORNIA_CHECK_SHAPE(extrinsics_vision, ["B", "4", "4"])
     invert_yz = tensor(
@@ -1383,6 +1419,7 @@ def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tens
                  [ 0.,  0., -1.]]]), tensor([[[1.],
                  [1.],
                  [1.]]]))
+
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1412,6 +1449,7 @@ def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
                  [0., 0., 1.]]]), tensor([[[-1.],
                  [-1.],
                  [-1.]]]))
+
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1442,6 +1480,7 @@ def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
                  [0., 0., 1.]]]), tensor([[[-1.],
                  [-1.],
                  [-1.]]]))
+
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
@@ -1470,6 +1509,7 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Ten
         (tensor([[0.7071, 0.0000, 0.7071, 0.0000]]), tensor([[[-1.0000],
                  [-1.0000],
                  [ 1.0000]]]))
+
     """
     # ToDo:  integrate QuaterniaonAPI
 
@@ -1503,6 +1543,7 @@ def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
         tensor([[ 0., -3.,  2.],
                 [ 3.,  0., -1.],
                 [-2.,  1.,  0.]])
+
     """
     # KORNIA_CHECK_SHAPE(vec, ["B", "3"])
     if vec.shape[-1] != 3 or len(vec.shape) > 2:

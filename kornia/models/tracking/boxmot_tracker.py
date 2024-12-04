@@ -65,6 +65,7 @@ class BoxMotTracker:
 
     .. note::
         At least 4 frames are needed to initialize the tracking position.
+
     """
 
     name: str = "boxmot_tracker"
@@ -100,8 +101,8 @@ class BoxMotTracker:
 
         Args:
             image: The input image.
-        """
 
+        """
         if not (image.ndim == 4 and image.shape[0] == 1) and not image.ndim == 3:
             raise ValueError(f"Input tensor must be of shape (1, 3, H, W) or (3, H, W). Got {image.shape}")
 
@@ -140,6 +141,7 @@ class BoxMotTracker:
 
         Returns:
             The image with the results of the tracker.
+
         """
         frame_raw = (tensor_to_image(image) * 255).astype(np.uint8)
         self.tracker.plot_results(frame_raw, show_trajectories=show_trajectories)
@@ -151,6 +153,7 @@ class BoxMotTracker:
 
         Args:
             image: The input image.
+
         """
         if directory is None:
             name = f"{self.name}_{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}"

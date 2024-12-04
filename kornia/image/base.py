@@ -20,6 +20,7 @@ class ImageSize:
         3
         >>> size.width
         4
+
     """
 
     height: int | Tensor
@@ -49,6 +50,7 @@ class PixelFormat:
         <ColorSpace.RGB: 2>
         >>> pixel_format.bit_depth
         8
+
     """
 
     color_space: ColorSpace
@@ -79,6 +81,7 @@ class ImageLayout:
         3
         >>> layout.channels_order
         <ChannelsOrder.CHANNELS_LAST: 1>
+
     """
 
     image_size: ImageSize

@@ -26,6 +26,7 @@ def mod(a: Tensor, b: int) -> Tensor:
     Example:
         >>> mod(7, 3)
         1
+
     """
     return a - (a // b) * b
 
@@ -63,6 +64,7 @@ class DETRPostProcessor(Module):
         Returns:
             Processed detections. For each image, the detections have shape (D, 6), where D is the number of detections
             in that image, 6 represent (class_id, confidence_score, x, y, w, h).
+
         """
         # NOTE: consider using kornia BoundingBox
         # NOTE: consider having a separate function to convert the detections to a list of bounding boxes

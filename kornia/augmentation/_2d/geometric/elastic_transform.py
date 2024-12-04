@@ -43,6 +43,7 @@ class RandomElasticTransform(AugmentationBase2D):
         >>> aug = RandomElasticTransform(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

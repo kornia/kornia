@@ -68,6 +68,7 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         >>> aug = RandomRotation3D((15., 20., 20.), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

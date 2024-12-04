@@ -12,6 +12,7 @@ class AverageMeter:
         >>> stats.update(acc1, n=1)  # where n is batch size usually
         >>> round(stats.avg, 2)
         0.99
+
     """
 
     val: Union[float, bool, Tensor]

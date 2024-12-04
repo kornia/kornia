@@ -18,6 +18,7 @@ class RaySampler:
         max_depth: sampled rays maximal depth from cameras: float
         ndc: convert ray parameters to normalized device coordinates: bool
         device: device for ray tensors: Union[str, torch.device]
+
     """
 
     _origins: Tensor  # Ray origins in world coordinates (*, 3)
@@ -75,6 +76,7 @@ class RaySampler:
             points_2d: tensor with ray pixel coordinates (the coordinates in the image plane that correspond to the
               ray):math:`(B, 2)`
             camera_ids: list of camera ids for each pixel coordinates: List[int]
+
         """
 
         def __init__(self, points_2d: Tensor, camera_ids: List[int]) -> None:
@@ -96,6 +98,7 @@ class RaySampler:
         Args:
             cameras: scene cameras: PinholeCamera
             points_2d_camera: a dictionary that groups Point2D objects by total number of casted rays
+
         """
         # Unproject 2d points in image plane to 3d world for two depths
         origins = []
@@ -141,6 +144,7 @@ class RaySampler:
 
         Args:
             cameras: scene cameras: PinholeCamera
+
         """
         cams = cameras_for_ids(cameras, self._camera_ids)
         fx = cams.fx
@@ -201,7 +205,8 @@ class RaySampler:
         n: int, x: Tensor, y: Tensor, camera_id: int, points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors]
     ) -> None:
         r"""Adds x/y pixel coordinates for all rays casted by a scene camera to dictionary of pixel coordinates
-        grouped by total number of rays."""
+        grouped by total number of rays.
+        """
         if n not in points2d_as_flat_tensors:
             points2d_as_flat_tensors[n] = RaySampler.Points2D_FlatTensors()
             points2d_as_flat_tensors[n]._x = x.flatten()
@@ -225,6 +230,7 @@ class RaySampler:
         Returns:
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
+
         """
         num_ray_dict_of_points2d: Dict[int, RaySampler.Points2D] = {}
         for n, points2d_as_flat_tensor in points2d_as_flat_tensors.items():
@@ -246,6 +252,7 @@ class RandomRaySampler(RaySampler):
         max_depth: sampled rays maximal depth from cameras: float
         ndc: convert to normalized device coordinates: bool
         device: device for ray tensors: Union[str, torch.device]
+
     """
 
     def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
@@ -262,6 +269,7 @@ class RandomRaySampler(RaySampler):
         Returns:
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
+
         """
         num_img_rays = num_img_rays.int()
         points2d_as_flat_tensors: Dict[int, RaySampler.Points2D_FlatTensors] = {}
@@ -280,6 +288,7 @@ class RandomRaySampler(RaySampler):
         Args:
             cameras: scene cameras: PinholeCamera
             num_img_rays: tensor that holds the number of rays to randomly cast from each scene camera: int math: `(B)`.
+
         """
         num_cams = cameras.batch_size
         if num_cams != num_img_rays.shape[0]:
@@ -302,6 +311,7 @@ class RandomGridRaySampler(RandomRaySampler):
         max_depth: sampled rays maximal depth from cameras: float
         ndc: convert to normalized device coordinates: bool
         device: device for ray tensors: Union[str, torch.device]
+
     """
 
     def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
@@ -319,6 +329,7 @@ class RandomGridRaySampler(RandomRaySampler):
         Returns:
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
+
         """
         num_img_rays = num_img_rays.int()
         points2d_as_flat_tensors: Dict[int, RaySampler.Points2D_FlatTensors] = {}
@@ -341,6 +352,7 @@ class UniformRaySampler(RaySampler):
         max_depth: sampled rays maximal depth from cameras: float
         ndc: convert to normalized device coordinates: bool
         device: device for ray tensors: Union[str, torch.device]
+
     """
 
     def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
@@ -359,6 +371,7 @@ class UniformRaySampler(RaySampler):
         Returns:
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
+
         """
         heights = heights.int()
         widths = widths.int()
@@ -402,14 +415,14 @@ def sample_lengths(
 def sample_ray_points(
     origins: Tensor, directions: Tensor, lengths: Tensor
 ) -> Tensor:  # FIXME: Test by projecting to points_2d and compare with sampler 2d points
-    r"""
-    Args:
+    r"""Args:
         origins: tensor containing ray origins in 3d world coordinates. Tensor shape :math:`(*, 3)`.
         directions: tensor containing ray directions in 3d world coordinates. Tensor shape :math:`(*, 3)`.
         lengths: tensor containing sampled distances along each ray. Tensor shape :math:`(*, num_ray_points)`.
 
     Returns:
         points_3d: Points along rays :math:`(*, num_ray_points, 3)`
+
     """
     points_3d = origins[..., None, :] + lengths[..., None] * directions[..., None, :]
     return points_3d
@@ -423,6 +436,7 @@ def calc_ray_t_vals(points_3d: Tensor) -> Tensor:
 
     Returns:
         t values along rays :math:`(*, num_ray_points)`
+
     """
     t_vals = torch.linalg.norm(points_3d - points_3d[..., 0, :].unsqueeze(-2), dim=-1)
     return t_vals

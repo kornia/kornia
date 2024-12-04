@@ -177,6 +177,7 @@ class DexiNed(Module):
         >>> out = net(img)
         >>> out.shape
         torch.Size([1, 1, 320, 320])
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]

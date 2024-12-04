@@ -99,7 +99,6 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         Input tensor must be float and normalized into [0, 1].
 
     Examples:
-
         To apply planckian jitter based on mode
 
         >>> rng = torch.manual_seed(0)
@@ -139,6 +138,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         <BLANKLINE>
                  [[ 0.2426, -0.1621],
                   [-0.3302, -0.9093]]]])
+
     """
 
     def __init__(

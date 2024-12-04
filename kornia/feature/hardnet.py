@@ -35,6 +35,7 @@ class HardNet(nn.Module):
         >>> input = torch.rand(16, 1, 32, 32)
         >>> hardnet = HardNet()
         >>> descs = hardnet(input) # 16x128
+
     """
 
     patch_size = 32
@@ -112,6 +113,7 @@ class HardNet8(nn.Module):
         >>> input = torch.rand(16, 1, 32, 32)
         >>> hardnet = HardNet8()
         >>> descs = hardnet(input) # 16x128
+
     """
 
     patch_size = 32

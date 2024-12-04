@@ -29,6 +29,7 @@ def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
         >>> ones = torch.ones(1)
         >>> psnr_loss(ones, 1.2 * ones, 2.) # 10 * log(4/((1.2-1)**2)) / log(10)
         tensor(-20.0000)
+
     """
     return -1.0 * metrics.psnr(image, target, max_val)
 
@@ -57,6 +58,7 @@ class PSNRLoss(nn.Module):
         >>> criterion = PSNRLoss(2.)
         >>> criterion(ones, 1.2 * ones) # 10 * log(4/((1.2-1)**2)) / log(10)
         tensor(-20.0000)
+
     """
 
     def __init__(self, max_val: float) -> None:

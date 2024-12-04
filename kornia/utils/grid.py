@@ -45,6 +45,7 @@ def create_meshgrid(
         <BLANKLINE>
                  [[0., 1.],
                   [1., 1.]]]])
+
     """
     xs: Tensor = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
     ys: Tensor = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
@@ -95,6 +96,7 @@ def create_meshgrid3d(
 
     Return:
         grid tensor with shape :math:`(1, D, H, W, 3)`.
+
     """
     xs: Tensor = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
     ys: Tensor = torch.linspace(0, height - 1, height, device=device, dtype=dtype)

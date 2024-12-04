@@ -43,6 +43,7 @@ class PadTo(GeometricAugmentationBase2D):
         tensor([[[[0., 0., 0.],
                   [0., 0., 0.],
                   [0., 0., 0.]]]])
+
     """
 
     def __init__(

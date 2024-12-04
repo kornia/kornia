@@ -49,6 +49,7 @@ def gaussian_blur2d(
         >>> output = gaussian_blur2d(input, (3, 3), torch.tensor([[1.5, 1.5]]))
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
 
@@ -99,6 +100,7 @@ class GaussianBlur2d(Module):
         >>> output = gauss(input)  # 2x4x5x5
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
 
     def __init__(

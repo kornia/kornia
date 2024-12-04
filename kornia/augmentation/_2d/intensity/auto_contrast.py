@@ -20,6 +20,7 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.enhance.normalize_min_max`
+
     """
 
     def __init__(

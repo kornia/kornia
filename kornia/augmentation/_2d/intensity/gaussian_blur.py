@@ -50,6 +50,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         >>> aug = RandomGaussianBlur((3, 3), (0.1, 2.0), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

@@ -51,6 +51,7 @@ class CameraModelBase:
         >>> cam = CameraModelBase(BrownConradyTransform(), Z1Projection(), ImageSize(480, 640), params)
         >>> cam.params
         tensor([328., 328., 320., 240.])
+
     """
 
     def __init__(
@@ -66,6 +67,7 @@ class CameraModelBase:
                     for PINHOLE Camera, :math:`(B, 12)`
                     for Brown Conrady, :math:`(B, 8)`
                     for Kannala Brandt K3.
+
         """
         self.distortion = distortion
         self.projection = projection
@@ -137,6 +139,7 @@ class CameraModelBase:
             >>> cam.project(points)
             x: 648.0
             y: 568.0
+
         """
         return self.distortion.distort(self.params, self.projection.project(points))
 
@@ -157,6 +160,7 @@ class CameraModelBase:
             x: tensor([-0.9726])
             y: tensor([-0.7287])
             z: tensor([1.])
+
         """
         return self.projection.unproject(self.distortion.undistort(self.params, points), depth)
 
@@ -174,6 +178,7 @@ class PinholeModel(CameraModelBase):
         >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, torch.Tensor([328., 328., 320., 240.]))
         >>> cam
         CameraModel(ImageSize(height=480, width=640), PinholeModel, tensor([328., 328., 320., 240.]))
+
     """
 
     def __init__(self, image_size: ImageSize, params: Tensor) -> None:
@@ -182,6 +187,7 @@ class PinholeModel(CameraModelBase):
         Args:
             image_size: Image size
             params: Camera parameters of shape :math:`(B, 4)` of the form :math:`(fx, fy, cx, cy)`.
+
         """
         if params.shape[-1] != 4 or len(params.shape) > 2:
             raise ValueError("params must be of shape (B, 4) for PINHOLE Camera")
@@ -203,6 +209,7 @@ class PinholeModel(CameraModelBase):
             tensor([[1., 0., 3.],
                     [0., 2., 4.],
                     [0., 0., 1.]])
+
         """
         z = zeros_like(self.fx)
         row1 = stack((self.fx, z, self.cx), -1)
@@ -226,6 +233,7 @@ class PinholeModel(CameraModelBase):
             >>> cam_scaled = cam.scale(2)
             >>> cam_scaled.params
             tensor([656., 656., 640., 480.])
+
         """
         fx = self.fx * scale_factor
         fy = self.fy * scale_factor
@@ -246,6 +254,7 @@ class BrownConradyModel(CameraModelBase):
             image_size: Image size
             params: Camera parameters of shape :math:`(B, 12)` of the form :math:`(fx, fy, cx, cy, kb0, kb1, kb2, kb3,
                     k1, k2, k3, k4)`.
+
         """
         if params.shape[-1] != 12 or len(params.shape) > 2:
             raise ValueError("params must be of shape (B, 12) for BROWN_CONRADY Camera")
@@ -261,6 +270,7 @@ class KannalaBrandtK3(CameraModelBase):
         Args:
             image_size: Image size
             params: Camera parameters of shape :math:`(B, 8)` of the form :math:`(fx, fy, cx, cy, kb0, kb1, kb2, kb3)`.
+
         """
         if params.shape[-1] != 8 or len(params.shape) > 2:
             raise ValueError("params must be of shape B, 8 for KANNALA_BRANDT_K3 Camera")
@@ -276,6 +286,7 @@ class Orthographic(CameraModelBase):
         Args:
             image_size: Image size
             params: Camera parameters of shape :math:`(B, 4)` of the form :math:`(fx, fy, cx, cy)`.
+
         """
         super().__init__(AffineTransform(), OrthographicProjection(), image_size, params)
         if params.shape[-1] != 4 or len(params.shape) > 2:
@@ -301,6 +312,7 @@ class CameraModel:
         >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.ORTHOGRAPHIC, torch.Tensor([328., 328., 320., 240.]))
         >>> cam.params
         tensor([328., 328., 320., 240.])
+
     """
 
     def __init__(self, image_size: ImageSize, model_type: CameraModelType, params: Tensor) -> None:
@@ -310,6 +322,7 @@ class CameraModel:
             image_size: Image size
             model_type: Camera model type
             params: Camera parameters of shape :math:`(B, N)`.
+
         """
         self._model = get_model_from_type(model_type, image_size, params)
 

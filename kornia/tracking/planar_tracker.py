@@ -21,6 +21,7 @@ class HomographyTracker(Module):
                           or :class:`~kornia.feature.LoFTR`. Default: :class:`~kornia.feature.DescriptorMatcher`.
         ransac: homography estimation module. Default: :class:`~kornia.geometry.RANSAC`.
         minimum_inliers_num: threshold for number inliers for matching to be successful.
+
     """
 
     def __init__(
@@ -107,7 +108,8 @@ class HomographyTracker(Module):
 
     def track_next_frame(self, x: Tensor) -> Tuple[Tensor, bool]:
         """The frame `x` is prewarped according to the previous frame homography, matched with fast_matcher
-        verified with ransac."""
+        verified with ransac.
+        """
         if self.previous_homography is not None:  # mypy, shut up
             Hwarp = self.previous_homography.clone()[None]
         # make a bit of border for safety

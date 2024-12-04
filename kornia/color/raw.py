@@ -45,12 +45,14 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     Args:
         image: raw image to be converted to RGB with shape :math:`(*,1,H,W)`.
         cfa: The configuration of the color filter.
+
     Returns:
         RGB version of the image with shape :math:`(*,3,H,W)`.
 
     Example:
         >>> rawinput = torch.randn(2, 1, 4, 6)
         >>> rgb = raw_to_rgb(rawinput, CFA.RG) # 2x3x4x6
+
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
@@ -189,6 +191,7 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     Example:
         >>> rgbinput = torch.rand(2, 3, 4, 6)
         >>> raw = rgb_to_raw(rgbinput, CFA.BG) # 2x1x4x6
+
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
@@ -238,6 +241,7 @@ def raw_to_rgb_2x2_downscaled(image: Tensor, cfa: CFA) -> Tensor:
     Example:
         >>> rawinput = torch.randn(2, 1, 4, 6)
         >>> rgb = raw_to_rgb_2x2_downscaled(rawinput, CFA.RG) # 2x3x2x3
+
     """
     KORNIA_CHECK(isinstance(image, Tensor), "Input type is not a torch.Tensor")
 
@@ -289,6 +293,7 @@ class RawToRgb(Module):
         >>> rawinput = torch.rand(2, 1, 4, 6)
         >>> rgb = RawToRgb(CFA.RG)
         >>> output = rgb(rawinput)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
@@ -318,6 +323,7 @@ class RgbToRaw(Module):
         >>> rgbinput = torch.rand(2, 3, 4, 6)
         >>> raw = RgbToRaw(CFA.GB)
         >>> output = raw(rgbinput)  # 2x1x4x6
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -345,6 +351,7 @@ class RawToRgb2x2Downscaled(Module):
         >>> rawinput = torch.rand(2, 1, 4, 6)
         >>> rgb_downscale = RawToRgb2x2Downscaled(CFA.RG)
         >>> output = rgb_downscale(rawinput)  # 2x3x2x3
+
     """
 
     def __init__(self, cfa: CFA) -> None:

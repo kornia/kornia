@@ -47,6 +47,7 @@ class RandomEqualize3D(IntensityAugmentationBase3D):
         >>> aug = RandomEqualize3D(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(self, p: float = 0.5, same_on_batch: bool = False, keepdim: bool = False) -> None:

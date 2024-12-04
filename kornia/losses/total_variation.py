@@ -29,6 +29,7 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
 
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation
+
     """
     # TODO: here torchscript doesn't like KORNIA_CHECK_TYPE
     if not isinstance(img, Tensor):
@@ -77,6 +78,7 @@ class TotalVariation(Module):
 
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation
+
     """
 
     def forward(self, img: Tensor) -> Tensor:

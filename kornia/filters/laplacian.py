@@ -35,6 +35,7 @@ def laplacian(
         >>> output = laplacian(input, 3)
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
     kernel = get_laplacian_kernel2d(kernel_size, device=input.device, dtype=input.dtype)[None, ...]
 
@@ -67,6 +68,7 @@ class Laplacian(Module):
         >>> output = laplace(input)
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
 
     def __init__(

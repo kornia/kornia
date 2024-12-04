@@ -59,6 +59,7 @@ class RTDETRConfig:
         head_hidden_dim: hidden dim for head.
         head_num_queries: number of queries for Deformable DETR transformer decoder.
         head_num_decoder_layers: number of decoder layers for Deformable DETR transformer decoder.
+
     """
 
     model_type: RTDETRModelType | str | int
@@ -80,8 +81,8 @@ class RTDETRConfig:
 
         Args:
             model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
-        """
 
+        """
         if model_name == "rtdetr_r18vd":
             config = RTDETRConfig(RTDETRModelType.resnet18d, num_classes, input_size=640)
         elif model_name == "rtdetr_r34vd":
@@ -108,6 +109,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
             backbone: backbone network for feature extraction.
             neck: neck network for feature fusion.
             head: head network to decode features into detection results.
+
         """
         super().__init__()
         self.backbone = backbone
@@ -125,6 +127,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
             For ``config.neck_hidden_dim``, ``config.neck_dim_feedforward``, ``config.neck_expansion``, and
             ``config.head_num_decoder_layers``, if they are ``None``, their values will be replaced with the
             default values depending on the ``config.model_type``. See the source code for the default values.
+
         """
         model_type = config.model_type
         if isinstance(model_type, int):
@@ -205,8 +208,8 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
         Args:
             model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
-        """
 
+        """
         if model_name not in URLs:
             raise ValueError(f"No pretrained model for '{model_name}'. Please select from {list(URLs.keys())}.")
 
@@ -252,6 +255,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
         Args:
             model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
+
         """
         model = RTDETR.from_config(RTDETRConfig.from_name(model_name, num_classes))
         return model
@@ -266,8 +270,8 @@ class RTDETR(ModelBase[RTDETRConfig]):
             - **logits** - Tensor of shape :math:`(N, Q, K)`, where :math:`Q` is the number of queries,
               :math:`K` is the number of classes.
             - **boxes** - Tensor of shape :math:`(N, Q, 4)`, where :math:`Q` is the number of queries.
-        """
 
+        """
         feats = self.backbone(images)
         feats_buf = self.encoder(feats)
         logits, boxes = self.decoder(feats_buf)

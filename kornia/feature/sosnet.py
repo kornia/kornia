@@ -27,6 +27,7 @@ class SOSNet(nn.Module):
         >>> input = torch.rand(8, 1, 32, 32)
         >>> sosnet = SOSNet()
         >>> descs = sosnet(input) # 8x128
+
     """
 
     patch_size = 32

@@ -1,5 +1,6 @@
 r"""Implementation of "differentiable spatial to numerical" (soft-argmax) operations, as described in the paper
-"Numerical Coordinate Regression with Convolutional Neural Networks" by Nibali et al."""
+"Numerical Coordinate Regression with Convolutional Neural Networks" by Nibali et al.
+"""
 
 from __future__ import annotations
 
@@ -39,6 +40,7 @@ def spatial_softmax2d(input: Tensor, temperature: Optional[Tensor] = None) -> Te
         tensor([[[[0.0585, 0.0585, 0.0585],
                   [0.0585, 0.0585, 0.0585],
                   [0.0585, 0.1589, 0.4319]]]])
+
     """
     _validate_batched_image_tensor_input(input)
 
@@ -74,6 +76,7 @@ def spatial_expectation2d(input: Tensor, normalized_coordinates: bool = True) ->
         ... [0., 1., 0.]]]])
         >>> spatial_expectation2d(heatmaps, False)
         tensor([[[1., 2.]]])
+
     """
     _validate_batched_image_tensor_input(input)
 
@@ -114,6 +117,7 @@ def render_gaussian2d(mean: Tensor, std: Tensor, size: tuple[int, int], normaliz
 
     Returns:
         tensor including rendered points with shape :math:`(*, H, W)`.
+
     """
     if not (std.dtype == mean.dtype and std.device == mean.device):
         raise TypeError("Expected inputs to have the same dtype and device")

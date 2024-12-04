@@ -16,6 +16,7 @@ class ClassificationHead(nn.Module):
         >>> head = ClassificationHead(256, 10)
         >>> head(feat).shape
         torch.Size([1, 10])
+
     """
 
     def __init__(self, embed_size: int = 768, num_classes: int = 10) -> None:

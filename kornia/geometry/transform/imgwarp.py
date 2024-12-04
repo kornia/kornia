@@ -89,6 +89,7 @@ def warp_perspective(
 
     .. note::
         See a working example `here <https://kornia.github.io/tutorials/nbs/warp_perspective.html>`_.
+
     """
     if not isinstance(src, Tensor):
         raise TypeError(f"Input src type is not a Tensor. Got {type(src)}")
@@ -175,6 +176,7 @@ def warp_affine(
        >>> out = warp_affine(img, A, (4, 2), align_corners=True)
        >>> print(out.shape)
        torch.Size([1, 4, 4, 2])
+
     """
     if not isinstance(src, Tensor):
         raise TypeError(f"Input src type is not a Tensor. Got {type(src)}")
@@ -219,6 +221,7 @@ def _fill_and_warp(src: Tensor, grid: Tensor, mode: str, align_corners: bool, fi
 
     Returns:
         the warped and filled tensor with shape :math:`(B, 3, H, W)`.
+
     """
     ones_mask = ones_like(src)
     fill_value = fill_value.to(ones_mask)[None, :, None, None]  # cast and add dimensions for broadcasting
@@ -238,6 +241,7 @@ def warp_grid(grid: Tensor, src_homo_dst: Tensor) -> Tensor:
 
     Returns:
         the transformed grid of shape :math:`(N, H, W, 2)`.
+
     """
     batch_size: int = src_homo_dst.size(0)
     _, height, width, _ = grid.size()
@@ -262,6 +266,7 @@ def warp_grid3d(grid: Tensor, src_homo_dst: Tensor) -> Tensor:
 
     Returns:
         the transformed grid of shape :math:`(N, H, W, 3)`.
+
     """
     batch_size: int = src_homo_dst.size(0)
     _, depth, height, width, _ = grid.size()
@@ -326,6 +331,7 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
         >>> x1 = torch.tensor([[[0., 0.], [1., 0.], [1., 1.], [0., 1.]]])
         >>> x2 = torch.tensor([[[1., 0.], [0., 0.], [0., 1.], [1., 1.]]])
         >>> x2_trans_x1 = get_perspective_transform(x1, x2)
+
     """
     KORNIA_CHECK_SHAPE(points_src, ["B", "4", "2"])
     KORNIA_CHECK_SHAPE(points_dst, ["B", "4", "2"])
@@ -409,6 +415,7 @@ def get_rotation_matrix2d(center: Tensor, angle: Tensor, scale: Tensor) -> Tenso
 
     .. note::
         This function is often used in conjunction with :func:`warp_affine`.
+
     """
     if not isinstance(center, Tensor):
         raise TypeError(f"Input center type is not a Tensor. Got {type(center)}")
@@ -505,6 +512,7 @@ def remap(
 
     .. note::
         This function is often used in conjunction with :func:`kornia.utils.create_meshgrid`.
+
     """
     KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
     KORNIA_CHECK_SHAPE(map_x, ["B", "H", "W"])
@@ -549,6 +557,7 @@ def invert_affine_transform(matrix: Tensor) -> Tensor:
 
     .. note::
         This function is often used in conjunction with :func:`warp_affine`.
+
     """
     if not isinstance(matrix, Tensor):
         raise TypeError(f"Input matrix type is not a Tensor. Got {type(matrix)}")
@@ -585,6 +594,7 @@ def get_affine_matrix2d(
 
     .. note::
         This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
+
     """
     transform: Tensor = get_rotation_matrix2d(center, -angle, scale)
     transform[..., 2] += translations  # tx/ty
@@ -610,6 +620,7 @@ def get_translation_matrix2d(translations: Tensor) -> Tensor:
 
     .. note::
         This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
+
     """
     transform: Tensor = eye_like(3, translations)[:, :2, :]
     transform[..., 2] += translations  # tx/ty
@@ -652,6 +663,7 @@ def get_shear_matrix2d(center: Tensor, sx: Optional[Tensor] = None, sy: Optional
 
     .. note::
         This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
+
     """
     sx = tensor([0.0]).repeat(center.size(0)) if sx is None else sx
     sy = tensor([0.0]).repeat(center.size(0)) if sy is None else sy
@@ -703,6 +715,7 @@ def get_affine_matrix3d(
 
     .. note::
         This function is often used in conjunction with :func:`warp_perspective`.
+
     """
     transform: Tensor = get_projective_transform(center, -angles, scale)
     transform[..., 3] += translations  # tx/ty/tz
@@ -771,6 +784,7 @@ def get_shear_matrix3d(
 
     .. note::
         This function is often used in conjunction with :func:`warp_perspective3d`.
+
     """
     sxy = tensor([0.0]).repeat(center.size(0)) if sxy is None else sxy
     sxz = tensor([0.0]).repeat(center.size(0)) if sxz is None else sxz
@@ -851,6 +865,7 @@ def warp_affine3d(
 
     .. note::
         This function is often used in conjunction with :func:`get_perspective_transform3d`.
+
     """
     if len(src.shape) != 5:
         raise AssertionError(src.shape)
@@ -891,6 +906,7 @@ def projection_from_Rt(rmat: Tensor, tvec: Tensor) -> Tensor:
 
     Returns:
        the projection matrix with shape :math:`(*, 3, 4)`.
+
     """
     if not (len(rmat.shape) >= 2 and rmat.shape[-2:] == (3, 3)):
         raise AssertionError(rmat.shape)
@@ -920,6 +936,7 @@ def get_projective_transform(center: Tensor, angles: Tensor, scales: Tensor) -> 
 
     .. note::
         This function is often used in conjunction with :func:`warp_affine3d`.
+
     """
     if not (len(center.shape) == 2 and center.shape[-1] == 3):
         raise AssertionError(center.shape)
@@ -1022,6 +1039,7 @@ def get_perspective_transform3d(src: Tensor, dst: Tensor) -> Tensor:
 
     .. note::
         This function is often used in conjunction with :func:`warp_perspective3d`.
+
     """
     if not isinstance(src, (Tensor)):
         raise TypeError(f"Input type is not a Tensor. Got {type(src)}")
@@ -1202,6 +1220,7 @@ def warp_perspective3d(
 
     .. note::
         This function is often used in conjunction with :func:`get_perspective_transform3d`.
+
     """
     if not isinstance(src, Tensor):
         raise TypeError(f"Input src type is not a Tensor. Got {type(src)}")
@@ -1254,12 +1273,13 @@ def homography_warp(
         >>> homography = torch.eye(3).view(1, 3, 3)
         >>> output = homography_warp(input, homography, (32, 32))
 
-    Example
+    Example:
         >>> img = torch.rand(1, 4, 5, 6)
         >>> H = torch.eye(3)[None]
         >>> out = homography_warp(img, H, (4, 2), align_corners=True, normalized_homography=False)
         >>> print(out.shape)
         torch.Size([1, 4, 4, 2])
+
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError(
@@ -1323,6 +1343,7 @@ def homography_warp3d(
         >>> input = torch.rand(1, 3, 32, 32)
         >>> homography = torch.eye(3).view(1, 3, 3)
         >>> output = homography_warp(input, homography, (32, 32))
+
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError(

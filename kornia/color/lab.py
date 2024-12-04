@@ -33,6 +33,7 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_lab(input)  # 2x3x4x5
+
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
@@ -84,6 +85,7 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = lab_to_rgb(input)  # 2x3x4x5
+
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
@@ -152,6 +154,7 @@ class RgbToLab(Module):
         [2] https://www.easyrgb.com/en/math.php
 
         [3] https://github.com/torch/image/blob/dc061b98fb7e946e00034a5fc73e883a299edc7f/generic/image.c#L1467
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -182,6 +185,7 @@ class LabToRgb(Module):
         [2] https://www.easyrgb.com/en/math.php
 
         [3] https://github.com/torch/image/blob/dc061b98fb7e946e00034a5fc73e883a299edc7f/generic/image.c#L1518
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]

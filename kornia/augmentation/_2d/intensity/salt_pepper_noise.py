@@ -56,6 +56,7 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         >>> aug = RandomSaltAndPepperNoise(amount=0.05, salt_vs_pepper=0.5, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

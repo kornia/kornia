@@ -36,6 +36,7 @@ class RANSAC(Module):
         max_iterations: maximum batches to generate. Actual number of models to try is ``batch_size * max_iterations``.
         confidence: desired confidence of the result, used for the early stopping.
         max_local_iterations: number of local optimization (polishing) iterations.
+
     """
 
     def __init__(
@@ -99,7 +100,8 @@ class RANSAC(Module):
     @staticmethod
     def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> float:
         """Formula to update max_iter in order to stop iterations earlier
-        https://en.wikipedia.org/wiki/Random_sample_consensus."""
+        https://en.wikipedia.org/wiki/Random_sample_consensus.
+        """
         eps = 1e-9
         if num_tc <= sample_size:
             return 1.0
@@ -131,7 +133,6 @@ class RANSAC(Module):
         return model_best, inliers_best, best_model_score
 
     def remove_bad_samples(self, kp1: Tensor, kp2: Tensor) -> Tuple[Tensor, Tensor]:
-        """"""
         # ToDo: add (model-specific) verification of the samples,
         # E.g. constraints on not to be a degenerate sample
         if self.model_type == "homography":
@@ -186,6 +187,7 @@ class RANSAC(Module):
         Returns:
             - Estimated model, shape of :math:`(1, 3, 3)`.
             - The inlier/outlier mask, shape of :math:`(1, N)`, where N is number of input correspondences.
+
         """
         self.validate_inputs(kp1, kp2, weights)
         best_score_total: float = float(self.minimal_sample_size)

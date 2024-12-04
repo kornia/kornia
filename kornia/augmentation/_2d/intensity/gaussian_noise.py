@@ -27,6 +27,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 2, 2)
@@ -39,6 +40,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         >>> aug = RandomGaussianNoise(mean=0., std=1., p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

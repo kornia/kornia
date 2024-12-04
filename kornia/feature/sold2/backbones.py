@@ -31,6 +31,7 @@ class HourglassBackbone(Module):
         num_stacks: number of hourglass modules stacked together.
         num_blocks: number of layers in each residual block.
         num_classes: number of heads for the output of a hourglass module.
+
     """
 
     def __init__(
@@ -257,8 +258,10 @@ class SuperpointDecoder(Module):
 
     Args:
         input_feat_dim: channel size of the input features.
+
     Returns:
         the junction heatmap, with shape (B, H, W).
+
     """
 
     def __init__(self, input_feat_dim: int = 128, grid_size: int = 8) -> None:
@@ -286,8 +289,10 @@ class PixelShuffleDecoder(Module):
         input_feat_dim: channel size of the input features.
         num_upsample: how many upsamples are performed.
         output_channel: number of output channels.
+
     Returns:
         the (B, 1, H, W) line heatmap.
+
     """
 
     def __init__(self, input_feat_dim: int = 128, num_upsample: int = 2, output_channel: int = 2) -> None:
@@ -350,8 +355,10 @@ class SuperpointDescriptor(Module):
 
     Args:
         input_feat_dim: channel size of the input features.
+
     Returns:
         the semi-dense descriptors with shape (B, 128, H/4, W/4).
+
     """
 
     def __init__(self, input_feat_dim: int = 128) -> None:
@@ -375,11 +382,13 @@ class SOLD2Net(Module):
 
     Args:
         model_cfg: the configuration as a Dict.
+
     Returns:
         a Dict with the following values:
             junctions: heatmap of junctions.
             heatmap: line heatmap.
             descriptors: semi-dense descriptors.
+
     """
 
     def __init__(self, model_cfg: Dict[str, Any]) -> None:

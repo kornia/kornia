@@ -9,6 +9,7 @@ class Rescale(Module):
 
     Args:
         factor: The scaling factor. Could be a float or a 0-d tensor.
+
     """
 
     def __init__(self, factor: Union[float, Tensor]) -> None:

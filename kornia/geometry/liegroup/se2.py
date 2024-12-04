@@ -50,6 +50,7 @@ class Se2(Module):
         tensor([1.+0.j], requires_grad=True)
         translation: Parameter containing:
         tensor([[1., 1.]], requires_grad=True)
+
     """
 
     def __init__(self, rotation: So2, translation: Vector2 | Tensor) -> None:
@@ -70,6 +71,7 @@ class Se2(Module):
             tensor([1.+0.j], requires_grad=True)
             translation: Parameter containing:
             tensor([[1., 1.]], requires_grad=True)
+
         """
         super().__init__()
         KORNIA_CHECK_TYPE(rotation, So2)
@@ -112,6 +114,7 @@ class Se2(Module):
 
         Return:
             The resulting Se2 transformation.
+
         """
         so2 = self.so2
         t = self.t
@@ -127,12 +130,12 @@ class Se2(Module):
 
     @property
     def so2(self) -> So2:
-        """Return the underlying rotation(So2)."""
+        """Return the underlying `rotation(So2)`."""
         return self._rotation
 
     @property
     def r(self) -> So2:
-        """Return the underlying rotation(So2)."""
+        """Return the underlying `rotation(So2)`."""
         return self._rotation
 
     @property
@@ -142,7 +145,7 @@ class Se2(Module):
 
     @property
     def rotation(self) -> So2:
-        """Return the underlying rotation(So2)."""
+        """Return the underlying `rotation(So2)`."""
         return self._rotation
 
     @property
@@ -166,6 +169,7 @@ class Se2(Module):
             >>> s.t
             Parameter containing:
             tensor([[0.3818, 1.3012]], requires_grad=True)
+
         """
         check_v_shape(v)
         theta = v[..., 2]
@@ -187,6 +191,7 @@ class Se2(Module):
             >>> s = Se2.exp(v).log()
             >>> s
             tensor([[1.0000, 1.0000, 1.0000]], grad_fn=<StackBackward0>)
+
         """
         theta = self.so2.log()
         half_theta = 0.5 * theta
@@ -212,6 +217,7 @@ class Se2(Module):
             >>> So2.hat(theta)
             tensor([[0.0000, 1.5707],
                     [1.5707, 0.0000]])
+
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         check_v_shape(v)
@@ -235,6 +241,7 @@ class Se2(Module):
             >>> omega_hat = Se2.hat(v)
             >>> Se2.vee(omega_hat)
             tensor([1., 1., 1.])
+
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         check_se2_omega_shape(omega)
@@ -257,6 +264,7 @@ class Se2(Module):
             >>> s.t
             x: tensor([0.])
             y: tensor([0.])
+
         """
         t: Tensor = tensor([0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
@@ -273,6 +281,7 @@ class Se2(Module):
             tensor([[[1., -0., 1.],
                      [0., 1., 1.],
                      [0., 0., 1.]]], grad_fn=<CopySlices>)
+
         """
         rt = concatenate((self.r.matrix(), self.t.data[..., None]), -1)
         rt_3x3 = pad(rt, (0, 0, 0, 1))  # add last row zeros
@@ -295,6 +304,7 @@ class Se2(Module):
             Parameter containing:
             tensor([[0., 0.],
                     [0., 0.]], requires_grad=True)
+
         """
         # KORNIA_CHECK_SHAPE(matrix, ["B", "3", "3"])  # FIXME: resolve shape bugs. @edgarriba
         r = So2.from_matrix(matrix[..., :2, :2])
@@ -313,6 +323,7 @@ class Se2(Module):
             >>> s_inv.t
             Parameter containing:
             tensor([[-1., -1.]], requires_grad=True)
+
         """
         r_inv: So2 = self.r.inverse()
         _t = -1 * self.t
@@ -331,6 +342,7 @@ class Se2(Module):
         Example:
             >>> s = Se2.random()
             >>> s = Se2.random(batch_size=3)
+
         """
         r = So2.random(batch_size, device, dtype)
         shape: tuple[int, ...]
@@ -348,6 +360,7 @@ class Se2(Module):
         Args:
             x: the x-axis translation.
             y: the y-axis translation.
+
         """
         KORNIA_CHECK(x.shape == y.shape)
         KORNIA_CHECK_SAME_DEVICES([x, y])
@@ -361,6 +374,7 @@ class Se2(Module):
 
         Args:
             x: the x-axis translation.
+
         """
         zs = zeros_like(x)
         return cls.trans(x, zs)
@@ -371,6 +385,7 @@ class Se2(Module):
 
         Args:
             y: the y-axis translation.
+
         """
         zs = zeros_like(y)
         return cls.trans(zs, y)
@@ -384,6 +399,7 @@ class Se2(Module):
             tensor([[1., -0., 0.],
                     [0., 1., -0.],
                     [0., 0., 1.]], grad_fn=<CopySlices>)
+
         """
         rt = self.matrix()
         rt[..., 0:2, 2] = stack((self.t.data[..., 1], -self.t.data[..., 0]), -1)

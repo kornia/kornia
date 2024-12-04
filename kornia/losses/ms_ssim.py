@@ -52,6 +52,7 @@ class MS_SSIMLoss(nn.Module):
         >>> input2 = torch.rand(1, 3, 5, 5)
         >>> criterion = kornia.losses.MS_SSIMLoss()
         >>> loss = criterion(input1, input2)
+
     """
 
     def __init__(
@@ -95,6 +96,7 @@ class MS_SSIMLoss(nn.Module):
 
         Returns:
             1D kernel (size).
+
         """
         coords = torch.arange(size, device=device, dtype=dtype)
         coords -= size // 2
@@ -113,6 +115,7 @@ class MS_SSIMLoss(nn.Module):
 
         Returns:
             2D kernel (size x size).
+
         """
         gaussian_vec = self._fspecial_gauss_1d(size, sigma, device, dtype)
         return torch.outer(gaussian_vec, gaussian_vec)
@@ -126,6 +129,7 @@ class MS_SSIMLoss(nn.Module):
 
         Returns:
             Estimated MS-SSIM_L1 loss.
+
         """
         if not isinstance(img1, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(img1)}")

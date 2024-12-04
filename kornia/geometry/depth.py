@@ -52,6 +52,7 @@ def unproject_meshgrid(
 
     Return:
         tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
+
     """
     KORNIA_CHECK_SHAPE(camera_matrix, ["3", "3"])
 
@@ -97,6 +98,7 @@ def depth_to_3d_v2(
         >>> K = torch.eye(3)
         >>> depth_to_3d_v2(depth, K).shape
         torch.Size([4, 4, 3])
+
     """
     KORNIA_CHECK_SHAPE(depth, ["*", "H", "W"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
@@ -142,6 +144,7 @@ def depth_to_3d(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = F
         >>> K = torch.eye(3)[None]
         >>> depth_to_3d(depth, K).shape
         torch.Size([1, 3, 4, 4])
+
     """
     KORNIA_CHECK_IS_TENSOR(depth)
     KORNIA_CHECK_IS_TENSOR(camera_matrix)
@@ -182,6 +185,7 @@ def depth_to_normals(depth: Tensor, camera_matrix: Tensor, normalize_points: boo
         >>> K = torch.eye(3)[None]
         >>> depth_to_normals(depth, K).shape
         torch.Size([1, 3, 4, 4])
+
     """
     KORNIA_CHECK_IS_TENSOR(depth)
     KORNIA_CHECK_IS_TENSOR(camera_matrix)
@@ -214,6 +218,7 @@ def depth_from_plane_equation(
 
     Returns:
         Tensor: Computed depth values at the given pixels, shape (B, N).
+
     """
     KORNIA_CHECK_SHAPE(plane_normals, ["B", "3"])
     KORNIA_CHECK_SHAPE(plane_offsets, ["B", "1"])
@@ -257,6 +262,7 @@ def warp_frame_depth(
 
     Return:
         the warped tensor in the source frame with shape :math:`(B,3,H,W)`.
+
     """
     KORNIA_CHECK_SHAPE(image_src, ["B", "D", "H", "W"])
     KORNIA_CHECK_SHAPE(depth_dst, ["B", "1", "H", "W"])
@@ -298,6 +304,7 @@ class DepthWarper(Module):
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
+
     """
 
     def __init__(
@@ -441,6 +448,7 @@ class DepthWarper(Module):
             >>> depth_src = torch.ones(1, 1, 32, 32)  # Nx1xHxW
             >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
             >>> image_src = warper(depth_src, image_dst)  # NxCxHxW
+
         """
         return kornia_ops.map_coordinates(
             patch_dst,
@@ -474,6 +482,7 @@ def depth_warp(
         >>> depth_src = torch.ones(1, 1, 32, 32)  # Nx1xHxW
         >>> image_dst = torch.rand(1, 3, 32, 32)  # NxCxHxW
         >>> image_src = depth_warp(pinhole_dst, pinhole_src, depth_src, image_dst, 32, 32)  # NxCxHxW
+
     """
     warper = DepthWarper(pinhole_dst, height, width, align_corners=align_corners)
     warper.compute_projection_matrix(pinhole_src)
@@ -497,6 +506,7 @@ def depth_from_disparity(disparity: Tensor, baseline: float | Tensor, focal: flo
         >>> focal = torch.rand(1)
         >>> depth_from_disparity(disparity, baseline, focal).shape
         torch.Size([4, 1, 4, 4])
+
     """
     KORNIA_CHECK_IS_TENSOR(disparity, f"Input disparity type is not a Tensor. Got {type(disparity)}.")
     KORNIA_CHECK_SHAPE(disparity, ["*", "H", "W"])

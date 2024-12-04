@@ -51,6 +51,7 @@ class RandAugment(PolicyAugmentBase):
         >>> aug = K.AugmentationSequential(RandAugment(n=2, m=10))
         >>> aug(in_tensor).shape
         torch.Size([5, 3, 30, 30])
+
     """
 
     def __init__(

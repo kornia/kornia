@@ -314,6 +314,7 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
         ('231', 'ffffff')
         >>> rgb2short('0DADD6')  # vimeo logo
         ('38', '00afd7')
+
     """
     rgb = _strip_hash(rgb)
     incs = (0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF)
@@ -347,6 +348,7 @@ def image_to_string(image: Tensor, max_width: int = 256) -> str:
     Args:
         image: an RGB image with shape :math:`3HW`.
         max_width: maximum width of the input image.
+
     """
     KORNIA_CHECK_IS_IMAGE(image, None, raises=True)
     KORNIA_CHECK_SHAPE(image, ["C", "H", "W"])
@@ -381,6 +383,7 @@ def print_image(image: Union[str, Tensor], max_width: int = 96) -> None:
 
     Note:
         Need to use `print_image(...)`.
+
     """
     if isinstance(image, str):
         img = kornia.io.load_image(image, ImageLoadType.RGB8)

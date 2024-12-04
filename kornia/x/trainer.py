@@ -58,6 +58,7 @@ class Trainer:
     .. seealso::
         Learn how to use the API in our documentation
         `here <https://kornia.readthedocs.io/en/latest/get-started/training.html>`_.
+
     """
 
     def __init__(

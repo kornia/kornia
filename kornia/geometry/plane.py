@@ -113,6 +113,7 @@ def fit_plane(points: Vector3) -> Hyperplane:
 
     Return:
         The computed hyperplane object.
+
     """
     # TODO: fix to support more type check here
     # KORNIA_CHECK_SHAPE(points, ["N", "D"])

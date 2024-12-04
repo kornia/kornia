@@ -49,6 +49,7 @@ class RandomGrayscale(IntensityAugmentationBase2D):
         >>> aug = RandomGrayscale(p=1.0)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

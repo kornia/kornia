@@ -30,6 +30,7 @@ def rgb_to_yuv(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_yuv(input)  # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -72,6 +73,7 @@ def rgb_to_yuv420(image: Tensor) -> tuple[Tensor, Tensor]:
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
         >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x2x2x3)
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -113,6 +115,7 @@ def rgb_to_yuv422(image: Tensor) -> tuple[Tensor, Tensor]:
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
         >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x1x4x3)
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -147,6 +150,7 @@ def yuv_to_rgb(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = yuv_to_rgb(input)  # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -190,6 +194,7 @@ def yuv420_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
         >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x6
+
     """
     if not isinstance(imagey, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(imagey)}")
@@ -249,6 +254,7 @@ def yuv422_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
         >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x5
+
     """
     if not isinstance(imagey, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(imagey)}")
@@ -299,6 +305,7 @@ class RgbToYuv(Module):
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -333,6 +340,7 @@ class RgbToYuv420(Module):
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
+
     """
 
     # TODO: Handle multiple inputs and outputs models later
@@ -367,6 +375,7 @@ class RgbToYuv422(Module):
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
+
     """
 
     # TODO: Handle multiple inputs and outputs models later
@@ -397,6 +406,7 @@ class YuvToRgb(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = YuvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -431,6 +441,7 @@ class Yuv420ToRgb(Module):
         >>> inputuv = torch.rand(2, 2, 2, 3)
         >>> rgb = Yuv420ToRgb()
         >>> output = rgb(inputy, inputuv)  # 2x3x4x6
+
     """
 
     # TODO: Handle multiple inputs and outputs models later
@@ -465,6 +476,7 @@ class Yuv422ToRgb(Module):
         >>> inputuv = torch.rand(2, 2, 4, 3)
         >>> rgb = Yuv422ToRgb()
         >>> output = rgb(inputy, inputuv)  # 2x3x4x6
+
     """
 
     # TODO: Handle multiple inputs and outputs models later

@@ -31,12 +31,12 @@ class Normalize(IntensityAugmentationBase2D):
         This function internally uses :func:`kornia.enhance.normalize`.
 
     Examples:
-
         >>> norm = Normalize(mean=torch.zeros(4), std=torch.ones(4))
         >>> x = torch.rand(1, 4, 3, 3)
         >>> out = norm(x)
         >>> out.shape
         torch.Size([1, 4, 3, 3])
+
     """
 
     def __init__(

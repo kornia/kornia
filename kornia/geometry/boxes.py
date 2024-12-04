@@ -40,6 +40,7 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
         boxes: 2D quadrilaterals or 3D hexahedrons in kornia format.
         M: the transformation matrix of shape :math:`(3, 3)` or :math:`(B, 3, 3)` for 2D and :math:`(4, 4)` or
             :math:`(B, 4, 4)` for 3D hexahedron.
+
     """
     M = M if M.is_floating_point() else M.float()
 
@@ -184,6 +185,7 @@ class Boxes:
         4 vertices coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of
         a box is defined as ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
         `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
+
     """
 
     def __init__(
@@ -242,6 +244,7 @@ class Boxes:
             >>> boxes = Boxes.from_tensor(boxes_xyxy)
             >>> boxes.get_boxes_shape()
             (tensor([[1., 1.]]), tensor([[1., 2.]]))
+
         """
         boxes_xywh = cast(torch.Tensor, self.to_tensor("xywh", as_padded_sequence=True))
         widths, heights = boxes_xywh[..., 2], boxes_xywh[..., 3]
@@ -256,6 +259,7 @@ class Boxes:
         Args:
             boxes: 2D boxes.
             inplace: do transform in-place and return self.
+
         """
         data = torch.cat([self._data, boxes.data], dim=1)
         if inplace:
@@ -291,6 +295,7 @@ class Boxes:
 
         Args:
             padding_size: (B, 4)
+
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
@@ -303,6 +308,7 @@ class Boxes:
 
         Args:
             padding_size: (B, 4)
+
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
@@ -316,7 +322,6 @@ class Boxes:
         botright: Optional[Tensor | tuple[int, int]] = None,
         inplace: bool = False,
     ) -> Boxes:
-        """"""
         if not (isinstance(topleft, Tensor) and isinstance(botright, Tensor)):
             raise NotImplementedError
         if inplace:
@@ -450,6 +455,7 @@ class Boxes:
                      [7., 1.],
                      [7., 3.],
                      [5., 3.]]])
+
         """
         quadrilaterals: torch.Tensor | list[torch.Tensor]
         if isinstance(boxes, torch.Tensor):
@@ -492,6 +498,7 @@ class Boxes:
             >>> boxes_xyxy = torch.as_tensor([[0, 3, 1, 4], [5, 1, 8, 4]])
             >>> boxes = Boxes.from_tensor(boxes_xyxy)
             >>> assert (boxes_xyxy == boxes.to_tensor(mode='xyxy')).all()
+
         """
         batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
 
@@ -556,6 +563,7 @@ class Boxes:
                      [0., 1., 1., 1., 1.],
                      [0., 1., 1., 1., 1.],
                      [0., 0., 0., 0., 0.]]])
+
         """
         if self._data.requires_grad:
             raise RuntimeError(
@@ -591,6 +599,7 @@ class Boxes:
 
         Returns:
             The transformed boxes.
+
         """
         if not 2 <= M.ndim <= 3 or M.shape[-2:] != (3, 3):
             raise ValueError(f"The transformation matrix shape must be (3, 3) or (B, 3, 3). Got {M.shape}.")
@@ -618,6 +627,7 @@ class Boxes:
 
         Returns:
             The transformed boxes.
+
         """
         if method == "fast":
             raise NotImplementedError
@@ -719,6 +729,7 @@ class Boxes3D:
         Coordinates must be in ``x, y, z`` order. The height, width and depth of a box is defined as
         ``width = xmax - xmin + 1``, ``height = ymax - ymin + 1`` and ``depth = zmax - zmin + 1``. Examples of
         `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
+
     """
 
     def __init__(
@@ -770,6 +781,7 @@ class Boxes3D:
             >>> boxes3d = Boxes3D.from_tensor(boxes_xyzxyz)
             >>> boxes3d.get_boxes_shape()
             (tensor([30., 60.]), tensor([20., 50.]), tensor([10., 40.]))
+
         """
         boxes_xyzwhd = self.to_tensor(mode="xyzwhd")
         widths, heights, depths = boxes_xyzwhd[..., 3], boxes_xyzwhd[..., 4], boxes_xyzwhd[..., 5]
@@ -817,6 +829,7 @@ class Boxes3D:
                      [7., 1., 8.],
                      [7., 3., 8.],
                      [5., 3., 8.]]])
+
         """
         if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 6):
             raise ValueError(f"BBox shape must be (N, 6) or (B, N, 6). Got {boxes.shape}.")
@@ -887,6 +900,7 @@ class Boxes3D:
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
             >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz, mode='xyzxyz')
             >>> assert (boxes.to_tensor(mode='xyzxyz') == boxes_xyzxyz).all()
+
         """
         if self._data.requires_grad:
             raise RuntimeError(
@@ -979,6 +993,7 @@ class Boxes3D:
                       [0., 0., 0., 0., 0.],
                       [0., 0., 0., 0., 0.],
                       [0., 0., 0., 0., 0.]]]])
+
         """
         if self._data.requires_grad:
             raise RuntimeError(
@@ -1021,6 +1036,7 @@ class Boxes3D:
 
         Returns:
             The transformed boxes.
+
         """
         if not 2 <= M.ndim <= 3 or M.shape[-2:] != (4, 4):
             raise ValueError(f"The transformation matrix shape must be (4, 4) or (B, 4, 4). Got {M.shape}.")

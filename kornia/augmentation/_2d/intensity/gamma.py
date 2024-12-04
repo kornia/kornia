@@ -49,6 +49,7 @@ class RandomGamma(IntensityAugmentationBase2D):
         >>> aug = RandomGamma((0.8,1.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

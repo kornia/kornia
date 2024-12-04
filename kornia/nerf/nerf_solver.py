@@ -26,6 +26,7 @@ class NerfSolver:
     Args:
         device: device for class tensors: Union[str, Device]
         dtype: type for all floating point calculations: torch.dtype
+
     """
 
     def __init__(self, device: torch.device, dtype: torch.dtype) -> None:
@@ -87,6 +88,7 @@ class NerfSolver:
             irregular_ray_sampling: Whether to sample ray points irregularly.
             log_space: Whether frequency sampling should be log spaced.
             lr: Learning rate.
+
         """
         self._cameras = cameras
         self._min_depth = min_depth
@@ -179,6 +181,7 @@ class NerfSolver:
 
         Returns:
             Average psnr over all epoch rays.
+
         """
         KORNIA_CHECK(self._nerf_model is not None, "The model should be a NeRF model.")
         KORNIA_CHECK(self._nerf_optimizer is not None, "The optimizer should be an Adam optimizer.")
@@ -226,6 +229,7 @@ class NerfSolver:
 
         Args:
             num_epochs: number of epochs to run. Default: 1.
+
         """
         for i_epoch in range(num_epochs):
             # train one epoch

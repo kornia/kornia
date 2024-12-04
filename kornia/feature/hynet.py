@@ -33,6 +33,7 @@ class FilterResponseNorm2d(Module):
     Shape:
         - Input: :math:`(B, \text{num_features}, H, W)`
         - Output: :math:`(B, \text{num_features}, H, W)`
+
     """
 
     def __init__(
@@ -99,6 +100,7 @@ class TLU(Module):
     Shape:
         - Input: :math:`(B, \text{num_features}, H, W)`
         - Output: :math:`(B, \text{num_features}, H, W)`
+
     """
 
     def __init__(self, num_features: int) -> None:
@@ -145,6 +147,7 @@ class HyNet(Module):
         >>> input = torch.rand(16, 1, 32, 32)
         >>> hynet = HyNet()
         >>> descs = hynet(input) # 16x128
+
     """
 
     patch_size = 32

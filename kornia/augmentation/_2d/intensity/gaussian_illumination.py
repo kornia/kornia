@@ -57,6 +57,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         >>> aug = RandomGaussianIllumination(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

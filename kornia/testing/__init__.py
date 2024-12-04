@@ -164,6 +164,7 @@ class BaseTester(ABC):
             low_tolerance:
                 This parameter allows to reduce tolerance. Half the decimal places.
                 Example, 1e-4 -> 1e-2 or 1e-6 -> 1e-3
+
         """
         if hasattr(actual, "data"):
             actual = actual.data

@@ -55,6 +55,7 @@ class RTDETRDetectorBuilder:
         Returns:
             ObjectDetector
                 An object detector instance initialized with the specified model, preprocessor, and post-processor.
+
         """
         if model_name is not None and config is not None:
             raise ValueError("Either `model_name` or `config` should be `None`.")

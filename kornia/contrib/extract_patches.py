@@ -61,6 +61,7 @@ def compute_padding(
     .. note::
         This function will be implicitly used in :func:`extract_tensor_patches` and :func:`combine_tensor_patches` if
         `allow_auto_(un)padding` is set to True.
+
     """
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
@@ -159,6 +160,7 @@ class ExtractTensorPatches(Module):
         >>> patches[:, -1]
         tensor([[[[3., 4., 5.],
                   [6., 7., 8.]]]])
+
     """
 
     def __init__(
@@ -249,6 +251,7 @@ class CombineTensorPatches(Module):
 
     .. note::
         This function is supposed to be used in conjunction with :class:`ExtractTensorPatches`.
+
     """
 
     def __init__(
@@ -326,8 +329,8 @@ def combine_tensor_patches(
 
     .. note::
         This function is supposed to be used in conjunction with :func:`extract_tensor_patches`.
-    """
 
+    """
     if patches.ndim != 5:
         raise ValueError(f"Invalid input shape, we expect BxNxCxHxW. Got: {patches.shape}")
 
@@ -442,6 +445,7 @@ def extract_tensor_patches(
         >>> patches[:, -1]
         tensor([[[[3., 4., 5.],
                   [6., 7., 8.]]]])
+
     """
     if not torch.is_tensor(input):
         raise TypeError(f"Input input type is not a Tensor. Got {type(input)}")

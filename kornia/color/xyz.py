@@ -22,6 +22,7 @@ def rgb_to_xyz(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_xyz(input)  # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -54,6 +55,7 @@ def xyz_to_rgb(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = xyz_to_rgb(input)  # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -93,6 +95,7 @@ class RgbToXyz(Module):
 
     Reference:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -119,6 +122,7 @@ class XyzToRgb(Module):
 
     Reference:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]

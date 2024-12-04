@@ -74,6 +74,7 @@ def adjust_saturation_with_gray_subtraction(image: Tensor, factor: Union[float, 
         >>> y = torch.tensor([1., 2.])
         >>> adjust_saturation_with_gray_subtraction(x, y).shape
         torch.Size([2, 3, 3, 3])
+
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
@@ -131,6 +132,7 @@ def adjust_saturation(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
         >>> y = torch.tensor([1., 2.])
         >>> adjust_saturation(x, y).shape
         torch.Size([2, 3, 3, 3])
+
     """
     # convert the rgb image to hsv
     x_hsv: Tensor = rgb_to_hsv(image)
@@ -206,6 +208,7 @@ def adjust_hue(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
         >>> y = torch.ones(2) * 3.141516
         >>> adjust_hue(x, y).shape
         torch.Size([2, 3, 3, 3])
+
     """
     # convert the rgb image to hsv
     x_hsv: Tensor = rgb_to_hsv(image)
@@ -250,6 +253,7 @@ def adjust_gamma(input: Tensor, gamma: Union[float, Tensor], gain: Union[float, 
         >>> y2 = torch.ones(2) * 2.0
         >>> adjust_gamma(x, y1, y2).shape
         torch.Size([2, 5, 3, 3])
+
     """
     if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
@@ -331,6 +335,7 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bo
         >>> y = torch.tensor([0.65, 0.50])
         >>> adjust_contrast(x, y).shape
         torch.Size([2, 5, 3, 3])
+
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
@@ -385,6 +390,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
         >>> y = torch.tensor([0.65, 0.50])
         >>> adjust_contrast_with_mean_subtraction(x, y).shape
         torch.Size([2, 5, 3, 3])
+
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
@@ -455,6 +461,7 @@ def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: 
         >>> y = torch.tensor([0.25, 0.50])
         >>> adjust_brightness(x, y).shape
         torch.Size([2, 5, 3, 3])
+
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
@@ -506,6 +513,7 @@ def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], 
         >>> y = torch.tensor([0.25, 0.50])
         >>> adjust_brightness_accumulative(x, y).shape
         torch.Size([2, 5, 3, 3])
+
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
@@ -554,6 +562,7 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
         >>> adjust_sigmoid(x, gain=0)
         tensor([[[[0.5000, 0.5000],
                   [0.5000, 0.5000]]]])
+
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
@@ -586,6 +595,7 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
         >>> adjust_log(x, inv=True)
         tensor([[[[0., 0.],
                   [0., 0.]]]])
+
     """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
@@ -613,6 +623,7 @@ def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
 
     Returns:
         Solarized images.
+
     """
     if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
@@ -666,6 +677,7 @@ def solarize(
         >>> additions = torch.tensor([-0.25, 0.25])
         >>> solarize(x, thresholds, additions).shape
         torch.Size([2, 4, 3, 3])
+
     """
     if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
@@ -725,6 +737,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
         >>> bits = torch.tensor([4, 2])
         >>> posterize(x, bits).shape
         torch.Size([2, 6, 3, 3])
+
     """
     if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
@@ -808,6 +821,7 @@ def sharpness(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
         >>> x = torch.rand(1, 1, 5, 5)
         >>> sharpness(x, 0.5).shape
         torch.Size([1, 1, 5, 5])
+
     """
     if not isinstance(factor, Tensor):
         factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
@@ -851,6 +865,7 @@ def _blend_one(input1: Tensor, input2: Tensor, factor: Tensor) -> Tensor:
 
     Returns:
         : image tensor with the batch in the zero position.
+
     """
     if not isinstance(input1, Tensor):
         raise AssertionError(f"`input1` must be a tensor. Got {input1}.")
@@ -891,6 +906,7 @@ def _scale_channel(im: Tensor) -> Tensor:
 
     Returns:
         image tensor with the batch in the zero position.
+
     """
     min_ = im.min()
     max_ = im.max()
@@ -943,6 +959,7 @@ def equalize(input: Tensor) -> Tensor:
         >>> x = torch.rand(1, 2, 3, 3)
         >>> equalize(x).shape
         torch.Size([1, 2, 3, 3])
+
     """
     res = []
     for image in input:
@@ -965,6 +982,7 @@ def equalize3d(input: Tensor) -> Tensor:
 
     Returns:
         Equalized volume with shape :math:`(B, C, D, H, W)`.
+
     """
     res = []
     for volume in input:
@@ -998,6 +1016,7 @@ def invert(image: Tensor, max_val: Optional[Tensor] = None) -> Tensor:
         >>> img = torch.rand(1, 3, 4, 4)
         >>> invert(img, torch.as_tensor([[[[1.]]]])).shape
         torch.Size([1, 3, 4, 4])
+
     """
     if not isinstance(image, Tensor):
         raise AssertionError(f"Input is not a Tensor. Got: {type(input)}")
@@ -1046,6 +1065,7 @@ class AdjustSaturation(Module):
         >>> out = AdjustSaturation(y)(x)
         >>> torch.nn.functional.mse_loss(x, out)
         tensor(0.)
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -1096,6 +1116,7 @@ class AdjustSaturationWithGraySubtraction(Module):
         >>> out = AdjustSaturationWithGraySubtraction(y)(x)
         >>> torch.nn.functional.mse_loss(x, out)
         tensor(0.)
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -1146,6 +1167,7 @@ class AdjustHue(Module):
         >>> y = torch.ones(2) * 3.141516
         >>> AdjustHue(y)(x).shape
         torch.Size([2, 3, 3, 3])
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -1186,6 +1208,7 @@ class AdjustGamma(Module):
         >>> y2 = torch.ones(2) * 2.0
         >>> AdjustGamma(y1, y2)(x).shape
         torch.Size([2, 5, 3, 3])
+
     """
 
     def __init__(self, gamma: Union[float, Tensor], gain: Union[float, Tensor] = 1.0) -> None:
@@ -1224,6 +1247,7 @@ class AdjustContrast(Module):
         >>> y = torch.ones(2)
         >>> AdjustContrast(y)(x).shape
         torch.Size([2, 5, 3, 3])
+
     """
 
     def __init__(self, contrast_factor: Union[float, Tensor]) -> None:
@@ -1262,6 +1286,7 @@ class AdjustContrastWithMeanSubtraction(Module):
         >>> y = torch.ones(2)
         >>> AdjustContrastWithMeanSubtraction(y)(x).shape
         torch.Size([2, 5, 3, 3])
+
     """
 
     def __init__(self, contrast_factor: Union[float, Tensor]) -> None:
@@ -1298,6 +1323,7 @@ class AdjustBrightness(Module):
         >>> y = torch.ones(2)
         >>> AdjustBrightness(y)(x).shape
         torch.Size([2, 5, 3, 3])
+
     """
 
     def __init__(self, brightness_factor: Union[float, Tensor]) -> None:
@@ -1328,6 +1354,7 @@ class AdjustSigmoid(Module):
         >>> AdjustSigmoid(gain=0)(x)
         tensor([[[[0.5000, 0.5000],
                   [0.5000, 0.5000]]]])
+
     """
 
     def __init__(self, cutoff: float = 0.5, gain: float = 10, inv: bool = False) -> None:
@@ -1359,6 +1386,7 @@ class AdjustLog(Module):
         >>> AdjustLog(inv=True)(x)
         tensor([[[[0., 0.],
                   [0., 0.]]]])
+
     """
 
     def __init__(self, gain: float = 1, inv: bool = False, clip_output: bool = True) -> None:
@@ -1397,6 +1425,7 @@ class AdjustBrightnessAccumulative(Module):
         >>> y = torch.ones(2)
         >>> AdjustBrightnessAccumulative(y)(x).shape
         torch.Size([2, 5, 3, 3])
+
     """
 
     def __init__(self, brightness_factor: Union[float, Tensor]) -> None:
@@ -1427,6 +1456,7 @@ class Invert(Module):
         >>> img = torch.rand(1, 3, 4, 4)
         >>> Invert(torch.as_tensor([[[[1.]]]]))(img).shape
         torch.Size([1, 3, 4, 4])
+
     """
 
     def __init__(self, max_val: Optional[Tensor] = None) -> None:

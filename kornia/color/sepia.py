@@ -24,6 +24,7 @@ def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Te
                 [[1.2030]],
         <BLANKLINE>
                 [[0.9370]]])
+
     """
     if len(input.shape) < 3 or input.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
@@ -66,6 +67,7 @@ class Sepia(Module):
                 [[1.2030]],
         <BLANKLINE>
                 [[0.9370]]])
+
     """
 
     def __init__(self, rescale: bool = True, eps: float = 1e-6) -> None:

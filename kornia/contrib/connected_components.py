@@ -30,6 +30,7 @@ def connected_components(image: Tensor, num_iterations: int = 100) -> Tensor:
     Example:
         >>> img = torch.rand(2, 1, 4, 5)
         >>> img_labels = connected_components(img, num_iterations=100)
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input imagetype is not a Tensor. Got: {type(image)}")

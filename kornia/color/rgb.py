@@ -23,6 +23,7 @@ def rgb_to_bgr(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_bgr(input) # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -45,6 +46,7 @@ def bgr_to_rgb(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = bgr_to_rgb(input) # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -73,6 +75,7 @@ def rgb_to_rgba(image: Tensor, alpha_val: Union[float, Tensor]) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_rgba(input, 1.) # 2x4x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -110,6 +113,7 @@ def bgr_to_rgba(image: Tensor, alpha_val: Union[float, Tensor]) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = bgr_to_rgba(input, 1.) # 2x4x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -137,6 +141,7 @@ def rgba_to_rgb(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
         >>> output = rgba_to_rgb(input) # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -168,6 +173,7 @@ def rgba_to_bgr(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
         >>> output = rgba_to_bgr(input) # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -194,6 +200,7 @@ def rgb_to_linear_rgb(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_linear_rgb(input) # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -218,6 +225,7 @@ def linear_rgb_to_rgb(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = linear_rgb_to_rgb(input) # 2x3x4x5
+
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -245,6 +253,7 @@ def normals_to_rgb255(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = normals_to_rgb255(input) # 2x3x4x5
+
     """
     KORNIA_CHECK_IS_COLOR(image)
     rgb255 = (0.5 * (image + 1.0)).clip(0.0, 1.0) * 255
@@ -263,6 +272,7 @@ def rgb_to_rgb255(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_rgb255(input) # 2x3x4x5
+
     """
     KORNIA_CHECK_IS_COLOR(image)
     rgb255 = (image * 255).clip(0.0, 255.0)
@@ -281,6 +291,7 @@ def rgb255_to_rgb(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb255_to_rgb(input) # 2x3x4x5
+
     """
     KORNIA_CHECK_IS_COLOR(image)
     rgb = image / 255.0
@@ -299,6 +310,7 @@ def rgb255_to_normals(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb255_to_normals(input) # 2x3x4x5
+
     """
     KORNIA_CHECK_IS_COLOR(image)
     normals = normalize((image / 255.0) * 2.0 - 1.0, dim=-3, p=2.0)
@@ -321,6 +333,7 @@ class BgrToRgb(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = BgrToRgb()
         >>> output = rgb(input)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -346,6 +359,7 @@ class RgbToBgr(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> bgr = RgbToBgr()
         >>> output = bgr(input)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -377,6 +391,7 @@ class RgbToRgba(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgba = RgbToRgba(1.)
         >>> output = rgba(input)  # 2x4x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -412,6 +427,7 @@ class BgrToRgba(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgba = BgrToRgba(1.)
         >>> output = rgba(input)  # 2x4x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -441,6 +457,7 @@ class RgbaToRgb(Module):
         >>> input = torch.rand(2, 4, 4, 5)
         >>> rgba = RgbaToRgb()
         >>> output = rgba(input)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 4, -1, -1]
@@ -466,6 +483,7 @@ class RgbaToBgr(Module):
         >>> input = torch.rand(2, 4, 4, 5)
         >>> rgba = RgbaToBgr()
         >>> output = rgba(input)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 4, -1, -1]
@@ -499,6 +517,7 @@ class RgbToLinearRgb(Module):
         [2] https://www.cambridgeincolour.com/tutorials/gamma-correction.htm
 
         [3] https://en.wikipedia.org/wiki/SRGB
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -531,6 +550,7 @@ class LinearRgbToRgb(Module):
         [2] https://www.cambridgeincolour.com/tutorials/gamma-correction.htm
 
         [3] https://en.wikipedia.org/wiki/SRGB
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -554,6 +574,7 @@ class NormalsToRgb255(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = NormalsToRgb255()
         >>> output = rgb(input)  # 2x3x4x5
+
     """
 
     def forward(self, image: Tensor) -> Tensor:
@@ -574,6 +595,7 @@ class RgbToRgb255(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = RgbToRgb255()
         >>> output = rgb(input)  # 2x3x4x5
+
     """
 
     def forward(self, image: Tensor) -> Tensor:
@@ -594,6 +616,7 @@ class Rgb255ToRgb(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = Rgb255ToRgb()
         >>> output = rgb(input)  # 2x3x4x5
+
     """
 
     def forward(self, image: Tensor) -> Tensor:
@@ -614,6 +637,7 @@ class Rgb255ToNormals(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> normals = Rgb255ToNormals()
         >>> output = normals(input)  # 2x3x4x5
+
     """
 
     def forward(self, image: Tensor) -> Tensor:

@@ -55,6 +55,7 @@ class RandomVerticalFlip3D(GeometricAugmentationBase3D):
         >>> aug = RandomVerticalFlip3D(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:

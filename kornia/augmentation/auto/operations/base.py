@@ -23,6 +23,7 @@ class OperationBase(Module):
         temperature: temperature for RelaxedBernoulli distribution used during training.
         is_batch_operation: determine if to obtain the probability from `p` or `p_batch`.
             Set to True for most non-shape-persistent operations (e.g. cropping).
+
     """
 
     def __init__(

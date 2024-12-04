@@ -52,6 +52,7 @@ def canny(
         torch.Size([5, 1, 4, 4])
         >>> edges.shape
         torch.Size([5, 1, 4, 4])
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -168,6 +169,7 @@ class Canny(Module):
         torch.Size([5, 1, 4, 4])
         >>> edges.shape
         torch.Size([5, 1, 4, 4])
+
     """
 
     # TODO: Handle multiple inputs and outputs models later

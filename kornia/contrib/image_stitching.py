@@ -31,6 +31,7 @@ class ImageStitcher(Module):
             out = IS(img_left, img_right)
         # Show the result
         plt.imshow(K.tensor_to_image(out))
+
     """
 
     def __init__(self, matcher: Module, estimator: str = "ransac", blending_method: str = "naive") -> None:
@@ -49,6 +50,7 @@ class ImageStitcher(Module):
         Args:
             keypoints1: matched keypoint set from an image, shaped as :math:`(N, 2)`.
             keypoints2: matched keypoint set from the other image, shaped as :math:`(N, 2)`.
+
         """
         if self.estimator == "vanilla":
             homo = find_homography_dlt_iterated(

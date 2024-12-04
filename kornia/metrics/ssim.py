@@ -55,6 +55,7 @@ def ssim(
         >>> input1 = torch.rand(1, 4, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5)
         >>> ssim_map = ssim(input1, input2, 5)  # 1x4x5x5
+
     """
     if not isinstance(img1, torch.Tensor):
         raise TypeError(f"Input img1 type is not a torch.Tensor. Got {type(img1)}")
@@ -156,6 +157,7 @@ class SSIM(nn.Module):
         >>> input2 = torch.rand(1, 4, 5, 5)
         >>> ssim = SSIM(5)
         >>> ssim_map = ssim(input1, input2)  # 1x4x5x5
+
     """
 
     def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, padding: str = "same") -> None:

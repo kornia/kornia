@@ -46,6 +46,7 @@ class BoundingBox:
     Args:
         data: tuple of bounding box data. The length of the tuple depends on the data format.
         data_format: bounding box data format.
+
     """
 
     data: tuple[float, float, float, float]
@@ -60,6 +61,7 @@ class ObjectDetectorResult:
         class_id: class id of the detected object.
         confidence: confidence score of the detected object.
         bbox: bounding box of the detected object in xywh format.
+
     """
 
     class_id: int
@@ -76,6 +78,7 @@ def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFor
 
     Returns:
         list of :py:class:`ObjectDetectorResult`.
+
     """
     KORNIA_CHECK_SHAPE(detections, ["D", "6"])
 
@@ -113,6 +116,7 @@ class ObjectDetector(ModelBase):
         Returns:
             list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`, where :math:`D` is the
             number of detections in the given image, :math:`6` represents class id, score, and `xywh` bounding box.
+
         """
         images, images_sizes = self.pre_processor(images)
         logits, boxes = self.model(images)
@@ -148,6 +152,7 @@ class ObjectDetector(ModelBase):
             images: input tensor.
             detections: detection tensor.
             directory: directory to save the images.
+
         """
         outputs = self.visualize(images, detections)
         self._save_outputs(outputs, directory)
@@ -180,6 +185,7 @@ class ObjectDetector(ModelBase):
                 If to save the model or load it.
             additional_metadata:
                 Additional metadata to add to the ONNX model.
+
         """
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}_{image_size}.onnx"

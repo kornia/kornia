@@ -38,6 +38,7 @@ class EarlyStopping:
         trainer = ImageClassifierTrainer(
             callbacks={"on_epoch_end", early_stop}
         )
+
     """
 
     def __init__(
@@ -105,6 +106,7 @@ class ModelCheckpoint:
         trainer = ImageClassifierTrainer(...,
             callbacks={"on_checkpoint", model_checkpoint}
         )
+
     """
 
     def __init__(

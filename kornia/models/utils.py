@@ -17,22 +17,22 @@ class ResizePreProcessor(Module):
     """
 
     def __init__(self, height: int, width: int, interpolation_mode: str = "bilinear") -> None:
-        """
-        Args:
-            height: height of the resized image.
-            width: width of the resized image.
-            interpolation_mode: interpolation mode for image resizing. Supported values: ``nearest``, ``bilinear``,
-                ``bicubic``, ``area``, and ``nearest-exact``.
+        """Args:
+        height: height of the resized image.
+        width: width of the resized image.
+        interpolation_mode: interpolation mode for image resizing. Supported values: ``nearest``, ``bilinear``,
+            ``bicubic``, ``area``, and ``nearest-exact``.
+
         """
         super().__init__()
         self.size = (height, width)
         self.interpolation_mode = interpolation_mode
 
     def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Tuple[Tensor, Tensor]:
-        """
-        Returns:
-            resized_imgs: resized images in a batch.
-            original_sizes: the original image sizes of (height, width).
+        """Returns:
+        resized_imgs: resized images in a batch.
+        original_sizes: the original image sizes of (height, width).
+
         """
         # TODO: support other input formats e.g. file path, numpy
         resized_imgs: list[Tensor] = []
@@ -53,10 +53,10 @@ class ResizePostProcessor(Module):
         self.interpolation_mode = interpolation_mode
 
     def forward(self, imgs: Union[Tensor, List[Tensor]], original_sizes: Tensor) -> Union[Tensor, List[Tensor]]:
-        """
-        Returns:
-            resized_imgs: resized images in a batch.
-            original_sizes: the original image sizes of (height, width).
+        """Returns:
+        resized_imgs: resized images in a batch.
+        original_sizes: the original image sizes of (height, width).
+
         """
         # TODO: support other input formats e.g. file path, numpy
         resized_imgs: list[Tensor] = []

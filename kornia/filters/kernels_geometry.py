@@ -39,6 +39,7 @@ def get_motion_kernel2d(
         tensor([[[0.0000, 0.0000, 0.1667],
                  [0.0000, 0.3333, 0.0000],
                  [0.5000, 0.0000, 0.0000]]])
+
     """
     device, dtype = _extract_device_dtype(
         [angle if isinstance(angle, Tensor) else None, direction if isinstance(direction, Tensor) else None]
@@ -137,6 +138,7 @@ def get_motion_kernel3d(
                  [[0.0000, 0.1667, 0.0000],
                   [0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000]]]])
+
     """
     device, dtype = _extract_device_dtype(
         [angle if isinstance(angle, Tensor) else None, direction if isinstance(direction, Tensor) else None]

@@ -34,6 +34,7 @@ def _diamond_square_seed(
 
     Return:
         the generated image seed of size Bx1xHxW.
+
     """
     KORNIA_CHECK(width == 3 or height == 3, "Height or Width must be equal to 3.")
     # TODO(anguelos): can we avoid transposing and passing always fixed size. This will cause issues with onnx/jit
@@ -96,6 +97,7 @@ def _one_diamond_one_square(
 
     Return:
         A tensor on the same device as img with the same channels as img and width, height of 2^(N+1)+1.
+
     """
     KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])
     # TODO (anguelos) test multi channel and batch size > 1
@@ -162,6 +164,7 @@ def diamond_square(
 
     Returns:
         A tensor with shape :math:`(B,C,H,W)` containing the fractal image.
+
     """
     KORNIA_CHECK(len(output_size) == 4, "output_size must be (B,C,H,W)")
     if not isinstance(random_scale, Tensor):

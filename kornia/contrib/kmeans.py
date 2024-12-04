@@ -23,6 +23,7 @@ class KMeans:
         >>> kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, 0)
         >>> kmeans.fit(torch.rand((1000, 5)))
         >>> predictions = kmeans.predict(torch.rand((10, 5)))
+
     """
 
     def __init__(
@@ -75,6 +76,7 @@ class KMeans:
 
         Returns:
             2D Tensor with num_cluster rows
+
         """
         num_samples: int = len(X)
         perm = torch.randperm(num_samples, device=X.device)
@@ -91,6 +93,7 @@ class KMeans:
 
         Returns:
             2D tensor of shape N, C
+
         """
         # N*1*D
         A = data1[:, None, ...]
@@ -105,6 +108,7 @@ class KMeans:
 
         Args:
             X: 2D input tensor to be clustered
+
         """
         # X should have only 2 dimensions
         KORNIA_CHECK_SHAPE(X, ["N", "D"])
@@ -164,8 +168,8 @@ class KMeans:
 
         Returns:
             1D tensor containing cluster id assigned to each data point in x
-        """
 
+        """
         # x and cluster_centers should have same number of columns
         KORNIA_CHECK(
             x.shape[1] == self.cluster_centers.shape[1],

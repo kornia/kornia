@@ -42,6 +42,7 @@ def get_laf_descriptors(
 
     Returns:
         Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
+
     """
     KORNIA_CHECK_LAF(lafs)
     patch_descriptor = patch_descriptor.to(img)
@@ -71,6 +72,7 @@ class LAFDescriptor(Module):
             or :class:`~kornia.feature.HardNet`. Default: :class:`~kornia.feature.HardNet`.
         patch_size: patch size in pixels, which descriptor expects.
         grayscale_descriptor: ``True`` if patch_descriptor expects single-channel image.
+
     """
 
     def __init__(
@@ -103,6 +105,7 @@ class LAFDescriptor(Module):
 
         Returns:
             Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
+
         """
         return get_laf_descriptors(img, lafs, self.descriptor, self.patch_size, self.grayscale_descriptor)
 
@@ -114,6 +117,7 @@ class LocalFeature(Module):
         detector: the detection module.
         descriptor: the descriptor module.
         scaling_coef: multiplier for change default detector scale (e.g. it is too small for KeyNet by default)
+
     """
 
     def __init__(self, detector: Module, descriptor: LAFDescriptor, scaling_coef: float = 1.0) -> None:
@@ -125,8 +129,7 @@ class LocalFeature(Module):
         self.scaling_coef = scaling_coef
 
     def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor, Tensor]:
-        """
-        Args:
+        """Args:
             img: image to extract features with shape :math:`(B,C,H,W)`.
             mask: a mask with weights where to apply the response function.
                 The shape must be the same as the input image.
@@ -135,6 +138,7 @@ class LocalFeature(Module):
             - Detected local affine frames with shape :math:`(B,N,2,3)`.
             - Response function values for corresponding lafs with shape :math:`(B,N,1)`.
             - Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
+
         """
         lafs, responses = self.detector(img, mask)
         lafs = scale_laf(lafs, self.scaling_coef)
@@ -318,6 +322,7 @@ class LocalFeatureMatcher(Module):
         ...     GFTTAffNetHardNet(10), kornia.feature.DescriptorMatcher('snn', 0.8)
         ... )
         >>> out = gftt_hardnet_matcher(input)
+
     """
 
     def __init__(self, local_feature: Module, matcher: Module) -> None:
@@ -342,8 +347,7 @@ class LocalFeatureMatcher(Module):
         }
 
     def forward(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
-        """
-        Args:
+        """Args:
             data: dictionary containing the input data in the following format:
 
         Keyword Args:
@@ -359,6 +363,7 @@ class LocalFeatureMatcher(Module):
             - ``lafs0``, matching LAFs from image0 :math:`(1, NC, 2, 3)`.
             - ``lafs1``, matching LAFs from image1 :math:`(1, NC, 2, 3)`.
             - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
+
         """
         num_image_pairs: int = data["image0"].shape[0]
 
@@ -425,6 +430,7 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
     Args:
         feature_name: type of feature for matching, can be `disk` or `superpoint`.
         params: LightGlue params.
+
     """
 
     known_modes: ClassVar[List[str]] = [
@@ -457,8 +463,7 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         hw1: Optional[Tuple[int, int]] = None,
         hw2: Optional[Tuple[int, int]] = None,
     ) -> Tuple[Tensor, Tensor]:
-        """
-        Args:
+        """Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
@@ -468,6 +473,7 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2,
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+
         """
         if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
             return _no_match(desc1)

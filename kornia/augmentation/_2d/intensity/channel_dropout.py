@@ -53,6 +53,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         >>> aug = RandomChannelDropout(num_drop_channels=1, fill_value=0.0, p=1.0)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

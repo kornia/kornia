@@ -59,6 +59,7 @@ def elastic_transform2d(
         >>> alpha = torch.tensor([16., 32.], requires_grad=True)
         >>> image_hat = elastic_transform2d(image, noise, (3, 3), alpha=alpha)
         >>> image_hat.mean().backward()
+
     """
     KORNIA_CHECK_IS_TENSOR(image)
     KORNIA_CHECK_IS_TENSOR(noise)

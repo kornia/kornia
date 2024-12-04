@@ -56,6 +56,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
+
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")

@@ -51,6 +51,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
         >>> seq = RandomHorizontalFlip(p=1.0)
         >>> (seq(input) == seq(input, params=seq._params)).all()
         tensor(True)
+
     """
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:

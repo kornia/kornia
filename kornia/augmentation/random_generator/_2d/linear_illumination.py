@@ -24,6 +24,7 @@ class LinearIlluminationGenerator(RandomGeneratorBase):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+
     """
 
     def __init__(
@@ -42,7 +43,6 @@ class LinearIlluminationGenerator(RandomGeneratorBase):
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random gaussian illumination parameters."""
-
         gain = _range_bound(
             self.gain,
             "gain",
@@ -107,6 +107,7 @@ class LinearCornerIlluminationGenerator(RandomGeneratorBase):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+
     """
 
     def __init__(
@@ -125,7 +126,6 @@ class LinearCornerIlluminationGenerator(RandomGeneratorBase):
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random gaussian illumination parameters."""
-
         gain = _range_bound(
             self.gain,
             "gain",

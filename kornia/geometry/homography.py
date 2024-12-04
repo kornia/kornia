@@ -29,6 +29,7 @@ def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool =
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
+
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
 
@@ -61,6 +62,7 @@ def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: boo
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
+
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
     if pts1.size(-1) == 3:
@@ -99,6 +101,7 @@ def line_segment_transfer_error_one_way(ls1: Tensor, ls2: Tensor, H: Tensor, squ
 
     Returns:
         the computed distance with shape :math:`(B, N)`.
+
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(ls1, ["B", "N", "2", "2"])
@@ -135,6 +138,7 @@ def find_homography_dlt(
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
+
     """
     if points1.shape != points2.shape:
         raise AssertionError(points1.shape)
@@ -203,6 +207,7 @@ def find_homography_dlt_iterated(
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
+
     """
     H: Tensor = find_homography_dlt(points1, points2, weights)
     for _ in range(n_iter - 1):
@@ -223,6 +228,7 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
 
     Returns:
         Mask with the minimal sample is good for homography estimation:math:`(B, 3, 3)`.
+
     """
     if points1.shape != points2.shape:
         raise AssertionError(points1.shape)
@@ -259,6 +265,7 @@ def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
+
     """
     if len(ls1.shape) == 3:
         ls1 = ls1[None]
@@ -331,6 +338,7 @@ def find_homography_lines_dlt_iterated(
 
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
+
     """
     H: Tensor = find_homography_lines_dlt(ls1, ls2, weights)
     for _ in range(n_iter - 1):

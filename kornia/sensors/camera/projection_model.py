@@ -20,6 +20,7 @@ class Z1Projection:
             >>> Z1Projection().project(points)
             x: 0.3333333432674408
             y: 0.6666666865348816
+
         """
         xy = points.data[..., :2]
         z = points.z
@@ -42,6 +43,7 @@ class Z1Projection:
             x: tensor([3.])
             y: tensor([6.])
             z: tensor([3.])
+
         """
         if isinstance(depth, (float, int)):
             depth = Tensor([depth])

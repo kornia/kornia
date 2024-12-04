@@ -19,6 +19,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+
     """
 
     def inverse_transform(
@@ -65,6 +66,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
         Note:
             Convert "resample" arguments to "nearest" by default.
+
         """
         resample_method: Optional[Resample]
         if "resample" in flags:
@@ -221,6 +223,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             params: the corresponding parameters for an operation.
             flags: static parameters.
             transform: the inverse transformation matrix
+
         """
         output = input.clone()
         batch_prob = params["batch_prob"]
@@ -262,6 +265,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             params: the corresponding parameters for an operation.
                 If None, a new parameter suite will be generated.
             **kwargs: key-value pairs to override the parameters and flags.
+
         """
         input_shape = input.shape
         in_tensor = self.transform_tensor(input)

@@ -28,6 +28,7 @@ class ManyToManyAugmentationDispather(nn.Module):
         ...     )
         ... )
         >>> output = aug_list((input_1, mask_1), (input_2, mask_2))
+
     """
 
     def __init__(self, *augmentations: AugmentationSequential) -> None:
@@ -72,6 +73,7 @@ class ManyToOneAugmentationDispather(nn.Module):
         ...     )
         ... )
         >>> output = aug_list(input, mask)
+
     """
 
     def __init__(self, *augmentations: AugmentationSequential, strict: bool = True) -> None:

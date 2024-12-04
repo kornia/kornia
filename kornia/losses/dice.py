@@ -65,6 +65,7 @@ def dice_loss(
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
         >>> output = dice_loss(pred, target)
         >>> output.backward()
+
     """
     KORNIA_CHECK_IS_TENSOR(pred)
 
@@ -176,6 +177,7 @@ class DiceLoss(nn.Module):
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
         >>> output = criterion(pred, target)
         >>> output.backward()
+
     """
 
     def __init__(

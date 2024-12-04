@@ -22,6 +22,7 @@ class BasicSequentialBase(nn.Sequential):
 
     Args:
         *args : a list of kornia augmentation and image operation modules.
+
     """
 
     def __init__(self, *args: Module) -> None:
@@ -53,6 +54,7 @@ class BasicSequentialBase(nn.Sequential):
             AttributeError: If the target string references an invalid
                 path or resolves to something that is not an
                 ``Module``
+
         """
         if len(target) == 0:
             return self
@@ -107,6 +109,7 @@ class SequentialBase(BasicSequentialBase):
             applied to each. If None, it will not overwrite the function-wise settings.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
+
     """
 
     def __init__(self, *args: Module, same_on_batch: Optional[bool] = None, keepdim: Optional[bool] = None) -> None:
@@ -182,6 +185,7 @@ class ImageSequentialBase(SequentialBase):
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
+
         """
         raise NotImplementedError
 

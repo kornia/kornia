@@ -16,6 +16,7 @@ class SegmentationResults:
         logits: Results logits with shape :math:`(B, C, H, W)`, where :math:`C` refers to the number of predicted masks
         scores: The scores from the logits. Shape :math:`(B, C)`
         mask_threshold: The threshold value to generate the `binary_masks` from the `logits`
+
     """
 
     logits: Tensor
@@ -56,6 +57,7 @@ class SegmentationResults:
 
         Returns:
             Batched logits in :math:`(K, C, H, W)` format, where (H, W) is given by original_size.
+
         """
         x = self.logits
 
@@ -87,6 +89,7 @@ class Prompts:
                 the keypoints, and :math:`(K, N)`
         boxes: Batched box inputs, with shape :math:`(K, 4)`. Expected to be into xyxy format.
         masks: Batched mask prompts to the model with shape :math:`(K, 1, H, W)`
+
     """
 
     points: Optional[tuple[Tensor, Tensor]] = None

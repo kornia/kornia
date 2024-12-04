@@ -94,6 +94,7 @@ class VideoSequential(ImageSequential):
         >>> out = aug_list(input)
         >>> out.shape
         torch.Size([2, 3, 4, 5, 6])
+
     """
 
     # TODO: implement transform_matrix
@@ -252,6 +253,7 @@ class VideoSequential(ImageSequential):
         Args:
             input: tensor with shape :math:`(B, T, N, 4, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
+
         """
         if isinstance(input, Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
@@ -270,6 +272,7 @@ class VideoSequential(ImageSequential):
         Args:
             input: tensor with shape :math:`(B, T, N, 4, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
+
         """
         if isinstance(input, Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
@@ -288,6 +291,7 @@ class VideoSequential(ImageSequential):
         Args:
             input: tensor with shape :math:`(B, T, N, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
+
         """
         if isinstance(input, Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
@@ -306,6 +310,7 @@ class VideoSequential(ImageSequential):
         Args:
             input: tensor with shape :math:`(B, T, N, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
+
         """
         if isinstance(input, Tensor):
             frame_num, batchsize = input.size(0), input.size(1)

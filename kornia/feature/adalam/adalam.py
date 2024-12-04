@@ -58,6 +58,7 @@ def match_adalam(
         - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
           where 0 <= B3 <= B1.
+
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
@@ -157,6 +158,7 @@ class AdalamFilter:
         Returns:
             Filtered putative matches.
             A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
+
         """
         with torch.no_grad():
             return adalam_core(
@@ -223,6 +225,7 @@ class AdalamFilter:
         Returns:
             Filtered putative matches.
             A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
+
         """
         if s1 is None or s2 is None:
             if self.config["scale_rate_threshold"] is not None:

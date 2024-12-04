@@ -16,6 +16,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
 
     Returns:
         torch.Tensor: Inverse tilt projection matrix with shape :math:`(*, 3, 3)`.
+
     """
     if taux.shape != tauy.shape:
         raise ValueError(f"Shape of taux {taux.shape} and tauy {tauy.shape} do not match.")
@@ -84,6 +85,7 @@ def distort_points(
         >>> K = torch.eye(3)[None]
         >>> dist_coeff = torch.rand(1, 4)
         >>> points_dist = distort_points(points, K, dist_coeff)
+
     """
     if points.dim() < 2 and points.shape[-1] != 2:
         raise ValueError(f"points shape is invalid. Got {points.shape}.")

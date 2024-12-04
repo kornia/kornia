@@ -29,6 +29,7 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_hsv(input)  # 2x3x4x5
+
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
@@ -72,6 +73,7 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = hsv_to_rgb(input)  # 2x3x4x5
+
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
@@ -117,6 +119,7 @@ class RgbToHsv(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> hsv = RgbToHsv()
         >>> output = hsv(input)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -146,6 +149,7 @@ class HsvToRgb(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = HsvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]

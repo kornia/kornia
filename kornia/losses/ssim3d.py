@@ -43,6 +43,7 @@ def ssim3d_loss(
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5, 5)
         >>> loss = ssim3d_loss(input1, input2, 5)
+
     """
     # compute the ssim map
     ssim_map: Tensor = metrics.ssim3d(img1, img2, window_size, max_val, eps, padding)
@@ -92,6 +93,7 @@ class SSIM3DLoss(Module):
         >>> input2 = torch.rand(1, 4, 5, 5, 5)
         >>> criterion = SSIM3DLoss(5)
         >>> loss = criterion(input1, input2)
+
     """
 
     def __init__(

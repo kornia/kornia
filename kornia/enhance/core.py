@@ -36,6 +36,7 @@ def add_weighted(
 
     Notes:
         Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
+
     """
     KORNIA_CHECK_IS_TENSOR(src1)
     KORNIA_CHECK_IS_TENSOR(src2)
@@ -86,6 +87,7 @@ class AddWeighted(Module):
 
     Notes:
         Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
+
     """
 
     def __init__(self, alpha: Union[float, Tensor], beta: Union[float, Tensor], gamma: Union[float, Tensor]) -> None:

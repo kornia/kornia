@@ -11,6 +11,7 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         pointcloud: tensor containing the pointcloud to save.
           The tensor must be in the shape of :math:`(*, 3)` where the last
           component is assumed to be a 3d point coordinate :math:`(X, Y, Z)`.
+
     """
     if not isinstance(filename, str) and filename[-3:] == ".ply":
         raise TypeError(f"Input filename must be a string in with the .ply  extension. Got {filename}")
@@ -59,6 +60,7 @@ def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
     Return:
         tensor containing the loaded point with shape :math:`(*, 3)` where
         :math:`*` represents the number of points.
+
     """
     if not isinstance(filename, str) and filename[-3:] == ".ply":
         raise TypeError(f"Input filename must be a string in with the .ply  extension. Got {filename}")

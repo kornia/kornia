@@ -34,8 +34,8 @@ def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
 
     Return:
         Image tensor with shape :math:`(3,H,W)`.
-    """
 
+    """
     # read image and return as `np.ndarray` with shape HxWxC
     if path_file.suffix.lower() in [".jpg", ".jpeg"]:
         img = kornia_rs.read_image_jpeg(str(path_file))
@@ -75,6 +75,7 @@ def load_image(
 
     Return:
         Image tensor with shape :math:`(3,H,W)`.
+
     """
     if not isinstance(path_file, Path):
         path_file = Path(path_file)
@@ -137,6 +138,7 @@ def write_image(path_file: str | Path, image: Tensor) -> None:
 
     Return:
         None.
+
     """
     if not isinstance(path_file, Path):
         path_file = Path(path_file)

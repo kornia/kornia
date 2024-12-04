@@ -19,6 +19,7 @@ class VolumeRenderer(torch.nn.Module):
 
         Args:
             shift: Size of far-field layer: int
+
         """
         super().__init__()
         self._shift = shift
@@ -51,6 +52,7 @@ class IrregularRenderer(VolumeRenderer):
 
         Returns:
             Rendered RGB values for each ray :math:`(*, 3)`
+
         """
         t_vals = calc_ray_t_vals(points_3d)
         deltas = t_vals[..., 1:] - t_vals[..., :-1]  # (*, N - 1)
@@ -75,6 +77,7 @@ class RegularRenderer(VolumeRenderer):
 
         Returns:
             Rendered RGB values for each ray :math:`(*, 3)`
+
         """
         KORNIA_CHECK_SHAPE(rgbs, ["*", "N", "3"])
         KORNIA_CHECK_SHAPE(densities, ["*", "N"])

@@ -64,6 +64,7 @@ class MKDGradients(nn.Module):
         >>> patches = torch.rand(23, 1, 32, 32)
         >>> gradient = MKDGradients()
         >>> g = gradient(patches) # 23x2x32x32
+
     """
 
     def __init__(self) -> None:
@@ -109,6 +110,7 @@ class VonMisesKernel(nn.Module):
         ...                             0.268285,
         ...                             0.21979234])
         >>> emb = vm(oris) # 23x7x32x32
+
     """
 
     def __init__(self, patch_size: int, coeffs: Union[List[Union[float, int]], Tuple[Union[float, int], ...]]) -> None:
@@ -176,6 +178,7 @@ class EmbedGradients(nn.Module):
         >>> emb_grads = EmbedGradients(patch_size=32,
         ...                            relative=False)
         >>> emb = emb_grads(grads) # 23x7x32x32
+
     """
 
     def __init__(self, patch_size: int = 32, relative: bool = False) -> None:
@@ -269,6 +272,7 @@ class ExplicitSpacialEncoding(nn.Module):
         ...                               do_gmask=True,
         ...                               do_l2=True)
         >>> desc = ese(emb_ori) # 23x175x32x32
+
     """
 
     def __init__(
@@ -382,6 +386,7 @@ class Whitening(nn.Module):
         ...                       keval=40,
         ...                       t=0.7)
         >>> wdescs = whitening(descs) # 23x128
+
     """
 
     def __init__(
@@ -490,6 +495,7 @@ class MKDDescriptor(nn.Module):
         ...                     training_set='liberty',
         ...                     output_dims=128)
         >>> desc = mkd(patches) # 23x128
+
     """
 
     def __init__(

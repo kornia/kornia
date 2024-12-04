@@ -39,6 +39,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
 
     Returns:
         the computed essential matrix with shape :math:`(B, 3, 3)`.
+
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
     KORNIA_CHECK_SAME_SHAPE(points1, points2)
@@ -87,8 +88,8 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     Returns:
         the computed essential matrix with shape :math:`(B, 3, 3)`.
         Note that the returned E matrices should be the same batch size with the input.
-    """
 
+    """
     # compute eigenvectors and retrieve the one with the smallest eigenvalue, using SVD
     # turn off the grad check due to the unstable gradients from SVD.
     # several close to zero values of eigenvalues.
@@ -272,6 +273,7 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
 
     Returns:
         The essential matrix with shape :math:`(*, 3, 3)`.
+
     """
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(K1, ["*", "3", "3"])
@@ -291,6 +293,7 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     Returns:
        A tuple containing the first and second possible rotation matrices and the translation vector.
        The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
+
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
 
@@ -328,12 +331,13 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
       reference: Horn, Berthold KP. Recovering baseline and orientation from essential matrix[J].
       J. Opt. Soc. Am, 1990, 110.
 
-      Args:
+    Args:
        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
 
     Returns:
        A tuple containing the first and second possible rotation matrices and the translation vector.
        The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
+
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
     if len(E_mat.shape) != 3:
@@ -398,6 +402,7 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
 
     Returns:
         The Essential matrix with the shape :math:`(*, 3, 3)`.
+
     """
     KORNIA_CHECK_SHAPE(R1, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(R2, ["*", "3", "3"])
@@ -425,6 +430,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     Returns:
         The rotation and translation containing the four possible combination for the retrieved motion.
         The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
+
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
 
@@ -469,6 +475,7 @@ def motion_from_essential_choose_solution(
     Returns:
         The rotation and translation plus the 3d triangulated points.
         The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
+
     """
     KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(K1, ["*", "3", "3"])
@@ -560,6 +567,7 @@ def relative_camera_motion(
     Returns:
         A tuple with the relative rotation matrix and
         translation vector with the shape of :math:`[(*, 3, 3), (*, 3, 1)]`.
+
     """
     KORNIA_CHECK_SHAPE(R1, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(R2, ["*", "3", "3"])
@@ -578,8 +586,7 @@ def relative_camera_motion(
 def find_essential(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""
-     Args:
+    r"""Args:
          points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
          points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
          weights: Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.

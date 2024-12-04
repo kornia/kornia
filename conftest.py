@@ -27,6 +27,7 @@ def get_test_devices() -> dict[str, torch.device]:
 
     Return:
         dict(str, torch.device): list with devices names.
+
     """
     devices: dict[str, torch.device] = {}
     devices["cpu"] = torch.device("cpu")
@@ -47,6 +48,7 @@ def get_test_dtypes() -> dict[str, torch.dtype]:
 
     Return:
         dict(str, torch.dtype): list with dtype names.
+
     """
     dtypes: dict[str, torch.dtype] = {}
     dtypes["bfloat16"] = torch.bfloat16

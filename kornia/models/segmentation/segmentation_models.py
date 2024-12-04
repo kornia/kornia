@@ -43,8 +43,8 @@ class SegmentationModelsBuilder:
         Note:
             Only encoder weights are available.
             Pretrained weights for the whole model are not available.
-        """
 
+        """
         preproc_params = smp.encoders.get_preprocessing_params(encoder_name)  # type: ignore
         preprocessor = SegmentationModelsBuilder.get_preprocessing_pipeline(preproc_params)
         segmentation_model = getattr(smp, model_name)(

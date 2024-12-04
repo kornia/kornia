@@ -50,6 +50,7 @@ class Lambda(Module):
         >>> fcn = Lambda(lambda x: K.geometry.resize(x, (32, 16)))
         >>> fcn(torch.rand(1, 4, 64, 32)).shape
         torch.Size([1, 4, 32, 16])
+
     """
 
     def __init__(self, fcn: Callable[..., Any]) -> None:

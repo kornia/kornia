@@ -36,6 +36,7 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
 
     Reference:
         https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio#Definition
+
     """
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Expected torch.Tensor but got {type(image)}.")

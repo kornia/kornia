@@ -31,6 +31,7 @@ class ModelBaseMixin:
 
         Raises:
             RuntimeError: If the output type is not supported.
+
         """
         if output_type == "torch":
             if is_batch and not isinstance(output, Tensor):
@@ -56,6 +57,7 @@ class ModelBaseMixin:
         Args:
             outputs: output tensor.
             directory: directory to save the images.
+
         """
         if directory is None:
             name = f"{self.name}_{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}"
@@ -82,6 +84,7 @@ class ModelBase(Module, ONNXExportMixin, ModelBaseMixin):
             model: an object detection model.
             pre_processor: a pre-processing module
             post_processor: a post-processing module.
+
         """
         super().__init__()
         self.model = model.eval()

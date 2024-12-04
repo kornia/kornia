@@ -32,6 +32,7 @@ def undistort_points(
         new_K: Intrinsic camera matrix of the distorted image. By default, it is the same as K but you may additionally
             scale and shift the result by using a different matrix. Shape: :math:`(*, 3, 3)`. Default: None.
         num_iters: Number of undistortion iterations. Default: 5.
+
     Returns:
         Undistorted 2D points with shape :math:`(*, N, 2)`.
 
@@ -45,6 +46,7 @@ def undistort_points(
                  [ 0.0711,  0.1100],
                  [-0.0697,  0.0228],
                  [-0.1843, -0.1606]]])
+
     """
     KORNIA_CHECK_SHAPE(points, ["*", "N", "2"])
     KORNIA_CHECK_SHAPE(K, ["*", "3", "3"])
@@ -140,6 +142,7 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         >>> out = undistort_image(img, K, dist_coeff)
         >>> out.shape
         torch.Size([1, 3, 5, 5])
+
     """
     if len(image.shape) < 3:
         raise ValueError(f"Image shape is invalid. Got: {image.shape}.")

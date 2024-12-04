@@ -26,6 +26,7 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.randn(2, 1, 4, 5)
         >>> gray = grayscale_to_rgb(input) # 2x3x4x5
+
     """
     KORNIA_CHECK_IS_TENSOR(image)
 
@@ -46,6 +47,7 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Ten
         image: RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.
         rgb_weights: Weights that will be applied on each channel (RGB).
             The sum of the weights should add up to one.
+
     Returns:
         grayscale version of the image with shape :math:`(*,1,H,W)`.
 
@@ -55,6 +57,7 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Ten
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = rgb_to_grayscale(input) # 2x1x4x5
+
     """
     KORNIA_CHECK_IS_TENSOR(image)
 
@@ -97,6 +100,7 @@ def bgr_to_grayscale(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = bgr_to_grayscale(input) # 2x1x4x5
+
     """
     KORNIA_CHECK_IS_TENSOR(image)
 
@@ -123,6 +127,7 @@ class GrayscaleToRgb(Module):
         >>> input = torch.rand(2, 1, 4, 5)
         >>> rgb = GrayscaleToRgb()
         >>> output = rgb(input)  # 2x3x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
@@ -148,6 +153,7 @@ class RgbToGrayscale(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = RgbToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
@@ -179,6 +185,7 @@ class BgrToGrayscale(Module):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = BgrToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
+
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]

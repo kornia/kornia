@@ -46,6 +46,7 @@ class RandomSolarize(IntensityAugmentationBase2D):
         >>> aug = RandomSolarize(0.1, 0.1, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

@@ -325,6 +325,7 @@ class TinyViT(Module):
         local_conv_size: Kernel size of convolution used in TinyViTBlock
         activation: activation function.
         mobile_same: Whether to use modifications for MobileSAM.
+
     """
 
     def __init__(
@@ -445,6 +446,7 @@ class TinyViT(Module):
             When ``img_size`` is different from the pre-trained size, bicubic interpolation will be performed on
             attention biases. When using ``pretrained=True``, ImageNet-1k checkpoint (``'in1k'``) is used.
             For feature extraction or fine-tuning, ImageNet-22k checkpoint (``'in22k'``) is preferred.
+
         """
         KORNIA_CHECK(variant in ("5m", "11m", "21m"), "Only variant 5m, 11m, and 21m are supported")
         return {"5m": _tiny_vit_5m, "11m": _tiny_vit_11m, "21m": _tiny_vit_21m}[variant](pretrained, **kwargs)

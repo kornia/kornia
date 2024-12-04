@@ -17,6 +17,7 @@ class DiscreteSteerer(Module):
         >>> steerer = DiscreteSteerer(generator)
         >>> # steer 3 times:
         >>> steered_desc = steerer.steer_descriptions(desc, steerer_power=3, normalize=True)
+
     """
 
     def __init__(self, generator: Tensor) -> None:
@@ -57,6 +58,7 @@ class DiscreteSteerer(Module):
 
         Returns:
             The pretrained model.
+
         """
         descriptor_dim = 256
         if generator_type == "C4":

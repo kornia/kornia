@@ -144,8 +144,8 @@ def guided_blur(
         >>> output = guided_blur(guidance, input, 3, 0.1)
         >>> output.shape
         torch.Size([2, 4, 5, 5])
-    """
 
+    """
     KORNIA_CHECK_IS_TENSOR(guidance)
     KORNIA_CHECK_SHAPE(guidance, ["B", "C", "H", "W"])
     if input is not guidance:
@@ -190,6 +190,7 @@ class GuidedBlur(Module):
         >>> output = blur(guidance, input)
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
 
     def __init__(

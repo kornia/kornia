@@ -28,6 +28,7 @@ def _compute_tiles(
     Returns:
         tensor with tiles (B, GH, GW, C, TH, TW). B = 1 in case of a single image is provided.
         tensor with the padded batch of 2D imageswith shape (B, C, H', W').
+
     """
     batch: torch.Tensor = imgs  # B x C x H x W
 
@@ -81,6 +82,7 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
 
     Returns:
         tensor with the interpolation tiles (B, 2GH, 2GW, C, TH/2, TW/2).
+
     """
     if padded_imgs.dim() != 4:
         raise AssertionError("Images Tensor must be 4D.")
@@ -134,6 +136,7 @@ def _compute_luts(
 
     Returns:
         Lut for each tile (B, GH, GW, C, 256).
+
     """
     if tiles_x_im.dim() != 6:
         raise AssertionError("Tensor must be 6D.")
@@ -181,6 +184,7 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
 
     Returns:
          mapped luts (B, 2GH, 2GW, 4, C, 256)
+
     """
     if interp_tiles.dim() != 6:
         raise AssertionError("interp_tiles tensor must be 6D.")
@@ -237,6 +241,7 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
 
     Returns:
         equalized tiles (B, 2GH, 2GW, C, TH/2, TW/2)
+
     """
     if interp_tiles.dim() != 6:
         raise AssertionError("interp_tiles tensor must be 6D.")
@@ -338,6 +343,7 @@ def equalize_clahe(
         >>> res = equalize_clahe(img)
         >>> res.shape
         torch.Size([2, 3, 10, 20])
+
     """
     if not isinstance(clip_limit, float):
         raise TypeError(f"Input clip_limit type is not float. Got {type(clip_limit)}")

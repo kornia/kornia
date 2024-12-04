@@ -41,6 +41,7 @@ class SOLD2(Module):
         >>> desc1 = outputs["dense_desc"][0]
         >>> desc2 = outputs["dense_desc"][1]
         >>> matches = sold2.match(line_seg1, line_seg2, desc1[None], desc2[None])
+
     """
 
     def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
@@ -76,8 +77,7 @@ class SOLD2(Module):
         self.line_matcher = WunschLineMatcher(self.config.line_matcher_cfg)
 
     def forward(self, img: Tensor) -> Dict[str, Any]:
-        """
-        Args:
+        """Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
 
         Return:
@@ -85,6 +85,7 @@ class SOLD2(Module):
             - ``junction_heatmap``: raw junction heatmap of shape :math:`(B, H, W)`.
             - ``line_heatmap``: raw line heatmap of shape :math:`(B, H, W)`.
             - ``dense_desc``: the semi-dense descriptor map of shape :math:`(B, 128, H/4, W/4)`.
+
         """
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         outputs = {}
@@ -114,9 +115,11 @@ class SOLD2(Module):
         Args:
             line_seg1, line_seg2: list of line segments in two images, with shape [num_lines, 2, 2].
             desc1, desc2: semi-dense descriptor maps of the images, with shape [1, 128, H/4, W/4].
+
         Returns:
             A np.array of size [num_lines1] indicating the index in line_seg2 of the matched line,
             for each line in line_seg1. -1 means that the line is not matched.
+
         """
         return self.line_matcher(line_seg1, line_seg2, desc1, desc2)
 
@@ -308,6 +311,7 @@ def keypoints_to_grid(keypoints: Tensor, img_size: Tuple[int, int]) -> Tensor:
     Args:
         keypoints: a tensor [N, 2] of N keypoints (ij coordinates convention).
         img_size: the original image size (H, W)
+
     """
     KORNIA_CHECK_SHAPE(keypoints, ["N", "2"])
     n_points = len(keypoints)

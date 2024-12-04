@@ -34,6 +34,7 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
 
     Returns:
         torch.device
+
     """
     if torch.cuda.is_available():
         return torch.device(f"cuda:{index}")
@@ -46,6 +47,7 @@ def get_mps_device_if_available() -> torch.device:
 
     Returns:
         torch.device
+
     """
     dev = "cpu"
     if hasattr(torch.backends, "mps"):
@@ -59,6 +61,7 @@ def get_cuda_or_mps_device_if_available() -> torch.device:
 
     Returns:
         torch.device
+
     """
     if sys.platform == "darwin" and platform.machine() == "arm64":
         return get_mps_device_if_available()
@@ -120,6 +123,7 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
 
     Returns:
         [torch.device, torch.dtype]
+
     """
     device, dtype = None, None
     for tensor in tensor_list:
@@ -237,7 +241,8 @@ def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
 
 def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     r"""Helper function, which avoids crashing because of singular matrix input and outputs the mask of valid
-    solution."""
+    solution.
+    """
     if not torch_version_ge(1, 10):
         sol = _torch_solve_cast(A, B)
         warnings.warn("PyTorch version < 1.10, solve validness mask maybe not correct", RuntimeWarning, stacklevel=1)
@@ -280,8 +285,8 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
 
 def safe_inverse_with_mask(A: Tensor) -> Tuple[Tensor, Tensor]:
     r"""Helper function, which avoids crashing because of non-invertable matrix input and outputs the mask of valid
-    solution."""
-
+    solution.
+    """
     if not isinstance(A, Tensor):
         raise AssertionError(f"A must be Tensor. Got: {type(A)}.")
 
@@ -307,6 +312,7 @@ def is_autocast_enabled(both: bool = True) -> bool:
         will always return False for a torch without support, otherwise will be: if both is True
         `torch.is_autocast_enabled() or torch.is_autocast_enabled('cpu')`. If both is False will return just
         `torch.is_autocast_enabled()`.
+
     """
     if TYPE_CHECKING:
         # TODO: remove this branch when kornia relies on torch >= 1.10.2

@@ -47,6 +47,7 @@ class DeDoDe(Module):
         >>> keypoints, scores = dedode.detect(images)
         >>> descriptions = dedode.describe(images, keypoints = keypoints)
         >>> keypoints, scores, features = dedode(images) # alternatively do both
+
     """
 
     # TODO: implement steerers and mnn matchers
@@ -81,6 +82,7 @@ class DeDoDe(Module):
             scores: A tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
             descriptions: A tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints.
             DIM is 256 for B and 512 for G.
+
         """
         if apply_imagenet_normalization:
             images = self.normalizer(images)
@@ -117,6 +119,7 @@ class DeDoDe(Module):
             keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints,
             normalized to the range :math:`[-1, 1]`.
             scores: A tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
+
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
         self.train(False)
@@ -150,6 +153,7 @@ class DeDoDe(Module):
         Returns:
             descriptions: A tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints.
             If the dense descriptors are requested, the shape is :math:`(B, DIM, H, W)`.
+
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
         B, C, H, W = images.shape
@@ -190,6 +194,7 @@ class DeDoDe(Module):
 
         Returns:
             The pretrained model.
+
         """
         model: DeDoDe = cls(
             detector_model=detector_weights[0],  # type: ignore[arg-type]

@@ -37,12 +37,12 @@ class LoFTREncoderLayer(Module):
     def forward(
         self, x: Tensor, source: Tensor, x_mask: Optional[Tensor] = None, source_mask: Optional[Tensor] = None
     ) -> Tensor:
-        """
-        Args:
-            x: [N, L, C]
-            source: [N, S, C]
-            x_mask: [N, L] (optional)
-            source_mask: [N, S] (optional)
+        """Args:
+        x: [N, L, C]
+        source: [N, S, C]
+        x_mask: [N, L] (optional)
+        source_mask: [N, S] (optional)
+
         """
         bs = x.size(0)
         query, key, value = x, source, source
@@ -84,12 +84,12 @@ class LocalFeatureTransformer(Module):
     def forward(
         self, feat0: Tensor, feat1: Tensor, mask0: None | Tensor = None, mask1: None | Tensor = None
     ) -> tuple[Tensor, Tensor]:
-        """
-        Args:
-            feat0: [N, L, C]
-            feat1: [N, S, C]
-            mask0: [N, L] (optional)
-            mask1: [N, S] (optional)
+        """Args:
+        feat0: [N, L, C]
+        feat1: [N, S, C]
+        mask0: [N, L] (optional)
+        mask1: [N, S] (optional)
+
         """
         if self.d_model != feat0.size(2):
             msg = "the feature number of src and transformer must be equal"

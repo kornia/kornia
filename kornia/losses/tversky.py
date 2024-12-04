@@ -59,6 +59,7 @@ def tversky_loss(
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
         >>> output = tversky_loss(pred, target, alpha=0.5, beta=0.5)
         >>> output.backward()
+
     """
     if not isinstance(pred, torch.Tensor):
         raise TypeError(f"pred type is not a torch.Tensor. Got {type(pred)}")
@@ -138,6 +139,7 @@ class TverskyLoss(nn.Module):
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
         >>> output = criterion(pred, target)
         >>> output.backward()
+
     """
 
     def __init__(self, alpha: float, beta: float, eps: float = 1e-8, ignore_index: Optional[int] = -100) -> None:

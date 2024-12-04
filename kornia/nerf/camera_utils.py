@@ -21,8 +21,8 @@ def parse_colmap_output(
     Returns:
         image names: List[str]
         scene camera object: PinholeCamera
-    """
 
+    """
     # Parse camera intrinsics
     with open(cameras_path) as f:
         lines = f.readlines()
@@ -120,6 +120,7 @@ def cameras_for_ids(cameras: PinholeCamera, camera_ids: Union[List[int], Tensor]
 
     Return:
         A new PinholeCamera object with a sub-set of cameras: PinholeCamera
+
     """
     intrinsics = cameras.intrinsics[camera_ids]
     extrinsics = cameras.extrinsics[camera_ids]
@@ -137,6 +138,7 @@ def create_spiral_path(cameras: PinholeCamera, rad: float, num_views: int, num_c
         rad: Spiral radius: float
         num_views: Number of created cameras: int
         num_circles: Number of spiral circles: int
+
     """
     # Average locations over all cameras
     mean_center = cameras.translation_vector.mean(0, False).squeeze(-1)

@@ -31,6 +31,7 @@ def confusion_matrix(
         tensor([[[2., 0., 0.],
                  [0., 1., 0.],
                  [0., 0., 0.]]])
+
     """
     if not torch.is_tensor(pred) and pred.dtype is not torch.int64:
         raise TypeError(f"Input pred type is not a torch.Tensor with torch.int64 dtype. Got {type(pred)}")

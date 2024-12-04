@@ -51,6 +51,7 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
         >>> output = lovasz_hinge_loss(pred, target)
         >>> output.backward()
+
     """
     KORNIA_CHECK_SHAPE(pred, ["B", "1", "H", "W"])
 
@@ -129,6 +130,7 @@ class LovaszHingeLoss(nn.Module):
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
         >>> output = criterion(pred, target)
         >>> output.backward()
+
     """
 
     def __init__(self) -> None:

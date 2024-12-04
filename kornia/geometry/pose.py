@@ -34,6 +34,7 @@ class NamedPose:
         y: 0.0
         z: 0.0,
         frame_src: frame_a -> frame_dst: frame_b)
+
     """
 
     def __init__(self, dst_from_src: Se2 | Se3, frame_src: str | None = None, frame_dst: str | None = None) -> None:
@@ -43,6 +44,7 @@ class NamedPose:
             dst_from_src: Pose from source frame to destination frame.
             src: Name of frame a.
             dst: Name of frame b.
+
         """
         self._dst_from_src = dst_from_src
         self._frame_src = frame_src or uuid.uuid4().hex
@@ -73,6 +75,7 @@ class NamedPose:
             y: 0.0
             z: 0.0,
             frame_src: frame_a -> frame_dst: frame_c)
+
         """
         if self._frame_src != other._frame_dst:
             raise ValueError(f"Cannot compose {self} with {other}")
@@ -137,6 +140,7 @@ class NamedPose:
             translation: Parameter containing:
             tensor([1., 2., 3.], requires_grad=True),
             frame_src: frame_a -> frame_dst: frame_b)
+
         """
         if isinstance(rotation, (So3, Quaternion)):
             return cls(Se3(rotation, translation), frame_src, frame_dst)
@@ -179,6 +183,7 @@ class NamedPose:
             translation: Parameter containing:
             tensor([0., 0., 0.], requires_grad=True),
             frame_src: frame_a -> frame_dst: frame_b)
+
         """
         check_matrix_shape(matrix, matrix_type="RT")
         dim = matrix.shape[-1]
@@ -203,6 +208,7 @@ class NamedPose:
             y: 0.0
             z: 0.0,
             frame_src: frame_b -> frame_dst: frame_a)
+
         """
         return NamedPose(self._dst_from_src.inverse(), self._frame_dst, self._frame_src)
 
@@ -219,5 +225,6 @@ class NamedPose:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a.transform_points(torch.tensor([1., 2., 3.]))
             tensor([1., 2., 3.], grad_fn=<AddBackward0>)
+
         """
         return self._dst_from_src * points_in_src

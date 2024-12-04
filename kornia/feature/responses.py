@@ -73,6 +73,7 @@ def harris_response(
                   [0.0020, 0.0040, 0.0029, 0.0000, 0.0029, 0.0040, 0.0020],
                   [0.0039, 0.0065, 0.0040, 0.0000, 0.0040, 0.0065, 0.0039],
                   [0.0012, 0.0039, 0.0020, 0.0000, 0.0020, 0.0039, 0.0012]]]])
+
     """
     # TODO: Recompute doctest
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -153,6 +154,7 @@ def gftt_response(input: Tensor, grads_mode: str = "sobel", sigmas: Optional[Ten
                   [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
                   [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
                   [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
+
     """
     # TODO: Recompute doctest
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -231,6 +233,7 @@ def hessian_response(input: Tensor, grads_mode: str = "sobel", sigmas: Optional[
                   [0.0194, 0.0339, 0.0497, 0.0000, 0.0497, 0.0339, 0.0194],
                   [0.0334, 0.0575, 0.0339, 0.0000, 0.0339, 0.0575, 0.0334],
                   [0.0155, 0.0334, 0.0194, 0.0000, 0.0194, 0.0334, 0.0155]]]])
+
     """
     # TODO: Recompute doctest
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -263,6 +266,7 @@ def dog_response(input: Tensor) -> Tensor:
 
     Return:
         the response map per channel with shape :math:`(B, C, D-1, H, W)`.
+
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "L", "H", "W"])
 
@@ -281,6 +285,7 @@ def dog_response_single(input: Tensor, sigma1: float = 1.0, sigma2: float = 1.6)
 
     Return:
         the response map per channel with shape :math:`(B, C, H, W)`.
+
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     ks1 = _get_kernel_size(sigma1)

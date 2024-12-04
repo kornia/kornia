@@ -21,6 +21,7 @@ def eye_like(n: int, input: Tensor, shared_memory: bool = False) -> Tensor:
         When the dimension to expand is of size 1, using torch.expand(...) yields the same tensor as torch.repeat(...)
         without using extra memory. Thus, when the tensor obtained by this method will be later assigned -
         use this method with shared_memory=False, otherwise, prefer using it with shared_memory=True.
+
     """
     if n <= 0:
         raise AssertionError(type(n), n)
@@ -48,6 +49,7 @@ def vec_like(n: int, tensor: Tensor, shared_memory: bool = False) -> Tensor:
         When the dimension to expand is of size 1, using torch.expand(...) yields the same tensor as torch.repeat(...)
         without using extra memory. Thus, when the tensor obtained by this method will be later assigned -
         use this method with shared_memory=False, otherwise, prefer using it with shared_memory=True.
+
     """
     if n <= 0:
         raise AssertionError(type(n), n)
@@ -66,6 +68,7 @@ def differentiable_polynomial_rounding(input: Tensor) -> Tensor:
 
     Returns:
         output (Tensor): Pseudo rounded tensor of the same shape as input tensor.
+
     """
     # Perform differentiable rounding
     input_round = input.round()
@@ -81,6 +84,7 @@ def differentiable_polynomial_floor(input: Tensor) -> Tensor:
 
     Returns:
         output (Tensor): Pseudo rounded tensor of the same shape as input tensor.
+
     """
     # Perform differentiable rounding
     input_floor = input.floor()
@@ -104,6 +108,7 @@ def differentiable_clipping(
 
     Returns:
         output (Tensor): Clipped output tensor of the same shape as the input tensor.
+
     """
     # Make a copy of the input tensor
     output: Tensor = input.clone()

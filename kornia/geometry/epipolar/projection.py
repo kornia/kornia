@@ -25,6 +25,7 @@ def intrinsics_like(focal: float, input: Tensor) -> Tensor:
 
     Returns:
         The camera matrix with the shape of :math:`(B, 3, 3)`.
+
     """
     if len(input.shape) != 4:
         raise AssertionError(input.shape)
@@ -50,6 +51,7 @@ def random_intrinsics(low: Union[float, Tensor], high: Union[float, Tensor]) -> 
 
     Returns:
         the random camera matrix with the shape of :math:`(1, 3, 3)`.
+
     """
     sampler = torch.distributions.Uniform(low, high)
     fx, fy, cx, cy = (sampler.sample(torch.Size((1,))) for _ in range(4))
@@ -70,6 +72,7 @@ def scale_intrinsics(camera_matrix: Tensor, scale_factor: Union[float, Tensor]) 
 
     Returns:
         The scaled camera matrix with shame shape as input :math:`(B, 3, 3)`.
+
     """
     K_scale = camera_matrix.clone()
     K_scale[..., 0, 0] *= scale_factor
@@ -91,6 +94,7 @@ def projection_from_KRt(K: Tensor, R: Tensor, t: Tensor) -> Tensor:
 
     Returns:
        The projection matrix P with shape :math:`(B, 4, 4)`.
+
     """
     KORNIA_CHECK_SHAPE(K, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(R, ["*", "3", "3"])
@@ -118,6 +122,7 @@ def KRt_from_projection(P: Tensor, eps: float = 1e-6) -> Tuple[Tensor, Tensor, T
         - The Camera matrix with shape :math:`(B, 3, 3)`.
         - The Rotation matrix with shape :math:`(B, 3, 3)`.
         - The Translation vector with shape :math:`(B, 3)`.
+
     """
     KORNIA_CHECK_SHAPE(P, ["*", "3", "4"])
     submat_3x3 = P[:, 0:3, 0:3]
@@ -152,6 +157,7 @@ def depth_from_point(R: Tensor, t: Tensor, X: Tensor) -> Tensor:
 
     Returns:
        The depth value per point with shape :math:`(*, 1)`.
+
     """
     X_tmp = R @ X.transpose(-2, -1)
     X_out = X_tmp[..., 2, :] + t[..., 2, :]
@@ -178,6 +184,7 @@ def projections_from_fundamental(F_mat: Tensor) -> Tensor:
 
     Returns:
         The projection matrices with shape :math:`(B, 3, 4, 2)`.
+
     """
     KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
 

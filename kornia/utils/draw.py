@@ -18,6 +18,7 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
 
     Return:
         The image with points set to the color.
+
     """
     KORNIA_CHECK(
         (len(image.shape) == 2 and len(color.shape) == 1) or (image.shape[0] == color.shape[0]),
@@ -46,6 +47,7 @@ def _draw_pixel(image: torch.Tensor, x: int, y: int, color: torch.Tensor) -> Non
 
     Return:
         Nothing is returned.
+
     """
     image[:, y, x] = color
 
@@ -58,6 +60,7 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         p1: the start point [x y] of the line with shape (2, ) or (B, 2).
         p2: the end point [x y] of the line with shape (2, ) or (B, 2).
         color: the color of the line with shape :math`(C)` where :math`C` is the number of channels of the image.
+
     Return:
         the image with containing the line.
 
@@ -72,6 +75,7 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.]]])
+
     """
     if (p1.shape[0] != p2.shape[0]) or (p1.shape[-1] != 2 or p2.shape[-1] != 2):
         raise ValueError(
@@ -197,8 +201,8 @@ def draw_rectangle(
         >>> img = torch.rand(2, 3, 10, 12)
         >>> rect = torch.tensor([[[0, 0, 4, 4]], [[4, 4, 10, 10]]])
         >>> out = draw_rectangle(img, rect)
-    """
 
+    """
     batch, c, h, w = image.shape
     batch_rect, num_rectangle, num_points = rectangle.shape
     if batch != batch_rect:
@@ -254,14 +258,17 @@ def draw_rectangle(
 
 def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     r"""Gets the left and right edges of a polygon for each y-coordinate y \in [0, h)
+
     Args:
         polygons: represents polygons to draw in BxNx2
             N is the number of points
             2 is (x, y).
         h: bottom most coordinate (top coordinate is assumed to be 0)
         w: right most coordinate (left coordinate is assumed to be 0)
+
     Returns:
         The left and right edges of the polygon of shape (B,B).
+
     """
     dtype = polygon.dtype
 
@@ -296,13 +303,16 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
     r"""Converts a List of variable length polygons into a fixed size tensor.
 
     Works by repeating the last element in the tensor.
+
     Args:
         polygon: List of variable length polygons of shape [N_1 x 2, N_2 x 2, ..., N_B x 2].
                     B is the batch size,
                     N_i is the number of points,
                     2 is (x, y).
+
     Returns:
         A fixed size tensor of shape (B, N, 2) where N = max_i(N_i)
+
     """
     B, N = len(polygons), len(max(polygons, key=len))
     batched_polygons = torch.zeros(B, N, 2, dtype=polygons[0].dtype, device=polygons[0].device)
@@ -334,6 +344,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         >>> poly = torch.tensor([[[4, 4], [12, 4], [12, 8], [4, 8]]])
         >>> color = torch.tensor([[0.5, 0.5, 0.5]])
         >>> out = draw_convex_polygon(img, poly, color)
+
     """
     # TODO: implement optional linetypes for smooth edges
     KORNIA_CHECK_SHAPE(images, ["B", "C", "H", "W"])

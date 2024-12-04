@@ -29,6 +29,7 @@ class SuperResolution(ModelBase):
 
         Returns:
             output tensor.
+
         """
         output = self.pre_processor(images)
         if isinstance(
@@ -61,6 +62,7 @@ class SuperResolution(ModelBase):
 
         Returns:
             output tensor.
+
         """
         if edge_maps is None:
             edge_maps = self.forward(images)
@@ -85,6 +87,7 @@ class SuperResolution(ModelBase):
 
         Returns:
             output tensor.
+
         """
         outputs = self.visualize(images, edge_maps, output_type)
         self._save_outputs(images, directory, suffix="_src")
@@ -113,6 +116,7 @@ class SuperResolution(ModelBase):
                 If to save the model or load it.
             additional_metadata:
                 Additional metadata to add to the ONNX model.
+
         """
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}.onnx"

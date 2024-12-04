@@ -37,6 +37,7 @@ class RandomJPEG(IntensityAugmentationBase2D):
         >>> aug = RandomJPEG(jpeg_quality=20.0, p=1.)  # Samples a JPEG quality from the range [30.0, 70.0]
         >>> (aug(images) == aug(images, params=aug._params)).all()
         tensor(True)
+
     """
 
     def __init__(

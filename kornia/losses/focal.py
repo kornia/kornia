@@ -58,8 +58,8 @@ def focal_loss(
         >>> kwargs = {"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'}
         >>> output = focal_loss(pred, target, **kwargs)
         >>> output.backward()
-    """
 
+    """
     KORNIA_CHECK_SHAPE(pred, ["B", "C", "*"])
     out_size = (pred.shape[0],) + pred.shape[2:]
     KORNIA_CHECK(
@@ -155,6 +155,7 @@ class FocalLoss(nn.Module):
         >>> criterion = FocalLoss(**kwargs)
         >>> output = criterion(pred, target)
         >>> output.backward()
+
     """
 
     def __init__(
@@ -223,8 +224,8 @@ def binary_focal_loss_with_logits(
         >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
         >>> output = binary_focal_loss_with_logits(pred, target, **kwargs)
         >>> output.backward()
-    """
 
+    """
     KORNIA_CHECK_SHAPE(pred, ["B", "C", "*"])
     KORNIA_CHECK(pred.shape == target.shape, f"Expected target size {pred.shape}, got {target.shape}")
     KORNIA_CHECK(
@@ -328,6 +329,7 @@ class BinaryFocalLossWithLogits(nn.Module):
         >>> criterion = BinaryFocalLossWithLogits(**kwargs)
         >>> output = criterion(pred, target)
         >>> output.backward()
+
     """
 
     def __init__(

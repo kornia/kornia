@@ -33,6 +33,7 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
         The generated random numbers are not reproducible across different devices and dtypes. By default,
         the parameters will be generated on CPU. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
+
     """
 
     def __init__(
@@ -60,7 +61,6 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random gaussian illumination parameters."""
-
         gain = _range_bound(self.gain, "gain", device=device, dtype=dtype)
         self.gain_sampler = UniformDistribution(gain[0], gain[1], validate_args=False)
 

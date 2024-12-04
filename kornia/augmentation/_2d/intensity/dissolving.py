@@ -36,6 +36,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         - Output: :math:`(B, C, H, W)`
+
     """
 
     def __init__(

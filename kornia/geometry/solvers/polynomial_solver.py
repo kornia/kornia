@@ -30,8 +30,8 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
        In cases where a quadratic polynomial has only one real root, the output will be in the format
        [real_root, 0]. And for the complex roots should be represented as 0. This is done to maintain
        a consistent output shape for all cases.
-    """
 
+    """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "3"])
 
     # Coefficients of quadratic equation
@@ -92,6 +92,7 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
        In cases where a cubic polynomial has only one or two real roots, the output for the non-real
        roots should be represented as 0. Thus, the output for a single real root should be in the
        format [real_root, 0, 0], and for two real roots, it should be [real_root_1, real_root_2, 0].
+
     """
     KORNIA_CHECK_SHAPE(coeffs, ["B", "4"])
 
@@ -215,8 +216,8 @@ def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
     Returns:
         degree 2 poly with the order :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
-    """
 
+    """
     return stack(
         [
             a[:, 0] * b[:, 0],
@@ -250,8 +251,8 @@ def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         a third degree poly for variables,
         :math:`(x^3, y^3, x^2*y, x*y^2, x^2*z, x^2, y^2*z, y^2,
         x*y*z, x*y, x*z^2, x*z, x, y*z^2, y*z, y, z^3, z^2, z, 1)`.
-    """
 
+    """
     return stack(
         [
             a[:, 0] * b[:, 0],
@@ -290,8 +291,8 @@ def determinant_to_polynomial(A: Tensor) -> Tensor:
 
     Returns:
         a degree 10 poly, representing determinant (Eqn. 14 in the paper).
-    """
 
+    """
     cs = zeros(A.shape[0], 11, device=A.device, dtype=A.dtype)
     cs[:, 0] = (
         A[:, 0, 12] * A[:, 1, 3] * A[:, 2, 7]

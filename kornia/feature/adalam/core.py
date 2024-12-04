@@ -33,6 +33,7 @@ class AdalamConfig(TypedDict):
         at the cost of runtime
     device: Device to be used for running AdaLAM. Use GPU if available.
     mnn: Default None. You can provide a MNN mask in input to skip MNN computation and still get the improvement.
+
     """
 
     area_ratio: NotRequired[int]
@@ -55,6 +56,7 @@ def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
     Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
+
     """
     dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
     idxs = torch.empty(0, 2, device=dm.device, dtype=torch.long)
@@ -80,6 +82,7 @@ def select_seeds(
 
         im1seeds: Keypoint index of chosen seeds in image I_1
         im2seeds: Keypoint index of chosen seeds in image I_2
+
     """  # noqa: E501
     im1neighmap = dist1 < R1**2  # (n1, n1)
     # find out who scores higher than whom
@@ -144,6 +147,7 @@ def extract_neighborhood_sets(
         rdims: Number of keypoints included in the neighborhood for each seed
         im1seeds: Keypoint index of chosen seeds in image I_1
         im2seeds: Keypoint index of chosen seeds in image I_2
+
     """
     dst1 = dist1[im1seeds, :]
     dst2 = dist_matrix(k2[fnn12[im1seeds]], k2[fnn12])
@@ -213,6 +217,7 @@ def extract_local_patterns(
                  This allows to distinguish inputs belonging to the same problem.
         tokp1: Index of the original keypoint in image I_1 for each RANSAC sample.
         tokp2: Index of the original keypoint in image I_2 for each RANSAC sample.
+
     """
     # first get an indexing representation of the assignments:
     # - ransidx holds the index of the seed for each assignment
@@ -287,6 +292,7 @@ def adalam_core(
     Returns:
         idxs: A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
         dists: inverse confidence ratio.
+
     """
     AREA_RATIO = config["area_ratio"]
     SEARCH_EXP = config["search_expansion"]

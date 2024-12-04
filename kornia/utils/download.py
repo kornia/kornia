@@ -26,6 +26,7 @@ class CachedDownloader:
 
         Returns:
             str: The full local path where the model should be stored or loaded from.
+
         """
         # Determine the local file path
         if cache_dir is None:
@@ -62,6 +63,7 @@ class CachedDownloader:
             url: The URL of the ONNX model to download.
             file_path: The local path where the downloaded model should be saved.
             download_if_not_exists: If True, the file will be downloaded if it's not already downloaded.
+
         """
         if os.path.exists(file_path):
             logger.info(f"Loading `{url}` from `{file_path}`.")
