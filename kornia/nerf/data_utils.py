@@ -60,8 +60,9 @@ class RayDataset(Dataset[RayGroup]):
             self._init_random_ray_dataset(num_img_rays)
 
     def init_images_for_training(self, imgs: Images) -> None:
-        r"""Initialize images for training. Images can be either a list of tensors, or a list of paths to image
-        disk locations.
+        r"""Initialize images for training.
+
+        Images can be either a list of tensors, or a list of paths to image disk locations.
 
         Args:
             imgs: List of image tensors or image paths: Images

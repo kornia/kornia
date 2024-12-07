@@ -63,7 +63,10 @@ class DinoVisionTransformer(nn.Module):
         ffn_layer="mlp",
         block_chunks=1,
     ):
-        """Args:
+        """Construct dino vision transformer.
+
+        Parameters
+        ----------
         img_size (int, tuple): input image size
         patch_size (int, tuple): patch size
         in_chans (int): number of input channels

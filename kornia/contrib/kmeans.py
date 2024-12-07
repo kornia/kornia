@@ -111,7 +111,7 @@ class KMeans:
         Args:
             X: 2D input tensor to be clustered
 
-        """
+        """  # noqa: D205
         # X should have only 2 dimensions
         KORNIA_CHECK_SHAPE(X, ["N", "D"])
 

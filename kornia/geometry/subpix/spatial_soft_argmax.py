@@ -38,8 +38,7 @@ def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = N
 
 
 def _get_center_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> Tensor:
-    r"""Generate a kernel to return center coordinates, when applied with F.conv2d to 2d
-    coordinates grid.
+    r"""Generate a kernel to return center coordinates, when applied with F.conv2d to 2d coordinates grid.
 
     Args:
         h: kernel height.
@@ -73,8 +72,7 @@ def _get_center_kernel2d(h: int, w: int, device: Optional[torch.device] = None) 
 
 
 def _get_center_kernel3d(d: int, h: int, w: int, device: Optional[torch.device] = None) -> Tensor:
-    r"""Generate a kernel to return center coordinates, when applied with F.conv2d to 3d
-    coordinates grid.
+    r"""Generate a kernel to return center coordinates, when applied with F.conv2d to 3d coordinates grid.
 
     Args:
         d: kernel depth.

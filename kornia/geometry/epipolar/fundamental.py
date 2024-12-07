@@ -235,7 +235,10 @@ def run_8point(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = Non
 def find_fundamental(
     points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None, method: Literal["8POINT", "7POINT"] = "8POINT"
 ) -> Tensor:
-    r"""Args:
+    r"""Find the fundamental matrix.
+
+    Parameters
+    ----------
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.

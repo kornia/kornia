@@ -109,7 +109,9 @@ def _KeyNetConvBlock(
 
 
 class KeyNet(Module):
-    """Key.Net model definition -- local feature detector (response function). This is based on the original code
+    """Key.Net model definition -- local feature detector (response function).
+
+    This is based on the original code
     from paper "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters". See :cite:`KeyNet2019` for
     more details.
 

@@ -60,7 +60,7 @@ class DiscreteSteerer(Module):
         -------
             The pretrained model.
 
-        """
+        """  # noqa: D205
         descriptor_dim = 256
         if generator_type == "C4":
             generator = torch.block_diag(

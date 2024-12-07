@@ -12,8 +12,9 @@ from .structs import DISKFeatures
 
 
 class DISK(Module):
-    r"""Module which detects and described local features in an image using the DISK method. See
-    :cite:`tyszkiewicz2020disk` for details.
+    r"""Module which detects and described local features in an image using the DISK method.
+
+    See :cite:`tyszkiewicz2020disk` for details.
 
     .. image:: _static/img/disk_outdoor_depth.jpg
 

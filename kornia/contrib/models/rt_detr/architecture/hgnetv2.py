@@ -1,7 +1,7 @@
 """Based on code from
 https://github.com/PaddlePaddle/PaddleDetection/blob/ec37e66685f3bc5a38cd13f60685acea175922e1/
 ppdet/modeling/backbones/hgnet_v2.py.
-"""
+"""  # noqa: D205
 
 from __future__ import annotations
 

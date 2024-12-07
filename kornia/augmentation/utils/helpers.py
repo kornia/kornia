@@ -199,7 +199,8 @@ def _transform_input3d(input: Tensor) -> Tensor:
 
 
 def _validate_input_dtype(input: Tensor, accepted_dtypes: List[torch.dtype]) -> None:
-    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
+    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes.
+
     Args:
         input: Tensor
         accepted_dtypes: List. e.g. [torch.float32, torch.float64]
@@ -236,7 +237,8 @@ def _transform_output_shape(
 
 
 def _validate_shape(shape: Union[Tuple[int, ...], torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
-    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
+    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes.
+
     Args:
         shape: tensor shape
         required_shapes: List. e.g. ["BCHW", "BCDHW"]
@@ -464,9 +466,7 @@ def preprocess_classes(input: Tensor) -> Tensor:
 
 
 class MultiprocessWrapper:
-    """Utility class which when used as a base class, makes the class work with the 'spawn' multiprocessing
-    context.
-    """
+    """When used as a base class, makes the class work with the 'spawn' multiprocessing context."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         args = tuple(arg.clone() if isinstance(arg, torch.Tensor) else arg for arg in args)

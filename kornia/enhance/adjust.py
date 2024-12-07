@@ -614,8 +614,9 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
 
 
 def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
-    r"""For each pixel in the image, select the pixel if the value is less than the threshold. Otherwise, subtract
-    1.0 from the pixel.
+    r"""For each pixel in the image, select the pixel if the value is less than the threshold.
+
+    Otherwise, subtract 1.0 from the pixel.
 
     Args:
         input: image or batched images to solarize.

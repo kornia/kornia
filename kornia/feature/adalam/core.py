@@ -119,7 +119,9 @@ def extract_neighborhood_sets(
     SEARCH_EXP: float,
     MIN_INLIERS: float,
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-    """Assign keypoints to seed points. This checks both the distance and the agreement of the local transformation
+    """Assign keypoints to seed points.
+
+    This checks both the distance and the agreement of the local transformation
     if available.
 
     o1: Orientations of keypoints in image I_1
@@ -193,7 +195,9 @@ def extract_local_patterns(
     im2seeds: Tensor,
     scores: Tensor,
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
-    """Prepare local neighborhoods around each seed for the parallel RANSACs. This involves two steps: 1) Collect
+    """Prepare local neighborhoods around each seed for the parallel RANSACs.
+
+    This involves two steps: 1) Collect
     all selected keypoints and refer them with respect to their seed point 2) Sort keypoints by score for the
     progressive sampling to pick the best samples first.
 
@@ -262,8 +266,9 @@ def adalam_core(
     s2: Optional[Tensor] = None,
     return_dist: bool = False,
 ) -> Union[Tuple[Tensor, Tensor], Tensor]:
-    """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
-    inputs.
+    """Call the core functionality of AdaLAM, i.e. just outlier filtering.
+
+    No sanity check is performed on the inputs.
 
     Inputs:
         k1: keypoint locations in the source image, in pixel coordinates.

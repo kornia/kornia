@@ -33,8 +33,9 @@ def _merge_box_list(boxes: list[torch.Tensor], method: str = "pad") -> tuple[tor
 
 
 def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
-    """Transform 3D and 2D in kornia format by applying the transformation matrix M. Boxes and the transformation
-    matrix could be batched or not.
+    """Transform 3D and 2D in kornia format by applying the transformation matrix M.
+
+    Boxes and the transformation matrix could be batched or not.
 
     Args:
         boxes: 2D quadrilaterals or 3D hexahedrons in kornia format.
@@ -471,8 +472,9 @@ class Boxes:
     def to_tensor(
         self, mode: Optional[str] = None, as_padded_sequence: bool = False
     ) -> torch.Tensor | list[torch.Tensor]:
-        r"""Cast :class:`Boxes` to a tensor. ``mode`` controls which 2D boxes format should be use to represent
-        boxes in the tensor.
+        r"""Cast :class:`Boxes` to a tensor.
+
+        ``mode`` controls which 2D boxes format should be use to represent boxes in the tensor.
 
         Args:
             mode: the output box format. It could be:
@@ -878,8 +880,9 @@ class Boxes3D:
         return cls(hexahedrons, raise_if_not_floating_point=False, mode=mode)
 
     def to_tensor(self, mode: str = "xyzxyz") -> torch.Tensor:
-        r"""Cast :class:`Boxes3D` to a tensor. ``mode`` controls which 3D boxes format should be use to represent
-        boxes in the tensor.
+        r"""Cast :class:`Boxes3D` to a tensor.
+
+        ``mode`` controls which 3D boxes format should be use to represent boxes in the tensor.
 
         Args:
             mode: The format in which the boxes are provided.

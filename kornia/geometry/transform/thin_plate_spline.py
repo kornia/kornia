@@ -13,8 +13,9 @@ __all__ = ["get_tps_transform", "warp_image_tps", "warp_points_tps"]
 
 
 def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torch.Tensor:
-    r"""Compute the pairwise squared euclidean distance matrices :math:`(B, N, M)` between two tensors with shapes
-    (B, N, C) and (B, M, C).
+    r"""Compute the pairwise squared euclidean distance matrices :math:`(B, N, M)` between two tensors.
+
+    Tensors with shapes (B, N, C) and (B, M, C).
     """
     # ||t1-t2||^2 = (t1-t2)^T(t1-t2) = t1^T*t1 + t2^T*t2 - 2*t1^T*t2
     t1_sq: torch.Tensor = tensor1.mul(tensor1).sum(dim=-1, keepdim=True)
@@ -100,8 +101,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
 def warp_points_tps(
     points_src: torch.Tensor, kernel_centers: torch.Tensor, kernel_weights: torch.Tensor, affine_weights: torch.Tensor
 ) -> torch.Tensor:
-    r"""Warp a tensor of coordinate points using the thin plate spline defined by kernel points, kernel weights, and
-    affine weights.
+    r"""Warp a tensor of coordinate points using the thin plate spline defined by arguments.
 
     The source points should be a :math:`(B, N, 2)` tensor of :math:`(x, y)` coordinates. The kernel centers are
     a :math:`(B, K, 2)` tensor of :math:`(x, y)` coordinates. The kernel weights are a :math:`(B, K, 2)` tensor,
@@ -173,8 +173,7 @@ def warp_image_tps(
     affine_weights: torch.Tensor,
     align_corners: bool = False,
 ) -> torch.Tensor:
-    r"""Warp an image tensor according to the thin plate spline transform defined by kernel centers, kernel weights,
-    and affine weights.
+    r"""Warp an image tensor according to the thin plate spline transform defined by arguments.
 
     .. image:: _static/img/warp_image_tps.png
 

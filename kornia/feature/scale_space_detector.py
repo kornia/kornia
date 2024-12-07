@@ -16,7 +16,9 @@ from .responses import BlobHessian
 
 
 def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -> Tensor:
-    r"""Auxiliary function for ScaleSpaceDetector. Converts scale level index from ConvSoftArgmax3d to the actual
+    r"""Auxiliary function for ScaleSpaceDetector.
+
+    Converts scale level index from ConvSoftArgmax3d to the actual
     scale, using the sigmas from the ScalePyramid output.
 
     Args:
@@ -51,7 +53,9 @@ def _create_octave_mask(mask: Tensor, octave_shape: List[int]) -> Tensor:
 
 
 class ScaleSpaceDetector(Module):
-    r"""Module for differentiable local feature detection, as close as possible to classical local feature detectors
+    r"""Module for differentiable local feature detection.
+
+    As close as possible to classical local feature detectors
     like Harris, Hessian-Affine or SIFT (DoG).
 
     It has 5 modules inside: scale pyramid generator, response ("cornerness") function,
@@ -220,8 +224,10 @@ class ScaleSpaceDetector(Module):
         return responses, lafs
 
     def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-        """Three stage local feature detection. First the location and scale of interest points are determined by
-        detect function. Then affine shape and orientation.
+        """Three stage local feature detection.
+
+        First the location and scale of interest points are determined by detect function.
+        Then affine shape and orientation.
 
         Args:
             img: image to extract features with shape [BxCxHxW]
@@ -393,8 +399,10 @@ class MultiResolutionDetector(Module):
         return responses, lafs
 
     def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-        """Three stage local feature detection. First the location and scale of interest points are determined by
-        detect function. Then affine shape and orientation.
+        """Three stage local feature detection.
+
+        First the location and scale of interest points are determined by detect function.
+        Then affine shape and orientation.
 
         Args:
             img: image to extract features with shape [1xCxHxW]. KeyNetDetector does not support batch processing,

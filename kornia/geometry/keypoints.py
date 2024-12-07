@@ -155,8 +155,9 @@ class Keypoints:
         return cls(keypoints)
 
     def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
-        r"""Cast :class:`Keypoints` to a tensor. ``mode`` controls which 2D keypoints format should be use to
-        represent keypoints in the tensor.
+        r"""Cast :class:`Keypoints` to a tensor.
+
+        ``mode`` controls which 2D keypoints format should be use to represent keypoints in the tensor.
 
         Args:
             as_padded_sequence: whether to keep the pads for a list of keypoints. This parameter is only valid
@@ -307,8 +308,9 @@ class Keypoints3D:
         return cls(keypoints)
 
     def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
-        r"""Cast :class:`Keypoints` to a tensor. ``mode`` controls which 2D keypoints format should be use to
-        represent keypoints in the tensor.
+        r"""Cast :class:`Keypoints` to a tensor.
+
+        ``mode`` controls which 2D keypoints format should be use to represent keypoints in the tensor.
 
         Args:
             as_padded_sequence: whether to keep the pads for a list of keypoints. This parameter is only valid

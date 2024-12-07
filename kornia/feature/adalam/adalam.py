@@ -40,8 +40,9 @@ def match_adalam(
     hw2: Optional[Tuple[int, int]] = None,
     dm: Optional[Tensor] = None,
 ) -> Tuple[Tensor, Tensor]:
-    """Perform descriptor matching, followed by AdaLAM filtering (see :cite:`AdaLAM2020` for more
-    details)
+    """Perform descriptor matching, followed by AdaLAM filtering.
+
+    See :cite:`AdaLAM2020` for more details.
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
@@ -123,8 +124,9 @@ class AdalamFilter:
         s2: Optional[Tensor] = None,
         return_dist: bool = False,
     ) -> Union[Tuple[Tensor, Tensor], Tensor]:
-        """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
-        inputs.
+        """Call the core functionality of AdaLAM, i.e. just outlier filtering.
+
+        No sanity check is performed on the inputs.
 
         Inputs:
             k1: keypoint locations in the source image, in pixel coordinates.

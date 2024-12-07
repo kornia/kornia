@@ -131,7 +131,9 @@ class LocalFeature(Module):
         self.scaling_coef = scaling_coef
 
     def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor, Tensor]:
-        """Args:
+        """Run forward.
+
+        Args:
             img: image to extract features with shape :math:`(B,C,H,W)`.
             mask: a mask with weights where to apply the response function.
                 The shape must be the same as the input image.
@@ -184,8 +186,9 @@ class SIFTFeature(LocalFeature):
 
 
 class SIFTFeatureScaleSpace(LocalFeature):
-    """Convenience module, which implements DoG detector + (Root)SIFT descriptor. Using
-    `kornia.feature.ScaleSpaceDetector` with blur pyramid.
+    """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
+
+    Using `kornia.feature.ScaleSpaceDetector` with blur pyramid.
 
     Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
     """
@@ -351,7 +354,9 @@ class LocalFeatureMatcher(Module):
         }
 
     def forward(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
-        """Args:
+        """Run forward.
+
+        Args:
             data: dictionary containing the input data in the following format:
 
         Keyword Args:
@@ -468,7 +473,9 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         hw1: Optional[Tuple[int, int]] = None,
         hw2: Optional[Tuple[int, int]] = None,
     ) -> Tuple[Tensor, Tensor]:
-        """Args:
+        """Run forward.
+
+        Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.

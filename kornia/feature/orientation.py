@@ -19,7 +19,10 @@ class PassLAF(nn.Module):
     """Dummy module to use instead of local feature orientation or affine shape estimator."""
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
-        """Args:
+        """Run forward.
+
+        Parameters
+        ----------
             laf: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 
@@ -61,7 +64,10 @@ class PatchDominantGradientOrientation(nn.Module):
         )
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
-        """Args:
+        """Run forward.
+
+        Parameters
+        ----------
             patch: :math:`(B, 1, H, W)`
 
         Returns
@@ -181,7 +187,10 @@ class OriNet(nn.Module):
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
-        """Args:
+        """Run forward.
+
+        Parameters
+        ----------
             patch: :math:`(B, 1, H, W)`
 
         Returns
@@ -224,7 +233,10 @@ class LAFOrienter(nn.Module):
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, angle_detector={self.angle_detector})"
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
-        """Args:
+        """Run forward.
+
+        Parameters
+        ----------
             laf: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 

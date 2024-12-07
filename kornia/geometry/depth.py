@@ -374,8 +374,7 @@ class DepthWarper(Module):
         return kornia_ops.concatenate([_x, _y], 1)
 
     def compute_subpixel_step(self) -> Tensor:
-        """Compute the required inverse depth step to achieve sub pixel accurate sampling of the depth cost volume,
-        per camera.
+        """Compute the inverse depth step for sub pixel accurate sampling of the depth cost volume, per camera.
 
         Szeliski, Richard, and Daniel Scharstein. "Symmetric sub-pixel stereo matching." European Conference on Computer
         Vision. Springer Berlin Heidelberg, 2002.

@@ -79,13 +79,17 @@ class SOLD2_detector(Module):
         return state_dict
 
     def forward(self, img: Tensor) -> Dict[str, Any]:
-        """Args:
+        """Run forward.
+
+        Parameters
+        ----------
             img: batched images with shape :math:`(B, 1, H, W)`.
 
-        Return:
-            - ``line_segments``: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
-            - ``junction_heatmap``: raw junction heatmap of shape :math:`(B, H, W)`.
-            - ``line_heatmap``: raw line heatmap of shape :math:`(B, H, W)`.
+        Returns
+        -------
+            line_segments: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
+            junction_heatmap: raw junction heatmap of shape :math:`(B, H, W)`.
+            line_heatmap: raw line heatmap of shape :math:`(B, H, W)`.
 
         """
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])

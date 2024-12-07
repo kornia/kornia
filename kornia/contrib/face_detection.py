@@ -343,8 +343,7 @@ class YuFaceDetectNet(nn.Module):
 
 # Adapted from https://github.com/Hakuyume/chainer-ssd
 def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> torch.Tensor:
-    """Decode locations from predictions using priors to undo the encoding we did for offset regression at train
-    time.
+    """Decode locations from predictions using priors to undo the encoding for offset regression at train time.
 
     Args:
         loc:location predictions for loc layers. Shape: [num_priors,4].

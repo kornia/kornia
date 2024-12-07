@@ -10,8 +10,9 @@ from kornia.core import Device, Tensor
 
 @dataclass
 class DISKFeatures:
-    r"""A data structure holding DISK keypoints, descriptors and detection scores for an image. Since DISK detects a
-    varying number of keypoints per image, `DISKFeatures` is not batched.
+    r"""A data structure holding DISK keypoints, descriptors and detection scores for an image.
+
+    Since DISK detects a varying number of keypoints per image, `DISKFeatures` is not batched.
 
     Args:
         keypoints: Tensor of shape :math:`(N, 2)`, where :math:`N` is the number of keypoints.
@@ -56,7 +57,7 @@ class DISKFeatures:
         -------
             A new DISKFeatures object with tensors of appropriate type and location.
 
-        """
+        """  # noqa:D205
         return DISKFeatures(
             self.keypoints.to(*args, **kwargs),
             self.descriptors.to(*args, **kwargs),

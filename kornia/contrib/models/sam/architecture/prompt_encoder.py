@@ -66,7 +66,7 @@ class PromptEncoder(Module):
         -------
             Positional encoding with shape 1x(embed_dim)x(embedding_h)x(embedding_w)
 
-        """
+        """  # noqa: D205
         return self.pe_layer(self.image_embedding_size)[None, ...]
 
     def _embed_points(self, points: Tensor, labels: Tensor, pad: bool) -> Tensor:

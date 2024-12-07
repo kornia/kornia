@@ -6,8 +6,7 @@ from kornia.geometry.vector import Vector2, Vector3
 
 class Z1Projection:
     def project(self, points: Vector3) -> Vector2:
-        """Project one or more Vector3 from the camera frame into the canonical z=1 plane through perspective
-        division.
+        """Project one or more Vector3 from the camera frame into the canonical z=1 plane through perspective division.
 
         Args:
             points: Vector3 representing the points to project.

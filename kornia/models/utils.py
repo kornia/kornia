@@ -17,7 +17,10 @@ class ResizePreProcessor(Module):
     """
 
     def __init__(self, height: int, width: int, interpolation_mode: str = "bilinear") -> None:
-        """Args:
+        """Construct ResizePreprocessor module.
+
+        Parameters
+        ----------
         height: height of the resized image.
         width: width of the resized image.
         interpolation_mode: interpolation mode for image resizing. Supported values: ``nearest``, ``bilinear``,

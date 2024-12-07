@@ -319,8 +319,9 @@ class ONNXMixin:
         *args: list[onnx.ModelProto],  # type:ignore
         io_maps: Optional[list[tuple[str, str]]] = None,
     ) -> onnx.ModelProto:  # type:ignore
-        """Combine the provided ONNX models into a single ONNX graph. Optionally, map inputs and outputs between
-        operators using the `io_map`.
+        """Combine the provided ONNX models into a single ONNX graph.
+
+        Optionally, map inputs and outputs between operators using the `io_map`.
 
         Args:
             io_maps:

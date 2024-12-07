@@ -11,8 +11,7 @@ from kornia.geometry.transform import warp_perspective
 
 
 class HomographyTracker(Module):
-    r"""Module, which performs local-feature-based tracking of the target planar object in the sequence of the
-    frames.
+    r"""Perform local-feature-based tracking of the target planar object in the sequence of the frames.
 
     Args:
         initial_matcher: image matching module, e.g. :class:`~kornia.feature.LocalFeatureMatcher`
@@ -107,8 +106,9 @@ class HomographyTracker(Module):
         return H, True
 
     def track_next_frame(self, x: Tensor) -> Tuple[Tensor, bool]:
-        """Prewarp the frame `x` according to the previous frame homography, matched with fast_matcher
-        verified with ransac.
+        """Prewarp the frame `x` according to the previous frame homography.
+
+        Matched with fast_matcher verified with ransac.
         """
         if self.previous_homography is not None:  # mypy, shut up
             Hwarp = self.previous_homography.clone()[None]

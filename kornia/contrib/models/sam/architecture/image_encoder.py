@@ -39,7 +39,10 @@ class ImageEncoderViT(Module):
         window_size: int = 0,
         global_attn_indexes: tuple[int, ...] = (),
     ) -> None:
-        """Args:
+        """Construct Image Encoder ViT.
+
+        Parameters
+        ----------
         img_size: Input image size.
         patch_size: Patch size.
         in_chans: Number of input image channels.
@@ -124,7 +127,10 @@ class Block(Module):
         window_size: int = 0,
         input_size: Optional[tuple[int, int]] = None,
     ) -> None:
-        """Args:
+        """Construct tranformer block.
+
+        Parameters
+        ----------
         dim: Number of input channels.
         num_heads: Number of attention heads in each ViT block.
         mlp_ratio: Ratio of mlp hidden dim to embedding dim.
@@ -184,7 +190,10 @@ class Attention(Module):
         rel_pos_zero_init: bool = True,
         input_size: Optional[tuple[int, int]] = None,
     ) -> None:
-        """Args:
+        """Construct attention block.
+
+        Parameters
+        ----------
         dim: Number of input channels.
         num_heads: Number of attention heads.
         qkv_bias:  If True, add a learnable bias to query, key, value.
@@ -308,7 +317,10 @@ class PatchEmbed(Module):
         in_chans: int = 3,
         embed_dim: int = 768,
     ) -> None:
-        """Args:
+        """Construct Patch Embedding.
+
+        Parameters
+        ----------
         kernel_size: kernel size of the projection layer.
         stride: stride of the projection layer.
         padding: padding size of the projection layer.

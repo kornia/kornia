@@ -1336,10 +1336,10 @@ def matrix4x4_to_Rt(extrinsics: Tensor) -> tuple[Tensor, Tensor]:
 
 
 def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
-    r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
-    and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
+    r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
 
-    [right, down, forwards]
+    I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1367,10 +1367,10 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
 
 
 def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
-    r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
-    and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
+    r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
 
-    [right, down, forwards]
+    I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1398,9 +1398,10 @@ def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tens
 
 
 def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
-    r"""Convert vision coordinate frame (e.g. OpenCV) to graphics coordinate frame (e.g. OpenGK.), i.e. flips y and
-    z axis Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] == [right,
-    down, forwards]
+    r"""Convert vision coordinate frame (e.g. OpenCV) to graphics coordinate frame (e.g. OpenGK.).
+
+    I.e. flips y and z axis Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1428,10 +1429,10 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
 
 
 def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
-    r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
-    and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
+    r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
 
-    [right, down, forwards]
+    I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    Vision convention: [+x, +y, +z] == [right, down, forwards]
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1459,8 +1460,8 @@ def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tens
 
 
 def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
-    r"""Convert camtoworld, i.e. projection from camera coordinate system to world coordinate system, to worldtocam
-    frame i.e. projection from world to the camera coordinate system (used in Colmap).
+    r"""Convert camtoworld to worldtocam frame used in Colmap.
+
     See
     long-url: https://colmap.github.io/format.html#output-format
 
@@ -1493,8 +1494,7 @@ def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
 
 
 def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
-    r"""Convert worldtocam frame i.e. projection from world to the camera coordinate system (used in Colmap) to
-    camtoworld, i.e. projection from camera coordinate system to world coordinate system.
+    r"""Convert worldtocam frame used in Colmap to camtoworld.
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1525,8 +1525,9 @@ def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
 
 
 def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Tensor]:
-    r"""Convert output of Apple ARKit screen pose (in quaternion representation) to the camera-to-world
-    transformation, expected by Colmap, also in quaternion representation.
+    r"""Convert output of Apple ARKit screen pose to the camera-to-world transformation, expected by Colmap.
+
+    Both poses in quaternion representation.
 
     Args:
         qvec: ARKit rotation quaternion :math:`(B, 4)`, [x, y, z, w] format.

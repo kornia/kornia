@@ -26,9 +26,7 @@ class BaseModel(Module):
 
 
 class Homography(BaseModel):
-    r"""Homography geometric model to be used together with ImageRegistrator module for the optimization-based
-    image registration.
-    """
+    r"""Homography geometric model to be used with ImageRegistrator for the optimization-based image registration."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -64,8 +62,7 @@ class Homography(BaseModel):
 
 
 class Similarity(BaseModel):
-    """Similarity geometric model to be used together with ImageRegistrator module for the optimization-based image
-    registration.
+    """Similarity geometric model to be used with ImageRegistrator module for the optimization-based image registration.
 
     Args:
         rotation: if True, the rotation is optimizable, else constant zero.
@@ -215,8 +212,9 @@ class ImageRegistrator(Module):
     def register(
         self, src_img: Tensor, dst_img: Tensor, verbose: bool = False, output_intermediate_models: bool = False
     ) -> Union[Tensor, Tuple[Tensor, List[Tensor]]]:
-        r"""Estimate the tranformation' which warps src_img into dst_img by gradient descent. The shape of the
-        tensors is not checked, because it may depend on the model, e.g. volume registration.
+        r"""Estimate the tranformation which warps src_img into dst_img by gradient descent.
+
+        The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration.
 
         Args:
             src_img: Input image tensor.

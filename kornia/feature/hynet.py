@@ -35,7 +35,7 @@ class FilterResponseNorm2d(Module):
         - Input: :math:`(B, \text{num_features}, H, W)`
         - Output: :math:`(B, \text{num_features}, H, W)`
 
-    """
+    """  # noqa: D205
 
     def __init__(
         self,
@@ -103,7 +103,7 @@ class TLU(Module):
         - Input: :math:`(B, \text{num_features}, H, W)`
         - Output: :math:`(B, \text{num_features}, H, W)`
 
-    """
+    """  # noqa:D205
 
     def __init__(self, num_features: int) -> None:
         """max(y, tau) = max(y - tau, 0) + tau = ReLU(y - tau) + tau"""

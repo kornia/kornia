@@ -84,7 +84,9 @@ class ColorMapType(Enum):
 
 
 class ColorMap:
-    r"""Class to represent a colour map. It can be created or selected from the built-in colour map. Please refer to
+    r"""Class to represent a colour map.
+
+    It can be created or selected from the built-in colour map. Please refer to
     the `ColorMapType` enum class to view all available colormaps.
 
     Args:

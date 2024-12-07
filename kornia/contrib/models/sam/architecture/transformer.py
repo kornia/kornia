@@ -35,7 +35,7 @@ class TwoWayTransformer(Module):
             mlp_dim: the channel dimension internal to the MLP block
             activation: the activation to use in the MLP block
 
-        """
+        """  # noqa: D205
         super().__init__()
         self.depth = depth
         self.embedding_dim = embedding_dim
@@ -59,7 +59,10 @@ class TwoWayTransformer(Module):
         self.norm_final_attn = nn.LayerNorm(embedding_dim)
 
     def forward(self, image_embedding: Tensor, image_pe: Tensor, point_embedding: Tensor) -> tuple[Tensor, Tensor]:
-        """Args:
+        """Run forward.
+
+        Parameters
+        ----------
             image_embedding: image to attend to. Should be shape B x embedding_dim x h x w for any h and w.
             image_pe: the positional encoding to add to the image. Must have the same shape as image_embedding.
             point_embedding: the embedding to add to the query points. Must have shape B x N_points x embedding_dim
@@ -104,7 +107,9 @@ class TwoWayAttentionBlock(Module):
         attention_downsample_rate: int = 2,
         skip_first_layer_pe: bool = False,
     ) -> None:
-        """Construct a transformer block with four layers: (1) self-attention of sparse inputs, (2) cross attention of
+        """Construct a transformer block with four layers.
+
+        (1) self-attention of sparse inputs, (2) cross attention of
         sparse inputs to dense inputs, (3) mlp block on sparse inputs, and (4) cross attention of dense inputs to sparse
         inputs.
 
@@ -164,9 +169,7 @@ class TwoWayAttentionBlock(Module):
 
 
 class Attention(Module):
-    """An attention layer that allows for downscaling the size of the embedding after projection to queries, keys,
-    and values.
-    """
+    """Attention layer that allows for downscaling the embedding after projection to queries, keys, and values."""
 
     def __init__(self, embedding_dim: int, num_heads: int, downsample_rate: int = 1) -> None:
         super().__init__()

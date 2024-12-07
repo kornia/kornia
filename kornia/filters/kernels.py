@@ -500,8 +500,9 @@ def get_spatial_gradient_kernel2d(
 def get_spatial_gradient_kernel3d(
     mode: str, order: int, device: Optional[Device] = None, dtype: Optional[Dtype] = None
 ) -> Tensor:
-    r"""Return kernel for 1st or 2nd order scale pyramid gradients, using one of the following
-    operators: sobel, diff.
+    r"""Return kernel for 1st or 2nd order scale pyramid gradients.
+
+    Uses one of the following operators: sobel, diff.
     """
     KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
     KORNIA_CHECK(order in {1, 2}, f"Order should be 1 or 2. Got {order}")

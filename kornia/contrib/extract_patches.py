@@ -62,7 +62,7 @@ def compute_padding(
         This function will be implicitly used in :func:`extract_tensor_patches` and :func:`combine_tensor_patches` if
         `allow_auto_(un)padding` is set to True.
 
-    """
+    """  # noqa: D205
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
     if stride is None:
