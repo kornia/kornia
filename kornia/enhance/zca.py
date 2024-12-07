@@ -89,7 +89,7 @@ class ZCAWhitening(Module):
         Args:
             x: Input data.
 
-        returns:
+        Returns:
             Returns a fitted ZCAWhiten object instance.
 
         """

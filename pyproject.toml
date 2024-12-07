@@ -138,8 +138,24 @@ ignore = [
   "UP007",   # Prefer Optional[], Union[] over | due to torch jit scripting
   "UP006",   # Prefer List[], over list due to torch jit scripting
   "UP035",   # Ignore deprecated typing because of jit scripting
-  'D100', 'D101', 'D102','D103', 'D104', 'D105', 'D107', 'D203', 'D204', 'D205', 'D213', 'D400', 'D401', 'D404', 'D406', 'D407', 'D415', 'D417'# docs -- TODO: unconment some of these rules..
+  'D100',
+  'D101',
+  'D102',
+  'D103',
+  'D104',
+  'D105',
+  'D204',
+  'D205',
+  'D213',
+  'D400',
+  'D401',
+  'D404',
+  'D406',
+  'D407',
+  'D415',
 ]
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
 
 [tool.ruff.lint.isort]
 forced-separate = ["testing", "tests"]
