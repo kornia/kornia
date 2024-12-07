@@ -13,3 +13,4 @@ from .ransac import *
 from .solvers import *
 from .subpix import *
 from .transform import *
+from .pointcloud import *

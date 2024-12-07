@@ -2,6 +2,8 @@ import os
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
+
 
 def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
     r"""Utility function to save to disk a pointcloud in PLY format.
