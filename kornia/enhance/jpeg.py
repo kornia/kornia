@@ -235,7 +235,7 @@ def _dequantize(
 
 
 def _chroma_subsampling(input_ycbcr: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-    """This function implements chroma subsampling.
+    """Implement chroma subsampling.
 
     Args:
         input_ycbcr (Tensor): YCbCr input tensor of the shape :math:`(B, 3, H, W)`.

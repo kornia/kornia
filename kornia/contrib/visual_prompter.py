@@ -16,7 +16,7 @@ from kornia.geometry.keypoints import Keypoints
 
 
 class VisualPrompter:
-    r"""This class allow the user to run multiple query with multiple prompts for a model.
+    r"""Allow the user to run multiple query with multiple prompts for a model.
 
     At the moment, we just support the SAM model. The model is loaded based on the given config.
 

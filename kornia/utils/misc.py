@@ -65,7 +65,7 @@ def vec_like(n: int, tensor: Tensor, shared_memory: bool = False) -> Tensor:
 
 
 def differentiable_polynomial_rounding(input: Tensor) -> Tensor:
-    """This function implements differentiable rounding.
+    """Differentiable rounding.
 
     Args:
         input (Tensor): Input tensor of any shape to be rounded.
@@ -82,7 +82,7 @@ def differentiable_polynomial_rounding(input: Tensor) -> Tensor:
 
 
 def differentiable_polynomial_floor(input: Tensor) -> Tensor:
-    """This function implements differentiable floor.
+    """A differentiable floor.
 
     Args:
         input (Tensor): Input tensor of any shape to be floored.
@@ -104,7 +104,7 @@ def differentiable_clipping(
     max_val: Optional[float] = None,
     scale: float = 0.02,
 ) -> Tensor:
-    """This function implements a differentiable and soft approximation of the clipping operation.
+    """A differentiable and soft approximation of the clipping operation.
 
     Args:
         input (Tensor): Input tensor of any shape.

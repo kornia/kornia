@@ -97,7 +97,7 @@ def match_adalam(
 
 class AdalamFilter:
     def __init__(self, custom_config: Optional[AdalamConfig] = None) -> None:
-        """This class acts as a wrapper to the method AdaLAM for outlier filtering.
+        """Wrap the method AdaLAM for outlier filtering.
 
         init args:
             custom_config: dictionary overriding the default configuration. Missing parameters are kept as default.

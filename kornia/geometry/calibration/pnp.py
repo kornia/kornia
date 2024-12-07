@@ -49,7 +49,7 @@ def solve_pnp_dlt(
     weights: Optional[torch.Tensor] = None,
     svd_eps: float = 1e-4,
 ) -> torch.Tensor:
-    r"""This function attempts to solve the Perspective-n-Point (PnP) problem using Direct Linear Transform (DLT).
+    r"""Attempt to solve the Perspective-n-Point (PnP) problem using Direct Linear Transform (DLT).
 
     Given a batch (where batch size is :math:`B`) of :math:`N` 3D points
     (where :math:`N \geq 6`) in the world space, a batch of :math:`N`

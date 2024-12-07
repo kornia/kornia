@@ -7,7 +7,7 @@ from kornia.core import Module, Tensor, cos, sin, zeros
 
 
 class PositionEncodingSine(Module):
-    """This is a sinusoidal position encoding that generalized to 2-dimensional images."""
+    """A sinusoidal position encoding that generalized to 2-dimensional images."""
 
     pe: Tensor
 

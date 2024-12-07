@@ -75,7 +75,7 @@ class ModelBaseMixin:
 
 
 class ModelBase(Module, ONNXExportMixin, ModelBaseMixin):
-    """This class wraps a model and performs pre-processing and post-processing."""
+    """Wrap a model and perform pre-processing and post-processing."""
 
     def __init__(
         self, model: Module, pre_processor: Module, post_processor: Module, name: Optional[str] = None

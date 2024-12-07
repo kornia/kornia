@@ -102,7 +102,7 @@ def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFor
 
 
 class ObjectDetector(ModelBase):
-    """This class wraps an object detection model and performs pre-processing and post-processing."""
+    """Wrap an object detection model and perform pre-processing and post-processing."""
 
     name: str = "detection"
 

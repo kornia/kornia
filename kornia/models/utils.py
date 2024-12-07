@@ -11,7 +11,7 @@ __all__ = ["OutputRangePostProcessor", "ResizePostProcessor", "ResizePreProcesso
 
 
 class ResizePreProcessor(Module):
-    """This module resizes a list of image tensors to the given size.
+    """Resize a list of image tensors to the given size.
 
     Additionally, also returns the original image sizes for further post-processing.
     """
