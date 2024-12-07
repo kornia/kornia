@@ -20,6 +20,7 @@ English | [简体中文](README_zh-CN.md)
 [![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA)
 [![Twitter](https://img.shields.io/twitter/follow/kornia_foss?style=social)](https://twitter.com/kornia_foss)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENCE)
+[![Gurubase](https://img.shields.io/badge/Gurubase-Ask%20Kornia%20Guru-006BFF)](https://gurubase.io/g/kornia)
 
 </p>
 </div>
