@@ -156,7 +156,7 @@ class CoarseMatching(Module):
             conf_matrix (torch.Tensor): [N, L, S]
             data (dict): with keys ['hw0_i', 'hw1_i', 'hw0_c', 'hw1_c']
 
-        Returns:
+        Returns
         -------
             coarse_matches (dict): {
                 'b_ids' (torch.Tensor): [M'],

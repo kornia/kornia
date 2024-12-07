@@ -47,11 +47,11 @@ class BasicSequentialBase(nn.Sequential):
                 to look for. (See above example for how to specify a
                 fully-qualified string.)
 
-        Returns:
+        Returns
         -------
             Module: The submodule referenced by ``target``
 
-        Raises:
+        Raises
         ------
             AttributeError: If the target string references an invalid
                 path or resolves to something that is not an

@@ -23,7 +23,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
             will be the corresponding key of the returning dict. The center and range must be
             both provided worked as a validator to the given factor.
 
-    Returns:
+    Returns
     -------
         A dict of parameters to be passed for transformation according the number of samplers
         and the pointed returning name of each tuple.

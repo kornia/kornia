@@ -266,7 +266,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
         Args:
             images: images to be detected. Shape :math:`(N, C, H, W)`.
 
-        Returns:
+        Returns
         -------
             - **logits** - Tensor of shape :math:`(N, Q, K)`, where :math:`Q` is the number of queries,
               :math:`K` is the number of classes.

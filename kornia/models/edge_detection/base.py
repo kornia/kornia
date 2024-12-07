@@ -26,7 +26,7 @@ class EdgeDetector(ModelBase):
             images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
                 If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
 
-        Returns:
+        Returns
         -------
             output tensor.
 
@@ -47,7 +47,7 @@ class EdgeDetector(ModelBase):
             images: input tensor.
             output_type: type of the output.
 
-        Returns:
+        Returns
         -------
             output tensor.
 
@@ -73,7 +73,7 @@ class EdgeDetector(ModelBase):
             images: input tensor.
             output_type: type of the output.
 
-        Returns:
+        Returns
         -------
             output tensor.
 

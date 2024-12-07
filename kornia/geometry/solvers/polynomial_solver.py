@@ -19,7 +19,7 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
     Args:
         coeffs : The coefficients of quadratic equation :`(B, 3)`
 
-    Returns:
+    Returns
     -------
         A tensor of shape `(B, 2)` containing the real roots to the quadratic equation.
 
@@ -82,7 +82,7 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     Args:
         coeffs : The coefficients cubic equation : `(B, 4)`
 
-    Returns:
+    Returns
     -------
         A tensor of shape `(B, 3)` containing the real roots to the cubic equation.
 
@@ -216,7 +216,7 @@ def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         a: a first order polynomial for variables :math:`(x,y,z,1)`.
                 b: a first order polynomial for variables :math:`(x,y,z,1)`.
 
-    Returns:
+    Returns
     -------
         degree 2 poly with the order :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
 
@@ -250,7 +250,7 @@ def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         a: a second degree poly for variables :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
         b: a first degree poly for variables :math:`(x y z 1)`.
 
-    Returns:
+    Returns
     -------
         a third degree poly for variables,
         :math:`(x^3, y^3, x^2*y, x*y^2, x^2*z, x^2, y^2*z, y^2,
@@ -293,7 +293,7 @@ def determinant_to_polynomial(A: Tensor) -> Tensor:
     Args:
         A: Tensor :math:`(*, 3, 13)`.
 
-    Returns:
+    Returns
     -------
         a degree 10 poly, representing determinant (Eqn. 14 in the paper).
 

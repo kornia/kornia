@@ -28,11 +28,11 @@ def spatial_softmax2d(input: Tensor, temperature: Optional[Tensor] = None) -> Te
         input: the input tensor with shape :math:`(B, N, H, W)`.
         temperature: factor to apply to input, adjusting the "smoothness" of the output distribution.
 
-    Returns:
+    Returns
     -------
        a 2D probability distribution per image channel with shape :math:`(B, N, H, W)`.
 
-    Examples:
+    Examples
     --------
         >>> heatmaps = torch.tensor([[[
         ... [0., 0., 0.],
@@ -68,11 +68,11 @@ def spatial_expectation2d(input: Tensor, normalized_coordinates: bool = True) ->
         normalized_coordinates: whether to return the coordinates normalized in the range
           of :math:`[-1, 1]`. Otherwise, it will return the coordinates in the range of the input shape.
 
-    Returns:
+    Returns
     -------
        expected value of the 2D coordinates with shape :math:`(B, N, 2)`. Output order of the coordinates is (x, y).
 
-    Examples:
+    Examples
     --------
         >>> heatmaps = torch.tensor([[[
         ... [0., 0., 0.],
@@ -119,7 +119,7 @@ def render_gaussian2d(mean: Tensor, std: Tensor, size: tuple[int, int], normaliz
         normalized_coordinates: whether ``mean`` and ``std`` are assumed to use coordinates normalized
           in the range of :math:`[-1, 1]`. Otherwise, coordinates are assumed to be in the range of the output shape.
 
-    Returns:
+    Returns
     -------
         tensor including rendered points with shape :math:`(*, H, W)`.
 

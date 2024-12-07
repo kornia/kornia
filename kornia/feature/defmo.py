@@ -267,14 +267,14 @@ class DeFMO(Module):
     Args:
         pretrained: Download and set pretrained weights to the model. Default: false.
 
-    Returns:
+    Returns
     -------
         Temporal super-resolution without background.
     Shape:
         - Input: (B, 6, H, W)
         - Output: (B, S, 4, H, W)
 
-    Examples:
+    Examples
     --------
         >>> import kornia
         >>> input = torch.rand(2, 6, 240, 320)

@@ -39,7 +39,7 @@ class MS_SSIMLoss(nn.Module):
          ``'mean'``: the sum of the output will be divided by the number of elements
          in the output, ``'sum'``: the output will be summed.
 
-    Returns:
+    Returns
     -------
         The computed loss.
 
@@ -48,7 +48,7 @@ class MS_SSIMLoss(nn.Module):
         - Input2: :math:`(N, C, H, W)`.
         - Output: :math:`(N, H, W)` or scalar if reduction is set to ``'mean'`` or ``'sum'``.
 
-    Examples:
+    Examples
     --------
         >>> input1 = torch.rand(1, 3, 5, 5)
         >>> input2 = torch.rand(1, 3, 5, 5)
@@ -96,7 +96,7 @@ class MS_SSIMLoss(nn.Module):
             size: the size of gauss kernel.
             sigma: sigma of normal distribution.
 
-        Returns:
+        Returns
         -------
             1D kernel (size).
 
@@ -116,7 +116,7 @@ class MS_SSIMLoss(nn.Module):
             size: the size of gauss kernel.
             sigma: sigma of normal distribution.
 
-        Returns:
+        Returns
         -------
             2D kernel (size x size).
 
@@ -131,7 +131,7 @@ class MS_SSIMLoss(nn.Module):
             img1: the predicted image with shape :math:`(B, C, H, W)`.
             img2: the target image with a shape of :math:`(B, C, H, W)`.
 
-        Returns:
+        Returns
         -------
             Estimated MS-SSIM_L1 loss.
 

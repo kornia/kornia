@@ -19,7 +19,7 @@ def distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params: T
         projected_points_in_camera_z1_plane: Tensor representing the points to distort with shape (..., 2).
         params: Tensor representing the parameters of the affine distortion model with shape (..., 4).
 
-    Returns:
+    Returns
     -------
         Tensor representing the distorted points with shape (..., 2).
 
@@ -58,7 +58,7 @@ def undistort_points_affine(distorted_points_in_camera: Tensor, params: Tensor) 
         distorted_points_in_camera: Tensor representing the points to undistort with shape (..., 2).
         params: Tensor representing the parameters of the affine distortion model with shape (..., 4).
 
-    Returns:
+    Returns
     -------
         Tensor representing the undistorted points with shape (..., 2).
 
@@ -95,7 +95,7 @@ def dx_distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params
         projected_points_in_camera_z1_plane: Tensor representing the points to distort with shape (..., 2).
         params: Tensor representing the parameters of the affine distortion model with shape (..., 4).
 
-    Returns:
+    Returns
     -------
         Tensor representing the derivative of the x distortion with respect to the x coordinate with shape (..., 2).
 

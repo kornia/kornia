@@ -62,7 +62,7 @@ class NamedPose:
         Args:
             other: NamedPose to compose with.
 
-        Returns:
+        Returns
         -------
             Composed NamedPose.
 
@@ -128,7 +128,7 @@ class NamedPose:
             frame_src: Name of the source frame.
             frame_dst: Name of the destination frame.
 
-        Returns:
+        Returns
         -------
             NamedPose constructed from rotation and translation.
 
@@ -173,7 +173,7 @@ class NamedPose:
             frame_src: Name of the source frame.
             frame_dst: Name of the destination frame.
 
-        Returns:
+        Returns
         -------
             NamedPose constructed from a matrix.
 
@@ -199,7 +199,7 @@ class NamedPose:
     def inverse(self) -> NamedPose:
         """Inverse of the NamedPose.
 
-        Returns:
+        Returns
         -------
             Inverse of the NamedPose.
 
@@ -222,7 +222,7 @@ class NamedPose:
         Args:
             points_in_src: Points in source frame.
 
-        Returns:
+        Returns
         -------
             Points in destination frame.
 

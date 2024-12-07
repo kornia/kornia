@@ -30,11 +30,11 @@ def mean_average_precision(
         n_classes: the number of classes.
         threshold: count as a positive if the overlap is greater than the threshold.
 
-    Returns:
+    Returns
     -------
         mean average precision (mAP), list of average precisions for each class.
 
-    Examples:
+    Examples
     --------
         >>> boxes, labels, scores = torch.tensor([[100, 50, 150, 100.]]), torch.tensor([1]), torch.tensor([.7])
         >>> gt_boxes, gt_labels = torch.tensor([[100, 50, 150, 100.]]), torch.tensor([1])

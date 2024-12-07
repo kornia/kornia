@@ -40,7 +40,7 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str], raises: bool = True) -> bool
         shape: a list with strings with the expected shape.
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         Exception: if the input tensor is has not the expected shape and raises is True.
 
@@ -93,7 +93,7 @@ def KORNIA_CHECK(condition: bool, msg: Optional[str] = None, raises: bool = True
         msg: message to show in the exception.
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         Exception: if the condition is met and raises is True.
 
@@ -137,7 +137,7 @@ def KORNIA_CHECK_TYPE(
         msg: message to show in the exception.
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         TypeException: if the input variable does not match with the expected and raises is True.
 
@@ -162,7 +162,7 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: Optional[str] = None, raises: bool = 
         msg: message to show in the exception.
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         TypeException: if the input variable does not match with the expected and raises is True.
 
@@ -187,7 +187,7 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[object]], raises: bool =
         x: Any sequence of objects
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         TypeException: if the input variable does not match with the expected and raises is True.
 
@@ -219,7 +219,7 @@ def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
         msg: message to show in the exception.
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         TypeException: if the two tensors are not in the same device and raises is True.
 
@@ -245,7 +245,7 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: Optional[str] = None, 
         msg: message to show in the exception.
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         Exception: if all the tensors are not in the same device and raises is True.
 
@@ -273,7 +273,7 @@ def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
         msg: message to show in the exception.
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         TypeException: if the two tensors have not the same shape and raises is True.
 
@@ -299,7 +299,7 @@ def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None, raises: bool = T
         msg: message to show in the exception.
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         TypeException: if all the input tensor has not a shape :math:`(3,H,W)` and raises is True.
 
@@ -324,7 +324,7 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None, raises: bool = Tr
         msg: message to show in the exception.
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         TypeException: if the tensor has not a shape :math:`(1,H,W)` or :math:`(H,W)` and raises is True.
 
@@ -349,7 +349,7 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None, raises: 
         msg: message to show in the exception.
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         TypeException: if the tensor has not a shape :math:`(1,H,W)` or :math:`(3,H,W)` and raises is True.
 
@@ -376,7 +376,7 @@ def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: Optional[str] = None, raises: bool = T
         bits: the image bits. The default checks if given integer input image is an
             8-bit image (0-255) or not.
 
-    Raises:
+    Raises
     ------
         TypeException: if all the input tensor has not 1) a shape :math:`(3,H,W)`,
         2) [0, 1] for float or [0, 255] for int, 3) and raises is True.
@@ -416,7 +416,7 @@ def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor, raises: bool 
         dm: distance matrix tensor to evaluate.
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         TypeException: if the descriptors shape do not match with the distance matrix and raises is True.
 
@@ -445,7 +445,7 @@ def KORNIA_CHECK_LAF(laf: Tensor, raises: bool = True) -> bool:
         laf: local affine frame tensor to evaluate.
         raises: bool indicating whether an exception should be raised upon failure.
 
-    Raises:
+    Raises
     ------
         Exception: if the input laf does not have a shape :math:`(B,N,2,3)` and raises is True.
 

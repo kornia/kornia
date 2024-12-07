@@ -55,7 +55,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
         - (optional) Additional image or mask tensors where the features are transplanted based on the first
           segmentation mask: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)` (`DataKey.MASK`).
 
-    Returns:
+    Returns
     -------
         Tensor | list[Tensor]:
 
@@ -66,7 +66,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
             - Additional augmented image or mask tensors: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)`
               (`DataKey.MASK`).
 
-    Examples:
+    Examples
     --------
         >>> import torch
         >>> rng = torch.manual_seed(0)
@@ -205,7 +205,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
                     `batch_prob`).
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
 
-        Returns:
+        Returns
         -------
              Updated dictionary of parameters with the necessary information to apply the augmentation on all input
              tensors separately.

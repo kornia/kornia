@@ -11,7 +11,7 @@ class ManyToManyAugmentationDispather(nn.Module):
     Args:
         augmentations: a list or a sequence of kornia AugmentationSequential modules.
 
-    Examples:
+    Examples
     --------
         >>> import torch
         >>> input_1, input_2 = torch.randn(2, 3, 5, 6), torch.randn(2, 3, 5, 6)
@@ -57,7 +57,7 @@ class ManyToOneAugmentationDispather(nn.Module):
     Args:
         augmentations: a list or a sequence of kornia AugmentationSequential modules.
 
-    Examples:
+    Examples
     --------
         >>> import torch
         >>> input = torch.randn(2, 3, 5, 6)

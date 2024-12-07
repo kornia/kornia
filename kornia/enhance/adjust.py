@@ -554,7 +554,7 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
         gain: The multiplier of sigmoid function.
         inv: If is set to True the function will return the inverse sigmoid correction.
 
-    Returns:
+    Returns
     -------
          Adjusted tensor in the shape of :math:`(*, H, W)`.
 
@@ -588,7 +588,7 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
         inv:  If is set to True the function will return the inverse logarithmic correction.
         clip_output: Whether to clip the output image with range of [0, 1].
 
-    Returns:
+    Returns
     -------
         Adjusted tensor in the shape of :math:`(*, H, W)`.
 
@@ -623,7 +623,7 @@ def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
             If int or one element tensor, input will be solarized across the whole batch.
             If 1-d tensor, input will be solarized element-wise, len(thresholds) == len(input).
 
-    Returns:
+    Returns
     -------
         Solarized images.
 
@@ -666,7 +666,7 @@ def solarize(
             If int or one element tensor, same addition will be added across the whole batch.
             If 1-d tensor, additions will be added element-wisely, len(additions) == len(input).
 
-    Returns:
+    Returns
     -------
         The solarized images with shape :math:`(*, C, H, W)`.
 
@@ -729,7 +729,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
             If 1-d tensor, input will be posterized element-wisely, len(bits) == input.shape[-3].
             If n-d tensor, input will be posterized element-channel-wisely, bits.shape == input.shape[:len(bits.shape)]
 
-    Returns:
+    Returns
     -------
         Image with reduced color channels with shape :math:`(*, C, H, W)`.
 
@@ -819,7 +819,7 @@ def sharpness(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
             If float or one element tensor, input will be sharpened by the same factor across the whole batch.
             If 1-d tensor, input will be sharpened element-wisely, len(factor) == len(input).
 
-    Returns:
+    Returns
     -------
         Sharpened image or images with shape :math:`(*, C, H, W)`.
 
@@ -869,7 +869,7 @@ def _blend_one(input1: Tensor, input2: Tensor, factor: Tensor) -> Tensor:
         input2: image tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
         factor: factor 0-dim tensor.
 
-    Returns:
+    Returns
     -------
         : image tensor with the batch in the zero position.
 
@@ -911,7 +911,7 @@ def _scale_channel(im: Tensor) -> Tensor:
     Args:
         input: image tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
 
-    Returns:
+    Returns
     -------
         image tensor with the batch in the zero position.
 
@@ -960,7 +960,7 @@ def equalize(input: Tensor) -> Tensor:
     Args:
         input: image tensor to equalize with shape :math:`(*, C, H, W)`.
 
-    Returns:
+    Returns
     -------
         Equalized image tensor with shape :math:`(*, C, H, W)`.
 
@@ -989,7 +989,7 @@ def equalize3d(input: Tensor) -> Tensor:
     Args:
         input: image tensor with shape :math:`(*, C, D, H, W)` to equalize.
 
-    Returns:
+    Returns
     -------
         Equalized volume with shape :math:`(B, C, D, H, W)`.
 

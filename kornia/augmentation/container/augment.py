@@ -72,7 +72,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     .. note::
         See a working example `here <https://kornia.github.io/tutorials/nbs/data_augmentation_sequential.html>`__.
 
-    Examples:
+    Examples
     --------
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)
@@ -484,7 +484,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
             output_type: Desired output type ('tensor', 'numpy', or 'pil').
 
-        Returns:
+        Returns
         -------
             Callable: Decorated function with converted input and output types.
 

@@ -74,7 +74,7 @@ def warp_perspective(
         align_corners: interpolation flag.
         fill_value: tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
 
-    Returns:
+    Returns
     -------
         the warped input image :math:`(B, C, H, W)`.
 
@@ -161,7 +161,7 @@ def warp_affine(
         align_corners : mode for grid_generation.
         fill_value: tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
 
-    Returns:
+    Returns
     -------
         the warped tensor with shape :math:`(B, C, H, W)`.
 
@@ -221,7 +221,7 @@ def _fill_and_warp(src: Tensor, grid: Tensor, mode: str, align_corners: bool, fi
         align_corners: interpolation flag.
         fill_value: tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
 
-    Returns:
+    Returns
     -------
         the warped and filled tensor with shape :math:`(B, 3, H, W)`.
 
@@ -242,7 +242,7 @@ def warp_grid(grid: Tensor, src_homo_dst: Tensor) -> Tensor:
           transform all points in the grid. Shape of the homography
           has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
 
-    Returns:
+    Returns
     -------
         the transformed grid of shape :math:`(N, H, W, 2)`.
 
@@ -268,7 +268,7 @@ def warp_grid3d(grid: Tensor, src_homo_dst: Tensor) -> Tensor:
           transform all points in the grid. Shape of the homography
           has to be :math:`(1, 4, 4)` or :math:`(N, 1, 4, 4)`.
 
-    Returns:
+    Returns
     -------
         the transformed grid of shape :math:`(N, H, W, 3)`.
 
@@ -326,7 +326,7 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
         points_dst: coordinates of the corresponding quadrangle vertices in
             the destination image with shape :math:`(B, 4, 2)`.
 
-    Returns:
+    Returns
     -------
         the perspective transformation with shape :math:`(B, 3, 3)`.
 
@@ -408,7 +408,7 @@ def get_rotation_matrix2d(center: Tensor, angle: Tensor, scale: Tensor) -> Tenso
             be the top-left corner) with shape :math:`(B)`.
         scale: scale factor for x, y scaling with shape :math:`(B, 2)`.
 
-    Returns:
+    Returns
     -------
         the affine matrix of 2D rotation with shape :math:`(B, 2, 3)`.
 
@@ -504,7 +504,7 @@ def remap(
         normalized_coordinates: whether the input coordinates are
            normalized in the range of [-1, 1].
 
-    Returns:
+    Returns
     -------
         the warped tensor with same shape as the input grid maps.
 
@@ -597,7 +597,7 @@ def get_affine_matrix2d(
         sx: tensor containing the shear factor in the x-direction with shape :math:`(B)`.
         sy: tensor containing the shear factor in the y-direction with shape :math:`(B)`.
 
-    Returns:
+    Returns
     -------
         the affine transformation matrix :math:`(B, 3, 3)`.
 
@@ -624,7 +624,7 @@ def get_translation_matrix2d(translations: Tensor) -> Tensor:
     Args:
         translations: tensor containing the translation vector with shape :math:`(B, 2)`.
 
-    Returns:
+    Returns
     -------
         the affine transformation matrix :math:`(B, 3, 3)`.
 
@@ -657,11 +657,11 @@ def get_shear_matrix2d(center: Tensor, sx: Optional[Tensor] = None, sy: Optional
         sx: shearing angle along x axis in radiants.
         sy: shearing angle along y axis in radiants
 
-    Returns:
+    Returns
     -------
         params to be passed to the affine transformation with shape :math:`(B, 3, 3)`.
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> sx = torch.randn(1)
@@ -722,7 +722,7 @@ def get_affine_matrix3d(
         szx: tensor containing the shear factor in the zx-direction with shape :math:`(B)`.
         szy: tensor containing the shear factor in the zy-direction with shape :math:`(B)`.
 
-    Returns:
+    Returns
     -------
         the 3d affine transformation matrix :math:`(B, 3, 3)`.
 
@@ -780,11 +780,11 @@ def get_shear_matrix3d(
         szx: shearing angle along z axis, towards x plane in radiants.
         szy: shearing angle along z axis, towards y plane in radiants.
 
-    Returns:
+    Returns
     -------
         params to be passed to the affine transformation.
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> sxy, sxz, syx, syz = torch.randn(4, 1)
@@ -875,7 +875,7 @@ def warp_affine3d(
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners : mode for grid_generation.
 
-    Returns:
+    Returns
     -------
         Tensor: the warped 3d tensor with shape :math:`(B, C, D, H, W)`.
 
@@ -920,7 +920,7 @@ def projection_from_Rt(rmat: Tensor, tvec: Tensor) -> Tensor:
        rmat: the rotation matrix with shape :math:`(*, 3, 3)`.
        tvec: the translation vector with shape :math:`(*, 3, 1)`.
 
-    Returns:
+    Returns
     -------
        the projection matrix with shape :math:`(*, 3, 4)`.
 
@@ -948,7 +948,7 @@ def get_projective_transform(center: Tensor, angles: Tensor, scales: Tensor) -> 
             the rotation matrix from axis-angle.
         scales: scale factor for x-y-z-directions with shape :math:`(B, 3)`.
 
-    Returns:
+    Returns
     -------
         the projection matrix of 3D rotation with shape :math:`(B, 3, 4)`.
 
@@ -1052,7 +1052,7 @@ def get_perspective_transform3d(src: Tensor, dst: Tensor) -> Tensor:
         dst: coordinates of the corresponding quadrangle vertices in
             the destination image with shape :math:`(B, 8, 3)`.
 
-    Returns:
+    Returns
     -------
         the perspective transformation with shape :math:`(B, 4, 4)`.
 
@@ -1234,7 +1234,7 @@ def warp_perspective3d(
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Returns:
+    Returns
     -------
         the warped input image :math:`(B, C, D, H, W)`.
 

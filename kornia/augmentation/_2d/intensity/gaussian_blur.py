@@ -34,7 +34,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.filters.gaussian_blur2d`.
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)

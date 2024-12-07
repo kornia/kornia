@@ -36,7 +36,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.ones(1, 1, 3, 3)

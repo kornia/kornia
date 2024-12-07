@@ -25,7 +25,7 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 3, 4)
@@ -78,7 +78,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 3, 4)
@@ -128,7 +128,7 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 3, 4)

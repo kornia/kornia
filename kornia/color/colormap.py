@@ -44,7 +44,7 @@ class ColorMapType(Enum):
     def _load_base(self) -> list[RGBColor]:
         r"""Load the base colormap corresponding to the enumeration member.
 
-        Returns:
+        Returns
         -------
             The base colormap.
 
@@ -75,7 +75,7 @@ class ColorMapType(Enum):
     def list(cls) -> list[str]:
         r"""Returns a list of names of enumeration members.
 
-        Returns:
+        Returns
         -------
             A list containing the names of enumeration members.
 
@@ -94,11 +94,11 @@ class ColorMap:
         device: The device to put the generated colormap on.
         dtype: The data type of the generated colormap.
 
-    Returns:
+    Returns
     -------
         An object of the colormap with the num_colors length.
 
-    Examples:
+    Examples
     --------
         >>> ColorMap(base='viridis', num_colors=8).colors
         tensor([[0.2813, 0.2621, 0.2013, 0.1505, 0.1210, 0.2463, 0.5259, 0.8557],
@@ -150,7 +150,7 @@ class ColorMap:
             base_colormap: A list of RGB colors defining the colormap.
             num_colors: Number of colors in the colormap.
 
-        Returns:
+        Returns
         -------
             A tensor representing the colormap.
 
@@ -161,7 +161,7 @@ class ColorMap:
     def __len__(self) -> int:
         r"""Returns the number of colors in the colormap.
 
-        Returns:
+        Returns
         -------
             Number of colors in the colormap.
 
@@ -178,11 +178,11 @@ def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
         input_tensor: the input tensor of image.
         colormap: the colormap desired to be applied to the input tensor.
 
-    Returns:
+    Returns
     -------
         A RGB tensor with the applied color map into the input_tensor.
 
-    Raises:
+    Raises
     ------
         ValueError: If `colormap` is not a ColorMap object.
 
@@ -243,11 +243,11 @@ class ApplyColorMap(Module):
         device: The device to put the generated colormap on.
         dtype: The data type of the generated colormap.
 
-    Returns:
+    Returns
     -------
         A RGB tensor with the applied color map into the input_tensor
 
-    Raises:
+    Raises
     ------
         ValueError: If `colormap` is not a ColorMap object.
 
@@ -288,7 +288,7 @@ class ApplyColorMap(Module):
         .. note::
         The input tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
 
-        Returns:
+        Returns
         -------
             The output tensor representing the image with the applied colormap.
 

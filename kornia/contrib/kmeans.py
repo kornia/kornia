@@ -74,7 +74,7 @@ class KMeans:
             X: 2D input tensor to be clustered
             num_clusters: number of desired cluster centers
 
-        Returns:
+        Returns
         -------
             2D Tensor with num_cluster rows
 
@@ -92,7 +92,7 @@ class KMeans:
             data1: 2D tensor of shape N, D
             data2: 2D tensor of shape C, D
 
-        Returns:
+        Returns
         -------
             2D tensor of shape N, C
 
@@ -168,7 +168,7 @@ class KMeans:
         Args:
             x: 2D tensor
 
-        Returns:
+        Returns
         -------
             1D tensor containing cluster id assigned to each data point in x
 

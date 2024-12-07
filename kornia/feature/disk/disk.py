@@ -48,7 +48,7 @@ class DISK(Module):
         Args:
             images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
 
-        Returns:
+        Returns
         -------
             A tuple of dense detection scores and descriptors.
             Shapes are :math:`(B, 1, H, W)` and :math:`(B, D, H, W)`, where
@@ -85,7 +85,7 @@ class DISK(Module):
                              See :py:class:`DISKFeatures` for details.
             pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the closest 16-multiply
 
-        Returns:
+        Returns
         -------
             A list of length :math:`B` containing the detected features.
 
@@ -123,7 +123,7 @@ class DISK(Module):
             checkpoint: The checkpoint to load. One of 'depth' or 'epipolar'.
             device: The device to load the model to.
 
-        Returns:
+        Returns
         -------
             The pretrained model.
 

@@ -29,7 +29,7 @@ def spatial_gradient(input: Tensor, mode: str = "sobel", order: int = 1, normali
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_edges.html>`__.
 
-    Examples:
+    Examples
     --------
         >>> input = torch.rand(1, 3, 4, 4)
         >>> output = spatial_gradient(input)  # 1x3x2x4x4
@@ -69,7 +69,7 @@ def spatial_gradient3d(input: Tensor, mode: str = "diff", order: int = 1) -> Ten
         the spatial gradients of the input feature map with shape math:`(B, C, 3, D, H, W)`
         or :math:`(B, C, 6, D, H, W)`.
 
-    Examples:
+    Examples
     --------
         >>> input = torch.rand(1, 4, 2, 4, 4)
         >>> output = spatial_gradient3d(input)
@@ -174,7 +174,7 @@ class SpatialGradient(Module):
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, 2, H, W)`
 
-    Examples:
+    Examples
     --------
         >>> input = torch.rand(1, 3, 4, 4)
         >>> output = SpatialGradient()(input)  # 1x3x2x4x4
@@ -211,7 +211,7 @@ class SpatialGradient3d(Module):
         - Input: :math:`(B, C, D, H, W)`. D, H, W are spatial dimensions, gradient is calculated w.r.t to them.
         - Output: :math:`(B, C, 3, D, H, W)` or :math:`(B, C, 6, D, H, W)`
 
-    Examples:
+    Examples
     --------
         >>> input = torch.rand(1, 4, 2, 4, 4)
         >>> output = SpatialGradient3d()(input)
@@ -250,7 +250,7 @@ class Sobel(Module):
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    Examples:
+    Examples
     --------
         >>> input = torch.rand(1, 3, 4, 4)
         >>> output = Sobel()(input)  # 1x3x4x4

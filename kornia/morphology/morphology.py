@@ -44,7 +44,7 @@ def dilation(
         max_val: The value of the infinite elements in the kernel.
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
-    Returns:
+    Returns
     -------
         Dilated image with shape :math:`(B, C, H, W)`.
 
@@ -138,7 +138,7 @@ def erosion(
         max_val: The value of the infinite elements in the kernel.
         engine: ``convolution`` is faster and less memory hungry, and ``unfold`` is more stable numerically
 
-    Returns:
+    Returns
     -------
         Eroded image with shape :math:`(B, C, H, W)`.
 
@@ -233,7 +233,7 @@ def opening(
         max_val: The value of the infinite elements in the kernel.
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
-    Returns:
+    Returns
     -------
        torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
 
@@ -311,7 +311,7 @@ def closing(
         max_val: The value of the infinite elements in the kernel.
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
-    Returns:
+    Returns
     -------
        Closed image with shape :math:`(B, C, H, W)`.
 
@@ -391,7 +391,7 @@ def gradient(
         max_val: The value of the infinite elements in the kernel.
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
-    Returns:
+    Returns
     -------
        Gradient image with shape :math:`(B, C, H, W)`.
 
@@ -460,7 +460,7 @@ def top_hat(
         max_val: The value of the infinite elements in the kernel.
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
-    Returns:
+    Returns
     -------
        Top hat transformed image with shape :math:`(B, C, H, W)`.
 
@@ -532,7 +532,7 @@ def bottom_hat(
         max_val: The value of the infinite elements in the kernel.
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
-    Returns:
+    Returns
     -------
        Top hat transformed image with shape :math:`(B, C, H, W)`.
 

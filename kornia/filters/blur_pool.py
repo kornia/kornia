@@ -40,7 +40,7 @@ class BlurPool2D(Module):
               W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{kernel\_size//2}[1] -
                 \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
 
-    Examples:
+    Examples
     --------
         >>> from kornia.filters.blur_pool import BlurPool2D
         >>> input = torch.eye(5)[None, None]
@@ -80,11 +80,11 @@ class MaxBlurPool2D(Module):
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H / stride, W / stride)`
 
-    Returns:
+    Returns
     -------
         torch.Tensor: the transformed tensor.
 
-    Examples:
+    Examples
     --------
         >>> import torch.nn as nn
         >>> from kornia.filters.blur_pool import BlurPool2D
@@ -157,7 +157,7 @@ def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int =
               W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{kernel\_size//2}[1] -
                 \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
 
-    Returns:
+    Returns
     -------
         the transformed tensor.
 
@@ -167,7 +167,7 @@ def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int =
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_operators.html>`__.
 
-    Examples:
+    Examples
     --------
         >>> input = torch.eye(5)[None, None]
         >>> blur_pool2d(input, 3)
@@ -203,7 +203,7 @@ def max_blur_pool2d(
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_operators.html>`__.
 
-    Examples:
+    Examples
     --------
         >>> input = torch.eye(5)[None, None]
         >>> max_blur_pool2d(input, 3)
@@ -261,7 +261,7 @@ def edge_aware_blur_pool2d(
         edge_dilation_kernel_size: the kernel size for dilating the edges.
         epsilon: for numerical stability.
 
-    Returns:
+    Returns
     -------
         The blurred tensor of shape :math:`(B, C, H, W)`.
 

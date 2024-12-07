@@ -16,7 +16,7 @@ class ProbabilityGenerator(RandomGeneratorBase):
     Args:
         p: probability to generate an 1-d binary mask. Default value is 0.5.
 
-    Returns:
+    Returns
     -------
         A dict of parameters to be passed for transformation.
             - probs (Tensor): element-wise probabilities with a shape of (B,).
@@ -62,7 +62,7 @@ def random_prob_generator(
         device (torch.device): the device on which the random numbers will be generated. Default: cpu.
         dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
-    Returns:
+    Returns
     -------
         Tensor: parameters to be passed for transformation.
             - probs (Tensor): element-wise probabilities with a shape of (B,).

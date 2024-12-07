@@ -27,7 +27,7 @@ class RandomGamma(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_gamma`
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)

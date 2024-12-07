@@ -50,11 +50,11 @@ def ssim3d(
         padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
-    Returns:
+    Returns
     -------
        The ssim index map with shape :math:`(B, C, D, H, W)`.
 
-    Examples:
+    Examples
     --------
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5, 5)
@@ -147,7 +147,7 @@ class SSIM3D(Module):
         - Target :math:`(B, C, D, H, W)`.
         - Output: :math:`(B, C, D, H, W)`.
 
-    Examples:
+    Examples
     --------
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5, 5)

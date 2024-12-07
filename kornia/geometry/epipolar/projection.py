@@ -23,7 +23,7 @@ def intrinsics_like(focal: float, input: Tensor) -> Tensor:
         input: image tensor that will determine the batch size and image height
           and width. It is assumed to be a tensor in the shape of :math:`(B, C, H, W)`.
 
-    Returns:
+    Returns
     -------
         The camera matrix with the shape of :math:`(B, 3, 3)`.
 
@@ -50,7 +50,7 @@ def random_intrinsics(low: Union[float, Tensor], high: Union[float, Tensor]) -> 
         low: lower range (inclusive).
         high: upper range (exclusive).
 
-    Returns:
+    Returns
     -------
         the random camera matrix with the shape of :math:`(1, 3, 3)`.
 
@@ -72,7 +72,7 @@ def scale_intrinsics(camera_matrix: Tensor, scale_factor: Union[float, Tensor]) 
           parameters. The expected shape for the tensor is :math:`(B, 3, 3)`.
         scale_factor: the scaling factor to be applied.
 
-    Returns:
+    Returns
     -------
         The scaled camera matrix with shame shape as input :math:`(B, 3, 3)`.
 
@@ -95,7 +95,7 @@ def projection_from_KRt(K: Tensor, R: Tensor, t: Tensor) -> Tensor:
        R: The rotation matrix with shape :math:`(B, 3, 3)`.
        t: The translation vector with shape :math:`(B, 3, 1)`.
 
-    Returns:
+    Returns
     -------
        The projection matrix P with shape :math:`(B, 4, 4)`.
 
@@ -122,7 +122,7 @@ def KRt_from_projection(P: Tensor, eps: float = 1e-6) -> Tuple[Tensor, Tensor, T
     Args:
         P: the projection matrix with shape :math:`(B, 3, 4)`.
 
-    Returns:
+    Returns
     -------
         - The Camera matrix with shape :math:`(B, 3, 3)`.
         - The Rotation matrix with shape :math:`(B, 3, 3)`.
@@ -160,7 +160,7 @@ def depth_from_point(R: Tensor, t: Tensor, X: Tensor) -> Tensor:
        t: The translation vector with shape :math:`(*, 3, 1)`.
        X: The 3d points with shape :math:`(*, 3)`.
 
-    Returns:
+    Returns
     -------
        The depth value per point with shape :math:`(*, 1)`.
 
@@ -188,7 +188,7 @@ def projections_from_fundamental(F_mat: Tensor) -> Tensor:
     Args:
        F_mat: the fundamental matrix with the shape :math:`(B, 3, 3)`.
 
-    Returns:
+    Returns
     -------
         The projection matrices with shape :math:`(B, 3, 4, 2)`.
 

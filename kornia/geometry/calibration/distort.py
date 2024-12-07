@@ -14,7 +14,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
         tauy: Rotation angle in radians around the :math:`y`-axis with shape :math:`(*, 1)`.
         return_inverse: False to obtain the tilt projection matrix. True for the inverse matrix.
 
-    Returns:
+    Returns
     -------
         torch.Tensor: Inverse tilt projection matrix with shape :math:`(*, 3, 3)`.
 
@@ -78,7 +78,7 @@ def distort_points(
         new_K: Intrinsic camera matrix of the distorted image. By default, it is the same as K but you may additionally
             scale and shift the result by using a different matrix. Shape: :math:`(*, 3, 3)`. Default: None.
 
-    Returns:
+    Returns
     -------
         Undistorted 2D points with shape :math:`(*, N, 2)`.
 

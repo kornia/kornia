@@ -65,7 +65,7 @@ class TwoWayTransformer(Module):
             point_embedding: the embedding to add to the query points. Must have shape B x N_points x embedding_dim
             for any N_points.
 
-        Returns:
+        Returns
         -------
             - the processed point_embedding
             - the processed image_embedding

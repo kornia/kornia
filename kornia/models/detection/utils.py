@@ -52,7 +52,7 @@ class BoxFiltering(Module, ONNXExportMixin):
             confidence_threshold: an 0-d scalar that represents the desired threshold.
             classes_to_keep: a 1-d tensor of classes to keep. If None, keep all classes.
 
-        Returns:
+        Returns
         -------
             Union[Tensor, List[Tensor]]
                 If `filter_as_zero` is True, return a tensor of shape [D, 6], where D is the total number of

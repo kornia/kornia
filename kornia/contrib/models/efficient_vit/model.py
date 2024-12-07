@@ -57,7 +57,7 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
         Args:
             config: EfficientViT configuration object. See :class:`EfficientViTConfig`.
 
-        Returns:
+        Returns
         -------
             EfficientViT: the EfficientViT model.
 
@@ -87,7 +87,7 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
         Args:
             images: input images tensor of shape :math:`(B, C, H, W)`.
 
-        Returns:
+        Returns
         -------
             Dict[str, Tensor]: a dictionary containing the features.
 

@@ -53,7 +53,7 @@ class AdalamConfig(TypedDict):
 def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
     """Helper function, which output empty tensors.
 
-    Returns:
+    Returns
     -------
             - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
@@ -78,7 +78,7 @@ def select_seeds(
          If None, it disables the mutual nearest neighbor filtering on seed point selection.
          Expected a bool tensor with shape (num_keypoints_in_source_image,)
 
-    Returns:
+    Returns
     -------
         Indices of seed points.
 
@@ -141,7 +141,7 @@ def extract_neighborhood_sets(
     MIN_INLIERS: Minimum number of inliers to keep a seed point. This is used as an early filter here
                  to remove already seeds with not enough samples to ever pass this threshold.
 
-    Returns:
+    Returns
     -------
         Local neighborhoods assignments:
 
@@ -209,7 +209,7 @@ def extract_local_patterns(
             Lower scores are assumed to be more confident, consistently with Lowe's ratio scores.
             Note: scores should be between 0 and 1 for this function to work as expected.
 
-    Returns:
+    Returns
     -------
         All information required for running the parallel RANSACs.
         Data is formatted so that all inputs for different RANSACs are concatenated
@@ -293,7 +293,7 @@ def adalam_core(
                Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
         return_dist: if True, inverse confidence value is also outputted. Default is False
 
-    Returns:
+    Returns
     -------
         idxs: A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
         dists: inverse confidence ratio.

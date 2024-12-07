@@ -53,7 +53,7 @@ class MKDGradients(nn.Module):
     Args:
         patch_size: Input patch size in pixels.
 
-    Returns:
+    Returns
     -------
         gradients of given patches.
 
@@ -97,7 +97,7 @@ class VonMisesKernel(nn.Module):
         patch_size: Input patch size in pixels.
         coeffs: List of coefficients. Some examples are hardcoded in COEFFS,
 
-    Returns:
+    Returns
     -------
         Von Mises embedding of given parametrization.
 
@@ -105,7 +105,7 @@ class VonMisesKernel(nn.Module):
         - Input: (B, 1, patch_size, patch_size)
         - Output: (B, d, patch_size, patch_size)
 
-    Examples:
+    Examples
     --------
         >>> oris = torch.rand(23, 1, 32, 32)
         >>> vm = VonMisesKernel(patch_size=32,
@@ -169,7 +169,7 @@ class EmbedGradients(nn.Module):
         patch_size: Input patch size in pixels.
         relative: absolute or relative gradients.
 
-    Returns:
+    Returns
     -------
         Gradient embedding.
 
@@ -177,7 +177,7 @@ class EmbedGradients(nn.Module):
         - Input: (B, 2, patch_size, patch_size)
         - Output: (B, 7, patch_size, patch_size)
 
-    Examples:
+    Examples
     --------
         >>> grads = torch.rand(23, 2, 32, 32)
         >>> emb_grads = EmbedGradients(patch_size=32,
@@ -262,7 +262,7 @@ class ExplicitSpacialEncoding(nn.Module):
         do_gmask: Apply gaussian mask.
         do_l2: Apply l2-normalization.
 
-    Returns:
+    Returns
     -------
         Explicit cartesian or polar embedding.
 
@@ -373,7 +373,7 @@ class Whitening(nn.Module):
         keval: Shrinkage parameter.
         t: Attenuation parameter.
 
-    Returns:
+    Returns
     -------
         l2-normalized, whitened descriptors.
 
@@ -381,7 +381,7 @@ class Whitening(nn.Module):
         - Input: (B, in_dims, fmap_size, fmap_size)
         - Output: (B, out_dims, fmap_size, fmap_size)
 
-    Examples:
+    Examples
     --------
         >>> descs = torch.rand(23, 238)
         >>> whitening_model = {'pca': {'mean': torch.zeros(238),
@@ -488,7 +488,7 @@ class MKDDescriptor(nn.Module):
         training_set: Set that model was trained on ``'liberty'``, ``'notredame'``, ``'yosemite'``.
         output_dims: Dimensionality reduction.
 
-    Returns:
+    Returns
     -------
         Explicit cartesian or polar embedding.
 
@@ -496,7 +496,7 @@ class MKDDescriptor(nn.Module):
         - Input: :math:`(B, in_{dims}, fmap_{size}, fmap_{size})`.
         - Output: :math:`(B, out_{dims}, fmap_{size}, fmap_{size})`,
 
-    Examples:
+    Examples
     --------
         >>> patches = torch.rand(23, 1, 32, 32)
         >>> mkd = MKDDescriptor(patch_size=32,

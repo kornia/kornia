@@ -21,7 +21,7 @@ class RandomFisheye(AugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
-    Examples:
+    Examples
     --------
         >>> import torch
         >>> img = torch.ones(1, 1, 2, 2)

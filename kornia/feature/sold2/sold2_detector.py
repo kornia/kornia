@@ -28,7 +28,7 @@ class SOLD2_detector(Module):
             parameter management.
         pretrained (bool): If True, download and set pretrained weights to the model.
 
-    Returns:
+    Returns
     -------
         The raw junction and line heatmaps, as well as the list of detected line segments (ij coordinates convention).
 

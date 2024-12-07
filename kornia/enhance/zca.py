@@ -40,7 +40,7 @@ class ZCAWhitening(Module):
        See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
        blob/master/source/zca_whitening.ipynb>`__.
 
-    Examples:
+    Examples
     --------
         >>> x = torch.tensor([[0,1],[1,0],[-1,0],[0,-1]], dtype = torch.float32)
         >>> zca = ZCAWhitening().fit(x)
@@ -57,7 +57,7 @@ class ZCAWhitening(Module):
         if the singular values are not unique. See `here <https://pytorch.org/docs/stable/torch.html#torch.svd>`_ for
         more information.
 
-    References:
+    References
     ----------
         [1] `Stanford PCA & ZCA whitening tutorial <http://ufldl.stanford.edu/tutorial/unsupervised/PCAWhitening/>`_
 
@@ -91,7 +91,7 @@ class ZCAWhitening(Module):
         Args:
             x: Input data.
 
-        Returns:
+        Returns
         -------
             Returns a fitted ZCAWhiten object instance.
 
@@ -121,7 +121,7 @@ class ZCAWhitening(Module):
             x: Input data.
             include_fit: Indicates whether to fit the data as part of the forward pass.
 
-        Returns:
+        Returns
         -------
             The transformed data.
 
@@ -142,7 +142,7 @@ class ZCAWhitening(Module):
         Args:
             x: Whitened data.
 
-        Returns:
+        Returns
         -------
             Original data.
 
@@ -184,7 +184,7 @@ def zca_mean(
         - mean_vector: :math:`(1, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
         - inv_transform: same shape as the transform matrix
 
-    Returns:
+    Returns
     -------
         A tuple containing the ZCA matrix and the mean vector. If return_inverse is set to True,
         then it returns the inverse ZCA matrix, otherwise it returns None.
@@ -193,7 +193,7 @@ def zca_mean(
        See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
        blob/master/source/zca_whitening.ipynb>`__.
 
-    Examples:
+    Examples
     --------
         >>> x = torch.tensor([[0,1],[1,0],[-1,0],[0,-1]], dtype = torch.float32)
         >>> transform_matrix, mean_vector,_ = zca_mean(x) # Returns transformation matrix and data mean
@@ -274,7 +274,7 @@ def zca_whiten(inp: Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e
         unbiased: Whether to use the unbiased estimate of the covariance matrix.
         eps: a small number used for numerical stability.
 
-    Returns:
+    Returns
     -------
         Whiten Input data.
 
@@ -282,7 +282,7 @@ def zca_whiten(inp: Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e
        See a working example `here <https://colab.sandbox.google.com/github/kornia/tutorials/
        blob/master/source/zca_whitening.ipynb>`__.
 
-    Examples:
+    Examples
     --------
         >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
         >>> zca_whiten(x)
@@ -330,7 +330,7 @@ def linear_transform(inp: Tensor, transform_matrix: Tensor, mean_vector: Tensor,
         - transform_matrix: :math:`(\Pi_{d=0,d\neq \text{dim}}^N D_d, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
         - mean_vector: :math:`(1, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
 
-    Returns:
+    Returns
     -------
         Transformed data.
 

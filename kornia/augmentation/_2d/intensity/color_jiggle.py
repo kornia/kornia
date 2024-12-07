@@ -30,7 +30,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
         :func:`kornia.enhance.adjust_contrast`. :func:`kornia.enhance.adjust_saturation`,
         :func:`kornia.enhance.adjust_hue`.
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.ones(1, 3, 3, 3)

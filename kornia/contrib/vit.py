@@ -257,7 +257,7 @@ class VisionTransformer(Module):
             pretrained: whether to load pre-trained AugReg weights.
             kwargs: other keyword arguments that will be passed to :func:`kornia.contrib.vit.VisionTransformer`.
 
-        Returns:
+        Returns
         -------
             The respective ViT model
 

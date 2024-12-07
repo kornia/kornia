@@ -38,11 +38,11 @@ def ssim_loss(
         padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
-    Returns:
+    Returns
     -------
         The loss based on the ssim index.
 
-    Examples:
+    Examples
     --------
         >>> input1 = torch.rand(1, 4, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5)
@@ -89,11 +89,11 @@ class SSIMLoss(nn.Module):
         padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
-    Returns:
+    Returns
     -------
         The loss based on the ssim index.
 
-    Examples:
+    Examples
     --------
         >>> input1 = torch.rand(1, 4, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5)

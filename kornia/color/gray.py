@@ -20,7 +20,7 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     Args:
         image: grayscale image tensor to be converted to RGB with shape :math:`(*,1,H,W)`.
 
-    Returns:
+    Returns
     -------
         RGB version of the image with shape :math:`(*,3,H,W)`.
 
@@ -49,7 +49,7 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Ten
         rgb_weights: Weights that will be applied on each channel (RGB).
             The sum of the weights should add up to one.
 
-    Returns:
+    Returns
     -------
         grayscale version of the image with shape :math:`(*,1,H,W)`.
 
@@ -96,7 +96,7 @@ def bgr_to_grayscale(image: Tensor) -> Tensor:
     Args:
         image: BGR image to be converted to grayscale with shape :math:`(*,3,H,W)`.
 
-    Returns:
+    Returns
     -------
         grayscale version of the image with shape :math:`(*,1,H,W)`.
 

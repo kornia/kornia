@@ -150,7 +150,6 @@ ignore = [
   'D400',
   'D401',
   'D404',
-  'D406',
 ]
 
 [tool.ruff.lint.pydocstyle]

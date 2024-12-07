@@ -34,7 +34,7 @@ def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
           a reference frame 2 respect to a frame 1. The tensor has must have a
           shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
-    Returns:
+    Returns
     -------
         the transformation between the two frames with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
@@ -89,7 +89,7 @@ def inverse_transformation(trans_12: Tensor) -> Tensor:
     Args:
         trans_12: transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
-    Returns:
+    Returns
     -------
         tensor with inverted transformations with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
@@ -134,7 +134,7 @@ def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
         trans_01: reference transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
         trans_02: destination transformation tensor of shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
-    Returns:
+    Returns
     -------
         the relative transformation between the transformations with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
@@ -166,14 +166,14 @@ def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
           :math:`(B, D+1, D+1)`.
         points_1: tensor of points of shape :math:`(B, N, D)`.
 
-    Returns:
+    Returns
     -------
         a tensor of N-dimensional points.
 
     Shape:
         - Output: :math:`(B, N, D)`
 
-    Examples:
+    Examples
     --------
         >>> points_1 = torch.rand(2, 4, 3)  # BxNx3
         >>> trans_01 = torch.eye(4).view(1, 4, 4)  # Bx4x4
@@ -218,7 +218,7 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
        line: lines coefficients :math:`(a, b, c)` with shape :math:`(*, N, 3)`, where :math:`ax + by + c = 0`.
        eps: Small constant for safe sqrt.
 
-    Returns:
+    Returns
     -------
         the computed distance with shape :math:`(*, N)`.
 

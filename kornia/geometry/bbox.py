@@ -98,7 +98,7 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
             of Bx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right, bottom-right,
             bottom-left. The coordinates must be in the x, y order.
 
-    Returns:
+    Returns
     -------
         - Bounding box heights, shape of :math:`(B,)`.
         - Boundingbox widths, shape of :math:`(B,)`.
@@ -134,7 +134,7 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
             front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right, back-bottom-left.
             The coordinates must be in the x, y, z order.
 
-    Returns:
+    Returns
     -------
         - Bounding box depths, shape of :math:`(B,)`.
         - Bounding box heights, shape of :math:`(B,)`.
@@ -185,14 +185,14 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
         width: width of the masked image.
         height: height of the masked image.
 
-    Returns:
+    Returns
     -------
         the output mask tensor.
 
     Note:
         It is currently non-differentiable.
 
-    Examples:
+    Examples
     --------
         >>> boxes = torch.tensor([[
         ...        [1., 1.],
@@ -230,11 +230,11 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
             The coordinates must be in the x, y, z order.
         size: depth, height and width of the masked image.
 
-    Returns:
+    Returns
     -------
         the output mask tensor.
 
-    Examples:
+    Examples
     --------
         >>> boxes = torch.tensor([[
         ...     [1., 1., 1.],
@@ -316,11 +316,11 @@ def bbox_generator(
         width: widths of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
         height: heights of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
 
-    Returns:
+    Returns
     -------
         the bounding box tensor.
 
-    Examples:
+    Examples
     --------
         >>> x_start = torch.tensor([0, 1])
         >>> y_start = torch.tensor([1, 0])
@@ -389,11 +389,11 @@ def bbox_generator3d(
         height: heights of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
         depth: depths of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
 
-    Returns:
+    Returns
     -------
         the 3d bounding box tensor :math:`(B, 8, 3)`.
 
-    Examples:
+    Examples
     --------
         >>> x_start = torch.tensor([0, 3])
         >>> y_start = torch.tensor([1, 4])
@@ -477,7 +477,7 @@ def transform_bbox(
         restore_coordinates: In case the boxes are flipped, adding a post processing step to restore the
             coordinates to a valid bounding box.
 
-    Returns:
+    Returns
     -------
         The set of transformed points in the specified mode
 

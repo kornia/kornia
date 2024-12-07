@@ -49,7 +49,7 @@ class PatchAffineShapeEstimator(nn.Module):
         """Args:
             patch: :math:`(B, 1, H, W)`
 
-        Returns:
+        Returns
         -------
             torch.Tensor: ellipse_shape :math:`(B, 1, 3)`
 
@@ -125,7 +125,7 @@ class LAFAffineShapeEstimator(nn.Module):
             LAF: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 
-        Returns:
+        Returns
         -------
             LAF_out: :math:`(B, N, 2, 3)`
 
@@ -219,7 +219,7 @@ class LAFAffNetShapeEstimator(nn.Module):
             LAF: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 
-        Returns:
+        Returns
         -------
             LAF_out: :math:`(B, N, 2, 3)`
 

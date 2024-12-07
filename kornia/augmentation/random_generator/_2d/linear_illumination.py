@@ -16,7 +16,7 @@ class LinearIlluminationGenerator(RandomGeneratorBase):
         gain: Range for the gain factor applied to the generated illumination.
         sign: Range for the sign of the Linear distribution.
 
-    Returns:
+    Returns
     -------
         A dictionary of parameters to be passed for transformation.
             - gradient: : Generated 2D Linear illumination pattern with shape (B, C, H, W).
@@ -100,7 +100,7 @@ class LinearCornerIlluminationGenerator(RandomGeneratorBase):
         gain: Range for the gain factor applied to the generated illumination.
         sign: Range for the sign of the linear distribution.
 
-    Returns:
+    Returns
     -------
         A dictionary of parameters to be passed for transformation.
             - gradient: : Generated 2D Linear illumination pattern with shape (B, C, H, W).

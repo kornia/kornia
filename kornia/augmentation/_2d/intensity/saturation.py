@@ -27,7 +27,7 @@ class RandomSaturation(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_saturation`
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)

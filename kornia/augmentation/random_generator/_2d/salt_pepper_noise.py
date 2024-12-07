@@ -15,7 +15,7 @@ class SaltAndPepperGenerator(RandomGeneratorBase):
         amount: A tuple representing the range for the amount of noise to apply.
         salt_and_pepper: A tuple representing the range for the ratio of Salt and Pepper noise.
 
-    Returns:
+    Returns
     -------
         A dictionary of parameters to be passed for transformation.
             - amount_factor: Element-wise factors determining the amount of noise with a shape of (B,).

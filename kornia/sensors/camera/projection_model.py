@@ -12,7 +12,7 @@ class Z1Projection:
         Args:
             points: Vector3 representing the points to project.
 
-        Returns:
+        Returns
         -------
             Vector2 representing the projected points.
 
@@ -35,7 +35,7 @@ class Z1Projection:
             points: Vector2 representing the points to unproject.
             depth: Tensor representing the depth of the points to unproject.
 
-        Returns:
+        Returns
         -------
             Vector3 representing the unprojected points.
 

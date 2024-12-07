@@ -21,7 +21,7 @@ class MosaicGenerator(RandomGeneratorBase):
             each output will mix 4 images in a 2x2 grid.
         start_ratio_range: top-left (x, y) position for cropping the mosaic images.
 
-    Returns:
+    Returns
     -------
         A dict of parameters to be passed for transformation.
             - mosaic_ids (Tensor): a shape of (B, N) tensor, where n is the number of mosaic images.

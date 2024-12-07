@@ -51,7 +51,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
-    Examples:
+    Examples
     --------
         >>> import torch
         >>> _ = torch.manual_seed(0)

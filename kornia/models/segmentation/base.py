@@ -29,7 +29,7 @@ class SemanticSegmentation(ModelBase):
             images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
                 If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
 
-        Returns:
+        Returns
         -------
             output tensor.
 
@@ -64,7 +64,7 @@ class SemanticSegmentation(ModelBase):
             colormap: The colormap to use, can be "random" or a custom color map.
             manual_seed: The manual seed to use for the colormap.
 
-        Returns:
+        Returns
         -------
             A tensor of shape (num_classes, 3) representing the color map.
 
@@ -87,11 +87,11 @@ class SemanticSegmentation(ModelBase):
             colors: The color map to use for visualizing the output of the segmentation model.
                 Shape should be (num_classes, 3).
 
-        Returns:
+        Returns
         -------
             A tensor of shape (3, H, W) or (B, 3, H, W) representing the visualized output of the segmentation model.
 
-        Raises:
+        Raises
         ------
             ValueError: If the shape of the semantic mask is not of shape (C, H, W) or (B, C, H, W).
             ValueError: If the shape of the colors is not of shape (num_classes, 3).

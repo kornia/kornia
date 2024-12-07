@@ -17,7 +17,7 @@ class LazyLoader:
     It helps in reducing the initial load time and memory usage of a script, especially when
     dealing with large or optional dependencies that might not be used in every execution.
 
-    Attributes:
+    Attributes
     ----------
         module_name: The name of the module to be lazily loaded.
         module: The actual module object, initialized to None and loaded upon first access.
@@ -108,7 +108,7 @@ class LazyLoader:
         Args:
             item: The name of the attribute to be accessed.
 
-        Returns:
+        Returns
         -------
             The requested attribute of the loaded module.
 
@@ -122,7 +122,7 @@ class LazyLoader:
         This method is called when the built-in dir() function is used on the LazyLoader instance.
         It ensures that the module is loaded and then returns the list of attributes of the module.
 
-        Returns:
+        Returns
         -------
             list: The list of attributes of the loaded module.
 

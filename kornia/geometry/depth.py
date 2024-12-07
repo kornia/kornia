@@ -210,14 +210,14 @@ def depth_from_plane_equation(
 ) -> Tensor:
     """Compute depth values from plane equations and pixel coordinates.
 
-    Parameters:
+    Parameters
     ----------
         plane_normals (Tensor): Plane normal vectors of shape (B, 3).
         plane_offsets (Tensor): Plane offsets of shape (B, 1).
         points_uv (Tensor): Pixel coordinates of shape (B, N, 2).
         camera_matrix (Tensor): Camera intrinsic matrix of shape (B, 3, 3).
 
-    Returns:
+    Returns
     -------
         Tensor: Computed depth values at the given pixels, shape (B, N).
 

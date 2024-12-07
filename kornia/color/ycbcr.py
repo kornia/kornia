@@ -21,11 +21,11 @@ def rgb_to_ycbcr(image: Tensor) -> Tensor:
     Args:
         image: RGB Image to be converted to YCbCr with shape :math:`(*, 3, H, W)`.
 
-    Returns:
+    Returns
     -------
         YCbCr version of the image with shape :math:`(*, 3, H, W)`.
 
-    Examples:
+    Examples
     --------
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_ycbcr(input)  # 2x3x4x5
@@ -54,11 +54,11 @@ def rgb_to_y(image: Tensor) -> Tensor:
     Args:
         image: RGB Image to be converted to Y with shape :math:`(*, 3, H, W)`.
 
-    Returns:
+    Returns
     -------
         Y version of the image with shape :math:`(*, 1, H, W)`.
 
-    Examples:
+    Examples
     --------
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_y(input)  # 2x1x4x5
@@ -86,11 +86,11 @@ def ycbcr_to_rgb(image: Tensor) -> Tensor:
     Args:
         image: YCbCr Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
-    Returns:
+    Returns
     -------
         RGB version of the image with shape :math:`(*, 3, H, W)`.
 
-    Examples:
+    Examples
     --------
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = ycbcr_to_rgb(input)  # 2x3x4x5
@@ -121,7 +121,7 @@ class RgbToYcbcr(Module):
 
     The image data is assumed to be in the range of (0, 1).
 
-    Returns:
+    Returns
     -------
         YCbCr version of the image.
 
@@ -129,7 +129,7 @@ class RgbToYcbcr(Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples:
+    Examples
     --------
         >>> input = torch.rand(2, 3, 4, 5)
         >>> ycbcr = RgbToYcbcr()
@@ -149,7 +149,7 @@ class YcbcrToRgb(Module):
 
     The image data is assumed to be in the range of (0, 1).
 
-    Returns:
+    Returns
     -------
         RGB version of the image.
 
@@ -157,7 +157,7 @@ class YcbcrToRgb(Module):
         - image: :math:`(*, 3, H, W)`
         - output: :math:`(*, 3, H, W)`
 
-    Examples:
+    Examples
     --------
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = YcbcrToRgb()

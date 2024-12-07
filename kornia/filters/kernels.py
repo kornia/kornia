@@ -77,7 +77,7 @@ def gaussian(
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
-    Returns:
+    Returns
     -------
         A tensor withshape :math:`(B, \text{kernel_size})`, with Gaussian values.
 
@@ -118,7 +118,7 @@ def gaussian_discrete_erf(
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
-    Returns:
+    Returns
     -------
         A tensor withshape :math:`(B, \text{kernel_size})`, with discrete Gaussian values computed by approximation of
         the error function.
@@ -248,7 +248,7 @@ def gaussian_discrete(
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
-    Returns:
+    Returns
     -------
         A tensor withshape :math:`(B, \text{kernel_size})`, with discrete Gaussian values computed by modified Bessel
         function.
@@ -290,7 +290,7 @@ def get_box_kernel1d(kernel_size: int, *, device: Optional[Device] = None, dtype
         device: the desired device of returned tensor.
         dtype: the desired data type of returned tensor.
 
-    Returns:
+    Returns
     -------
         A tensor with shape :math:`(1, \text{kernel\_size})`, filled with the value
         :math:`\frac{1}{\text{kernel\_size}}`.
@@ -310,7 +310,7 @@ def get_box_kernel2d(
         device: the desired device of returned tensor.
         dtype: the desired data type of returned tensor.
 
-    Returns:
+    Returns
     -------
         A tensor with shape :math:`(1, \text{kernel\_size}[0], \text{kernel\_size}[1])`,
         filled with the value :math:`\frac{1}{\text{kernel\_size}[0] \times \text{kernel\_size}[1]}`.
@@ -533,11 +533,11 @@ def get_gaussian_kernel1d(
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
-    Returns:
+    Returns
     -------
         gaussian filter coefficients with shape :math:`(B, \text{kernel_size})`.
 
-    Examples:
+    Examples
     --------
         >>> get_gaussian_kernel1d(3, 2.5)
         tensor([[0.3243, 0.3513, 0.3243]])
@@ -572,11 +572,11 @@ def get_gaussian_discrete_kernel1d(
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
-    Returns:
+    Returns
     -------
         1D tensor with gaussian filter coefficients. With shape :math:`(B, \text{kernel_size})`
 
-    Examples:
+    Examples
     --------
         >>> get_gaussian_discrete_kernel1d(3, 2.5)
         tensor([[0.3235, 0.3531, 0.3235]])
@@ -611,11 +611,11 @@ def get_gaussian_erf_kernel1d(
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
-    Returns:
+    Returns
     -------
         1D tensor with gaussian filter coefficients. Shape :math:`(B, \text{kernel_size})`
 
-    Examples:
+    Examples
     --------
         >>> get_gaussian_erf_kernel1d(3, 2.5)
         tensor([[0.3245, 0.3511, 0.3245]])
@@ -648,14 +648,14 @@ def get_gaussian_kernel2d(
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
-    Returns:
+    Returns
     -------
         2D tensor with gaussian filter matrix coefficients.
 
     Shape:
         - Output: :math:`(B, \text{kernel_size}_x, \text{kernel_size}_y)`
 
-    Examples:
+    Examples
     --------
         >>> get_gaussian_kernel2d((5, 5), (1.5, 1.5))
         tensor([[[0.0144, 0.0281, 0.0351, 0.0281, 0.0144],
@@ -707,14 +707,14 @@ def get_gaussian_kernel3d(
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
-    Returns:
+    Returns
     -------
         3D tensor with gaussian filter matrix coefficients.
 
     Shape:
         - Output: :math:`(B, \text{kernel_size}_x, \text{kernel_size}_y,  \text{kernel_size}_z)`
 
-    Examples:
+    Examples
     --------
         >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5))
         tensor([[[[0.0292, 0.0364, 0.0292],
@@ -762,14 +762,14 @@ def get_laplacian_kernel1d(
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
 
-    Returns:
+    Returns
     -------
         1D tensor with laplacian filter coefficients.
 
     Shape:
         - Output: math:`(\text{kernel_size})`
 
-    Examples:
+    Examples
     --------
         >>> get_laplacian_kernel1d(3)
         tensor([ 1., -2.,  1.])
@@ -794,14 +794,14 @@ def get_laplacian_kernel2d(
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
 
-    Returns:
+    Returns
     -------
         2D tensor with laplacian filter matrix coefficients.
 
     Shape:
         - Output: :math:`(\text{kernel_size}_x, \text{kernel_size}_y)`
 
-    Examples:
+    Examples
     --------
         >>> get_laplacian_kernel2d(3)
         tensor([[ 1.,  1.,  1.],
@@ -843,12 +843,12 @@ def get_pascal_kernel_2d(
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
 
-    Returns:
+    Returns
     -------
         if kernel_size is an integer the kernel will be shaped as :math:`(kernel_size, kernel_size)`
         otherwise the kernel will be shaped as :math: `kernel_size`
 
-    Examples:
+    Examples
     --------
     >>> get_pascal_kernel_2d(1)
     tensor([[1.]])
@@ -885,11 +885,11 @@ def get_pascal_kernel_1d(
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
 
-    Returns:
+    Returns
     -------
         kernel shaped as :math:`(kernel_size,)`
 
-    Examples:
+    Examples
     --------
     >>> get_pascal_kernel_1d(1)
     tensor([1.])
@@ -974,12 +974,12 @@ def get_hanning_kernel1d(kernel_size: int, device: Optional[Device] = None, dtyp
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
 
-    Returns:
+    Returns
     -------
         1D tensor with Hanning filter coefficients. Shape math:`(\text{kernel_size})`
         .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
 
-    Examples:
+    Examples
     --------
         >>> get_hanning_kernel1d(4)
         tensor([0.0000, 0.7500, 0.7500, 0.0000])
@@ -1002,7 +1002,7 @@ def get_hanning_kernel2d(
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
 
-    Returns:
+    Returns
     -------
         2D tensor with Hanning filter coefficients. Shape: math:`(\text{kernel_size[0], kernel_size[1]})`
         .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)

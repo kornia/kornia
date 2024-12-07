@@ -134,7 +134,7 @@ class AIFI(Module):
             device: device to place the positional embeddings
             dtype: data type of the positional embeddings
 
-        Returns:
+        Returns
         -------
             positional embeddings, shape :math:`(H * W, 1, C)`
 

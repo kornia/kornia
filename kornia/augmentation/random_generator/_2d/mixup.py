@@ -17,7 +17,7 @@ class MixupGenerator(RandomGeneratorBase):
         lambda_val (torch.Tensor, optional): min-max strength for mixup images, ranged from [0., 1.].
             If None, it will be set to tensor([0., 1.]), which means no restrictions.
 
-    Returns:
+    Returns
     -------
         A dict of parameters to be passed for transformation.
             - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (B,).

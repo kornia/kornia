@@ -109,7 +109,7 @@ class AutoAugment(PolicyAugmentBase):
                                     modules will trigger errors.
                                     If `skip`, transformation matrix will be totally ignored.
 
-    Examples:
+    Examples
     --------
         >>> import torch
         >>> import kornia.augmentation as K

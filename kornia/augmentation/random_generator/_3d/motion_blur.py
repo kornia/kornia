@@ -24,7 +24,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
             If float, it will generate the value from (-direction, direction).
             If Tuple[int, int], it will randomly generate the value from the range.
 
-    Returns:
+    Returns
     -------
         A dict of parameters to be passed for transformation.
             - ksize_factor (Tensor): element-wise kernel size factors with a shape of (B,).

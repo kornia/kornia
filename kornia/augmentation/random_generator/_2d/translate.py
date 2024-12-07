@@ -19,7 +19,7 @@ class TranslateGenerator(RandomGeneratorBase):
             is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
             randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
 
-    Returns:
+    Returns
     -------
         A dict of parameters to be passed for transformation.
             - translations (Tensor): element-wise translations with a shape of (B, 2).

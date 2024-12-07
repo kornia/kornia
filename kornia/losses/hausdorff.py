@@ -23,7 +23,7 @@ class _HausdorffERLossBase(Module):
             'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
             'sum': the output will be summed.
 
-    Returns:
+    Returns
     -------
         Estimated Hausdorff Loss.
 
@@ -86,7 +86,7 @@ class _HausdorffERLossBase(Module):
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
             target: target tensor with a shape of :math:`(B, 1, H, W)` or :math:`(B, C, D, H, W)`.
 
-        Returns:
+        Returns
         -------
             Estimated Hausdorff Loss.
 
@@ -155,7 +155,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
             'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
             'sum': the output will be summed.
 
-    Examples:
+    Examples
     --------
         >>> hdloss = HausdorffERLoss()
         >>> input = torch.randn(5, 3, 20, 20)
@@ -181,7 +181,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
             target: target tensor with a shape of :math:`(B, 1, H, W)`.
 
-        Returns:
+        Returns
         -------
             Estimated Hausdorff Loss.
 
@@ -225,7 +225,7 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
             'none': no reduction will be applied, 'mean': the weighted mean of the output is taken,
             'sum': the output will be summed.
 
-    Examples:
+    Examples
     --------
         >>> hdloss = HausdorffERLoss3D()
         >>> input = torch.randn(5, 3, 20, 20, 20)
@@ -255,7 +255,7 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
             target: target tensor with a shape of :math:`(B, 1, D, H, W)`.
 
-        Returns:
+        Returns
         -------
             Estimated Hausdorff Loss.
 

@@ -20,7 +20,7 @@ def confusion_matrix(
         num_classes: total possible number of classes in target.
         normalized: whether to return the confusion matrix normalized.
 
-    Returns:
+    Returns
     -------
         a tensor containing the confusion matrix with shape
         :math:`(B, K, K)` where K is the number of classes.

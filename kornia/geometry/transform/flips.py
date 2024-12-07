@@ -14,11 +14,11 @@ class Vflip(Module):
     Args:
         input: input tensor.
 
-    Returns:
+    Returns
     -------
         The vertically flipped image tensor.
 
-    Examples:
+    Examples
     --------
         >>> vflip = Vflip()
         >>> input = torch.tensor([[[
@@ -48,11 +48,11 @@ class Hflip(Module):
     Args:
         input: input tensor.
 
-    Returns:
+    Returns
     -------
         The horizontally flipped image tensor.
 
-    Examples:
+    Examples
     --------
         >>> hflip = Hflip()
         >>> input = torch.tensor([[[
@@ -82,7 +82,7 @@ class Rot180(Module):
     Args:
         input: input tensor.
 
-    Examples:
+    Examples
     --------
         >>> rot180 = Rot180()
         >>> input = torch.tensor([[[
@@ -114,7 +114,7 @@ def rot180(input: Tensor) -> Tensor:
     Args:
         input: input tensor.
 
-    Returns:
+    Returns
     -------
         The rotated image tensor.
 
@@ -132,7 +132,7 @@ def hflip(input: Tensor) -> Tensor:
     Args:
         input: input tensor.
 
-    Returns:
+    Returns
     -------
         The horizontally flipped image tensor.
 
@@ -150,7 +150,7 @@ def vflip(input: Tensor) -> Tensor:
     Args:
         input: input tensor.
 
-    Returns:
+    Returns
     -------
         The vertically flipped image tensor.
 

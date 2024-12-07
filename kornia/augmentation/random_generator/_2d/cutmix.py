@@ -23,7 +23,7 @@ class CutmixGenerator(RandomGeneratorBase):
         cut_size (torch.Tensor, optional): controlling the minimum and maximum cut ratio from [0, 1].
             If None, it will be set to [0, 1], which means no restriction.
 
-    Returns:
+    Returns
     -------
         params Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (num_mix, B).

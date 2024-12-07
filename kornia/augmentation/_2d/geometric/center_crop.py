@@ -33,7 +33,7 @@ class CenterCrop(GeometricAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.geometry.transform.crop_by_boxes`.
 
-    Examples:
+    Examples
     --------
         >>> import torch
         >>> rng = torch.manual_seed(0)

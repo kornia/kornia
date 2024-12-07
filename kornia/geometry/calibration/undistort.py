@@ -33,7 +33,7 @@ def undistort_points(
             scale and shift the result by using a different matrix. Shape: :math:`(*, 3, 3)`. Default: None.
         num_iters: Number of undistortion iterations. Default: 5.
 
-    Returns:
+    Returns
     -------
         Undistorted 2D points with shape :math:`(*, N, 2)`.
 
@@ -133,7 +133,7 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
             :math:`(k_1,k_2,p_1,p_2[,k_3[,k_4,k_5,k_6[,s_1,s_2,s_3,s_4[,\tau_x,\tau_y]]]])`. This is
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
 
-    Returns:
+    Returns
     -------
         Undistorted image with shape :math:`(*, C, H, W)`.
 

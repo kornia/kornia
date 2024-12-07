@@ -17,7 +17,7 @@ def get_laf_scale(LAF: Tensor) -> Tensor:
     Args:
         LAF: :math:`(B, N, 2, 3)`
 
-    Returns:
+    Returns
     -------
         scale :math:`(B, N, 1, 1)`
 
@@ -39,7 +39,7 @@ def get_laf_center(LAF: Tensor) -> Tensor:
     Args:
         LAF: :math:`(B, N, 2, 3)`
 
-    Returns:
+    Returns
     -------
         xy :math:`(B, N, 2)`
 
@@ -59,7 +59,7 @@ def get_laf_orientation(LAF: Tensor) -> Tensor:
     Args:
         LAF: :math:`(B, N, 2, 3)`
 
-    Returns:
+    Returns
     -------
         angle in degrees :math:`(B, N, 1)`
 
@@ -81,7 +81,7 @@ def rotate_laf(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
         LAF: :math:`(B, N, 2, 3)`
         angles: :math:`(B, N, 1)` in degrees.
 
-    Returns:
+    Returns
     -------
         LAF oriented with angles :math:`(B, N, 2, 3)`
 
@@ -101,7 +101,7 @@ def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
         LAF: :math:`(B, N, 2, 3)`
         angles: :math:`(B, N, 1)` in degrees.
 
-    Returns:
+    Returns
     -------
         LAF oriented with angles :math:`(B, N, 2, 3)`
 
@@ -122,7 +122,7 @@ def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: O
         scale: :math:`(B, N, 1, 1)`. If not provided, scale = 1.0 is assumed
         angle in degrees: :math:`(B, N, 1)`. If not provided orientation = 0 is assumed
 
-    Returns:
+    Returns
     -------
         LAF :math:`(B, N, 2, 3)`
 
@@ -151,7 +151,7 @@ def scale_laf(laf: Tensor, scale_coef: Union[float, Tensor]) -> Tensor:
         LAF :math:`(B, N, 2, 3)`
         scale_coef: broadcastable tensor or float.
 
-    Returns:
+    Returns
     -------
         LAF :math:`(B, N, 2, 3)`
 
@@ -175,7 +175,7 @@ def make_upright(laf: Tensor, eps: float = 1e-9) -> Tensor:
         laf: :math:`(B, N, 2, 3)`
         eps: for safe division.
 
-    Returns:
+    Returns
     -------
         laf: :math:`(B, N, 2, 3)`
 
@@ -213,7 +213,7 @@ def ellipse_to_laf(ells: Tensor) -> Tensor:
     Args:
         ells: tensor :math:`(B, N, 5)` of ellipses in Oxford format [x y a b c].
 
-    Returns:
+    Returns
     -------
         LAF :math:`(B, N, 2, 3)`
 
@@ -254,7 +254,7 @@ def laf_to_boundary_points(LAF: Tensor, n_pts: int = 50) -> Tensor:
         LAF: :math:`(B, N, 2, 3)`
         n_pts: number of points to output.
 
-    Returns:
+    Returns
     -------
         tensor of boundary points LAF: :math:`(B, N, n_pts, 2)`
 
@@ -285,11 +285,11 @@ def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[
         LAF: :math:`(B, N, 2, 3)`
         n_pts: number of points to output.
 
-    Returns:
+    Returns
     -------
         List of boundary points x, y`
 
-    Examples:
+    Examples
     --------
         x, y = get_laf_pts_to_draw(LAF, img_idx)
         plt.figure()
@@ -321,7 +321,7 @@ def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
         LAF: :math:`(B, N, 2, 3)`
         images: :math:`(B, CH, H, W)`
 
-    Returns:
+    Returns
     -------
         the denormalized LAF: :math:`(B, N, 2, 3)`, scale in pixels
 
@@ -352,7 +352,7 @@ def normalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
         LAF: :math:`(B, N, 2, 3)`
         images: :math:`(B, CH, H, W)`
 
-    Returns:
+    Returns
     -------
         the denormalized LAF: :math:`(B, N, 2, 3)`, scale in image percentage (0, 1)
 
@@ -376,7 +376,7 @@ def generate_patch_grid_from_normalized_LAF(img: Tensor, LAF: Tensor, PS: int = 
         LAF: laf with shape :math:`(B, N, 2, 3)`.
         PS: patch size to be extracted.
 
-    Returns:
+    Returns
     -------
         grid :math:`(B*N, PS, PS, 2)`
 
@@ -408,7 +408,7 @@ def extract_patches_simple(
         PS: patch size.
         normalize_lafs_before_extraction: if True, lafs are normalized to image size.
 
-    Returns:
+    Returns
     -------
         patches with shape :math:`(B, N, CH, PS,PS)`.
 
@@ -445,7 +445,7 @@ def extract_patches_from_pyramid(
         PS: patch size.
         normalize_lafs_before_extraction: if True, lafs are normalized to image size.
 
-    Returns:
+    Returns
     -------
         patches with shape :math:`(B, N, CH, PS,PS)`.
 
@@ -495,7 +495,7 @@ def laf_is_inside_image(laf: Tensor, images: Tensor, border: int = 0) -> Tensor:
         images: images, lafs are detected in :math:`(B, CH, H, W)`.
         border: additional border.
 
-    Returns:
+    Returns
     -------
         mask with shape :math:`(B, N)`.
 
@@ -517,7 +517,7 @@ def laf_to_three_points(laf: Tensor) -> Tensor:
     Args:
         laf:  :math:`(B, N, 2, 3)`.
 
-    Returns:
+    Returns
     -------
         threepts :math:`(B, N, 2, 3)`.
 
@@ -535,7 +535,7 @@ def laf_from_three_points(threepts: Tensor) -> Tensor:
     Args:
         threepts: :math:`(B, N, 2, 3)`.
 
-    Returns:
+    Returns
     -------
         laf :math:`(B, N, 2, 3)`.
 
@@ -551,11 +551,11 @@ def perspective_transform_lafs(trans_01: Tensor, lafs_1: Tensor) -> Tensor:
         trans_01: tensor for perspective transformations of shape :math:`(B, 3, 3)`.
         lafs_1: tensor of lafs of shape :math:`(B, N, 2, 3)`.
 
-    Returns:
+    Returns
     -------
         tensor of N-dimensional points of shape :math:`(B, N, 2, 3)`.
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> lafs_1 = torch.rand(2, 4, 2, 3)  # BxNx2x3

@@ -49,7 +49,7 @@ def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor
 def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
     """Helper function, which output empty tensors.
 
-    Returns:
+    Returns
     -------
             - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
@@ -71,7 +71,7 @@ def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple
         dm: Tensor containing the distances from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
-    Returns:
+    Returns
     -------
         - Descriptor distance of matching descriptors, shape of :math:`(B1, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B1, 2)`.

@@ -27,7 +27,7 @@ def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool =
         squared: if True (default), the squared distance is returned.
         eps: Small constant for safe sqrt.
 
-    Returns:
+    Returns
     -------
         the computed distance with shape :math:`(B, N)`.
 
@@ -61,7 +61,7 @@ def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: boo
         squared: if True (default), the squared distance is returned.
         eps: Small constant for safe sqrt.
 
-    Returns:
+    Returns
     -------
         the computed distance with shape :math:`(B, N)`.
 
@@ -101,7 +101,7 @@ def line_segment_transfer_error_one_way(ls1: Tensor, ls2: Tensor, H: Tensor, squ
         H: Homographies with shape :math:`(B, 3, 3)`.
         squared: if True (default is False), the squared distance is returned.
 
-    Returns:
+    Returns
     -------
         the computed distance with shape :math:`(B, N)`.
 
@@ -139,7 +139,7 @@ def find_homography_dlt(
         solver: variants: svd, lu.
 
 
-    Returns:
+    Returns
     -------
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
@@ -209,7 +209,7 @@ def find_homography_dlt_iterated(
         soft_inl_th: Soft inlier threshold used for weight calculation.
         n_iter: number of iterations.
 
-    Returns:
+    Returns
     -------
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
@@ -231,7 +231,7 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
         points1: A set of points in the first image with a tensor shape :math:`(B, 4, 2)`.
         points2: A set of points in the second image with a tensor shape :math:`(B, 4, 2)`.
 
-    Returns:
+    Returns
     -------
         Mask with the minimal sample is good for homography estimation:math:`(B, 3, 3)`.
 
@@ -269,7 +269,7 @@ def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor
         ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
 
-    Returns:
+    Returns
     -------
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
@@ -343,7 +343,7 @@ def find_homography_lines_dlt_iterated(
         soft_inl_th: Soft inlier threshold used for weight calculation.
         n_iter: number of iterations.
 
-    Returns:
+    Returns
     -------
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 

@@ -155,7 +155,7 @@ class AdalamFilter:
                    Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
             return_dist: if True, inverse confidence value is also outputted.
 
-        Returns:
+        Returns
         -------
             Filtered putative matches.
             A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
@@ -223,7 +223,7 @@ class AdalamFilter:
                    Expected an array with shape (num_keypoints_in_source/destination_image,)
             return_dist: if True, inverse confidence value is also outputted.
 
-        Returns:
+        Returns
         -------
             Filtered putative matches.
             A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.

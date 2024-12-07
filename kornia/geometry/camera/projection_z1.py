@@ -27,7 +27,7 @@ def project_points_z1(points_in_camera: Tensor) -> Tensor:
     Args:
         points_in_camera: Tensor representing the points to project with shape (..., 3).
 
-    Returns:
+    Returns
     -------
         Tensor representing the projected points with shape (..., 2).
 
@@ -52,7 +52,7 @@ def unproject_points_z1(points_in_cam_canonical: Tensor, extension: Optional[Ten
         points_in_cam_canonical: Tensor representing the points to unproject with shape (..., 2).
         extension: Tensor representing the extension (depth) of the points to unproject with shape (..., 1).
 
-    Returns:
+    Returns
     -------
         Tensor representing the unprojected points with shape (..., 3).
 
@@ -97,7 +97,7 @@ def dx_project_points_z1(points_in_camera: Tensor) -> Tensor:
     Args:
         points_in_camera: Tensor representing the points to project with shape (..., 3).
 
-    Returns:
+    Returns
     -------
         Tensor representing the derivative of the x projection with respect to the x coordinate with shape (..., 2, 3).
 

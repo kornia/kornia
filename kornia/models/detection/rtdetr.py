@@ -52,7 +52,7 @@ class RTDETRDetectorBuilder:
                 If None, no resizing will be inferred from config file. Recommended scales include
                 [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
 
-        Returns:
+        Returns
         -------
             ObjectDetector
                 An object detector instance initialized with the specified model, preprocessor, and post-processor.

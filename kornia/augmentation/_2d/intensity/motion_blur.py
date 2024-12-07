@@ -47,7 +47,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.filters.motion_blur`.
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> input = torch.ones(1, 1, 5, 5)

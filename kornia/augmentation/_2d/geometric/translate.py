@@ -31,7 +31,7 @@ class RandomTranslate(GeometricAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
 
-    Examples:
+    Examples
     --------
         >>> import torch
         >>> rng = torch.manual_seed(0)

@@ -162,7 +162,7 @@ def diamond_square(
         device: the torch device to place the output map.
         dtype: the torch dtype to place the output map.
 
-    Returns:
+    Returns
     -------
         A tensor with shape :math:`(B,C,H,W)` containing the fractal image.
 

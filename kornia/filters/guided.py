@@ -135,11 +135,11 @@ def guided_blur(
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
 
-    Returns:
+    Returns
     -------
         the blurred tensor with same shape as `input` :math:`(B, C, H, W)`.
 
-    Examples:
+    Examples
     --------
         >>> guidance = torch.rand(2, 3, 5, 5)
         >>> input = torch.rand(2, 4, 5, 5)
@@ -178,7 +178,7 @@ class GuidedBlur(Module):
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
 
-    Returns:
+    Returns
     -------
         the blurred input tensor.
 
@@ -186,7 +186,7 @@ class GuidedBlur(Module):
         - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    Examples:
+    Examples
     --------
         >>> guidance = torch.rand(2, 3, 5, 5)
         >>> input = torch.rand(2, 4, 5, 5)

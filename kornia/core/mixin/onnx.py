@@ -21,7 +21,7 @@ from kornia.core.external import onnxruntime as ort
 class ONNXExportMixin:
     """Mixin class that provides ONNX export functionality for objects that support it.
 
-    Attributes:
+    Attributes
     ----------
         ONNX_EXPORTABLE:
             A flag indicating whether the object can be exported to ONNX. Default is True.
@@ -82,7 +82,7 @@ class ONNXExportMixin:
             **kwargs:
                 Additional keyword arguments to pass to the `torch.onnx.export` function.
 
-        Notes:
+        Notes
         -----
             - A dummy input tensor is created based on the provided or default input shape.
             - Dynamic axes for input and output tensors are configured where dimensions are marked `-1`.
@@ -164,7 +164,7 @@ class ONNXRuntimeMixin:
             session_options:
                 Optional ONNXRuntime session options for session configuration and optimizations.
 
-        Returns:
+        Returns
         -------
             ort.InferenceSession: The ONNXRuntime session optimized for inference.
 
@@ -192,7 +192,7 @@ class ONNXRuntimeMixin:
     def get_session(self) -> ort.InferenceSession:  # type: ignore
         """Get the current ONNXRuntime InferenceSession.
 
-        Returns:
+        Returns
         -------
             ort.InferenceSession: The current ONNXRuntime session.
 
@@ -258,7 +258,7 @@ class ONNXRuntimeMixin:
         Args:
             *inputs: Inputs to the ONNX model. The number of inputs must match the expected inputs of the session.
 
-        Returns:
+        Returns
         -------
             list: The outputs from the ONNX model inference.
 
@@ -281,7 +281,7 @@ class ONNXMixin:
         Args:
             arg: Either an ONNX ModelProto object or a file path to an ONNX model.
 
-        Returns:
+        Returns
         -------
             onnx.ModelProto: The loaded ONNX model.
 
@@ -304,7 +304,7 @@ class ONNXMixin:
                 For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
                 https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
 
-        Returns:
+        Returns
         -------
             list[onnx.ModelProto]: The loaded ONNX models as a list of ONNX graphs.
 
@@ -327,7 +327,7 @@ class ONNXMixin:
                 A list of list of tuples representing input-output mappings for combining the models.
                 Example: [[(model1_output_name, model2_input_name)], [(model2_output_name, model3_input_name)]].
 
-        Returns:
+        Returns
         -------
             onnx.ModelProto: The combined ONNX model as a single ONNX graph.
 

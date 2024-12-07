@@ -184,7 +184,7 @@ class RANSAC(Module):
             kp2: distance image keypoints :math:`(N, 2)`.
             weights: optional correspondences weights. Not used now.
 
-        Returns:
+        Returns
         -------
             - Estimated model, shape of :math:`(1, 3, 3)`.
             - The inlier/outlier mask, shape of :math:`(1, N)`, where N is number of input correspondences.

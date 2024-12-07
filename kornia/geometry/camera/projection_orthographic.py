@@ -18,7 +18,7 @@ def project_points_orthographic(points_in_camera: Tensor) -> Tensor:
     Args:
         points_in_camera: Tensor representing the points to project.
 
-    Returns:
+    Returns
     -------
         Tensor representing the projected points.
 
@@ -43,7 +43,7 @@ def unproject_points_orthographic(points_in_camera: Tensor, extension: Tensor) -
         points_in_camera: Tensor representing the points to unproject with shape (..., 2).
         extension: Tensor representing the extension of the points to unproject with shape (..., 1).
 
-    Returns:
+    Returns
     -------
         Tensor representing the unprojected points with shape (..., 3).
 
@@ -71,7 +71,7 @@ def dx_project_points_orthographic(points_in_camera: Tensor) -> Tensor:
     Args:
         points_in_camera: Tensor representing the points to project.
 
-    Returns:
+    Returns
     -------
         Tensor representing the derivative of the x projection with respect to the x coordinate.
 

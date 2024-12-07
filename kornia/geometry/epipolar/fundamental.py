@@ -26,7 +26,7 @@ def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]
        points: Tensor containing the points to be normalized with shape :math:`(B, N, 2)`.
        eps: epsilon value to avoid numerical instabilities.
 
-    Returns:
+    Returns
     -------
        tuple containing the normalized points in the shape :math:`(B, N, 2)` and the transformation matrix
        in the shape :math:`(B, 3, 3)`.
@@ -64,7 +64,7 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
         M: The transformation to be normalized of any shape with a minimum size of 2x2.
         eps: small value to avoid unstabilities during the backpropagation.
 
-    Returns:
+    Returns
     -------
         the normalized transformation matrix with same shape as the input.
 
@@ -84,7 +84,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
 
-    Returns:
+    Returns
     -------
         the computed fundamental matrix with shape :math:`(B, 3*m, 3), Valid values of m are 1, 2 or 3`
 
@@ -182,7 +182,7 @@ def run_8point(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = Non
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
 
-    Returns:
+    Returns
     -------
         the computed fundamental matrix with shape :math:`(B, 3, 3)`.
 
@@ -241,11 +241,11 @@ def find_fundamental(
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
         method: The method to use for computing the fundamental matrix. Supported methods are "7POINT" and "8POINT".
 
-    Returns:
+    Returns
     -------
         the computed fundamental matrix with shape :math:`(B, 3*m, 3)`, where `m` number of fundamental matrix.
 
-    Raises:
+    Raises
     ------
         ValueError: If an invalid method is provided.
 
@@ -266,7 +266,7 @@ def compute_correspond_epilines(points: Tensor, F_mat: Tensor) -> Tensor:
         points: tensor containing the set of points to project in the shape of :math:`(*, N, 2)` or :math:`(*, N, 3)`.
         F_mat: the fundamental to use for projection the points in the shape of :math:`(*, 3, 3)`.
 
-    Returns:
+    Returns
     -------
         a tensor with shape :math:`(*, N, 3)` containing a vector of the epipolar
         lines corresponding to the points to the other image. Each line is described as
@@ -300,7 +300,7 @@ def get_perpendicular(lines: Tensor, points: Tensor) -> Tensor:
         lines: tensor containing the set of lines :math:`(*, N, 3)`.
         points:  tensor containing the set of points :math:`(*, N, 2)`.
 
-    Returns:
+    Returns
     -------
         a tensor with shape :math:`(*, N, 3)` containing a vector of the epipolar
         perpendicular lines. Each line is described as
@@ -330,7 +330,7 @@ def get_closest_point_on_epipolar_line(pts1: Tensor, pts2: Tensor, Fm: Tensor) -
               converted automatically.
         Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
 
-    Returns:
+    Returns
     -------
         point on epipolar line :math:`(*, N, 2)`.
 
@@ -359,7 +359,7 @@ def fundamental_from_essential(E_mat: Tensor, K1: Tensor, K2: Tensor) -> Tensor:
         K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
         K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
 
-    Returns:
+    Returns
     -------
         The fundamental matrix with shape :math:`(*, 3, 3)`.
 
@@ -385,7 +385,7 @@ def fundamental_from_projections(P1: Tensor, P2: Tensor) -> Tensor:
         P1: The projection matrix from first camera with shape :math:`(*, 3, 4)`.
         P2: The projection matrix from second camera with shape :math:`(*, 3, 4)`.
 
-    Returns:
+    Returns
     -------
          The fundamental matrix with shape :math:`(*, 3, 3)`.
 

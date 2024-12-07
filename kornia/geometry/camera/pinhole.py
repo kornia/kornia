@@ -69,7 +69,7 @@ class PinholeCamera:
     def device(self) -> torch.device:
         r"""Returns the device for camera buffers.
 
-        Returns:
+        Returns
         -------
             Device type
 
@@ -80,7 +80,7 @@ class PinholeCamera:
     def intrinsics(self) -> Tensor:
         r"""The full 4x4 intrinsics matrix.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B, 4, 4)`.
 
@@ -93,7 +93,7 @@ class PinholeCamera:
     def extrinsics(self) -> Tensor:
         r"""The full 4x4 extrinsics matrix.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B, 4, 4)`.
 
@@ -106,7 +106,7 @@ class PinholeCamera:
     def batch_size(self) -> int:
         r"""Return the batch size of the storage.
 
-        Returns:
+        Returns
         -------
             scalar with the batch size.
 
@@ -117,7 +117,7 @@ class PinholeCamera:
     def fx(self) -> Tensor:
         r"""Return the focal length in the x-direction.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B)`.
 
@@ -128,7 +128,7 @@ class PinholeCamera:
     def fy(self) -> Tensor:
         r"""Return the focal length in the y-direction.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B)`.
 
@@ -139,7 +139,7 @@ class PinholeCamera:
     def cx(self) -> Tensor:
         r"""Return the x-coordinate of the principal point.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B)`.
 
@@ -150,7 +150,7 @@ class PinholeCamera:
     def cy(self) -> Tensor:
         r"""Return the y-coordinate of the principal point.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B)`.
 
@@ -161,7 +161,7 @@ class PinholeCamera:
     def tx(self) -> Tensor:
         r"""Return the x-coordinate of the translation vector.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B)`.
 
@@ -178,7 +178,7 @@ class PinholeCamera:
     def ty(self) -> Tensor:
         r"""Return the y-coordinate of the translation vector.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B)`.
 
@@ -195,7 +195,7 @@ class PinholeCamera:
     def tz(self) -> Tensor:
         r"""Returns the z-coordinate of the translation vector.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B)`.
 
@@ -212,7 +212,7 @@ class PinholeCamera:
     def rt_matrix(self) -> Tensor:
         r"""Return the 3x4 rotation-translation matrix.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B, 3, 4)`.
 
@@ -223,7 +223,7 @@ class PinholeCamera:
     def camera_matrix(self) -> Tensor:
         r"""Return the 3x3 camera matrix containing the intrinsics.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B, 3, 3)`.
 
@@ -234,7 +234,7 @@ class PinholeCamera:
     def rotation_matrix(self) -> Tensor:
         r"""Return the 3x3 rotation matrix from the extrinsics.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B, 3, 3)`.
 
@@ -245,7 +245,7 @@ class PinholeCamera:
     def translation_vector(self) -> Tensor:
         r"""Return the translation vector from the extrinsics.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B, 3, 1)`.
 
@@ -263,7 +263,7 @@ class PinholeCamera:
     def intrinsics_inverse(self) -> Tensor:
         r"""Return the inverse of the 4x4 instrisics matrix.
 
-        Returns:
+        Returns
         -------
             tensor of shape :math:`(B, 4, 4)`.
 
@@ -278,7 +278,7 @@ class PinholeCamera:
               to be broadcastable with class members. The expected shape is
               :math:`(B)` or :math:`(1)`.
 
-        Returns:
+        Returns
         -------
             the camera model with scaled parameters.
 
@@ -302,7 +302,7 @@ class PinholeCamera:
               to be broadcastable with class members. The expected shape is
               :math:`(B)` or :math:`(1)`.
 
-        Returns:
+        Returns
         -------
             the camera model with scaled parameters.
 
@@ -324,7 +324,7 @@ class PinholeCamera:
             point3d: tensor containing the 3d points to be projected
                 to the camera plane. The shape of the tensor can be :math:`(*, 3)`.
 
-        Returns:
+        Returns
         -------
             tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
 
@@ -357,7 +357,7 @@ class PinholeCamera:
                 must be set to `True` when the depth is represented as the Euclidean
                 ray length from the camera position.
 
-        Returns:
+        Returns
         -------
             tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
 
@@ -483,7 +483,7 @@ def pinhole_matrix(pinholes: Tensor, eps: float = 1e-6) -> Tensor:
     Args:
         pinholes: tensor of pinhole models.
 
-    Returns:
+    Returns
     -------
         tensor of pinhole matrices.
 
@@ -529,7 +529,7 @@ def inverse_pinhole_matrix(pinhole: Tensor, eps: float = 1e-6) -> Tensor:
     Args:
         pinholes: tensor with pinhole models.
 
-    Returns:
+    Returns
     -------
         tensor of inverted pinhole matrices.
 
@@ -576,7 +576,7 @@ def scale_pinhole(pinholes: Tensor, scale: Tensor) -> Tensor:
         pinholes: tensor with the pinhole model.
         scale: tensor of scales.
 
-    Returns:
+    Returns
     -------
         tensor of scaled pinholes.
 
@@ -612,7 +612,7 @@ def get_optical_pose_base(pinholes: Tensor) -> Tensor:
         pinholes: tensor of form [fx fy cx cy h w rx ry rz tx ty tz]
                            of size (N, 12).
 
-    Returns:
+    Returns
     -------
         tensor of extrinsic transformation matrices of size (N, 4, 4).
 
@@ -652,7 +652,7 @@ def homography_i_H_ref(pinhole_i: Tensor, pinhole_ref: Tensor) -> Tensor:
         pinhole_i: tensor with pinhole model for ith frame.
         pinhole_ref: tensor with pinhole model for reference frame.
 
-    Returns:
+    Returns
     -------
         tensors that convert depth points (u, v, d) from pinhole_ref to pinhole_i.
 
@@ -689,7 +689,7 @@ def pixel2cam(depth: Tensor, intrinsics_inv: Tensor, pixel_coords: Tensor) -> Te
         intrinsics_inv: the inverse intrinsics camera matrix. Shape must be Bx4x4.
         pixel_coords: the grid with (u, v, 1) pixel coordinates. Shape must be BxHxWx3.
 
-    Returns:
+    Returns
     -------
         tensor of shape BxHxWx3 with (x, y, z) cam coordinates.
 
@@ -717,7 +717,7 @@ def cam2pixel(cam_coords_src: Tensor, dst_proj_src: Tensor, eps: float = 1e-12) 
           reference and the non reference camera frame. Shape must be Bx4x4.
         eps: small value to avoid division by zero error.
 
-    Returns:
+    Returns
     -------
         tensor of shape BxHxWx2 with (u, v) pixel coordinates.
 

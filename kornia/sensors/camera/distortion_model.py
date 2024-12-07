@@ -10,7 +10,7 @@ class AffineTransform:
             params: Tensor representing the affine transform parameters.
             points: Vector2 representing the points to distort.
 
-        Returns:
+        Returns
         -------
             Vector2 representing the distorted points.
 
@@ -34,7 +34,7 @@ class AffineTransform:
             params: Tensor representing the affine transform parameters.
             points: Vector2 representing the points to undistort.
 
-        Returns:
+        Returns
         -------
             Vector2 representing the undistorted points.
 

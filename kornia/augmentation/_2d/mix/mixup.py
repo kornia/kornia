@@ -50,7 +50,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         - Input image tensors, shape of :math:`(B, C, H, W)`.
         - Label: raw labels, shape of :math:`(B)`.
 
-    Returns:
+    Returns
     -------
         Tuple[Tensor, Tensor]:
         - Adjusted image, shape of :math:`(B, C, H, W)`.
@@ -59,7 +59,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
     Note:
         This implementation would randomly mixup images in a batch. Ideally, the larger batch size would be preferred.
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(1)
         >>> input = torch.rand(2, 1, 3, 3)

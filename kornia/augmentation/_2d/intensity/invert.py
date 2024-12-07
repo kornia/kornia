@@ -22,7 +22,7 @@ class RandomInvert(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.enhance.invert`.
 
-    Examples:
+    Examples
     --------
         >>> rng = torch.manual_seed(0)
         >>> img = torch.rand(1, 1, 5, 5)
