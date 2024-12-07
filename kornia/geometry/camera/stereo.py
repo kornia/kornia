@@ -9,7 +9,7 @@ from kornia.utils.grid import create_meshgrid
 
 class StereoException(Exception):
     def __init__(self, msg: str, *args: Any, **kwargs: Any) -> None:
-        r"""Custom exception for the :module:`~kornia.geometry.camera.stereo` module.
+        r"""Construct custom exception for the :module:`~kornia.geometry.camera.stereo` module.
 
         Adds a general helper module redirecting the user to the proper documentation site.
 
@@ -51,7 +51,7 @@ class StereoCamera:
 
     @staticmethod
     def _check_stereo_camera(rectified_left_camera: Tensor, rectified_right_camera: Tensor) -> None:
-        r"""Utility function to ensure user specified correct camera matrices.
+        r"""Ensure user specified correct camera matrices.
 
         Args:
             rectified_left_camera: The rectified left camera projection matrix
@@ -211,7 +211,7 @@ class StereoCamera:
         return self._Q_matrix
 
     def _init_Q_matrix(self) -> Tensor:
-        r"""Initialized the Q matrix of the horizontal stereo setup. See the Q property.
+        r"""Initialize the Q matrix of the horizontal stereo setup. See the Q property.
 
         Returns
         -------
@@ -244,7 +244,7 @@ class StereoCamera:
 
 
 def _check_disparity_tensor(disparity_tensor: Tensor) -> None:
-    r"""Utility function to ensure correct user provided correct disparity tensor.
+    r"""Ensure correct user provided correct disparity tensor.
 
     Args:
         disparity_tensor: The disparity tensor of shape :math:`(B, 1, H, W)`.
@@ -272,7 +272,7 @@ def _check_disparity_tensor(disparity_tensor: Tensor) -> None:
 
 
 def _check_Q_matrix(Q_matrix: Tensor) -> None:
-    r"""Utility function to ensure Q matrix is of correct form.
+    r"""Ensure Q matrix is of correct form.
 
     Args:
         Q_matrix: The Q matrix for reprojecting disparity to a point cloud of shape :math:`(B, 4, 4)`

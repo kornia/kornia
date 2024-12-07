@@ -29,7 +29,10 @@ class ResizePreProcessor(Module):
         self.interpolation_mode = interpolation_mode
 
     def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Tuple[Tensor, Tensor]:
-        """Returns:
+        """Run forward.
+
+        Returns
+        -------
         resized_imgs: resized images in a batch.
         original_sizes: the original image sizes of (height, width).
 
@@ -53,7 +56,10 @@ class ResizePostProcessor(Module):
         self.interpolation_mode = interpolation_mode
 
     def forward(self, imgs: Union[Tensor, List[Tensor]], original_sizes: Tensor) -> Union[Tensor, List[Tensor]]:
-        """Returns:
+        """Run forward.
+
+        Returns
+        -------
         resized_imgs: resized images in a batch.
         original_sizes: the original image sizes of (height, width).
 

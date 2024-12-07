@@ -177,7 +177,7 @@ class LineSegmentDetectionModule:
             raise ValueError("[Error] Missing junction refinement config.")
 
     def detect(self, junctions: Tensor, heatmap: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
-        """Main function performing line segment detection."""
+        """Perform line segment detection."""
         KORNIA_CHECK_SHAPE(heatmap, ["H", "W"])
         H, W = heatmap.shape
         device = junctions.device
@@ -467,7 +467,7 @@ class LineSegmentDetectionModule:
         return line_map
 
     def detect_bilinear(self, heatmap: Tensor, cand_h: Tensor, cand_w: Tensor) -> Tensor:
-        """Detection by bilinear sampling."""
+        """Detect by bilinear sampling."""
         # Get the floor and ceiling locations
         cand_h_floor = torch.floor(cand_h).to(torch.long)
         cand_h_ceil = torch.ceil(cand_h).to(torch.long)
@@ -494,7 +494,7 @@ class LineSegmentDetectionModule:
         normalized_seg_length: Tensor,
         device: torch.device,
     ) -> Tensor:
-        """Detection by local maximum search."""
+        """Detect by local maximum search."""
         # Compute the distance threshold
         dist_thresh = 0.5 * (2**0.5) + self.lambda_radius * normalized_seg_length
         # Make it N x 64

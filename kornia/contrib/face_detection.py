@@ -67,7 +67,7 @@ class FaceDetectorResult:
         return self._data[..., 3]
 
     def get_keypoint(self, keypoint: FaceKeypoint) -> torch.Tensor:
-        """The [x y] position of a given facial keypoint.
+        """Get the [x y] position of a given facial keypoint.
 
         Args:
             keypoint: the keypoint type to return the position.

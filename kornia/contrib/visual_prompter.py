@@ -308,7 +308,7 @@ class VisualPrompter:
         options: Optional[dict[Any, Any]] = None,
         disable: bool = False,
     ) -> None:
-        """Applies `torch.compile(...)`/dynamo API into the VisualPrompter API.
+        """Apply `torch.compile(...)`/dynamo API into the VisualPrompter API.
 
         .. note:: For more information about the dynamo API check the official docs
                   https://pytorch.org/docs/stable/generated/torch.compile.html

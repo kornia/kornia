@@ -113,7 +113,7 @@ def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
 
 
 def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: Optional[Tensor] = None) -> Tensor:
-    """Creates a LAF from keypoint center, scale and orientation.
+    """Create a LAF from keypoint center, scale and orientation.
 
     Useful to create kornia LAFs from OpenCV keypoints.
 
@@ -279,7 +279,7 @@ def laf_to_boundary_points(LAF: Tensor, n_pts: int = 50) -> Tensor:
 
 
 def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[int]]:
-    """Returns list for drawing LAFs (local features).
+    """Return list for drawing LAFs (local features).
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -369,7 +369,7 @@ def normalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
 
 
 def generate_patch_grid_from_normalized_LAF(img: Tensor, LAF: Tensor, PS: int = 32) -> Tensor:
-    """Helper function for affine grid generation.
+    """Generate affine grid.
 
     Args:
         img: image tensor of shape :math:`(B, CH, H, W)`.
@@ -545,7 +545,7 @@ def laf_from_three_points(threepts: Tensor) -> Tensor:
 
 
 def perspective_transform_lafs(trans_01: Tensor, lafs_1: Tensor) -> Tensor:
-    r"""Function that applies perspective transformations to a set of local affine frames (LAFs).
+    r"""Apply perspective transformations to a set of local affine frames (LAFs).
 
     Args:
         trans_01: tensor for perspective transformations of shape :math:`(B, 3, 3)`.

@@ -423,7 +423,7 @@ def extract_tensor_patches(
     padding: PadType = 0,
     allow_auto_padding: bool = False,
 ) -> Tensor:
-    r"""Function that extract patches from tensors and stacks them.
+    r"""Extract patches from tensors and stacks them.
 
     See :class:`~kornia.contrib.ExtractTensorPatches` for details.
 

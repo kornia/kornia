@@ -223,7 +223,7 @@ def find_homography_dlt_iterated(
 
 
 def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
-    """Function, which implements oriented constraint check from :cite:`Marquez-Neila2015`.
+    """Implement oriented constraint check from :cite:`Marquez-Neila2015`.
 
     Analogous to https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/usac/degeneracy.cpp#L88
 

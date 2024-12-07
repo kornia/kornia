@@ -45,7 +45,7 @@ class DISKFeatures:
         return self.keypoints[:, 1]
 
     def to(self, *args: Any, **kwargs: Any) -> DISKFeatures:
-        """Calls :func:`torch.Tensor.to` on each tensor to move the keypoints, descriptors and detection scores to
+        """Call :func:`torch.Tensor.to` on each tensor to move the keypoints, descriptors and detection scores to
         the specified device and/or data type.
 
         Args:

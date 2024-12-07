@@ -51,7 +51,7 @@ class AdalamConfig(TypedDict):
 
 
 def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
-    """Helper function, which output empty tensors.
+    """Output empty tensors.
 
     Returns
     -------

@@ -11,7 +11,7 @@ from kornia.geometry.conversions import pi
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> Tensor:
-    """Utility function, which returns neigh2channels conv kernel."""
+    """Return neigh2channels conv kernel."""
     numel: int = kd * ky * kx
     weight = eye(numel)
     return weight.view(numel, kd, ky, kx)
@@ -179,7 +179,7 @@ def sift_describe(
     rootsift: bool = True,
     clipval: float = 0.2,
 ) -> Tensor:
-    r"""Computes the sift descriptor.
+    r"""Compute the sift descriptor.
 
     See
     :class: `~kornia.feature.SIFTDescriptor` for details.

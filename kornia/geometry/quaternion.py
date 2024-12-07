@@ -57,7 +57,7 @@ class Quaternion(Module):
     """
 
     def __init__(self, data: Tensor) -> None:
-        """Constructor for the base class.
+        """Construct the base class.
 
         Args:
             data: tensor containing the quaternion data with the sape of :math:`(B, 4)`.
@@ -325,7 +325,7 @@ class Quaternion(Module):
         return cls(axis_angle_to_quaternion(axis_angle))
 
     def to_axis_angle(self) -> Tensor:
-        """Converts the quaternion to an axis-angle representation.
+        """Convert the quaternion to an axis-angle representation.
 
         Example:
             >>> q = Quaternion.identity()
@@ -404,7 +404,7 @@ class Quaternion(Module):
         return cls(stack((q1, q2, q3, q4), -1))
 
     def slerp(self, q1: "Quaternion", t: float) -> "Quaternion":
-        """Returns a unit quaternion spherically interpolated between quaternions self.q and q1.
+        """Return a unit quaternion spherically interpolated between quaternions self.q and q1.
 
         See more: https://en.wikipedia.org/wiki/Slerp
 

@@ -74,7 +74,7 @@ class NerfSolver:
         log_space_encoding: bool = True,
         lr: float = 1.0e-3,
     ) -> None:
-        """Initializes training settings and model.
+        """Initialize training settings and model.
 
         Args:
             cameras: Scene cameras in the order of input images.
@@ -226,7 +226,7 @@ class NerfSolver:
         return float(total_psnr / (i_batch + 1))
 
     def run(self, num_epochs: int = 1) -> None:
-        r"""Runs training epochs.
+        r"""Run training epochs.
 
         Args:
             num_epochs: number of epochs to run. Default: 1.

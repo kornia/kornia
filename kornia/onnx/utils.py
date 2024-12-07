@@ -22,7 +22,7 @@ class ONNXLoader(CachedDownloader):
 
     @classmethod
     def load_config(cls, url: str, download: bool = True, **kwargs: Any) -> dict[str, Any]:
-        """Loads JSON config from the specified URL.
+        """Load JSON config from the specified URL.
 
         Args:
             url: The URL of the preprocessor config to load.
@@ -52,7 +52,7 @@ class ONNXLoader(CachedDownloader):
 
     @classmethod
     def load_model(cls, model_name: str, download: bool = True, with_data: bool = False, **kwargs) -> onnx.ModelProto:  # type:ignore
-        """Loads an ONNX model from the local cache or downloads it from Hugging Face if necessary.
+        """Load an ONNX model from the local cache or downloads it from Hugging Face if necessary.
 
         Args:
             model_name: The name of the ONNX model or operator. For Hugging Face-hosted models,
@@ -115,7 +115,7 @@ class ONNXLoader(CachedDownloader):
 
     @staticmethod
     def _fetch_repo_contents(folder: str) -> list[dict[str, Any]]:
-        """Fetches the contents of the Hugging Face repository using the Hugging Face API.
+        """Fetch the contents of the Hugging Face repository using the Hugging Face API.
 
         Returns
         -------
@@ -133,7 +133,7 @@ class ONNXLoader(CachedDownloader):
 
     @classmethod
     def list_operators(cls) -> None:
-        """Lists all available ONNX operators in the 'operators' folder of the Hugging Face repository."""
+        """List all available ONNX operators in the 'operators' folder of the Hugging Face repository."""
         repo_contents = cls._fetch_repo_contents("operators")
 
         # Filter for operators in the 'operators' directory
@@ -143,7 +143,7 @@ class ONNXLoader(CachedDownloader):
 
     @classmethod
     def list_models(cls) -> None:
-        """Lists all available ONNX models in the 'models' folder of the Hugging Face repository."""
+        """List all available ONNX models in the 'models' folder of the Hugging Face repository."""
         repo_contents = cls._fetch_repo_contents("models")
 
         # Filter for models in the 'models' directory
@@ -156,7 +156,7 @@ def io_name_conversion(
     onnx_model: onnx.ModelProto,  # type:ignore
     io_name_mapping: dict[str, str],
 ) -> onnx.ModelProto:  # type:ignore
-    """Converts the input and output names of an ONNX model to 'input' and 'output'.
+    """Convert the input and output names of an ONNX model to 'input' and 'output'.
 
     Args:
         onnx_model: The ONNX model to convert.
@@ -191,7 +191,7 @@ def add_metadata(
     onnx_model: onnx.ModelProto,  # type: ignore
     additional_metadata: Optional[list[tuple[str, str]]] = None,
 ) -> onnx.ModelProto:  # type: ignore
-    """Adds metadata to an ONNX model.
+    """Add metadata to an ONNX model.
 
     The metadata includes the source library (set to "kornia"), the version of kornia,
     and any additional metadata provided as a list of key-value pairs.

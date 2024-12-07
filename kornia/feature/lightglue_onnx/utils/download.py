@@ -15,7 +15,7 @@ def download_onnx_from_url(
     check_hash: bool = False,
     file_name: Optional[str] = None,
 ) -> str:
-    r"""Loads the ONNX model at the given URL.
+    r"""Load the ONNX model at the given URL.
 
     If downloaded file is a zip file, it will be automatically
     decompressed.

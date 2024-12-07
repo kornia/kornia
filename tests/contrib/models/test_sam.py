@@ -8,7 +8,7 @@ from testing.base import BaseTester
 
 
 def _pad_rb(x, size):
-    """Pads right bottom."""
+    """Pad right bottom."""
     pad_h = size - x.shape[-2]
     pad_w = size - x.shape[-1]
     return pad(x, (0, pad_w, 0, pad_h))

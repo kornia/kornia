@@ -148,7 +148,7 @@ class ObjectDetector(ModelBase):
     def save(
         self, images: Union[Tensor, list[Tensor]], detections: Optional[Tensor] = None, directory: Optional[str] = None
     ) -> None:
-        """Saves the output image(s) to a directory.
+        """Save the output image(s) to a directory.
 
         Args:
             images: input tensor.
@@ -168,7 +168,7 @@ class ObjectDetector(ModelBase):
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> onnx.ModelProto:  # type: ignore
-        """Exports an RT-DETR object detection model to ONNX format.
+        """Export an RT-DETR object detection model to ONNX format.
 
         Either `model_name` or `config` must be provided. If neither is provided,
         a default pretrained model (`rtdetr_r18vd`) will be built.

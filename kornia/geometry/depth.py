@@ -470,7 +470,7 @@ def depth_warp(
     width: int,
     align_corners: bool = True,
 ) -> Tensor:
-    r"""Function that warps a tensor from destination frame to reference given the depth in the reference frame.
+    r"""Warp a tensor from destination frame to reference given the depth in the reference frame.
 
     See :class:`~kornia.geometry.warp.DepthWarper` for details.
 
@@ -492,7 +492,7 @@ def depth_warp(
 
 
 def depth_from_disparity(disparity: Tensor, baseline: float | Tensor, focal: float | Tensor) -> Tensor:
-    """Computes depth from disparity.
+    """Compute depth from disparity.
 
     Args:
         disparity: Disparity tensor of shape :math:`(*, H, W)`.

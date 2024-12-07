@@ -92,7 +92,7 @@ class RaySampler:
             return self._camera_ids
 
     def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]) -> None:
-        r"""Calculates ray parameters: origins, directions. Also stored are camera ids for each ray, and its pixel
+        r"""Calculate ray parameters: origins, directions. Also stored are camera ids for each ray, and its pixel
         coordinates.
 
         Args:
@@ -140,10 +140,11 @@ class RaySampler:
         self._points_2d = torch.cat(points_2d)
 
     def transform_ray_params_world_to_ndc(self, cameras: PinholeCamera) -> Tuple[Tensor, Tensor]:
-        r"""Transforms ray parameters to normalized coordinate device (camera) system (NDC)
+        r"""Transform ray parameters to normalized coordinate device (camera) system (NDC)
 
-        Args:
-            cameras: scene cameras: PinholeCamera
+        Parameters
+        ----------
+        cameras: scene cameras: PinholeCamera
 
         """
         cams = cameras_for_ids(cameras, self._camera_ids)
@@ -204,7 +205,7 @@ class RaySampler:
     def _add_points2d_as_flat_tensors_to_num_ray_dict(
         n: int, x: Tensor, y: Tensor, camera_id: int, points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors]
     ) -> None:
-        r"""Adds x/y pixel coordinates for all rays casted by a scene camera to dictionary of pixel coordinates
+        r"""Add x/y pixel coordinates for all rays casted by a scene camera to dictionary of pixel coordinates
         grouped by total number of rays.
         """
         if n not in points2d_as_flat_tensors:
@@ -220,7 +221,7 @@ class RaySampler:
     def _build_num_ray_dict_of_points2d(
         points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors],
     ) -> Dict[int, Points2D]:
-        r"""Builds a dictionary of ray pixel points, by total number of rays as key. The dictionary groups rays by
+        r"""Build a dictionary of ray pixel points, by total number of rays as key. The dictionary groups rays by
         the total amount of rays, which allows the case of casting different number of rays from each scene camera.
 
         Args:
@@ -284,7 +285,7 @@ class RandomRaySampler(RaySampler):
         return RaySampler._build_num_ray_dict_of_points2d(points2d_as_flat_tensors)
 
     def calc_ray_params(self, cameras: PinholeCamera, num_img_rays: Tensor) -> None:
-        r"""Calculates ray parameters: origins, directions. Also stored are camera ids for each ray, and its pixel
+        r"""Calculate ray parameters: origins, directions. Also stored are camera ids for each ray, and its pixel
         coordinates.
 
         Args:
@@ -434,7 +435,7 @@ def sample_ray_points(
 
 
 def calc_ray_t_vals(points_3d: Tensor) -> Tensor:
-    r"""Calculates t values along rays.
+    r"""Calculate t values along rays.
 
     Args:
         points_3d: Points along rays :math:`(*, num_ray_points, 3)`

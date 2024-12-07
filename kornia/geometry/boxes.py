@@ -33,7 +33,7 @@ def _merge_box_list(boxes: list[torch.Tensor], method: str = "pad") -> tuple[tor
 
 
 def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
-    """Transforms 3D and 2D in kornia format by applying the transformation matrix M. Boxes and the transformation
+    """Transform 3D and 2D in kornia format by applying the transformation matrix M. Boxes and the transformation
     matrix could be batched or not.
 
     Args:
@@ -252,7 +252,7 @@ class Boxes:
         return heights, widths
 
     def merge(self, boxes: Boxes, inplace: bool = False) -> Boxes:
-        """Merges boxes.
+        """Merge boxes.
 
         Say, current instance holds :math:`(B, N, 4, 2)` and the incoming boxes holds :math:`(B, M, 4, 2)`,
         the merge results in :math:`(B, N + M, 4, 2)`.
@@ -397,7 +397,7 @@ class Boxes:
         return obj
 
     def compute_area(self) -> torch.Tensor:
-        """Returns :math:`(B, N)`."""
+        """Return :math:`(B, N)`."""
         coords = self._data.view((-1, 4, 2)) if self._data.ndim == 4 else self._data
         # calculate centroid of the box
         centroid = coords.mean(dim=1, keepdim=True)
@@ -416,7 +416,7 @@ class Boxes:
     def from_tensor(
         cls, boxes: torch.Tensor | list[torch.Tensor], mode: str = "xyxy", validate_boxes: bool = True
     ) -> Boxes:
-        r"""Helper method to easily create :class:`Boxes` from boxes stored in another format.
+        r"""Create :class:`Boxes` from boxes stored in another format.
 
         Args:
             boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
@@ -626,7 +626,7 @@ class Boxes:
         return self.transform_boxes(M, inplace=True)
 
     def translate(self, size: Tensor, method: str = "warp", inplace: bool = False) -> Boxes:
-        """Translates boxes by the provided size.
+        """Translate boxes by the provided size.
 
         Args:
             size: translate size for x, y direction, shape of :math:`(B, 2)`.
@@ -799,7 +799,7 @@ class Boxes3D:
 
     @classmethod
     def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyzxyz", validate_boxes: bool = True) -> Boxes3D:
-        r"""Helper method to easily create :class:`Boxes3D` from 3D boxes stored in another format.
+        r"""Create :class:`Boxes3D` from 3D boxes stored in another format.
 
         Args:
             boxes: 3D boxes, shape of :math:`(N,6)` or :math:`(B,N,6)`.

@@ -39,7 +39,7 @@ class Homography(BaseModel):
         return f"{self.__class__.__name__}({self.model})"
 
     def reset_model(self) -> None:
-        """Initializes the model with identity transform."""
+        """Initialize the model with identity transform."""
         torch.nn.init.eye_(self.model)
 
     def forward(self) -> Tensor:
@@ -209,7 +209,7 @@ class ImageRegistrator(Module):
         return loss
 
     def reset_model(self) -> None:
-        """Calls model reset function."""
+        """Call model reset function."""
         self.model.reset_model()
 
     def register(

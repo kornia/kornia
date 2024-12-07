@@ -58,7 +58,7 @@ class ONNXExportMixin:
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> onnx.ModelProto:  # type: ignore
-        """Exports the current object to an ONNX model file.
+        """Export the current object to an ONNX model file.
 
         Args:
             onnx_name:
@@ -276,7 +276,7 @@ class ONNXMixin:
         arg: Union[onnx.ModelProto, str],  # type:ignore
         cache_dir: Optional[str] = None,
     ) -> onnx.ModelProto:  # type:ignore
-        """Loads an ONNX model, either from a file path or use the provided ONNX ModelProto.
+        """Load an ONNX model, either from a file path or use the provided ONNX ModelProto.
 
         Args:
             arg: Either an ONNX ModelProto object or a file path to an ONNX model.
@@ -297,7 +297,7 @@ class ONNXMixin:
         *args: Union[onnx.ModelProto, str],  # type:ignore
         cache_dir: Optional[str] = None,
     ) -> list[onnx.ModelProto]:  # type:ignore
-        """Loads multiple ONNX models or operators and returns them as a list.
+        """Load multiple ONNX models or operators and returns them as a list.
 
         Args:
             *args: A variable number of ONNX models (either ONNX ModelProto objects or file paths).

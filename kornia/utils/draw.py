@@ -9,7 +9,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
-    r"""Sets one or more coordinates in a Tensor to a color.
+    r"""Set one or more coordinates in a Tensor to a color.
 
     Args:
         image: the input image on which to draw the points with shape :math`(C,H,W)` or :math`(H,W)`.
@@ -259,7 +259,7 @@ def draw_rectangle(
 
 
 def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
-    r"""Gets the left and right edges of a polygon for each y-coordinate y \in [0, h)
+    r"""Get the left and right edges of a polygon for each y-coordinate y \in [0, h)
 
     Args:
         polygons: represents polygons to draw in BxNx2
@@ -303,7 +303,7 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
 
 
 def _batch_polygons(polygons: List[Tensor]) -> Tensor:
-    r"""Converts a List of variable length polygons into a fixed size tensor.
+    r"""Convert a List of variable length polygons into a fixed size tensor.
 
     Works by repeating the last element in the tensor.
 

@@ -12,7 +12,7 @@ from kornia.utils.helpers import _torch_linalg_svdvals, _torch_svd_cast
 
 
 def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""Normalizes points.
+    r"""Normalize points.
 
     Args:
        points : Tensor containing the points to be normalized with shape :math:`(B, N, D)`.

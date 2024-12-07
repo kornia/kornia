@@ -45,7 +45,7 @@ class DiscreteSteerer(Module):
         generator_type: str = "C4",
         steerer_order: int = 8,
     ) -> Module:
-        r"""Creates a steerer for pretrained DeDoDe descriptors int the "C-setting"
+        r"""Create a steerer for pretrained DeDoDe descriptors int the "C-setting"
             from the paper https://arxiv.org/abs/2312.02152, where descriptors were
             trained for fixed steerers.
 

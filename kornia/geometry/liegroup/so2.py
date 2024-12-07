@@ -35,7 +35,7 @@ class So2(Module):
     """
 
     def __init__(self, z: Tensor) -> None:
-        """Constructor for the base class.
+        """Construct the base class.
 
         Internally represented by complex number `z`.
 
@@ -69,7 +69,7 @@ class So2(Module):
     def __mul__(self, right: Tensor) -> Tensor: ...
 
     def __mul__(self, right: So2 | Tensor) -> So2 | Tensor:
-        """Performs a left-multiplication either rotation concatenation or point-transform.
+        """Perform a left-multiplication either rotation concatenation or point-transform.
 
         Args:
             right: the other So2 transformation.
@@ -104,7 +104,7 @@ class So2(Module):
 
     @staticmethod
     def exp(theta: Tensor) -> So2:
-        """Converts elements of lie algebra to elements of lie group.
+        """Convert elements of lie algebra to elements of lie group.
 
         Args:
             theta: angle in radians of shape :math:`(B, 1)` or :math:`(B)`.
@@ -122,7 +122,7 @@ class So2(Module):
         return So2(complex(theta.cos(), theta.sin()))
 
     def log(self) -> Tensor:
-        """Converts elements of lie group to elements of lie algebra.
+        """Convert elements of lie group to elements of lie algebra.
 
         Example:
             >>> real = torch.tensor([1.0])
@@ -135,7 +135,7 @@ class So2(Module):
 
     @staticmethod
     def hat(theta: Tensor) -> Tensor:
-        """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 2, 2)`.
+        """Convert elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 2, 2)`.
 
         Args:
             theta: angle in radians of shape :math:`(B)`.
@@ -156,7 +156,7 @@ class So2(Module):
 
     @staticmethod
     def vee(omega: Tensor) -> Tensor:
-        """Converts elements from lie algebra to vector space. Returns vector of shape :math:`(B,)`.
+        """Convert elements from lie algebra to vector space. Returns vector of shape :math:`(B,)`.
 
         Args:
             omega: 2x2-matrix representing lie algebra.
@@ -233,7 +233,7 @@ class So2(Module):
         return cls(complex(real_data, imag_data))
 
     def inverse(self) -> So2:
-        """Returns the inverse transformation.
+        """Return the inverse transformation.
 
         Example:
             >>> s = So2.identity()
@@ -268,7 +268,7 @@ class So2(Module):
         return cls(complex(real_data, imag_data))
 
     def adjoint(self) -> Tensor:
-        """Returns the adjoint matrix of shape :math:`(B, 2, 2)`.
+        """Return the adjoint matrix of shape :math:`(B, 2, 2)`.
 
         Example:
             >>> s = So2.identity()

@@ -28,7 +28,7 @@ def _get_default_fginn_params() -> Dict[str, Any]:
 
 
 def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None) -> Tensor:
-    """Helper function, which checks validity of provided distance matrix, or calculates L2-distance matrix dm is
+    """Check validity of provided distance matrix, or calculates L2-distance matrix dm is
     not provided.
 
     Args:
@@ -47,7 +47,7 @@ def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor
 
 
 def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
-    """Helper function, which output empty tensors.
+    """Output empty tensors.
 
     Returns
     -------
@@ -61,7 +61,7 @@ def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
 
 
 def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-    r"""Function, which finds nearest neighbors in desc2 for each vector in desc1.
+    r"""Find nearest neighbors in desc2 for each vector in desc1.
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
@@ -89,7 +89,7 @@ def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple
 
 
 def match_mnn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-    """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
+    """Find mutual nearest neighbors in desc2 for each vector in desc1.
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
@@ -127,7 +127,7 @@ def match_mnn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tupl
 
 
 def match_snn(desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-    """Function, which finds nearest neighbors in desc2 for each vector in desc1.
+    """Find nearest neighbors in desc2 for each vector in desc1.
 
     The method satisfies first to second nearest neighbor distance <= th.
 
@@ -165,7 +165,7 @@ def match_snn(desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor
 
 
 def match_smnn(desc1: Tensor, desc2: Tensor, th: float = 0.95, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-    """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
+    """Find mutual nearest neighbors in desc2 for each vector in desc1.
 
     the method satisfies first to second nearest neighbor distance <= th.
 
@@ -229,7 +229,7 @@ def match_fginn(
     mutual: bool = False,
     dm: Optional[Tensor] = None,
 ) -> Tuple[Tensor, Tensor]:
-    """Function, which finds nearest neighbors in desc2 for each vector in desc1.
+    """Find nearest neighbors in desc2 for each vector in desc1.
 
     The method satisfies first to second nearest neighbor distance <= th,
     and assures 2nd nearest neighbor is geometrically inconsistent with the 1st one

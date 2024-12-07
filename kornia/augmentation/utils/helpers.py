@@ -273,7 +273,7 @@ def _adapted_rsampling(
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
 ) -> Tensor:
-    r"""The uniform reparameterized sampling function that accepts 'same_on_batch'.
+    r"""Sample from a uniform reparameterized sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
@@ -293,7 +293,7 @@ def _adapted_sampling(
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
 ) -> Tensor:
-    r"""The uniform sampling function that accepts 'same_on_batch'.
+    r"""Sample from a uniform sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
@@ -312,7 +312,7 @@ def _adapted_uniform(
     high: Union[float, Tensor],
     same_on_batch: bool = False,
 ) -> Tensor:
-    r"""The uniform sampling function that accepts 'same_on_batch'.
+    r"""Sample from a uniform sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
@@ -337,7 +337,7 @@ def _adapted_beta(
     b: Union[float, Tensor],
     same_on_batch: bool = False,
 ) -> Tensor:
-    r"""The beta sampling function that accepts 'same_on_batch'.
+    r"""Sample from a beta sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.

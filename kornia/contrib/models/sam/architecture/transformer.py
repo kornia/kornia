@@ -25,7 +25,7 @@ class TwoWayTransformer(Module):
         activation: type[Module] = nn.ReLU,
         attention_downsample_rate: int = 2,
     ) -> None:
-        """A transformer decoder that attends to an input image using queries whose positional embedding is
+        """Construct a transformer decoder that attends to an input image using queries whose positional embedding is
         supplied.
 
         Args:
@@ -104,8 +104,8 @@ class TwoWayAttentionBlock(Module):
         attention_downsample_rate: int = 2,
         skip_first_layer_pe: bool = False,
     ) -> None:
-        """A transformer block with four layers: (1) self-attention of sparse inputs, (2) cross attention of sparse
-        inputs to dense inputs, (3) mlp block on sparse inputs, and (4) cross attention of dense inputs to sparse
+        """Construct a transformer block with four layers: (1) self-attention of sparse inputs, (2) cross attention of
+        sparse inputs to dense inputs, (3) mlp block on sparse inputs, and (4) cross attention of dense inputs to sparse
         inputs.
 
         Args:

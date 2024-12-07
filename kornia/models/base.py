@@ -19,7 +19,7 @@ class ModelBaseMixin:
     def _tensor_to_type(
         self, output: Union[Tensor, List[Tensor]], output_type: str, is_batch: bool = False
     ) -> Union[Tensor, List[Tensor], List["Image.Image"]]:  # type: ignore
-        """Converts the output tensor to the desired type.
+        """Convert the output tensor to the desired type.
 
         Args:
             output: The output tensor or list of tensors.

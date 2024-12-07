@@ -73,7 +73,7 @@ class ColorMapType(Enum):
 
     @classmethod
     def list(cls) -> list[str]:
-        r"""Returns a list of names of enumeration members.
+        r"""Return a list of names of enumeration members.
 
         Returns
         -------
@@ -144,7 +144,7 @@ class ColorMap:
         self.colors = self._generate_color_map(base_colormap_data, num_colors)
 
     def _generate_color_map(self, base_colormap: list[RGBColor], num_colors: int) -> Tensor:
-        r"""Generates a colormap tensor using interpolation.
+        r"""Generate a colormap tensor using interpolation.
 
         Args:
             base_colormap: A list of RGB colors defining the colormap.
@@ -159,7 +159,7 @@ class ColorMap:
         return interpolate(tensor_colors[None, ...], size=num_colors, mode="linear")[0, ...]
 
     def __len__(self) -> int:
-        r"""Returns the number of colors in the colormap.
+        r"""Return the number of colors in the colormap.
 
         Returns
         -------
@@ -280,7 +280,7 @@ class ApplyColorMap(Module):
         self.colormap = colormap
 
     def forward(self, input_tensor: Tensor) -> Tensor:
-        r"""Applies the colormap to the input tensor.
+        r"""Apply the colormap to the input tensor.
 
         Args:
             input_tensor: The input tensor representing the grayscale image.

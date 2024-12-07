@@ -122,7 +122,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> onnx.ModelProto:  # type:ignore
-        """Exports a depth estimation model to ONNX format.
+        """Export a depth estimation model to ONNX format.
 
         Args:
             onnx_name:

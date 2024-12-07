@@ -99,7 +99,7 @@ class RANSAC(Module):
 
     @staticmethod
     def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> float:
-        """Formula to update max_iter in order to stop iterations earlier
+        """Update max_iter in order to stop iterations earlier
         https://en.wikipedia.org/wiki/Random_sample_consensus.
         """
         eps = 1e-9
@@ -177,7 +177,7 @@ class RANSAC(Module):
                 )
 
     def forward(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-        r"""Main forward method to execute the RANSAC algorithm.
+        r"""Call main forward method to execute the RANSAC algorithm.
 
         Args:
             kp1: source image keypoints :math:`(N, 2)`.

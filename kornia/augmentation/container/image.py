@@ -324,7 +324,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         output_type: str = "tensor",
         **kwargs: Any,
     ) -> Any:
-        """Overwrites the __call__ function to handle various inputs.
+        """Overwrite the __call__ function to handle various inputs.
 
         Args:
             input_names_to_handle: List of input names to convert, if None, handle all inputs.

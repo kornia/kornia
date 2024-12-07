@@ -309,7 +309,7 @@ class MultiResolutionDetector(Module):
             self.aff = aff_module
 
     def remove_borders(self, score_map: Tensor, borders: int = 15) -> Tensor:
-        """It removes the borders of the image to avoid detections on the corners."""
+        """Remove the borders of the image to avoid detections on the corners."""
         mask = torch.zeros_like(score_map)
         mask[:, :, borders:-borders, borders:-borders] = 1
         return mask * score_map

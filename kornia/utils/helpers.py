@@ -27,7 +27,7 @@ def is_mps_tensor_safe(x: Tensor) -> bool:
 
 
 def get_cuda_device_if_available(index: int = 0) -> torch.device:
-    """Tries to get cuda device, if fail, returns cpu.
+    """Try to get cuda device, if fail, return cpu.
 
     Args:
         index: cuda device index
@@ -44,7 +44,7 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
 
 
 def get_mps_device_if_available() -> torch.device:
-    """Tries to get mps device, if fail, returns cpu.
+    """Try to get mps device, if fail, return cpu.
 
     Returns
     -------
@@ -59,7 +59,7 @@ def get_mps_device_if_available() -> torch.device:
 
 
 def get_cuda_or_mps_device_if_available() -> torch.device:
-    """Checks OS and platform and runs get_cuda_device_if_available or get_mps_device_if_available.
+    """Check OS and platform and run get_cuda_device_if_available or get_mps_device_if_available.
 
     Returns
     -------
@@ -153,7 +153,7 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
 
 
 def _torch_inverse_cast(input: Tensor) -> Tensor:
-    """Helper function to make torch.inverse work with other than fp32/64.
+    """Make torch.inverse work with other than fp32/64.
 
     The function torch.inverse is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
@@ -167,7 +167,7 @@ def _torch_inverse_cast(input: Tensor) -> Tensor:
 
 
 def _torch_histc_cast(input: Tensor, bins: int, min: int, max: int) -> Tensor:
-    """Helper function to make torch.histc work with other than fp32/64.
+    """Make torch.histc work with other than fp32/64.
 
     The function torch.histc is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
@@ -181,7 +181,7 @@ def _torch_histc_cast(input: Tensor, bins: int, min: int, max: int) -> Tensor:
 
 
 def _torch_svd_cast(input: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
-    """Helper function to make torch.svd work with other than fp32/64.
+    """Make torch.svd work with other than fp32/64.
 
     The function torch.svd is only implemented for fp32/64 which makes
     impossible to be used by fp16 or others. What this function does, is cast
@@ -204,7 +204,7 @@ def _torch_svd_cast(input: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
 
 
 def _torch_linalg_svdvals(input: Tensor) -> Tensor:
-    """Helper function to make torch.linalg.svdvals work with other than fp32/64.
+    """Make torch.linalg.svdvals work with other than fp32/64.
 
     The function torch.svd is only implemented for fp32/64 which makes
     impossible to be used by fp16 or others. What this function does, is cast
@@ -231,7 +231,7 @@ def _torch_linalg_svdvals(input: Tensor) -> Tensor:
 
 # TODO: return only `Tensor` and review all the calls to adjust
 def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
-    """Helper function to make torch.solve work with other than fp32/64.
+    """Make torch.solve work with other than fp32/64.
 
     For stable operation, the input matrices should be cast to fp64, and the output will be cast back to the input
     dtype.
@@ -244,8 +244,9 @@ def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
 
 
 def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
-    r"""Helper function, which avoids crashing because of singular matrix input and outputs the mask of valid
-    solution.
+    r"""Solves the system of equations.
+
+    Avoids crashing because of singular matrix input and outputs the mask of valid solution.
     """
     if not torch_version_ge(1, 10):
         sol = _torch_solve_cast(A, B)
@@ -288,8 +289,9 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
 
 
 def safe_inverse_with_mask(A: Tensor) -> Tuple[Tensor, Tensor]:
-    r"""Helper function, which avoids crashing because of non-invertable matrix input and outputs the mask of valid
-    solution.
+    r"""Perform inverse.
+
+    Avoids crashing because of non-invertable matrix input and outputs the mask of valid solution.
     """
     if not isinstance(A, Tensor):
         raise AssertionError(f"A must be Tensor. Got: {type(A)}.")

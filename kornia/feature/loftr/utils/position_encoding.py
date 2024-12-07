@@ -28,7 +28,7 @@ class PositionEncodingSine(Module):
         self.register_buffer("pe", pe, persistent=False)  # [1, C, H, W]
 
     def _create_position_encoding(self, max_shape: Tuple[int, int]) -> Tensor:
-        """Creates a position encoding from scratch.
+        """Create a position encoding from scratch.
 
         For 1/8 feature map (which is standard): If the input image size is H, W (both divisible by 8), the max_shape
         should be (H//8, W//8).
@@ -52,7 +52,7 @@ class PositionEncodingSine(Module):
         return pe.unsqueeze(0)
 
     def update_position_encoding_size(self, max_shape: Tuple[int, int]) -> None:
-        """Updates position encoding to new max_shape.
+        """Update position encoding to new max_shape.
 
         For 1/8 feature map (which is standard): If the input image size is H, W (both divisible by 8), the max_shape
         should be (H//8, W//8).

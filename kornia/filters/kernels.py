@@ -283,7 +283,7 @@ def laplacian_1d(window_size: int, *, device: Optional[Device] = None, dtype: Dt
 
 
 def get_box_kernel1d(kernel_size: int, *, device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
-    r"""Utility function that returns a 1-D box filter.
+    r"""Return a 1-D box filter.
 
     Args:
         kernel_size: the size of the kernel.
@@ -303,7 +303,7 @@ def get_box_kernel1d(kernel_size: int, *, device: Optional[Device] = None, dtype
 def get_box_kernel2d(
     kernel_size: tuple[int, int] | int, *, device: Optional[Device] = None, dtype: Optional[Dtype] = None
 ) -> Tensor:
-    r"""Utility function that returns a 2-D box filter.
+    r"""Return a 2-D box filter.
 
     Args:
         kernel_size: the size of the kernel.
@@ -341,12 +341,12 @@ def get_binary_kernel2d(
 
 
 def get_sobel_kernel_3x3(*, device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
-    """Utility function that returns a sobel kernel of 3x3."""
+    """Return a sobel kernel of 3x3."""
     return tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]], device=device, dtype=dtype)
 
 
 def get_sobel_kernel_5x5_2nd_order(*, device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
-    """Utility function that returns a 2nd order sobel kernel of 5x5."""
+    """Return a 2nd order sobel kernel of 5x5."""
     return tensor(
         [
             [-1.0, 0.0, 2.0, 0.0, -1.0],
@@ -361,7 +361,7 @@ def get_sobel_kernel_5x5_2nd_order(*, device: Optional[Device] = None, dtype: Op
 
 
 def _get_sobel_kernel_5x5_2nd_order_xy(*, device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
-    """Utility function that returns a 2nd order sobel kernel of 5x5."""
+    """Return a 2nd order sobel kernel of 5x5."""
     return tensor(
         [
             [-1.0, -2.0, 0.0, 2.0, 1.0],
@@ -376,12 +376,12 @@ def _get_sobel_kernel_5x5_2nd_order_xy(*, device: Optional[Device] = None, dtype
 
 
 def get_diff_kernel_3x3(*, device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
-    """Utility function that returns a first order derivative kernel of 3x3."""
+    """Return a first order derivative kernel of 3x3."""
     return tensor([[-0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], [-0.0, 0.0, 0.0]], device=device, dtype=dtype)
 
 
 def get_diff_kernel3d(device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
-    """Utility function that returns a first order derivative kernel of 3x3x3."""
+    """Return a first order derivative kernel of 3x3x3."""
     kernel = tensor(
         [
             [
@@ -407,7 +407,7 @@ def get_diff_kernel3d(device: Optional[Device] = None, dtype: Optional[Dtype] = 
 
 
 def get_diff_kernel3d_2nd_order(device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
-    """Utility function that returns a first order derivative kernel of 3x3x3."""
+    """Return a first order derivative kernel of 3x3x3."""
     kernel = tensor(
         [
             [
@@ -476,7 +476,7 @@ def get_diff_kernel2d_2nd_order(*, device: Optional[Device] = None, dtype: Optio
 def get_spatial_gradient_kernel2d(
     mode: str, order: int, *, device: Optional[Device] = None, dtype: Optional[Dtype] = None
 ) -> Tensor:
-    r"""Function that returns kernel for 1st or 2nd order image gradients, using one of the following operators:
+    r"""Return kernel for 1st or 2nd order image gradients, using one of the following operators:
 
     sobel, diff.
     """
@@ -500,7 +500,7 @@ def get_spatial_gradient_kernel2d(
 def get_spatial_gradient_kernel3d(
     mode: str, order: int, device: Optional[Device] = None, dtype: Optional[Dtype] = None
 ) -> Tensor:
-    r"""Function that returns kernel for 1st or 2nd order scale pyramid gradients, using one of the following
+    r"""Return kernel for 1st or 2nd order scale pyramid gradients, using one of the following
     operators: sobel, diff.
     """
     KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
@@ -524,7 +524,7 @@ def get_gaussian_kernel1d(
     device: Optional[Device] = None,
     dtype: Optional[Dtype] = None,
 ) -> Tensor:
-    r"""Function that returns Gaussian filter coefficients.
+    r"""Return Gaussian filter coefficients.
 
     Args:
         kernel_size: filter size. It should be odd and positive.
@@ -561,7 +561,7 @@ def get_gaussian_discrete_kernel1d(
     device: Optional[Device] = None,
     dtype: Optional[Dtype] = None,
 ) -> Tensor:
-    r"""Function that returns Gaussian filter coefficients based on the modified Bessel functions.
+    r"""Return Gaussian filter coefficients based on the modified Bessel functions.
 
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
@@ -600,7 +600,7 @@ def get_gaussian_erf_kernel1d(
     device: Optional[Device] = None,
     dtype: Optional[Dtype] = None,
 ) -> Tensor:
-    r"""Function that returns Gaussian filter coefficients by interpolating the error function.
+    r"""Return Gaussian filter coefficients by interpolating the error function.
 
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
@@ -639,7 +639,7 @@ def get_gaussian_kernel2d(
     device: Optional[Device] = None,
     dtype: Optional[Dtype] = None,
 ) -> Tensor:
-    r"""Function that returns Gaussian filter matrix coefficients.
+    r"""Return Gaussian filter matrix coefficients.
 
     Args:
         kernel_size: filter sizes in the y and x direction. Sizes should be odd and positive.
@@ -698,7 +698,7 @@ def get_gaussian_kernel3d(
     device: Optional[Device] = None,
     dtype: Optional[Dtype] = None,
 ) -> Tensor:
-    r"""Function that returns Gaussian filter matrix coefficients.
+    r"""Return Gaussian filter matrix coefficients.
 
     Args:
         kernel_size: filter sizes in the z, y and x direction. Sizes should be odd and positive.
@@ -755,7 +755,7 @@ def get_gaussian_kernel3d(
 def get_laplacian_kernel1d(
     kernel_size: int, *, device: Optional[Device] = None, dtype: Dtype = torch.float32
 ) -> Tensor:
-    r"""Function that returns the coefficients of a 1D Laplacian filter.
+    r"""Return the coefficients of a 1D Laplacian filter.
 
     Args:
         kernel_size: filter size. It should be odd and positive.
@@ -787,7 +787,7 @@ def get_laplacian_kernel1d(
 def get_laplacian_kernel2d(
     kernel_size: tuple[int, int] | int, *, device: Optional[Device] = None, dtype: Dtype = torch.float32
 ) -> Tensor:
-    r"""Function that returns Gaussian filter matrix coefficients.
+    r"""Return Gaussian filter matrix coefficients.
 
     Args:
         kernel_size: filter size should be odd.
@@ -926,7 +926,7 @@ def get_pascal_kernel_1d(
 
 
 def get_canny_nms_kernel(device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
-    """Utility function that returns 3x3 kernels for the Canny Non-maximal suppression."""
+    """Return 3x3 kernels for the Canny Non-maximal suppression."""
     return tensor(
         [
             [[[0.0, 0.0, 0.0], [0.0, 1.0, -1.0], [0.0, 0.0, 0.0]]],
@@ -944,7 +944,7 @@ def get_canny_nms_kernel(device: Optional[Device] = None, dtype: Optional[Dtype]
 
 
 def get_hysteresis_kernel(device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
-    """Utility function that returns the 3x3 kernels for the Canny hysteresis."""
+    """Return the 3x3 kernels for the Canny hysteresis."""
     return tensor(
         [
             [[[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]],
@@ -962,7 +962,7 @@ def get_hysteresis_kernel(device: Optional[Device] = None, dtype: Optional[Dtype
 
 
 def get_hanning_kernel1d(kernel_size: int, device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
-    r"""Returns Hanning (also known as Hann) kernel, used in signal processing and KCF tracker.
+    r"""Return Hanning (also known as Hann) kernel, used in signal processing and KCF tracker.
 
     .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
                \\qquad 0 \\leq n \\leq M-1
@@ -995,7 +995,7 @@ def get_hanning_kernel1d(kernel_size: int, device: Optional[Device] = None, dtyp
 def get_hanning_kernel2d(
     kernel_size: tuple[int, int] | int, device: Optional[Device] = None, dtype: Optional[Dtype] = None
 ) -> Tensor:
-    r"""Returns 2d Hanning kernel, used in signal processing and KCF tracker.
+    r"""Return 2d Hanning kernel, used in signal processing and KCF tracker.
 
     Args:
         kernel_size: The size of the kernel for the filter. It should be positive.

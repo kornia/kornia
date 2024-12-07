@@ -82,7 +82,7 @@ def differentiable_polynomial_rounding(input: Tensor) -> Tensor:
 
 
 def differentiable_polynomial_floor(input: Tensor) -> Tensor:
-    """A differentiable floor.
+    """Perform floor via a differentiable operation.
 
     Args:
         input (Tensor): Input tensor of any shape to be floored.
@@ -104,7 +104,7 @@ def differentiable_clipping(
     max_val: Optional[float] = None,
     scale: float = 0.02,
 ) -> Tensor:
-    """A differentiable and soft approximation of the clipping operation.
+    """Clip via a differentiable and soft approximation of the clipping operation.
 
     Args:
         input (Tensor): Input tensor of any shape.

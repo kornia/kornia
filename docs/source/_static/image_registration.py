@@ -9,7 +9,7 @@ import kornia.geometry as KG
 
 
 def load_timg(file_name):
-    """Loads the image with OpenCV and converts to torch.Tensor."""
+    """Load the image with OpenCV and converts to torch.Tensor."""
     assert os.path.isfile(file_name), f"Invalid file {file_name}"  # nosec
     # load image with OpenCV
     img = cv2.imread(file_name, cv2.IMREAD_COLOR)

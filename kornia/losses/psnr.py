@@ -7,7 +7,7 @@ from kornia import metrics
 
 
 def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
-    r"""Function that computes the PSNR loss.
+    r"""Compute the PSNR loss.
 
     The loss is computed as follows:
 

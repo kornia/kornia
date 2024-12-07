@@ -27,7 +27,7 @@ class TestSolvePnpDlt(BaseTester):
 
     @staticmethod
     def _get_world_points_and_img_points(cam_points, world_to_cam_4x4, repeated_intrinsics):
-        r"""Calculates world_points and img_points.
+        r"""Calculate world_points and img_points.
 
         Since cam_points will have shape (B, N, 3), repeated_intrinsics should have shape (B, N, 3, 3) so that
         kornia.geometry.project_points can be used.
@@ -39,7 +39,7 @@ class TestSolvePnpDlt(BaseTester):
         return world_points, img_points
 
     def _get_test_data(self, num_points, device, dtype):
-        """Creates some test data.
+        """Create some test data.
 
         Batch size is fixed to 2 for all tests.
         """

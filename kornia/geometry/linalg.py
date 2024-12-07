@@ -20,7 +20,7 @@ __all__ = [
 
 
 def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
-    r"""Function that composes two homogeneous transformations.
+    r"""Compose two homogeneous transformations.
 
     .. math::
         T_0^{2} = \begin{bmatrix} R_0^1 R_1^{2} & R_0^{1} t_1^{2} + t_0^{1} \\
@@ -75,7 +75,7 @@ def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
 
 
 def inverse_transformation(trans_12: Tensor) -> Tensor:
-    r"""Function that inverts a 4x4 homogeneous transformation.
+    r"""Invert a 4x4 homogeneous transformation.
 
      :math:`T_1^{2} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}`
 
@@ -119,7 +119,7 @@ def inverse_transformation(trans_12: Tensor) -> Tensor:
 
 
 def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
-    r"""Function that computes the relative homogeneous transformation from a reference transformation.
+    r"""Compute the relative homogeneous transformation from a reference transformation.
 
     :math:`T_1^{0} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}` to destination :math:`T_2^{0} =
     \begin{bmatrix} R_2 & t_2 \\ \mathbf{0} & 1 \end{bmatrix}`.
@@ -159,7 +159,7 @@ def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
 
 
 def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
-    r"""Function that applies transformations to a set of points.
+    r"""Apply transformations to a set of points.
 
     Args:
         trans_01: tensor for transformations of shape

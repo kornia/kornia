@@ -11,7 +11,7 @@ from kornia.geometry.conversions import quaternion_to_rotation_matrix
 def parse_colmap_output(
     cameras_path: str, images_path: str, device: Device, dtype: torch.dtype
 ) -> Tuple[List[str], PinholeCamera]:
-    r"""Parses colmap output to create an PinholeCamera for aligned scene cameras.
+    r"""Parse colmap output to create an PinholeCamera for aligned scene cameras.
 
     Args:
         cameras_path: Path to camera.txt Colmap file with camera intrinsics: str
@@ -112,7 +112,7 @@ def parse_colmap_output(
 
 
 def cameras_for_ids(cameras: PinholeCamera, camera_ids: Union[List[int], Tensor]) -> PinholeCamera:
-    r"""Takes a PinholeCamera camera object and a set of camera indices and creates a new PinholeCamera object for
+    r"""Take a PinholeCamera camera object and a set of camera indices and creates a new PinholeCamera object for
     the requested cameras.
 
     Args:
@@ -131,7 +131,7 @@ def cameras_for_ids(cameras: PinholeCamera, camera_ids: Union[List[int], Tensor]
 
 
 def create_spiral_path(cameras: PinholeCamera, rad: float, num_views: int, num_circles: int) -> PinholeCamera:
-    r"""Creates a PinholeCamera object with cameras that follow a spiral path. Used for novel view synthesis for
+    r"""Create a PinholeCamera object with cameras that follow a spiral path. Used for novel view synthesis for
     face facing models.
 
     Args:

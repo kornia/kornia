@@ -4,7 +4,7 @@ import torch
 
 
 def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
-    r"""Utility function to save to disk a pointcloud in PLY format.
+    r"""Save to disk a pointcloud in PLY format.
 
     Args:
         filename: the path to save the pointcloud.
@@ -50,7 +50,7 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
 
 
 def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
-    r"""Utility function to load from disk a pointcloud in PLY format.
+    r"""Load from disk a pointcloud in PLY format.
 
     Args:
         filename: the path to the pointcloud.

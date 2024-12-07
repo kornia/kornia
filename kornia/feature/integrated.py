@@ -30,7 +30,7 @@ from .siftdesc import SIFTDescriptor
 def get_laf_descriptors(
     img: Tensor, lafs: Tensor, patch_descriptor: Module, patch_size: int = 32, grayscale_descriptor: bool = True
 ) -> Tensor:
-    r"""Function to get local descriptors, corresponding to LAFs (keypoints).
+    r"""Get local descriptors, corresponding to LAFs (keypoints).
 
     Args:
         img: image features with shape :math:`(B,C,H,W)`.
@@ -336,7 +336,7 @@ class LocalFeatureMatcher(Module):
         self.eval()
 
     def extract_features(self, image: Tensor, mask: Optional[Tensor] = None) -> Dict[str, Tensor]:
-        """Function for feature extraction from simple image."""
+        """Extract features from simple image."""
         lafs0, resps0, descs0 = self.local_feature(image, mask)
         return {"lafs": lafs0, "responses": resps0, "descriptors": descs0}
 

@@ -13,7 +13,7 @@ from kornia.utils.helpers import _torch_svd_cast, safe_inverse_with_mask
 
 
 def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]:
-    r"""Normalizes points (isotropic).
+    r"""Normalize points (isotropic).
 
     Computes the transformation matrix such that the two principal moments of the set of points
     are equal to unity, forming an approximately symmetric circular cloud of points of radius 1
