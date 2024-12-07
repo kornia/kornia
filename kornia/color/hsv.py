@@ -20,6 +20,7 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         eps: scalar to enforce numarical stability.
 
     Returns:
+    -------
         HSV version of the image with shape of :math:`(*, 3, H, W)`.
         The H channel values are in the range 0..2pi. S and V are in the range 0..1.
 
@@ -68,6 +69,7 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
         image: HSV Image to be converted to HSV with shape of :math:`(*, 3, H, W)`.
 
     Returns:
+    -------
         RGB version of the image with shape of :math:`(*, 3, H, W)`.
 
     Example:
@@ -109,6 +111,7 @@ class RgbToHsv(Module):
         eps: scalar to enforce numarical stability.
 
     Returns:
+    -------
         HSV version of the image.
 
     Shape:
@@ -139,6 +142,7 @@ class HsvToRgb(Module):
     H channel values are assumed to be in the range 0..2pi. S and V are in the range 0..1.
 
     Returns:
+    -------
         RGB version of the image.
 
     Shape:

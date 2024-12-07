@@ -56,6 +56,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         Those transformations in ``kornia.geometry`` will not be taken into account.
 
     Examples:
+    --------
         >>> _ = torch.manual_seed(77)
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)
@@ -330,6 +331,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             output_type: Desired output type ('tensor', 'numpy', or 'pil').
 
         Returns:
+        -------
             Callable: Decorated function with converted input and output types.
 
         """

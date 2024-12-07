@@ -22,6 +22,7 @@ class ONNXExportMixin:
     """Mixin class that provides ONNX export functionality for objects that support it.
 
     Attributes:
+    ----------
         ONNX_EXPORTABLE:
             A flag indicating whether the object can be exported to ONNX. Default is True.
         ONNX_DEFAULT_INPUTSHAPE:
@@ -82,6 +83,7 @@ class ONNXExportMixin:
                 Additional keyword arguments to pass to the `torch.onnx.export` function.
 
         Notes:
+        -----
             - A dummy input tensor is created based on the provided or default input shape.
             - Dynamic axes for input and output tensors are configured where dimensions are marked `-1`.
             - The model is exported with `torch.onnx.export`, with constant folding enabled and opset version set to 17.
@@ -163,6 +165,7 @@ class ONNXRuntimeMixin:
                 Optional ONNXRuntime session options for session configuration and optimizations.
 
         Returns:
+        -------
             ort.InferenceSession: The ONNXRuntime session optimized for inference.
 
         """
@@ -190,6 +193,7 @@ class ONNXRuntimeMixin:
         """Get the current ONNXRuntime InferenceSession.
 
         Returns:
+        -------
             ort.InferenceSession: The current ONNXRuntime session.
 
         """
@@ -255,6 +259,7 @@ class ONNXRuntimeMixin:
             *inputs: Inputs to the ONNX model. The number of inputs must match the expected inputs of the session.
 
         Returns:
+        -------
             list: The outputs from the ONNX model inference.
 
         """
@@ -277,6 +282,7 @@ class ONNXMixin:
             arg: Either an ONNX ModelProto object or a file path to an ONNX model.
 
         Returns:
+        -------
             onnx.ModelProto: The loaded ONNX model.
 
         """
@@ -299,6 +305,7 @@ class ONNXMixin:
                 https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
 
         Returns:
+        -------
             list[onnx.ModelProto]: The loaded ONNX models as a list of ONNX graphs.
 
         """
@@ -321,6 +328,7 @@ class ONNXMixin:
                 Example: [[(model1_output_name, model2_input_name)], [(model2_output_name, model3_input_name)]].
 
         Returns:
+        -------
             onnx.ModelProto: The combined ONNX model as a single ONNX graph.
 
         """

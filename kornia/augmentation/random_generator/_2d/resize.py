@@ -19,6 +19,7 @@ class ResizeGenerator(RandomGeneratorBase):
         side: Which side to resize if `resize_to` is only of type int.
 
     Returns:
+    -------
         parameters to be passed for transformation.
             - src (Tensor): cropping bounding boxes with a shape of (B, 4, 2).
             - dst (Tensor): output bounding boxes with a shape (B, 4, 2).

@@ -38,6 +38,7 @@ class LinearAttention(Module):
             kv_mask: [N, S]
 
         Returns:
+        -------
             queried_values: (N, L, H, D)
 
         """
@@ -84,6 +85,7 @@ class FullAttention(Module):
             kv_mask: [N, S]
 
         Returns:
+        -------
             queried_values: (N, L, H, D)
 
         """

@@ -132,6 +132,7 @@ class Keypoints:
             inplace: do transform in-place and return self.
 
         Returns:
+        -------
             The transformed keypoints.
 
         """
@@ -162,6 +163,7 @@ class Keypoints:
                 if the keypoints are from a keypoint list.
 
         Returns:
+        -------
             Keypoints tensor :math:`(B, N, 2)`
 
         """
@@ -290,6 +292,7 @@ class Keypoints3D:
             inplace: do transform in-place and return self.
 
         Returns:
+        -------
             The transformed keypoints.
 
         """
@@ -312,6 +315,7 @@ class Keypoints3D:
                 if the keypoints are from a keypoint list.
 
         Returns:
+        -------
             Keypoints tensor :math:`(B, N, 3)`
 
         """

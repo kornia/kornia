@@ -67,6 +67,7 @@ def rad2deg(tensor: Tensor) -> Tensor:
         tensor: Tensor of arbitrary shape.
 
     Returns:
+    -------
         Tensor with same shape as input.
 
     Example:
@@ -88,9 +89,11 @@ def deg2rad(tensor: Tensor) -> Tensor:
         tensor: Tensor of arbitrary shape.
 
     Returns:
+    -------
         tensor with same shape as input.
 
     Examples:
+    --------
         >>> input = tensor(180.)
         >>> deg2rad(input)
         tensor(3.1416)
@@ -110,6 +113,7 @@ def pol2cart(rho: Tensor, phi: Tensor) -> tuple[Tensor, Tensor]:
         phi: Tensor of same arbitrary shape.
 
     Returns:
+    -------
         - x: Tensor with same shape as input.
         - y: Tensor with same shape as input.
 
@@ -136,6 +140,7 @@ def cart2pol(x: Tensor, y: Tensor, eps: float = 1.0e-8) -> tuple[Tensor, Tensor]
         eps: To avoid division by zero.
 
     Returns:
+    -------
         - rho: Tensor with same shape as input.
         - phi: Tensor with same shape as input.
 
@@ -161,9 +166,11 @@ def convert_points_from_homogeneous(points: Tensor, eps: float = 1e-8) -> Tensor
         eps: to avoid division by zero.
 
     Returns:
+    -------
         the points in Euclidean space :math:`(B, N, D-1)`.
 
     Examples:
+    --------
         >>> input = tensor([[0., 0., 1.]])
         >>> convert_points_from_homogeneous(input)
         tensor([[0., 0.]])
@@ -194,9 +201,11 @@ def convert_points_to_homogeneous(points: Tensor) -> Tensor:
         points: the points to be transformed with shape :math:`(*, N, D)`.
 
     Returns:
+    -------
         the points in homogeneous coordinates :math:`(*, N, D+1)`.
 
     Examples:
+    --------
         >>> input = tensor([[0., 0.]])
         >>> convert_points_to_homogeneous(input)
         tensor([[0., 0., 1.]])
@@ -223,9 +232,11 @@ def convert_affinematrix_to_homography(A: Tensor) -> Tensor:
         A: the affine matrix with shape :math:`(B,2,3)`.
 
     Returns:
+    -------
          the homography matrix with shape of :math:`(B,3,3)`.
 
     Examples:
+    --------
         >>> A = tensor([[[1., 0., 0.],
         ...                    [0., 1., 0.]]])
         >>> convert_affinematrix_to_homography(A)
@@ -250,9 +261,11 @@ def convert_affinematrix_to_homography3d(A: Tensor) -> Tensor:
         A: the affine matrix with shape :math:`(B,3,4)`.
 
     Returns:
+    -------
          the homography matrix with shape of :math:`(B,4,4)`.
 
     Examples:
+    --------
         >>> A = tensor([[[1., 0., 0., 0.],
         ...                    [0., 1., 0., 0.],
         ...                    [0., 0., 1., 0.]]])
@@ -279,6 +292,7 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
         axis_angle: tensor of 3d vector of axis-angle rotations in radians with shape :math:`(N, 3)`.
 
     Returns:
+    -------
         tensor of rotation matrices of shape :math:`(N, 3, 3)`.
 
     Example:
@@ -363,6 +377,7 @@ def rotation_matrix_to_axis_angle(rotation_matrix: Tensor) -> Tensor:
         rotation_matrix: rotation matrix of shape :math:`(N, 3, 3)`.
 
     Returns:
+    -------
         Rodrigues vector transformation of shape :math:`(N, 3)`.
 
     Example:
@@ -872,6 +887,7 @@ def normalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: i
         the normalized pixel coordinates with shape :math:`(*, 2)`.
 
     Examples:
+    --------
         >>> coords = tensor([[50., 100.]])
         >>> normalize_pixel_coordinates(coords, 100, 50)
         tensor([[1.0408, 1.0202]])
@@ -908,6 +924,7 @@ def denormalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width:
         the denormalized pixel coordinates with shape :math:`(*, 2)`.
 
     Examples:
+    --------
         >>> coords = tensor([[-1., -1.]])
         >>> denormalize_pixel_coordinates(coords, 100, 50)
         tensor([[0., 0.]])
@@ -990,6 +1007,7 @@ def angle_to_rotation_matrix(angle: Tensor) -> Tensor:
         angle: tensor of angles in degrees, any shape :math:`(*)`.
 
     Returns:
+    -------
         tensor of rotation matrices with shape :math:`(*, 2, 2)`.
 
     Example:
@@ -1015,6 +1033,7 @@ def normalize_homography(
         dsize_dst: size of the destination image (height, width).
 
     Returns:
+    -------
         the normalized homography of shape :math:`(B, 3, 3)`.
 
     """
@@ -1054,6 +1073,7 @@ def normal_transform_pixel(
         eps: epsilon to prevent divide-by-zero errors
 
     Returns:
+    -------
         normalized transform with shape :math:`(1, 3, 3)`.
 
     """
@@ -1086,6 +1106,7 @@ def normal_transform_pixel3d(
         eps: epsilon to prevent divide-by-zero errors
 
     Returns:
+    -------
         normalized transform with shape :math:`(1, 4, 4)`.
 
     """
@@ -1119,6 +1140,7 @@ def denormalize_homography(
         dsize_dst: size of the destination image (height, width).
 
     Returns:
+    -------
         the denormalized homography of shape :math:`(B, 3, 3)`.
 
     """
@@ -1154,6 +1176,7 @@ def normalize_homography3d(
         dsize_src: size of the destination image (depth, height, width).
 
     Returns:
+    -------
         the normalized homography.
 
     Shape:
@@ -1188,6 +1211,7 @@ def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor) ->
         camera_matrix: tensor containing the intrinsics camera matrix. The tensor shape must be :math:`(*, 3, 3)`.
 
     Returns:
+    -------
         tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
 
     Example:
@@ -1222,6 +1246,7 @@ def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Ten
         camera_matrix: tensor containing the intrinsics camera matrix. The tensor shape must be :math:`(*, 3, 3)`.
 
     Returns:
+    -------
         tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
 
     Example:
@@ -1266,6 +1291,7 @@ def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
         t: Translation matrix :math:`(B, 3, 1)`.
 
     Returns:
+    -------
         the extrinsics :math:`(B, 4, 4)`.
 
     Example:
@@ -1290,6 +1316,7 @@ def matrix4x4_to_Rt(extrinsics: Tensor) -> tuple[Tensor, Tensor]:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
 
     Returns:
+    -------
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
 
@@ -1318,6 +1345,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
 
     Returns:
+    -------
         extrinsics: pose matrix :math:`(B, 4, 4)`.
 
     Example:
@@ -1349,6 +1377,7 @@ def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tens
         t: Translation matrix :math:`(B, 3, 1)`.
 
     Returns:
+    -------
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
 
@@ -1377,6 +1406,7 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
 
     Returns:
+    -------
         extrinsics: pose matrix :math:`(B, 4, 4)`.
 
     Example:
@@ -1408,6 +1438,7 @@ def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tens
         t: Translation matrix :math:`(B, 3, 1)`.
 
     Returns:
+    -------
         R: Rotation matrix, :math:`(B, 3, 3).`
         t: Translation matrix :math:`(B, 3, 1)`.
 
@@ -1438,6 +1469,7 @@ def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
         t: Translation matrix :math:`(B, 3, 1)`.
 
     Returns:
+    -------
         Rinv: Rotation matrix, :math:`(B, 3, 3).`
         tinv: Translation matrix :math:`(B, 3, 1)`.
 
@@ -1469,6 +1501,7 @@ def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
         t: Translation matrix :math:`(B, 3, 1)`.
 
     Returns:
+    -------
         Rinv: Rotation matrix, :math:`(B, 3, 3).`
         tinv: Translation matrix :math:`(B, 3, 1)`.
 
@@ -1500,6 +1533,7 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Ten
         tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
 
     Returns:
+    -------
         qvec: Colmap rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.
         tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
 
@@ -1535,6 +1569,7 @@ def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
         x: tensor of shape :math:`(B, 3)`.
 
     Returns:
+    -------
         tensor of shape :math:`(B, 3, 3)`.
 
     Example:

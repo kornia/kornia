@@ -136,9 +136,11 @@ def guided_blur(
         subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
 
     Returns:
+    -------
         the blurred tensor with same shape as `input` :math:`(B, C, H, W)`.
 
     Examples:
+    --------
         >>> guidance = torch.rand(2, 3, 5, 5)
         >>> input = torch.rand(2, 4, 5, 5)
         >>> output = guided_blur(guidance, input, 3, 0.1)
@@ -177,6 +179,7 @@ class GuidedBlur(Module):
         subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
 
     Returns:
+    -------
         the blurred input tensor.
 
     Shape:
@@ -184,6 +187,7 @@ class GuidedBlur(Module):
         - Output: :math:`(B, C, H, W)`
 
     Examples:
+    --------
         >>> guidance = torch.rand(2, 3, 5, 5)
         >>> input = torch.rand(2, 4, 5, 5)
         >>> blur = GuidedBlur(3, 0.1)

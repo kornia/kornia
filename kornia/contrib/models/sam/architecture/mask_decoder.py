@@ -76,6 +76,7 @@ class MaskDecoder(Module):
             multimask_output: Whether to return multiple masks or a single mask.
 
         Returns:
+        -------
             batched predicted masks
             batched predictions of mask quality
 

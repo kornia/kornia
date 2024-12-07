@@ -26,6 +26,7 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
         the computed AEPE as a scalar.
 
     Examples:
+    --------
         >>> ones = torch.ones(4, 4, 2)
         >>> aepe(ones, 1.2 * ones)
         tensor(0.2828)
@@ -78,6 +79,7 @@ class AEPE(nn.Module):
         - output: :math:`(1)`.
 
     Examples:
+    --------
         >>> input1 = torch.rand(1, 4, 5, 2)
         >>> input2 = torch.rand(1, 4, 5, 2)
         >>> epe = AEPE(reduction="mean")

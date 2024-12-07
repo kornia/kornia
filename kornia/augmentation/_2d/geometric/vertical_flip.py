@@ -24,6 +24,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         This function internally uses :func:`kornia.geometry.transform.vflip`.
 
     Examples:
+    --------
         >>> import torch
         >>> input = torch.tensor([[[[0., 0., 0.],
         ...                         [0., 0., 0.],

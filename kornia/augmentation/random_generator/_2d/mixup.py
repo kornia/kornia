@@ -18,6 +18,7 @@ class MixupGenerator(RandomGeneratorBase):
             If None, it will be set to tensor([0., 1.]), which means no restrictions.
 
     Returns:
+    -------
         A dict of parameters to be passed for transformation.
             - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (B,).
             - mixup_lambdas (torch.Tensor): element-wise probabilities with a shape of (B,).

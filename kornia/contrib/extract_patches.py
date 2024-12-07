@@ -148,9 +148,11 @@ class ExtractTensorPatches(Module):
         - Output: :math:`(B, N, C, H_{out}, W_{out})`
 
     Returns:
+    -------
         the tensor with the extracted patches.
 
     Examples:
+    --------
         >>> input = torch.arange(9.).view(1, 1, 3, 3)
         >>> patches = extract_tensor_patches(input, (2, 3))
         >>> input
@@ -433,9 +435,11 @@ def extract_tensor_patches(
         allow_auto_adding: whether to allow automatic padding if the window and stride do not fit into the image.
 
     Returns:
+    -------
         the tensor with the extracted patches with shape :math:`(B, N, C, H_{out}, W_{out})`.
 
     Examples:
+    --------
         >>> input = torch.arange(9.).view(1, 1, 3, 3)
         >>> patches = extract_tensor_patches(input, (2, 3))
         >>> input

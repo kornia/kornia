@@ -185,6 +185,7 @@ class RANSAC(Module):
             weights: optional correspondences weights. Not used now.
 
         Returns:
+        -------
             - Estimated model, shape of :math:`(1, 3, 3)`.
             - The inlier/outlier mask, shape of :math:`(1, N)`, where N is number of input correspondences.
 

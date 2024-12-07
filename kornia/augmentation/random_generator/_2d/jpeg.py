@@ -17,6 +17,7 @@ class JPEGGenerator(RandomGeneratorBase):
         jpeg_quality: The RandomJPEG quality to apply
 
     Returns:
+    -------
         A dict of parameters to be passed for transformation.
             - jpeg_quality: element-wise contrast factors with a shape of (B,).
 

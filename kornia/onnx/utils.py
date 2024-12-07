@@ -29,6 +29,7 @@ class ONNXLoader(CachedDownloader):
             download: If True, the config will be downloaded if it's not already in the local cache.
 
         Returns:
+        -------
             dict[str, Any]: The loaded preprocessor config.
 
         """
@@ -65,6 +66,7 @@ class ONNXLoader(CachedDownloader):
             **kwargs: Additional arguments to pass to the download method, if needed.
 
         Returns:
+        -------
             onnx.ModelProto: The loaded ONNX model.
 
         """
@@ -116,6 +118,7 @@ class ONNXLoader(CachedDownloader):
         """Fetches the contents of the Hugging Face repository using the Hugging Face API.
 
         Returns:
+        -------
             A list of all files in the repository as dictionaries containing file details.
 
         """
@@ -199,6 +202,7 @@ def add_metadata(
             for the additional metadata to add to the ONNX model.
 
     Returns:
+    -------
         The ONNX model with the added metadata.
 
     """

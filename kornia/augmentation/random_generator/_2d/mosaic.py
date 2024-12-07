@@ -22,6 +22,7 @@ class MosaicGenerator(RandomGeneratorBase):
         start_ratio_range: top-left (x, y) position for cropping the mosaic images.
 
     Returns:
+    -------
         A dict of parameters to be passed for transformation.
             - mosaic_ids (Tensor): a shape of (B, N) tensor, where n is the number of mosaic images.
             - src (Tensor): cropping bounding boxes with a shape of (B, 4, 2).

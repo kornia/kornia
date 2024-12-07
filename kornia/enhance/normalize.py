@@ -27,6 +27,7 @@ class Normalize(Module):
         - Output: Normalised tensor with same size as input :math:`(*, C, ...)`.
 
     Examples:
+    --------
         >>> x = torch.rand(1, 4, 3, 3)
         >>> out = Normalize(0.0, 255.)(x)
         >>> out.shape
@@ -88,6 +89,7 @@ def normalize(data: Tensor, mean: Tensor, std: Tensor) -> Tensor:
         Normalised tensor with same size as input :math:`(B, C, *)`.
 
     Examples:
+    --------
         >>> x = torch.rand(1, 4, 3, 3)
         >>> out = normalize(x, torch.tensor([0.0]), torch.tensor([255.]))
         >>> out.shape
@@ -156,6 +158,7 @@ class Denormalize(Module):
         - Output: Denormalised tensor with same size as input :math:`(*, C, ...)`.
 
     Examples:
+    --------
         >>> x = torch.rand(1, 4, 3, 3)
         >>> out = Denormalize(0.0, 255.)(x)
         >>> out.shape
@@ -201,6 +204,7 @@ def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, flo
         Denormalised tensor with same size as input :math:`(B, C, *)`.
 
     Examples:
+    --------
         >>> x = torch.rand(1, 4, 3, 3)
         >>> out = denormalize(x, 0.0, 255.)
         >>> out.shape
@@ -266,6 +270,7 @@ def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps
         eps: Float number to avoid zero division.
 
     Returns:
+    -------
         The normalised image tensor with same shape as input :math:`(B, C, *)`.
 
     Example:

@@ -47,6 +47,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
         points_dst: batch of target points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
 
     Returns:
+    -------
         :math:`(B, N, 2)` tensor of kernel weights and :math:`(B, 3, 2)`
             tensor of affine weights. The last dimension contains the x-transform and y-transform weights
             as separate columns.
@@ -114,6 +115,7 @@ def warp_points_tps(
         affine_weights: tensor of affine weights :math:`(B, 3, 2)`.
 
     Returns:
+    -------
         The :math:`(B, N, 2)` tensor of warped source points, from applying the TPS transform.
 
     Example:
@@ -191,6 +193,7 @@ def warp_image_tps(
         align_corners: interpolation flag used by `grid_sample`.
 
     Returns:
+    -------
         warped image tensor :math:`(B, C, H, W)`.
 
     Example:

@@ -215,9 +215,11 @@ def binary_focal_loss_with_logits(
         ignore_index: labels with this value are ignored in the loss computation.
 
     Returns:
+    -------
         the computed loss.
 
     Examples:
+    --------
         >>> C = 3  # num_classes
         >>> pred = torch.randn(1, C, 5, requires_grad=True)
         >>> target = torch.randint(2, (1, C, 5))
@@ -322,6 +324,7 @@ class BinaryFocalLossWithLogits(nn.Module):
           where each value is between 0 and 1.
 
     Examples:
+    --------
         >>> C = 3  # num_classes
         >>> pred = torch.randn(1, C, 5, requires_grad=True)
         >>> target = torch.randint(2, (1, C, 5))

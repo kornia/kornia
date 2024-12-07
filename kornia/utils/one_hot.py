@@ -14,9 +14,11 @@ def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch
         dtype: the desired data type of returned tensor.
 
     Returns:
+    -------
         the labels in one hot tensor of shape :math:`(N, C, *)`,
 
     Examples:
+    --------
         >>> labels = torch.LongTensor([[[0, 1], [2, 0]]])
         >>> one_hot(labels, num_classes=3, device=torch.device('cpu'), dtype=torch.int64)
         tensor([[[[1.0000e+00, 1.0000e-06],

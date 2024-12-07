@@ -26,6 +26,7 @@ def _compute_tiles(
         even_tile_size: Determine if the width and height of the tiles must be even.
 
     Returns:
+    -------
         tensor with tiles (B, GH, GW, C, TH, TW). B = 1 in case of a single image is provided.
         tensor with the padded batch of 2D imageswith shape (B, C, H', W').
 
@@ -81,6 +82,7 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
         tile_size: shape of the current tiles (TH, TW).
 
     Returns:
+    -------
         tensor with the interpolation tiles (B, 2GH, 2GW, C, TH/2, TW/2).
 
     """
@@ -135,6 +137,7 @@ def _compute_luts(
         diff: denote if the differentiable histagram will be used. Default: False
 
     Returns:
+    -------
         Lut for each tile (B, GH, GW, C, 256).
 
     """
@@ -183,6 +186,7 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
         luts: luts for each one of the original tiles. (B, GH, GW, C, 256)
 
     Returns:
+    -------
          mapped luts (B, 2GH, 2GW, 4, C, 256)
 
     """
@@ -240,6 +244,7 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
         luts: luts for each one of the original tiles. (B, GH, GW, C, 256)
 
     Returns:
+    -------
         equalized tiles (B, 2GH, 2GW, C, TH/2, TW/2)
 
     """
@@ -331,9 +336,11 @@ def equalize_clahe(
         slow_and_differentiable: flag to select implementation
 
     Returns:
+    -------
         Equalized image or images with shape as the input.
 
     Examples:
+    --------
         >>> img = torch.rand(1, 10, 20)
         >>> res = equalize_clahe(img)
         >>> res.shape

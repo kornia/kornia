@@ -115,6 +115,7 @@ class StereoCamera:
         r"""Return the batch size of the storage.
 
         Returns:
+        -------
            scalar with the batch size
 
         """
@@ -128,6 +129,7 @@ class StereoCamera:
         camera are assumed to be equal.
 
         Returns:
+        -------
             tensor of shape :math:`(B)`
 
         """
@@ -141,6 +143,7 @@ class StereoCamera:
         camera are assumed to be equal.
 
         Returns:
+        -------
             tensor of shape :math:`(B)`
 
         """
@@ -151,6 +154,7 @@ class StereoCamera:
         r"""Return the x-coordinate of the principal point for the left camera.
 
         Returns:
+        -------
             tensor of shape :math:`(B)`
 
         """
@@ -161,6 +165,7 @@ class StereoCamera:
         r"""Return the x-coordinate of the principal point for the right camera.
 
         Returns:
+        -------
             tensor of shape :math:`(B)`
 
         """
@@ -174,6 +179,7 @@ class StereoCamera:
         is assumed to be equal for the left and right camera.
 
         Returns:
+        -------
             tensor of shape :math:`(B)`
 
         """
@@ -184,6 +190,7 @@ class StereoCamera:
         r"""The horizontal baseline between the two cameras.
 
         Returns:
+        -------
             Tensor of shape :math:`(B)`
 
         """
@@ -207,6 +214,7 @@ class StereoCamera:
         r"""Initialized the Q matrix of the horizontal stereo setup. See the Q property.
 
         Returns:
+        -------
             The Q matrix of shape :math:`(B, 4, 4)`.
 
         """
@@ -228,6 +236,7 @@ class StereoCamera:
             disparity_tensor: Disparity tensor of shape :math:`(B, 1, H, W)`.
 
         Returns:
+        -------
             The 3D point cloud of shape :math:`(B, H, W, 3)`
 
         """
@@ -292,6 +301,7 @@ def reproject_disparity_to_3D(disparity_tensor: Tensor, Q_matrix: Tensor) -> Ten
         Q_matrix: Tensor of Q matrices of shapes :math:`(B, 4, 4)`.
 
     Returns:
+    -------
         The 3D point cloud of shape :math:`(B, H, W, 3)`
 
     """

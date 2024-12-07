@@ -28,6 +28,7 @@ class PadTo(GeometricAugmentationBase2D):
         This function internally uses :func:`torch.nn.functional.pad`.
 
     Examples:
+    --------
         >>> import torch
         >>> img = torch.tensor([[[[0., 0., 0.],
         ...                       [0., 0., 0.],

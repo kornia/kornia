@@ -25,6 +25,7 @@ class RandomClahe(IntensityAugmentationBase2D):
         This function internally uses :func:`kornia.enhance.equalize_clahe`.
 
     Examples:
+    --------
         >>> img = torch.rand(1, 10, 20)
         >>> aug = RandomClahe()
         >>> res = aug(img)

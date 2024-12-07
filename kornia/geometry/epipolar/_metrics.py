@@ -22,6 +22,7 @@ def sampson_epipolar_distance(
         eps: Small constant for safe sqrt.
 
     Returns:
+    -------
         the computed Sampson distance with shape :math:`(*, N)`.
 
     """
@@ -74,6 +75,7 @@ def symmetrical_epipolar_distance(
        eps: Small constant for safe sqrt.
 
     Returns:
+    -------
         the computed Symmetrical distance with shape :math:`(*, N)`.
 
     """
@@ -128,6 +130,7 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
          avoid ambiguity with torch.nn.functional.
 
     Returns:
+    -------
         the computed Symmetrical distance with shape :math:`(*, N)`.
 
     """
@@ -162,6 +165,7 @@ def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
          avoid ambiguity with torch.nn.functional.
 
     Returns:
+    -------
         the computed Symmetrical distance with shape :math:`(*, N)`.
 
     """

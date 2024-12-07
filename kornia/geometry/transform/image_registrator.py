@@ -46,6 +46,7 @@ class Homography(BaseModel):
         r"""Single-batch homography".
 
         Returns:
+        -------
             Homography matrix with shape :math:`(1, 3, 3)`.
 
         """
@@ -55,6 +56,7 @@ class Homography(BaseModel):
         r"""Interted Single-batch homography".
 
         Returns:
+        -------
             Homography martix with shape :math:`(1, 3, 3)`.
 
         """
@@ -103,6 +105,7 @@ class Similarity(BaseModel):
         r"""Single-batch similarity transform".
 
         Returns:
+        -------
             Similarity with shape :math:`(1, 3, 3)`
 
         """
@@ -114,6 +117,7 @@ class Similarity(BaseModel):
         r"""Single-batch inverse similarity transform".
 
         Returns:
+        -------
             Similarity with shape :math:`(1, 3, 3)`
 
         """
@@ -221,6 +225,7 @@ class ImageRegistrator(Module):
             output_intermediate_models: if True with intermediate models
 
         Returns:
+        -------
             the transformation between two images, shape depends on the model,
             typically [1x3x3] tensor for string model_types.
 

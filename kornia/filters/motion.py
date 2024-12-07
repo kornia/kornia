@@ -27,6 +27,7 @@ class MotionBlur(Module):
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Returns:
+    -------
         the blurred input tensor.
 
     Shape:
@@ -34,6 +35,7 @@ class MotionBlur(Module):
         - Output: :math:`(B, C, H, W)`
 
     Examples:
+    --------
         >>> input = torch.rand(2, 4, 5, 7)
         >>> motion_blur = MotionBlur(3, 35., 0.5)
         >>> output = motion_blur(input)  # 2x4x5x7
@@ -75,6 +77,7 @@ class MotionBlur3D(Module):
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Returns:
+    -------
         the blurred input tensor.
 
     Shape:
@@ -82,6 +85,7 @@ class MotionBlur3D(Module):
         - Output: :math:`(B, C, D, H, W)`
 
     Examples:
+    --------
         >>> input = torch.rand(2, 4, 5, 7, 9)
         >>> motion_blur = MotionBlur3D(3, 35., 0.5)
         >>> output = motion_blur(input)  # 2x4x5x7x9

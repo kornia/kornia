@@ -40,6 +40,7 @@ def elastic_transform2d(
         padding_mode: The padding used by ```grid_sample```. Either ``'zeros'``, ``'border'`` or ``'refection'``.
 
     Returns:
+    -------
         the elastically transformed input image with shape :math:`(B,C,H,W)`.
 
     Example:

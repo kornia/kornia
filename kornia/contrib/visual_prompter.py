@@ -94,6 +94,7 @@ class VisualPrompter:
             std: Standard deviations for each channel.
 
         Returns:
+        -------
             The image preprocessed (normalized if has mean and str available and padded to encoder size)
 
         """
@@ -251,6 +252,7 @@ class VisualPrompter:
                                   original input image size.
 
         Returns:
+        -------
             A prediction with the logits and scores (IoU of each predicted mask)
 
         """

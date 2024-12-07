@@ -25,6 +25,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         This function internally uses :func:`kornia.geometry.transform.warp_image_tps`.
 
     Examples:
+    --------
         >>> img = torch.ones(1, 1, 2, 2)
         >>> out = RandomThinPlateSpline()(img)
         >>> out.shape

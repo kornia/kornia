@@ -25,6 +25,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         Input tensor must be float and normalized into [0, 1].
 
     Examples:
+    --------
         >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> inp = torch.rand(1, 3, 5, 5)

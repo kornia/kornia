@@ -68,6 +68,7 @@ def _patchify_8x8(input: Tensor) -> Tensor:
         input (Tensor): Input image of the shape :math:`(B, H, W)`.
 
     Returns:
+    -------
         output (Tensor): Image patchify of the shape :math:`(B, N, 8, 8)`.
 
     """
@@ -85,6 +86,7 @@ def _unpatchify_8x8(input: Tensor, H: int, W: int) -> Tensor:
         input (Tensor): Input image of the shape :math:`(B, N, 8, 8)`.
 
     Returns:
+    -------
         output (Tensor): Image patchify of the shape :math:`(B, H, W)`.
 
     """
@@ -102,6 +104,7 @@ def _dct_8x8(input: Tensor) -> Tensor:
         input (Tensor): Patched input tensor of the shape :math:`(B, N, 8, 8)`.
 
     Returns:
+    -------
         output (Tensor): DCT output tensor of the shape :math:`(B, N, 8, 8)`.
 
     """
@@ -127,6 +130,7 @@ def _idct_8x8(input: Tensor) -> Tensor:
         input (Tensor): Patched input tensor of the shape :math:`(B, N, 8, 8)`.
 
     Returns:
+    -------
         output (Tensor): DCT output tensor of the shape :math:`(B, N, 8, 8)`.
 
     """
@@ -156,6 +160,7 @@ def _jpeg_quality_to_scale(
         compression_strength (Tensor): Compression strength ranging from 0 to 100. Any shape is supported.
 
     Returns:
+    -------
         scale (Tensor): Scaling factor to be applied to quantization matrix. Same shape as input.
 
     """
@@ -183,6 +188,7 @@ def _quantize(
         quantization_table (Tensor): Quantization table of the shape :math:`(1, 8, 8)` or :math:`(B, 8, 8)`.
 
     Returns:
+    -------
         output (Tensor): Quantized output tensor of the shape :math:`(B, N, 8, 8)`.
 
     """
@@ -213,6 +219,7 @@ def _dequantize(
         quantization_table (Tensor): Quantization table of the shape :math:`(1, 8, 8)` or :math:`(B, 8, 8)`.
 
     Returns:
+    -------
         output (Tensor): Quantized output tensor of the shape :math:`(B, N, 8, 8)`.
 
     """
@@ -234,6 +241,7 @@ def _chroma_subsampling(input_ycbcr: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         input_ycbcr (Tensor): YCbCr input tensor of the shape :math:`(B, 3, H, W)`.
 
     Returns:
+    -------
         output_y (Tensor): Y component (not-subsampled), shape is :math:`(B, H, W)`.
         output_cb (Tensor): Cb component (subsampled), shape is :math:`(B, H // 2, W // 2)`.
         output_cr (Tensor): Cr component (subsampled), shape is :math:`(B, H // 2, W // 2)`.
@@ -268,6 +276,7 @@ def _chroma_upsampling(input_c: Tensor) -> Tensor:
         input_c (Tensor): Cb or Cr component to be upsampled of the shape :math:`(B, H, W)`.
 
     Returns:
+    -------
         output_c (Tensor): Upsampled C(b or r) component of the shape :math:`(B, H * 2, W * 2)`.
 
     """
@@ -297,6 +306,7 @@ def _jpeg_encode(
         quantization_table_c (Tensor): Quantization table for C channels.
 
     Returns:
+    -------
         y_encoded (Tensor): Encoded Y component of the shape :math:`(B, N, 8, 8)`.
         cb_encoded (Tensor): Encoded Cb component of the shape :math:`(B, N, 8, 8)`.
         cr_encoded (Tensor): Encoded Cr component of the shape :math:`(B, N, 8, 8)`.
@@ -352,6 +362,7 @@ def _jpeg_decode(
         quantization_table_c (Tensor): Quantization table for C channels.
 
     Returns:
+    -------
         rgb_decoded (Tensor): Decompressed RGB image of the shape :math:`(B, 3, H, W)`.
 
     """
@@ -390,6 +401,7 @@ def _perform_padding(image: Tensor) -> tuple[Tensor, int, int]:
         image: Image of the shape :math:`(*, 3, H, W)`.
 
     Returns:
+    -------
         image_padded: Padded image of the shape :math:`(*, 3, H_{new}, W_{new})`.
         h_pad: Padded pixels along the horizontal axis.
         w_pad: Padded pixels along the vertical axis.

@@ -30,6 +30,7 @@ class ImageModuleMixIn:
             output_type: Desired output type ('tensor', 'numpy', or 'pil').
 
         Returns:
+        -------
             Callable: Decorated function with converted input and output types.
 
         """
@@ -85,6 +86,7 @@ class ImageModuleMixIn:
             arg: The argument to check.
 
         Returns:
+        -------
             bool: True if valid, False otherwise.
 
         """
@@ -108,6 +110,7 @@ class ImageModuleMixIn:
             x: The input to convert.
 
         Returns:
+        -------
             Tensor: The converted tensor.
 
         """
@@ -132,6 +135,7 @@ class ImageModuleMixIn:
             x: The input to convert.
 
         Returns:
+        -------
             np.array: The converted numpy array.
 
         """
@@ -150,6 +154,7 @@ class ImageModuleMixIn:
             x: The input to convert.
 
         Returns:
+        -------
             Image.Image: The converted PIL image.
 
         """

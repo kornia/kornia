@@ -36,6 +36,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
 
     Examples:
+    --------
         >>> rng = torch.manual_seed(1)
         >>> input = torch.ones(1, 3, 3, 3) * 0.5
         >>> aug = RandomGaussianIllumination(gain=0.5, p=1.)

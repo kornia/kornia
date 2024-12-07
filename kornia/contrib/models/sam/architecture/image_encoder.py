@@ -235,6 +235,7 @@ def get_rel_pos(q_size: int, k_size: int, rel_pos: Tensor) -> Tensor:
         rel_pos: relative position embeddings (L, C).
 
     Returns:
+    -------
         Extracted positional embeddings according to relative positions.
 
     """
@@ -275,6 +276,7 @@ def add_decomposed_rel_pos(
         k_size: spatial sequence size of key k with (k_h, k_w).
 
     Returns:
+    -------
         att: attention map with added relative positional embeddings.
 
     """

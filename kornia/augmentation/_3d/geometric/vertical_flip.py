@@ -31,6 +31,7 @@ class RandomVerticalFlip3D(GeometricAugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+    --------
         >>> import torch
         >>> x = torch.eye(3).repeat(3, 1, 1)
         >>> seq = RandomVerticalFlip3D(p=1.0)

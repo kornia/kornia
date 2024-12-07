@@ -36,6 +36,7 @@ def inverse_depth_smoothness_loss(idepth: torch.Tensor, image: torch.Tensor) -> 
         a scalar with the computed loss.
 
     Examples:
+    --------
         >>> idepth = torch.rand(1, 1, 4, 5)
         >>> image = torch.rand(1, 3, 4, 5)
         >>> loss = inverse_depth_smoothness_loss(idepth, image)
@@ -94,6 +95,7 @@ class InverseDepthSmoothnessLoss(nn.Module):
         - Output: scalar
 
     Examples:
+    --------
         >>> idepth = torch.rand(1, 1, 4, 5)
         >>> image = torch.rand(1, 3, 4, 5)
         >>> smooth = InverseDepthSmoothnessLoss()

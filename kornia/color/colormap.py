@@ -45,6 +45,7 @@ class ColorMapType(Enum):
         r"""Load the base colormap corresponding to the enumeration member.
 
         Returns:
+        -------
             The base colormap.
 
         """
@@ -75,6 +76,7 @@ class ColorMapType(Enum):
         r"""Returns a list of names of enumeration members.
 
         Returns:
+        -------
             A list containing the names of enumeration members.
 
         """
@@ -93,9 +95,11 @@ class ColorMap:
         dtype: The data type of the generated colormap.
 
     Returns:
+    -------
         An object of the colormap with the num_colors length.
 
     Examples:
+    --------
         >>> ColorMap(base='viridis', num_colors=8).colors
         tensor([[0.2813, 0.2621, 0.2013, 0.1505, 0.1210, 0.2463, 0.5259, 0.8557],
                 [0.0842, 0.2422, 0.3836, 0.5044, 0.6258, 0.7389, 0.8334, 0.8886],
@@ -147,6 +151,7 @@ class ColorMap:
             num_colors: Number of colors in the colormap.
 
         Returns:
+        -------
             A tensor representing the colormap.
 
         """
@@ -157,6 +162,7 @@ class ColorMap:
         r"""Returns the number of colors in the colormap.
 
         Returns:
+        -------
             Number of colors in the colormap.
 
         """
@@ -173,9 +179,11 @@ def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
         colormap: the colormap desired to be applied to the input tensor.
 
     Returns:
+    -------
         A RGB tensor with the applied color map into the input_tensor.
 
     Raises:
+    ------
         ValueError: If `colormap` is not a ColorMap object.
 
     .. note::
@@ -236,9 +244,11 @@ class ApplyColorMap(Module):
         dtype: The data type of the generated colormap.
 
     Returns:
+    -------
         A RGB tensor with the applied color map into the input_tensor
 
     Raises:
+    ------
         ValueError: If `colormap` is not a ColorMap object.
 
     .. note::
@@ -279,6 +289,7 @@ class ApplyColorMap(Module):
         The input tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
 
         Returns:
+        -------
             The output tensor representing the image with the applied colormap.
 
         """

@@ -34,6 +34,7 @@ def undistort_points(
         num_iters: Number of undistortion iterations. Default: 5.
 
     Returns:
+    -------
         Undistorted 2D points with shape :math:`(*, N, 2)`.
 
     Example:
@@ -133,6 +134,7 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
             a vector with 4, 5, 8, 12 or 14 elements with shape :math:`(*, n)`.
 
     Returns:
+    -------
         Undistorted image with shape :math:`(*, C, H, W)`.
 
     Example:

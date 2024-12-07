@@ -37,6 +37,7 @@ def crop_and_resize(
         align_corners: mode for grid_generation.
 
     Returns:
+    -------
         Tensor: tensor containing the patches with shape BxCxN1xN2.
 
     Example:
@@ -107,9 +108,11 @@ def center_crop(
         align_corners: mode for grid_generation.
 
     Returns:
+    -------
         the output tensor with patches.
 
     Examples:
+    --------
         >>> input = torch.tensor([[[
         ...     [1., 2., 3., 4.],
         ...     [5., 6., 7., 8.],
@@ -197,9 +200,11 @@ def crop_by_boxes(
         validate_boxes: flag to perform validation on boxes.
 
     Returns:
+    -------
         Tensor: the output tensor with patches.
 
     Examples:
+    --------
         >>> input = torch.arange(16, dtype=torch.float32).reshape((1, 1, 4, 4))
         >>> src_box = torch.tensor([[
         ...     [1., 1.],
@@ -268,6 +273,7 @@ def crop_by_transform_mat(
         align_corners: mode for grid_generation.
 
     Returns:
+    -------
         the output tensor with patches.
 
     """

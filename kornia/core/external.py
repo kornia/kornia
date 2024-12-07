@@ -18,6 +18,7 @@ class LazyLoader:
     dealing with large or optional dependencies that might not be used in every execution.
 
     Attributes:
+    ----------
         module_name: The name of the module to be lazily loaded.
         module: The actual module object, initialized to None and loaded upon first access.
 
@@ -108,6 +109,7 @@ class LazyLoader:
             item: The name of the attribute to be accessed.
 
         Returns:
+        -------
             The requested attribute of the loaded module.
 
         """
@@ -121,6 +123,7 @@ class LazyLoader:
         It ensures that the module is loaded and then returns the list of attributes of the module.
 
         Returns:
+        -------
             list: The list of attributes of the loaded module.
 
         """

@@ -28,6 +28,7 @@ def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool =
         eps: Small constant for safe sqrt.
 
     Returns:
+    -------
         the computed distance with shape :math:`(B, N)`.
 
     """
@@ -61,6 +62,7 @@ def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: boo
         eps: Small constant for safe sqrt.
 
     Returns:
+    -------
         the computed distance with shape :math:`(B, N)`.
 
     """
@@ -100,6 +102,7 @@ def line_segment_transfer_error_one_way(ls1: Tensor, ls2: Tensor, H: Tensor, squ
         squared: if True (default is False), the squared distance is returned.
 
     Returns:
+    -------
         the computed distance with shape :math:`(B, N)`.
 
     """
@@ -137,6 +140,7 @@ def find_homography_dlt(
 
 
     Returns:
+    -------
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
@@ -206,6 +210,7 @@ def find_homography_dlt_iterated(
         n_iter: number of iterations.
 
     Returns:
+    -------
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
@@ -227,6 +232,7 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
         points2: A set of points in the second image with a tensor shape :math:`(B, 4, 2)`.
 
     Returns:
+    -------
         Mask with the minimal sample is good for homography estimation:math:`(B, 3, 3)`.
 
     """
@@ -264,6 +270,7 @@ def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
 
     Returns:
+    -------
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
@@ -337,6 +344,7 @@ def find_homography_lines_dlt_iterated(
         n_iter: number of iterations.
 
     Returns:
+    -------
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """

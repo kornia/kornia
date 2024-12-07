@@ -49,6 +49,7 @@ class DISK(Module):
             images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
 
         Returns:
+        -------
             A tuple of dense detection scores and descriptors.
             Shapes are :math:`(B, 1, H, W)` and :math:`(B, D, H, W)`, where
             :math:`D` is the descriptor dimension.
@@ -85,6 +86,7 @@ class DISK(Module):
             pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the closest 16-multiply
 
         Returns:
+        -------
             A list of length :math:`B` containing the detected features.
 
         """
@@ -122,6 +124,7 @@ class DISK(Module):
             device: The device to load the model to.
 
         Returns:
+        -------
             The pretrained model.
 
         """

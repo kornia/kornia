@@ -555,6 +555,7 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
         inv: If is set to True the function will return the inverse sigmoid correction.
 
     Returns:
+    -------
          Adjusted tensor in the shape of :math:`(*, H, W)`.
 
     Example:
@@ -588,6 +589,7 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
         clip_output: Whether to clip the output image with range of [0, 1].
 
     Returns:
+    -------
         Adjusted tensor in the shape of :math:`(*, H, W)`.
 
     Example:
@@ -622,6 +624,7 @@ def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
             If 1-d tensor, input will be solarized element-wise, len(thresholds) == len(input).
 
     Returns:
+    -------
         Solarized images.
 
     """
@@ -664,6 +667,7 @@ def solarize(
             If 1-d tensor, additions will be added element-wisely, len(additions) == len(input).
 
     Returns:
+    -------
         The solarized images with shape :math:`(*, C, H, W)`.
 
     Example:
@@ -726,6 +730,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
             If n-d tensor, input will be posterized element-channel-wisely, bits.shape == input.shape[:len(bits.shape)]
 
     Returns:
+    -------
         Image with reduced color channels with shape :math:`(*, C, H, W)`.
 
     Example:
@@ -815,6 +820,7 @@ def sharpness(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
             If 1-d tensor, input will be sharpened element-wisely, len(factor) == len(input).
 
     Returns:
+    -------
         Sharpened image or images with shape :math:`(*, C, H, W)`.
 
     Example:
@@ -864,6 +870,7 @@ def _blend_one(input1: Tensor, input2: Tensor, factor: Tensor) -> Tensor:
         factor: factor 0-dim tensor.
 
     Returns:
+    -------
         : image tensor with the batch in the zero position.
 
     """
@@ -905,6 +912,7 @@ def _scale_channel(im: Tensor) -> Tensor:
         input: image tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
 
     Returns:
+    -------
         image tensor with the batch in the zero position.
 
     """
@@ -953,6 +961,7 @@ def equalize(input: Tensor) -> Tensor:
         input: image tensor to equalize with shape :math:`(*, C, H, W)`.
 
     Returns:
+    -------
         Equalized image tensor with shape :math:`(*, C, H, W)`.
 
     Example:
@@ -981,6 +990,7 @@ def equalize3d(input: Tensor) -> Tensor:
         input: image tensor with shape :math:`(*, C, D, H, W)` to equalize.
 
     Returns:
+    -------
         Equalized volume with shape :math:`(B, C, D, H, W)`.
 
     """

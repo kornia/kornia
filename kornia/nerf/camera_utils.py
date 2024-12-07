@@ -19,6 +19,7 @@ def parse_colmap_output(
         device: device for created camera object: Union[str, torch.device]
 
     Returns:
+    -------
         image names: List[str]
         scene camera object: PinholeCamera
 

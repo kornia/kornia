@@ -25,6 +25,7 @@ def median_blur(input: Tensor, kernel_size: tuple[int, int] | int) -> Tensor:
         kernel_size: the blurring kernel size.
 
     Returns:
+    -------
         the blurred input tensor with shape :math:`(B,C,H,W)`.
 
     .. note::
@@ -61,6 +62,7 @@ class MedianBlur(Module):
         kernel_size: the blurring kernel size.
 
     Returns:
+    -------
         the blurred input tensor.
 
     Shape:

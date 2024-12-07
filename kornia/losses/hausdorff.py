@@ -24,6 +24,7 @@ class _HausdorffERLossBase(Module):
             'sum': the output will be summed.
 
     Returns:
+    -------
         Estimated Hausdorff Loss.
 
     """
@@ -86,6 +87,7 @@ class _HausdorffERLossBase(Module):
             target: target tensor with a shape of :math:`(B, 1, H, W)` or :math:`(B, C, D, H, W)`.
 
         Returns:
+        -------
             Estimated Hausdorff Loss.
 
         """
@@ -154,6 +156,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
             'sum': the output will be summed.
 
     Examples:
+    --------
         >>> hdloss = HausdorffERLoss()
         >>> input = torch.randn(5, 3, 20, 20)
         >>> target = (torch.rand(5, 1, 20, 20) * 2).long()
@@ -179,6 +182,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
             target: target tensor with a shape of :math:`(B, 1, H, W)`.
 
         Returns:
+        -------
             Estimated Hausdorff Loss.
 
         """
@@ -222,6 +226,7 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
             'sum': the output will be summed.
 
     Examples:
+    --------
         >>> hdloss = HausdorffERLoss3D()
         >>> input = torch.randn(5, 3, 20, 20, 20)
         >>> target = (torch.rand(5, 1, 20, 20, 20) * 2).long()
@@ -251,6 +256,7 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
             target: target tensor with a shape of :math:`(B, 1, D, H, W)`.
 
         Returns:
+        -------
             Estimated Hausdorff Loss.
 
         """

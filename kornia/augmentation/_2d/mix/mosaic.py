@@ -49,6 +49,7 @@ class RandomMosaic(MixAugmentationBaseV2):
             differentiability.
 
     Examples:
+    --------
         >>> mosaic = RandomMosaic((300, 300), data_keys=["input", "bbox_xyxy"])
         >>> boxes = torch.tensor([[
         ...     [70, 5, 150, 100],

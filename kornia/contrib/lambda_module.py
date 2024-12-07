@@ -10,6 +10,7 @@ class Lambda(Module):
         func: Callable function.
 
     Returns:
+    -------
         The output of the user-defined lambda.
 
     Example:

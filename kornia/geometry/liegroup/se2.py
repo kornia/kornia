@@ -234,6 +234,7 @@ class Se2(Module):
             omega: 3x3-matrix representing lie algebra of shape :math:`(B, 3, 3)`.
 
         Returns:
+        -------
             vector of shape :math:`(B, 3)`.
 
         Example:

@@ -66,6 +66,7 @@ class TwoWayTransformer(Module):
             for any N_points.
 
         Returns:
+        -------
             - the processed point_embedding
             - the processed image_embedding
 

@@ -20,6 +20,7 @@ def batched_forward(
         **kwargs: any other arguments, which accepts model.
 
     Returns:
+    -------
         output of the model.
 
     Example:

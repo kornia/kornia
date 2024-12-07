@@ -138,6 +138,7 @@ def affine(
         align_corners: interpolation flag.
 
     Returns:
+    -------
         The warped image with the same shape as the input.
 
     Example:
@@ -189,6 +190,7 @@ def affine3d(
         align_corners: interpolation flag.
 
     Returns:
+    -------
         The warped image.
 
     Example:
@@ -251,6 +253,7 @@ def rotate(
         align_corners: interpolation flag.
 
     Returns:
+    -------
         The rotated tensor with shape as input.
 
     .. note::
@@ -320,6 +323,7 @@ def rotate3d(
         align_corners: interpolation flag.
 
     Returns:
+    -------
         Tensor: The rotated tensor with shape as input.
 
     """
@@ -380,6 +384,7 @@ def translate(
         align_corners: interpolation flag.
 
     Returns:
+    -------
         The translated tensor with shape as input.
 
     Example:
@@ -434,6 +439,7 @@ def scale(
         align_corners: interpolation flag.
 
     Returns:
+    -------
         The scaled tensor with the same shape as the input.
 
     Example:
@@ -491,6 +497,7 @@ def shear(
         align_corners: interpolation flag.
 
     Returns:
+    -------
         The skewed tensor with shape same as the input.
 
     Example:
@@ -558,6 +565,7 @@ def resize(
             No effect for upscaling.
 
     Returns:
+    -------
         The resized tensor with the shape as the specified size.
 
     Example:
@@ -636,6 +644,7 @@ def resize_to_be_divisible(
             If True, then image will be filtered with Gaussian before downscaling. Defaults to False.
 
     Returns:
+    -------
         Tensor: The resized tensor.
 
     """
@@ -673,6 +682,7 @@ def rescale(
             No effect for upscaling.
 
     Returns:
+    -------
         The rescaled tensor with the shape as the specified size.
 
     Example:
@@ -709,6 +719,7 @@ class Resize(Module):
             No effect for upscaling.
 
     Returns:
+    -------
         The resized tensor with the shape of the given size.
 
     Example:
@@ -771,9 +782,11 @@ class Affine(Module):
         align_corners: interpolation flag.
 
     Raises:
+    ------
         RuntimeError: If not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is set.
 
     Returns:
+    -------
         The transformed tensor with same shape as input.
 
     Example:
@@ -861,6 +874,7 @@ class Rescale(Module):
             No effect for upscaling.
 
     Returns:
+    -------
         The rescaled tensor with the shape according to the given factor.
 
     Example:
@@ -906,6 +920,7 @@ class Rotate(Module):
         align_corners: interpolation flag.
 
     Returns:
+    -------
         The rotated tensor with the same shape as the input.
 
     Example:
@@ -950,6 +965,7 @@ class Translate(Module):
         align_corners: interpolation flag.
 
     Returns:
+    -------
         The translated tensor with the same shape as the input.
 
     Example:
@@ -992,6 +1008,7 @@ class Scale(Module):
         align_corners: interpolation flag.
 
     Returns:
+    -------
         The scaled tensor with the same shape as the input.
 
     Example:
@@ -1036,6 +1053,7 @@ class Shear(Module):
         align_corners: interpolation flag.
 
     Returns:
+    -------
         The skewed tensor with the same shape as the input.
 
     Example:

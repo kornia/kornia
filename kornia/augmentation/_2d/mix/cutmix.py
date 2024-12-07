@@ -42,6 +42,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         - Raw labels, shape of :math:`(B)`.
 
     Returns:
+    -------
         Tuple[Tensor, Tensor]:
         - Adjusted image, shape of :math:`(B, C, H, W)`.
         - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, num_mix, 3)`.
@@ -50,6 +51,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.
 
     Examples:
+    --------
         >>> rng = torch.manual_seed(3)
         >>> input = torch.rand(2, 1, 3, 3)
         >>> input[0] = torch.ones((1, 3, 3))

@@ -56,6 +56,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
           segmentation mask: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)` (`DataKey.MASK`).
 
     Returns:
+    -------
         Tensor | list[Tensor]:
 
         Tensor:
@@ -66,6 +67,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
               (`DataKey.MASK`).
 
     Examples:
+    --------
         >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> aug = RandomTransplantation(p=1.)
@@ -204,6 +206,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
 
         Returns:
+        -------
              Updated dictionary of parameters with the necessary information to apply the augmentation on all input
              tensors separately.
 

@@ -30,6 +30,7 @@ def triangulate_points(
           coordinates with shape :math:`(*, N, 2)`.
 
     Returns:
+    -------
         The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.
 
     """

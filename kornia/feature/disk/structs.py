@@ -53,6 +53,7 @@ class DISKFeatures:
             **kwargs: Keyword arguments passed to :func:`torch.Tensor.to`.
 
         Returns:
+        -------
             A new DISKFeatures object with tensors of appropriate type and location.
 
         """

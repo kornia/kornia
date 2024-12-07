@@ -29,6 +29,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Examples:
+    --------
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 2, 2)
         >>> RandomGaussianNoise(mean=0., std=1., p=1.)(img)

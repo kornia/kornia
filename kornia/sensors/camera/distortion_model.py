@@ -11,6 +11,7 @@ class AffineTransform:
             points: Vector2 representing the points to distort.
 
         Returns:
+        -------
             Vector2 representing the distorted points.
 
         Example:
@@ -34,6 +35,7 @@ class AffineTransform:
             points: Vector2 representing the points to undistort.
 
         Returns:
+        -------
             Vector2 representing the undistorted points.
 
         Example:

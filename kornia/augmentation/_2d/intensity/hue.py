@@ -29,6 +29,7 @@ class RandomHue(IntensityAugmentationBase2D):
         This function internally uses :func:`kornia.enhance.adjust_hue`
 
     Examples:
+    --------
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomHue(hue = (-0.5,0.5),p=1.)

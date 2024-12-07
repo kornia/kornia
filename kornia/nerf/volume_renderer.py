@@ -51,6 +51,7 @@ class IrregularRenderer(VolumeRenderer):
             points_3d: 3D points along rays :math:`(*, N, 3)`
 
         Returns:
+        -------
             Rendered RGB values for each ray :math:`(*, 3)`
 
         """
@@ -76,6 +77,7 @@ class RegularRenderer(VolumeRenderer):
             points_3d: 3D points along rays :math:`(*, N, 3)`
 
         Returns:
+        -------
             Rendered RGB values for each ray :math:`(*, 3)`
 
         """

@@ -25,6 +25,7 @@ class RandomEqualize3D(IntensityAugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+    --------
         >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3, 3)

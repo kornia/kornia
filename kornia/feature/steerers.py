@@ -57,6 +57,7 @@ class DiscreteSteerer(Module):
             steerer_order: The discretisation order for SO2-steerers (NOT used for C4-steerers).
 
         Returns:
+        -------
             The pretrained model.
 
         """

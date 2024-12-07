@@ -26,6 +26,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
         This function internally uses :func:`kornia.enhance.sharpness`.
 
     Examples:
+    --------
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
         >>> sharpness = RandomSharpness(1., p=1.)

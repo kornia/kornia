@@ -19,6 +19,7 @@ class CropGenerator3D(RandomGeneratorBase):
         resize_to (tuple): Desired output size of the crop, like (d, h, w). If None, no resize will be performed.
 
     Returns:
+    -------
         A dict of parameters to be passed for transformation.
             - src (Tensor): cropping bounding boxes with a shape of (B, 8, 3).
             - dst (Tensor): output bounding boxes with a shape (B, 8, 3).
@@ -156,6 +157,7 @@ def center_crop_generator3d(
         device (Device): the device on which the random numbers will be generated. Default: cpu.
 
     Returns:
+    -------
         params Dict[str, Tensor]: parameters to be passed for transformation.
             - src (Tensor): cropping bounding boxes with a shape of (B, 8, 3).
             - dst (Tensor): output bounding boxes with a shape (B, 8, 3).

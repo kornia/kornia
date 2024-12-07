@@ -13,6 +13,7 @@ class Z1Projection:
             points: Vector3 representing the points to project.
 
         Returns:
+        -------
             Vector2 representing the projected points.
 
         Example:
@@ -35,6 +36,7 @@ class Z1Projection:
             depth: Tensor representing the depth of the points to unproject.
 
         Returns:
+        -------
             Vector3 representing the unprojected points.
 
         Example:

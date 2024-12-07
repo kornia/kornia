@@ -24,6 +24,7 @@ def get_sift_pooling_kernel(ksize: int = 25) -> Tensor:
         ksize: kernel_size.
 
     Returns:
+    -------
         the pooling kernel with shape :math:`(ksize, ksize)`.
 
     """
@@ -41,6 +42,7 @@ def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tup
         num_spatial_bins: the ggiven number of spatial bins.
 
     Returns:
+    -------
         ksize, stride, pad.
 
     """
@@ -68,6 +70,7 @@ class SIFTDescriptor(Module):
         rootsift: if ``True``, RootSIFT (Arandjelović et. al, 2012) is computed.
 
     Returns:
+    -------
         SIFT descriptor of the patches with shape.
 
     Shape:
@@ -198,6 +201,7 @@ class DenseSIFTDescriptor(Module):
         padding: default 0
 
     Returns:
+    -------
         Tensor: DenseSIFT descriptor of the image
 
     Shape:

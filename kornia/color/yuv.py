@@ -25,6 +25,7 @@ def rgb_to_yuv(image: Tensor) -> Tensor:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
+    -------
         YUV version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
@@ -67,6 +68,7 @@ def rgb_to_yuv420(image: Tensor) -> tuple[Tensor, Tensor]:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
+    -------
         A Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
         A Tensor containing the UV planes with shape :math:`(*, 2, H/2, W/2)`
 
@@ -109,6 +111,7 @@ def rgb_to_yuv422(image: Tensor) -> tuple[Tensor, Tensor]:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
+    -------
        A Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
        A Tensor containing the UV planes with shape :math:`(*, 2, H, W/2)`
 
@@ -145,6 +148,7 @@ def yuv_to_rgb(image: Tensor) -> Tensor:
         image: YUV Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
     Returns:
+    -------
         RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
@@ -188,6 +192,7 @@ def yuv420_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
         imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H/2, W/2)`.
 
     Returns:
+    -------
         RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
@@ -248,6 +253,7 @@ def yuv422_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
         imageuv: UV (luma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
 
     Returns:
+    -------
         RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
@@ -292,6 +298,7 @@ class RgbToYuv(Module):
     items 2.5 and 2.6).
 
     Returns:
+    -------
         YUV version of the image.
 
     Shape:
@@ -299,6 +306,7 @@ class RgbToYuv(Module):
         - output: :math:`(*, 3, H, W)`
 
     Examples:
+    --------
         >>> input = torch.rand(2, 3, 4, 5)
         >>> yuv = RgbToYuv()
         >>> output = yuv(input)  # 2x3x4x5
@@ -327,6 +335,7 @@ class RgbToYuv420(Module):
     items 2.5 and 2.6).
 
     Returns:
+    -------
         YUV420 version of the image.
 
     Shape:
@@ -334,6 +343,7 @@ class RgbToYuv420(Module):
         - output: :math:`(*, 1, H, W)` and :math:`(*, 2, H/2, W/2)`
 
     Examples:
+    --------
         >>> yuvinput = torch.rand(2, 3, 4, 6)
         >>> yuv = RgbToYuv420()
         >>> output = yuv(yuvinput)  # # (2x1x4x6, 2x1x2x3)
@@ -362,6 +372,7 @@ class RgbToYuv422(Module):
     items 2.5 and 2.6).
 
     Returns:
+    -------
         YUV422 version of the image.
 
     Shape:
@@ -369,6 +380,7 @@ class RgbToYuv422(Module):
         - output: :math:`(*, 1, H, W)` and :math:`(*, 2, H, W/2)`
 
     Examples:
+    --------
         >>> yuvinput = torch.rand(2, 3, 4, 6)
         >>> yuv = RgbToYuv422()
         >>> output = yuv(yuvinput)  # # (2x1x4x6, 2x2x4x3)
@@ -396,6 +408,7 @@ class YuvToRgb(Module):
     items 2.5 and 2.6).
 
     Returns:
+    -------
         RGB version of the image.
 
     Shape:
@@ -403,6 +416,7 @@ class YuvToRgb(Module):
         - output: :math:`(*, 3, H, W)`
 
     Examples:
+    --------
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = YuvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
@@ -429,6 +443,7 @@ class Yuv420ToRgb(Module):
     items 2.5 and 2.6).
 
     Returns:
+    -------
         RGB version of the image.
 
     Shape:
@@ -437,6 +452,7 @@ class Yuv420ToRgb(Module):
         - output: :math:`(*, 3, H, W)`
 
     Examples:
+    --------
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
         >>> rgb = Yuv420ToRgb()
@@ -464,6 +480,7 @@ class Yuv422ToRgb(Module):
     items 2.5 and 2.6).
 
     Returns:
+    -------
         RGB version of the image.
 
     Shape:
@@ -472,6 +489,7 @@ class Yuv422ToRgb(Module):
         - output: :math:`(*, 3, H, W)`
 
     Examples:
+    --------
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 4, 3)
         >>> rgb = Yuv422ToRgb()

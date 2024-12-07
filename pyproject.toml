@@ -151,9 +151,8 @@ ignore = [
   'D401',
   'D404',
   'D406',
-  'D407',
-  'D415',
 ]
+
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 

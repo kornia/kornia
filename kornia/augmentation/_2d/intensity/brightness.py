@@ -30,6 +30,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
         This function internally uses :func:`kornia.enhance.adjust_brightness`
 
     Examples:
+    --------
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomBrightness(brightness = (0.5,2.),p=1.)

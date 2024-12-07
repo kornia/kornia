@@ -18,6 +18,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
           to the batch form ``False``.
 
     Examples:
+    --------
         >>> rng = torch.manual_seed(0)
         >>> img = torch.arange(1*2*2*2.).view(1,2,2,2)
         >>> RandomChannelShuffle()(img)

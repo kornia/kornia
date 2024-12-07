@@ -57,6 +57,7 @@ class PyrDown(Module):
         - Output: :math:`(B, C, H / 2, W / 2)`
 
     Examples:
+    --------
         >>> input = torch.rand(1, 2, 4, 4)
         >>> output = PyrDown()(input)  # 1x2x2x2
 
@@ -89,6 +90,7 @@ class PyrUp(Module):
         - Output: :math:`(B, C, H * 2, W * 2)`
 
     Examples:
+    --------
         >>> input = torch.rand(1, 2, 4, 4)
         >>> output = PyrUp()(input)  # 1x2x8x8
 
@@ -115,6 +117,7 @@ class ScalePyramid(Module):
         double_image: add 2x upscaled image as 1st level of pyramid. OpenCV SIFT does this.
 
     Returns:
+    -------
         1st output: images
         2nd output: sigmas (coefficients for scale conversion)
         3rd output: pixelDists (coefficients for coordinate conversion)
@@ -126,6 +129,7 @@ class ScalePyramid(Module):
         - Output 3rd: :math:`[(B, NL), (B, NL), (B, NL), ...]`
 
     Examples:
+    --------
         >>> input = torch.rand(2, 4, 100, 100)
         >>> sp, sigmas, pds = ScalePyramid(3, 15)(input)
 
@@ -247,6 +251,7 @@ def pyrdown(input: Tensor, border_type: str = "reflect", align_corners: bool = F
         the downsampled tensor.
 
     Examples:
+    --------
         >>> input = torch.arange(16, dtype=torch.float32).reshape(1, 1, 4, 4)
         >>> pyrdown(input, align_corners=True)
         tensor([[[[ 3.7500,  5.2500],
@@ -286,6 +291,7 @@ def pyrup(input: Tensor, border_type: str = "reflect", align_corners: bool = Fal
         the downsampled tensor.
 
     Examples:
+    --------
         >>> input = torch.arange(4, dtype=torch.float32).reshape(1, 1, 2, 2)
         >>> pyrup(input, align_corners=True)
         tensor([[[[0.7500, 0.8750, 1.1250, 1.2500],

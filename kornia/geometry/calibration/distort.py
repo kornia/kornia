@@ -15,6 +15,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
         return_inverse: False to obtain the tilt projection matrix. True for the inverse matrix.
 
     Returns:
+    -------
         torch.Tensor: Inverse tilt projection matrix with shape :math:`(*, 3, 3)`.
 
     """
@@ -78,6 +79,7 @@ def distort_points(
             scale and shift the result by using a different matrix. Shape: :math:`(*, 3, 3)`. Default: None.
 
     Returns:
+    -------
         Undistorted 2D points with shape :math:`(*, N, 2)`.
 
     Example:

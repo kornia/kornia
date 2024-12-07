@@ -99,6 +99,7 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
             bottom-left. The coordinates must be in the x, y order.
 
     Returns:
+    -------
         - Bounding box heights, shape of :math:`(B,)`.
         - Boundingbox widths, shape of :math:`(B,)`.
 
@@ -134,6 +135,7 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
             The coordinates must be in the x, y, z order.
 
     Returns:
+    -------
         - Bounding box depths, shape of :math:`(B,)`.
         - Bounding box heights, shape of :math:`(B,)`.
         - Bounding box widths, shape of :math:`(B,)`.
@@ -184,12 +186,14 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
         height: height of the masked image.
 
     Returns:
+    -------
         the output mask tensor.
 
     Note:
         It is currently non-differentiable.
 
     Examples:
+    --------
         >>> boxes = torch.tensor([[
         ...        [1., 1.],
         ...        [3., 1.],
@@ -227,9 +231,11 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         size: depth, height and width of the masked image.
 
     Returns:
+    -------
         the output mask tensor.
 
     Examples:
+    --------
         >>> boxes = torch.tensor([[
         ...     [1., 1., 1.],
         ...     [2., 1., 1.],
@@ -311,9 +317,11 @@ def bbox_generator(
         height: heights of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
 
     Returns:
+    -------
         the bounding box tensor.
 
     Examples:
+    --------
         >>> x_start = torch.tensor([0, 1])
         >>> y_start = torch.tensor([1, 0])
         >>> width = torch.tensor([5, 3])
@@ -382,9 +390,11 @@ def bbox_generator3d(
         depth: depths of the masked image. Shape must be a scalar tensor or :math:`(B,)`.
 
     Returns:
+    -------
         the 3d bounding box tensor :math:`(B, 8, 3)`.
 
     Examples:
+    --------
         >>> x_start = torch.tensor([0, 3])
         >>> y_start = torch.tensor([1, 4])
         >>> z_start = torch.tensor([2, 5])
@@ -468,6 +478,7 @@ def transform_bbox(
             coordinates to a valid bounding box.
 
     Returns:
+    -------
         The set of transformed points in the specified mode
 
     """

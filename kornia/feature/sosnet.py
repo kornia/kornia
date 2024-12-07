@@ -24,6 +24,7 @@ class SOSNet(nn.Module):
         - Output: :math:`(B, 128)`
 
     Examples:
+    --------
         >>> input = torch.rand(8, 1, 32, 32)
         >>> sosnet = SOSNet()
         >>> descs = sosnet(input) # 8x128

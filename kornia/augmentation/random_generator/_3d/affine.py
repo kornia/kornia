@@ -38,6 +38,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             will be applied.
 
     Returns:
+    -------
         A dict of parameters to be passed for transformation.
             - translations (torch.Tensor): element-wise translations with a shape of (B, 3).
             - center (torch.Tensor): element-wise center with a shape of (B, 3).

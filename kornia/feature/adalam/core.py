@@ -54,6 +54,7 @@ def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
     """Helper function, which output empty tensors.
 
     Returns:
+    -------
             - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
 
@@ -78,6 +79,7 @@ def select_seeds(
          Expected a bool tensor with shape (num_keypoints_in_source_image,)
 
     Returns:
+    -------
         Indices of seed points.
 
         im1seeds: Keypoint index of chosen seeds in image I_1
@@ -140,6 +142,7 @@ def extract_neighborhood_sets(
                  to remove already seeds with not enough samples to ever pass this threshold.
 
     Returns:
+    -------
         Local neighborhoods assignments:
 
         local_neighs_mask: Boolean matrix of size (num_seeds, num_keypoints).
@@ -207,6 +210,7 @@ def extract_local_patterns(
             Note: scores should be between 0 and 1 for this function to work as expected.
 
     Returns:
+    -------
         All information required for running the parallel RANSACs.
         Data is formatted so that all inputs for different RANSACs are concatenated
             along the same dimension to support different input sizes.
@@ -290,6 +294,7 @@ def adalam_core(
         return_dist: if True, inverse confidence value is also outputted. Default is False
 
     Returns:
+    -------
         idxs: A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
         dists: inverse confidence ratio.
 

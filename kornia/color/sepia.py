@@ -13,6 +13,7 @@ def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Te
         eps: scalar to enforce numerical stability.
 
     Returns:
+    -------
         Tensor: The sepia tensor of same size and numbers of channels
         as the input with shape :math:`(*, C, H, W)`.
 
@@ -55,6 +56,7 @@ class Sepia(Module):
         eps: scalar to enforce numerical stability.
 
     Returns:
+    -------
         Tensor: The sepia tensor of same size and numbers of channels
         as the input with shape :math:`(*, C, H, W)`.
 

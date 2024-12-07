@@ -24,6 +24,7 @@ class PassLAF(nn.Module):
             img: :math:`(B, 1, H, W)`
 
         Returns:
+        -------
             LAF, unchanged :math:`(B, N, 2, 3)`
 
         """
@@ -64,6 +65,7 @@ class PatchDominantGradientOrientation(nn.Module):
             patch: :math:`(B, 1, H, W)`
 
         Returns:
+        -------
             angle in radians: :math:`(B)`
 
         """
@@ -121,6 +123,7 @@ class OriNet(nn.Module):
         eps: to avoid division by zero in atan2.
 
     Returns:
+    -------
         Angle in radians.
 
     Shape:
@@ -128,6 +131,7 @@ class OriNet(nn.Module):
         - Output: (B)
 
     Examples:
+    --------
         >>> input = torch.rand(16, 1, 32, 32)
         >>> orinet = OriNet()
         >>> angle = orinet(input) # 16
@@ -181,6 +185,7 @@ class OriNet(nn.Module):
             patch: :math:`(B, 1, H, W)`
 
         Returns:
+        -------
             angle in radians: :math:`(B)`
 
         """
@@ -224,6 +229,7 @@ class LAFOrienter(nn.Module):
             img: :math:`(B, 1, H, W)`
 
         Returns:
+        -------
             LAF_out: :math:`(B, N, 2, 3)`
 
         """

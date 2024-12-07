@@ -22,6 +22,7 @@ class TFeat(nn.Module):
         pretrained: Download and set pretrained weights to the model.
 
     Returns:
+    -------
         torch.Tensor: TFeat descriptor of the patches.
 
     Shape:
@@ -29,6 +30,7 @@ class TFeat(nn.Module):
         - Output: :math:`(B, 128)`
 
     Examples:
+    --------
         >>> input = torch.rand(16, 1, 32, 32)
         >>> tfeat = TFeat()
         >>> descs = tfeat(input) # 16x128

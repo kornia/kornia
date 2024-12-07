@@ -41,6 +41,7 @@ def get_laf_descriptors(
         grayscale_descriptor: True if ``patch_descriptor`` expects single-channel image.
 
     Returns:
+    -------
         Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
 
     """
@@ -104,6 +105,7 @@ class LAFDescriptor(Module):
             lafs: local affine frames :math:`(B,N,2,3)`.
 
         Returns:
+        -------
             Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
 
         """
@@ -135,6 +137,7 @@ class LocalFeature(Module):
                 The shape must be the same as the input image.
 
         Returns:
+        -------
             - Detected local affine frames with shape :math:`(B,N,2,3)`.
             - Response function values for corresponding lafs with shape :math:`(B,N,1)`.
             - Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
@@ -312,6 +315,7 @@ class LocalFeatureMatcher(Module):
         matcher: Descriptor matcher, see :class:`~kornia.feature.DescriptorMatcher`.
 
     Returns:
+    -------
         Dict[str, Tensor]: Dictionary with image correspondences and confidence scores.
 
     Example:
@@ -357,6 +361,7 @@ class LocalFeatureMatcher(Module):
             mask1 (optional): right image mask. '0' indicates a padded position :math:`(N, H2, W2)`.
 
         Returns:
+        -------
             - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
             - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
             - ``confidence``, confidence score [0, 1] :math:`(NC)`.

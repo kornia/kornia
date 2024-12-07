@@ -34,6 +34,7 @@ def box_blur(
         separable: run as composition of two 1d-convolutions.
 
     Returns:
+    -------
         the blurred tensor with shape :math:`(B,C,H,W)`.
 
     .. note::
@@ -82,6 +83,7 @@ class BoxBlur(Module):
         separable: run as composition of two 1d-convolutions.
 
     Returns:
+    -------
         the blurred input tensor.
 
     Shape:

@@ -19,6 +19,7 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
             matrix. The tensor shape must be :math:`(*, 3, 3)`.
 
     Returns:
+    -------
         tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
 
     Example:
@@ -56,6 +57,7 @@ def unproject_points(
             ray length from the camera position.
 
     Returns:
+    -------
         tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
 
     Example:

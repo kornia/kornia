@@ -27,6 +27,7 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
         image: RGB Image to be converted to Lab with shape :math:`(*, 3, H, W)`.
 
     Returns:
+    -------
         Lab version of the image with shape :math:`(*, 3, H, W)`.
         The L channel values are in the range 0..100. a and b are in the range -128..127.
 
@@ -79,6 +80,7 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
         clip: Whether to apply clipping to insure output RGB values in range :math:`[0, 1]`.
 
     Returns:
+    -------
         Lab version of the image with shape :math:`(*, 3, H, W)`.
         The output RGB image are in the range of :math:`[0, 1]`.
 
@@ -137,6 +139,7 @@ class RgbToLab(Module):
     color is computed using the D65 illuminant and Observer 2.
 
     Returns:
+    -------
         Lab version of the image.
 
     Shape:
@@ -144,6 +147,7 @@ class RgbToLab(Module):
         - output: :math:`(*, 3, H, W)`
 
     Examples:
+    --------
         >>> input = torch.rand(2, 3, 4, 5)
         >>> lab = RgbToLab()
         >>> output = lab(input)  # 2x3x4x5
@@ -168,6 +172,7 @@ class LabToRgb(Module):
     r"""Convert an image from Lab to RGB.
 
     Returns:
+    -------
         RGB version of the image. Range may not be in :math:`[0, 1]`.
 
     Shape:
@@ -175,11 +180,13 @@ class LabToRgb(Module):
         - output: :math:`(*, 3, H, W)`
 
     Examples:
+    --------
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = LabToRgb()
         >>> output = rgb(input)  # 2x3x4x5
 
     References:
+    ----------
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
         [2] https://www.easyrgb.com/en/math.php

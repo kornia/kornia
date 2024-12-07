@@ -20,6 +20,7 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
         h: value that influence the approximation of the min function.
 
     Returns:
+    -------
         tensor with shape :math:`(B,C,H,W)`.
 
     Example:

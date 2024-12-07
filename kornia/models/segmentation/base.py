@@ -30,6 +30,7 @@ class SemanticSegmentation(ModelBase):
                 If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
+        -------
             output tensor.
 
         """
@@ -64,6 +65,7 @@ class SemanticSegmentation(ModelBase):
             manual_seed: The manual seed to use for the colormap.
 
         Returns:
+        -------
             A tensor of shape (num_classes, 3) representing the color map.
 
         """
@@ -86,9 +88,11 @@ class SemanticSegmentation(ModelBase):
                 Shape should be (num_classes, 3).
 
         Returns:
+        -------
             A tensor of shape (3, H, W) or (B, 3, H, W) representing the visualized output of the segmentation model.
 
         Raises:
+        ------
             ValueError: If the shape of the semantic mask is not of shape (C, H, W) or (B, C, H, W).
             ValueError: If the shape of the colors is not of shape (num_classes, 3).
             ValueError: If only muliclass segmentation is supported. Please ensure a softmax is used, or submit a PR.

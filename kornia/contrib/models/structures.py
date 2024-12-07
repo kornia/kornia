@@ -56,6 +56,7 @@ class SegmentationResults:
                                 logits back to encoder resolution before remove the padding.
 
         Returns:
+        -------
             Batched logits in :math:`(K, C, H, W)` format, where (H, W) is given by original_size.
 
         """

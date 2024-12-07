@@ -24,6 +24,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         This function internally uses :func:`kornia.filters.box_blur`.
 
     Examples:
+    --------
         >>> img = torch.ones(1, 1, 24, 24)
         >>> out = RandomBoxBlur((7, 7))(img)
         >>> out.shape

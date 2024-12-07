@@ -26,6 +26,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Examples:
+    --------
         >>> inputs = torch.rand(2, 3, 4, 4)
         >>> snow = kornia.augmentation.RandomSnow(p=1.0, snow_coefficient=(0.1, 0.6), brightness=(1.0, 5.0))
         >>> output = snow(inputs)

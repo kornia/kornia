@@ -31,6 +31,7 @@ def laplacian(
        See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_edges.html>`__.
 
     Examples:
+    --------
         >>> input = torch.rand(2, 4, 5, 5)
         >>> output = laplacian(input, 3)
         >>> output.shape
@@ -63,6 +64,7 @@ class Laplacian(Module):
         - Output: :math:`(B, C, H, W)`
 
     Examples:
+    --------
         >>> input = torch.rand(2, 4, 5, 5)
         >>> laplace = Laplacian(5)
         >>> output = laplace(input)

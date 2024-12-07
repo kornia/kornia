@@ -56,6 +56,7 @@ class PositionalEncoder(nn.Module):
             x: Positionsl (or directional) tensor to encode: Tensor
 
         Returns:
+        -------
             Tensor with encoded position/direction: Tensor
 
         """

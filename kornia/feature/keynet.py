@@ -120,6 +120,7 @@ class KeyNet(Module):
         keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
 
     Returns:
+    -------
         KeyNet response score.
 
     Shape:

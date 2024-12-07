@@ -16,6 +16,7 @@ def marginal_pdf(values: Tensor, bins: Tensor, sigma: Tensor, epsilon: float = 1
         epsilon: scalar, for numerical stability.
 
     Returns:
+    -------
         Tuple[Tensor, Tensor]:
           - Tensor: shape [BxN].
           - Tensor: shape [BxNxNUM_BINS].
@@ -59,6 +60,7 @@ def joint_pdf(kernel_values1: Tensor, kernel_values2: Tensor, epsilon: float = 1
         epsilon: scalar, for numerical stability.
 
     Returns:
+    -------
         shape [BxNUM_BINSxNUM_BINS].
 
     """
@@ -99,9 +101,11 @@ def histogram(x: Tensor, bins: Tensor, bandwidth: Tensor, epsilon: float = 1e-10
         epsilon: A scalar, for numerical stability.
 
     Returns:
+    -------
         Computed histogram of shape :math:`(B, N_{bins})`.
 
     Examples:
+    --------
         >>> x = torch.rand(1, 10)
         >>> bins = torch.torch.linspace(0, 255, 128)
         >>> hist = histogram(x, bins, bandwidth=torch.tensor(0.9))
@@ -127,9 +131,11 @@ def histogram2d(x1: Tensor, x2: Tensor, bins: Tensor, bandwidth: Tensor, epsilon
         epsilon: A scalar, for numerical stability. Default: 1e-10.
 
     Returns:
+    -------
         Computed histogram of shape :math:`(B, N_{bins}), N_{bins})`.
 
     Examples:
+    --------
         >>> x1 = torch.rand(2, 32)
         >>> x2 = torch.rand(2, 32)
         >>> bins = torch.torch.linspace(0, 255, 128)
@@ -180,6 +186,7 @@ def image_histogram2d(
           ``(`triangular`, `gaussian`, `uniform`, `epanechnikov`)``.
 
     Returns:
+    -------
         Computed histogram of shape :math:`(bins)`, :math:`(C, bins)`,
           :math:`(B, C, bins)`.
         Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,

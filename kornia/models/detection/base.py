@@ -77,6 +77,7 @@ def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFor
             :math:`6` represents class id, score, and `xywh` bounding box.
 
     Returns:
+    -------
         list of :py:class:`ObjectDetectorResult`.
 
     """
@@ -114,6 +115,7 @@ class ObjectDetector(ModelBase):
                 If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
+        -------
             list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`, where :math:`D` is the
             number of detections in the given image, :math:`6` represents class id, score, and `xywh` bounding box.
 

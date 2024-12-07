@@ -32,6 +32,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
         This function internally uses :func:`kornia.geometry.transform.hflip`.
 
     Examples:
+    --------
         >>> import torch
         >>> input = torch.tensor([[[[0., 0., 0.],
         ...                         [0., 0., 0.],

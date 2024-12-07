@@ -29,6 +29,7 @@ class SOLD2(Module):
         pretrained: If True, download and set pretrained weights to the model.
 
     Returns:
+    -------
         The raw junction and line heatmaps, the semi-dense descriptor map,
         as well as the list of detected line segments (ij coordinates convention).
 
@@ -117,6 +118,7 @@ class SOLD2(Module):
             desc1, desc2: semi-dense descriptor maps of the images, with shape [1, 128, H/4, W/4].
 
         Returns:
+        -------
             A np.array of size [num_lines1] indicating the index in line_seg2 of the matched line,
             for each line in line_seg1. -1 means that the line is not matched.
 

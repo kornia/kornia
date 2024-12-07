@@ -228,6 +228,7 @@ class RaySampler:
               Dict[int, Points2D_FlatTensors]
 
         Returns:
+        -------
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
 
@@ -267,6 +268,7 @@ class RandomRaySampler(RaySampler):
             num_img_rays: tensor that holds the number of rays to randomly cast from each scene camera: math: `(B)`.
 
         Returns:
+        -------
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
 
@@ -327,6 +329,7 @@ class RandomGridRaySampler(RandomRaySampler):
               and columns is the square root of this value: int math: `(B)`.
 
         Returns:
+        -------
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
 
@@ -369,6 +372,7 @@ class UniformRaySampler(RaySampler):
             sampling_step: defines uniform strides between rows and columns: int.
 
         Returns:
+        -------
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
 
@@ -421,6 +425,7 @@ def sample_ray_points(
         lengths: tensor containing sampled distances along each ray. Tensor shape :math:`(*, num_ray_points)`.
 
     Returns:
+    -------
         points_3d: Points along rays :math:`(*, num_ray_points, 3)`
 
     """
@@ -435,6 +440,7 @@ def calc_ray_t_vals(points_3d: Tensor) -> Tensor:
         points_3d: Points along rays :math:`(*, num_ray_points, 3)`
 
     Returns:
+    -------
         t values along rays :math:`(*, num_ray_points)`
 
     """

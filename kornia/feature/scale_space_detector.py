@@ -24,6 +24,7 @@ def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -
         sigmas: tensor [BxNxD], D >= 1
 
     Returns:
+    -------
         tensor [BxNx3].
 
     """
@@ -228,6 +229,7 @@ class ScaleSpaceDetector(Module):
               the input image.
 
         Returns:
+        -------
             lafs: shape [BxNx2x3]. Detected local affine frames.
             responses: shape [BxNx1]. Response function values for corresponding lafs
 
@@ -401,6 +403,7 @@ class MultiResolutionDetector(Module):
               the input image.
 
         Returns:
+        -------
             lafs: shape [1xNx2x3]. Detected local affine frames.
             responses: shape [1xNx1]. Response function values for corresponding lafs
 

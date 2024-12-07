@@ -54,6 +54,7 @@ class MKDGradients(nn.Module):
         patch_size: Input patch size in pixels.
 
     Returns:
+    -------
         gradients of given patches.
 
     Shape:
@@ -97,6 +98,7 @@ class VonMisesKernel(nn.Module):
         coeffs: List of coefficients. Some examples are hardcoded in COEFFS,
 
     Returns:
+    -------
         Von Mises embedding of given parametrization.
 
     Shape:
@@ -104,6 +106,7 @@ class VonMisesKernel(nn.Module):
         - Output: (B, d, patch_size, patch_size)
 
     Examples:
+    --------
         >>> oris = torch.rand(23, 1, 32, 32)
         >>> vm = VonMisesKernel(patch_size=32,
         ...                     coeffs=[0.14343168,
@@ -167,6 +170,7 @@ class EmbedGradients(nn.Module):
         relative: absolute or relative gradients.
 
     Returns:
+    -------
         Gradient embedding.
 
     Shape:
@@ -174,6 +178,7 @@ class EmbedGradients(nn.Module):
         - Output: (B, 7, patch_size, patch_size)
 
     Examples:
+    --------
         >>> grads = torch.rand(23, 2, 32, 32)
         >>> emb_grads = EmbedGradients(patch_size=32,
         ...                            relative=False)
@@ -258,6 +263,7 @@ class ExplicitSpacialEncoding(nn.Module):
         do_l2: Apply l2-normalization.
 
     Returns:
+    -------
         Explicit cartesian or polar embedding.
 
     Shape:
@@ -368,6 +374,7 @@ class Whitening(nn.Module):
         t: Attenuation parameter.
 
     Returns:
+    -------
         l2-normalized, whitened descriptors.
 
     Shape:
@@ -375,6 +382,7 @@ class Whitening(nn.Module):
         - Output: (B, out_dims, fmap_size, fmap_size)
 
     Examples:
+    --------
         >>> descs = torch.rand(23, 238)
         >>> whitening_model = {'pca': {'mean': torch.zeros(238),
         ...                            'eigvecs': torch.eye(238),
@@ -481,6 +489,7 @@ class MKDDescriptor(nn.Module):
         output_dims: Dimensionality reduction.
 
     Returns:
+    -------
         Explicit cartesian or polar embedding.
 
     Shape:
@@ -488,6 +497,7 @@ class MKDDescriptor(nn.Module):
         - Output: :math:`(B, out_{dims}, fmap_{size}, fmap_{size})`,
 
     Examples:
+    --------
         >>> patches = torch.rand(23, 1, 32, 32)
         >>> mkd = MKDDescriptor(patch_size=32,
         ...                     kernel_type='concat',

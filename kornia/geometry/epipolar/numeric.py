@@ -12,6 +12,7 @@ def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
         x: The input vector to construct the matrix in the shape :math:`(*, 3)`.
 
     Returns:
+    -------
         The constructed cross_product_matrix symmetric matrix with shape :math:`(*, 3, 3)`.
 
     """

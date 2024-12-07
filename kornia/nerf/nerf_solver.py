@@ -180,6 +180,7 @@ class NerfSolver:
             -- Optimizer step
 
         Returns:
+        -------
             Average psnr over all epoch rays.
 
         """

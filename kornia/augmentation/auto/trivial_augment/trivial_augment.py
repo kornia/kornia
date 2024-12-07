@@ -41,6 +41,7 @@ class TrivialAugment(PolicyAugmentBase):
                                     If `skip`, transformation matrix will be totally ignored.
 
     Examples:
+    --------
         >>> import kornia.augmentation as K
         >>> in_tensor = torch.rand(5, 3, 30, 30)
         >>> aug = K.AugmentationSequential(TrivialAugment())

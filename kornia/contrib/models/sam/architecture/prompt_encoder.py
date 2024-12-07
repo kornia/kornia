@@ -63,6 +63,7 @@ class PromptEncoder(Module):
         of the image encoding.
 
         Returns:
+        -------
             Positional encoding with shape 1x(embed_dim)x(embedding_h)x(embedding_w)
 
         """
@@ -124,6 +125,7 @@ class PromptEncoder(Module):
             masks: masks to embed
 
         Returns:
+        -------
             - sparse embeddings for the points and boxes, with shape BxNx(embed_dim), where N is determined by the
             number of input points and boxes.
             - dense embeddings for the masks, in the shape Bx(embed_dim)x(embed_H)x(embed_W)

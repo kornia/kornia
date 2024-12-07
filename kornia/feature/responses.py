@@ -215,6 +215,7 @@ def hessian_response(input: Tensor, grads_mode: str = "sobel", sigmas: Optional[
        - Output: :math:`(B, C, H, W)`
 
     Examples:
+    --------
         >>> input = torch.tensor([[[
         ...    [0., 0., 0., 0., 0., 0., 0.],
         ...    [0., 1., 1., 1., 1., 1., 0.],

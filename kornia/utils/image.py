@@ -17,6 +17,7 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> Tensor:
             :math:`(B, H, W, C)`.
 
     Returns:
+    -------
         tensor of the form :math:`(B, C, H, W)` if keepdim is ``False``,
             :math:`(C, H, W)` otherwise.
 
@@ -64,6 +65,7 @@ def image_list_to_tensor(images: List[Any]) -> Tensor:
         Image shapes must be consistent
 
     Returns:
+    -------
         tensor of the form :math:`(B, C, H, W)`.
 
     Example:
@@ -91,6 +93,7 @@ def _to_bchw(tensor: Tensor) -> Tensor:
         tensor (torch.Tensor): image of the form :math:`(*, H, W)`.
 
     Returns:
+    -------
         input tensor of the form :math:`(B, C, H, W)`.
 
     """
@@ -119,6 +122,7 @@ def _to_bcdhw(tensor: Tensor) -> Tensor:
         tensor (torch.Tensor): image of the form :math:`(*, D, H, W)`.
 
     Returns:
+    -------
         input tensor of the form :math:`(B, C, D, H, W)`.
 
     """
@@ -153,6 +157,7 @@ def tensor_to_image(tensor: Tensor, keepdim: bool = False, force_contiguous: boo
         force_contiguous: If ``True`` call `contiguous` to the tensor before
 
     Returns:
+    -------
         image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`.
 
     Example:
@@ -226,6 +231,7 @@ def make_grid(tensor: Tensor, n_row: Optional[int] = None, padding: int = 2) -> 
         padding: The amount of padding to add between images.
 
     Returns:
+    -------
         Tensor: The combined image grid.
 
     """

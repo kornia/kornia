@@ -21,6 +21,7 @@ def confusion_matrix(
         normalized: whether to return the confusion matrix normalized.
 
     Returns:
+    -------
         a tensor containing the confusion matrix with shape
         :math:`(B, K, K)` where K is the number of classes.
 

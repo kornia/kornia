@@ -23,6 +23,7 @@ def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
         eps: epsilon value to avoid div by zero.
 
     Returns:
+    -------
         HLS version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
@@ -100,6 +101,7 @@ def hls_to_rgb(image: Tensor) -> Tensor:
         image: HLS image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
     Returns:
+    -------
         RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
@@ -138,6 +140,7 @@ class RgbToHls(Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
+    -------
         HLS version of the image.
 
     Shape:
@@ -145,6 +148,7 @@ class RgbToHls(Module):
         - output: :math:`(*, 3, H, W)`
 
     Examples:
+    --------
         >>> input = torch.rand(2, 3, 4, 5)
         >>> hls = RgbToHls()
         >>> output = hls(input)  # 2x3x4x5
@@ -164,6 +168,7 @@ class HlsToRgb(Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
+    -------
         RGB version of the image.
 
     Shape:
@@ -174,6 +179,7 @@ class HlsToRgb(Module):
         https://en.wikipedia.org/wiki/HSL_and_HSV
 
     Examples:
+    --------
         >>> input = torch.rand(2, 3, 4, 5)
         >>> rgb = HlsToRgb()
         >>> output = rgb(input)  # 2x3x4x5

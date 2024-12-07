@@ -258,6 +258,7 @@ class VisionTransformer(Module):
             kwargs: other keyword arguments that will be passed to :func:`kornia.contrib.vit.VisionTransformer`.
 
         Returns:
+        -------
             The respective ViT model
 
         Example:

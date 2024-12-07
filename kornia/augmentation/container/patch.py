@@ -60,6 +60,7 @@ class PatchSequential(ImageSequential):
         See a working example `here <https://kornia.github.io/tutorials/nbs/data_patch_sequential.html>`__.
 
     Examples:
+    --------
         >>> import kornia.augmentation as K
         >>> input = torch.randn(2, 3, 224, 224)
         >>> seq = PatchSequential(

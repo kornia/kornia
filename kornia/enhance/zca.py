@@ -41,6 +41,7 @@ class ZCAWhitening(Module):
        blob/master/source/zca_whitening.ipynb>`__.
 
     Examples:
+    --------
         >>> x = torch.tensor([[0,1],[1,0],[-1,0],[0,-1]], dtype = torch.float32)
         >>> zca = ZCAWhitening().fit(x)
         >>> x_whiten = zca(x)
@@ -57,6 +58,7 @@ class ZCAWhitening(Module):
         more information.
 
     References:
+    ----------
         [1] `Stanford PCA & ZCA whitening tutorial <http://ufldl.stanford.edu/tutorial/unsupervised/PCAWhitening/>`_
 
     """
@@ -90,6 +92,7 @@ class ZCAWhitening(Module):
             x: Input data.
 
         Returns:
+        -------
             Returns a fitted ZCAWhiten object instance.
 
         """
@@ -119,6 +122,7 @@ class ZCAWhitening(Module):
             include_fit: Indicates whether to fit the data as part of the forward pass.
 
         Returns:
+        -------
             The transformed data.
 
         """
@@ -139,6 +143,7 @@ class ZCAWhitening(Module):
             x: Whitened data.
 
         Returns:
+        -------
             Original data.
 
         """
@@ -180,6 +185,7 @@ def zca_mean(
         - inv_transform: same shape as the transform matrix
 
     Returns:
+    -------
         A tuple containing the ZCA matrix and the mean vector. If return_inverse is set to True,
         then it returns the inverse ZCA matrix, otherwise it returns None.
 
@@ -188,6 +194,7 @@ def zca_mean(
        blob/master/source/zca_whitening.ipynb>`__.
 
     Examples:
+    --------
         >>> x = torch.tensor([[0,1],[1,0],[-1,0],[0,-1]], dtype = torch.float32)
         >>> transform_matrix, mean_vector,_ = zca_mean(x) # Returns transformation matrix and data mean
         >>> x = torch.rand(3,20,2,2)
@@ -268,6 +275,7 @@ def zca_whiten(inp: Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e
         eps: a small number used for numerical stability.
 
     Returns:
+    -------
         Whiten Input data.
 
     .. note::
@@ -275,6 +283,7 @@ def zca_whiten(inp: Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e
        blob/master/source/zca_whitening.ipynb>`__.
 
     Examples:
+    --------
         >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
         >>> zca_whiten(x)
         tensor([[ 0.0000,  1.1547],
@@ -322,6 +331,7 @@ def linear_transform(inp: Tensor, transform_matrix: Tensor, mean_vector: Tensor,
         - mean_vector: :math:`(1, \Pi_{d=0,d\neq \text{dim}}^N D_d)`
 
     Returns:
+    -------
         Transformed data.
 
     Example:

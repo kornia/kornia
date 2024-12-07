@@ -51,9 +51,11 @@ def ssim3d(
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
+    -------
        The ssim index map with shape :math:`(B, C, D, H, W)`.
 
     Examples:
+    --------
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5, 5)
         >>> ssim_map = ssim3d(input1, input2, 5)  # 1x4x5x5x5
@@ -146,6 +148,7 @@ class SSIM3D(Module):
         - Output: :math:`(B, C, D, H, W)`.
 
     Examples:
+    --------
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5, 5)
         >>> ssim = SSIM3D(5)

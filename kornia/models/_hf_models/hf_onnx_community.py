@@ -106,6 +106,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
             target_images: The target images whose size is used as the reference for resizing.
 
         Returns:
+        -------
             The resized images.
 
         """

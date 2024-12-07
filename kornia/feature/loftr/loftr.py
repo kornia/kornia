@@ -65,6 +65,7 @@ class LoFTR(Module):
                     on the ScanNet.
 
     Returns:
+    -------
         Dictionary with image correspondences and confidence scores.
 
     Example:
@@ -112,6 +113,7 @@ class LoFTR(Module):
             mask1 (optional): right image mask. '0' indicates a padded position :math:`(N, H2, W2)`.
 
         Returns:
+        -------
             - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
             - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
             - ``confidence``, confidence score [0, 1] :math:`(NC)`.

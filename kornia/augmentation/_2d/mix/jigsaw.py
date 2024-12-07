@@ -32,6 +32,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
             to the batch form ``False``.
 
     Examples:
+    --------
         >>> jigsaw = RandomJigsaw((4, 4))
         >>> input = torch.randn(8, 3, 256, 256)
         >>> out = jigsaw(input)

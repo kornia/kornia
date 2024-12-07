@@ -18,6 +18,7 @@ def rgb_to_bgr(image: Tensor) -> Tensor:
         image: RGB Image to be converted to BGRof of shape :math:`(*,3,H,W)`.
 
     Returns:
+    -------
         BGR version of the image with shape of shape :math:`(*,3,H,W)`.
 
     Example:
@@ -41,6 +42,7 @@ def bgr_to_rgb(image: Tensor) -> Tensor:
         image: BGR Image to be converted to BGR of shape :math:`(*,3,H,W)`.
 
     Returns:
+    -------
         RGB version of the image with shape of shape :math:`(*,3,H,W)`.
 
     Example:
@@ -68,6 +70,7 @@ def rgb_to_rgba(image: Tensor, alpha_val: Union[float, Tensor]) -> Tensor:
           of shape :math:`(*,1,H,W)`.
 
     Returns:
+    -------
         RGBA version of the image with shape :math:`(*,4,H,W)`.
 
     .. note:: The current functionality is NOT supported by Torchscript.
@@ -106,6 +109,7 @@ def bgr_to_rgba(image: Tensor, alpha_val: Union[float, Tensor]) -> Tensor:
           of shape :math:`(*,1,H,W)`.
 
     Returns:
+    -------
         RGBA version of the image with shape :math:`(*,4,H,W)`.
 
     .. note:: The current functionality is NOT supported by Torchscript.
@@ -136,6 +140,7 @@ def rgba_to_rgb(image: Tensor) -> Tensor:
         image: RGBA Image to be converted to RGB of shape :math:`(*,4,H,W)`.
 
     Returns:
+    -------
         RGB version of the image with shape :math:`(*,3,H,W)`.
 
     Example:
@@ -168,6 +173,7 @@ def rgba_to_bgr(image: Tensor) -> Tensor:
         image: RGBA Image to be converted to BGR of shape :math:`(*,4,H,W)`.
 
     Returns:
+    -------
         RGB version of the image with shape :math:`(*,3,H,W)`.
 
     Example:
@@ -195,6 +201,7 @@ def rgb_to_linear_rgb(image: Tensor) -> Tensor:
         image: sRGB Image to be converted to linear RGB of shape :math:`(*,3,H,W)`.
 
     Returns:
+    -------
         linear RGB version of the image with shape of :math:`(*,3,H,W)`.
 
     Example:
@@ -220,6 +227,7 @@ def linear_rgb_to_rgb(image: Tensor) -> Tensor:
         image: linear RGB Image to be converted to sRGB of shape :math:`(*,3,H,W)`.
 
     Returns:
+    -------
         sRGB version of the image with shape of shape :math:`(*,3,H,W)`.
 
     Example:
@@ -248,6 +256,7 @@ def normals_to_rgb255(image: Tensor) -> Tensor:
         image: surface normals to be converted to RGB with quantization of shape :math:`(*,3,H,W)`.
 
     Returns:
+    -------
         RGB version of the image with shape of shape :math:`(*,3,H,W)`.
 
     Example:
@@ -267,6 +276,7 @@ def rgb_to_rgb255(image: Tensor) -> Tensor:
         image: RGB Image to be converted to RGB [0, 255] of shape :math:`(*,3,H,W)`.
 
     Returns:
+    -------
         RGB version of the image with shape of shape :math:`(*,3,H,W)`.
 
     Example:
@@ -286,6 +296,7 @@ def rgb255_to_rgb(image: Tensor) -> Tensor:
         image: RGB Image to be converted to RGB of shape :math:`(*,3,H,W)`.
 
     Returns:
+    -------
         RGB version of the image with shape of shape :math:`(*,3,H,W)`.
 
     Example:
@@ -305,6 +316,7 @@ def rgb255_to_normals(image: Tensor) -> Tensor:
         image: RGB Image to be converted to surface normals of shape :math:`(*,3,H,W)`.
 
     Returns:
+    -------
         surface normals version of the image with shape of shape :math:`(*,3,H,W)`.
 
     Example:
@@ -323,6 +335,7 @@ class BgrToRgb(Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
+    -------
         RGB version of the image.
 
     Shape:
@@ -349,6 +362,7 @@ class RgbToBgr(Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
+    -------
         BGR version of the image.
 
     Shape:
@@ -379,6 +393,7 @@ class RgbToRgba(Module):
           of shape :math:`(*,1,H,W)`.
 
     Returns:
+    -------
         Tensor: RGBA version of the image with shape :math:`(*,4,H,W)`.
 
     Shape:
@@ -415,6 +430,7 @@ class BgrToRgba(Module):
           of shape :math:`(*,1,H,W)`.
 
     Returns:
+    -------
         RGBA version of the image with shape :math:`(*,4,H,W)`.
 
     Shape:
@@ -447,6 +463,7 @@ class RgbaToRgb(Module):
     Remove an alpha channel from RGB image.
 
     Returns:
+    -------
         RGB version of the image.
 
     Shape:
@@ -473,6 +490,7 @@ class RgbaToBgr(Module):
     Remove an alpha channel from BGR image.
 
     Returns:
+    -------
         BGR version of the image.
 
     Shape:
@@ -500,6 +518,7 @@ class RgbToLinearRgb(Module):
     The image data is assumed to be in the range of :math:`[0, 1]`
 
     Returns:
+    -------
         Linear RGB version of the image.
 
     Shape:
@@ -512,6 +531,7 @@ class RgbToLinearRgb(Module):
         >>> output = rgb_lin(input)  # 2x3x4x5
 
     References:
+    ----------
         [1] https://stackoverflow.com/questions/35952564/convert-rgb-to-srgb
 
         [2] https://www.cambridgeincolour.com/tutorials/gamma-correction.htm
@@ -533,6 +553,7 @@ class LinearRgbToRgb(Module):
     Applies gamma correction to linear RGB values, at the end of colorspace conversions, to get sRGB.
 
     Returns:
+    -------
         sRGB version of the image.
 
     Shape:
@@ -545,6 +566,7 @@ class LinearRgbToRgb(Module):
         >>> output = srgb(input)  # 2x3x4x5
 
     References:
+    ----------
         [1] https://stackoverflow.com/questions/35952564/convert-rgb-to-srgb
 
         [2] https://www.cambridgeincolour.com/tutorials/gamma-correction.htm
@@ -564,6 +586,7 @@ class NormalsToRgb255(Module):
     r"""Convert surface normals to RGB [0, 255] for visualization purposes.
 
     Returns:
+    -------
         RGB version of the image.
 
     Shape:
@@ -585,6 +608,7 @@ class RgbToRgb255(Module):
     r"""Convert an image from RGB to RGB [0, 255] for visualization purposes.
 
     Returns:
+    -------
         RGB version of the image.
 
     Shape:
@@ -606,6 +630,7 @@ class Rgb255ToRgb(Module):
     r"""Convert an image from RGB [0, 255] to RGB for visualization purposes.
 
     Returns:
+    -------
         RGB version of the image.
 
     Shape:
@@ -627,6 +652,7 @@ class Rgb255ToNormals(Module):
     r"""Convert an image from RGB [0, 255] to surface normals for visualization purposes.
 
     Returns:
+    -------
         surface normals version of the image.
 
     Shape:

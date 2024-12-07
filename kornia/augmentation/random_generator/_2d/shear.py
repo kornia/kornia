@@ -23,6 +23,7 @@ class ShearGenerator(RandomGeneratorBase):
             (shear[1][0], shear[1][1]) will be applied. Will not apply shear by default.
 
     Returns:
+    -------
         A dict of parameters to be passed for transformation.
             - shear_x (Tensor): element-wise x-axis shears with a shape of (B,).
             - shear_y (Tensor): element-wise y-axis shears with a shape of (B,).

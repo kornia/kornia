@@ -14,6 +14,7 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
         template: Template image. It can have different dimensions to source.
 
     Returns:
+    -------
         The transformed output image as the same shape as the source image.
 
     Note:
@@ -60,6 +61,7 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor) -> torch.Tensor:
         fp: the :math:`y`-coordinates of the data points, same length as `xp`.
 
     Returns:
+    -------
         the interpolated values, same size as `x`.
 
     """

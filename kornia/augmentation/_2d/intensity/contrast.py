@@ -29,6 +29,7 @@ class RandomContrast(IntensityAugmentationBase2D):
         This function internally uses :func:`kornia.enhance.adjust_contrast`
 
     Examples:
+    --------
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomContrast(contrast = (0.5, 2.), p = 1.)

@@ -22,6 +22,7 @@ class RandomFisheye(AugmentationBase2D):
                  to the batch form (False).
 
     Examples:
+    --------
         >>> import torch
         >>> img = torch.ones(1, 1, 2, 2)
         >>> center_x = torch.tensor([-.3, .3])

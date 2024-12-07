@@ -32,6 +32,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
             we will randomly choose three channels to drop (all image).
 
     Examples:
+    --------
         >>> rng = torch.manual_seed(1)
         >>> img = torch.ones(1, 3, 3, 3)
         >>> aug = RandomChannelDropout(num_drop_channels=1, fill_value=0.0, p=1.0)

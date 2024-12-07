@@ -27,6 +27,7 @@ def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]
        eps: epsilon value to avoid numerical instabilities.
 
     Returns:
+    -------
        tuple containing the normalized points in the shape :math:`(B, N, 2)` and the transformation matrix
        in the shape :math:`(B, 3, 3)`.
 
@@ -64,6 +65,7 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
         eps: small value to avoid unstabilities during the backpropagation.
 
     Returns:
+    -------
         the normalized transformation matrix with same shape as the input.
 
     """
@@ -83,6 +85,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
 
     Returns:
+    -------
         the computed fundamental matrix with shape :math:`(B, 3*m, 3), Valid values of m are 1, 2 or 3`
 
     """
@@ -180,6 +183,7 @@ def run_8point(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = Non
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
 
     Returns:
+    -------
         the computed fundamental matrix with shape :math:`(B, 3, 3)`.
 
     """
@@ -238,9 +242,11 @@ def find_fundamental(
         method: The method to use for computing the fundamental matrix. Supported methods are "7POINT" and "8POINT".
 
     Returns:
+    -------
         the computed fundamental matrix with shape :math:`(B, 3*m, 3)`, where `m` number of fundamental matrix.
 
     Raises:
+    ------
         ValueError: If an invalid method is provided.
 
     """
@@ -261,6 +267,7 @@ def compute_correspond_epilines(points: Tensor, F_mat: Tensor) -> Tensor:
         F_mat: the fundamental to use for projection the points in the shape of :math:`(*, 3, 3)`.
 
     Returns:
+    -------
         a tensor with shape :math:`(*, N, 3)` containing a vector of the epipolar
         lines corresponding to the points to the other image. Each line is described as
         :math:`ax + by + c = 0` and encoding the vectors as :math:`(a, b, c)`.
@@ -294,6 +301,7 @@ def get_perpendicular(lines: Tensor, points: Tensor) -> Tensor:
         points:  tensor containing the set of points :math:`(*, N, 2)`.
 
     Returns:
+    -------
         a tensor with shape :math:`(*, N, 3)` containing a vector of the epipolar
         perpendicular lines. Each line is described as
         :math:`ax + by + c = 0` and encoding the vectors as :math:`(a, b, c)`.
@@ -323,6 +331,7 @@ def get_closest_point_on_epipolar_line(pts1: Tensor, pts2: Tensor, Fm: Tensor) -
         Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
 
     Returns:
+    -------
         point on epipolar line :math:`(*, N, 2)`.
 
     """
@@ -351,6 +360,7 @@ def fundamental_from_essential(E_mat: Tensor, K1: Tensor, K2: Tensor) -> Tensor:
         K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
 
     Returns:
+    -------
         The fundamental matrix with shape :math:`(*, 3, 3)`.
 
     """
@@ -376,6 +386,7 @@ def fundamental_from_projections(P1: Tensor, P2: Tensor) -> Tensor:
         P2: The projection matrix from second camera with shape :math:`(*, 3, 4)`.
 
     Returns:
+    -------
          The fundamental matrix with shape :math:`(*, 3, 3)`.
 
     """

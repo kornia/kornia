@@ -17,6 +17,7 @@ class JigsawGenerator(RandomGeneratorBase):
             each output will mix image patches in a 2x2 grid.
 
     Returns:
+    -------
         A dict of parameters to be passed for transformation.
             - permutation (Tensor): Jigsaw permutation arrangement.
 

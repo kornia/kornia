@@ -45,6 +45,7 @@ def dilation(
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
     Returns:
+    -------
         Dilated image with shape :math:`(B, C, H, W)`.
 
     .. note::
@@ -138,6 +139,7 @@ def erosion(
         engine: ``convolution`` is faster and less memory hungry, and ``unfold`` is more stable numerically
 
     Returns:
+    -------
         Eroded image with shape :math:`(B, C, H, W)`.
 
     .. note::
@@ -232,6 +234,7 @@ def opening(
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
     Returns:
+    -------
        torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
 
     .. note::
@@ -309,6 +312,7 @@ def closing(
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
     Returns:
+    -------
        Closed image with shape :math:`(B, C, H, W)`.
 
     .. note::
@@ -388,6 +392,7 @@ def gradient(
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
     Returns:
+    -------
        Gradient image with shape :math:`(B, C, H, W)`.
 
     .. note::
@@ -456,6 +461,7 @@ def top_hat(
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
     Returns:
+    -------
        Top hat transformed image with shape :math:`(B, C, H, W)`.
 
     .. note::
@@ -527,6 +533,7 @@ def bottom_hat(
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
     Returns:
+    -------
        Top hat transformed image with shape :math:`(B, C, H, W)`.
 
     .. note::

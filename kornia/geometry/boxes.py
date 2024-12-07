@@ -236,6 +236,7 @@ class Boxes:
         r"""Compute boxes heights and widths.
 
         Returns:
+        -------
             - Boxes heights, shape of :math:`(N,)` or :math:`(B,N)`.
             - Boxes widths, shape of :math:`(N,)` or :math:`(B,N)`.
 
@@ -440,9 +441,11 @@ class Boxes:
                 and height >= 1 (>= 2 when mode ends with '_plus' suffix).
 
         Returns:
+        -------
             :class:`Boxes` class containing the original `boxes` in the format specified by ``mode``.
 
         Examples:
+        --------
             >>> boxes_xyxy = torch.as_tensor([[0, 3, 1, 4], [5, 1, 8, 4]])
             >>> boxes = Boxes.from_tensor(boxes_xyxy, mode='xyxy')
             >>> boxes.data  # (2, 4, 2)
@@ -489,12 +492,14 @@ class Boxes:
                 if the boxes are from a box list whilst `from_tensor`.
 
         Returns:
+        -------
             Boxes tensor in the ``mode`` format. The shape depends with the ``mode`` value:
 
                 * 'vertices' or 'verticies_plus': :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
                 * Any other value: :math:`(N, 4)` or :math:`(B, N, 4)`.
 
         Examples:
+        --------
             >>> boxes_xyxy = torch.as_tensor([[0, 3, 1, 4], [5, 1, 8, 4]])
             >>> boxes = Boxes.from_tensor(boxes_xyxy)
             >>> assert (boxes_xyxy == boxes.to_tensor(mode='xyxy')).all()
@@ -544,6 +549,7 @@ class Boxes:
             width: width of the masked image/images.
 
         Returns:
+        -------
             the output mask tensor, shape of :math:`(N, width, height)` or :math:`(B,N, width, height)` and dtype of
             :func:`Boxes.dtype` (it can be any floating point dtype).
 
@@ -551,6 +557,7 @@ class Boxes:
             It is currently non-differentiable.
 
         Examples:
+        --------
             >>> boxes = Boxes(torch.tensor([[  # Equivalent to boxes = Boxes.from_tensor([[1,1,4,3]])
             ...        [1., 1.],
             ...        [4., 1.],
@@ -598,6 +605,7 @@ class Boxes:
             inplace: do transform in-place and return self.
 
         Returns:
+        -------
             The transformed boxes.
 
         """
@@ -626,6 +634,7 @@ class Boxes:
             inplace: do transform in-place and return self.
 
         Returns:
+        -------
             The transformed boxes.
 
         """
@@ -772,6 +781,7 @@ class Boxes3D:
         r"""Compute boxes heights and widths.
 
         Returns:
+        -------
             - Boxes depths, shape of :math:`(N,)` or :math:`(B,N)`.
             - Boxes heights, shape of :math:`(N,)` or :math:`(B,N)`.
             - Boxes widths, shape of :math:`(N,)` or :math:`(B,N)`.
@@ -806,9 +816,11 @@ class Boxes3D:
                 and depth >= 1 (>= 2 when mode ends with '_plus' suffix).
 
         Returns:
+        -------
             :class:`Boxes3D` class containing the original `boxes` in the format specified by ``mode``.
 
         Examples:
+        --------
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
             >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz, mode='xyzxyz')
             >>> boxes.data  # (2, 8, 3)
@@ -887,6 +899,7 @@ class Boxes3D:
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
 
         Returns:
+        -------
             3D Boxes tensor in the ``mode`` format. The shape depends with the ``mode`` value:
 
                 * 'vertices' or 'verticies_plus': :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
@@ -897,6 +910,7 @@ class Boxes3D:
             `#1304 <https://github.com/kornia/kornia/issues/1396>`_.
 
         Examples:
+        --------
             >>> boxes_xyzxyz = torch.as_tensor([[0, 3, 6, 1, 4, 8], [5, 1, 3, 8, 4, 9]])
             >>> boxes = Boxes3D.from_tensor(boxes_xyzxyz, mode='xyzxyz')
             >>> assert (boxes.to_tensor(mode='xyzxyz') == boxes_xyzxyz).all()
@@ -952,6 +966,7 @@ class Boxes3D:
             width: width of the masked image/images.
 
         Returns:
+        -------
             the output mask tensor, shape of :math:`(N, depth, width, height)` or :math:`(B,N, depth, width, height)`
              and dtype of :func:`Boxes3D.dtype` (it can be any floating point dtype).
 
@@ -959,6 +974,7 @@ class Boxes3D:
             It is currently non-differentiable.
 
         Examples:
+        --------
             >>> boxes = Boxes3D(torch.tensor([[  # Equivalent to boxes = Boxes.3Dfrom_tensor([[1,1,1,3,3,2]])
             ...     [1., 1., 1.],
             ...     [3., 1., 1.],
@@ -1035,6 +1051,7 @@ class Boxes3D:
             inplace: do transform in-place and return self.
 
         Returns:
+        -------
             The transformed boxes.
 
         """

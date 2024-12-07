@@ -27,6 +27,7 @@ class EdgeDetector(ModelBase):
                 If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
+        -------
             output tensor.
 
         """
@@ -47,6 +48,7 @@ class EdgeDetector(ModelBase):
             output_type: type of the output.
 
         Returns:
+        -------
             output tensor.
 
         """
@@ -72,6 +74,7 @@ class EdgeDetector(ModelBase):
             output_type: type of the output.
 
         Returns:
+        -------
             output tensor.
 
         """

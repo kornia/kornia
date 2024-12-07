@@ -26,6 +26,7 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
         sign: Range for the sign of the Gaussian distribution.
 
     Returns:
+    -------
         A dictionary of parameters to be passed for transformation.
             - gradient: : Generated 2D Gaussian illumination pattern with shape (B, C, H, W).
 

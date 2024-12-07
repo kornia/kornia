@@ -156,6 +156,7 @@ class AdalamFilter:
             return_dist: if True, inverse confidence value is also outputted.
 
         Returns:
+        -------
             Filtered putative matches.
             A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
 
@@ -223,6 +224,7 @@ class AdalamFilter:
             return_dist: if True, inverse confidence value is also outputted.
 
         Returns:
+        -------
             Filtered putative matches.
             A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
 

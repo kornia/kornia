@@ -65,6 +65,7 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         the image with containing the line.
 
     Examples:
+    --------
         >>> image = torch.zeros(1, 8, 8)
         >>> draw_line(image, torch.tensor([6, 4]), torch.tensor([1, 4]), torch.tensor([255]))
         tensor([[[  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
@@ -194,6 +195,7 @@ def draw_rectangle(
         fill: is a flag used to fill the boxes with color if True.
 
     Returns:
+    -------
         This operation modifies image inplace but also returns the drawn tensor for
         convenience with same shape the of the input BxCxHxW.
 
@@ -267,6 +269,7 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
         w: right most coordinate (left coordinate is assumed to be 0)
 
     Returns:
+    -------
         The left and right edges of the polygon of shape (B,B).
 
     """
@@ -311,6 +314,7 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
                     2 is (x, y).
 
     Returns:
+    -------
         A fixed size tensor of shape (B, N, 2) where N = max_i(N_i)
 
     """
@@ -332,6 +336,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         color: a B x 3 tensor or 3 tensor with color to fill in.
 
     Returns:
+    -------
         This operation modifies image inplace but also returns the drawn tensor for
         convenience with same shape the of the input BxCxHxW.
 

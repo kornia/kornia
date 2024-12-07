@@ -40,6 +40,7 @@ class MS_SSIMLoss(nn.Module):
          in the output, ``'sum'``: the output will be summed.
 
     Returns:
+    -------
         The computed loss.
 
     Shape:
@@ -48,6 +49,7 @@ class MS_SSIMLoss(nn.Module):
         - Output: :math:`(N, H, W)` or scalar if reduction is set to ``'mean'`` or ``'sum'``.
 
     Examples:
+    --------
         >>> input1 = torch.rand(1, 3, 5, 5)
         >>> input2 = torch.rand(1, 3, 5, 5)
         >>> criterion = kornia.losses.MS_SSIMLoss()
@@ -95,6 +97,7 @@ class MS_SSIMLoss(nn.Module):
             sigma: sigma of normal distribution.
 
         Returns:
+        -------
             1D kernel (size).
 
         """
@@ -114,6 +117,7 @@ class MS_SSIMLoss(nn.Module):
             sigma: sigma of normal distribution.
 
         Returns:
+        -------
             2D kernel (size x size).
 
         """
@@ -128,6 +132,7 @@ class MS_SSIMLoss(nn.Module):
             img2: the target image with a shape of :math:`(B, C, H, W)`.
 
         Returns:
+        -------
             Estimated MS-SSIM_L1 loss.
 
         """

@@ -140,6 +140,7 @@ class BoxMotTracker:
             show_trajectories: Whether to show the trajectories.
 
         Returns:
+        -------
             The image with the results of the tracker.
 
         """

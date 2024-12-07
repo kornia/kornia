@@ -19,6 +19,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         value (float): value to be filled in the erased area.
 
     Returns:
+    -------
         A dict of parameters to be passed for transformation.
             - widths (Tensor): element-wise erasing widths with a shape of (B,).
             - heights (Tensor): element-wise erasing heights with a shape of (B,).

@@ -17,6 +17,7 @@ def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
         f: a function that takes the first argument as tensor.
 
     Returns:
+    -------
         the wrapped function after input is validated.
 
     """
@@ -41,6 +42,7 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
         f: a function that takes the first argument as tensor.
 
     Returns:
+    -------
         the wrapped function after input is validated.
 
     """
@@ -149,6 +151,7 @@ def _transform_input(input: Tensor) -> Tensor:
         input: Tensor
 
     Returns:
+    -------
         Tensor
 
     """
@@ -174,6 +177,7 @@ def _transform_input3d(input: Tensor) -> Tensor:
         input: Tensor
 
     Returns:
+    -------
         Tensor
 
     """
@@ -214,6 +218,7 @@ def _transform_output_shape(
         shape: List/tuple of int
 
     Returns:
+    -------
         Tensor
 
     """

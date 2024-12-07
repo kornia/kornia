@@ -28,6 +28,7 @@ class RandomGrayscale(IntensityAugmentationBase2D):
         This function internally uses :func:`kornia.color.rgb_to_grayscale`.
 
     Examples:
+    --------
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn((1, 3, 3, 3))
         >>> aug = RandomGrayscale(p=1.0)
