@@ -7,7 +7,7 @@ from torch import nn
 from kornia.core import Module, Tensor, pad
 
 
-class ConvNormAct(nn.Sequential):
+class ConvNormAct(nn.Sequential):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -43,7 +43,7 @@ class ConvNormAct(nn.Sequential):
 
 # Lightly adapted from
 # https://github.com/facebookresearch/MaskFormer/blob/main/mask_former/modeling/transformer/transformer_predictor.py
-class MLP(Module):
+class MLP(Module):  # noqa: D101
     def __init__(
         self, input_dim: int, hidden_dim: int, output_dim: int, num_layers: int, sigmoid_output: bool = False
     ) -> None:
@@ -84,7 +84,7 @@ class DropPath(Module):
 
 # From https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py
 # Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa
-class LayerNorm2d(Module):
+class LayerNorm2d(Module):  # noqa: D101
     def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
         super().__init__()
         self.weight = nn.Parameter(torch.ones(num_channels))

@@ -18,7 +18,7 @@ from kornia.core import Module, Tensor, zeros
 
 
 # This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa
-class ImageEncoderViT(Module):
+class ImageEncoderViT(Module):  # noqa: D101
     def __init__(  # noqa: D417
         self,
         img_size: int = 1024,

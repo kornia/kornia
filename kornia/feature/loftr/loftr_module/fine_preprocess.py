@@ -7,7 +7,7 @@ from torch import nn
 from kornia.core import Module, Tensor
 
 
-class FinePreprocess(Module):
+class FinePreprocess(Module):  # noqa: D101
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
 

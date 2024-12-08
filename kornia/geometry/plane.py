@@ -17,7 +17,7 @@ def normalized(v: Tensor, eps: float = 1e-6) -> Tensor:
     return v / batched_dot_product(v, v).add(eps).sqrt()
 
 
-class Hyperplane(Module):
+class Hyperplane(Module):  # noqa: D101
     def __init__(self, n: Vector3, d: Scalar) -> None:
         super().__init__()
         KORNIA_CHECK_TYPE(n, Vector3)

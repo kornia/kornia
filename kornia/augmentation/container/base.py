@@ -166,7 +166,7 @@ class SequentialBase(BasicSequentialBase):
         return ori_shape, input.shape
 
 
-class ImageSequentialBase(SequentialBase):
+class ImageSequentialBase(SequentialBase):  # noqa: D101
     def identity_matrix(self, input: Tensor) -> Tensor:
         """Return identity matrix."""
         raise NotImplementedError

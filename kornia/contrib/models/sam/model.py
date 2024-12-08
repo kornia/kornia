@@ -67,7 +67,7 @@ class SamConfig:
     encoder_global_attn_indexes: Optional[tuple[int, ...]] = None
 
 
-class Sam(ModelBase[SamConfig]):
+class Sam(ModelBase[SamConfig]):  # noqa: D101
     mask_threshold: float = 0.0
 
     def __init__(

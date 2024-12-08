@@ -16,7 +16,7 @@ def conv3x3(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
 
 
-class BasicBlock(Module):
+class BasicBlock(Module):  # noqa: D101
     def __init__(self, in_planes: int, planes: int, stride: int = 1) -> None:
         super().__init__()
         self.conv1 = conv3x3(in_planes, planes, stride)

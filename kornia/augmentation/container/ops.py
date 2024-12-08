@@ -69,7 +69,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class AugmentationSequentialOps:
+class AugmentationSequentialOps:  # noqa: D101
     def __init__(self, data_keys: Optional[List[DataKey]]) -> None:
         self._data_keys = data_keys
 
@@ -181,7 +181,7 @@ def get_geometric_only_param(module: "K.container.ImageSequentialBase", param: L
     return res
 
 
-class InputSequentialOps(SequentialOpsInterface[Tensor]):
+class InputSequentialOps(SequentialOpsInterface[Tensor]):  # noqa: D101
     @classmethod
     def transform(  # noqa: D102
         cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None

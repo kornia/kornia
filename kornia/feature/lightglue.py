@@ -72,7 +72,7 @@ def apply_cached_rotary_emb(freqs: Tensor, t: Tensor) -> Tensor:  # noqa: D103
     return (t * freqs[0]) + (rotate_half(t) * freqs[1])
 
 
-class LearnableFourierPositionalEncoding(Module):
+class LearnableFourierPositionalEncoding(Module):  # noqa: D101
     def __init__(self, M: int, dim: int, F_dim: Optional[int] = None, gamma: float = 1.0) -> None:
         super().__init__()
         F_dim = F_dim if F_dim is not None else dim
@@ -88,7 +88,7 @@ class LearnableFourierPositionalEncoding(Module):
         return emb.repeat_interleave(2, dim=-1)
 
 
-class TokenConfidence(Module):
+class TokenConfidence(Module):  # noqa: D101
     def __init__(self, dim: int) -> None:
         super().__init__()
         self.token = nn.Sequential(nn.Linear(dim, 1), nn.Sigmoid())
@@ -103,7 +103,7 @@ class TokenConfidence(Module):
         )
 
 
-class Attention(Module):
+class Attention(Module):  # noqa: D101
     def __init__(self, allow_flash: bool) -> None:
         super().__init__()
         if allow_flash and not FLASH_AVAILABLE:
@@ -144,7 +144,7 @@ class Attention(Module):
             return einsum("...ij,...jd->...id", attn, v)
 
 
-class SelfBlock(Module):
+class SelfBlock(Module):  # noqa: D101
     def __init__(self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True) -> None:
         super().__init__()
         self.embed_dim = embed_dim
@@ -177,7 +177,7 @@ class SelfBlock(Module):
         return x + self.ffn(concatenate([x, message], -1))
 
 
-class CrossBlock(Module):
+class CrossBlock(Module):  # noqa: D101
     def __init__(self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True) -> None:
         super().__init__()
         self.heads = num_heads
@@ -226,7 +226,7 @@ class CrossBlock(Module):
         return x0, x1
 
 
-class TransformerLayer(Module):
+class TransformerLayer(Module):  # noqa: D101
     def __init__(self, *args, **kwargs):  # type: ignore
         super().__init__()
         self.self_attn = SelfBlock(*args, **kwargs)
@@ -273,7 +273,7 @@ def sigmoid_log_double_softmax(sim: Tensor, z0: Tensor, z1: Tensor) -> Tensor:
     return scores
 
 
-class MatchAssignment(Module):
+class MatchAssignment(Module):  # noqa: D101
     def __init__(self, dim: int) -> None:
         super().__init__()
         self.dim = dim
@@ -314,7 +314,7 @@ def filter_matches(scores: Tensor, th: float) -> Tuple[Tensor, Tensor, Tensor, T
     return m0, m1, mscores0, mscores1
 
 
-class LightGlue(Module):
+class LightGlue(Module):  # noqa: D101
     default_conf: ClassVar[Dict[str, Any]] = {
         "name": "lightglue",  # just for interfacing
         "input_dim": 256,  # input descriptor dimension (autoselected from weights)

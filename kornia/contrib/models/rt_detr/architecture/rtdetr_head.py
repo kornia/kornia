@@ -197,7 +197,7 @@ class TransformerDecoderLayer(Module):
         return out
 
 
-class TransformerDecoder(Module):
+class TransformerDecoder(Module):  # noqa: D101
     def __init__(self, hidden_dim: int, decoder_layer: nn.Module, num_layers: int, eval_idx: int = -1) -> None:
         super().__init__()
         self.layers = nn.ModuleList([copy.deepcopy(decoder_layer) for _ in range(num_layers)])
@@ -263,7 +263,7 @@ class TransformerDecoder(Module):
         return torch.stack(dec_out_bboxes), torch.stack(dec_out_logits)
 
 
-class RTDETRHead(Module):
+class RTDETRHead(Module):  # noqa: D101
     def __init__(
         self,
         num_classes: int,

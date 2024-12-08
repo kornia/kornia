@@ -39,7 +39,7 @@ def weight_init(m: nn.Module) -> None:  # noqa: D103
             torch.nn.init.zeros_(m.bias)
 
 
-class CoFusion(Module):
+class CoFusion(Module):  # noqa: D101
     def __init__(self, in_ch: int, out_ch: int) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(in_ch, 64, kernel_size=3, stride=1, padding=1)
@@ -97,7 +97,7 @@ class _DenseBlock(nn.Sequential):
         return x_out
 
 
-class UpConvBlock(Module):
+class UpConvBlock(Module):  # noqa: D101
     def __init__(self, in_features: int, up_scale: int) -> None:
         super().__init__()
         self.up_factor = 2
@@ -129,7 +129,7 @@ class UpConvBlock(Module):
         return out
 
 
-class SingleConvBlock(Module):
+class SingleConvBlock(Module):  # noqa: D101
     def __init__(self, in_features: int, out_features: int, stride: int, use_bs: bool = True) -> None:
         super().__init__()
         self.use_bn = use_bs
@@ -143,7 +143,7 @@ class SingleConvBlock(Module):
         return x
 
 
-class DoubleConvBlock(nn.Sequential):
+class DoubleConvBlock(nn.Sequential):  # noqa: D101
     def __init__(
         self,
         in_features: int,

@@ -7,7 +7,7 @@ from kornia.geometry.linalg import transform_points
 from kornia.utils.grid import create_meshgrid
 
 
-class StereoException(Exception):
+class StereoException(Exception):  # noqa: D101
     def __init__(self, msg: str, *args: Any, **kwargs: Any) -> None:  # noqa: D417
         r"""Construct custom exception for the :module:`~kornia.geometry.camera.stereo` module.
 
@@ -29,7 +29,7 @@ class StereoException(Exception):
         super().__init__(final_msg, *args, **kwargs)
 
 
-class StereoCamera:
+class StereoCamera:  # noqa: D101
     def __init__(self, rectified_left_camera: Tensor, rectified_right_camera: Tensor) -> None:
         r"""Class representing a horizontal stereo camera setup.
 

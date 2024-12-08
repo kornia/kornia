@@ -34,14 +34,14 @@ def named_apply(fn: Callable, module: nn.Module, name="", depth_first=True, incl
     return module
 
 
-class BlockChunk(nn.ModuleList):
+class BlockChunk(nn.ModuleList):  # noqa: D101
     def forward(self, x):  # noqa: D102
         for b in self:
             x = b(x)
         return x
 
 
-class DinoVisionTransformer(nn.Module):
+class DinoVisionTransformer(nn.Module):  # noqa: D101
     def __init__(
         self,
         img_size=224,

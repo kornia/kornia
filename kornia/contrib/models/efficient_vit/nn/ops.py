@@ -31,7 +31,7 @@ __all__ = [
 #################################################################################
 
 
-class ConvLayer(nn.Module):
+class ConvLayer(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -75,7 +75,7 @@ class ConvLayer(nn.Module):
         return x
 
 
-class IdentityLayer(nn.Module):
+class IdentityLayer(nn.Module):  # noqa: D101
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         return x
 
@@ -85,7 +85,7 @@ class IdentityLayer(nn.Module):
 #################################################################################
 
 
-class DSConv(nn.Module):
+class DSConv(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -122,7 +122,7 @@ class DSConv(nn.Module):
         return x
 
 
-class MBConv(nn.Module):
+class MBConv(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -166,7 +166,7 @@ class MBConv(nn.Module):
         return x
 
 
-class FusedMBConv(nn.Module):
+class FusedMBConv(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -207,7 +207,7 @@ class FusedMBConv(nn.Module):
         return x
 
 
-class ResBlock(nn.Module):
+class ResBlock(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -332,7 +332,7 @@ class LiteMLA(nn.Module):
         return out
 
 
-class EfficientViTBlock(nn.Module):
+class EfficientViTBlock(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -370,7 +370,7 @@ class EfficientViTBlock(nn.Module):
 #################################################################################
 
 
-class ResidualBlock(nn.Module):
+class ResidualBlock(nn.Module):  # noqa: D101
     def __init__(
         self, main: nn.Module or None, shortcut: nn.Module or None, post_act=None, pre_norm: nn.Module or None = None
     ):
@@ -399,7 +399,7 @@ class ResidualBlock(nn.Module):
         return res
 
 
-class OpSequential(nn.Module):
+class OpSequential(nn.Module):  # noqa: D101
     def __init__(self, op_list: list[nn.Module or None]):
         super().__init__()
         valid_op_list = []

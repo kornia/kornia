@@ -9,12 +9,12 @@ __all__ = ["Scalar", "Vector2", "Vector3"]
 
 
 # TODO: implement more functionality to validate
-class Scalar(TensorWrapper):
+class Scalar(TensorWrapper):  # noqa: D101
     def __init__(self, data: Tensor) -> None:
         super().__init__(data)
 
 
-class Vector3(TensorWrapper):
+class Vector3(TensorWrapper):  # noqa: D101
     def __init__(self, vector: Tensor) -> None:
         super().__init__(vector)
         KORNIA_CHECK(vector.shape[-1] == 3)
@@ -92,7 +92,7 @@ class Vector3(TensorWrapper):
         return wrap(stack(tensors, -1), Vector3)
 
 
-class Vector2(TensorWrapper):
+class Vector2(TensorWrapper):  # noqa: D101
     def __init__(self, vector: Tensor) -> None:
         super().__init__(vector)
         KORNIA_CHECK(vector.shape[-1] == 2)

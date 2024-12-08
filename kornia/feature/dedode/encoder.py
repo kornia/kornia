@@ -8,7 +8,7 @@ from kornia.core import Module, Tensor
 from .vgg import vgg19_bn
 
 
-class VGG19(Module):
+class VGG19(Module):  # noqa: D101
     def __init__(self, amp: bool = False, amp_dtype: torch.dtype = torch.float16) -> None:
         super().__init__()
         self.layers = nn.ModuleList(vgg19_bn().features[:40])  # type: ignore
@@ -28,7 +28,7 @@ class VGG19(Module):
             return feats, sizes
 
 
-class FrozenDINOv2(Module):
+class FrozenDINOv2(Module):  # noqa: D101
     def __init__(self, amp: bool = True, amp_dtype: torch.dtype = torch.float16, dinov2_weights: Optional[Any] = None):
         super().__init__()
         if dinov2_weights is None:
@@ -62,7 +62,7 @@ class FrozenDINOv2(Module):
         return [features_16.clone()], [(H // 14, W // 14)]  # clone from inference mode to use in autograd
 
 
-class VGG_DINOv2(Module):
+class VGG_DINOv2(Module):  # noqa: D101
     def __init__(self, vgg_kwargs=None, dinov2_kwargs=None):  # type: ignore[no-untyped-def]
         if (vgg_kwargs is None) or (dinov2_kwargs is None):
             raise ValueError("Input kwargs please")

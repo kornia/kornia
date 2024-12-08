@@ -23,7 +23,7 @@ except ImportError:
     XFORMERS_AVAILABLE = False
 
 
-class Attention(nn.Module):
+class Attention(nn.Module):  # noqa: D101
     def __init__(
         self,
         dim: int,
@@ -59,7 +59,7 @@ class Attention(nn.Module):
         return x
 
 
-class MemEffAttention(Attention):
+class MemEffAttention(Attention):  # noqa: D101
     def forward(self, x: Tensor, attn_bias=None) -> Tensor:  # type: ignore[no-untyped-def]  # noqa: D102
         if not XFORMERS_AVAILABLE:
             if attn_bias is not None:

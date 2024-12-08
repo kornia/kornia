@@ -13,7 +13,7 @@ from .base import SemanticSegmentation
 __all__ = ["SegmentationModelsBuilder"]
 
 
-class SegmentationModelsBuilder:
+class SegmentationModelsBuilder:  # noqa: D101
     @staticmethod
     def build(  # noqa: D417
         model_name: str = "Unet",

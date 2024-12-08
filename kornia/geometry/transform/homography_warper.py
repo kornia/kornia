@@ -13,7 +13,7 @@ from .imgwarp import homography_warp, warp_grid
 __all__ = ["BaseWarper", "HomographyWarper"]
 
 
-class BaseWarper(Module):
+class BaseWarper(Module):  # noqa: D101
     def __init__(self, height: int, width: int, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.height = height

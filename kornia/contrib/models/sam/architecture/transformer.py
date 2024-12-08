@@ -15,7 +15,7 @@ from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
-class TwoWayTransformer(Module):
+class TwoWayTransformer(Module):  # noqa: D101
     def __init__(  # noqa: D417
         self,
         depth: int,
@@ -95,7 +95,7 @@ class TwoWayTransformer(Module):
         return queries, keys
 
 
-class TwoWayAttentionBlock(Module):
+class TwoWayAttentionBlock(Module):  # noqa: D101
     def __init__(  # noqa: D417
         self,
         embedding_dim: int,

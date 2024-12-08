@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 
 @dataclass
-class HeatMapRefineCfg:
+class HeatMapRefineCfg:  # noqa: D101
     mode: str = "local"
     ratio: float = 0.2
     valid_thresh: float = 0.001
@@ -11,13 +11,13 @@ class HeatMapRefineCfg:
 
 
 @dataclass
-class JunctionRefineCfg:
+class JunctionRefineCfg:  # noqa: D101
     num_perturbs: int = 9
     perturb_interval: float = 0.25
 
 
 @dataclass
-class LineDetectorCfg:
+class LineDetectorCfg:  # noqa: D101
     detect_thresh: float = 0.5
     num_samples: int = 64
     inlier_thresh: float = 0.99
@@ -34,7 +34,7 @@ class LineDetectorCfg:
 
 
 @dataclass
-class LineMatcherCfg:
+class LineMatcherCfg:  # noqa: D101
     cross_check: bool = True
     num_samples: int = 5
     min_dist_pts: int = 8
@@ -44,7 +44,7 @@ class LineMatcherCfg:
 
 
 @dataclass
-class BackboneCfg:
+class BackboneCfg:  # noqa: D101
     input_channel: int = 1
     depth: int = 4
     num_stacks: int = 2
@@ -53,7 +53,7 @@ class BackboneCfg:
 
 
 @dataclass
-class DetectorCfg:
+class DetectorCfg:  # noqa: D101
     backbone_cfg: BackboneCfg = field(default_factory=BackboneCfg)
     use_descriptor: bool = False
     grid_size: int = 8

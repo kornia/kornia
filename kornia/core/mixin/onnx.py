@@ -147,7 +147,7 @@ class ONNXExportMixin:
         }
 
 
-class ONNXRuntimeMixin:
+class ONNXRuntimeMixin:  # noqa: D101
     def _create_session(  # noqa: D417
         self,
         op: onnx.ModelProto,  # type:ignore
@@ -265,7 +265,7 @@ class ONNXRuntimeMixin:
         return outputs
 
 
-class ONNXMixin:
+class ONNXMixin:  # noqa: D101
     def _load_op(  # noqa: D417
         self,
         arg: Union[onnx.ModelProto, str],  # type:ignore
