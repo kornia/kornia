@@ -113,9 +113,9 @@ class ONNXExportMixin:
 
         onnx_buffer = io.BytesIO()
         torch.onnx.export(
-            model or self,  # type: ignore
-            dummy_input,
-            onnx_buffer,
+            model or self,  # type: ignore[arg-type]
+            dummy_input,  # type: ignore[arg-type]
+            onnx_buffer,  # type: ignore[arg-type]
             **default_args,
         )
         onnx_buffer.seek(0)

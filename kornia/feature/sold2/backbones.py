@@ -132,15 +132,15 @@ class Hourglass(Module):
         return nn.ModuleList(hgl)
 
     def _hour_glass_forward(self, n: int, x: Tensor) -> Tensor:
-        up1 = self.hg[n - 1][0](x)
+        up1 = self.hg[n - 1][0](x)  # type: ignore[index]
         low1 = F.max_pool2d(x, 2, stride=2)
-        low1 = self.hg[n - 1][1](low1)
+        low1 = self.hg[n - 1][1](low1)  # type: ignore[index]
 
         if n > 1:
             low2 = self._hour_glass_forward(n - 1, low1)
         else:
-            low2 = self.hg[n - 1][3](low1)
-        low3 = self.hg[n - 1][2](low2)
+            low2 = self.hg[n - 1][3](low1)  # type: ignore[index]
+        low3 = self.hg[n - 1][2](low2)  # type: ignore[index]
         up2 = F.interpolate(low3, size=up1.shape[2:])
         out = up1 + up2
         return out

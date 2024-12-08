@@ -468,7 +468,7 @@ class LightGlue(Module):
             )
 
         for i in range(self.conf.n_layers):
-            self.transformers[i].masked_forward = torch.compile(
+            self.transformers[i].masked_forward = torch.compile(  # type: ignore[assignment]
                 self.transformers[i].masked_forward, mode=mode, fullgraph=True
             )
 
