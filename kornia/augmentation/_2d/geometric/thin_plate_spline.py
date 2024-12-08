@@ -1,8 +1,9 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.constants import SamplePadding
 from kornia.core import Tensor, tensor
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
@@ -42,12 +43,16 @@ class RandomThinPlateSpline(AugmentationBase2D):
         self,
         scale: float = 0.2,
         align_corners: bool = False,
+        padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self.flags = {"align_corners": align_corners}
+        self.flags = {
+            "align_corners": align_corners,
+            "padding_mode": SamplePadding.get(padding_mode),
+        }
         self.dist = torch.distributions.Uniform(-scale, scale)
 
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
@@ -63,4 +68,4 @@ class RandomThinPlateSpline(AugmentationBase2D):
         dst = params["dst"].to(input)
         # NOTE: warp_image_tps need to use inverse parameters
         kernel, affine = get_tps_transform(dst, src)
-        return warp_image_tps(input, src, kernel, affine, flags["align_corners"])
+        return warp_image_tps(input, src, kernel, affine, flags["align_corners"], flags["padding_mode"].name.lower())
