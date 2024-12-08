@@ -126,7 +126,7 @@ class Block(Module):
         window_size: int = 0,
         input_size: Optional[tuple[int, int]] = None,
     ) -> None:
-        """Construct tranformer block.
+        """Construct transformer block.
 
         Args:
         dim: Number of input channels.

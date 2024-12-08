@@ -208,7 +208,7 @@ class ImageRegistrator(Module):
     def register(
         self, src_img: Tensor, dst_img: Tensor, verbose: bool = False, output_intermediate_models: bool = False
     ) -> Union[Tensor, Tuple[Tensor, List[Tensor]]]:
-        r"""Estimate the tranformation which warps src_img into dst_img by gradient descent.
+        r"""Estimate the transformation which warps src_img into dst_img by gradient descent.
 
         The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration.
 
