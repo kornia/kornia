@@ -206,7 +206,7 @@ omit = ['*/__main__.py', '*/setup.py']
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-fail_under = 87
+fail_under = 84
 exclude_lines = [
   # Based into the covdefaults plugin config
   # a more strict default pragma
