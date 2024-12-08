@@ -20,8 +20,7 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.filters.median_blur`.
 
-    Examples
-    --------
+    Examples:
         >>> img = torch.ones(1, 1, 4, 4)
         >>> out = RandomMedianBlur((3, 3), p = 1)(img)
         >>> out.shape

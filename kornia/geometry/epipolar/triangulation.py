@@ -29,8 +29,7 @@ def triangulate_points(
         points2: The set of points seen from the second camera frame in the camera plane
           coordinates with shape :math:`(*, N, 2)`.
 
-    Returns
-    -------
+    Returns:
         The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.
 
     """

@@ -29,8 +29,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
         saturation: The saturation factor to apply.
         hue: The hue factor to apply.
 
-    Returns
-    -------
+    Returns:
         A dict of parameters to be passed for transformation.
             - brightness_factor: element-wise brightness factors with a shape of (B,).
             - contrast_factor: element-wise contrast factors with a shape of (B,).

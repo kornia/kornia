@@ -21,8 +21,7 @@ def _inverse_sigmoid(x: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
         x: input tensor
         eps: epsilon value for numerical stability
 
-    Returns
-    -------
+    Returns:
         output tensor
 
     """
@@ -43,8 +42,7 @@ def _deformable_attention_kernel(
         sampling_locations: shape (N, Lq, n_head, n_levels, n_points, 2)
         attention_weights: shape (N, Lq, n_head, n_levels, n_points)
 
-    Returns
-    -------
+    Returns:
         output, shape (N, Lq, n_head * C)
 
     """
@@ -105,15 +103,13 @@ class MultiScaleDeformableAttention(Module):
     ) -> Tensor:
         """Run forward.
 
-        Parameters
-        ----------
+        Args:
             query: shape (N, Lq, C)
             reference_points: shape (N, Lq, n_levels, 4)
             value: shape (N, Lv, C)
             value_spatial_shapes: [(H0, W0), (H1, W1), ...]
 
-        Returns
-        -------
+        Returns:
             output, shape (N, Lq, C)
 
         """
@@ -445,8 +441,7 @@ class RTDETRHead(Module):
             device: device to place the anchors
             dtype: data type for the anchors
 
-        Returns
-        -------
+        Returns:
             logit of anchors and mask
 
         """

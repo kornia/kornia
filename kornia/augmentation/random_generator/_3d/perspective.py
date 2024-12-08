@@ -15,8 +15,7 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
     Args:
         distortion_scale: controls the degree of distortion and ranges from 0 to 1.
 
-    Returns
-    -------
+    Returns:
         A dict of parameters to be passed for transformation.
             - src (Tensor): perspective source bounding boxes with a shape of (B, 8, 3).
             - dst (Tensor): perspective target bounding boxes with a shape (B, 8, 3).

@@ -56,8 +56,7 @@ class DiscreteSteerer(Module):
                 with C4 or SO2 in the name respectively (so called C-setting steerers).
             steerer_order: The discretisation order for SO2-steerers (NOT used for C4-steerers).
 
-        Returns
-        -------
+        Returns:
             The pretrained model.
 
         """  # noqa: D205

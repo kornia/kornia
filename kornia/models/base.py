@@ -26,12 +26,10 @@ class ModelBaseMixin:
             output_type: The desired output type. Accepted values are "torch" and "pil".
             is_batch: If True, the output is expected to be a batch of tensors.
 
-        Returns
-        -------
+        Returns:
             The converted output tensor or list of tensors.
 
-        Raises
-        ------
+        Raises:
             RuntimeError: If the output type is not supported.
 
         """

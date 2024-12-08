@@ -18,8 +18,7 @@ class PosterizeGenerator(RandomGeneratorBase):
             If float x, bits will be generated from (x, 8).
             If tuple (x, y), bits will be generated from (x, y).
 
-    Returns
-    -------
+    Returns:
         A dict of parameters to be passed for transformation.
             - bits_factor (Tensor): element-wise bit factors with a shape of (B,).
 

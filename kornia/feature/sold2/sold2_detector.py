@@ -28,8 +28,7 @@ class SOLD2_detector(Module):
             parameter management.
         pretrained (bool): If True, download and set pretrained weights to the model.
 
-    Returns
-    -------
+    Returns:
         The raw junction and line heatmaps, as well as the list of detected line segments (ij coordinates convention).
 
     Example:
@@ -81,12 +80,10 @@ class SOLD2_detector(Module):
     def forward(self, img: Tensor) -> Dict[str, Any]:
         """Run forward.
 
-        Parameters
-        ----------
+        Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
 
-        Returns
-        -------
+        Returns:
             line_segments: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
             junction_heatmap: raw junction heatmap of shape :math:`(B, H, W)`.
             line_heatmap: raw line heatmap of shape :math:`(B, H, W)`.

@@ -114,8 +114,7 @@ class StereoCamera:
     def batch_size(self) -> int:
         r"""Return the batch size of the storage.
 
-        Returns
-        -------
+        Returns:
            scalar with the batch size
 
         """
@@ -128,8 +127,7 @@ class StereoCamera:
         Note that the focal lengths of the rectified left and right
         camera are assumed to be equal.
 
-        Returns
-        -------
+        Returns:
             tensor of shape :math:`(B)`
 
         """
@@ -142,8 +140,7 @@ class StereoCamera:
         Note that the focal lengths of the rectified left and right
         camera are assumed to be equal.
 
-        Returns
-        -------
+        Returns:
             tensor of shape :math:`(B)`
 
         """
@@ -153,8 +150,7 @@ class StereoCamera:
     def cx_left(self) -> Tensor:
         r"""Return the x-coordinate of the principal point for the left camera.
 
-        Returns
-        -------
+        Returns:
             tensor of shape :math:`(B)`
 
         """
@@ -164,8 +160,7 @@ class StereoCamera:
     def cx_right(self) -> Tensor:
         r"""Return the x-coordinate of the principal point for the right camera.
 
-        Returns
-        -------
+        Returns:
             tensor of shape :math:`(B)`
 
         """
@@ -178,8 +173,7 @@ class StereoCamera:
         Note that the y-coordinate of the principal points
         is assumed to be equal for the left and right camera.
 
-        Returns
-        -------
+        Returns:
             tensor of shape :math:`(B)`
 
         """
@@ -189,8 +183,7 @@ class StereoCamera:
     def tx(self) -> Tensor:
         r"""The horizontal baseline between the two cameras.
 
-        Returns
-        -------
+        Returns:
             Tensor of shape :math:`(B)`
 
         """
@@ -213,8 +206,7 @@ class StereoCamera:
     def _init_Q_matrix(self) -> Tensor:
         r"""Initialize the Q matrix of the horizontal stereo setup. See the Q property.
 
-        Returns
-        -------
+        Returns:
             The Q matrix of shape :math:`(B, 4, 4)`.
 
         """
@@ -235,8 +227,7 @@ class StereoCamera:
         Args:
             disparity_tensor: Disparity tensor of shape :math:`(B, 1, H, W)`.
 
-        Returns
-        -------
+        Returns:
             The 3D point cloud of shape :math:`(B, H, W, 3)`
 
         """
@@ -300,8 +291,7 @@ def reproject_disparity_to_3D(disparity_tensor: Tensor, Q_matrix: Tensor) -> Ten
         disparity_tensor: Disparity tensor of shape :math:`(B, H, W, 1)`.
         Q_matrix: Tensor of Q matrices of shapes :math:`(B, 4, 4)`.
 
-    Returns
-    -------
+    Returns:
         The 3D point cloud of shape :math:`(B, H, W, 3)`
 
     """

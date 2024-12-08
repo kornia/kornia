@@ -38,8 +38,7 @@ def canny(
             Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
         eps: regularization number to avoid NaN during backprop.
 
-    Returns
-    -------
+    Returns:
         - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
         - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 
@@ -159,8 +158,7 @@ class Canny(Module):
             Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
         eps: regularization number to avoid NaN during backprop.
 
-    Returns
-    -------
+    Returns:
         - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
         - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 

@@ -64,8 +64,7 @@ class LoFTR(Module):
                     'outdoor' is trained on the MegaDepth dataset and 'indoor'
                     on the ScanNet.
 
-    Returns
-    -------
+    Returns:
         Dictionary with image correspondences and confidence scores.
 
     Example:
@@ -114,8 +113,7 @@ class LoFTR(Module):
             mask0 (optional): left image mask. '0' indicates a padded position :math:`(N, H1, W1)`.
             mask1 (optional): right image mask. '0' indicates a padded position :math:`(N, H2, W2)`.
 
-        Returns
-        -------
+        Returns:
             - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
             - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
             - ``confidence``, confidence score [0, 1] :math:`(NC)`.

@@ -304,8 +304,7 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
     Args:
         rgb: Hex code representing an RGB value, eg, 'abcdef'.
 
-    Returns
-    -------
+    Returns:
         String between 0 and 255, compatible with xterm.
 
     Example:

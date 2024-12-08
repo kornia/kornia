@@ -19,8 +19,7 @@ def batched_forward(
         batch_size: "micro-batch" size.
         **kwargs: any other arguments, which accepts model.
 
-    Returns
-    -------
+    Returns:
         output of the model.
 
     Example:

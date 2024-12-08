@@ -43,8 +43,7 @@ def js_div_loss_2d(pred: Tensor, target: Tensor, reduction: str = "mean") -> Ten
           the number of elements in the output, ``'sum'``: the output will be
           summed.
 
-    Examples
-    --------
+    Examples:
         >>> pred = torch.full((1, 1, 2, 4), 0.125)
         >>> loss = js_div_loss_2d(pred, pred)
         >>> loss.item()
@@ -66,8 +65,7 @@ def kl_div_loss_2d(pred: Tensor, target: Tensor, reduction: str = "mean") -> Ten
           the number of elements in the output, ``'sum'``: the output will be
           summed.
 
-    Examples
-    --------
+    Examples:
         >>> pred = torch.full((1, 1, 2, 4), 0.125)
         >>> loss = kl_div_loss_2d(pred, pred)
         >>> loss.item()

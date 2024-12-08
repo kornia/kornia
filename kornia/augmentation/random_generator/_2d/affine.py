@@ -29,8 +29,7 @@ class AffineGenerator(RandomGeneratorBase):
             If tensor, shear is a 2x2 tensor, a x-axis shear in (shear[0][0], shear[0][1]) and y-axis shear in
             (shear[1][0], shear[1][1]) will be applied. Will not apply shear by default.
 
-    Returns
-    -------
+    Returns:
         A dict of parameters to be passed for transformation.
             - translations (Tensor): element-wise translations with a shape of (B, 2).
             - center (Tensor): element-wise center with a shape of (B, 2).

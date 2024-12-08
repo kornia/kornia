@@ -14,8 +14,7 @@ def marginal_pdf(values: Tensor, bins: Tensor, sigma: Tensor, epsilon: float = 1
         sigma: shape [1], gaussian smoothing factor.
         epsilon: scalar, for numerical stability.
 
-    Returns
-    -------
+    Returns:
         Tuple[Tensor, Tensor]:
           - Tensor: shape [BxN].
           - Tensor: shape [BxNxNUM_BINS].
@@ -57,8 +56,7 @@ def joint_pdf(kernel_values1: Tensor, kernel_values2: Tensor, epsilon: float = 1
         kernel_values2: shape [BxNxNUM_BINS].
         epsilon: scalar, for numerical stability.
 
-    Returns
-    -------
+    Returns:
         shape [BxNUM_BINSxNUM_BINS].
 
     """
@@ -98,12 +96,10 @@ def histogram(x: Tensor, bins: Tensor, bandwidth: Tensor, epsilon: float = 1e-10
         bandwidth: Gaussian smoothing factor with shape shape [1].
         epsilon: A scalar, for numerical stability.
 
-    Returns
-    -------
+    Returns:
         Computed histogram of shape :math:`(B, N_{bins})`.
 
-    Examples
-    --------
+    Examples:
         >>> x = torch.rand(1, 10)
         >>> bins = torch.torch.linspace(0, 255, 128)
         >>> hist = histogram(x, bins, bandwidth=torch.tensor(0.9))
@@ -128,12 +124,10 @@ def histogram2d(x1: Tensor, x2: Tensor, bins: Tensor, bandwidth: Tensor, epsilon
         bandwidth: Gaussian smoothing factor with shape shape [1].
         epsilon: A scalar, for numerical stability. Default: 1e-10.
 
-    Returns
-    -------
+    Returns:
         Computed histogram of shape :math:`(B, N_{bins}), N_{bins})`.
 
-    Examples
-    --------
+    Examples:
         >>> x1 = torch.rand(2, 32)
         >>> x2 = torch.rand(2, 32)
         >>> bins = torch.torch.linspace(0, 255, 128)
@@ -183,8 +177,7 @@ def image_histogram2d(
         kernel: kernel to perform kernel density estimation
           ``(`triangular`, `gaussian`, `uniform`, `epanechnikov`)``.
 
-    Returns
-    -------
+    Returns:
         Computed histogram of shape :math:`(bins)`, :math:`(C, bins)`,
           :math:`(B, C, bins)`.
         Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,

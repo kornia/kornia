@@ -18,8 +18,7 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
         camera_matrix: tensor containing the intrinsics camera
             matrix. The tensor shape must be :math:`(*, 3, 3)`.
 
-    Returns
-    -------
+    Returns:
         tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
 
     Example:
@@ -56,8 +55,7 @@ def unproject_points(
             must be set to `True` when the depth is represented as the Euclidean
             ray length from the camera position.
 
-    Returns
-    -------
+    Returns:
         tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
 
     Example:

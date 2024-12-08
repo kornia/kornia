@@ -24,8 +24,7 @@ class CachedDownloader:
             cache_dir: The directory where the model should be cached.
                 Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
 
-        Returns
-        -------
+        Returns:
             str: The full local path where the model should be stored or loaded from.
 
         """

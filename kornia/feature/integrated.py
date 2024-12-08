@@ -40,8 +40,7 @@ def get_laf_descriptors(
         patch_size: patch size in pixels, which descriptor expects.
         grayscale_descriptor: True if ``patch_descriptor`` expects single-channel image.
 
-    Returns
-    -------
+    Returns:
         Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
 
     """
@@ -104,8 +103,7 @@ class LAFDescriptor(Module):
             img: image features with shape :math:`(B,C,H,W)`.
             lafs: local affine frames :math:`(B,N,2,3)`.
 
-        Returns
-        -------
+        Returns:
             Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
 
         """
@@ -138,8 +136,7 @@ class LocalFeature(Module):
             mask: a mask with weights where to apply the response function.
                 The shape must be the same as the input image.
 
-        Returns
-        -------
+        Returns:
             - Detected local affine frames with shape :math:`(B,N,2,3)`.
             - Response function values for corresponding lafs with shape :math:`(B,N,1)`.
             - Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
@@ -317,8 +314,7 @@ class LocalFeatureMatcher(Module):
         local_feature: Local feature detector. See :class:`~kornia.feature.GFTTAffNetHardNet`.
         matcher: Descriptor matcher, see :class:`~kornia.feature.DescriptorMatcher`.
 
-    Returns
-    -------
+    Returns:
         Dict[str, Tensor]: Dictionary with image correspondences and confidence scores.
 
     Example:
@@ -365,8 +361,7 @@ class LocalFeatureMatcher(Module):
             mask0 (optional): left image mask. '0' indicates a padded position :math:`(N, H1, W1)`.
             mask1 (optional): right image mask. '0' indicates a padded position :math:`(N, H2, W2)`.
 
-        Returns
-        -------
+        Returns:
             - ``keypoints0``, matching keypoints from image0 :math:`(NC, 2)`.
             - ``keypoints1``, matching keypoints from image1 :math:`(NC, 2)`.
             - ``confidence``, confidence score [0, 1] :math:`(NC)`.

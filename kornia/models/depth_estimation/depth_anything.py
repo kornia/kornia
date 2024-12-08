@@ -31,8 +31,7 @@ class DepthAnythingONNXBuilder:
             cache_dir:
                 The directory where the model should be cached.
 
-        Returns
-        -------
+        Returns:
             str: The name of the output ONNX file.
 
         .. code-block:: python

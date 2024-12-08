@@ -13,8 +13,7 @@ class ChannelDropoutGenerator(RandomGeneratorBase):
     Args:
         num_drop_channels: The number of channels to drop randomly.
 
-    Returns
-    -------
+    Returns:
         A dictionary containing the dropout mask.
             - dropout_mask: Binary masks (bool) indicating the dropped channels with a shape of (B, C, H, W).
 

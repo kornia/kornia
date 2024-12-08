@@ -34,8 +34,7 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         exact values, rather than randomly sampling from the specified range. However, the masks are still
         generated randomly using these exact parameters.
 
-    Examples
-    --------
+    Examples:
         >>> rng = torch.manual_seed(5)
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomSaltAndPepperNoise(amount=0.5, salt_vs_pepper=0.5, p=1.)

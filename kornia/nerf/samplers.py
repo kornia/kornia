@@ -143,8 +143,7 @@ class RaySampler:
     def transform_ray_params_world_to_ndc(self, cameras: PinholeCamera) -> Tuple[Tensor, Tensor]:
         r"""Transform ray parameters to normalized coordinate device (camera) system (NDC).
 
-        Parameters
-        ----------
+        Args:
         cameras: scene cameras: PinholeCamera
 
         """
@@ -231,8 +230,7 @@ class RaySampler:
             points2d_as_flat_tensors: dictionary of pixel coordinates grouped by total number of rays:
               Dict[int, Points2D_FlatTensors]
 
-        Returns
-        -------
+        Returns:
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
 
@@ -271,8 +269,7 @@ class RandomRaySampler(RaySampler):
             widths: tensor that holds scene camera image widths (can vary between cameras): math: `(B)`.
             num_img_rays: tensor that holds the number of rays to randomly cast from each scene camera: math: `(B)`.
 
-        Returns
-        -------
+        Returns:
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
 
@@ -333,8 +330,7 @@ class RandomGridRaySampler(RandomRaySampler):
             num_img_rays: tensor that holds the number of rays to randomly cast from each scene camera. Number of rows
               and columns is the square root of this value: int math: `(B)`.
 
-        Returns
-        -------
+        Returns:
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
 
@@ -376,8 +372,7 @@ class UniformRaySampler(RaySampler):
             widths: tensor that holds scene camera image widths (can vary between cameras): math: `(B)`.
             sampling_step: defines uniform strides between rows and columns: int.
 
-        Returns
-        -------
+        Returns:
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
 
@@ -426,14 +421,12 @@ def sample_ray_points(
 ) -> Tensor:  # FIXME: Test by projecting to points_2d and compare with sampler 2d points
     r"""Sample points along ray.
 
-    Parameters
-    ----------
+    Args:
         origins: tensor containing ray origins in 3d world coordinates. Tensor shape :math:`(*, 3)`.
         directions: tensor containing ray directions in 3d world coordinates. Tensor shape :math:`(*, 3)`.
         lengths: tensor containing sampled distances along each ray. Tensor shape :math:`(*, num_ray_points)`.
 
-    Returns
-    -------
+    Returns:
         points_3d: Points along rays :math:`(*, num_ray_points, 3)`
 
     """
@@ -447,8 +440,7 @@ def calc_ray_t_vals(points_3d: Tensor) -> Tensor:
     Args:
         points_3d: Points along rays :math:`(*, num_ray_points, 3)`
 
-    Returns
-    -------
+    Returns:
         t values along rays :math:`(*, num_ray_points)`
 
     """

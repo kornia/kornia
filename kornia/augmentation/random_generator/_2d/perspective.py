@@ -21,8 +21,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
             If ``'area_preserving'``, samples by randomly translating the image corners in any direction.
             Preserves area on average. See https://arxiv.org/abs/2104.03308 for further details.
 
-    Returns
-    -------
+    Returns:
         A dict of parameters to be passed for transformation.
             - start_points (Tensor): element-wise perspective source areas with a shape of (B, 4, 2).
             - end_points (Tensor): element-wise perspective target areas with a shape of (B, 4, 2).

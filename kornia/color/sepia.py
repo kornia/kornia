@@ -12,8 +12,7 @@ def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Te
         rescale: If True, the output tensor will be rescaled (max values be 1. or 255).
         eps: scalar to enforce numerical stability.
 
-    Returns
-    -------
+    Returns:
         Tensor: The sepia tensor of same size and numbers of channels
         as the input with shape :math:`(*, C, H, W)`.
 
@@ -55,8 +54,7 @@ class Sepia(Module):
         rescale: If True, the output tensor will be rescaled (max values be 1. or 255).
         eps: scalar to enforce numerical stability.
 
-    Returns
-    -------
+    Returns:
         Tensor: The sepia tensor of same size and numbers of channels
         as the input with shape :math:`(*, C, H, W)`.
 

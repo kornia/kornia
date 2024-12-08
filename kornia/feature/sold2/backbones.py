@@ -259,8 +259,7 @@ class SuperpointDecoder(Module):
     Args:
         input_feat_dim: channel size of the input features.
 
-    Returns
-    -------
+    Returns:
         the junction heatmap, with shape (B, H, W).
 
     """
@@ -291,8 +290,7 @@ class PixelShuffleDecoder(Module):
         num_upsample: how many upsamples are performed.
         output_channel: number of output channels.
 
-    Returns
-    -------
+    Returns:
         the (B, 1, H, W) line heatmap.
 
     """
@@ -358,8 +356,7 @@ class SuperpointDescriptor(Module):
     Args:
         input_feat_dim: channel size of the input features.
 
-    Returns
-    -------
+    Returns:
         the semi-dense descriptors with shape (B, 128, H/4, W/4).
 
     """
@@ -386,8 +383,7 @@ class SOLD2Net(Module):
     Args:
         model_cfg: the configuration as a Dict.
 
-    Returns
-    -------
+    Returns:
         a Dict with the following values:
             junctions: heatmap of junctions.
             heatmap: line heatmap.

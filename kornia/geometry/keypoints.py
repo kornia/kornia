@@ -131,8 +131,7 @@ class Keypoints:
             M: The transformation matrix to be applied, shape of :math:`(3, 3)` or :math:`(B, 3, 3)`.
             inplace: do transform in-place and return self.
 
-        Returns
-        -------
+        Returns:
             The transformed keypoints.
 
         """
@@ -163,8 +162,7 @@ class Keypoints:
             as_padded_sequence: whether to keep the pads for a list of keypoints. This parameter is only valid
                 if the keypoints are from a keypoint list.
 
-        Returns
-        -------
+        Returns:
             Keypoints tensor :math:`(B, N, 2)`
 
         """
@@ -292,8 +290,7 @@ class Keypoints3D:
             M: The transformation matrix to be applied, shape of :math:`(3, 3)` or :math:`(B, 3, 3)`.
             inplace: do transform in-place and return self.
 
-        Returns
-        -------
+        Returns:
             The transformed keypoints.
 
         """
@@ -316,8 +313,7 @@ class Keypoints3D:
             as_padded_sequence: whether to keep the pads for a list of keypoints. This parameter is only valid
                 if the keypoints are from a keypoint list.
 
-        Returns
-        -------
+        Returns:
             Keypoints tensor :math:`(B, N, 3)`
 
         """

@@ -20,8 +20,7 @@ def mod(a: Tensor, b: int) -> Tensor:
         a: The dividend.
         b: The divisor.
 
-    Returns
-    -------
+    Returns:
         The remainder of a divided by b.
 
     Example:
@@ -62,8 +61,7 @@ class DETRPostProcessor(Module):
             original_sizes: tensor with shape :math:`(N, 2)`, where :math:`N` is the batch size and each element
                 represents the image size of (img_height, img_width).
 
-        Returns
-        -------
+        Returns:
             Processed detections. For each image, the detections have shape (D, 6), where D is the number of detections
             in that image, 6 represent (class_id, confidence_score, x, y, w, h).
 

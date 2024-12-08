@@ -209,8 +209,7 @@ class Se3(Module):
         Args:
             v: vector of shape :math:`(B, 6)`.
 
-        Returns
-        -------
+        Returns:
             matrix of shape :math:`(B, 4, 4)`.
 
         Example:
@@ -235,8 +234,7 @@ class Se3(Module):
         Args:
             omega: 4x4-matrix representing lie algebra of shape :math:`(B,4,4)`.
 
-        Returns
-        -------
+        Returns:
             vector of shape :math:`(B,6)`.
 
         Example:

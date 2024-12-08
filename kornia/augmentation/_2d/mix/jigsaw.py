@@ -31,8 +31,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
 
-    Examples
-    --------
+    Examples:
         >>> jigsaw = RandomJigsaw((4, 4))
         >>> input = torch.randn(8, 3, 256, 256)
         >>> out = jigsaw(input)

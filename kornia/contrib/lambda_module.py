@@ -9,8 +9,7 @@ class Lambda(Module):
     Args:
         func: Callable function.
 
-    Returns
-    -------
+    Returns:
         The output of the user-defined lambda.
 
     Example:

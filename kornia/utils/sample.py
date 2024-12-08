@@ -61,8 +61,7 @@ def get_sample_images(
             If not None, the images will be resized to the nearest multiple of `divisible_factor`.
         **kwargs: Additional keyword arguments to pass to `kornia.geometry.resize`.
 
-    Returns
-    -------
+    Returns:
         torch.Tensor | list[torch.Tensor]:
             If `resize` is provided, returns a single stacked tensor with shape (B, C, H, W).
             Otherwise, returns a list of tensors, each with its original shape (C, H, W).

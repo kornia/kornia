@@ -37,8 +37,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
             will be applied.
 
-    Returns
-    -------
+    Returns:
         A dict of parameters to be passed for transformation.
             - translations (torch.Tensor): element-wise translations with a shape of (B, 3).
             - center (torch.Tensor): element-wise center with a shape of (B, 3).

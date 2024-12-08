@@ -139,8 +139,7 @@ class BoxMotTracker:
             image: The input image.
             show_trajectories: Whether to show the trajectories.
 
-        Returns
-        -------
+        Returns:
             The image with the results of the tracker.
 
         """

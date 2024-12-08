@@ -28,8 +28,7 @@ class SOLD2(Module):
             which are tuned for images in the range 400~800 px.
         pretrained: If True, download and set pretrained weights to the model.
 
-    Returns
-    -------
+    Returns:
         The raw junction and line heatmaps, the semi-dense descriptor map,
         as well as the list of detected line segments (ij coordinates convention).
 
@@ -80,12 +79,10 @@ class SOLD2(Module):
     def forward(self, img: Tensor) -> Dict[str, Any]:
         """Run forward.
 
-        Parameters
-        ----------
+        Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
 
-        Returns
-        -------
+        Returns:
             line_segments: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
             junction_heatmap: raw junction heatmap of shape :math:`(B, H, W)`.
             line_heatmap: raw line heatmap of shape :math:`(B, H, W)`.
@@ -121,8 +118,7 @@ class SOLD2(Module):
             line_seg1, line_seg2: list of line segments in two images, with shape [num_lines, 2, 2].
             desc1, desc2: semi-dense descriptor maps of the images, with shape [1, 128, H/4, W/4].
 
-        Returns
-        -------
+        Returns:
             A np.array of size [num_lines1] indicating the index in line_seg2 of the matched line,
             for each line in line_seg1. -1 means that the line is not matched.
 

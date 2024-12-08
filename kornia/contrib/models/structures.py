@@ -55,8 +55,7 @@ class SegmentationResults:
             image_size_encoder: The size of the input image for image encoder, in (H, W) format. Used to resize the
                                 logits back to encoder resolution before remove the padding.
 
-        Returns
-        -------
+        Returns:
             Batched logits in :math:`(K, C, H, W)` format, where (H, W) is given by original_size.
 
         """

@@ -62,8 +62,7 @@ class PromptEncoder(Module):
         """Return the positional encoding used to encode point prompts, applied to a dense set of points the shape
         of the image encoding.
 
-        Returns
-        -------
+        Returns:
             Positional encoding with shape 1x(embed_dim)x(embedding_h)x(embedding_w)
 
         """  # noqa: D205
@@ -124,8 +123,7 @@ class PromptEncoder(Module):
             boxes: boxes to embed
             masks: masks to embed
 
-        Returns
-        -------
+        Returns:
             - sparse embeddings for the points and boxes, with shape BxNx(embed_dim), where N is determined by the
             number of input points and boxes.
             - dense embeddings for the masks, in the shape Bx(embed_dim)x(embed_H)x(embed_W)

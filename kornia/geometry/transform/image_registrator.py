@@ -43,8 +43,7 @@ class Homography(BaseModel):
     def forward(self) -> Tensor:
         r"""Single-batch homography".
 
-        Returns
-        -------
+        Returns:
             Homography matrix with shape :math:`(1, 3, 3)`.
 
         """
@@ -53,8 +52,7 @@ class Homography(BaseModel):
     def forward_inverse(self) -> Tensor:
         r"""Interted Single-batch homography".
 
-        Returns
-        -------
+        Returns:
             Homography martix with shape :math:`(1, 3, 3)`.
 
         """
@@ -101,8 +99,7 @@ class Similarity(BaseModel):
     def forward(self) -> Tensor:
         r"""Single-batch similarity transform".
 
-        Returns
-        -------
+        Returns:
             Similarity with shape :math:`(1, 3, 3)`
 
         """
@@ -113,8 +110,7 @@ class Similarity(BaseModel):
     def forward_inverse(self) -> Tensor:
         r"""Single-batch inverse similarity transform".
 
-        Returns
-        -------
+        Returns:
             Similarity with shape :math:`(1, 3, 3)`
 
         """
@@ -222,8 +218,7 @@ class ImageRegistrator(Module):
             verbose: if True, outputs loss every 10 iterations.
             output_intermediate_models: if True with intermediate models
 
-        Returns
-        -------
+        Returns:
             the transformation between two images, shape depends on the model,
             typically [1x3x3] tensor for string model_types.
 

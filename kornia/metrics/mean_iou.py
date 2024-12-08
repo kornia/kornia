@@ -18,8 +18,7 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
           one-hot vectors.
         num_classes: total possible number of classes in target.
 
-    Returns
-    -------
+    Returns:
         a tensor representing the mean intersection-over union
         with shape :math:`(B, K)` where K is the number of classes.
 
@@ -67,8 +66,7 @@ def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor) -> torch.Tensor:
         boxes_1: a tensor of bounding boxes in :math:`(B1, 4)`.
         boxes_2: a tensor of bounding boxes in :math:`(B2, 4)`.
 
-    Returns
-    -------
+    Returns:
         a tensor in dimensions :math:`(B1, B2)`, representing the
         intersection of each of the boxes in set 1 with respect to each of the boxes in set 2.
 

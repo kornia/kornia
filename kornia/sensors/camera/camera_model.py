@@ -130,8 +130,7 @@ class CameraModelBase:
         Args:
             points: Vector3 representing 3D points.
 
-        Returns
-        -------
+        Returns:
             Vector2 representing the projected 2D points.
 
         Example:
@@ -151,8 +150,7 @@ class CameraModelBase:
             points: Vector2 representing 2D points.
             depth: Depth of the points.
 
-        Returns
-        -------
+        Returns:
             Vector3 representing the unprojected 3D points.
 
         Example:
@@ -227,8 +225,7 @@ class PinholeModel(CameraModelBase):
         Args:
             scale_factor: Scale factor to scale the camera model.
 
-        Returns
-        -------
+        Returns:
             Scaled camera model.
 
         Example:

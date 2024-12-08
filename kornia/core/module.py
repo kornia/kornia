@@ -35,8 +35,7 @@ class ImageModuleMixIn:
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
             output_type: Desired output type ('tensor', 'numpy', or 'pil').
 
-        Returns
-        -------
+        Returns:
             Callable: Decorated function with converted input and output types.
 
         """
@@ -91,8 +90,7 @@ class ImageModuleMixIn:
         Args:
             arg: The argument to check.
 
-        Returns
-        -------
+        Returns:
             bool: True if valid, False otherwise.
 
         """
@@ -115,8 +113,7 @@ class ImageModuleMixIn:
         Args:
             x: The input to convert.
 
-        Returns
-        -------
+        Returns:
             Tensor: The converted tensor.
 
         """
@@ -136,8 +133,7 @@ class ImageModuleMixIn:
         Args:
             x: The input to convert.
 
-        Returns
-        -------
+        Returns:
             np.array: The converted numpy array.
 
         """
@@ -155,8 +151,7 @@ class ImageModuleMixIn:
         Args:
             x: The input to convert.
 
-        Returns
-        -------
+        Returns:
             Image.Image: The converted PIL image.
 
         """
@@ -275,8 +270,7 @@ class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
             output_type: Desired output type ('tensor', 'numpy', or 'pil').
 
-        Returns
-        -------
+        Returns:
             Callable: Decorated function with converted input and output types.
 
         """
@@ -333,8 +327,7 @@ class ImageSequential(Sequential, ImageModuleMixIn, ONNXExportMixin):
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
             output_type: Desired output type ('tensor', 'numpy', or 'pil').
 
-        Returns
-        -------
+        Returns:
             Callable: Decorated function with converted input and output types.
 
         """

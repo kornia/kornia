@@ -24,8 +24,7 @@ def add_weighted(
         beta: weight of the src2 elements as Union[float, Tensor].
         gamma: scalar added to each sum as Union[float, Tensor].
 
-    Returns
-    -------
+    Returns:
         Weighted Tensor with shape equal to src1 and src2 shapes.
 
     Example:
@@ -35,8 +34,7 @@ def add_weighted(
         >>> output.shape
         torch.Size([1, 1, 5, 5])
 
-    Notes
-    -----
+    Notes:
         Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
 
     """
@@ -87,8 +85,7 @@ class AddWeighted(Module):
         >>> output.shape
         torch.Size([1, 1, 5, 5])
 
-    Notes
-    -----
+    Notes:
         Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
 
     """

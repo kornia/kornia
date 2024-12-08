@@ -16,8 +16,7 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
     Return:
          a tensor with shape :math:`(*,)`.
 
-    Examples
-    --------
+    Examples:
         >>> total_variation(torch.ones(4, 4))
         tensor(0.)
         >>> total_variation(torch.ones(2, 5, 3, 4, 4)).shape
@@ -69,8 +68,7 @@ class TotalVariation(Module):
         - Input: :math:`(*, H, W)`.
         - Output: :math:`(*,)`.
 
-    Examples
-    --------
+    Examples:
         >>> tv = TotalVariation()
         >>> output = tv(torch.ones((2, 3, 4, 4), requires_grad=True))
         >>> output.data

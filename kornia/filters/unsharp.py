@@ -21,12 +21,10 @@ def unsharp_mask(
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
 
-    Returns
-    -------
+    Returns:
         the blurred tensor with shape :math:`(B,C,H,W)`.
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.rand(2, 4, 5, 5)
         >>> output = unsharp_mask(input, (3, 3), (1.5, 1.5))
         >>> output.shape
@@ -48,8 +46,7 @@ class UnsharpMask(Module):
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
 
-    Returns
-    -------
+    Returns:
         the sharpened tensor with shape :math:`(B,C,H,W)`.
 
     Shape:
@@ -59,8 +56,7 @@ class UnsharpMask(Module):
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/unsharp_mask.html>`__.
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.rand(2, 4, 5, 5)
         >>> sharpen = UnsharpMask((3, 3), (1.5, 1.5))
         >>> output = sharpen(input)

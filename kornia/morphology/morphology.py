@@ -44,8 +44,7 @@ def dilation(
         max_val: The value of the infinite elements in the kernel.
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
-    Returns
-    -------
+    Returns:
         Dilated image with shape :math:`(B, C, H, W)`.
 
     .. note::
@@ -138,8 +137,7 @@ def erosion(
         max_val: The value of the infinite elements in the kernel.
         engine: ``convolution`` is faster and less memory hungry, and ``unfold`` is more stable numerically
 
-    Returns
-    -------
+    Returns:
         Eroded image with shape :math:`(B, C, H, W)`.
 
     .. note::
@@ -233,8 +231,7 @@ def opening(
         max_val: The value of the infinite elements in the kernel.
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
-    Returns
-    -------
+    Returns:
        torch.Tensor: Opened image with shape :math:`(B, C, H, W)`.
 
     .. note::
@@ -311,8 +308,7 @@ def closing(
         max_val: The value of the infinite elements in the kernel.
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
-    Returns
-    -------
+    Returns:
        Closed image with shape :math:`(B, C, H, W)`.
 
     .. note::
@@ -391,8 +387,7 @@ def gradient(
         max_val: The value of the infinite elements in the kernel.
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
-    Returns
-    -------
+    Returns:
        Gradient image with shape :math:`(B, C, H, W)`.
 
     .. note::
@@ -460,8 +455,7 @@ def top_hat(
         max_val: The value of the infinite elements in the kernel.
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
-    Returns
-    -------
+    Returns:
        Top hat transformed image with shape :math:`(B, C, H, W)`.
 
     .. note::
@@ -532,8 +526,7 @@ def bottom_hat(
         max_val: The value of the infinite elements in the kernel.
         engine: convolution is faster and less memory hungry, and unfold is more stable numerically
 
-    Returns
-    -------
+    Returns:
        Top hat transformed image with shape :math:`(B, C, H, W)`.
 
     .. note::

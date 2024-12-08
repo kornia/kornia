@@ -22,8 +22,7 @@ class RandomRain(IntensityAugmentationBase2D):
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    Examples
-    --------
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
         >>> rain = RandomRain(p=1,drop_height=(1,2),drop_width=(1,2),number_of_drops=(1,1))

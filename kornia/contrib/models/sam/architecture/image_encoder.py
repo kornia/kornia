@@ -41,8 +41,7 @@ class ImageEncoderViT(Module):
     ) -> None:
         """Construct Image Encoder ViT.
 
-        Parameters
-        ----------
+        Args:
         img_size: Input image size.
         patch_size: Patch size.
         in_chans: Number of input image channels.
@@ -129,8 +128,7 @@ class Block(Module):
     ) -> None:
         """Construct tranformer block.
 
-        Parameters
-        ----------
+        Args:
         dim: Number of input channels.
         num_heads: Number of attention heads in each ViT block.
         mlp_ratio: Ratio of mlp hidden dim to embedding dim.
@@ -192,8 +190,7 @@ class Attention(Module):
     ) -> None:
         """Construct attention block.
 
-        Parameters
-        ----------
+        Args:
         dim: Number of input channels.
         num_heads: Number of attention heads.
         qkv_bias:  If True, add a learnable bias to query, key, value.
@@ -243,8 +240,7 @@ def get_rel_pos(q_size: int, k_size: int, rel_pos: Tensor) -> Tensor:
         k_size: size of key k.
         rel_pos: relative position embeddings (L, C).
 
-    Returns
-    -------
+    Returns:
         Extracted positional embeddings according to relative positions.
 
     """
@@ -284,8 +280,7 @@ def add_decomposed_rel_pos(
         q_size: spatial sequence size of query q with (q_h, q_w).
         k_size: spatial sequence size of key k with (k_h, k_w).
 
-    Returns
-    -------
+    Returns:
         att: attention map with added relative positional embeddings.
 
     """
@@ -319,8 +314,7 @@ class PatchEmbed(Module):
     ) -> None:
         """Construct Patch Embedding.
 
-        Parameters
-        ----------
+        Args:
         kernel_size: kernel size of the projection layer.
         stride: stride of the projection layer.
         padding: padding size of the projection layer.

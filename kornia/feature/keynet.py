@@ -121,8 +121,7 @@ class KeyNet(Module):
         pretrained: Download and set pretrained weights to the model.
         keynet_conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
 
-    Returns
-    -------
+    Returns:
         KeyNet response score.
 
     Shape:

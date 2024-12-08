@@ -45,8 +45,7 @@ class RandAugment(PolicyAugmentBase):
                                     modules will trigger errors.
                                     If `skip`, transformation matrix will be totally ignored.
 
-    Examples
-    --------
+    Examples:
         >>> import kornia.augmentation as K
         >>> in_tensor = torch.rand(5, 3, 30, 30)
         >>> aug = K.AugmentationSequential(RandAugment(n=2, m=10))

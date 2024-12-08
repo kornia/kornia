@@ -98,8 +98,7 @@ class Sam(ModelBase[SamConfig]):
                 - 'vit_h'
                 - 'mobile_sam'
 
-        Returns
-        -------
+        Returns:
             The respective SAM model
 
         """
@@ -116,8 +115,7 @@ class Sam(ModelBase[SamConfig]):
             config: The SamConfig data structure. If the model_type is available, build from it, otherwise will use
                     the parameters set.
 
-        Returns
-        -------
+        Returns:
             The respective SAM model
 
         Example:
@@ -254,8 +252,7 @@ class Sam(ModelBase[SamConfig]):
 
             multimask_output: Whether the model should predict multiple disambiguating masks, or return a single mask.
 
-        Returns
-        -------
+        Returns:
             A list over input images, where each element is as SegmentationResults the following.
                 - logits: Low resolution logits with shape :math:`(K, C, H, W)`. Can be passed as mask input to
                           subsequent iterations of prediction. Where :math:`K` is the number of input prompts,

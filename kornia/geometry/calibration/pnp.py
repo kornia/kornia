@@ -18,8 +18,7 @@ def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> 
        points : Tensor containing the points to be normalized with shape :math:`(B, N, D)`.
        eps : Small value to avoid division by zero error.
 
-    Returns
-    -------
+    Returns:
        Tuple containing the normalized points in the shape :math:`(B, N, D)` and the transformation matrix
        in the shape :math:`(B, D+1, D+1)`.
 
@@ -80,8 +79,7 @@ def solve_pnp_dlt(
             weights for each point. If None, all points are considered to be equally important.
         svd_eps : A small float value to avoid numerical precision issues.
 
-    Returns
-    -------
+    Returns:
         A tensor with shape :math:`(B, 3, 4)` representing the estimated world to
         camera transformation matrices (also known as the extrinsic matrices).
 

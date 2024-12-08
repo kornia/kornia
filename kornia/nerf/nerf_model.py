@@ -108,8 +108,7 @@ class NerfModel(Module):
             origins: Ray origins with shape :math:`(B, 3)`.
             directions: Ray directions with shape :math:`(B, 3)`.
 
-        Returns
-        -------
+        Returns:
             Rendered image pixels :math:`(B, 3)`.
 
         """
@@ -177,8 +176,7 @@ class NerfModelRenderer:
         Args:
             image_size: image size: tuple[int, int]
 
-        Returns
-        -------
+        Returns:
             - Pixels grid: Tensor (1, H, W, 2)
             - Ones: Tensor (H*W, 1)
 
@@ -199,8 +197,7 @@ class NerfModelRenderer:
         Args:
             camera: camera for image rendering: PinholeCamera.
 
-        Returns
-        -------
+        Returns:
             Rendered image with shape :math:`(H, W, 3)`.
 
         """

@@ -33,8 +33,7 @@ class RandomShear(GeometricAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_affine`.
 
-    Examples
-    --------
+    Examples:
         >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3)

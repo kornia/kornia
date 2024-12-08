@@ -37,8 +37,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
 
-    Returns
-    -------
+    Returns:
         the computed essential matrix with shape :math:`(B, 3, 3)`.
 
     """
@@ -86,8 +85,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
         X: Coefficients for the null space :math:`(B, N, 2), N>=8`.
         batch_size: batcs size of the input, the number of image pairs :math:`B`.
 
-    Returns
-    -------
+    Returns:
         the computed essential matrix with shape :math:`(B, 3, 3)`.
         Note that the returned E matrices should be the same batch size with the input.
 
@@ -273,8 +271,7 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
         K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
         K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
 
-    Returns
-    -------
+    Returns:
         The essential matrix with shape :math:`(*, 3, 3)`.
 
     """
@@ -293,8 +290,7 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     Args:
        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
 
-    Returns
-    -------
+    Returns:
        A tuple containing the first and second possible rotation matrices and the translation vector.
        The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
 
@@ -338,8 +334,7 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
     Args:
        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
 
-    Returns
-    -------
+    Returns:
        A tuple containing the first and second possible rotation matrices and the translation vector.
        The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
 
@@ -405,8 +400,7 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
         R2: The second camera rotation matrix with shape :math:`(*, 3, 3)`.
         t2: The second camera translation vector with shape :math:`(*, 3, 1)`.
 
-    Returns
-    -------
+    Returns:
         The Essential matrix with the shape :math:`(*, 3, 3)`.
 
     """
@@ -433,8 +427,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     Args:
         E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
 
-    Returns
-    -------
+    Returns:
         The rotation and translation containing the four possible combination for the retrieved motion.
         The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
 
@@ -479,8 +472,7 @@ def motion_from_essential_choose_solution(
           different cardinality (for instance after filtering with RANSAC) while keeping batch
           semantics. Mask is of shape :math:`(*, N)`.
 
-    Returns
-    -------
+    Returns:
         The rotation and translation plus the 3d triangulated points.
         The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
 
@@ -572,8 +564,7 @@ def relative_camera_motion(
         R2: The second camera rotation matrix with shape :math:`(*, 3, 3)`.
         t2: The second camera translation vector with shape :math:`(*, 3, 1)`.
 
-    Returns
-    -------
+    Returns:
         A tuple with the relative rotation matrix and
         translation vector with the shape of :math:`[(*, 3, 3), (*, 3, 1)]`.
 
@@ -597,14 +588,12 @@ def find_essential(
 ) -> torch.Tensor:
     r"""Find essential matrices.
 
-    Parameters
-    ----------
+    Args:
          points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
          points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
          weights: Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.
 
-    Returns
-    -------
+    Returns:
          the computed essential matrices with shape :math:`(B, 10, 3, 3)`.
          Note that all possible solutions are returned, i.e., 10 essential matrices for each image pair.
          To choose the best one out of 10, try to check the one with the lowest Sampson distance.

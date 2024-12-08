@@ -33,8 +33,7 @@ def box_blur(
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
         separable: run as composition of two 1d-convolutions.
 
-    Returns
-    -------
+    Returns:
         the blurred tensor with shape :math:`(B,C,H,W)`.
 
     .. note::
@@ -82,8 +81,7 @@ class BoxBlur(Module):
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         separable: run as composition of two 1d-convolutions.
 
-    Returns
-    -------
+    Returns:
         the blurred input tensor.
 
     Shape:

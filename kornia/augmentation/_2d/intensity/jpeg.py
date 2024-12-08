@@ -25,8 +25,7 @@ class RandomJPEG(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.enhance.jpeg_codec_differentiable`.
 
-    Examples
-    --------
+    Examples:
         >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> images = 0.1904 * torch.ones(2, 3, 32, 32)

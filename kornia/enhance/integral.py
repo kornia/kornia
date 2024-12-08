@@ -17,12 +17,10 @@ def integral_tensor(input: Tensor, dim: Optional[Tuple[int, ...]] = None) -> Ten
         input: the input tensor with shape :math:`(*, D)`. Where D is the number of dimensions.
         dim: the dimension to be summed.
 
-    Returns
-    -------
+    Returns:
         Integral tensor for the input tensor with shape :math:`(*, D)`.
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.ones(3, 5)
         >>> output = integral_tensor(input, (-2, -1))
         >>> output
@@ -53,12 +51,10 @@ def integral_image(image: Tensor) -> Tensor:
     Args:
         image: the input image tensor with shape :math:`(*, H, W)`.
 
-    Returns
-    -------
+    Returns:
         Integral tensor for the input image tensor with shape :math:`(*, H, W)`.
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.ones(1, 5, 5)
         >>> output = integral_image(input)
         >>> output
@@ -80,16 +76,14 @@ class IntegralTensor(Module):
     Args:
         image: the input tensor with shape :math:`(B,C,H,W)`.
 
-    Returns
-    -------
+    Returns:
         Integral tensor for the input tensor with shape :math:`(B,C,H,W)`.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.ones(3, 5)
         >>> dim = (-2, -1)
         >>> output = IntegralTensor(dim)(input)
@@ -116,16 +110,14 @@ class IntegralImage(Module):
     Args:
         image: the input image tensor with shape :math:`(B,C,H,W)`.
 
-    Returns
-    -------
+    Returns:
         Integral tensor for the input image tensor with shape :math:`(B,C,H,W)`.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.ones(1, 5, 5)
         >>> output = IntegralImage()(input)
         >>> output

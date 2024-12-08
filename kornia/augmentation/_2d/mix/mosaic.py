@@ -48,8 +48,7 @@ class RandomMosaic(MixAugmentationBaseV2):
             to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
             differentiability.
 
-    Examples
-    --------
+    Examples:
         >>> mosaic = RandomMosaic((300, 300), data_keys=["input", "bbox_xyxy"])
         >>> boxes = torch.tensor([[
         ...     [70, 5, 150, 100],

@@ -179,8 +179,7 @@ class NerfSolver:
             -- Back propagate loss
             -- Optimizer step
 
-        Returns
-        -------
+        Returns:
             Average psnr over all epoch rays.
 
         """

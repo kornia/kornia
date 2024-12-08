@@ -50,8 +50,7 @@ class IrregularRenderer(VolumeRenderer):
             densities: Volume densities of points along rays :math:`(*, N)`
             points_3d: 3D points along rays :math:`(*, N, 3)`
 
-        Returns
-        -------
+        Returns:
             Rendered RGB values for each ray :math:`(*, 3)`
 
         """
@@ -76,8 +75,7 @@ class RegularRenderer(VolumeRenderer):
             densities: Volume densities of points along rays :math:`(*, N)`
             points_3d: 3D points along rays :math:`(*, N, 3)`
 
-        Returns
-        -------
+        Returns:
             Rendered RGB values for each ray :math:`(*, 3)`
 
         """

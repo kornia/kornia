@@ -32,8 +32,7 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
     Args:
         index: cuda device index
 
-    Returns
-    -------
+    Returns:
         torch.device
 
     """
@@ -46,8 +45,7 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
 def get_mps_device_if_available() -> torch.device:
     """Try to get mps device, if fail, return cpu.
 
-    Returns
-    -------
+    Returns:
         torch.device
 
     """
@@ -61,8 +59,7 @@ def get_mps_device_if_available() -> torch.device:
 def get_cuda_or_mps_device_if_available() -> torch.device:
     """Check OS and platform and run get_cuda_device_if_available or get_mps_device_if_available.
 
-    Returns
-    -------
+    Returns:
         torch.device
 
     """
@@ -124,8 +121,7 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
 
     If so, it would return a tuple of (device, dtype). Default: (cpu, ``get_default_dtype()``).
 
-    Returns
-    -------
+    Returns:
         [torch.device, torch.dtype]
 
     """
@@ -313,8 +309,7 @@ def is_autocast_enabled(both: bool = True) -> bool:
     Args:
         both: if True will consider autocast region for both types of devices
 
-    Returns
-    -------
+    Returns:
         Return a Bool,
         will always return False for a torch without support, otherwise will be: if both is True
         `torch.is_autocast_enabled() or torch.is_autocast_enabled('cpu')`. If both is False will return just

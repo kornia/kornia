@@ -53,8 +53,7 @@ class DISKFeatures:
             *args: Arguments passed to :func:`torch.Tensor.to`.
             **kwargs: Keyword arguments passed to :func:`torch.Tensor.to`.
 
-        Returns
-        -------
+        Returns:
             A new DISKFeatures object with tensors of appropriate type and location.
 
         """  # noqa:D205

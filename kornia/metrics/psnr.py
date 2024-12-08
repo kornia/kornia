@@ -29,8 +29,7 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     Return:
         the computed loss as a scalar.
 
-    Examples
-    --------
+    Examples:
         >>> ones = torch.ones(1)
         >>> psnr(ones, 1.2 * ones, 2.) # 10 * log(4/((1.2-1)**2)) / log(10)
         tensor(20.0000)

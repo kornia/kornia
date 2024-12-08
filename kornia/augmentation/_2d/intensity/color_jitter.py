@@ -43,8 +43,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         :func:`kornia.enhance.adjust_saturation_with_gray_subtraction`,
         :func:`kornia.enhance.adjust_hue`.
 
-    Examples
-    --------
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.ones(1, 3, 3, 3)
         >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)

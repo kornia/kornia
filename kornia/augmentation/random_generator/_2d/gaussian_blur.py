@@ -22,8 +22,7 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
     Args:
         sigma: The range to uniformly sample the standard deviation for the Gaussian kernel.
 
-    Returns
-    -------
+    Returns:
         A dict of parameters to be passed for transformation.
             - sigma: element-wise standard deviation with a shape of (B,).
 

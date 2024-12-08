@@ -137,8 +137,7 @@ def affine(
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Returns
-    -------
+    Returns:
         The warped image with the same shape as the input.
 
     Example:
@@ -189,8 +188,7 @@ def affine3d(
          `` 'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Returns
-    -------
+    Returns:
         The warped image.
 
     Example:
@@ -252,8 +250,7 @@ def rotate(
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Returns
-    -------
+    Returns:
         The rotated tensor with shape as input.
 
     .. note::
@@ -322,8 +319,7 @@ def rotate3d(
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Returns
-    -------
+    Returns:
         Tensor: The rotated tensor with shape as input.
 
     """
@@ -383,8 +379,7 @@ def translate(
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Returns
-    -------
+    Returns:
         The translated tensor with shape as input.
 
     Example:
@@ -438,8 +433,7 @@ def scale(
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Returns
-    -------
+    Returns:
         The scaled tensor with the same shape as the input.
 
     Example:
@@ -496,8 +490,7 @@ def shear(
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Returns
-    -------
+    Returns:
         The skewed tensor with shape same as the input.
 
     Example:
@@ -564,8 +557,7 @@ def resize(
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
 
-    Returns
-    -------
+    Returns:
         The resized tensor with the shape as the specified size.
 
     Example:
@@ -643,8 +635,7 @@ def resize_to_be_divisible(
         antialias (bool, optional):
             If True, then image will be filtered with Gaussian before downscaling. Defaults to False.
 
-    Returns
-    -------
+    Returns:
         Tensor: The resized tensor.
 
     """
@@ -681,8 +672,7 @@ def rescale(
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
 
-    Returns
-    -------
+    Returns:
         The rescaled tensor with the shape as the specified size.
 
     Example:
@@ -718,8 +708,7 @@ class Resize(Module):
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
 
-    Returns
-    -------
+    Returns:
         The resized tensor with the shape of the given size.
 
     Example:
@@ -781,12 +770,10 @@ class Affine(Module):
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Raises
-    ------
+    Raises:
         RuntimeError: If not one of ``angle``, ``translation``, ``scale_factor``, or ``shear`` is set.
 
-    Returns
-    -------
+    Returns:
         The transformed tensor with same shape as input.
 
     Example:
@@ -873,8 +860,7 @@ class Rescale(Module):
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
 
-    Returns
-    -------
+    Returns:
         The rescaled tensor with the shape according to the given factor.
 
     Example:
@@ -919,8 +905,7 @@ class Rotate(Module):
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Returns
-    -------
+    Returns:
         The rotated tensor with the same shape as the input.
 
     Example:
@@ -964,8 +949,7 @@ class Translate(Module):
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Returns
-    -------
+    Returns:
         The translated tensor with the same shape as the input.
 
     Example:
@@ -1007,8 +991,7 @@ class Scale(Module):
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Returns
-    -------
+    Returns:
         The scaled tensor with the same shape as the input.
 
     Example:
@@ -1052,8 +1035,7 @@ class Shear(Module):
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
-    Returns
-    -------
+    Returns:
         The skewed tensor with the same shape as the input.
 
     Example:

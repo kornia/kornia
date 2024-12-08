@@ -32,8 +32,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_pespective`.
 
-    Examples
-    --------
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs= torch.tensor([[[[1., 0., 0.],
         ...                         [0., 1., 0.],

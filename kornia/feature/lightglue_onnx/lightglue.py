@@ -87,8 +87,7 @@ class OnnxLightGlue:
         Args:
             data: Dictionary containing both images and the keypoints and descriptors thereof.
 
-        Returns
-        -------
+        Returns:
             Dictionary containing the matches and scores.
 
         ``data`` (``dict``):

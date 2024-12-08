@@ -21,13 +21,11 @@ class PassLAF(nn.Module):
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """Run forward.
 
-        Parameters
-        ----------
+        Args:
             laf: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 
-        Returns
-        -------
+        Returns:
             LAF, unchanged :math:`(B, N, 2, 3)`
 
         """
@@ -66,12 +64,10 @@ class PatchDominantGradientOrientation(nn.Module):
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
         """Run forward.
 
-        Parameters
-        ----------
+        Args:
             patch: :math:`(B, 1, H, W)`
 
-        Returns
-        -------
+        Returns:
             angle in radians: :math:`(B)`
 
         """
@@ -128,16 +124,14 @@ class OriNet(nn.Module):
         pretrained: Download and set pretrained weights to the model.
         eps: to avoid division by zero in atan2.
 
-    Returns
-    -------
+    Returns:
         Angle in radians.
 
     Shape:
         - Input: (B, 1, 32, 32)
         - Output: (B)
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.rand(16, 1, 32, 32)
         >>> orinet = OriNet()
         >>> angle = orinet(input) # 16
@@ -179,7 +173,7 @@ class OriNet(nn.Module):
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-        """Utility function that normalizes the input by batch.""" ""
+        """Utility function that normalizes the input by batch."""
         sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
@@ -189,12 +183,10 @@ class OriNet(nn.Module):
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
         """Run forward.
 
-        Parameters
-        ----------
+        Args:
             patch: :math:`(B, 1, H, W)`
 
-        Returns
-        -------
+        Returns:
             angle in radians: :math:`(B)`
 
         """
@@ -235,13 +227,11 @@ class LAFOrienter(nn.Module):
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """Run forward.
 
-        Parameters
-        ----------
+        Args:
             laf: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 
-        Returns
-        -------
+        Returns:
             LAF_out: :math:`(B, N, 2, 3)`
 
         """

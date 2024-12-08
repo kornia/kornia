@@ -76,8 +76,7 @@ class DeDoDe(Module):
             n: The number of keypoints to detect.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
 
-        Returns
-        -------
+        Returns:
             keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range,
             unlike `.detect()` function
             scores: A tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
@@ -116,8 +115,7 @@ class DeDoDe(Module):
             crop_h: The height of the crop to be used for detection. If None, the full image is used.
             crop_w: The width of the crop to be used for detection. If None, the full image is used.
 
-        Returns
-        -------
+        Returns:
             keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints,
             normalized to the range :math:`[-1, 1]`.
             scores: A tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
@@ -152,8 +150,7 @@ class DeDoDe(Module):
             keypoints: An optional tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
 
-        Returns
-        -------
+        Returns:
             descriptions: A tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints.
             If the dense descriptors are requested, the shape is :math:`(B, DIM, H, W)`.
 
@@ -195,8 +192,7 @@ class DeDoDe(Module):
             amp_dtype: the dtype to use for the model. One of torch.float16 or torch.float32.
             Default is torch.float16, suitable for CUDA. Use torch.float32 for CPU or MPS
 
-        Returns
-        -------
+        Returns:
             The pretrained model.
 
         """

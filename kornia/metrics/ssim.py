@@ -48,12 +48,10 @@ def ssim(
         padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
          area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
-    Returns
-    -------
+    Returns:
        The ssim index map with shape :math:`(B, C, H, W)`.
 
-    Examples
-    --------
+    Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5)
         >>> ssim_map = ssim(input1, input2, 5)  # 1x4x5x5
@@ -154,8 +152,7 @@ class SSIM(nn.Module):
         - Target :math:`(B, C, H, W)`.
         - Output: :math:`(B, C, H, W)`.
 
-    Examples
-    --------
+    Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5)
         >>> ssim = SSIM(5)

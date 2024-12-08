@@ -28,8 +28,7 @@ class ONNXLoader(CachedDownloader):
             url: The URL of the preprocessor config to load.
             download: If True, the config will be downloaded if it's not already in the local cache.
 
-        Returns
-        -------
+        Returns:
             dict[str, Any]: The loaded preprocessor config.
 
         """
@@ -65,8 +64,7 @@ class ONNXLoader(CachedDownloader):
             with_data: If True, the model will be loaded with its `.onnx_data` weights.
             **kwargs: Additional arguments to pass to the download method, if needed.
 
-        Returns
-        -------
+        Returns:
             onnx.ModelProto: The loaded ONNX model.
 
         """
@@ -117,8 +115,7 @@ class ONNXLoader(CachedDownloader):
     def _fetch_repo_contents(folder: str) -> list[dict[str, Any]]:
         """Fetch the contents of the Hugging Face repository using the Hugging Face API.
 
-        Returns
-        -------
+        Returns:
             A list of all files in the repository as dictionaries containing file details.
 
         """
@@ -201,8 +198,7 @@ def add_metadata(
         additional_metadata: A list of tuples, where each tuple contains a key and a value
             for the additional metadata to add to the ONNX model.
 
-    Returns
-    -------
+    Returns:
         The ONNX model with the added metadata.
 
     """

@@ -132,8 +132,7 @@ class TverskyLoss(nn.Module):
         - Target: :math:`(N, H, W)` where each value is
           :math:`0 ≤ targets[i] ≤ C-1`.
 
-    Examples
-    --------
+    Examples:
         >>> N = 5  # num_classes
         >>> criterion = TverskyLoss(alpha=0.5, beta=0.5)
         >>> pred = torch.randn(1, N, 3, 5, requires_grad=True)

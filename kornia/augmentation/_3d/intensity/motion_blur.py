@@ -43,8 +43,7 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
-    Examples
-    --------
+    Examples:
         >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 5, 5)

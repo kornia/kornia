@@ -24,8 +24,7 @@ def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = N
          : kernel width.
          device: device, on which generate.
 
-    Returns
-    -------
+    Returns:
         conv_kernel [2x1xhxw]
 
     """
@@ -45,8 +44,7 @@ def _get_center_kernel2d(h: int, w: int, device: Optional[torch.device] = None) 
         w: kernel width.
         device: device, on which generate.
 
-    Returns
-    -------
+    Returns:
         conv_kernel [2x2xhxw].
 
     """
@@ -80,8 +78,7 @@ def _get_center_kernel3d(d: int, h: int, w: int, device: Optional[torch.device] 
         w: kernel width.
         device: device, on which generate.
 
-    Returns
-    -------
+    Returns:
         conv_kernel [3x3xdxhxw].
 
     """
@@ -121,8 +118,7 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int, device: Optional[torch.dev
         w: kernel width.
         device: device, on which generate.
 
-    Returns
-    -------
+    Returns:
         conv_kernel [3x1xdxhxw]
 
     """
@@ -275,8 +271,7 @@ def conv_soft_argmax2d(
         eps: small value to avoid zero division.
         output_value: if True, val is output, if False, only ij.
 
-    Returns
-    -------
+    Returns:
         Function has two outputs - argmax coordinates and the softmaxpooled heatmap values themselves.
         On each window, the function computed returns with shapes :math:`(N, C, 2, H_{out},
         W_{out})`, :math:`(N, C, H_{out}, W_{out})`,
@@ -291,8 +286,7 @@ def conv_soft_argmax2d(
              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[1] -
                (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.randn(20, 16, 50, 32)
         >>> nms_coords, nms_val = conv_soft_argmax2d(input, (3,3), (2,2), (1,1), output_value=True)
 
@@ -394,8 +388,7 @@ def conv_soft_argmax3d(
         strict_maxima_bonus: pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
           This is needed for mimic behavior of strict NMS in classic local features
 
-    Returns
-    -------
+    Returns:
         Function has two outputs - argmax coordinates and the softmaxpooled heatmap values themselves.
         On each window, the function computed returns with shapes :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`,
         :math:`(N, C, D_{out}, H_{out}, W_{out})`,
@@ -414,8 +407,7 @@ def conv_soft_argmax3d(
              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[2] -
              (\text{kernel\_size}[2] - 1) - 1}{\text{stride}[2]} + 1\right\rfloor
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.randn(20, 16, 3, 50, 32)
         >>> nms_coords, nms_val = conv_soft_argmax3d(input, (3, 3, 3), (1, 2, 2), (0, 1, 1))
 
@@ -502,13 +494,11 @@ def spatial_soft_argmax2d(
         normalized_coordinates: whether to return the coordinates normalized in the range of :math:`[-1, 1]`.
             Otherwise, it will return the coordinates in the range of the input shape.
 
-    Returns
-    -------
+    Returns:
         the index of the maximum 2d coordinates of the give map :math:`(B, N, 2)`.
         The output order is x-coord and y-coord.
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.tensor([[[
         ... [0., 0., 0.],
         ... [0., 10., 0.],
@@ -557,8 +547,7 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
           This is needed for mimic behavior of strict NMS in classic local features
         eps: parameter to control the hessian matrix ill-condition number.
 
-    Returns
-    -------
+    Returns:
         the location and value per each 3x3x3 window which contains strict extremum, similar to one done is SIFT.
         :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`, :math:`(N, C, D_{out}, H_{out}, W_{out})`,
 
@@ -576,8 +565,7 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[2] -
              (\text{kernel\_size}[2] - 1) - 1}{\text{stride}[2]} + 1\right\rfloor
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.randn(20, 16, 3, 50, 32)
         >>> nms_coords, nms_val = conv_quad_interp3d(input, 1.0)
 

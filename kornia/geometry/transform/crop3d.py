@@ -29,8 +29,7 @@ def crop_and_resize3d(
         interpolation: Interpolation flag.
         align_corners: mode for grid_generation.
 
-    Returns
-    -------
+    Returns:
         tensor containing the patches with shape (Bx)CxN1xN2xN3.
 
     Example:
@@ -124,12 +123,10 @@ def center_crop3d(
         interpolation: Interpolation flag.
         align_corners : mode for grid_generation.
 
-    Returns
-    -------
+    Returns:
         the output tensor with patches.
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.arange(64, dtype=torch.float32).view(1, 1, 4, 4, 4)
         >>> input
         tensor([[[[[ 0.,  1.,  2.,  3.],
@@ -257,12 +254,10 @@ def crop_by_boxes3d(
         interpolation: Interpolation flag.
         align_corners: mode for grid_generation.
 
-    Returns
-    -------
+    Returns:
         the output tensor with patches.
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.tensor([[[
         ...         [[ 0.,  1.,  2.,  3.],
         ...          [ 4.,  5.,  6.,  7.],
@@ -356,8 +351,7 @@ def crop_by_transform_mat3d(
           ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
 
-    Returns
-    -------
+    Returns:
         the output tensor with patches.
 
     """

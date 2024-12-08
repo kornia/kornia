@@ -31,8 +31,7 @@ class RandomRotation(GeometricAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.geometry.transform.affine`.
 
-    Examples
-    --------
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.tensor([[1., 0., 0., 2.],
         ...                       [0., 0., 0., 0.],
@@ -134,8 +133,7 @@ class RandomRotation90(GeometricAugmentationBase2D):
         This function internally uses :func:`kornia.geometry.transform.affine`. This version is relatively
         slow as it operates based on affine transformations.
 
-    Examples
-    --------
+    Examples:
         >>> rng = torch.manual_seed(1)
         >>> torch.set_printoptions(sci_mode=False)
         >>> input = torch.tensor([[1., 0., 0., 2.],

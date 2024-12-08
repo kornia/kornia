@@ -21,8 +21,7 @@ class RotationGenerator3D(RandomGeneratorBase):
             (a, b), (m, n) and (x, y).
             Set to 0 to deactivate rotations.
 
-    Returns
-    -------
+    Returns:
         A dict of parameters to be passed for transformation.
             - yaw (Tensor): element-wise rotation yaws with a shape of (B,).
             - pitch (Tensor): element-wise rotation pitches with a shape of (B,).

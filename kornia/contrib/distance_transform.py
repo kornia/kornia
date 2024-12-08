@@ -19,8 +19,7 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
         kernel_size: size of the convolution kernel.
         h: value that influence the approximation of the min function.
 
-    Returns
-    -------
+    Returns:
         tensor with shape :math:`(B,C,H,W)`.
 
     Example:

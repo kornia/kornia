@@ -48,8 +48,7 @@ def distort_points_kannala_brandt(projected_points_in_camera_z1_plane: Tensor, p
         projected_points_in_camera_z1_plane: Tensor representing the points to distort with shape (..., 2).
         params: Tensor representing the parameters of the Kannala-Brandt distortion model with shape (..., 8).
 
-    Returns
-    -------
+    Returns:
         Tensor representing the distorted points with shape (..., 2).
 
     Example:
@@ -87,8 +86,7 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
         distorted_points_in_camera: Tensor representing the points to undistort with shape (..., 2).
         params: Tensor representing the parameters of the Kannala-Brandt distortion model with shape (..., 8).
 
-    Returns
-    -------
+    Returns:
         Tensor representing the undistorted points with shape (..., 2).
 
     Example:
@@ -189,8 +187,7 @@ def dx_distort_points_kannala_brandt(projected_points_in_camera_z1_plane: Tensor
         projected_points_in_camera_z1_plane: Tensor representing the points to distort with shape (..., 2).
         params: Tensor representing the parameters of the Kannala-Brandt distortion model with shape (..., 8).
 
-    Returns
-    -------
+    Returns:
         Tensor representing the derivative of the x distortion with respect to the x coordinate with shape (..., 2).
 
     Example:

@@ -34,15 +34,13 @@ def gaussian_blur2d(
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         separable: run as composition of two 1d-convolutions.
 
-    Returns
-    -------
+    Returns:
         the blurred tensor with shape :math:`(B, C, H, W)`.
 
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/gaussian_blur.html>`__.
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.rand(2, 4, 5, 5)
         >>> output = gaussian_blur2d(input, (3, 3), (1.5, 1.5))
         >>> output.shape
@@ -88,8 +86,7 @@ class GaussianBlur2d(Module):
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         separable: run as composition of two 1d-convolutions.
 
-    Returns
-    -------
+    Returns:
         the blurred tensor.
 
     Shape:

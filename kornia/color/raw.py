@@ -46,8 +46,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
         image: raw image to be converted to RGB with shape :math:`(*,1,H,W)`.
         cfa: The configuration of the color filter.
 
-    Returns
-    -------
+    Returns:
         RGB version of the image with shape :math:`(*,3,H,W)`.
 
     Example:
@@ -186,8 +185,7 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
         image: RGB image to be converted to bayer raw with shape :math:`(*,3,H,W)`.
         cfa: Which color filter array do we want the output to mimic. I.e. which pixels are red/green/blue.
 
-    Returns
-    -------
+    Returns:
         raw version of the image with shape :math:`(*,1,H,W)`.
 
     Example:
@@ -237,8 +235,7 @@ def raw_to_rgb_2x2_downscaled(image: Tensor, cfa: CFA) -> Tensor:
         image: raw image to be converted to RGB and downscaled with shape :math:`(*,1,H,W)`.
         cfa: The configuration of the color filter.
 
-    Returns
-    -------
+    Returns:
         downscaled RGB version of the image with shape :math:`(*,3,\frac{H}{2},\frac{W}{2})`.
 
     Example:

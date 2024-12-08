@@ -14,12 +14,10 @@ def eye_like(n: int, input: Tensor, shared_memory: bool = False) -> Tensor:
           The expected shape is :math:`(B, *)`.
         shared_memory: when set, all samples in the batch will share the same memory.
 
-    Returns
-    -------
+    Returns:
        The identity matrix with the same batch size as the input :math:`(B, N, N)`.
 
-    Notes
-    -----
+    Notes:
         When the dimension to expand is of size 1, using torch.expand(...) yields the same tensor as torch.repeat(...)
         without using extra memory. Thus, when the tensor obtained by this method will be later assigned -
         use this method with shared_memory=False, otherwise, prefer using it with shared_memory=True.
@@ -44,12 +42,10 @@ def vec_like(n: int, tensor: Tensor, shared_memory: bool = False) -> Tensor:
           The expected shape is :math:`(B, *)`.
         shared_memory: when set, all samples in the batch will share the same memory.
 
-    Returns
-    -------
+    Returns:
         The vector with the same batch size as the input :math:`(B, N, 1)`.
 
-    Notes
-    -----
+    Notes:
         When the dimension to expand is of size 1, using torch.expand(...) yields the same tensor as torch.repeat(...)
         without using extra memory. Thus, when the tensor obtained by this method will be later assigned -
         use this method with shared_memory=False, otherwise, prefer using it with shared_memory=True.
@@ -70,8 +66,7 @@ def differentiable_polynomial_rounding(input: Tensor) -> Tensor:
     Args:
         input (Tensor): Input tensor of any shape to be rounded.
 
-    Returns
-    -------
+    Returns:
         output (Tensor): Pseudo rounded tensor of the same shape as input tensor.
 
     """
@@ -87,8 +82,7 @@ def differentiable_polynomial_floor(input: Tensor) -> Tensor:
     Args:
         input (Tensor): Input tensor of any shape to be floored.
 
-    Returns
-    -------
+    Returns:
         output (Tensor): Pseudo rounded tensor of the same shape as input tensor.
 
     """
@@ -112,8 +106,7 @@ def differentiable_clipping(
         max_val (Optional[float]): Maximum value.
         scale (float): Scale value. Default 0.02.
 
-    Returns
-    -------
+    Returns:
         output (Tensor): Clipped output tensor of the same shape as the input tensor.
 
     """

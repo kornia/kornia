@@ -34,8 +34,7 @@ class Image:
         data: a torch tensor containing the image data.
         layout: a dataclass containing the image layout information.
 
-    Examples
-    --------
+    Examples:
         >>> # from a torch.tensor
         >>> data = torch.randint(0, 255, (3, 4, 5), dtype=torch.uint8)  # CxHxW
         >>> pixel_format = PixelFormat(
@@ -94,8 +93,7 @@ class Image:
             device: the device to move the image to.
             dtype: the data type to cast the image to.
 
-        Returns
-        -------
+        Returns:
             Image: the image moved to the given device and dtype.
 
         """

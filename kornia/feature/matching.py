@@ -48,8 +48,7 @@ def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor
 def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
     """Output empty tensors.
 
-    Returns
-    -------
+    Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
 
@@ -70,8 +69,7 @@ def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple
         dm: Tensor containing the distances from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
-    Returns
-    -------
+    Returns:
         - Descriptor distance of matching descriptors, shape of :math:`(B1, 1)`.
         - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B1, 2)`.
 
@@ -320,13 +318,11 @@ class DescriptorMatcher(Module):
     def forward(self, desc1: Tensor, desc2: Tensor) -> Tuple[Tensor, Tensor]:
         """Run forward.
 
-        Parameters
-        ----------
+        Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
 
-        Returns
-        -------
+        Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2,
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
@@ -432,8 +428,7 @@ class DescriptorMatcherWithSteerer(Module):
     ) -> Tuple[Tensor, Tensor, Optional[int]]:
         """Run forward.
 
-        Parameters
-        ----------
+        Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             normalize: bool to decide whether to normalize descriptors to unit norm.
@@ -441,8 +436,7 @@ class DescriptorMatcherWithSteerer(Module):
                 number of rotations. Smaller subset size leads to faster but less
                 accurate matching. Only used when `self.steer_mode` is `"global"`.
 
-        Returns
-        -------
+        Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2,
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
@@ -517,15 +511,13 @@ class GeometryAwareDescriptorMatcher(Module):
     def forward(self, desc1: Tensor, desc2: Tensor, lafs1: Tensor, lafs2: Tensor) -> Tuple[Tensor, Tensor]:
         """Run forward.
 
-        Parameters
-        ----------
+        Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
             lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
 
-        Returns
-        -------
+        Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2,
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.

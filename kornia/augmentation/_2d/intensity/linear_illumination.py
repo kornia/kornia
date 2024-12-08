@@ -29,8 +29,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         the parameters will be generated on CPU. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
 
-    Examples
-    --------
+    Examples:
         >>> rng = torch.manual_seed(1)
         >>> input = torch.ones(1, 3, 3, 3) * 0.5
         >>> aug = RandomLinearIllumination(gain=0.25, p=1.)
@@ -137,8 +136,7 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         the parameters will be generated on CPU. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
 
-    Examples
-    --------
+    Examples:
         >>> rng = torch.manual_seed(1)
         >>> input = torch.ones(1, 3, 3, 3) * 0.5
         >>> aug = RandomLinearCornerIllumination(gain=0.25, p=1.)

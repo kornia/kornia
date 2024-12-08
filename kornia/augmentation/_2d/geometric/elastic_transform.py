@@ -31,8 +31,7 @@ class RandomElasticTransform(AugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.geometry.transform.elastic_transform2d`.
 
-    Examples
-    --------
+    Examples:
         >>> import torch
         >>> img = torch.ones(1, 1, 2, 2)
         >>> out = RandomElasticTransform()(img)

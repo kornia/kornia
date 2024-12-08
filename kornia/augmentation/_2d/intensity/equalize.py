@@ -24,8 +24,7 @@ class RandomEqualize(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.enhance.equalize`.
 
-    Examples
-    --------
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
         >>> equalize = RandomEqualize(p=1.)

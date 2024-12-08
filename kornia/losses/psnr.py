@@ -25,8 +25,7 @@ def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
     Return:
         the computed loss as a scalar.
 
-    Examples
-    --------
+    Examples:
         >>> ones = torch.ones(1)
         >>> psnr_loss(ones, 1.2 * ones, 2.) # 10 * log(4/((1.2-1)**2)) / log(10)
         tensor(-20.0000)
@@ -54,8 +53,7 @@ class PSNRLoss(nn.Module):
         - Target: arbitrary dimensional tensor :math:`(*)` same shape as image.
         - Output: a scalar.
 
-    Examples
-    --------
+    Examples:
         >>> ones = torch.ones(1)
         >>> criterion = PSNRLoss(2.)
         >>> criterion(ones, 1.2 * ones) # 10 * log(4/((1.2-1)**2)) / log(10)

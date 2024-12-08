@@ -25,8 +25,7 @@ def _compute_tiles(
         grid_size: number of tiles to be cropped in each direction (GH, GW)
         even_tile_size: Determine if the width and height of the tiles must be even.
 
-    Returns
-    -------
+    Returns:
         tensor with tiles (B, GH, GW, C, TH, TW). B = 1 in case of a single image is provided.
         tensor with the padded batch of 2D imageswith shape (B, C, H', W').
 
@@ -81,8 +80,7 @@ def _compute_interpolation_tiles(padded_imgs: torch.Tensor, tile_size: Tuple[int
                                     of size (TH, TW).
         tile_size: shape of the current tiles (TH, TW).
 
-    Returns
-    -------
+    Returns:
         tensor with the interpolation tiles (B, 2GH, 2GW, C, TH/2, TW/2).
 
     """
@@ -136,8 +134,7 @@ def _compute_luts(
         clip: threshold value for contrast limiting. If it is 0 then the clipping is disabled.
         diff: denote if the differentiable histagram will be used. Default: False
 
-    Returns
-    -------
+    Returns:
         Lut for each tile (B, GH, GW, C, 256).
 
     """
@@ -185,8 +182,7 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
         interp_tiles: set of interpolation tiles. (B, 2GH, 2GW, C, TH/2, TW/2)
         luts: luts for each one of the original tiles. (B, GH, GW, C, 256)
 
-    Returns
-    -------
+    Returns:
          mapped luts (B, 2GH, 2GW, 4, C, 256)
 
     """
@@ -243,8 +239,7 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
           (B, 2GH, 2GW, C, TH/2, TW/2)
         luts: luts for each one of the original tiles. (B, GH, GW, C, 256)
 
-    Returns
-    -------
+    Returns:
         equalized tiles (B, 2GH, 2GW, C, TH/2, TW/2)
 
     """
@@ -335,12 +330,10 @@ def equalize_clahe(
         grid_size: number of tiles to be cropped in each direction (GH, GW).
         slow_and_differentiable: flag to select implementation
 
-    Returns
-    -------
+    Returns:
         Equalized image or images with shape as the input.
 
-    Examples
-    --------
+    Examples:
         >>> img = torch.rand(1, 10, 20)
         >>> res = equalize_clahe(img)
         >>> res.shape

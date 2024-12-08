@@ -93,8 +93,7 @@ class VisualPrompter:
             mean: Mean for each channel.
             std: Standard deviations for each channel.
 
-        Returns
-        -------
+        Returns:
             The image preprocessed (normalized if has mean and str available and padded to encoder size)
 
         """
@@ -251,8 +250,7 @@ class VisualPrompter:
             output_original_size: If true, the logits of `SegmentationResults` will be post-process to match the
                                   original input image size.
 
-        Returns
-        -------
+        Returns:
             A prediction with the logits and scores (IoU of each predicted mask)
 
         """

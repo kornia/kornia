@@ -18,8 +18,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         ratio (Tensor): range of aspect ratio of the origin aspect ratio cropped. Shape (2).
         value (float): value to be filled in the erased area.
 
-    Returns
-    -------
+    Returns:
         A dict of parameters to be passed for transformation.
             - widths (Tensor): element-wise erasing widths with a shape of (B,).
             - heights (Tensor): element-wise erasing heights with a shape of (B,).

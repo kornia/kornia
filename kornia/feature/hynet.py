@@ -27,8 +27,7 @@ class FilterResponseNorm2d(Module):
         drop_rate: dropout rate,
         is_eps_leanable: if eps is learnable
 
-    Returns
-    -------
+    Returns:
         torch.Tensor: Normalized features
 
     Shape:
@@ -95,8 +94,7 @@ class TLU(Module):
     Args:
         num_features: number of channels
 
-    Returns
-    -------
+    Returns:
         torch.Tensor
 
     Shape:
@@ -138,16 +136,14 @@ class HyNet(Module):
         drop_rate: dropout rate,
         eps_l2_norm: to avoid div by zero
 
-    Returns
-    -------
+    Returns:
         HyNet descriptor of the patches.
 
     Shape:
         - Input: :math:`(B, 1, 32, 32)`
         - Output: :math:`(B, 128)`
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.rand(16, 1, 32, 32)
         >>> hynet = HyNet()
         >>> descs = hynet(input) # 16x128

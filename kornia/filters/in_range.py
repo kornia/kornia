@@ -40,13 +40,11 @@ def in_range(
         upper: The upper bounds of the filter (inclusive).
         return_mask: If is true, the filtered mask is returned, otherwise the filtered input image.
 
-    Returns
-    -------
+    Returns:
         A binary mask :math:`(*, 1, H, W)` of input indicating whether elements are within the range
         or filtered input image :math:`(*, *, H, W)`.
 
-    Raises
-    ------
+    Raises:
         ValueError: If the shape of `lower`, `upper`, and `input` image channels do not match.
 
     .. note::
@@ -60,8 +58,7 @@ def in_range(
 
         - If the tensor has a 1-D shape, same bound will be applied across all batches.
 
-    Examples
-    --------
+    Examples:
         >>> rng = torch.manual_seed(1)
         >>> input = torch.rand(1, 3, 3, 3)
         >>> lower = (0.2, 0.3, 0.4)
@@ -147,16 +144,14 @@ class InRange(Module):
         upper: The upper bounds of the filter (inclusive).
         return_mask: If is true, the filtered mask is returned, otherwise the filtered input image.
 
-    Returns
-    -------
+    Returns:
         A binary mask :math:`(*, 1, H, W)` of input indicating whether elements are within the range
         or filtered input image :math:`(*, *, H, W)`.
 
     .. note::
         View complete documentation in :func:`kornia.filters.in_range`.
 
-    Examples
-    --------
+    Examples:
         >>> rng = torch.manual_seed(1)
         >>> input = torch.rand(1, 3, 3, 3)
         >>> lower = (0.2, 0.3, 0.4)

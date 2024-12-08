@@ -96,12 +96,10 @@ def bilateral_blur(
           match OpenCV implementation. Use ``'l2'`` to match Matlab implementation.
           Default: ``'l1'``.
 
-    Returns
-    -------
+    Returns:
         the blurred tensor with shape :math:`(B, C, H, W)`.
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.rand(2, 4, 5, 5)
         >>> output = bilateral_blur(input, (3, 3), 0.1, (1.5, 1.5))
         >>> output.shape
@@ -143,12 +141,10 @@ def joint_bilateral_blur(
           difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
           match OpenCV implementation.
 
-    Returns
-    -------
+    Returns:
         the blurred tensor with shape :math:`(B, C, H, W)`.
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.rand(2, 4, 5, 5)
         >>> guidance = torch.rand(2, 4, 5, 5)
         >>> output = joint_bilateral_blur(input, guidance, (3, 3), 0.1, (1.5, 1.5))
@@ -208,16 +204,14 @@ class BilateralBlur(_BilateralBlur):
           match OpenCV implementation. Use ``'l2'`` to match Matlab implementation.
           Default: ``'l1'``.
 
-    Returns
-    -------
+    Returns:
         the blurred input tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.rand(2, 4, 5, 5)
         >>> blur = BilateralBlur((3, 3), 0.1, (1.5, 1.5))
         >>> output = blur(input)
@@ -252,16 +246,14 @@ class JointBilateralBlur(_BilateralBlur):
           difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
           match OpenCV implementation.
 
-    Returns
-    -------
+    Returns:
         the blurred input tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
-    Examples
-    --------
+    Examples:
         >>> input = torch.rand(2, 4, 5, 5)
         >>> guidance = torch.rand(2, 4, 5, 5)
         >>> blur = JointBilateralBlur((3, 3), 0.1, (1.5, 1.5))

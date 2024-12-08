@@ -27,8 +27,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.enhance.posterize`.
 
-    Examples
-    --------
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 5, 5)
         >>> posterize = RandomPosterize(3., p=1.)

@@ -24,12 +24,10 @@ def get_motion_kernel2d(
             uniformly (but still angled) motion blur.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
-    Returns
-    -------
+    Returns:
         The motion blur kernel of shape :math:`(B, k_\text{size}, k_\text{size})`.
 
-    Examples
-    --------
+    Examples:
         >>> get_motion_kernel2d(5, 0., 0.)
         tensor([[[0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
                  [0.0000, 0.0000, 0.0000, 0.0000, 0.0000],
@@ -111,12 +109,10 @@ def get_motion_kernel3d(
             uniformly (but still angled) motion blur.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
-    Returns
-    -------
+    Returns:
         The motion blur kernel with shape :math:`(B, k_\text{size}, k_\text{size}, k_\text{size})`.
 
-    Examples
-    --------
+    Examples:
         >>> get_motion_kernel3d(3, (0., 0., 0.), 0.)
         tensor([[[[0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000],

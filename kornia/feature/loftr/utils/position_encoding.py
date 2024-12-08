@@ -14,8 +14,7 @@ class PositionEncodingSine(Module):
     def __init__(self, d_model: int, max_shape: Tuple[int, int] = (256, 256), temp_bug_fix: bool = True) -> None:
         """Construct sinusoidal positional encoding.
 
-        Parameters
-        ----------
+        Args:
         max_shape (tuple): for 1/8 featmap, the max length of 256 corresponds to 2048 pixels
         temp_bug_fix (bool): As noted in this [issue](https://github.com/zju3dv/LoFTR/issues/41),
             the original implementation of LoFTR includes a bug in the pos-enc impl, which has little impact
@@ -65,8 +64,7 @@ class PositionEncodingSine(Module):
     def forward(self, x: Tensor) -> Tensor:
         """Run forward.
 
-        Parameters
-        ----------
+        Args:
         x: [N, C, H, W]
 
         """

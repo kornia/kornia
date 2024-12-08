@@ -19,8 +19,7 @@ class ResizePreProcessor(Module):
     def __init__(self, height: int, width: int, interpolation_mode: str = "bilinear") -> None:
         """Construct ResizePreprocessor module.
 
-        Parameters
-        ----------
+        Args:
         height: height of the resized image.
         width: width of the resized image.
         interpolation_mode: interpolation mode for image resizing. Supported values: ``nearest``, ``bilinear``,
@@ -34,8 +33,7 @@ class ResizePreProcessor(Module):
     def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Tuple[Tensor, Tensor]:
         """Run forward.
 
-        Returns
-        -------
+        Returns:
         resized_imgs: resized images in a batch.
         original_sizes: the original image sizes of (height, width).
 
@@ -61,8 +59,7 @@ class ResizePostProcessor(Module):
     def forward(self, imgs: Union[Tensor, List[Tensor]], original_sizes: Tensor) -> Union[Tensor, List[Tensor]]:
         """Run forward.
 
-        Returns
-        -------
+        Returns:
         resized_imgs: resized images in a batch.
         original_sizes: the original image sizes of (height, width).
 
