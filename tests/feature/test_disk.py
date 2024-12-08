@@ -19,9 +19,7 @@ class TestDisk(BaseTester):
         assert all(isinstance(e, DISKFeatures) for e in output)
 
     def test_smoke_n_detections(self, dtype, device):
-        """Test n detections.
-
-        Unless we give it an actual image and use pretrained weights,we can't expect the number of detections
+        """Unless we give it an actual image and use pretrained weights, we can't expect the number of detections
         to really match the limit.
         """
         disk = DISK().to(device, dtype)

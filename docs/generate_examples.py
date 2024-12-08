@@ -50,7 +50,7 @@ def read_img_from_url(url: str, resize_to: Optional[tuple[int, int]] = None, **r
 
 
 def transparent_pad(src: Tensor, shape: tuple[int, int]) -> Tensor:
-    """Apply a transparent pad to src (centerized) to match with shape (h, w)."""
+    """Apply a transparent pad to src (centerized) to match with shape (h, w)"""
     w_pad = abs(int(src.shape[-1] - shape[-1]) // 2)
     h_pad = abs(int(src.shape[-2] - shape[-2]) // 2)
     return torch.nn.functional.pad(K.color.rgb_to_rgba(src, 1.0), (w_pad, w_pad, h_pad, h_pad), "constant", 0.0)

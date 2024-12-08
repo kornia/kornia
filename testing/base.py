@@ -73,7 +73,7 @@ class BaseTester:
         atol: Optional[float] = None,
         low_tolerance: bool = False,
     ) -> None:
-        """Assert that `actual` and `expected` are close.
+        """Asserts that `actual` and `expected` are close.
 
         Args:
             actual: Actual input.
@@ -117,7 +117,7 @@ class BaseTester:
         dtypes: Sequence[Dtype] = [],
         **kwargs: Any,
     ) -> bool:
-        """Gradcheck the function using the `torch.autograd.gradcheck` method.
+        """It will gradcheck the function using the `torch.autograd.gradcheck` method.
 
         By default this method will pass all tensor to `tensor_to_gradcheck_var` which casts the tensor
         to be float64 dtype, and requires grad as True. You can overwrite which tensors should have requires grad

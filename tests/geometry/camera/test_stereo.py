@@ -166,7 +166,7 @@ class _SmokeTestData:
 
 
 class TestStereoCamera:
-    """Test class for :class:`~kornia.geometry.camera.stereo.StereoCamera`."""
+    """Test class for :class:`~kornia.geometry.camera.stereo.StereoCamera`"""
 
     @staticmethod
     def _create_disparity_tensor(batch_size, height, width, max_disparity, device, dtype):

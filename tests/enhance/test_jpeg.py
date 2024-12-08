@@ -8,7 +8,7 @@ from testing.base import BaseTester
 
 class TestDiffJPEG(BaseTester):
     def test_smoke(self, device, dtype) -> None:
-        """Test standard usage."""
+        """This test standard usage."""
         B, H, W = 2, 32, 32
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
         jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
@@ -17,7 +17,7 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg.shape == img.shape
 
     def test_smoke_not_div_by_16(self, device, dtype) -> None:
-        """Test standard usage."""
+        """This test standard usage."""
         B, H, W = 2, 33, 33
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
         jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
@@ -70,7 +70,7 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg.shape == img.shape
 
     def test_exception(self, device, dtype) -> None:
-        """Test exceptions (non-tensor input, wrong JPEG quality shape, wrong img shape, and wrong QT shape)."""
+        """Test exceptions (non-tensor input, wrong JPEG quality shape, wrong img shape, and wrong QT shape.)"""
         with pytest.raises(TypeError) as errinfo:
             B = 2
             jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
