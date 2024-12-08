@@ -24,7 +24,7 @@ class TestCam2Pixel(BaseTester):
         return intrinsics_inv
 
     def _get_samples(self, shape, low, high, device, dtype):
-        """Return a tensor having the given shape and whose values are in the range [low, high)"""
+        """Return a tensor having the given shape and whose values are in the range [low, high)."""
         return ((high - low) * torch.rand(shape, device=device, dtype=dtype)) + low
 
     @pytest.mark.parametrize("batch_size", (1,))
@@ -127,7 +127,7 @@ class TestPixel2Cam(BaseTester):
         return intrinsics_inv
 
     def _get_samples(self, shape, low, high, device, dtype):
-        """Return a tensor having the given shape and whose values are in the range [low, high)"""
+        """Return a tensor having the given shape and whose values are in the range [low, high)."""
         return ((high - low) * torch.rand(shape, device=device, dtype=dtype)) + low
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))

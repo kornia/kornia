@@ -649,7 +649,9 @@ class TestAffine2d(BaseTester):
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_compose_affine_matrix_3x3(self, device, dtype):
-        """To get parameters:
+        """Test compose affine matrix 3x3.
+
+        To get parameters:
 
         import torchvision as tv
         from PIL import Image

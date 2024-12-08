@@ -153,7 +153,7 @@ class KeyNet(Module):
         self.eval()
 
     def forward(self, x: Tensor) -> Tensor:
-        """X - input image"""
+        """X - input image."""
         shape_im = x.shape
         feats: List[Tensor] = [self.feature_extractor(x)]
         for _ in range(1, self.num_levels):

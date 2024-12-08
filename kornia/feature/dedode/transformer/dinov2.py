@@ -301,7 +301,7 @@ class DinoVisionTransformer(nn.Module):
 
 
 def init_weights_vit_timm(module: nn.Module, name: str = ""):
-    """ViT weight initialization, original timm impl (for reproducibility)"""
+    """ViT weight initialization, original timm impl (for reproducibility)."""
     if isinstance(module, nn.Linear):
         trunc_normal_(module.weight, std=0.02)
         if module.bias is not None:

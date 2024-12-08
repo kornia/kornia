@@ -259,7 +259,7 @@ def draw_rectangle(
 
 
 def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
-    r"""Get the left and right edges of a polygon for each y-coordinate y \in [0, h)
+    r"""Get the left and right edges of a polygon for each y-coordinate y \in [0, h).
 
     Args:
         polygons: represents polygons to draw in BxNx2

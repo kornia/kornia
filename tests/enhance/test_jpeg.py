@@ -70,7 +70,7 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg.shape == img.shape
 
     def test_exception(self, device, dtype) -> None:
-        """Test exceptions (non-tensor input, wrong JPEG quality shape, wrong img shape, and wrong QT shape.)"""
+        """Test exceptions (non-tensor input, wrong JPEG quality shape, wrong img shape, and wrong QT shape)."""
         with pytest.raises(TypeError) as errinfo:
             B = 2
             jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)

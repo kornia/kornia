@@ -194,7 +194,9 @@ class AdalamFilter:
         s2: Optional[Tensor] = None,
         return_dist: bool = False,
     ) -> Union[Tuple[Tensor, Tensor], Tensor]:
-        """Match and filter with AdaLAM. This function:
+        """Match and filter with AdaLAM.
+
+        This function:
 
             - performs some elementary sanity check on the inputs;
             - wraps input arrays into torch tensors and loads to GPU if necessary;

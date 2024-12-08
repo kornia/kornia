@@ -163,7 +163,7 @@ class Quaternion(Module):
 
     @property
     def data(self) -> Tensor:
-        """Return the underlying data with shape :math:`(B, 4).`"""
+        """Return the underlying data with shape :math:`(B, 4)`."""
         return self._data
 
     @property

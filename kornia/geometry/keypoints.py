@@ -147,7 +147,7 @@ class Keypoints:
         return Keypoints(transformed_boxes, False)
 
     def transform_keypoints_(self, M: Tensor) -> "Keypoints":
-        """Inplace version of :func:`Keypoints.transform_keypoints`"""
+        """Inplace version of :func:`Keypoints.transform_keypoints`."""
         return self.transform_keypoints(M, inplace=True)
 
     @classmethod
@@ -300,7 +300,7 @@ class Keypoints3D:
         raise NotImplementedError
 
     def transform_keypoints_(self, M: Tensor) -> "Keypoints3D":
-        """Inplace version of :func:`Keypoints.transform_keypoints`"""
+        """Inplace version of :func:`Keypoints.transform_keypoints`."""
         return self.transform_keypoints(M, inplace=True)
 
     @classmethod

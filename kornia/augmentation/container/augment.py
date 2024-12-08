@@ -539,7 +539,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def _read_datakeys_from_dict(self, keys: Sequence[str]) -> Tuple[List[DataKey], Optional[List[str]]]:
         def retrieve_key(key: str) -> DataKey:
-            """Try to retrieve the datakey value by matching `<datakey>*`"""
+            """Try to retrieve the datakey value by matching `<datakey>*`."""
             # Alias cases, like INPUT, will not be get by the enum iterator.
             if key.upper().startswith("INPUT"):
                 return DataKey.INPUT

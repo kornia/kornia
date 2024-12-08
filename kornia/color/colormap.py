@@ -305,7 +305,7 @@ class ApplyColorMap(Module):
     In favor of using `ColorMap(base='autumn')` instead.",
 )
 class AUTUMN(ColorMap):
-    r"""The GNU Octave colormap `autumn`
+    r"""The GNU Octave colormap `autumn`.
 
     .. image:: _static/img/AUTUMN.png
     """

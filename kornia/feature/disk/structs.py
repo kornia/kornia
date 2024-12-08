@@ -76,7 +76,7 @@ class Keypoints:
     detection_logp: Tensor
 
     def merge_with_descriptors(self, descriptors: Tensor) -> DISKFeatures:
-        """Select descriptors from a dense `descriptors` tensor, at locations given by `self.xys`"""
+        """Select descriptors from a dense `descriptors` tensor, at locations given by `self.xys`."""
         dtype = descriptors.dtype
         x, y = self.xys.T
 

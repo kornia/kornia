@@ -103,10 +103,10 @@ class Prompts:
 
     @property
     def keypoints(self) -> Optional[Tensor]:
-        """The keypoints from the `points`"""
+        """The keypoints from the `points`."""
         return self.points[0] if isinstance(self.points, tuple) else None
 
     @property
     def keypoints_labels(self) -> Optional[Tensor]:
-        """The keypoints labels from the `points`"""
+        """The keypoints labels from the `points`."""
         return self.points[1] if isinstance(self.points, tuple) else None

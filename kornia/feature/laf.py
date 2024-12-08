@@ -341,8 +341,9 @@ def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
 
 
 def normalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
-    """Normalize LAFs to [0,1] scale from pixel scale. See below:
+    """Normalize LAFs to [0,1] scale from pixel scale.
 
+    See below:
         B,N,H,W = images.size()
         MIN_SIZE =  min(H - 1, W -1)
         [a11 a21 x]

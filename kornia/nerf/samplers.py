@@ -141,7 +141,7 @@ class RaySampler:
         self._points_2d = torch.cat(points_2d)
 
     def transform_ray_params_world_to_ndc(self, cameras: PinholeCamera) -> Tuple[Tensor, Tensor]:
-        r"""Transform ray parameters to normalized coordinate device (camera) system (NDC)
+        r"""Transform ray parameters to normalized coordinate device (camera) system (NDC).
 
         Parameters
         ----------

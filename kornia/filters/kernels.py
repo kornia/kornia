@@ -142,10 +142,7 @@ def gaussian_discrete_erf(
 
 
 def _modified_bessel_0(x: Tensor) -> Tensor:
-    r"""Adapted from:
-
-    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
-    """
+    """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
     ax = torch.abs(x)
 
     out = zeros_like(x)
@@ -168,10 +165,7 @@ def _modified_bessel_0(x: Tensor) -> Tensor:
 
 
 def _modified_bessel_1(x: Tensor) -> Tensor:
-    r"""Adapted from:
-
-    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
-    """
+    """Adapted from:https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
     ax = torch.abs(x)
 
     out = zeros_like(x)
@@ -194,10 +188,7 @@ def _modified_bessel_1(x: Tensor) -> Tensor:
 
 
 def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
-    r"""Adapted from:
-
-    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
-    """
+    """Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
     KORNIA_CHECK(n >= 2, "n must be greater than 1.99")
 
     if (x == 0.0).all():
@@ -476,9 +467,9 @@ def get_diff_kernel2d_2nd_order(*, device: Optional[Device] = None, dtype: Optio
 def get_spatial_gradient_kernel2d(
     mode: str, order: int, *, device: Optional[Device] = None, dtype: Optional[Dtype] = None
 ) -> Tensor:
-    r"""Return kernel for 1st or 2nd order image gradients, using one of the following operators:
+    r"""Return kernel for 1st or 2nd order image gradients.
 
-    sobel, diff.
+    Uses one of the following operators: sobel, diff.
     """
     KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
     KORNIA_CHECK(order in {1, 2}, f"Order should be 1 or 2. Got {order}")

@@ -10,7 +10,7 @@ from testing.base import BaseTester
 class TestSolvePnpDlt(BaseTester):
     @staticmethod
     def _get_samples(shape, low, high, device, dtype):
-        """Return a tensor having the given shape and whose values are in the range [low, high)"""
+        """Return a tensor having the given shape and whose values are in the range [low, high)."""
         return ((high - low) * torch.rand(shape, device=device, dtype=dtype)) + low
 
     @staticmethod

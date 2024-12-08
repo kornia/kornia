@@ -624,7 +624,7 @@ class Boxes:
         return obj
 
     def transform_boxes_(self, M: torch.Tensor) -> Boxes:
-        """Inplace version of :func:`Boxes.transform_boxes`"""
+        """Inplace version of :func:`Boxes.transform_boxes`."""
         return self.transform_boxes(M, inplace=True)
 
     def translate(self, size: Tensor, method: str = "warp", inplace: bool = False) -> Boxes:
@@ -1069,7 +1069,7 @@ class Boxes3D:
         return Boxes3D(transformed_boxes, False, "xyzxyz_plus")
 
     def transform_boxes_(self, M: torch.Tensor) -> Boxes3D:
-        """Inplace version of :func:`Boxes3D.transform_boxes`"""
+        """Inplace version of :func:`Boxes3D.transform_boxes`."""
         return self.transform_boxes(M, inplace=True)
 
     @property
