@@ -182,7 +182,7 @@ html_js_files = [
 code_url = "https://github.com/kornia/kornia/blob/main"
 
 
-def linkcode_resolve(domain, info):  # noqa: D103
+def linkcode_resolve(domain, info):
     # Non-linkable objects from the starter kit in the tutorial.
     if domain == "js" or info["module"] == "connect4":
         return

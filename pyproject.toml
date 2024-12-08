@@ -170,14 +170,13 @@ max-statements = 64                                        # Recommended: 50
   "RUF012",
   "S101",
   "S311",
-  "D101", # Allow undocumented benchmark classes
-  "D102", # Allow undocumented benchmark methods
-  "D103", # Allow undocumented benchmark methods
+  "D", # Don't enforce documentation rules
 ] # allow assert, random, ignore BLE, mutable class attr
 "docs/*" = [
   "PLR0912",
   "PLR0915",
   "S101",
+  "D", # Don't enforce documentation rules
 ] # allow assert, ignore max branches and statements
 "docs/generate_examples.py" = ["C901"] # Allow too complex function
 "kornia/__init__.py" = ["I001"] # Allow unsorted imports
@@ -190,9 +189,7 @@ max-statements = 64                                        # Recommended: 50
 ] # allow DINOv2 things
 "testing/*" = [
   "S101", # allow assert
-  "D101", # Allow undocumented test classes
-  "D102", # Allow undocumented test methods
-  "D103", # Allow undocumented test methods
+  "D", # Don't enforce documentation rules
 ]
 "tests/*" = [
   "BLE",
@@ -201,9 +198,7 @@ max-statements = 64                                        # Recommended: 50
   "S101",
   "S311",
   "B017", # Check for Exception since KORNIA_CHECK raises it
-  "D101", # Allow undocumented test classes
-  "D102", # Allow undocumented test methods
-  "D103", # Allow undocumented test functions
+  "D", # Don't enforce documentation rules
 ] # allow assert, random, ignore BLE, mutable class attr
 
 [tool.pytest.ini_options]
