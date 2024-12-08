@@ -31,7 +31,7 @@ class TensorWrapper:
         self.__dict__["used_attrs"] = set()
         self.__dict__["used_calls"] = set()
 
-    def unwrap(self):
+    def unwrap(self):  # noqa: D102
         return unwrap(self)
 
     def __getstate__(self):

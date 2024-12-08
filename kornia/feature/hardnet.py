@@ -85,7 +85,7 @@ class HardNet(nn.Module):
         # training totally unstable.
         return (x - mp.detach()) / (sp.detach() + eps)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # noqa: D102
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
@@ -157,7 +157,7 @@ class HardNet8(nn.Module):
         self.eval()
 
     @staticmethod
-    def weights_init(m: object) -> None:
+    def weights_init(m: object) -> None:  # noqa: D102
         if isinstance(m, nn.Conv2d):
             nn.init.orthogonal_(m.weight.data, gain=0.6)
             if m.bias is not None:
@@ -176,7 +176,7 @@ class HardNet8(nn.Module):
         # training totally unstable.
         return (x - mp.detach()) / (sp.detach() + eps)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # noqa: D102
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)

@@ -97,7 +97,7 @@ class ImageEncoderViT(Module):
             LayerNorm2d(out_chans),
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         x = self.patch_embed(x)
         if self.pos_embed is not None:
             x = x + self.pos_embed
@@ -157,7 +157,7 @@ class Block(Module):
 
         self.window_size = window_size
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         shortcut = x
         x = self.norm1(x)
         # Window partition
@@ -213,7 +213,7 @@ class Attention(Module):
             self.rel_pos_h = nn.Parameter(zeros(2 * input_size[0] - 1, head_dim))
             self.rel_pos_w = nn.Parameter(zeros(2 * input_size[1] - 1, head_dim))
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         B, H, W, _ = x.shape
         # qkv with shape (3, B, nHead, H * W, C)
         qkv = self.qkv(x).reshape(B, H * W, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
@@ -326,7 +326,7 @@ class PatchEmbed(Module):
 
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=kernel_size, stride=stride, padding=padding)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         x = self.proj(x)
         # B C H W -> B H W C
         x = x.permute(0, 2, 3, 1)

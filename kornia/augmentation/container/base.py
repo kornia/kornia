@@ -78,21 +78,21 @@ class BasicSequentialBase(nn.Sequential):
         self._params = None
 
     # TODO: Implement this for all submodules.
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:  # noqa: D102
         raise NotImplementedError
 
-    def get_children_by_indices(self, indices: Tensor) -> Iterator[Tuple[str, Module]]:
+    def get_children_by_indices(self, indices: Tensor) -> Iterator[Tuple[str, Module]]:  # noqa: D102
         modules = list(self.named_children())
         for idx in indices:
             yield modules[idx]
 
-    def get_children_by_params(self, params: List[ParamItem]) -> Iterator[Tuple[str, Module]]:
+    def get_children_by_params(self, params: List[ParamItem]) -> Iterator[Tuple[str, Module]]:  # noqa: D102
         modules = list(self.named_children())
         # TODO: Wrong params passed here when nested ImageSequential
         for param in params:
             yield modules[list(dict(self.named_children()).keys()).index(param.name)]
 
-    def get_params_by_module(self, named_modules: Iterator[Tuple[str, Module]]) -> Iterator[ParamItem]:
+    def get_params_by_module(self, named_modules: Iterator[Tuple[str, Module]]) -> Iterator[ParamItem]:  # noqa: D102
         # This will not take module._params
         for name, _ in named_modules:
             yield ParamItem(name, None)
@@ -119,7 +119,7 @@ class SequentialBase(BasicSequentialBase):
         self._keepdim = keepdim
         self.update_attribute(same_on_batch, keepdim=keepdim)
 
-    def update_attribute(
+    def update_attribute(  # noqa: D102
         self,
         same_on_batch: Optional[bool] = None,
         return_transform: Optional[bool] = None,
@@ -136,7 +136,7 @@ class SequentialBase(BasicSequentialBase):
                 mod.update_attribute(same_on_batch, return_transform, keepdim)
 
     @property
-    def same_on_batch(self) -> Optional[bool]:
+    def same_on_batch(self) -> Optional[bool]:  # noqa: D102
         return self._same_on_batch
 
     @same_on_batch.setter
@@ -145,7 +145,7 @@ class SequentialBase(BasicSequentialBase):
         self.update_attribute(same_on_batch=same_on_batch)
 
     @property
-    def keepdim(self) -> Optional[bool]:
+    def keepdim(self) -> Optional[bool]:  # noqa: D102
         return self._keepdim
 
     @keepdim.setter
@@ -189,14 +189,14 @@ class ImageSequentialBase(SequentialBase):
         """
         raise NotImplementedError
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:  # noqa: D102
         raise NotImplementedError
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
         """Get module sequence by input params."""
         raise NotImplementedError
 
-    def transform_inputs(
+    def transform_inputs(  # noqa: D102
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         for param in params:
@@ -204,14 +204,14 @@ class ImageSequentialBase(SequentialBase):
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_inputs(
+    def inverse_inputs(  # noqa: D102
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def transform_masks(
+    def transform_masks(  # noqa: D102
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         for param in params:
@@ -219,14 +219,14 @@ class ImageSequentialBase(SequentialBase):
             input = MaskSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_masks(
+    def inverse_masks(  # noqa: D102
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def transform_boxes(
+    def transform_boxes(  # noqa: D102
         self, input: Boxes, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         for param in params:
@@ -234,14 +234,14 @@ class ImageSequentialBase(SequentialBase):
             input = BoxSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_boxes(
+    def inverse_boxes(  # noqa: D102
         self, input: Boxes, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = BoxSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def transform_keypoints(
+    def transform_keypoints(  # noqa: D102
         self, input: Keypoints, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         for param in params:
@@ -249,7 +249,7 @@ class ImageSequentialBase(SequentialBase):
             input = KeypointSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_keypoints(
+    def inverse_keypoints(  # noqa: D102
         self, input: Keypoints, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
@@ -276,7 +276,7 @@ class ImageSequentialBase(SequentialBase):
 
         return input
 
-    def forward(
+    def forward(  # noqa: D102
         self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         self.clear_state()

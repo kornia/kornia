@@ -152,7 +152,7 @@ class PatchSequential(ImageSequential):
         self.patchwise_apply = patchwise_apply
         self._params: Optional[List[PatchParamItem]]  # type: ignore[assignment]
 
-    def compute_padding(
+    def compute_padding(  # noqa: D102
         self, input: Tensor, padding: str, grid_size: Optional[Tuple[int, int]] = None
     ) -> Tuple[int, int, int, int]:
         if grid_size is None:
@@ -239,7 +239,7 @@ class PatchSequential(ImageSequential):
             restored_tensor = fpad(restored_tensor, [-i for i in pad])
         return restored_tensor
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[PatchParamItem]:  # type: ignore[override]
+    def forward_parameters(self, batch_shape: torch.Size) -> List[PatchParamItem]:  # type: ignore[override]  # noqa: D102
         out_param: List[PatchParamItem] = []
         if not self.patchwise_apply:
             params = self.generate_parameters(torch.Size([1, batch_shape[0] * batch_shape[1], *batch_shape[2:]]))
@@ -301,7 +301,7 @@ class PatchSequential(ImageSequential):
                     else:
                         yield ParamItem(s[0], None), i
 
-    def forward_by_params(self, input: Tensor, params: List[PatchParamItem]) -> Tensor:
+    def forward_by_params(self, input: Tensor, params: List[PatchParamItem]) -> Tensor:  # noqa: D102
         in_shape = input.shape
         input = input.reshape(-1, *in_shape[-3:])
 
@@ -314,7 +314,7 @@ class PatchSequential(ImageSequential):
 
         return input.reshape(in_shape)
 
-    def transform_inputs(  # type: ignore[override]
+    def transform_inputs(  # type: ignore[override]  # noqa: D102
         self, input: Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         pad = self.compute_padding(input, self.padding)
@@ -324,7 +324,7 @@ class PatchSequential(ImageSequential):
 
         return input
 
-    def inverse_inputs(  # type: ignore[override]
+    def inverse_inputs(  # type: ignore[override]  # noqa: D102
         self, input: Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         if self.is_intensity_only():
@@ -332,7 +332,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def transform_masks(  # type: ignore[override]
+    def transform_masks(  # type: ignore[override]  # noqa: D102
         self, input: Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         if self.is_intensity_only():
@@ -340,7 +340,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
 
-    def inverse_masks(  # type: ignore[override]
+    def inverse_masks(  # type: ignore[override]  # noqa: D102
         self, input: Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         if self.is_intensity_only():
@@ -348,7 +348,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def transform_boxes(  # type: ignore[override]
+    def transform_boxes(  # type: ignore[override]  # noqa: D102
         self, input: Boxes, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         if self.is_intensity_only():
@@ -356,7 +356,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
 
-    def inverse_boxes(  # type: ignore[override]
+    def inverse_boxes(  # type: ignore[override]  # noqa: D102
         self, input: Boxes, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         if self.is_intensity_only():
@@ -364,7 +364,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def transform_keypoints(  # type: ignore[override]
+    def transform_keypoints(  # type: ignore[override]  # noqa: D102
         self, input: Keypoints, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         if self.is_intensity_only():
@@ -372,7 +372,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential for keypoints cannot be used with geometric transformations.")
 
-    def inverse_keypoints(  # type: ignore[override]
+    def inverse_keypoints(  # type: ignore[override]  # noqa: D102
         self, input: Keypoints, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         if self.is_intensity_only():

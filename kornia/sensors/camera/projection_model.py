@@ -50,8 +50,8 @@ class Z1Projection:
 
 
 class OrthographicProjection:
-    def project(self, points: Vector3) -> Vector2:
+    def project(self, points: Vector3) -> Vector2:  # noqa: D102
         raise NotImplementedError
 
-    def unproject(self, points: Vector2, depth: Tensor) -> Vector3:
+    def unproject(self, points: Vector2, depth: Tensor) -> Vector3:  # noqa: D102
         raise NotImplementedError

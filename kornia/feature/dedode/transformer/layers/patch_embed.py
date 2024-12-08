@@ -66,7 +66,7 @@ class PatchEmbed(nn.Module):
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_HW, stride=patch_HW)
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         _, _, H, W = x.shape
         patch_H, patch_W = self.patch_size
         KORNIA_CHECK(H % patch_H == 0, f"Input image height {H} is not a multiple of patch height {patch_H}")
@@ -80,7 +80,7 @@ class PatchEmbed(nn.Module):
             x = x.reshape(-1, H, W, self.embed_dim)  # B H W C
         return x
 
-    def flops(self) -> float:
+    def flops(self) -> float:  # noqa: D102
         Ho, Wo = self.patches_resolution
         flops = Ho * Wo * self.embed_dim * self.in_chans * (self.patch_size[0] * self.patch_size[1])
         if self.norm is not None:

@@ -140,7 +140,6 @@ ignore = [
   "UP035",   # Ignore deprecated typing because of jit scripting
   'D100',    # Allow Undocumented public module
   'D101',    # TODO: Undocumented public class
-  'D102',    # TODO: Undocumented public method
   'D104',    # Allow: Undocuemnted public package
   'D105',    # Allow Undocumented magic method
   'D107',    # Allow: Undocumented public init
@@ -198,7 +197,8 @@ max-statements = 64                                        # Recommended: 50
   "S101",
   "S311",
   "B017", # Check for Exception since KORNIA_CHECK raises it
-  "D103", # Allow undocumented test methods
+  "D102", # Allow undocumented test methods
+  "D103", # Allow undocumented test functions
 ] # allow assert, random, ignore BLE, mutable class attr
 
 [tool.pytest.ini_options]

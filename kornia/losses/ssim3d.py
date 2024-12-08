@@ -106,5 +106,5 @@ class SSIM3DLoss(Module):
         self.reduction: str = reduction
         self.padding: str = padding
 
-    def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
+    def forward(self, img1: Tensor, img2: Tensor) -> Tensor:  # noqa: D102
         return ssim3d_loss(img1, img2, self.window_size, self.max_val, self.eps, self.reduction, self.padding)

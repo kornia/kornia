@@ -424,22 +424,22 @@ class Quaternion(Module):
         return q0 * (q0.inv() * q1) ** t
 
     # TODO: add docs
-    def norm(self, keepdim: bool = False) -> Tensor:
+    def norm(self, keepdim: bool = False) -> Tensor:  # noqa: D102
         # p==2, dim|axis==-1, keepdim
         return self.data.norm(2, -1, keepdim)
 
     # TODO: add docs
-    def normalize(self) -> "Quaternion":
+    def normalize(self) -> "Quaternion":  # noqa: D102
         return Quaternion(normalize_quaternion(self.data))
 
     # TODO: add docs
-    def conj(self) -> "Quaternion":
+    def conj(self) -> "Quaternion":  # noqa: D102
         return Quaternion(concatenate((self.real[..., None], -self.vec), -1))
 
     # TODO: add docs
-    def inv(self) -> "Quaternion":
+    def inv(self) -> "Quaternion":  # noqa: D102
         return self.conj() / self.squared_norm()
 
     # TODO: add docs
-    def squared_norm(self) -> Tensor:
+    def squared_norm(self) -> Tensor:  # noqa: D102
         return batched_dot_product(self.vec, self.vec) + self.real**2

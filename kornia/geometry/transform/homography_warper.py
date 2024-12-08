@@ -20,10 +20,10 @@ class BaseWarper(Module):
         self.width = width
 
     @abstractmethod
-    def forward(self, patch_src: Tensor, src_homo_dst: Optional[Tensor] = None) -> Tensor: ...
+    def forward(self, patch_src: Tensor, src_homo_dst: Optional[Tensor] = None) -> Tensor: ...  # noqa: D102
 
     @abstractmethod
-    def precompute_warp_grid(self, src_homo_dst: Tensor) -> None: ...
+    def precompute_warp_grid(self, src_homo_dst: Tensor) -> None: ...  # noqa: D102
 
 
 class HomographyWarper(BaseWarper):

@@ -28,11 +28,11 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     def _update_transform_matrix_for_valid_op(self, module: Module) -> None:
         self._transform_matrices.append(module.transform_matrix)
 
-    def clear_state(self) -> None:
+    def clear_state(self) -> None:  # noqa: D102
         self._reset_transform_matrix_state()
         return super().clear_state()
 
-    def validate_operations(self, *operations: OperationBase) -> None:
+    def validate_operations(self, *operations: OperationBase) -> None:  # noqa: D102
         invalid_ops: List[OperationBase] = []
         for op in operations:
             if not isinstance(op, OperationBase):
@@ -85,19 +85,19 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
                     res_mat = res_mat.squeeze()
         return res_mat
 
-    def is_intensity_only(self) -> bool:
+    def is_intensity_only(self) -> bool:  # noqa: D102
         for module in self.children():
             module = cast(OperationBase, module)
             if isinstance(module.op, (K.GeometricAugmentationBase2D,)):
                 return False
         return True
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:  # noqa: D102
         if params is not None:
             return super().get_children_by_params(params)
         return self.named_children()
 
-    def forward_parameters(self, batch_shape: Size) -> List[ParamItem]:
+    def forward_parameters(self, batch_shape: Size) -> List[ParamItem]:  # noqa: D102
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
 
         params: List[ParamItem] = []
@@ -109,7 +109,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
             params.append(param)
         return params
 
-    def transform_inputs(
+    def transform_inputs(  # noqa: D102
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         for param in params:

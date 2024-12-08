@@ -86,7 +86,7 @@ class DistanceTransform(nn.Module):
         self.kernel_size = kernel_size
         self.h = h
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:  # noqa: D102
         # If images have multiple channels, view the channels in the batch dimension to match kernel shape.
         if image.shape[1] > 1:
             image_in = image.view(-1, 1, image.shape[-2], image.shape[-1])

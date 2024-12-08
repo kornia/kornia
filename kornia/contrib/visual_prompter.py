@@ -284,7 +284,7 @@ class VisualPrompter:
 
         return results
 
-    def reset_image(self) -> None:
+    def reset_image(self) -> None:  # noqa: D102
         self._tfs_params = None
         self._original_image_size = None
         self._input_image_size = None

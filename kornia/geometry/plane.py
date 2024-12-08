@@ -35,25 +35,25 @@ class Hyperplane(Module):
         return str(self)
 
     @property
-    def normal(self) -> Vector3:
+    def normal(self) -> Vector3:  # noqa: D102
         return self._n
 
     @property
-    def offset(self) -> Scalar:
+    def offset(self) -> Scalar:  # noqa: D102
         return self._d
 
-    def abs_distance(self, p: Vector3) -> Scalar:
+    def abs_distance(self, p: Vector3) -> Scalar:  # noqa: D102
         return Scalar(self.signed_distance(p).abs())
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L145
     # TODO: tests
-    def signed_distance(self, p: Vector3) -> Scalar:
+    def signed_distance(self, p: Vector3) -> Scalar:  # noqa: D102
         KORNIA_CHECK(isinstance(p, (Vector3, Tensor)))
         return self.normal.dot(p) + self.offset
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
     # TODO: tests
-    def projection(self, p: Vector3) -> Vector3:
+    def projection(self, p: Vector3) -> Vector3:  # noqa: D102
         dist = self.signed_distance(p)
         if len(dist.shape) != len(self.normal):
             # non batched plane project a batch of points
@@ -64,13 +64,13 @@ class Hyperplane(Module):
         # return p - self.signed_distance(p) * self.normal
 
     @classmethod
-    def from_vector(self, n: Vector3, e: Vector3) -> "Hyperplane":
+    def from_vector(self, n: Vector3, e: Vector3) -> "Hyperplane":  # noqa: D102
         normal: Vector3 = n
         offset = -normal.dot(e)
         return Hyperplane(normal, Scalar(offset))
 
     @classmethod
-    def through(cls, p0: Tensor, p1: Tensor, p2: Optional[Tensor] = None) -> "Hyperplane":
+    def through(cls, p0: Tensor, p1: Tensor, p2: Optional[Tensor] = None) -> "Hyperplane":  # noqa: D102
         # 2d case
         if p2 is None:
             # TODO: improve tests

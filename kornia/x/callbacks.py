@@ -60,7 +60,7 @@ class EarlyStopping:
         self.best_score: float = -inf if max_mode else inf
         self.early_stop: bool = False
 
-    def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> TrainerState:
+    def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> TrainerState:  # noqa: D102
         score: float = valid_metric[self.monitor].avg
         is_best: bool = score > self.best_score if self.max_mode else score < self.best_score
         if is_best:
@@ -129,7 +129,7 @@ class ModelCheckpoint:
         # create directory
         Path(self.filepath).mkdir(parents=True, exist_ok=True)
 
-    def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> None:
+    def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> None:  # noqa: D102
         valid_metric_value: float = valid_metric[self.monitor].avg
         is_best: bool = (
             valid_metric_value > self.best_metric if self.max_mode else valid_metric_value < self.best_metric

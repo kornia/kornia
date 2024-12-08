@@ -653,7 +653,7 @@ class JPEGCodecDifferentiable(Module):
         else:
             self.register_buffer("quantization_table_c", quantization_table_c)
 
-    def forward(
+    def forward(  # noqa: D102
         self,
         image_rgb: Tensor,
         jpeg_quality: Tensor,

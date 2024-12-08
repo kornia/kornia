@@ -124,13 +124,13 @@ class SIFTDescriptor(Module):
         )
         self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))
 
-    def get_pooling_kernel(self) -> Tensor:
+    def get_pooling_kernel(self) -> Tensor:  # noqa: D102
         return self.pk.weight.detach()
 
-    def get_weighting_kernel(self) -> Tensor:
+    def get_weighting_kernel(self) -> Tensor:  # noqa: D102
         return self.gk.detach()
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         KORNIA_CHECK_SHAPE(input, ["B", "1", f"{self.patch_size}", f"{self.patch_size}"])
         B: int = input.shape[0]
         self.pk = self.pk.to(input.dtype).to(input.device)
@@ -263,10 +263,10 @@ class DenseSIFTDescriptor(Module):
             _get_reshape_kernel(num_ang_bins, num_spatial_bins, num_spatial_bins).float()
         )
 
-    def get_pooling_kernel(self) -> Tensor:
+    def get_pooling_kernel(self) -> Tensor:  # noqa: D102
         return self.bin_pooling_kernel.weight.detach()
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         KORNIA_CHECK_SHAPE(input, ["B", "1", "H", "W"])
 
         B, CH, W, H = input.size()

@@ -193,5 +193,5 @@ class DiceLoss(nn.Module):
         self.weight = weight
         self.ignore_index = ignore_index
 
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # noqa: D102
         return dice_loss(pred, target, self.average, self.eps, self.weight, self.ignore_index)

@@ -213,7 +213,7 @@ class ImageToTensor(nn.Module):
         super().__init__()
         self.keepdim = keepdim
 
-    def forward(self, x: Any) -> Tensor:
+    def forward(self, x: Any) -> Tensor:  # noqa: D102
         return image_to_tensor(x, keepdim=self.keepdim)
 
 

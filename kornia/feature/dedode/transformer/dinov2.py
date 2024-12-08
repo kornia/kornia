@@ -35,7 +35,7 @@ def named_apply(fn: Callable, module: nn.Module, name="", depth_first=True, incl
 
 
 class BlockChunk(nn.ModuleList):
-    def forward(self, x):
+    def forward(self, x):  # noqa: D102
         for b in self:
             x = b(x)
         return x
@@ -158,15 +158,15 @@ class DinoVisionTransformer(nn.Module):
             param.requires_grad = False
 
     @property
-    def device(self):
+    def device(self):  # noqa: D102
         return self.cls_token.device
 
-    def init_weights(self):
+    def init_weights(self):  # noqa: D102
         trunc_normal_(self.pos_embed, std=0.02)
         nn.init.normal_(self.cls_token, std=1e-6)
         named_apply(init_weights_vit_timm, self)
 
-    def interpolate_pos_encoding(self, x, w, h):
+    def interpolate_pos_encoding(self, x, w, h):  # noqa: D102
         previous_dtype = x.dtype
         npatch = x.shape[1] - 1
         N = self.pos_embed.shape[1] - 1
@@ -192,7 +192,7 @@ class DinoVisionTransformer(nn.Module):
         patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).view(1, -1, dim)
         return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1).to(previous_dtype)
 
-    def prepare_tokens_with_masks(self, x, masks=None):
+    def prepare_tokens_with_masks(self, x, masks=None):  # noqa: D102
         B, nc, w, h = x.shape
         x = self.patch_embed(x)
         if masks is not None:
@@ -203,7 +203,7 @@ class DinoVisionTransformer(nn.Module):
 
         return x
 
-    def forward_features_list(self, x_list, masks_list):
+    def forward_features_list(self, x_list, masks_list):  # noqa: D102
         x = [self.prepare_tokens_with_masks(x, masks) for x, masks in zip(x_list, masks_list)]
         for blk in self.blocks:
             x = blk(x)
@@ -222,7 +222,7 @@ class DinoVisionTransformer(nn.Module):
             )
         return output
 
-    def forward_features(self, x, masks=None):
+    def forward_features(self, x, masks=None):  # noqa: D102
         if isinstance(x, list):
             return self.forward_features_list(x, masks)
 
@@ -265,7 +265,7 @@ class DinoVisionTransformer(nn.Module):
         KORNIA_CHECK(len(output) == len(blocks_to_take), f"only {len(output)} / {len(blocks_to_take)} blocks found")
         return output
 
-    def get_intermediate_layers(
+    def get_intermediate_layers(  # noqa: D102
         self,
         x: torch.Tensor,
         n: Union[int, Sequence] = 1,  # Layers or n last layers to take
@@ -291,7 +291,7 @@ class DinoVisionTransformer(nn.Module):
             return tuple(zip(outputs, class_tokens))
         return tuple(outputs)
 
-    def forward(self, *args, is_training=False, **kwargs):
+    def forward(self, *args, is_training=False, **kwargs):  # noqa: D102
         ret = self.forward_features(*args, **kwargs)
         if is_training:
             return ret

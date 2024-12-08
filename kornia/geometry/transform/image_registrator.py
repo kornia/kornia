@@ -16,13 +16,13 @@ __all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 
 class BaseModel(Module):
     @abstractmethod
-    def reset_model(self) -> None: ...
+    def reset_model(self) -> None: ...  # noqa: D102
 
     @abstractmethod
-    def forward(self) -> Tensor: ...
+    def forward(self) -> Tensor: ...  # noqa: D102
 
     @abstractmethod
-    def forward_inverse(self) -> Tensor: ...
+    def forward_inverse(self) -> Tensor: ...  # noqa: D102
 
 
 class Homography(BaseModel):

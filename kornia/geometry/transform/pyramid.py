@@ -68,7 +68,7 @@ class PyrDown(Module):
         self.align_corners: bool = align_corners
         self.factor: float = factor
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return pyrdown(input, self.border_type, self.align_corners, self.factor)
 
 
@@ -99,7 +99,7 @@ class PyrUp(Module):
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return pyrup(input, self.border_type, self.align_corners)
 
 
@@ -156,7 +156,7 @@ class ScalePyramid(Module):
             f"double_image={self.double_image})"
         )
 
-    def get_kernel_size(self, sigma: float) -> int:
+    def get_kernel_size(self, sigma: float) -> int:  # noqa: D102
         ksize = int(2.0 * 4.0 * sigma + 1.0)
 
         #  matches OpenCV, but may cause padding problem for small images
@@ -167,7 +167,7 @@ class ScalePyramid(Module):
             ksize += 1
         return ksize
 
-    def get_first_level(self, input: Tensor) -> tuple[Tensor, float, float]:
+    def get_first_level(self, input: Tensor) -> tuple[Tensor, float, float]:  # noqa: D102
         pixel_distance = 1.0
         cur_sigma = 0.5
         # Same as in OpenCV up to interpolation difference
@@ -187,7 +187,7 @@ class ScalePyramid(Module):
             cur_level = x
         return cur_level, cur_sigma, pixel_distance
 
-    def forward(self, x: Tensor) -> tuple[list[Tensor], list[Tensor], list[Tensor]]:
+    def forward(self, x: Tensor) -> tuple[list[Tensor], list[Tensor], list[Tensor]]:  # noqa: D102
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 

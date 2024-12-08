@@ -99,7 +99,7 @@ class EfficientViTBackbone(nn.Module):
         self.stages = nn.ModuleList(stages)
 
     @staticmethod
-    def build_local_block(
+    def build_local_block(  # noqa: D102
         in_channels: int,
         out_channels: int,
         stride: int,
@@ -129,7 +129,7 @@ class EfficientViTBackbone(nn.Module):
             )
         return block
 
-    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:  # noqa: D102
         output_dict = {"input": x}
         output_dict["stage0"] = x = self.input_stem(x)
         for stage_id, stage in enumerate(self.stages, 1):
@@ -257,7 +257,7 @@ class EfficientViTLargeBackbone(nn.Module):
         self.stages = nn.ModuleList(stages)
 
     @staticmethod
-    def build_local_block(
+    def build_local_block(  # noqa: D102
         stage_id: int,
         in_channels: int,
         out_channels: int,
@@ -298,7 +298,7 @@ class EfficientViTLargeBackbone(nn.Module):
             )
         return block
 
-    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:  # noqa: D102
         output_dict = {"input": x}
         for stage_id, stage in enumerate(self.stages):
             output_dict[f"stage{stage_id}"] = x = stage(x)

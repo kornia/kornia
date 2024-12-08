@@ -73,5 +73,5 @@ class UnsharpMask(Module):
         self.sigma = sigma
         self.border_type = border_type
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return unsharp_mask(input, self.kernel_size, self.sigma, self.border_type)

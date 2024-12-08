@@ -45,7 +45,7 @@ class MLP(Module):
                 layers.append(nn.Sequential(layer, nn.ReLU()))
         self._mlp = nn.ModuleList(layers)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         out = x
         x_skip = x
         for i, layer in enumerate(self._mlp):

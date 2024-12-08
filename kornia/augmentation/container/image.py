@@ -197,7 +197,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         # NOTE: MixV2 will not be a special op in the future.
         return [idx for idx, (_, child) in enumerate(named_modules) if isinstance(child, K.MixAugmentationBaseV2)]
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:  # noqa: D102
         if params is None:
             # Mix augmentation can only be applied once per forward
             mix_indices = self.get_mix_augmentation_indices(self.named_children())
@@ -215,7 +215,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         return self.get_children_by_params(params)
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:  # noqa: D102
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
 
         params: List[ParamItem] = []

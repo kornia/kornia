@@ -91,7 +91,7 @@ class OutputRangePostProcessor(Module):
         self.min_val = min_val
         self.max_val = max_val
 
-    def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Union[Tensor, List[Tensor]]:
+    def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Union[Tensor, List[Tensor]]:  # noqa: D102
         if isinstance(imgs, Tensor):
             return torch.clamp(imgs, self.min_val, self.max_val)
         return [img.clamp_(self.min_val, self.max_val) for img in imgs]

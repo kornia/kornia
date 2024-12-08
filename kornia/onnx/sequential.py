@@ -82,16 +82,16 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             op_list.append(op)
         return op_list
 
-    def combine(self, io_maps: list[tuple[str, str]] | None = None) -> onnx.ModelProto:  # type: ignore
+    def combine(self, io_maps: list[tuple[str, str]] | None = None) -> onnx.ModelProto:  # type: ignore  # noqa: D102
         return super()._combine(*self.operators, io_maps=io_maps)
 
-    def create_session(
+    def create_session(  # noqa: D102
         self, providers: list[str] | None = None, session_options: Any | None = None
     ) -> ort.InferenceSession:  # type: ignore
         return super()._create_session(self._combined_op, providers, session_options)
 
-    def export(self, file_path: str, **kwargs: Any) -> None:
+    def export(self, file_path: str, **kwargs: Any) -> None:  # noqa: D102
         return super()._export(self._combined_op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
+    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore  # noqa: D102
         return super()._add_metadata(self._combined_op, additional_metadata)

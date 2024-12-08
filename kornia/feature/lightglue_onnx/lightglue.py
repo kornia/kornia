@@ -74,7 +74,7 @@ class OnnxLightGlue:
 
         self.session = ort.InferenceSession(weights, providers=providers)
 
-    def __call__(self, data: dict[str, dict[str, Tensor]]) -> dict[str, Tensor]:
+    def __call__(self, data: dict[str, dict[str, Tensor]]) -> dict[str, Tensor]:  # noqa: D102
         return self.forward(data)
 
     def forward(self, data: dict[str, dict[str, Tensor]]) -> dict[str, Tensor]:

@@ -176,7 +176,7 @@ class ExtractTensorPatches(Module):
         self.padding: PadType = padding
         self.allow_auto_padding: bool = allow_auto_padding
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return extract_tensor_patches(
             input,
             self.window_size,
@@ -269,7 +269,7 @@ class CombineTensorPatches(Module):
         self.unpadding: PadType = unpadding
         self.allow_auto_unpadding: bool = allow_auto_unpadding
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return combine_tensor_patches(
             input,
             self.original_size,

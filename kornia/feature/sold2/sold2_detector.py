@@ -67,7 +67,7 @@ class SOLD2_detector(Module):
         # Initialize the line detector with a configuration from the dataclass
         self.line_detector = LineSegmentDetectionModule(self.config.line_detector_cfg)
 
-    def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
+    def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D102
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]

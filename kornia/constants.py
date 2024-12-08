@@ -56,7 +56,7 @@ class Resample(Enum, metaclass=_KORNIA_EnumMeta):
     BICUBIC = 2
 
     @classmethod
-    def get(cls, value: TKEnum["Resample"]) -> "Resample":
+    def get(cls, value: TKEnum["Resample"]) -> "Resample":  # noqa: D102
         return _get(cls, value)
 
 
@@ -67,7 +67,7 @@ class BorderType(Enum, metaclass=_KORNIA_EnumMeta):
     CIRCULAR = 3
 
     @classmethod
-    def get(cls, value: TKEnum["BorderType"]) -> "BorderType":
+    def get(cls, value: TKEnum["BorderType"]) -> "BorderType":  # noqa: D102
         return _get(cls, value)
 
 
@@ -77,7 +77,7 @@ class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):
     REFLECTION = 2
 
     @classmethod
-    def get(cls, value: TKEnum["SamplePadding"]) -> "SamplePadding":
+    def get(cls, value: TKEnum["SamplePadding"]) -> "SamplePadding":  # noqa: D102
         return _get(cls, value)
 
 
@@ -88,7 +88,7 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
     FLOAT64 = 3
 
     @classmethod
-    def get(cls, value: Union[str, int, torch.dtype, Tensor, "DType"]) -> "DType":
+    def get(cls, value: Union[str, int, torch.dtype, Tensor, "DType"]) -> "DType":  # noqa: D102
         if isinstance(value, torch.dtype):
             return cls[str(value).upper()[6:]]
 
@@ -107,7 +107,7 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
         raise TypeError(f"Invalid identifier {value} with type {type(value)}.")
 
     @classmethod
-    def to_torch(cls, value: TKEnum["DType"]) -> torch.dtype:
+    def to_torch(cls, value: TKEnum["DType"]) -> torch.dtype:  # noqa: D102
         data = cls.get(value=value)
 
         if data == DType.INT64:

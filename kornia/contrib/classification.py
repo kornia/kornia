@@ -24,6 +24,6 @@ class ClassificationHead(nn.Module):
         self.norm = nn.LayerNorm(embed_size)
         self.linear = nn.Linear(embed_size, num_classes)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         out = x.mean(-2)
         return self.linear(self.norm(out))

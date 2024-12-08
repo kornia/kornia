@@ -21,5 +21,5 @@ class Rescale(Module):
                 raise TypeError(f"Expected factor to be a float or a 0-d tensor, got {factor}.")
             self.factor = factor
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return input * self.factor

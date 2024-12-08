@@ -738,7 +738,7 @@ class Resize(Module):
         self.side: str = side
         self.antialias: bool = antialias
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return resize(
             input,
             self.size,
@@ -831,7 +831,7 @@ class Affine(Module):
         self.padding_mode = padding_mode
         self.align_corners = align_corners
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         if self.shear is None:
             sx = sy = None
         else:
@@ -884,7 +884,7 @@ class Rescale(Module):
         self.align_corners: Optional[bool] = align_corners
         self.antialias: bool = antialias
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return rescale(
             input, self.factor, self.interpolation, align_corners=self.align_corners, antialias=self.antialias
         )
@@ -932,7 +932,7 @@ class Rotate(Module):
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return rotate(input, self.angle, self.center, self.mode, self.padding_mode, self.align_corners)
 
 
@@ -970,7 +970,7 @@ class Translate(Module):
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return translate(input, self.translation, self.mode, self.padding_mode, self.align_corners)
 
 
@@ -1018,7 +1018,7 @@ class Scale(Module):
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return scale(input, self.scale_factor, self.center, self.mode, self.padding_mode, self.align_corners)
 
 
@@ -1056,5 +1056,5 @@ class Shear(Module):
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return shear(input, self.shear, self.mode, self.padding_mode, self.align_corners)

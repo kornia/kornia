@@ -170,10 +170,10 @@ class FaceDetector(nn.Module):
         self.model = YuFaceDetectNet("test", pretrained=True)
         self.nms = nms_kornia
 
-    def preprocess(self, image: torch.Tensor) -> torch.Tensor:
+    def preprocess(self, image: torch.Tensor) -> torch.Tensor:  # noqa: D102
         return image
 
-    def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> List[torch.Tensor]:
+    def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> List[torch.Tensor]:  # noqa: D102
         loc, conf, iou = data["loc"], data["conf"], data["iou"]
 
         scale = torch.tensor(

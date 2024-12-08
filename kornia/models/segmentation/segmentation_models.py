@@ -64,7 +64,7 @@ class SegmentationModelsBuilder:
         )
 
     @staticmethod
-    def get_preprocessing_pipeline(preproc_params: dict[str, Any]) -> kornia.augmentation.container.ImageSequential:
+    def get_preprocessing_pipeline(preproc_params: dict[str, Any]) -> kornia.augmentation.container.ImageSequential:  # noqa: D102
         # Ensure the color space transformation is ONNX-friendly
         proc_sequence: list[Module] = []
         input_space = preproc_params["input_space"]

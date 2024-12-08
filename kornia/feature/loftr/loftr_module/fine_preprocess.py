@@ -29,7 +29,7 @@ class FinePreprocess(Module):
             if p.dim() > 1:
                 nn.init.kaiming_normal_(p, mode="fan_out", nonlinearity="relu")
 
-    def forward(
+    def forward(  # noqa: D102
         self, feat_f0: Tensor, feat_f1: Tensor, feat_c0: Tensor, feat_c1: Tensor, data: Dict[str, Any]
     ) -> Tuple[Tensor, Tensor]:
         W = self.W

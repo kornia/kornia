@@ -63,7 +63,7 @@ class Normalize(Module):
         self.mean = mean
         self.std = std
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return normalize(input, self.mean, self.std)
 
     def __repr__(self) -> str:
@@ -176,7 +176,7 @@ class Denormalize(Module):
         self.mean = mean
         self.std = std
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return denormalize(input, self.mean, self.std)
 
     def __repr__(self) -> str:

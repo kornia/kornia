@@ -126,7 +126,7 @@ class NerfSolver:
         self._nerf_optimizer = optim.Adam(self._nerf_model.parameters(), lr=lr)
 
     @deprecated(replace_with="setup_solver", version="0.7.0")
-    def init_training(
+    def init_training(  # noqa: D102
         self,
         cameras: PinholeCamera,
         min_depth: float,

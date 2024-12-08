@@ -80,5 +80,5 @@ class MedianBlur(Module):
         super().__init__()
         self.kernel_size = kernel_size
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return median_blur(input, self.kernel_size)

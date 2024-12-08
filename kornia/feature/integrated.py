@@ -339,7 +339,7 @@ class LocalFeatureMatcher(Module):
         lafs0, resps0, descs0 = self.local_feature(image, mask)
         return {"lafs": lafs0, "responses": resps0, "descriptors": descs0}
 
-    def no_match_output(self, device: Device, dtype: torch.dtype) -> Dict[str, Tensor]:
+    def no_match_output(self, device: Device, dtype: torch.dtype) -> Dict[str, Tensor]:  # noqa: D102
         return {
             "keypoints0": torch.empty(0, 2, device=device, dtype=dtype),
             "keypoints1": torch.empty(0, 2, device=device, dtype=dtype),

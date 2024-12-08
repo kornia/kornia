@@ -230,7 +230,7 @@ class Boxes:
         return self
 
     @property
-    def shape(self) -> tuple[int, ...] | Size:
+    def shape(self) -> tuple[int, ...] | Size:  # noqa: D102
         return self.data.shape
 
     def get_boxes_shape(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -271,7 +271,7 @@ class Boxes:
         obj._data = data
         return obj
 
-    def index_put(
+    def index_put(  # noqa: D102
         self, indices: tuple[Tensor, ...] | list[Tensor], values: Tensor | Boxes, inplace: bool = False
     ) -> Boxes:
         if inplace:
@@ -317,7 +317,7 @@ class Boxes:
         self._data[..., 1] -= padding_size[..., None, 2:3].to(device=self._data.device)  # top padding
         return self
 
-    def clamp(
+    def clamp(  # noqa: D102
         self,
         topleft: Optional[Tensor | tuple[int, int]] = None,
         botright: Optional[Tensor | tuple[int, int]] = None,
@@ -377,7 +377,7 @@ class Boxes:
         """
         raise NotImplementedError
 
-    def filter_boxes_by_area(
+    def filter_boxes_by_area(  # noqa: D102
         self, min_area: Optional[float] = None, max_area: Optional[float] = None, inplace: bool = False
     ) -> Boxes:
         area = self.compute_area()
@@ -643,11 +643,11 @@ class Boxes:
         return self.transform_boxes(M, inplace=inplace)
 
     @property
-    def data(self) -> torch.Tensor:
+    def data(self) -> torch.Tensor:  # noqa: D102
         return self._data
 
     @property
-    def mode(self) -> str:
+    def mode(self) -> str:  # noqa: D102
         return self._mode
 
     @property
@@ -668,14 +668,14 @@ class Boxes:
         self._data = self._data.to(device=device, dtype=dtype)
         return self
 
-    def clone(self) -> Boxes:
+    def clone(self) -> Boxes:  # noqa: D102
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
         obj._N = self._N
         obj._is_batched = self._is_batched
         return obj
 
-    def type(self, dtype: torch.dtype) -> Boxes:
+    def type(self, dtype: torch.dtype) -> Boxes:  # noqa: D102
         self._data = self._data.type(dtype)
         return self
 
@@ -767,7 +767,7 @@ class Boxes3D:
         return self
 
     @property
-    def shape(self) -> tuple[int, ...] | Size:
+    def shape(self) -> tuple[int, ...] | Size:  # noqa: D102
         return self.data.shape
 
     def get_boxes_shape(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -1056,11 +1056,11 @@ class Boxes3D:
         return self.transform_boxes(M, inplace=True)
 
     @property
-    def data(self) -> torch.Tensor:
+    def data(self) -> torch.Tensor:  # noqa: D102
         return self._data
 
     @property
-    def mode(self) -> str:
+    def mode(self) -> str:  # noqa: D102
         return self._mode
 
     @property

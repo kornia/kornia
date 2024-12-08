@@ -9,7 +9,7 @@ class DeDoDeDescriptor(Module):
         self.encoder = encoder
         self.decoder = decoder
 
-    def forward(
+    def forward(  # noqa: D102
         self,
         images: Tensor,
     ) -> Tensor:

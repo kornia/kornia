@@ -54,7 +54,7 @@ class TFeat(nn.Module):
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:  # noqa: D102
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x = self.features(input)
         x = x.view(x.size(0), -1)

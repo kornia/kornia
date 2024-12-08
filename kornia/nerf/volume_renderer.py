@@ -35,7 +35,7 @@ class VolumeRenderer(torch.nn.Module):
 
         return rgbs_rendered
 
-    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: Tensor) -> Tensor:
+    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: Tensor) -> Tensor:  # noqa: D102
         raise NotImplementedError
 
 

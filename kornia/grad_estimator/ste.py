@@ -36,14 +36,14 @@ class STEFunction(Function):
     """
 
     @staticmethod
-    def forward(ctx: Any, input: Tensor, output: Tensor, grad_fn: Optional[Callable[..., Any]] = None) -> Tensor:
+    def forward(ctx: Any, input: Tensor, output: Tensor, grad_fn: Optional[Callable[..., Any]] = None) -> Tensor:  # noqa: D102
         ctx.in_shape = input.shape
         ctx.out_shape = output.shape
         ctx.grad_fn = grad_fn
         return output
 
     @staticmethod
-    def backward(ctx: Any, grad_output: Tensor) -> Tuple[Tensor, Tensor, None]:  # type: ignore[override]
+    def backward(ctx: Any, grad_output: Tensor) -> Tuple[Tensor, Tensor, None]:  # type: ignore[override]  # noqa: D102
         if ctx.grad_fn is None:
             return grad_output.sum_to_size(ctx.in_shape), grad_output.sum_to_size(ctx.out_shape), None
         return (
@@ -112,7 +112,7 @@ class StraightThroughEstimator(nn.Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(target_fn={self.target_fn}, grad_fn={self.grad_fn})"
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         out = self.target_fn(input)
         if not isinstance(out, Tensor):
             raise NotImplementedError(

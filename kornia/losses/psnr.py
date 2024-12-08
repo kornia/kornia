@@ -65,5 +65,5 @@ class PSNRLoss(nn.Module):
         super().__init__()
         self.max_val: float = max_val
 
-    def forward(self, image: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor, target: torch.Tensor) -> torch.Tensor:  # noqa: D102
         return psnr_loss(image, target, self.max_val)

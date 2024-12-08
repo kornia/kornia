@@ -12,7 +12,7 @@ from kornia.contrib.models.efficient_vit.utils import build_kwargs_from_config
 
 
 class LayerNorm2d(nn.LayerNorm):
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         out = x - torch.mean(x, dim=1, keepdim=True)
         out = out / torch.sqrt(torch.square(out).mean(dim=1, keepdim=True) + self.eps)
         if self.elementwise_affine:

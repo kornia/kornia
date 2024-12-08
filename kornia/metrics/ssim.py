@@ -167,5 +167,5 @@ class SSIM(nn.Module):
         self.eps = eps
         self.padding = padding
 
-    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
+    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:  # noqa: D102
         return ssim(img1, img2, self.window_size, self.max_val, self.eps, self.padding)

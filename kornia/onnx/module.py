@@ -43,15 +43,15 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         session = self.create_session(providers=providers, session_options=session_options)
         self.set_session(session=session)
 
-    def create_session(
+    def create_session(  # noqa: D102
         self, providers: list[str] | None = None, session_options: Any | None = None
     ) -> ort.InferenceSession:  # type: ignore
         return super()._create_session(self.op, providers, session_options)
 
-    def export(self, file_path: str, **kwargs: Any) -> None:
+    def export(self, file_path: str, **kwargs: Any) -> None:  # noqa: D102
         return super()._export(self.op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
+    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore  # noqa: D102
         return super()._add_metadata(self.op, additional_metadata)
 
 
