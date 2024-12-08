@@ -231,7 +231,7 @@ def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
     return True
 
 
-def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: Optional[str] = None, raises: bool = True) -> bool:  # noqa: D417
     """Check whether a list provided tensors live in the same device.
 
     Args:

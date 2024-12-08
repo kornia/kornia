@@ -414,7 +414,7 @@ def _extract_tensor_patchesnd(input: Tensor, window_sizes: Tuple[int, ...], stri
     return input.view(batch_size, -1, num_channels, *window_sizes)
 
 
-def extract_tensor_patches(
+def extract_tensor_patches(  # noqa: D417
     input: Tensor,
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]] = 1,

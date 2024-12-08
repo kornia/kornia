@@ -62,7 +62,7 @@ class DeDoDe(Module):
         self.descriptor: DeDoDeDescriptor = get_descriptor(descriptor_model, amp_dtype)
         self.normalizer = Normalize(torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225]))
 
-    def forward(
+    def forward(  # noqa: D417
         self,
         images: Tensor,
         n: Optional[int] = 10_000,
@@ -97,7 +97,7 @@ class DeDoDe(Module):
         return dedode_denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
 
     @torch.inference_mode()
-    def detect(
+    def detect(  # noqa: D417
         self,
         images: Tensor,
         n: Optional[int] = 10_000,

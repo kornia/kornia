@@ -234,7 +234,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         """Return identity matrix."""
         return eye_like(3, input)
 
-    def get_transformation_matrix(
+    def get_transformation_matrix(  # noqa: D417
         self,
         input: Tensor,
         params: Optional[List[ParamItem]] = None,
@@ -316,7 +316,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 return False
         return True
 
-    def __call__(
+    def __call__(  # noqa: D417
         self,
         *inputs: Any,
         input_names_to_handle: Optional[List[Any]] = None,

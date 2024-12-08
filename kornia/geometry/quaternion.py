@@ -337,7 +337,7 @@ class Quaternion(Module):
         return quaternion_to_axis_angle(self.data)
 
     @classmethod
-    def identity(
+    def identity(  # noqa: D417
         cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None
     ) -> "Quaternion":
         """Create a quaternion representing an identity rotation.
@@ -379,7 +379,7 @@ class Quaternion(Module):
     # TODO: update signature
     # def random(cls, shape: Optional[List] = None, device = None, dtype = None) -> 'Quaternion':
     @classmethod
-    def random(
+    def random(  # noqa: D417
         cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None
     ) -> "Quaternion":
         """Create a random unit quaternion of shape :math:`(B, 4)`.

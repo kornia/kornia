@@ -43,7 +43,7 @@ class DepthEstimation(HFONNXComunnityModel):
         result = tensor(result, device=images.device, dtype=images.dtype)
         return self.resize_back(result, images)
 
-    def visualize(
+    def visualize(  # noqa: D417
         self,
         images: Tensor,
         depth_maps: Optional[Union[Tensor, list[Tensor]]] = None,
@@ -77,7 +77,7 @@ class DepthEstimation(HFONNXComunnityModel):
 
         return self._tensor_to_type(output, output_type, is_batch=isinstance(images, Tensor))
 
-    def save(
+    def save(  # noqa: D417
         self,
         images: Tensor,
         depth_maps: Optional[Union[Tensor, list[Tensor]]] = None,

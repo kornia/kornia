@@ -9,7 +9,7 @@ from kornia.core import Module, Tensor
 INF = 1e9
 
 
-def mask_border(m: Tensor, b: int, v: Union[Tensor, float, bool]) -> None:
+def mask_border(m: Tensor, b: int, v: Union[Tensor, float, bool]) -> None:  # noqa: D417
     """Mask borders with value.
 
     Args:
@@ -48,7 +48,7 @@ def mask_border_with_padding(m: Tensor, bd: int, v: Union[Tensor, float, bool], 
         m[b_idx, :, :, :, w1 - bd :] = v
 
 
-def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:
+def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:  # noqa: D417
     """Compute the max candidates of all pairs within a batch.
 
     Args:
@@ -88,7 +88,7 @@ class CoarseMatching(Module):
         else:
             raise NotImplementedError
 
-    def forward(
+    def forward(  # noqa: D417
         self,
         feat_c0: Tensor,
         feat_c1: Tensor,

@@ -16,7 +16,7 @@ from kornia.core.check import KORNIA_CHECK
 
 
 class TwoWayTransformer(Module):
-    def __init__(
+    def __init__(  # noqa: D417
         self,
         depth: int,
         embedding_dim: int,
@@ -96,7 +96,7 @@ class TwoWayTransformer(Module):
 
 
 class TwoWayAttentionBlock(Module):
-    def __init__(
+    def __init__(  # noqa: D417
         self,
         embedding_dim: int,
         num_heads: int,

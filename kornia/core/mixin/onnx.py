@@ -148,7 +148,7 @@ class ONNXExportMixin:
 
 
 class ONNXRuntimeMixin:
-    def _create_session(
+    def _create_session(  # noqa: D417
         self,
         op: onnx.ModelProto,  # type:ignore
         providers: Optional[list[str]] = None,
@@ -199,7 +199,7 @@ class ONNXRuntimeMixin:
         """Set the session to run on CPU."""
         self._session.set_providers(["CPUExecutionProvider"], provider_options=[{**kwargs}])
 
-    def as_cuda(self, device_id: int = 0, **kwargs: Any) -> None:
+    def as_cuda(self, device_id: int = 0, **kwargs: Any) -> None:  # noqa: D417
         """Set the session to run on CUDA.
 
         We set the ONNX runtime session to use CUDAExecutionProvider.
@@ -217,7 +217,7 @@ class ONNXRuntimeMixin:
         """
         self._session.set_providers(["CUDAExecutionProvider"], provider_options=[{"device_id": device_id, **kwargs}])
 
-    def as_tensorrt(self, device_id: int = 0, **kwargs: Any) -> None:
+    def as_tensorrt(self, device_id: int = 0, **kwargs: Any) -> None:  # noqa: D417
         """Set the session to run on TensorRT.
 
         We set the ONNX runtime session to use TensorrtExecutionProvider.
@@ -232,7 +232,7 @@ class ONNXRuntimeMixin:
             ["TensorrtExecutionProvider"], provider_options=[{"device_id": device_id, **kwargs}]
         )
 
-    def as_openvino(self, device_type: str = "GPU", **kwargs: Any) -> None:
+    def as_openvino(self, device_type: str = "GPU", **kwargs: Any) -> None:  # noqa: D417
         """Set the session to run on TensorRT.
 
         We set the ONNX runtime session to use OpenVINOExecutionProvider.
@@ -266,7 +266,7 @@ class ONNXRuntimeMixin:
 
 
 class ONNXMixin:
-    def _load_op(
+    def _load_op(  # noqa: D417
         self,
         arg: Union[onnx.ModelProto, str],  # type:ignore
         cache_dir: Optional[str] = None,
@@ -286,7 +286,7 @@ class ONNXMixin:
             return arg
         raise ValueError(f"Invalid argument type. Got {type(arg)}")
 
-    def _load_ops(
+    def _load_ops(  # noqa: D417
         self,
         *args: Union[onnx.ModelProto, str],  # type:ignore
         cache_dir: Optional[str] = None,
@@ -307,7 +307,7 @@ class ONNXMixin:
             op_list.append(self._load_op(arg, cache_dir=cache_dir))
         return op_list
 
-    def _combine(
+    def _combine(  # noqa: D417
         self,
         *args: list[onnx.ModelProto],  # type:ignore
         io_maps: Optional[list[tuple[str, str]]] = None,
@@ -341,7 +341,7 @@ class ONNXMixin:
 
         return combined_op
 
-    def _export(
+    def _export(  # noqa: D417
         self,
         op: onnx.ModelProto,  # type:ignore
         file_path: str,
@@ -356,7 +356,7 @@ class ONNXMixin:
         """
         onnx.save(op, file_path, **kwargs)  # type:ignore
 
-    def _add_metadata(
+    def _add_metadata(  # noqa: D417
         self,
         op: onnx.ModelProto,  # type:ignore
         additional_metadata: Optional[list[tuple[str, str]]] = None,
@@ -372,7 +372,7 @@ class ONNXMixin:
         op = kornia.onnx.utils.add_metadata(op, additional_metadata)
         return op
 
-    def _onnx_version_conversion(
+    def _onnx_version_conversion(  # noqa: D417
         self,
         op: onnx.ModelProto,  # type:ignore
         target_ir_version: Optional[int] = None,

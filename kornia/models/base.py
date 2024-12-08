@@ -49,7 +49,7 @@ class ModelBaseMixin:
 
         raise RuntimeError(f"Unsupported output type `{output_type}`.")
 
-    def _save_outputs(
+    def _save_outputs(  # noqa: D417
         self, outputs: Union[Tensor, List[Tensor]], directory: Optional[str] = None, suffix: str = ""
     ) -> None:
         """Save the output image(s) to a directory.
@@ -75,7 +75,7 @@ class ModelBaseMixin:
 class ModelBase(Module, ONNXExportMixin, ModelBaseMixin):
     """Wrap a model and perform pre-processing and post-processing."""
 
-    def __init__(
+    def __init__(  # noqa: D417
         self, model: Module, pre_processor: Module, post_processor: Module, name: Optional[str] = None
     ) -> None:
         """Construct an Object Detector object.

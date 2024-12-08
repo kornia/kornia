@@ -15,7 +15,7 @@ __all__ = ["SegmentationModelsBuilder"]
 
 class SegmentationModelsBuilder:
     @staticmethod
-    def build(
+    def build(  # noqa: D417
         model_name: str = "Unet",
         encoder_name: str = "resnet34",
         encoder_weights: Optional[str] = "imagenet",

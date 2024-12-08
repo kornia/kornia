@@ -137,7 +137,7 @@ class ParametrizedLine(Module):
     # - intersection_point
 
     # TODO: add tests, and possibly return a mask
-    def intersect(self, plane: Hyperplane, eps: float = 1e-6) -> Tuple[Tensor, Tensor]:
+    def intersect(self, plane: Hyperplane, eps: float = 1e-6) -> Tuple[Tensor, Tensor]:  # noqa: D417
         """Return the intersection point between the line and a given plane.
 
         Args:

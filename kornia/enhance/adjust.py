@@ -420,7 +420,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
     return img_adjust
 
 
-def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:
+def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:  # noqa: D417
     r"""Adjust the brightness of an image tensor.
 
     .. image:: _static/img/adjust_brightness.png
@@ -487,7 +487,7 @@ def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: 
     return img_adjust
 
 
-def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:
+def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:  # noqa: D417
     r"""Adjust the brightness accumulatively of an image tensor.
 
     This implementation follows PIL convention.
@@ -899,7 +899,7 @@ def _build_lut(histo: Tensor, step: Tensor) -> Tensor:
 
 
 # Code taken from: https://github.com/pytorch/vision/pull/796
-def _scale_channel(im: Tensor) -> Tensor:
+def _scale_channel(im: Tensor) -> Tensor:  # noqa: D417
     r"""Scale the data in the channel to implement equalize.
 
     Args:

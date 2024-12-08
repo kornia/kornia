@@ -15,7 +15,7 @@ from .orientation import PassLAF
 from .responses import BlobHessian
 
 
-def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -> Tensor:
+def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -> Tensor:  # noqa: D417
     r"""Auxiliary function for ScaleSpaceDetector.
 
     Converts scale level index from ConvSoftArgmax3d to the actual

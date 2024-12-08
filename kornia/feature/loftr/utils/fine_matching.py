@@ -16,7 +16,7 @@ class FineMatching(Module):
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, feat_f0: Tensor, feat_f1: Tensor, data: dict[str, Any]) -> None:
+    def forward(self, feat_f0: Tensor, feat_f1: Tensor, data: dict[str, Any]) -> None:  # noqa: D417
         """Run forward.
 
         Args:

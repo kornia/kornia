@@ -171,7 +171,7 @@ class ImageSequentialBase(SequentialBase):
         """Return identity matrix."""
         raise NotImplementedError
 
-    def get_transformation_matrix(
+    def get_transformation_matrix(  # noqa: D417
         self,
         input: Tensor,
         params: Optional[List[ParamItem]] = None,

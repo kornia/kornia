@@ -459,7 +459,7 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         self.params = params
         self.matcher = LightGlue(self.feature_name, **params)
 
-    def forward(
+    def forward(  # noqa: D417
         self,
         desc1: Tensor,
         desc2: Tensor,

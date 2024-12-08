@@ -110,7 +110,7 @@ class VisualPrompter:
         return x
 
     @torch.no_grad()
-    def set_image(self, image: Tensor, mean: Optional[Tensor] = None, std: Optional[Tensor] = None) -> None:
+    def set_image(self, image: Tensor, mean: Optional[Tensor] = None, std: Optional[Tensor] = None) -> None:  # noqa: D417
         """Set the embeddings from the given image with `image_decoder` of the model.
 
         Prepare the given image with the selected transforms and the preprocess method.
@@ -222,7 +222,7 @@ class VisualPrompter:
         return Prompts(points=points, boxes=bbox, masks=masks)
 
     @torch.no_grad()
-    def predict(
+    def predict(  # noqa: D417
         self,
         keypoints: Optional[Keypoints | Tensor] = None,
         keypoints_labels: Optional[Tensor] = None,

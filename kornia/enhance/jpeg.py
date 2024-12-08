@@ -78,7 +78,7 @@ def _patchify_8x8(input: Tensor) -> Tensor:
     return output
 
 
-def _unpatchify_8x8(input: Tensor, H: int, W: int) -> Tensor:
+def _unpatchify_8x8(input: Tensor, H: int, W: int) -> Tensor:  # noqa: D417
     """Reverse non-overlapping 8 x 8 patching.
 
     Args:

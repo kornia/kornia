@@ -60,7 +60,7 @@ class NerfSolver:
         self._device = device
         self._dtype = dtype
 
-    def setup_solver(
+    def setup_solver(  # noqa: D417
         self,
         cameras: PinholeCamera,
         min_depth: float,

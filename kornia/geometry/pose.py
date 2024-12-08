@@ -37,7 +37,7 @@ class NamedPose:
 
     """
 
-    def __init__(self, dst_from_src: Se2 | Se3, frame_src: str | None = None, frame_dst: str | None = None) -> None:
+    def __init__(self, dst_from_src: Se2 | Se3, frame_src: str | None = None, frame_dst: str | None = None) -> None:  # noqa: D417
         """Construct NamedPose.
 
         Args:

@@ -470,7 +470,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return outputs
 
-    def __call__(
+    def __call__(  # noqa: D417
         self,
         *inputs: Any,
         input_names_to_handle: Optional[List[Any]] = None,

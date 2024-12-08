@@ -76,7 +76,7 @@ class RTDETRConfig:
     confidence_threshold: float = 0.3
 
     @staticmethod
-    def from_name(model_name: str, num_classes: int = 80) -> RTDETRConfig:
+    def from_name(model_name: str, num_classes: int = 80) -> RTDETRConfig:  # noqa: D417
         """Load model without pretrained weights.
 
         Args:
@@ -102,7 +102,7 @@ class RTDETRConfig:
 class RTDETR(ModelBase[RTDETRConfig]):
     """RT-DETR Object Detection model, as described in https://arxiv.org/abs/2304.08069."""
 
-    def __init__(self, backbone: ResNetD | PPHGNetV2, encoder: HybridEncoder, decoder: RTDETRHead):
+    def __init__(self, backbone: ResNetD | PPHGNetV2, encoder: HybridEncoder, decoder: RTDETRHead):  # noqa: D417
         """Construct RT-DETR Object Detection model.
 
         Args:
@@ -250,7 +250,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
         return model
 
     @staticmethod
-    def from_name(model_name: str, num_classes: int = 80) -> RTDETR:
+    def from_name(model_name: str, num_classes: int = 80) -> RTDETR:  # noqa: D417
         """Load model without pretrained weights.
 
         Args:

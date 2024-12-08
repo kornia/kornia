@@ -288,7 +288,7 @@ def crop_by_transform_mat(
     return patches
 
 
-def crop_by_indices(
+def crop_by_indices(  # noqa: D417
     input_tensor: Tensor,
     src_box: Tensor,
     size: Optional[Tuple[int, int]] = None,

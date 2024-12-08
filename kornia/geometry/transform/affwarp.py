@@ -530,7 +530,7 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
 
 
 @perform_keep_shape_image
-def resize(
+def resize(  # noqa: D417
     input: Tensor,
     size: Union[int, Tuple[int, int]],
     interpolation: str = "bilinear",

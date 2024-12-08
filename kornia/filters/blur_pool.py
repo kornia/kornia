@@ -129,7 +129,7 @@ class EdgeAwareBlurPool2D(Module):
         )
 
 
-def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2) -> Tensor:
+def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2) -> Tensor:  # noqa: D417
     r"""Compute blurs and downsample a given feature map.
 
     .. image:: _static/img/blur_pool2d.png
@@ -177,7 +177,7 @@ def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int =
     return _blur_pool_by_kernel2d(input, kernel, stride)
 
 
-def max_blur_pool2d(
+def max_blur_pool2d(  # noqa: D417
     input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
 ) -> Tensor:
     r"""Compute pools and blurs and downsample a given feature map.

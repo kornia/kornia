@@ -111,7 +111,7 @@ class SOLD2(Module):
 
         return outputs
 
-    def match(self, line_seg1: Tensor, line_seg2: Tensor, desc1: Tensor, desc2: Tensor) -> Tensor:
+    def match(self, line_seg1: Tensor, line_seg2: Tensor, desc1: Tensor, desc2: Tensor) -> Tensor:  # noqa: D417
         """Find the best matches between two sets of line segments and their corresponding descriptors.
 
         Args:

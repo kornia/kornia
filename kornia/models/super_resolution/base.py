@@ -48,7 +48,7 @@ class SuperResolution(ModelBase):
             out_images = self.model(images)
         return self.post_processor(out_images)
 
-    def visualize(
+    def visualize(  # noqa: D417
         self,
         images: Union[Tensor, List[Tensor]],
         edge_maps: Optional[Union[Tensor, List[Tensor]]] = None,
@@ -72,7 +72,7 @@ class SuperResolution(ModelBase):
 
         return self._tensor_to_type(output, output_type, is_batch=isinstance(images, Tensor))
 
-    def save(
+    def save(  # noqa: D417
         self,
         images: Union[Tensor, List[Tensor]],
         edge_maps: Optional[Union[Tensor, List[Tensor]]] = None,
@@ -93,7 +93,7 @@ class SuperResolution(ModelBase):
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(outputs, directory, suffix="_sr")
 
-    def to_onnx(  # type: ignore[override]
+    def to_onnx(  # type: ignore[override]  # noqa: D417
         self,
         onnx_name: Optional[str] = None,
         include_pre_and_post_processor: bool = True,

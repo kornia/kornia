@@ -11,7 +11,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 # https://github.com/bermanmaxim/LovaszSoftmax
 
 
-def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] = None) -> Tensor:
+def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] = None) -> Tensor:  # noqa: D417
     r"""Criterion that computes a surrogate multi-class intersection-over-union (IoU) loss.
 
     According to [1], we compute the IoU as follows:

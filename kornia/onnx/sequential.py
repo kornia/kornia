@@ -52,7 +52,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         session = self.create_session(providers=providers, session_options=session_options)
         self.set_session(session=session)
 
-    def _auto_version_conversion(
+    def _auto_version_conversion(  # noqa: D417
         self,
         *args: list[onnx.ModelProto],  # type:ignore
         target_ir_version: Optional[int] = None,

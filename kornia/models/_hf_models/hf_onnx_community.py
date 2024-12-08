@@ -113,7 +113,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
             return resize(images, target_images.shape[-2:])
         raise RuntimeError
 
-    def to_onnx(
+    def to_onnx(  # noqa: D417
         self,
         onnx_name: Optional[str] = None,
         include_pre_and_post_processor: bool = True,
