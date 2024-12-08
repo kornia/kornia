@@ -159,7 +159,9 @@ class TransformerEncoder(nn.Module):  # noqa: D101
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(num_layers)])
         self.num_layers = num_layers
 
-    def forward(self, src: Tensor) -> Tensor:  # NOTE: Missing src_mask: Tensor = None, pos_embed: Tensor = None  # noqa: D102, E501
+    def forward(
+        self, src: Tensor
+    ) -> Tensor:  # NOTE: Missing src_mask: Tensor = None, pos_embed: Tensor = None  # noqa: D102, E501
         output = src
         for layer in self.layers:
             output = layer(output)
