@@ -12,7 +12,7 @@ from torch.nn import Dropout
 from kornia.core import Module, Tensor
 
 
-def elu_feature_map(x: Tensor) -> Tensor:
+def elu_feature_map(x: Tensor) -> Tensor:  # noqa: D103
     return torch.nn.functional.elu(x) + 1
 
 

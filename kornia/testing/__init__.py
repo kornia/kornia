@@ -298,7 +298,7 @@ def _default_tolerances(*inputs: Any) -> Tuple[float, float]:
     return max(rtols), max(atols)
 
 
-def assert_close(
+def assert_close(  # noqa: D103
     actual: Tensor, expected: Tensor, *, rtol: Optional[float] = None, atol: Optional[float] = None, **kwargs: Any
 ) -> None:
     if rtol is None and atol is None:

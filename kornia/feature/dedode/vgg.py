@@ -43,7 +43,7 @@ class VGG(nn.Module):
         return x
 
 
-def make_layers(cfg: List[Union[str, int]], batch_norm: bool = False) -> nn.Sequential:
+def make_layers(cfg: List[Union[str, int]], batch_norm: bool = False) -> nn.Sequential:  # noqa: D103
     layers: List[nn.Module] = []
     in_channels = 3
     for v in cfg:

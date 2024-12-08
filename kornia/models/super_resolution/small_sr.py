@@ -55,7 +55,7 @@ class SmallSRNet(Module):
         return x
 
 
-def weight_init(model: Module) -> None:
+def weight_init(model: Module) -> None:  # noqa: D103
     torch.nn.init.orthogonal_(model.conv1.weight, torch.nn.init.calculate_gain("relu"))
     torch.nn.init.orthogonal_(model.conv2.weight, torch.nn.init.calculate_gain("relu"))
     torch.nn.init.orthogonal_(model.conv3.weight, torch.nn.init.calculate_gain("relu"))

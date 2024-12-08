@@ -399,7 +399,7 @@ class UniformRaySampler(RaySampler):
         self._calc_ray_params(cameras, points_2d_camera)
 
 
-def sample_lengths(
+def sample_lengths(  # noqa: D103
     num_rays: int, num_ray_points: int, device: Device, dtype: torch.dtype, irregular: bool = False
 ) -> Tensor:
     if num_ray_points <= 1:

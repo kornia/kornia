@@ -70,17 +70,17 @@ DEVICE_DTYPE_BLACKLIST = {}
 
 
 @pytest.fixture()
-def device(device_name) -> torch.device:
+def device(device_name) -> torch.device:  # noqa: D103
     return TEST_DEVICES[device_name]
 
 
 @pytest.fixture()
-def dtype(dtype_name) -> torch.dtype:
+def dtype(dtype_name) -> torch.dtype:  # noqa: D103
     return TEST_DTYPES[dtype_name]
 
 
 @pytest.fixture()
-def torch_optimizer(optimizer_backend):
+def torch_optimizer(optimizer_backend):  # noqa: D103
     if not optimizer_backend:
         return lambda x: x
 
@@ -101,7 +101,7 @@ def torch_optimizer(optimizer_backend):
     pytest.skip(f"skipped because {torch.__version__} not have `compile` available! Failed to setup dynamo.")
 
 
-def pytest_generate_tests(metafunc):
+def pytest_generate_tests(metafunc):  # noqa: D103
     device_names = None
     dtype_names = None
     optimizer_backends_names = None
@@ -150,7 +150,7 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("optimizer_backend", optimizer_backends_names)
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(config, items):  # noqa: D103
     if config.getoption("--runslow"):
         # --runslow given in cli: do not skip slow tests
         return
@@ -161,7 +161,7 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_slow)
 
 
-def pytest_addoption(parser):
+def pytest_addoption(parser):  # noqa: D103
     parser.addoption("--device", action="store", default="cpu")
     parser.addoption("--dtype", action="store", default="float32")
     parser.addoption("--optimizer", action="store", default="inductor")
@@ -187,7 +187,7 @@ def _setup_torch_compile():
         torch.compile(_dummy_module())
 
 
-def pytest_sessionstart(session):
+def pytest_sessionstart(session):  # noqa: D103
     try:
         _setup_torch_compile()
     except RuntimeError as ex:
@@ -247,7 +247,7 @@ def _get_env_info() -> dict[str, dict[str, str]]:
     }
 
 
-def pytest_report_header(config):
+def pytest_report_header(config):  # noqa: D103
     try:
         import accelerate
 
@@ -291,7 +291,7 @@ model weights cached: {CACHED_WEIGTHS}
 
 
 @pytest.fixture(autouse=True)
-def add_doctest_deps(doctest_namespace):
+def add_doctest_deps(doctest_namespace):  # noqa: D103
     doctest_namespace["np"] = np
     doctest_namespace["torch"] = torch
     doctest_namespace["kornia"] = kornia
@@ -304,7 +304,7 @@ sha3: str = "8b98f44abbe92b7a84631ed06613b08fee7dae14"
 
 
 @pytest.fixture(scope="session")
-def data(request):
+def data(request):  # noqa: D103
     url = {
         "loftr_homo": f"https://github.com/kornia/data_test/blob/{sha}/loftr_outdoor_and_homography_data.pt?raw=true",
         "loftr_fund": f"https://github.com/kornia/data_test/blob/{sha}/loftr_indoor_and_fundamental_data.pt?raw=true",

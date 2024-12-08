@@ -107,7 +107,7 @@ class Block(nn.Module):
         return x
 
 
-def drop_add_residual_stochastic_depth(
+def drop_add_residual_stochastic_depth(  # noqa: D103
     x: Tensor,
     residual_func: Callable[[Tensor], Tensor],
     sample_drop_ratio: float = 0.0,
@@ -131,7 +131,7 @@ def drop_add_residual_stochastic_depth(
     return x_plus_residual.view_as(x)
 
 
-def get_branges_scales(x, sample_drop_ratio=0.0):
+def get_branges_scales(x, sample_drop_ratio=0.0):  # noqa: D103
     b, n, d = x.shape
     sample_subset_size = max(int(b * (1 - sample_drop_ratio)), 1)
     brange = (torch.randperm(b, device=x.device))[:sample_subset_size]
@@ -139,7 +139,7 @@ def get_branges_scales(x, sample_drop_ratio=0.0):
     return brange, residual_scale_factor
 
 
-def add_residual(x, brange, residual, residual_scale_factor, scaling_vector=None):
+def add_residual(x, brange, residual, residual_scale_factor, scaling_vector=None):  # noqa: D103
     if scaling_vector is None:
         x_flat = x.flatten(1)
         residual = residual.flatten(1)
@@ -176,7 +176,7 @@ def get_attn_bias_and_cat(x_list, branges=None):
     return attn_bias_cache[all_shapes], cat_tensors
 
 
-def drop_add_residual_stochastic_depth_list(
+def drop_add_residual_stochastic_depth_list(  # noqa: D103
     x_list: List[Tensor],
     residual_func: Callable[[Tensor, Any], Tensor],
     sample_drop_ratio: float = 0.0,

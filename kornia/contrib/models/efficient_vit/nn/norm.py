@@ -24,7 +24,7 @@ class LayerNorm2d(nn.LayerNorm):
 REGISTERED_NORM_DICT: dict[str, type] = {"bn2d": nn.BatchNorm2d, "ln": nn.LayerNorm, "ln2d": LayerNorm2d}
 
 
-def build_norm(name: str = "bn2d", num_features: Optional[int] = None, **kwargs: Any) -> Optional[nn.Module]:
+def build_norm(name: str = "bn2d", num_features: Optional[int] = None, **kwargs: Any) -> Optional[nn.Module]:  # noqa: D103
     if name in ["ln", "ln2d"]:
         kwargs["normalized_shape"] = num_features
     else:

@@ -20,7 +20,7 @@ from kornia.core import Tensor
 mpl.use("Agg")
 
 
-def download_tutorials_examples(download_infos: dict[str, str], directory: Path):
+def download_tutorials_examples(download_infos: dict[str, str], directory: Path):  # noqa: D103
     URL_BASE = "https://raw.githubusercontent.com/kornia/tutorials/master/"
     for filename, path in download_infos.items():
         url = URL_BASE + path
@@ -32,7 +32,7 @@ def download_tutorials_examples(download_infos: dict[str, str], directory: Path)
             fp.write(response)
 
 
-def read_img_from_url(url: str, resize_to: Optional[tuple[int, int]] = None, **resize_kwargs) -> torch.Tensor:
+def read_img_from_url(url: str, resize_to: Optional[tuple[int, int]] = None, **resize_kwargs) -> torch.Tensor:  # noqa: D103
     # perform request
     response = requests.get(url, timeout=60).content
     # convert to array of ints
@@ -56,7 +56,7 @@ def transparent_pad(src: Tensor, shape: tuple[int, int]) -> Tensor:
     return torch.nn.functional.pad(K.color.rgb_to_rgba(src, 1.0), (w_pad, w_pad, h_pad, h_pad), "constant", 0.0)
 
 
-def draw_bbox_kpts(imgs, bboxes, keypoints):
+def draw_bbox_kpts(imgs, bboxes, keypoints):  # noqa: D103
     rectangle = torch.zeros(imgs.shape[0], imgs.shape[1], 4)
     rectangle[..., 0] = bboxes[..., 0]  # x1
     rectangle[..., 1] = bboxes[..., 1]  # y1
@@ -77,7 +77,7 @@ def draw_bbox_kpts(imgs, bboxes, keypoints):
     return imgs_draw
 
 
-def main():
+def main():  # noqa: D103
     # Download the tutorial examples for the main docs
     URLS_TUTORIALS_EXAMPLES = {
         "image_classifier.py": "scripts/training/image_classifier/main.py",

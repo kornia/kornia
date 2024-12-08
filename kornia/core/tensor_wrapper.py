@@ -9,7 +9,7 @@ from torch import Tensor
 
 
 # TODO: promote to KORNIA_WRAP
-def wrap(v, cls):
+def wrap(v, cls):  # noqa: D103
     # wrap inputs if necessary
     if type(v) in {tuple, list}:
         return type(v)(wrap(vi, cls) for vi in v)
@@ -18,7 +18,7 @@ def wrap(v, cls):
 
 
 # TODO: promote to KORNIA_UNWRAP
-def unwrap(v):
+def unwrap(v):  # noqa: D103
     if type(v) in {tuple, list}:
         return type(v)(unwrap(vi) for vi in v)
 

@@ -586,7 +586,7 @@ class MKDDescriptor(nn.Module):
         )
 
 
-def load_whitening_model(kernel_type: str, training_set: str) -> Dict[str, Any]:
+def load_whitening_model(kernel_type: str, training_set: str) -> Dict[str, Any]:  # noqa: D103
     whitening_models = torch.hub.load_state_dict_from_url(urls[kernel_type], map_location=torch.device("cpu"))
     whitening_model = whitening_models[training_set]
     return whitening_model

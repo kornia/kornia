@@ -82,7 +82,7 @@ def map_location_to_cpu(storage: Union[str, Tensor], *args: Any, **kwargs: Any) 
     return storage
 
 
-def deprecated(
+def deprecated(  # noqa: D103
     replace_with: Optional[str] = None, version: Optional[str] = None, extra_reason: Optional[str] = None
 ) -> Any:
     def _deprecated(func: Callable[..., Any]) -> Any:

@@ -252,7 +252,7 @@ class Detector_config(TypedDict):
     s_mult: float
 
 
-def get_default_detector_config() -> Detector_config:
+def get_default_detector_config() -> Detector_config:  # noqa: D103
     return {
         # Extraction Parameters
         "nms_size": 15,

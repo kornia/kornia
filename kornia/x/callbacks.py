@@ -11,7 +11,7 @@ from .utils import TrainerState
 
 
 # default function to generate the filename in the model checkpoint
-def default_filename_fcn(epoch: Union[str, int], metric: Union[str, float]) -> str:
+def default_filename_fcn(epoch: Union[str, int], metric: Union[str, float]) -> str:  # noqa: D103
     return f"model_epoch={epoch}_metricValue={metric}.pt"
 
 
