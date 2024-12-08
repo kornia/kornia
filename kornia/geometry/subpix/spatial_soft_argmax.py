@@ -16,8 +16,8 @@ from .dsnt import spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
 
 
-def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> Tensor:
-    r"""Helper function, which generates a kernel to with window coordinates, residual to window center.
+def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> Tensor:  # noqa: D417
+    r"""Generate a kernel to with window coordinates, residual to window center.
 
     Args:
          h: kernel height.
@@ -37,8 +37,7 @@ def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = N
 
 
 def _get_center_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> Tensor:
-    r"""Helper function, which generates a kernel to return center coordinates, when applied with F.conv2d to 2d
-    coordinates grid.
+    r"""Generate a kernel to return center coordinates, when applied with F.conv2d to 2d coordinates grid.
 
     Args:
         h: kernel height.
@@ -71,8 +70,7 @@ def _get_center_kernel2d(h: int, w: int, device: Optional[torch.device] = None) 
 
 
 def _get_center_kernel3d(d: int, h: int, w: int, device: Optional[torch.device] = None) -> Tensor:
-    r"""Helper function, which generates a kernel to return center coordinates, when applied with F.conv2d to 3d
-    coordinates grid.
+    r"""Generate a kernel to return center coordinates, when applied with F.conv2d to 3d coordinates grid.
 
     Args:
         d: kernel depth.
@@ -112,7 +110,7 @@ def _get_center_kernel3d(d: int, h: int, w: int, device: Optional[torch.device] 
 
 
 def _get_window_grid_kernel3d(d: int, h: int, w: int, device: Optional[torch.device] = None) -> Tensor:
-    r"""Helper function, which generates a kernel to return coordinates, residual to window center.
+    r"""Generate a kernel to return coordinates, residual to window center.
 
     Args:
         d: kernel depth.
@@ -174,7 +172,7 @@ class ConvSoftArgmax2d(Module):
             f"output_value={self.output_value})"
         )
 
-    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:  # noqa: D102
         return conv_soft_argmax2d(
             x,
             self.kernel_size,
@@ -228,7 +226,7 @@ class ConvSoftArgmax3d(Module):
             f"output_value={self.output_value})"
         )
 
-    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:  # noqa: D102
         return conv_soft_argmax3d(
             x,
             self.kernel_size,
@@ -536,7 +534,7 @@ class SpatialSoftArgmax2d(Module):
             f"normalized_coordinates={self.normalized_coordinates})"
         )
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates)
 
 
@@ -643,5 +641,5 @@ class ConvQuadInterp3d(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(strict_maxima_bonus={self.strict_maxima_bonus})"
 
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:  # noqa: D102
         return conv_quad_interp3d(x, self.strict_maxima_bonus, self.eps)

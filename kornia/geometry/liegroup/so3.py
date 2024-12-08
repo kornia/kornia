@@ -30,8 +30,8 @@ class So3(Module):
 
     """
 
-    def __init__(self, q: Quaternion) -> None:
-        """Constructor for the base class.
+    def __init__(self, q: Quaternion) -> None:  # noqa: D417
+        """Construct the base class.
 
         Internally represented by a unit quaternion `q`.
 
@@ -89,7 +89,7 @@ class So3(Module):
 
     @staticmethod
     def exp(v: Tensor) -> So3:
-        """Converts elements of lie algebra to elements of lie group.
+        """Convert elements of lie algebra to elements of lie group.
 
         See more: https://vision.in.tum.de/_media/members/demmeln/nurlanov2021so3log.pdf
 
@@ -118,7 +118,7 @@ class So3(Module):
         return So3(Quaternion(concatenate((w, xyz), -1)))
 
     def log(self) -> Tensor:
-        """Converts elements of lie group  to elements of lie algebra.
+        """Convert elements of lie group  to elements of lie algebra.
 
         Example:
             >>> data = torch.ones((2, 4))
@@ -139,7 +139,7 @@ class So3(Module):
 
     @staticmethod
     def hat(v: Vector3 | Tensor) -> Tensor:
-        """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B,3,3)`.
+        """Convert elements from vector space to lie algebra. Returns matrix of shape :math:`(B,3,3)`.
 
         Args:
             v: Vector3 or tensor of shape :math:`(B,3)`.
@@ -167,7 +167,7 @@ class So3(Module):
 
     @staticmethod
     def vee(omega: Tensor) -> Tensor:
-        r"""Converts elements from lie algebra to vector space. Returns vector of shape :math:`(B,3)`.
+        r"""Convert elements from lie algebra to vector space. Returns vector of shape :math:`(B,3)`.
 
         .. math::
             omega = \begin{bmatrix} 0 & -c & b \\
@@ -259,7 +259,7 @@ class So3(Module):
         return cls(Quaternion(wxyz))
 
     @classmethod
-    def identity(
+    def identity(  # noqa: D417
         cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Optional[Dtype] = None
     ) -> So3:
         """Create a So3 group representing an identity rotation.
@@ -283,7 +283,7 @@ class So3(Module):
         return cls(Quaternion.identity(batch_size, device, dtype))
 
     def inverse(self) -> So3:
-        """Returns the inverse transformation.
+        """Return the inverse transformation.
 
         Example:
             >>> s = So3.identity()
@@ -295,7 +295,7 @@ class So3(Module):
         return So3(self.q.conj())
 
     @classmethod
-    def random(
+    def random(  # noqa: D417
         cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Optional[Dtype] = None
     ) -> So3:
         """Create a So3 group representing a random rotation.
@@ -344,7 +344,7 @@ class So3(Module):
         return cls.exp(stack((zs, zs, z), -1))
 
     def adjoint(self) -> Tensor:
-        """Returns the adjoint matrix of shape :math:`(B, 3, 3)`.
+        """Return the adjoint matrix of shape :math:`(B, 3, 3)`.
 
         Example:
             >>> s = So3.identity()
@@ -358,7 +358,7 @@ class So3(Module):
 
     @staticmethod
     def right_jacobian(vec: Tensor) -> Tensor:
-        """Computes the right Jacobian of So3.
+        """Compute the right Jacobian of So3.
 
         Args:
             vec: the input point of shape :math:`(B, 3)`.
@@ -390,7 +390,7 @@ class So3(Module):
 
     @staticmethod
     def left_jacobian(vec: Tensor) -> Tensor:
-        """Computes the left Jacobian of So3.
+        """Compute the left Jacobian of So3.
 
         Args:
             vec: the input point of shape :math:`(B, 3)`.

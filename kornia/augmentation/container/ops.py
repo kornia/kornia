@@ -25,7 +25,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
     """Abstract interface for applying and inversing transformations."""
 
     @classmethod
-    def get_instance_module_param(cls, param: ParamItem) -> Dict[str, Tensor]:
+    def get_instance_module_param(cls, param: ParamItem) -> Dict[str, Tensor]:  # noqa: D102
         if isinstance(param, ParamItem) and isinstance(param.data, dict):
             _params = param.data
         else:
@@ -33,7 +33,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         return _params
 
     @classmethod
-    def get_sequential_module_param(cls, param: ParamItem) -> List[ParamItem]:
+    def get_sequential_module_param(cls, param: ParamItem) -> List[ParamItem]:  # noqa: D102
         if isinstance(param, ParamItem) and isinstance(param.data, list):
             _params = param.data
         else:
@@ -42,7 +42,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def transform(cls, input: T, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:
+    def transform(cls, input: T, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:  # noqa: D417
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -56,7 +56,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def inverse(cls, input: T, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:
+    def inverse(cls, input: T, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:  # noqa: D417
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -69,12 +69,12 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         raise NotImplementedError
 
 
-class AugmentationSequentialOps:
+class AugmentationSequentialOps:  # noqa: D101
     def __init__(self, data_keys: Optional[List[DataKey]]) -> None:
         self._data_keys = data_keys
 
     @property
-    def data_keys(self) -> Optional[List[DataKey]]:
+    def data_keys(self) -> Optional[List[DataKey]]:  # noqa: D102
         return self._data_keys
 
     @data_keys.setter
@@ -84,7 +84,7 @@ class AugmentationSequentialOps:
         else:
             self._data_keys = None
 
-    def preproc_datakeys(self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None) -> List[DataKey]:
+    def preproc_datakeys(self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None) -> List[DataKey]:  # noqa: D102
         if data_keys is None:
             if isinstance(self.data_keys, list):
                 return self.data_keys
@@ -106,7 +106,7 @@ class AugmentationSequentialOps:
             return ClassSequentialOps
         raise RuntimeError(f"Operation for `{data_key.name}` is not found.")
 
-    def transform(
+    def transform(  # noqa: D102
         self,
         *arg: DataType,
         module: Module,
@@ -140,7 +140,7 @@ class AugmentationSequentialOps:
             return outputs[0]
         return outputs
 
-    def inverse(
+    def inverse(  # noqa: D102
         self,
         *arg: DataType,
         module: Module,
@@ -171,7 +171,7 @@ def make_input_only_sequential(module: "K.container.ImageSequentialBase") -> Cal
     return f
 
 
-def get_geometric_only_param(module: "K.container.ImageSequentialBase", param: List[ParamItem]) -> List[ParamItem]:
+def get_geometric_only_param(module: "K.container.ImageSequentialBase", param: List[ParamItem]) -> List[ParamItem]:  # noqa: D103
     named_modules = module.get_forward_sequence(param)
 
     res: List[ParamItem] = []
@@ -181,9 +181,9 @@ def get_geometric_only_param(module: "K.container.ImageSequentialBase", param: L
     return res
 
 
-class InputSequentialOps(SequentialOpsInterface[Tensor]):
+class InputSequentialOps(SequentialOpsInterface[Tensor]):  # noqa: D101
     @classmethod
-    def transform(
+    def transform(  # noqa: D102
         cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         if extra_args is None:
@@ -201,7 +201,7 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
         return input
 
     @classmethod
-    def inverse(
+    def inverse(  # noqa: D102
         cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         if extra_args is None:
@@ -225,7 +225,7 @@ class ClassSequentialOps(SequentialOpsInterface[Tensor]):
     """Apply and inverse transformations for class labels if needed."""
 
     @classmethod
-    def transform(
+    def transform(  # noqa: D102
         cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         if isinstance(module, K.MixAugmentationBaseV2):
@@ -235,7 +235,7 @@ class ClassSequentialOps(SequentialOpsInterface[Tensor]):
         return input
 
     @classmethod
-    def inverse(
+    def inverse(  # noqa: D102
         cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         return input
@@ -245,7 +245,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
     """Apply and inverse transformations for mask tensors."""
 
     @classmethod
-    def transform(
+    def transform(  # noqa: D417
         cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         """Apply a transformation with respect to the parameters.
@@ -294,7 +294,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         return input
 
     @classmethod
-    def transform_list(
+    def transform_list(  # noqa: D417
         cls, input: List[Tensor], module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> List[Tensor]:
         """Apply a transformation with respect to the parameters.
@@ -359,7 +359,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         return input
 
     @classmethod
-    def inverse(
+    def inverse(  # noqa: D417
         cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
@@ -407,7 +407,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
     """
 
     @classmethod
-    def transform(
+    def transform(  # noqa: D417
         cls, input: Boxes, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         """Apply a transformation with respect to the parameters.
@@ -453,7 +453,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
         return _input
 
     @classmethod
-    def inverse(
+    def inverse(  # noqa: D417
         cls, input: Boxes, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         """Inverse a transformation with respect to the parameters.
@@ -504,7 +504,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
     """
 
     @classmethod
-    def transform(
+    def transform(  # noqa: D417
         cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         """Apply a transformation with respect to the parameters.
@@ -551,7 +551,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
         return _input
 
     @classmethod
-    def inverse(
+    def inverse(  # noqa: D417
         cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         """Inverse a transformation with respect to the parameters.

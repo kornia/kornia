@@ -1,4 +1,5 @@
-"""Linear Transformer proposed in "Transformers are RNNs: Fast Autoregressive Transformers with Linear Attention"
+"""Linear Transformer proposed in "Transformers are RNNs: Fast Autoregressive Transformers with Linear Attention".
+
 Modified from: https://github.com/idiap/fast-
 transformers/blob/master/fast_transformers/attention/linear_attention.py.
 """
@@ -11,11 +12,11 @@ from torch.nn import Dropout
 from kornia.core import Module, Tensor
 
 
-def elu_feature_map(x: Tensor) -> Tensor:
+def elu_feature_map(x: Tensor) -> Tensor:  # noqa: D103
     return torch.nn.functional.elu(x) + 1
 
 
-class LinearAttention(Module):
+class LinearAttention(Module):  # noqa: D101
     def __init__(self, eps: float = 1e-6) -> None:
         super().__init__()
         self.feature_map = elu_feature_map
@@ -29,7 +30,8 @@ class LinearAttention(Module):
         q_mask: Optional[Tensor] = None,
         kv_mask: Optional[Tensor] = None,
     ) -> Tensor:
-        """Multi-Head linear attention proposed in "Transformers are RNNs"
+        """Multi-Head linear attention proposed in "Transformers are RNNs".
+
         Args:
             queries: [N, L, H, D]
             keys: [N, S, H, D]
@@ -60,7 +62,7 @@ class LinearAttention(Module):
         return queried_values.contiguous()
 
 
-class FullAttention(Module):
+class FullAttention(Module):  # noqa: D101
     def __init__(self, use_dropout: bool = False, attention_dropout: float = 0.1) -> None:
         super().__init__()
         self.use_dropout = use_dropout

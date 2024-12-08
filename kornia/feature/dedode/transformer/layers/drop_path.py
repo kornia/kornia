@@ -12,7 +12,7 @@ from typing import Optional
 from kornia.core import Module, Tensor
 
 
-def drop_path(x: Tensor, drop_prob: Optional[float] = 0.0, training: bool = False) -> Tensor:
+def drop_path(x: Tensor, drop_prob: Optional[float] = 0.0, training: bool = False) -> Tensor:  # noqa: D103
     if drop_prob is None:
         drop_path = 0.0
     if drop_prob == 0.0 or not training:
@@ -33,5 +33,5 @@ class DropPath(Module):
         super().__init__()
         self.drop_prob = drop_prob
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return drop_path(x, self.drop_prob, self.training)

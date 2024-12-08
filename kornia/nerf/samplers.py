@@ -36,19 +36,19 @@ class RaySampler:
         self._dtype = dtype
 
     @property
-    def origins(self) -> Tensor:
+    def origins(self) -> Tensor:  # noqa: D102
         return self._origins
 
     @property
-    def directions(self) -> Tensor:
+    def directions(self) -> Tensor:  # noqa: D102
         return self._directions
 
     @property
-    def camera_ids(self) -> Tensor:
+    def camera_ids(self) -> Tensor:  # noqa: D102
         return self._camera_ids
 
     @property
-    def points_2d(self) -> Tensor:
+    def points_2d(self) -> Tensor:  # noqa: D102
         return self._points_2d
 
     def __len__(self) -> int:
@@ -84,16 +84,17 @@ class RaySampler:
             self._camera_ids = camera_ids
 
         @property
-        def points_2d(self) -> Tensor:
+        def points_2d(self) -> Tensor:  # noqa: D102
             return self._points_2d
 
         @property
-        def camera_ids(self) -> List[int]:
+        def camera_ids(self) -> List[int]:  # noqa: D102
             return self._camera_ids
 
     def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]) -> None:
-        r"""Calculates ray parameters: origins, directions. Also stored are camera ids for each ray, and its pixel
-        coordinates.
+        r"""Calculate ray parameters: origins, directions.
+
+        Also stored are camera ids for each ray, and its pixel coordinates.
 
         Args:
             cameras: scene cameras: PinholeCamera
@@ -140,10 +141,10 @@ class RaySampler:
         self._points_2d = torch.cat(points_2d)
 
     def transform_ray_params_world_to_ndc(self, cameras: PinholeCamera) -> Tuple[Tensor, Tensor]:
-        r"""Transforms ray parameters to normalized coordinate device (camera) system (NDC)
+        r"""Transform ray parameters to normalized coordinate device (camera) system (NDC).
 
         Args:
-            cameras: scene cameras: PinholeCamera
+        cameras: scene cameras: PinholeCamera
 
         """
         cams = cameras_for_ids(cameras, self._camera_ids)
@@ -204,9 +205,9 @@ class RaySampler:
     def _add_points2d_as_flat_tensors_to_num_ray_dict(
         n: int, x: Tensor, y: Tensor, camera_id: int, points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors]
     ) -> None:
-        r"""Adds x/y pixel coordinates for all rays casted by a scene camera to dictionary of pixel coordinates
+        r"""Add x/y pixel coordinates for all rays casted by a scene camera to dictionary of pixel coordinates
         grouped by total number of rays.
-        """
+        """  # noqa: D205
         if n not in points2d_as_flat_tensors:
             points2d_as_flat_tensors[n] = RaySampler.Points2D_FlatTensors()
             points2d_as_flat_tensors[n]._x = x.flatten()
@@ -220,8 +221,10 @@ class RaySampler:
     def _build_num_ray_dict_of_points2d(
         points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors],
     ) -> Dict[int, Points2D]:
-        r"""Builds a dictionary of ray pixel points, by total number of rays as key. The dictionary groups rays by
-        the total amount of rays, which allows the case of casting different number of rays from each scene camera.
+        r"""Build a dictionary of ray pixel points, by total number of rays as key.
+
+        The dictionary groups rays by the total amount of rays, which allows the case of casting different number
+        of rays from each scene camera.
 
         Args:
             points2d_as_flat_tensors: dictionary of pixel coordinates grouped by total number of rays:
@@ -282,8 +285,9 @@ class RandomRaySampler(RaySampler):
         return RaySampler._build_num_ray_dict_of_points2d(points2d_as_flat_tensors)
 
     def calc_ray_params(self, cameras: PinholeCamera, num_img_rays: Tensor) -> None:
-        r"""Calculates ray parameters: origins, directions. Also stored are camera ids for each ray, and its pixel
-        coordinates.
+        r"""Calculate ray parameters: origins, directions.
+
+        Also stored are camera ids for each ray, and its pixel coordinates.
 
         Args:
             cameras: scene cameras: PinholeCamera
@@ -390,12 +394,12 @@ class UniformRaySampler(RaySampler):
             )
         return RaySampler._build_num_ray_dict_of_points2d(points2d_as_flat_tensors)
 
-    def calc_ray_params(self, cameras: PinholeCamera) -> None:
+    def calc_ray_params(self, cameras: PinholeCamera) -> None:  # noqa: D102
         points_2d_camera = self.sample_points_2d(cameras.height, cameras.width)
         self._calc_ray_params(cameras, points_2d_camera)
 
 
-def sample_lengths(
+def sample_lengths(  # noqa: D103
     num_rays: int, num_ray_points: int, device: Device, dtype: torch.dtype, irregular: bool = False
 ) -> Tensor:
     if num_ray_points <= 1:
@@ -415,7 +419,9 @@ def sample_lengths(
 def sample_ray_points(
     origins: Tensor, directions: Tensor, lengths: Tensor
 ) -> Tensor:  # FIXME: Test by projecting to points_2d and compare with sampler 2d points
-    r"""Args:
+    r"""Sample points along ray.
+
+    Args:
         origins: tensor containing ray origins in 3d world coordinates. Tensor shape :math:`(*, 3)`.
         directions: tensor containing ray directions in 3d world coordinates. Tensor shape :math:`(*, 3)`.
         lengths: tensor containing sampled distances along each ray. Tensor shape :math:`(*, num_ray_points)`.
@@ -429,7 +435,7 @@ def sample_ray_points(
 
 
 def calc_ray_t_vals(points_3d: Tensor) -> Tensor:
-    r"""Calculates t values along rays.
+    r"""Calculate t values along rays.
 
     Args:
         points_3d: Points along rays :math:`(*, num_ray_points, 3)`

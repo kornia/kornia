@@ -14,7 +14,7 @@ from typing import Callable, Optional
 from torch import Tensor, nn
 
 
-class Mlp(nn.Module):
+class Mlp(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_features: int,
@@ -32,7 +32,7 @@ class Mlp(nn.Module):
         self.fc2 = nn.Linear(hidden_features, out_features, bias=bias)
         self.drop = nn.Dropout(drop)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         x = self.fc1(x)
         x = self.act(x)
         x = self.drop(x)

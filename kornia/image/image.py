@@ -175,7 +175,7 @@ class Image:
         raise NotImplementedError
 
     @classmethod
-    def from_numpy(
+    def from_numpy(  # noqa: D417
         cls,
         data: np_ndarray,
         color_space: ColorSpace = ColorSpace.RGB,

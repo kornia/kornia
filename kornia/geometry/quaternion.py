@@ -57,7 +57,7 @@ class Quaternion(Module):
     """
 
     def __init__(self, data: Tensor) -> None:
-        """Constructor for the base class.
+        """Construct the base class.
 
         Args:
             data: tensor containing the quaternion data with the sape of :math:`(B, 4)`.
@@ -163,7 +163,7 @@ class Quaternion(Module):
 
     @property
     def data(self) -> Tensor:
-        """Return the underlying data with shape :math:`(B, 4).`"""
+        """Return the underlying data with shape :math:`(B, 4)`."""
         return self._data
 
     @property
@@ -325,7 +325,7 @@ class Quaternion(Module):
         return cls(axis_angle_to_quaternion(axis_angle))
 
     def to_axis_angle(self) -> Tensor:
-        """Converts the quaternion to an axis-angle representation.
+        """Convert the quaternion to an axis-angle representation.
 
         Example:
             >>> q = Quaternion.identity()
@@ -337,7 +337,7 @@ class Quaternion(Module):
         return quaternion_to_axis_angle(self.data)
 
     @classmethod
-    def identity(
+    def identity(  # noqa: D417
         cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None
     ) -> "Quaternion":
         """Create a quaternion representing an identity rotation.
@@ -379,7 +379,7 @@ class Quaternion(Module):
     # TODO: update signature
     # def random(cls, shape: Optional[List] = None, device = None, dtype = None) -> 'Quaternion':
     @classmethod
-    def random(
+    def random(  # noqa: D417
         cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None
     ) -> "Quaternion":
         """Create a random unit quaternion of shape :math:`(B, 4)`.
@@ -404,7 +404,7 @@ class Quaternion(Module):
         return cls(stack((q1, q2, q3, q4), -1))
 
     def slerp(self, q1: "Quaternion", t: float) -> "Quaternion":
-        """Returns a unit quaternion spherically interpolated between quaternions self.q and q1.
+        """Return a unit quaternion spherically interpolated between quaternions self.q and q1.
 
         See more: https://en.wikipedia.org/wiki/Slerp
 
@@ -424,22 +424,22 @@ class Quaternion(Module):
         return q0 * (q0.inv() * q1) ** t
 
     # TODO: add docs
-    def norm(self, keepdim: bool = False) -> Tensor:
+    def norm(self, keepdim: bool = False) -> Tensor:  # noqa: D102
         # p==2, dim|axis==-1, keepdim
         return self.data.norm(2, -1, keepdim)
 
     # TODO: add docs
-    def normalize(self) -> "Quaternion":
+    def normalize(self) -> "Quaternion":  # noqa: D102
         return Quaternion(normalize_quaternion(self.data))
 
     # TODO: add docs
-    def conj(self) -> "Quaternion":
+    def conj(self) -> "Quaternion":  # noqa: D102
         return Quaternion(concatenate((self.real[..., None], -self.vec), -1))
 
     # TODO: add docs
-    def inv(self) -> "Quaternion":
+    def inv(self) -> "Quaternion":  # noqa: D102
         return self.conj() / self.squared_norm()
 
     # TODO: add docs
-    def squared_norm(self) -> Tensor:
+    def squared_norm(self) -> Tensor:  # noqa: D102
         return batched_dot_product(self.vec, self.vec) + self.real**2

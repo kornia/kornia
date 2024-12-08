@@ -18,9 +18,9 @@ URLs = {
 }
 
 
-class RRDBNetBuilder:
+class RRDBNetBuilder:  # noqa: D101
     @staticmethod
-    def build(model_name: str = "RealESRNet_x4plus", pretrained: bool = True) -> SuperResolution:
+    def build(model_name: str = "RealESRNet_x4plus", pretrained: bool = True) -> SuperResolution:  # noqa: D102
         if model_name == "RealESRGAN_x4plus":
             model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
                 num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4

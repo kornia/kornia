@@ -6,36 +6,36 @@ from torch import nn
 from kornia.core import Module, Tensor
 
 
-def conv_1x1_bn(inp: int, oup: int) -> Module:
+def conv_1x1_bn(inp: int, oup: int) -> Module:  # noqa: D103
     return nn.Sequential(nn.Conv2d(inp, oup, 1, 1, 0, bias=False), nn.BatchNorm2d(oup), nn.SiLU())
 
 
-def conv_nxn_bn(inp: int, oup: int, kernal_size: int = 3, stride: int = 1) -> Module:
+def conv_nxn_bn(inp: int, oup: int, kernal_size: int = 3, stride: int = 1) -> Module:  # noqa: D103
     return nn.Sequential(nn.Conv2d(inp, oup, kernal_size, stride, 1, bias=False), nn.BatchNorm2d(oup), nn.SiLU())
 
 
-class PreNorm(Module):
+class PreNorm(Module):  # noqa: D101
     def __init__(self, dim: int, fn: Module) -> None:
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         self.fn = fn
 
-    def forward(self, x: Tensor, **kwargs: Dict[str, Any]) -> Tensor:
+    def forward(self, x: Tensor, **kwargs: Dict[str, Any]) -> Tensor:  # noqa: D102
         return self.fn(self.norm(x), **kwargs)
 
 
-class FeedForward(Module):
+class FeedForward(Module):  # noqa: D101
     def __init__(self, dim: int, hidden_dim: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_dim), nn.SiLU(), nn.Dropout(dropout), nn.Linear(hidden_dim, dim), nn.Dropout(dropout)
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return self.net(x)
 
 
-class Attention(Module):
+class Attention(Module):  # noqa: D101
     def __init__(self, dim: int, heads: int = 8, dim_head: int = 64, dropout: float = 0.0) -> None:
         super().__init__()
         inner_dim = dim_head * heads
@@ -49,7 +49,7 @@ class Attention(Module):
 
         self.to_out = nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout)) if project_out else nn.Identity()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         qkv = self.to_qkv(x).chunk(3, dim=-1)
 
         b, p, n, hd = qkv[0].shape
@@ -91,7 +91,7 @@ class Transformer(Module):
                 )
             )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
@@ -144,7 +144,7 @@ class MV2Block(Module):
                 nn.BatchNorm2d(oup),
             )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         if self.use_res_connect:
             return x + self.conv(x)
         else:
@@ -186,7 +186,7 @@ class MobileViTBlock(Module):
         self.conv3 = conv_1x1_bn(dim, channel)
         self.conv4 = conv_nxn_bn(2 * channel, channel, kernel_size)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         y = x.clone()
 
         # Local representations
@@ -280,7 +280,7 @@ class MobileViT(Module):
 
         self.conv2 = conv_1x1_bn(channels[-2], channels[-1])
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         x = self.conv1(x)
         x = self.mv2[0](x)
 

@@ -6,7 +6,7 @@ from kornia.core import Tensor, as_tensor, tensor
 
 
 def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None) -> None:
-    """Valid batch_size and same_on_batch params."""
+    """Check valid batch_size and same_on_batch params."""
     if not (isinstance(batch_size, int) and batch_size >= 0):
         raise AssertionError(f"`batch_size` shall be a positive integer. Got {batch_size}.")
     if same_on_batch is not None and not isinstance(same_on_batch, bool):
@@ -56,7 +56,7 @@ def _range_bound(
 
 
 def _joint_range_check(ranged_factor: Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
-    """Check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]"""
+    """Check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]."""
     if bounds is None:
         bounds = (float("-inf"), float("inf"))
     if ranged_factor.dim() == 1 and len(ranged_factor) == 2:
@@ -76,7 +76,7 @@ def _singular_range_check(
     skip_none: bool = False,
     mode: str = "2d",
 ) -> None:
-    """Check if bounds[0] <= ranged_factor[0] <= bounds[1] and bounds[0] <= ranged_factor[1] <= bounds[1]"""
+    """Check if bounds[0] <= ranged_factor[0] <= bounds[1] and bounds[0] <= ranged_factor[1] <= bounds[1]."""
     if mode == "2d":
         dim_size = 2
     elif mode == "3d":

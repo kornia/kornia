@@ -1,7 +1,7 @@
 """Based on code from
 https://github.com/PaddlePaddle/PaddleDetection/blob/ec37e66685f3bc5a38cd13f60685acea175922e1/
 ppdet/modeling/backbones/hgnet_v2.py.
-"""
+"""  # noqa: D205
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK
 
 
-class StemBlock(Module):
+class StemBlock(Module):  # noqa: D101
     def __init__(self, in_channels: int, mid_channels: int, out_channels: int) -> None:
         super().__init__()
         self.stem1 = ConvNormAct(in_channels, mid_channels, 3, 2)
@@ -24,7 +24,7 @@ class StemBlock(Module):
         self.stem4 = ConvNormAct(mid_channels, out_channels, 1)
         self.pool = nn.Sequential(nn.ZeroPad2d((0, 1, 0, 1)), nn.MaxPool2d(2, 1))
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         x = self.stem1(x)
         x = concatenate([self.pool(x), self.stem2b(self.stem2a(x))], 1)
         x = self.stem4(self.stem3(x))
@@ -32,14 +32,14 @@ class StemBlock(Module):
 
 
 # Separable conv
-class LightConvNormAct(nn.Sequential):
+class LightConvNormAct(nn.Sequential):  # noqa: D101
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 1, act="none")  # point-wise
         self.conv2 = ConvNormAct(out_channels, out_channels, kernel_size, groups=out_channels)  # depth-wise
 
 
-class StageConfig(NamedTuple):
+class StageConfig(NamedTuple):  # noqa: D101
     in_channels: int
     mid_channels: int
     out_channels: int
@@ -50,7 +50,7 @@ class StageConfig(NamedTuple):
     layer_num: int
 
 
-class HGBlock(Module):
+class HGBlock(Module):  # noqa: D101
     def __init__(self, in_channels: int, config: StageConfig, identity: bool) -> None:
         super().__init__()
         self.identity = identity
@@ -65,7 +65,7 @@ class HGBlock(Module):
         self.aggregation_squeeze_conv = ConvNormAct(total_channels, config.out_channels // 2, 1)
         self.aggregation_excitation_conv = ConvNormAct(config.out_channels // 2, config.out_channels, 1)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         feats = [x]
         for layer in self.layers:
             feats.append(layer(feats[-1]))
@@ -75,7 +75,7 @@ class HGBlock(Module):
         return x + out if self.identity else out
 
 
-class HGStage(nn.Sequential):
+class HGStage(nn.Sequential):  # noqa: D101
     def __init__(self, config: StageConfig) -> None:
         super().__init__()
         ch_in = config.in_channels
@@ -86,7 +86,7 @@ class HGStage(nn.Sequential):
         )
 
 
-class PPHGNetV2(Module):
+class PPHGNetV2(Module):  # noqa: D101
     def __init__(self, stem_channels: list[int], stage_configs: list[StageConfig]) -> None:
         KORNIA_CHECK(len(stem_channels) == 3)
         KORNIA_CHECK(len(stage_configs) == 4)
@@ -97,7 +97,7 @@ class PPHGNetV2(Module):
         for cfg in stage_configs:
             self.stages.append(HGStage(cfg))
 
-    def forward(self, x: Tensor) -> list[Tensor]:
+    def forward(self, x: Tensor) -> list[Tensor]:  # noqa: D102
         x = self.stem(x)
         s2 = self.stages[0](x)
         s3 = self.stages[1](s2)
@@ -106,7 +106,7 @@ class PPHGNetV2(Module):
         return [s3, s4, s5]
 
     @staticmethod
-    def from_config(variant: str) -> PPHGNetV2:
+    def from_config(variant: str) -> PPHGNetV2:  # noqa: D102
         if variant == "L":
             return PPHGNetV2(
                 stem_channels=[3, 32, 48],

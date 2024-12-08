@@ -11,7 +11,7 @@ from kornia.core import Module, Tensor
 from .linear_attention import FullAttention, LinearAttention
 
 
-class LoFTREncoderLayer(Module):
+class LoFTREncoderLayer(Module):  # noqa: D101
     def __init__(self, d_model: int, nhead: int, attention: Optional[Literal["linear"]] = "linear") -> None:
         super().__init__()
 
@@ -37,7 +37,9 @@ class LoFTREncoderLayer(Module):
     def forward(
         self, x: Tensor, source: Tensor, x_mask: Optional[Tensor] = None, source_mask: Optional[Tensor] = None
     ) -> Tensor:
-        """Args:
+        """Run forward.
+
+        Args:
         x: [N, L, C]
         source: [N, S, C]
         x_mask: [N, L] (optional)
@@ -84,7 +86,9 @@ class LocalFeatureTransformer(Module):
     def forward(
         self, feat0: Tensor, feat1: Tensor, mask0: None | Tensor = None, mask1: None | Tensor = None
     ) -> tuple[Tensor, Tensor]:
-        """Args:
+        """Run forward.
+
+        Args:
         feat0: [N, L, C]
         feat1: [N, S, C]
         mask0: [N, L] (optional)

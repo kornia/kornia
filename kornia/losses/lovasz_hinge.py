@@ -9,7 +9,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 # https://github.com/bermanmaxim/LovaszSoftmax
 
 
-def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
+def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:  # noqa: D417
     r"""Criterion that computes a surrogate binary intersection-over-union (IoU) loss.
 
     According to [2], we compute the IoU as follows:
@@ -136,5 +136,5 @@ class LovaszHingeLoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # noqa: D102
         return lovasz_hinge_loss(pred=pred, target=target)

@@ -38,7 +38,7 @@ class SmallSRNet(Module):
         else:
             self.apply(weight_init)
 
-    def load_from_file(self, path_file: str) -> None:
+    def load_from_file(self, path_file: str) -> None:  # noqa: D102
         # use torch.hub to load pretrained model
         model_path = CachedDownloader.download_to_cache(
             path_file, "small_sr.pth", download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
@@ -47,7 +47,7 @@ class SmallSRNet(Module):
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
@@ -55,14 +55,14 @@ class SmallSRNet(Module):
         return x
 
 
-def weight_init(model: Module) -> None:
+def weight_init(model: Module) -> None:  # noqa: D103
     torch.nn.init.orthogonal_(model.conv1.weight, torch.nn.init.calculate_gain("relu"))
     torch.nn.init.orthogonal_(model.conv2.weight, torch.nn.init.calculate_gain("relu"))
     torch.nn.init.orthogonal_(model.conv3.weight, torch.nn.init.calculate_gain("relu"))
     torch.nn.init.orthogonal_(model.conv4.weight)
 
 
-class SmallSRNetWrapper(Module):
+class SmallSRNetWrapper(Module):  # noqa: D101
     def __init__(self, upscale_factor: int = 3, pretrained: bool = True) -> None:
         super().__init__()
         self.rgb_to_ycbcr = RgbToYcbcr()
@@ -70,7 +70,7 @@ class SmallSRNetWrapper(Module):
         self.model = SmallSRNet(upscale_factor=upscale_factor, pretrained=pretrained)
         self.upscale_factor = upscale_factor
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         ycbcr = self.rgb_to_ycbcr(input)
         y, cb, cr = ycbcr.split(1, dim=1)
         out_y = self.model(y)
@@ -80,9 +80,9 @@ class SmallSRNetWrapper(Module):
         return self.ycbcr_to_rgb(out)
 
 
-class SmallSRBuilder:
+class SmallSRBuilder:  # noqa: D101
     @staticmethod
-    def build(
+    def build(  # noqa: D102
         model_name: str = "small_sr", pretrained: bool = True, upscale_factor: int = 3, image_size: Optional[int] = None
     ) -> SuperResolution:
         if model_name.lower() == "small_sr":

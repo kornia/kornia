@@ -160,7 +160,7 @@ class VideoSequential(ImageSequential):
 
         return input
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:  # noqa: D102
         frame_num = batch_shape[self._temporal_channel]
         named_modules = self.get_forward_sequence()
         # Got param generation shape to (B, C, H, W). Ignoring T.
@@ -201,7 +201,7 @@ class VideoSequential(ImageSequential):
             params.append(param)
         return params
 
-    def transform_inputs(
+    def transform_inputs(  # noqa: D102
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
@@ -212,7 +212,7 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def inverse_inputs(
+    def inverse_inputs(  # noqa: D102
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
@@ -223,7 +223,7 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def transform_masks(
+    def transform_masks(  # noqa: D102
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
@@ -234,7 +234,7 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def inverse_masks(
+    def inverse_masks(  # noqa: D102
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
@@ -245,7 +245,7 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def transform_boxes(  # type: ignore[override]
+    def transform_boxes(  # type: ignore[override]  # noqa: D417
         self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Union[Tensor, Boxes]:
         """Transform bounding boxes.
@@ -264,7 +264,7 @@ class VideoSequential(ImageSequential):
             input = super().transform_boxes(input, params, extra_args=extra_args)
         return input
 
-    def inverse_boxes(  # type: ignore[override]
+    def inverse_boxes(  # type: ignore[override]  # noqa: D417
         self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Union[Tensor, Boxes]:
         """Transform bounding boxes.
@@ -283,7 +283,7 @@ class VideoSequential(ImageSequential):
             input = super().inverse_boxes(input, params, extra_args=extra_args)
         return input
 
-    def transform_keypoints(  # type: ignore[override]
+    def transform_keypoints(  # type: ignore[override]  # noqa: D417
         self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Union[Tensor, Keypoints]:
         """Transform bounding boxes.
@@ -302,7 +302,7 @@ class VideoSequential(ImageSequential):
             input = super().transform_keypoints(input, params, extra_args=extra_args)
         return input
 
-    def inverse_keypoints(  # type: ignore[override]
+    def inverse_keypoints(  # type: ignore[override]  # noqa: D417
         self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Union[Tensor, Keypoints]:
         """Transform bounding boxes.

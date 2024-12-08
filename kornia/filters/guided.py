@@ -211,5 +211,5 @@ class GuidedBlur(Module):
             f"subsample={self.subsample})"
         )
 
-    def forward(self, guidance: Tensor, input: Tensor) -> Tensor:
+    def forward(self, guidance: Tensor, input: Tensor) -> Tensor:  # noqa: D102
         return guided_blur(guidance, input, self.kernel_size, self.eps, self.border_type, self.subsample)

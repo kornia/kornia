@@ -682,7 +682,7 @@ def get_shear_matrix2d(center: Tensor, sx: Optional[Tensor] = None, sy: Optional
     return shear_mat
 
 
-def get_affine_matrix3d(
+def get_affine_matrix3d(  # noqa: D417
     translations: Tensor,
     center: Tensor,
     scale: Tensor,
@@ -739,6 +739,7 @@ def get_shear_matrix3d(
     szy: Optional[Tensor] = None,
 ) -> Tensor:
     r"""Compose shear matrix Bx4x4 from the components.
+
     Note: Ordered shearing, shear x-axis then y-axis then z-axis.
 
     .. math::
@@ -837,7 +838,7 @@ def _compute_shear_matrix_3d(
     return m00, m10, m20, m01, m11, m21, m02, m12, m22
 
 
-def warp_affine3d(
+def warp_affine3d(  # noqa: D417
     src: Tensor,
     M: Tensor,
     dsize: tuple[int, int, int],

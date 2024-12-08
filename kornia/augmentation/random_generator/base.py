@@ -49,15 +49,15 @@ class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
             self.dtype = dtype
 
     # TODO: refine the logic with module.to()
-    def to(self, *args: Any, **kwargs: Any) -> "RandomGeneratorBase":
+    def to(self, *args: Any, **kwargs: Any) -> "RandomGeneratorBase":  # noqa: D102
         device, dtype, _, _ = torch._C._nn._parse_to(*args, **kwargs)
         self.set_rng_device_and_dtype(device=device, dtype=dtype)
         return self
 
-    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:  # noqa: D102
         raise NotImplementedError
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:  # noqa: D102
         raise NotImplementedError
 
 
@@ -91,19 +91,19 @@ class DistributionWithMapper(Distribution):
         self.dist = dist
         self.map_fn = map_fn
 
-    def rsample(self, sample_shape: Tuple[int, ...]) -> Tensor:  # type: ignore[override]
+    def rsample(self, sample_shape: Tuple[int, ...]) -> Tensor:  # type: ignore[override]  # noqa: D102
         out = self.dist.rsample(torch.Size(sample_shape))
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
-    def sample(self, sample_shape: Tuple[int, ...]) -> Tensor:  # type: ignore[override]
+    def sample(self, sample_shape: Tuple[int, ...]) -> Tensor:  # type: ignore[override]  # noqa: D102
         out = self.dist.sample(torch.Size(sample_shape))
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
-    def sample_n(self, n: int) -> Tensor:
+    def sample_n(self, n: int) -> Tensor:  # noqa: D102
         out = self.dist.sample_n(n)
         if self.map_fn is not None:
             out = self.map_fn(out)

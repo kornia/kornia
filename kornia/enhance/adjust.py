@@ -420,7 +420,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
     return img_adjust
 
 
-def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:
+def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:  # noqa: D417
     r"""Adjust the brightness of an image tensor.
 
     .. image:: _static/img/adjust_brightness.png
@@ -487,7 +487,7 @@ def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: 
     return img_adjust
 
 
-def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:
+def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:  # noqa: D417
     r"""Adjust the brightness accumulatively of an image tensor.
 
     This implementation follows PIL convention.
@@ -612,8 +612,9 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
 
 
 def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
-    r"""For each pixel in the image, select the pixel if the value is less than the threshold. Otherwise, subtract
-    1.0 from the pixel.
+    r"""For each pixel in the image, select the pixel if the value is less than the threshold.
+
+    Otherwise, subtract 1.0 from the pixel.
 
     Args:
         input: image or batched images to solarize.
@@ -898,7 +899,7 @@ def _build_lut(histo: Tensor, step: Tensor) -> Tensor:
 
 
 # Code taken from: https://github.com/pytorch/vision/pull/796
-def _scale_channel(im: Tensor) -> Tensor:
+def _scale_channel(im: Tensor) -> Tensor:  # noqa: D417
     r"""Scale the data in the channel to implement equalize.
 
     Args:
@@ -1075,7 +1076,7 @@ class AdjustSaturation(Module):
         super().__init__()
         self.saturation_factor: Union[float, Tensor] = saturation_factor
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return adjust_saturation(input, self.saturation_factor)
 
 
@@ -1126,7 +1127,7 @@ class AdjustSaturationWithGraySubtraction(Module):
         super().__init__()
         self.saturation_factor: Union[float, Tensor] = saturation_factor
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return adjust_saturation_with_gray_subtraction(input, self.saturation_factor)
 
 
@@ -1177,7 +1178,7 @@ class AdjustHue(Module):
         super().__init__()
         self.hue_factor: Union[float, Tensor] = hue_factor
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return adjust_hue(input, self.hue_factor)
 
 
@@ -1216,7 +1217,7 @@ class AdjustGamma(Module):
         self.gamma: Union[float, Tensor] = gamma
         self.gain: Union[float, Tensor] = gain
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return adjust_gamma(input, self.gamma, self.gain)
 
 
@@ -1254,7 +1255,7 @@ class AdjustContrast(Module):
         super().__init__()
         self.contrast_factor: Union[float, Tensor] = contrast_factor
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return adjust_contrast(input, self.contrast_factor)
 
 
@@ -1293,7 +1294,7 @@ class AdjustContrastWithMeanSubtraction(Module):
         super().__init__()
         self.contrast_factor: Union[float, Tensor] = contrast_factor
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return adjust_contrast_with_mean_subtraction(input, self.contrast_factor)
 
 
@@ -1330,7 +1331,7 @@ class AdjustBrightness(Module):
         super().__init__()
         self.brightness_factor: Union[float, Tensor] = brightness_factor
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return adjust_brightness(input, self.brightness_factor)
 
 
@@ -1363,7 +1364,7 @@ class AdjustSigmoid(Module):
         self.gain: float = gain
         self.inv: bool = inv
 
-    def forward(self, image: Tensor) -> Tensor:
+    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
         return adjust_sigmoid(image, cutoff=self.cutoff, gain=self.gain, inv=self.inv)
 
 
@@ -1395,7 +1396,7 @@ class AdjustLog(Module):
         self.inv: bool = inv
         self.clip_output: bool = clip_output
 
-    def forward(self, image: Tensor) -> Tensor:
+    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
         return adjust_log(image, gain=self.gain, inv=self.inv, clip_output=self.clip_output)
 
 
@@ -1432,7 +1433,7 @@ class AdjustBrightnessAccumulative(Module):
         super().__init__()
         self.brightness_factor: Union[float, Tensor] = brightness_factor
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return adjust_brightness_accumulative(input, self.brightness_factor)
 
 
@@ -1468,5 +1469,5 @@ class Invert(Module):
         else:
             self.max_val = max_val
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return invert(input, self.max_val)

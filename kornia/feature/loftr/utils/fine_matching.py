@@ -16,8 +16,10 @@ class FineMatching(Module):
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, feat_f0: Tensor, feat_f1: Tensor, data: dict[str, Any]) -> None:
-        """Args:
+    def forward(self, feat_f0: Tensor, feat_f1: Tensor, data: dict[str, Any]) -> None:  # noqa: D417
+        """Run forward.
+
+        Args:
             feat0 (torch.Tensor): [M, WW, C]
             feat1 (torch.Tensor): [M, WW, C]
             data (dict)
@@ -69,7 +71,7 @@ class FineMatching(Module):
         self.get_fine_match(coords_normalized, data)
 
     @torch.no_grad()
-    def get_fine_match(self, coords_normed: Tensor, data: dict[str, Any]) -> None:
+    def get_fine_match(self, coords_normed: Tensor, data: dict[str, Any]) -> None:  # noqa: D102
         W, _, _, scale = self.W, self.WW, self.C, self.scale
 
         # mkpts0_f and mkpts1_f

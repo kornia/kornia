@@ -33,7 +33,7 @@ def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, d
     )
 
 
-class Bottleneck(Module):
+class Bottleneck(Module):  # noqa: D101
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
     # while original implementation places the stride at the first 1x1 convolution(self.conv1)
     # according to "Deep residual learning for image recognition"https://arxiv.org/abs/1512.03385.
@@ -68,7 +68,7 @@ class Bottleneck(Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         identity = x
 
         out = self.conv1(x)
@@ -91,7 +91,7 @@ class Bottleneck(Module):
         return out
 
 
-class ResNet(Module):
+class ResNet(Module):  # noqa: D101
     def __init__(
         self,
         block: Type[Bottleneck],
@@ -199,11 +199,11 @@ class ResNet(Module):
 
         return x
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return self._forward_impl(x)
 
 
-class EncoderDeFMO(Module):
+class EncoderDeFMO(Module):  # noqa: D101
     def __init__(self) -> None:
         super().__init__()
         model = ResNet(Bottleneck, [3, 4, 6, 3])  # ResNet50
@@ -212,11 +212,11 @@ class EncoderDeFMO(Module):
         modelc1[0] = nn.Conv2d(6, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
         self.net = nn.Sequential(modelc1, modelc2)
 
-    def forward(self, input_data: Tensor) -> Tensor:
+    def forward(self, input_data: Tensor) -> Tensor:  # noqa: D102
         return self.net(input_data)
 
 
-class RenderingDeFMO(Module):
+class RenderingDeFMO(Module):  # noqa: D101
     def __init__(self) -> None:
         super().__init__()
         self.tsr_steps: int = 24
@@ -239,7 +239,7 @@ class RenderingDeFMO(Module):
         self.net = model
         self.times = torch.linspace(0, 1, self.tsr_steps)
 
-    def forward(self, latent: Tensor) -> Tensor:
+    def forward(self, latent: Tensor) -> Tensor:  # noqa: D102
         times = self.times.to(latent.device).unsqueeze(0).repeat(latent.shape[0], 1)
         renders = []
         for ki in range(times.shape[1]):
@@ -298,7 +298,7 @@ class DeFMO(Module):
             self.rendering.load_state_dict(pretrained_dict_ren, strict=True)
         self.eval()
 
-    def forward(self, input_data: Tensor) -> Tensor:
+    def forward(self, input_data: Tensor) -> Tensor:  # noqa: D102
         latent = self.encoder(input_data)
         x_out = self.rendering(latent)
         return x_out

@@ -23,7 +23,7 @@ except ImportError:
     XFORMERS_AVAILABLE = False
 
 
-class Attention(nn.Module):
+class Attention(nn.Module):  # noqa: D101
     def __init__(
         self,
         dim: int,
@@ -43,7 +43,7 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim, bias=proj_bias)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
 
@@ -59,8 +59,8 @@ class Attention(nn.Module):
         return x
 
 
-class MemEffAttention(Attention):
-    def forward(self, x: Tensor, attn_bias=None) -> Tensor:  # type: ignore[no-untyped-def]
+class MemEffAttention(Attention):  # noqa: D101
+    def forward(self, x: Tensor, attn_bias=None) -> Tensor:  # type: ignore[no-untyped-def]  # noqa: D102
         if not XFORMERS_AVAILABLE:
             if attn_bias is not None:
                 raise ValueError("xFormers is required for nested tensors usage")

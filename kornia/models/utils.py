@@ -11,13 +11,15 @@ __all__ = ["OutputRangePostProcessor", "ResizePostProcessor", "ResizePreProcesso
 
 
 class ResizePreProcessor(Module):
-    """This module resizes a list of image tensors to the given size.
+    """Resize a list of image tensors to the given size.
 
     Additionally, also returns the original image sizes for further post-processing.
     """
 
     def __init__(self, height: int, width: int, interpolation_mode: str = "bilinear") -> None:
-        """Args:
+        """Construct ResizePreprocessor module.
+
+        Args:
         height: height of the resized image.
         width: width of the resized image.
         interpolation_mode: interpolation mode for image resizing. Supported values: ``nearest``, ``bilinear``,
@@ -29,7 +31,9 @@ class ResizePreProcessor(Module):
         self.interpolation_mode = interpolation_mode
 
     def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Tuple[Tensor, Tensor]:
-        """Returns:
+        """Run forward.
+
+        Returns:
         resized_imgs: resized images in a batch.
         original_sizes: the original image sizes of (height, width).
 
@@ -47,13 +51,15 @@ class ResizePreProcessor(Module):
         return concatenate(resized_imgs), original_sizes
 
 
-class ResizePostProcessor(Module):
+class ResizePostProcessor(Module):  # noqa: D101
     def __init__(self, interpolation_mode: str = "bilinear") -> None:
         super().__init__()
         self.interpolation_mode = interpolation_mode
 
     def forward(self, imgs: Union[Tensor, List[Tensor]], original_sizes: Tensor) -> Union[Tensor, List[Tensor]]:
-        """Returns:
+        """Run forward.
+
+        Returns:
         resized_imgs: resized images in a batch.
         original_sizes: the original image sizes of (height, width).
 
@@ -79,13 +85,13 @@ class ResizePostProcessor(Module):
         return resized_imgs
 
 
-class OutputRangePostProcessor(Module):
+class OutputRangePostProcessor(Module):  # noqa: D101
     def __init__(self, min_val: float = 0.0, max_val: float = 1.0) -> None:
         super().__init__()
         self.min_val = min_val
         self.max_val = max_val
 
-    def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Union[Tensor, List[Tensor]]:
+    def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Union[Tensor, List[Tensor]]:  # noqa: D102
         if isinstance(imgs, Tensor):
             return torch.clamp(imgs, self.min_val, self.max_val)
         return [img.clamp_(self.min_val, self.max_val) for img in imgs]

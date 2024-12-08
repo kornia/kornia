@@ -15,7 +15,7 @@ class VolumeRenderer(torch.nn.Module):
     _eps = 1.0e-10
 
     def __init__(self, shift: int = 1) -> None:
-        """Initializes the renderer.
+        """Initialize the renderer.
 
         Args:
             shift: Size of far-field layer: int
@@ -35,7 +35,7 @@ class VolumeRenderer(torch.nn.Module):
 
         return rgbs_rendered
 
-    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: Tensor) -> Tensor:
+    def forward(self, rgbs: Tensor, densities: Tensor, points_3d: Tensor) -> Tensor:  # noqa: D102
         raise NotImplementedError
 
 
@@ -43,7 +43,7 @@ class IrregularRenderer(VolumeRenderer):
     """Renders 3D irregularly sampled points along rays."""
 
     def forward(self, rgbs: Tensor, densities: Tensor, points_3d: Tensor) -> Tensor:
-        r"""Renders 3D irregularly sampled points along rays.
+        r"""Render 3D irregularly sampled points along rays.
 
         Args:
             rgbs: RGB values of points along rays :math:`(*, N, 3)`
@@ -68,7 +68,7 @@ class RegularRenderer(VolumeRenderer):
     """Renders 3D regularly sampled points along rays."""
 
     def forward(self, rgbs: Tensor, densities: Tensor, points_3d: Tensor) -> Tensor:
-        r"""Renders 3D regularly sampled points along rays.
+        r"""Render 3D regularly sampled points along rays.
 
         Args:
             rgbs: RGB values of points along rays :math:`(*, N, 3)`

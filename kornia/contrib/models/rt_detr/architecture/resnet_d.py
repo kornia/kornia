@@ -25,7 +25,7 @@ def _make_shortcut(in_channels: int, out_channels: int, stride: int) -> Module:
     )
 
 
-class BasicBlockD(Module):
+class BasicBlockD(Module):  # noqa: D101
     expansion = 1
 
     def __init__(self, in_channels: int, out_channels: int, stride: int, shortcut: bool) -> None:
@@ -42,11 +42,11 @@ class BasicBlockD(Module):
         self.short = nn.Identity() if shortcut else _make_shortcut(in_channels, out_channels, stride)
         self.relu = nn.ReLU(inplace=True)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return self.relu(self.convs(x) + self.short(x))
 
 
-class BottleneckD(Module):
+class BottleneckD(Module):  # noqa: D101
     expansion = 4
 
     def __init__(self, in_channels: int, out_channels: int, stride: int, shortcut: bool) -> None:
@@ -65,17 +65,17 @@ class BottleneckD(Module):
         self.short = nn.Identity() if shortcut else _make_shortcut(in_channels, expanded_out_channels, stride)
         self.relu = nn.ReLU(inplace=True)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return self.relu(self.convs(x) + self.short(x))
 
 
-class Block(nn.Sequential):
+class Block(nn.Sequential):  # noqa: D101
     def __init__(self, blocks: Module) -> None:
         super().__init__()
         self.blocks = blocks
 
 
-class ResNetD(Module):
+class ResNetD(Module):  # noqa: D101
     def __init__(self, n_blocks: list[int], block: type[BasicBlockD | BottleneckD]) -> None:
         KORNIA_CHECK(len(n_blocks) == 4)
         super().__init__()
@@ -101,7 +101,7 @@ class ResNetD(Module):
         self.out_channels = [ch * block.expansion for ch in [128, 256, 512]]
 
     @staticmethod
-    def make_stage(
+    def make_stage(  # noqa: D102
         in_channels: int, out_channels: int, stride: int, n_blocks: int, block: type[BasicBlockD | BottleneckD]
     ) -> tuple[Module, int]:
         stage = Block(
@@ -112,7 +112,7 @@ class ResNetD(Module):
         )
         return stage, out_channels * block.expansion
 
-    def forward(self, x: Tensor) -> list[Tensor]:
+    def forward(self, x: Tensor) -> list[Tensor]:  # noqa: D102
         x = self.conv1(x)
         res2 = self.res_layers[0](x)
         res3 = self.res_layers[1](res2)
@@ -121,7 +121,7 @@ class ResNetD(Module):
         return [res3, res4, res5]
 
     @staticmethod
-    def from_config(variant: str | int) -> ResNetD:
+    def from_config(variant: str | int) -> ResNetD:  # noqa: D102
         variant = str(variant)
         if variant == "18":
             return ResNetD([2, 2, 2, 2], BasicBlockD)

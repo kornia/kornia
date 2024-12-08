@@ -21,7 +21,7 @@ def _make_pair(x: int | tuple[int, int]) -> tuple[int, int]:
     return (x, x) if isinstance(x, int) else x
 
 
-class ConvBN(nn.Sequential):
+class ConvBN(nn.Sequential):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -38,7 +38,7 @@ class ConvBN(nn.Sequential):
         self.act = activation()
 
 
-class PatchEmbed(nn.Sequential):
+class PatchEmbed(nn.Sequential):  # noqa: D101
     def __init__(self, in_channels: int, embed_dim: int, activation: type[Module] = nn.GELU) -> None:
         super().__init__()
         self.seq = nn.Sequential(
@@ -46,7 +46,7 @@ class PatchEmbed(nn.Sequential):
         )
 
 
-class MBConv(Module):
+class MBConv(Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -63,11 +63,11 @@ class MBConv(Module):
         self.drop_path = DropPath(drop_path)
         self.act = activation()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return self.act(x + self.drop_path(self.conv3(self.conv2(self.conv1(x)))))
 
 
-class PatchMerging(Module):
+class PatchMerging(Module):  # noqa: D101
     def __init__(
         self,
         input_resolution: int | tuple[int, int],
@@ -83,7 +83,7 @@ class PatchMerging(Module):
         self.conv2 = ConvBN(out_dim, out_dim, 3, stride, 1, groups=out_dim, activation=activation)
         self.conv3 = ConvBN(out_dim, out_dim, 1)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         if x.ndim == 3:
             x = x.transpose(1, 2).unflatten(2, self.input_resolution)  # (B, H * W, C) -> (B, C, H, W)
         x = self.conv3(self.conv2(self.conv1(x)))
@@ -91,7 +91,7 @@ class PatchMerging(Module):
         return x
 
 
-class ConvLayer(Module):
+class ConvLayer(Module):  # noqa: D101
     def __init__(
         self,
         dim: int,
@@ -115,7 +115,7 @@ class ConvLayer(Module):
         # patch merging layer
         self.downsample = downsample
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         for blk in self.blocks:
             x = checkpoint.checkpoint(blk, x) if self.use_checkpoint else blk(x)
         if self.downsample is not None:
@@ -123,7 +123,7 @@ class ConvLayer(Module):
         return x
 
 
-class MLP(nn.Sequential):
+class MLP(nn.Sequential):  # noqa: D101
     def __init__(
         self,
         in_features: int,
@@ -144,7 +144,7 @@ class MLP(nn.Sequential):
 # NOTE: differences from image_encoder.Attention:
 # - different relative position encoding mechanism (separable/decomposed vs joint)
 # - this impl supports attn_ratio (increase output size for value), though it is not used
-class Attention(Module):
+class Attention(Module):  # noqa: D101
     def __init__(
         self,
         dim: int,
@@ -174,7 +174,7 @@ class Attention(Module):
         self.ab: Optional[Tensor] = None
 
     @staticmethod
-    def build_attention_bias(resolution: tuple[int, int]) -> tuple[Tensor, int]:
+    def build_attention_bias(resolution: tuple[int, int]) -> tuple[Tensor, int]:  # noqa: D102
         points = list(itertools.product(range(resolution[0]), range(resolution[1])))
         attention_offsets: dict[tuple[int, int], int] = {}
         idxs: list[int] = []
@@ -192,12 +192,12 @@ class Attention(Module):
 
     # is this really necessary?
     @torch.no_grad()
-    def train(self, mode: bool = True) -> Attention:
+    def train(self, mode: bool = True) -> Attention:  # noqa: D102
         super().train(mode)
         self.ab = None if (mode and self.ab is not None) else self.attention_biases[:, self.attention_bias_idxs]
         return self
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         B, N, _ = x.shape
         x = self.norm(x)
         qkv = self.qkv(x)
@@ -213,7 +213,7 @@ class Attention(Module):
         return x
 
 
-class TinyViTBlock(Module):
+class TinyViTBlock(Module):  # noqa: D101
     def __init__(
         self,
         dim: int,
@@ -238,7 +238,7 @@ class TinyViTBlock(Module):
         self.mlp = MLP(dim, int(dim * mlp_ratio), dim, activation, drop)
         self.drop_path2 = DropPath(drop_path)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         H, W = self.input_resolution
         B, L, C = x.shape
         res_x = x
@@ -259,7 +259,7 @@ class TinyViTBlock(Module):
         return x
 
 
-class BasicLayer(Module):
+class BasicLayer(Module):  # noqa: D101
     def __init__(
         self,
         dim: int,
@@ -298,7 +298,7 @@ class BasicLayer(Module):
         # patch merging layer
         self.downsample = downsample
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         for blk in self.blocks:
             x = checkpoint.checkpoint(blk, x) if self.use_checkpoint else blk(x)
         if self.downsample is not None:
@@ -307,7 +307,7 @@ class BasicLayer(Module):
 
 
 class TinyViT(Module):
-    """TinyViT model, as described in https://arxiv.org/abs/2207.10666
+    """TinyViT model, as described in https://arxiv.org/abs/2207.10666.
 
     Args:
         img_size: Size of input image.

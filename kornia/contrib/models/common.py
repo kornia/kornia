@@ -7,7 +7,7 @@ from torch import nn
 from kornia.core import Module, Tensor, pad
 
 
-class ConvNormAct(nn.Sequential):
+class ConvNormAct(nn.Sequential):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -43,7 +43,7 @@ class ConvNormAct(nn.Sequential):
 
 # Lightly adapted from
 # https://github.com/facebookresearch/MaskFormer/blob/main/mask_former/modeling/transformer/transformer_predictor.py
-class MLP(Module):
+class MLP(Module):  # noqa: D101
     def __init__(
         self, input_dim: int, hidden_dim: int, output_dim: int, num_layers: int, sigmoid_output: bool = False
     ) -> None:
@@ -53,7 +53,7 @@ class MLP(Module):
         self.layers = nn.ModuleList(nn.Linear(n, k) for n, k in zip([input_dim, *h], [*h, output_dim]))
         self.sigmoid_output = sigmoid_output
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         for i, layer in enumerate(self.layers):
             x = F.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         if self.sigmoid_output:
@@ -71,7 +71,7 @@ class DropPath(Module):
         self.drop_prob = drop_prob
         self.scale_by_keep = scale_by_keep
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         if self.drop_prob == 0.0 or not self.training:
             return x
         keep_prob = 1 - self.drop_prob
@@ -84,14 +84,14 @@ class DropPath(Module):
 
 # From https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py
 # Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa
-class LayerNorm2d(Module):
+class LayerNorm2d(Module):  # noqa: D101
     def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
         super().__init__()
         self.weight = nn.Parameter(torch.ones(num_channels))
         self.bias = nn.Parameter(torch.zeros(num_channels))
         self.eps = eps
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         u = x.mean(1, keepdim=True)
         s = (x - u).pow(2).mean(1, keepdim=True)
         x = (x - u) / (s + self.eps).sqrt()
@@ -124,7 +124,7 @@ def window_partition(x: Tensor, window_size: int) -> tuple[Tensor, tuple[int, in
     return windows, (Hp, Wp)
 
 
-def window_unpartition(windows: Tensor, window_size: int, pad_hw: tuple[int, int], hw: tuple[int, int]) -> Tensor:
+def window_unpartition(windows: Tensor, window_size: int, pad_hw: tuple[int, int], hw: tuple[int, int]) -> Tensor:  # noqa: D417
     """Window unpartition into original sequences and removing padding.
 
     Args:

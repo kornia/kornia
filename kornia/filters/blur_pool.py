@@ -57,7 +57,7 @@ class BlurPool2D(Module):
         self.stride = stride
         self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         self.kernel = as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _blur_pool_by_kernel2d(input, self.kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
 
@@ -107,14 +107,14 @@ class MaxBlurPool2D(Module):
         self.ceil_mode = ceil_mode
         self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         self.kernel = as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
             input, self.kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode
         )
 
 
-class EdgeAwareBlurPool2D(Module):
+class EdgeAwareBlurPool2D(Module):  # noqa: D101
     def __init__(
         self, kernel_size: tuple[int, int] | int, edge_threshold: float = 1.25, edge_dilation_kernel_size: int = 3
     ) -> None:
@@ -123,13 +123,13 @@ class EdgeAwareBlurPool2D(Module):
         self.edge_threshold = edge_threshold
         self.edge_dilation_kernel_size = edge_dilation_kernel_size
 
-    def forward(self, input: Tensor, epsilon: float = 1e-6) -> Tensor:
+    def forward(self, input: Tensor, epsilon: float = 1e-6) -> Tensor:  # noqa: D102
         return edge_aware_blur_pool2d(
             input, self.kernel_size, self.edge_threshold, self.edge_dilation_kernel_size, epsilon
         )
 
 
-def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2) -> Tensor:
+def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2) -> Tensor:  # noqa: D417
     r"""Compute blurs and downsample a given feature map.
 
     .. image:: _static/img/blur_pool2d.png
@@ -177,7 +177,7 @@ def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int =
     return _blur_pool_by_kernel2d(input, kernel, stride)
 
 
-def max_blur_pool2d(
+def max_blur_pool2d(  # noqa: D417
     input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
 ) -> Tensor:
     r"""Compute pools and blurs and downsample a given feature map.

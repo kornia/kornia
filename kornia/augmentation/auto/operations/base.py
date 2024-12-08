@@ -112,15 +112,15 @@ class OperationBase(Module):
         else:
             self.op._p_gen = Bernoulli(self.probability)
 
-    def train(self: T, mode: bool = True) -> T:
+    def train(self: T, mode: bool = True) -> T:  # noqa: D102
         self._update_probability_gen(relaxation=mode)
 
         return super().train(mode=mode)
 
-    def eval(self: T) -> T:
+    def eval(self: T) -> T:  # noqa: D102
         return self.train(False)
 
-    def forward_parameters(self, batch_shape: torch.Size, mag: Optional[Tensor] = None) -> Dict[str, Tensor]:
+    def forward_parameters(self, batch_shape: torch.Size, mag: Optional[Tensor] = None) -> Dict[str, Tensor]:  # noqa: D102
         if mag is None:
             mag = self.magnitude
         # Need to setup the sampler again for each update.
@@ -139,7 +139,7 @@ class OperationBase(Module):
 
         return params
 
-    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None) -> Tensor:
+    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None) -> Tensor:  # noqa: D102
         if params is None:
             params = self.forward_parameters(input.shape)
 
@@ -158,13 +158,13 @@ class OperationBase(Module):
         return batch_prob * self.op(input, params=params) + (1 - batch_prob) * input
 
     @property
-    def transform_matrix(self) -> Optional[Tensor]:
+    def transform_matrix(self) -> Optional[Tensor]:  # noqa: D102
         if hasattr(self.op, "transform_matrix"):
             return self.op.transform_matrix
         return None
 
     @property
-    def magnitude(self) -> Optional[Tensor]:
+    def magnitude(self) -> Optional[Tensor]:  # noqa: D102
         if self._magnitude is None:
             return None
         mag = self._magnitude
@@ -173,6 +173,6 @@ class OperationBase(Module):
         return mag
 
     @property
-    def probability(self) -> Tensor:
+    def probability(self) -> Tensor:  # noqa: D102
         p = self._probability.clamp(*self.probability_range)
         return p

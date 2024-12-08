@@ -67,7 +67,7 @@ class PinholeCamera:
             KORNIA_CHECK_SAME_DEVICE(data, first)
 
     def device(self) -> torch.device:
-        r"""Returns the device for camera buffers.
+        r"""Return the device for camera buffers.
 
         Returns:
             Device type
@@ -299,7 +299,7 @@ class PinholeCamera:
         self.width *= scale_factor
         return self
 
-    def project(self, point_3d: Tensor) -> Tensor:
+    def project(self, point_3d: Tensor) -> Tensor:  # noqa: D417
         r"""Project a 3d point in world coordinates onto the 2d camera plane.
 
         Args:
@@ -324,7 +324,7 @@ class PinholeCamera:
         P = self.intrinsics @ self.extrinsics
         return convert_points_from_homogeneous(transform_points(P, point_3d))
 
-    def unproject(self, point_2d: Tensor, depth: Tensor) -> Tensor:
+    def unproject(self, point_2d: Tensor, depth: Tensor) -> Tensor:  # noqa: D417
         r"""Unproject a 2d point in 3d.
 
         Transform coordinates in the pixel frame to the world frame.
@@ -360,7 +360,7 @@ class PinholeCamera:
 
     # NOTE: just for test. Decide if we keep it.
     @classmethod
-    def from_parameters(
+    def from_parameters(  # noqa: D102
         self,
         fx: Tensor,
         fy: Tensor,
@@ -453,8 +453,8 @@ class PinholeCamerasList(PinholeCamera):
         return PinholeCamera(intrinsics, extrinsics, height, width)
 
 
-def pinhole_matrix(pinholes: Tensor, eps: float = 1e-6) -> Tensor:
-    r"""Function that returns the pinhole matrix from a pinhole model.
+def pinhole_matrix(pinholes: Tensor, eps: float = 1e-6) -> Tensor:  # noqa: D417
+    r"""Return the pinhole matrix from a pinhole model.
 
     .. note::
         This method is going to be deprecated in version 0.2 in favour of
@@ -498,7 +498,7 @@ def pinhole_matrix(pinholes: Tensor, eps: float = 1e-6) -> Tensor:
     return k
 
 
-def inverse_pinhole_matrix(pinhole: Tensor, eps: float = 1e-6) -> Tensor:
+def inverse_pinhole_matrix(pinhole: Tensor, eps: float = 1e-6) -> Tensor:  # noqa: D417
     r"""Return the inverted pinhole matrix from a pinhole model.
 
     .. note::
@@ -682,7 +682,7 @@ def pixel2cam(depth: Tensor, intrinsics_inv: Tensor, pixel_coords: Tensor) -> Te
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L43
 
 
-def cam2pixel(cam_coords_src: Tensor, dst_proj_src: Tensor, eps: float = 1e-12) -> Tensor:
+def cam2pixel(cam_coords_src: Tensor, dst_proj_src: Tensor, eps: float = 1e-12) -> Tensor:  # noqa: D417
     r"""Transform coordinates in the camera frame to the pixel frame.
 
     Args:

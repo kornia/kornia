@@ -38,12 +38,12 @@ else:
     FLASH_AVAILABLE = False
 
 
-def math_clamp(x, min_, max_):  # type: ignore
+def math_clamp(x, min_, max_):  # type: ignore  # noqa: D103
     return max(min(x, min_), min_)
 
 
 @custom_fwd(cast_inputs=torch.float32)
-def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
+def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:  # noqa: D103
     if isinstance(size, torch.Size):
         size = Tensor(size)[None]
     shift = size.float().to(kpts) / 2
@@ -52,7 +52,7 @@ def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
     return kpts
 
 
-def pad_to_length(x: Tensor, length: int) -> Tuple[Tensor, Tensor]:
+def pad_to_length(x: Tensor, length: int) -> Tuple[Tensor, Tensor]:  # noqa: D103
     if length <= x.shape[-2]:
         return x, ones_like(x[..., :1], dtype=torch.bool)
     pad = ones(*x.shape[:-2], length - x.shape[-2], x.shape[-1], device=x.device, dtype=x.dtype)
@@ -62,17 +62,17 @@ def pad_to_length(x: Tensor, length: int) -> Tuple[Tensor, Tensor]:
     return y, mask
 
 
-def rotate_half(x: Tensor) -> Tensor:
+def rotate_half(x: Tensor) -> Tensor:  # noqa: D103
     x = x.unflatten(-1, (-1, 2))
     x1, x2 = x.unbind(dim=-1)
     return stack((-x2, x1), dim=-1).flatten(start_dim=-2)
 
 
-def apply_cached_rotary_emb(freqs: Tensor, t: Tensor) -> Tensor:
+def apply_cached_rotary_emb(freqs: Tensor, t: Tensor) -> Tensor:  # noqa: D103
     return (t * freqs[0]) + (rotate_half(t) * freqs[1])
 
 
-class LearnableFourierPositionalEncoding(Module):
+class LearnableFourierPositionalEncoding(Module):  # noqa: D101
     def __init__(self, M: int, dim: int, F_dim: Optional[int] = None, gamma: float = 1.0) -> None:
         super().__init__()
         F_dim = F_dim if F_dim is not None else dim
@@ -88,7 +88,7 @@ class LearnableFourierPositionalEncoding(Module):
         return emb.repeat_interleave(2, dim=-1)
 
 
-class TokenConfidence(Module):
+class TokenConfidence(Module):  # noqa: D101
     def __init__(self, dim: int) -> None:
         super().__init__()
         self.token = nn.Sequential(nn.Linear(dim, 1), nn.Sigmoid())
@@ -103,7 +103,7 @@ class TokenConfidence(Module):
         )
 
 
-class Attention(Module):
+class Attention(Module):  # noqa: D101
     def __init__(self, allow_flash: bool) -> None:
         super().__init__()
         if allow_flash and not FLASH_AVAILABLE:
@@ -119,7 +119,7 @@ class Attention(Module):
         if self.has_sdp:
             torch.backends.cuda.enable_flash_sdp(allow_flash)
 
-    def forward(self, q: Tensor, k: Tensor, v: Tensor, mask: Optional[Tensor] = None) -> Tensor:
+    def forward(self, q: Tensor, k: Tensor, v: Tensor, mask: Optional[Tensor] = None) -> Tensor:  # noqa: D102
         if self.enable_flash and q.device.type == "cuda":
             # use torch 2.0 scaled_dot_product_attention with flash
             if self.has_sdp:
@@ -144,7 +144,7 @@ class Attention(Module):
             return einsum("...ij,...jd->...id", attn, v)
 
 
-class SelfBlock(Module):
+class SelfBlock(Module):  # noqa: D101
     def __init__(self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True) -> None:
         super().__init__()
         self.embed_dim = embed_dim
@@ -161,7 +161,7 @@ class SelfBlock(Module):
             nn.Linear(2 * embed_dim, embed_dim),
         )
 
-    def forward(
+    def forward(  # noqa: D102
         self,
         x: Tensor,
         encoding: Tensor,
@@ -177,7 +177,7 @@ class SelfBlock(Module):
         return x + self.ffn(concatenate([x, message], -1))
 
 
-class CrossBlock(Module):
+class CrossBlock(Module):  # noqa: D101
     def __init__(self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True) -> None:
         super().__init__()
         self.heads = num_heads
@@ -198,10 +198,10 @@ class CrossBlock(Module):
         else:
             self.flash = None  # type: ignore
 
-    def map_(self, func: Callable, x0: Tensor, x1: Tensor) -> Tuple[Tensor, Tensor]:  # type: ignore
+    def map_(self, func: Callable, x0: Tensor, x1: Tensor) -> Tuple[Tensor, Tensor]:  # type: ignore  # noqa: D102
         return func(x0), func(x1)
 
-    def forward(self, x0: Tensor, x1: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def forward(self, x0: Tensor, x1: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:  # noqa: D102
         qk0, qk1 = self.map_(self.to_qk, x0, x1)
         v0, v1 = self.map_(self.to_v, x0, x1)
         qk0, qk1, v0, v1 = (t.unflatten(-1, (self.heads, -1)).transpose(1, 2) for t in (qk0, qk1, v0, v1))
@@ -226,13 +226,13 @@ class CrossBlock(Module):
         return x0, x1
 
 
-class TransformerLayer(Module):
+class TransformerLayer(Module):  # noqa: D101
     def __init__(self, *args, **kwargs):  # type: ignore
         super().__init__()
         self.self_attn = SelfBlock(*args, **kwargs)
         self.cross_attn = CrossBlock(*args, **kwargs)
 
-    def forward(
+    def forward(  # noqa: D102
         self,
         desc0: Tensor,
         desc1: Tensor,
@@ -249,7 +249,7 @@ class TransformerLayer(Module):
             return self.cross_attn(desc0, desc1)
 
     # This part is compiled and allows padding inputs
-    def masked_forward(
+    def masked_forward(  # noqa: D102
         self, desc0: Tensor, desc1: Tensor, encoding0: Tensor, encoding1: Tensor, mask0: Tensor, mask1: Tensor
     ) -> Tensor:
         mask = mask0 & mask1.transpose(-1, -2)
@@ -273,7 +273,7 @@ def sigmoid_log_double_softmax(sim: Tensor, z0: Tensor, z1: Tensor) -> Tensor:
     return scores
 
 
-class MatchAssignment(Module):
+class MatchAssignment(Module):  # noqa: D101
     def __init__(self, dim: int) -> None:
         super().__init__()
         self.dim = dim
@@ -291,7 +291,7 @@ class MatchAssignment(Module):
         scores = sigmoid_log_double_softmax(sim, z0, z1)
         return scores, sim
 
-    def get_matchability(self, desc: Tensor) -> Tensor:
+    def get_matchability(self, desc: Tensor) -> Tensor:  # noqa: D102
         return torch.sigmoid(self.matchability(desc)).squeeze(-1)
 
 
@@ -314,7 +314,7 @@ def filter_matches(scores: Tensor, th: float) -> Tuple[Tensor, Tensor, Tensor, T
     return m0, m1, mscores0, mscores1
 
 
-class LightGlue(Module):
+class LightGlue(Module):  # noqa: D101
     default_conf: ClassVar[Dict[str, Any]] = {
         "name": "lightglue",  # just for interfacing
         "input_dim": 256,  # input descriptor dimension (autoselected from weights)
@@ -458,7 +458,7 @@ class LightGlue(Module):
         # static lengths LightGlue is compiled for (only used with torch.compile)
         self.static_lengths = None
 
-    def compile(
+    def compile(  # noqa: D102
         self, mode: str = "reduce-overhead", static_lengths: Sequence[int] = (256, 512, 768, 1024, 1280, 1536)
     ) -> None:
         if self.conf.width_confidence != -1:
@@ -673,7 +673,7 @@ class LightGlue(Module):
         ratio_confident = 1.0 - (confidences < threshold).float().sum() / num_points
         return ratio_confident > self.conf.depth_confidence
 
-    def pruning_min_kpts(self, device: torch.device) -> int:
+    def pruning_min_kpts(self, device: torch.device) -> int:  # noqa: D102
         if self.conf.flash and FLASH_AVAILABLE and device.type == "cuda":
             return self.pruning_keypoint_thresholds["flash"]
         else:

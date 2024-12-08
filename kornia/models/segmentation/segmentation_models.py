@@ -13,9 +13,9 @@ from .base import SemanticSegmentation
 __all__ = ["SegmentationModelsBuilder"]
 
 
-class SegmentationModelsBuilder:
+class SegmentationModelsBuilder:  # noqa: D101
     @staticmethod
-    def build(
+    def build(  # noqa: D417
         model_name: str = "Unet",
         encoder_name: str = "resnet34",
         encoder_weights: Optional[str] = "imagenet",
@@ -64,7 +64,7 @@ class SegmentationModelsBuilder:
         )
 
     @staticmethod
-    def get_preprocessing_pipeline(preproc_params: dict[str, Any]) -> kornia.augmentation.container.ImageSequential:
+    def get_preprocessing_pipeline(preproc_params: dict[str, Any]) -> kornia.augmentation.container.ImageSequential:  # noqa: D102
         # Ensure the color space transformation is ONNX-friendly
         proc_sequence: list[Module] = []
         input_space = preproc_params["input_space"]

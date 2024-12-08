@@ -24,16 +24,16 @@ class EdgeDetector(Module):
         super().__init__()
         self.model = DexiNed(pretrained=True)
 
-    def load(self, path_file: str) -> None:
+    def load(self, path_file: str) -> None:  # noqa: D102
         self.model.load_from_file(path_file)
 
-    def preprocess(self, image: Tensor) -> Tensor:
+    def preprocess(self, image: Tensor) -> Tensor:  # noqa: D102
         return image
 
-    def postprocess(self, data: Tensor) -> Tensor:
+    def postprocess(self, data: Tensor) -> Tensor:  # noqa: D102
         return data
 
-    def forward(self, image: Tensor) -> Tensor:
+    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
         KORNIA_CHECK_SHAPE(image, ["B", "3", "H", "W"])
         img = self.preprocess(image)
         out = self.model(img)

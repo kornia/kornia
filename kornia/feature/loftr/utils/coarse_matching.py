@@ -9,8 +9,9 @@ from kornia.core import Module, Tensor
 INF = 1e9
 
 
-def mask_border(m: Tensor, b: int, v: Union[Tensor, float, bool]) -> None:
-    """Mask borders with value
+def mask_border(m: Tensor, b: int, v: Union[Tensor, float, bool]) -> None:  # noqa: D417
+    """Mask borders with value.
+
     Args:
         m (torch.Tensor): [N, H0, W0, H1, W1]
         b (int)
@@ -29,7 +30,7 @@ def mask_border(m: Tensor, b: int, v: Union[Tensor, float, bool]) -> None:
     m[:, :, :, :, -b:] = v
 
 
-def mask_border_with_padding(m: Tensor, bd: int, v: Union[Tensor, float, bool], p_m0: Tensor, p_m1: Tensor) -> None:
+def mask_border_with_padding(m: Tensor, bd: int, v: Union[Tensor, float, bool], p_m0: Tensor, p_m1: Tensor) -> None:  # noqa: D103
     if bd <= 0:
         return
 
@@ -47,7 +48,7 @@ def mask_border_with_padding(m: Tensor, bd: int, v: Union[Tensor, float, bool], 
         m[b_idx, :, :, :, w1 - bd :] = v
 
 
-def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:
+def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:  # noqa: D417
     """Compute the max candidates of all pairs within a batch.
 
     Args:
@@ -60,7 +61,7 @@ def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:
     return max_cand
 
 
-class CoarseMatching(Module):
+class CoarseMatching(Module):  # noqa: D101
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
         self.config = config
@@ -87,7 +88,7 @@ class CoarseMatching(Module):
         else:
             raise NotImplementedError
 
-    def forward(
+    def forward(  # noqa: D417
         self,
         feat_c0: Tensor,
         feat_c1: Tensor,
@@ -95,7 +96,9 @@ class CoarseMatching(Module):
         mask_c0: Optional[Tensor] = None,
         mask_c1: Optional[Tensor] = None,
     ) -> None:
-        """Args:
+        """Run forward.
+
+        Args:
             feat0 (torch.Tensor): [N, L, C]
             feat1 (torch.Tensor): [N, S, C]
             data (dict)
@@ -152,7 +155,9 @@ class CoarseMatching(Module):
 
     @torch.no_grad()
     def get_coarse_match(self, conf_matrix: Tensor, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
-        """Args:
+        """Get corase matching.
+
+        Args:
             conf_matrix (torch.Tensor): [N, L, S]
             data (dict): with keys ['hw0_i', 'hw1_i', 'hw0_c', 'hw1_c']
 

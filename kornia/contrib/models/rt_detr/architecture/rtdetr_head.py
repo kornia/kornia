@@ -101,7 +101,9 @@ class MultiScaleDeformableAttention(Module):
     def forward(
         self, query: Tensor, reference_points: Tensor, value: Tensor, value_spatial_shapes: list[tuple[int, int]]
     ) -> Tensor:
-        """Args:
+        """Run forward.
+
+        Args:
             query: shape (N, Lq, C)
             reference_points: shape (N, Lq, n_levels, 4)
             value: shape (N, Lv, C)
@@ -168,7 +170,7 @@ class TransformerDecoderLayer(Module):
     def _ffn(self, x: Tensor) -> Tensor:
         return self.linear2(self.dropout3(self.activation(self.linear1(x))))
 
-    def forward(
+    def forward(  # noqa: D102
         self,
         tgt: Tensor,
         ref_points: Tensor,
@@ -195,7 +197,7 @@ class TransformerDecoderLayer(Module):
         return out
 
 
-class TransformerDecoder(Module):
+class TransformerDecoder(Module):  # noqa: D101
     def __init__(self, hidden_dim: int, decoder_layer: nn.Module, num_layers: int, eval_idx: int = -1) -> None:
         super().__init__()
         self.layers = nn.ModuleList([copy.deepcopy(decoder_layer) for _ in range(num_layers)])
@@ -203,7 +205,7 @@ class TransformerDecoder(Module):
         self.num_layers = num_layers
         self.eval_idx = eval_idx if eval_idx >= 0 else num_layers + eval_idx
 
-    def forward(
+    def forward(  # noqa: D102
         self,
         tgt: Tensor,
         ref_points_unact: Tensor,
@@ -261,7 +263,7 @@ class TransformerDecoder(Module):
         return torch.stack(dec_out_bboxes), torch.stack(dec_out_logits)
 
 
-class RTDETRHead(Module):
+class RTDETRHead(Module):  # noqa: D101
     def __init__(
         self,
         num_classes: int,
@@ -323,7 +325,7 @@ class RTDETRHead(Module):
             [MLP(hidden_dim, hidden_dim, 4, num_layers=3) for _ in range(num_decoder_layers)]
         )
 
-    def forward(self, feats: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, feats: Tensor) -> tuple[Tensor, Tensor]:  # noqa: D102
         # input projection and embedding
         memory, spatial_shapes, level_start_index = self._get_encoder_input(feats)
 

@@ -129,7 +129,7 @@ class RgbToHsv(Module):
         super().__init__()
         self.eps = eps
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:  # noqa: D102
         return rgb_to_hsv(image, self.eps)
 
 
@@ -155,5 +155,5 @@ class HsvToRgb(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:  # noqa: D102
         return hsv_to_rgb(image)

@@ -89,7 +89,7 @@ class ZCAWhitening(Module):
         Args:
             x: Input data.
 
-        returns:
+        Returns:
             Returns a fitted ZCAWhiten object instance.
 
         """
@@ -341,7 +341,7 @@ def linear_transform(inp: Tensor, transform_matrix: Tensor, mean_vector: Tensor,
         >>> print(out.shape, out.unique()) # Should a be (10,2) tensor of 2s
         torch.Size([10, 2]) tensor([2.])
 
-    """
+    """  # noqa: D205
     inp_size = inp.size()
 
     if dim >= len(inp_size) or dim < -len(inp_size):

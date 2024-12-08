@@ -15,7 +15,7 @@ def ssim_loss(
     reduction: str = "mean",
     padding: str = "same",
 ) -> torch.Tensor:
-    r"""Function that computes a loss based on the SSIM measurement.
+    r"""Compute a loss based on the SSIM measurement.
 
     The loss, or the Structural dissimilarity (DSSIM) is described as:
 
@@ -108,5 +108,5 @@ class SSIMLoss(nn.Module):
         self.reduction: str = reduction
         self.padding: str = padding
 
-    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
+    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:  # noqa: D102
         return ssim_loss(img1, img2, self.window_size, self.max_val, self.eps, self.reduction, self.padding)

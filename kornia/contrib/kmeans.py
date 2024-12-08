@@ -52,7 +52,7 @@ class KMeans:
             torch.manual_seed(seed)
 
     @property
-    def cluster_centers(self) -> Tensor:
+    def cluster_centers(self) -> Tensor:  # noqa: D102
         if isinstance(self._final_cluster_centers, Tensor):
             return self._final_cluster_centers
         if isinstance(self._cluster_centers, Tensor):
@@ -61,7 +61,7 @@ class KMeans:
             raise TypeError("Model has not been fit to a dataset")
 
     @property
-    def cluster_assignments(self) -> Tensor:
+    def cluster_assignments(self) -> Tensor:  # noqa: D102
         if isinstance(self._final_cluster_assignments, Tensor):
             return self._final_cluster_assignments
         else:
@@ -85,7 +85,7 @@ class KMeans:
         return initial_state
 
     def _pairwise_euclidean_distance(self, data1: Tensor, data2: Tensor) -> Tensor:
-        """Computes pairwise squared distance between 2 sets of vectors.
+        """Compute pairwise squared distance between 2 sets of vectors.
 
         Args:
             data1: 2D tensor of shape N, D
@@ -103,13 +103,13 @@ class KMeans:
         return distance
 
     def fit(self, X: Tensor) -> None:
-        """Iterative KMeans clustering till a threshold for shift in cluster centers or a maximum no of iterations
+        """Fit iterative KMeans clustering till a threshold for shift in cluster centers or a maximum no of iterations
         have reached.
 
         Args:
             X: 2D input tensor to be clustered
 
-        """
+        """  # noqa: D205
         # X should have only 2 dimensions
         KORNIA_CHECK_SHAPE(X, ["N", "D"])
 

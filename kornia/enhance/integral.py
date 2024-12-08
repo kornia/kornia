@@ -6,7 +6,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 def integral_tensor(input: Tensor, dim: Optional[Tuple[int, ...]] = None) -> Tensor:
-    """Calculates integral of the input tensor.
+    """Calculate integral of the input tensor.
 
     The algorithm computes the integral image by summing over the specified dimensions.
 
@@ -44,7 +44,7 @@ def integral_tensor(input: Tensor, dim: Optional[Tuple[int, ...]] = None) -> Ten
 
 
 def integral_image(image: Tensor) -> Tensor:
-    r"""Calculates integral of the input image tensor.
+    r"""Calculate integral of the input image tensor.
 
     This particular version sums over the last two dimensions.
 
@@ -98,7 +98,7 @@ class IntegralTensor(Module):
         super().__init__()
         self.dim = dim
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return integral_tensor(input, self.dim)
 
 
@@ -129,5 +129,5 @@ class IntegralImage(Module):
 
     """
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return integral_image(input)

@@ -8,7 +8,7 @@ from .filter import filter2d, filter2d_separable
 from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
 
 
-def box_blur(
+def box_blur(  # noqa: D417
     input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = False
 ) -> Tensor:
     r"""Blur an image using the box filter.
@@ -123,7 +123,7 @@ class BoxBlur(Module):
             f"separable={self.separable})"
         )
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         KORNIA_CHECK_IS_TENSOR(input)
         if self.separable:
             return filter2d_separable(input, self.kernel_x, self.kernel_y, self.border_type)

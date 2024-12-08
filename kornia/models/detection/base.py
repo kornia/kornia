@@ -69,7 +69,7 @@ class ObjectDetectorResult:
     bbox: BoundingBox
 
 
-def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFormat) -> list[ObjectDetectorResult]:
+def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFormat) -> list[ObjectDetectorResult]:  # noqa: D417
     """Convert a detection tensor to a list of :py:class:`ObjectDetectorResult`.
 
     Args:
@@ -101,7 +101,7 @@ def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFor
 
 
 class ObjectDetector(ModelBase):
-    """This class wraps an object detection model and performs pre-processing and post-processing."""
+    """Wrap an object detection model and perform pre-processing and post-processing."""
 
     name: str = "detection"
 
@@ -146,7 +146,7 @@ class ObjectDetector(ModelBase):
     def save(
         self, images: Union[Tensor, list[Tensor]], detections: Optional[Tensor] = None, directory: Optional[str] = None
     ) -> None:
-        """Saves the output image(s) to a directory.
+        """Save the output image(s) to a directory.
 
         Args:
             images: input tensor.
@@ -157,7 +157,7 @@ class ObjectDetector(ModelBase):
         outputs = self.visualize(images, detections)
         self._save_outputs(outputs, directory)
 
-    def to_onnx(  # type: ignore[override]
+    def to_onnx(  # type: ignore[override]  # noqa: D417
         self,
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 640,
@@ -166,7 +166,7 @@ class ObjectDetector(ModelBase):
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> onnx.ModelProto:  # type: ignore
-        """Exports an RT-DETR object detection model to ONNX format.
+        """Export an RT-DETR object detection model to ONNX format.
 
         Either `model_name` or `config` must be provided. If neither is provided,
         a default pretrained model (`rtdetr_r18vd`) will be built.

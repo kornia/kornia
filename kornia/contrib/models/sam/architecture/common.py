@@ -13,18 +13,18 @@ from torch import nn
 from kornia.core import Module, Tensor
 
 
-class MLPBlock(Module):
+class MLPBlock(Module):  # noqa: D101
     def __init__(self, embedding_dim: int, mlp_dim: int, act: type[Module] = nn.GELU) -> None:
         super().__init__()
         self.lin1 = nn.Linear(embedding_dim, mlp_dim)
         self.lin2 = nn.Linear(mlp_dim, embedding_dim)
         self.act = act()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return self.lin2(self.act(self.lin1(x)))
 
 
-class LayerNorm(nn.LayerNorm):
+class LayerNorm(nn.LayerNorm):  # noqa: D101
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.eps = 1e-6

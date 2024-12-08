@@ -9,7 +9,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
-    r"""Sets one or more coordinates in a Tensor to a color.
+    r"""Set one or more coordinates in a Tensor to a color.
 
     Args:
         image: the input image on which to draw the points with shape :math`(C,H,W)` or :math`(H,W)`.
@@ -256,8 +256,8 @@ def draw_rectangle(
     return image
 
 
-def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
-    r"""Gets the left and right edges of a polygon for each y-coordinate y \in [0, h)
+def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:  # noqa: D417
+    r"""Get the left and right edges of a polygon for each y-coordinate y \in [0, h).
 
     Args:
         polygons: represents polygons to draw in BxNx2
@@ -299,8 +299,8 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     return x_left, x_right
 
 
-def _batch_polygons(polygons: List[Tensor]) -> Tensor:
-    r"""Converts a List of variable length polygons into a fixed size tensor.
+def _batch_polygons(polygons: List[Tensor]) -> Tensor:  # noqa: D417
+    r"""Convert a List of variable length polygons into a fixed size tensor.
 
     Works by repeating the last element in the tensor.
 
@@ -321,7 +321,7 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
     return batched_polygons
 
 
-def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], colors: Tensor) -> Tensor:
+def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], colors: Tensor) -> Tensor:  # noqa: D417
     r"""Draws convex polygons on a batch of image tensors.
 
     Args:

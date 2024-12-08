@@ -3,7 +3,7 @@ import torch
 from .confusion_matrix import confusion_matrix
 
 
-def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: float = 1e-6) -> torch.Tensor:
+def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: float = 1e-6) -> torch.Tensor:  # noqa: D417
     r"""Calculate mean Intersection-Over-Union (mIOU).
 
     The function internally computes the confusion matrix.

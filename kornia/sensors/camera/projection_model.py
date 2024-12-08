@@ -4,10 +4,9 @@ from kornia.core import Tensor
 from kornia.geometry.vector import Vector2, Vector3
 
 
-class Z1Projection:
+class Z1Projection:  # noqa: D101
     def project(self, points: Vector3) -> Vector2:
-        """Project one or more Vector3 from the camera frame into the canonical z=1 plane through perspective
-        division.
+        """Project one or more Vector3 from the camera frame into the canonical z=1 plane through perspective division.
 
         Args:
             points: Vector3 representing the points to project.
@@ -50,9 +49,9 @@ class Z1Projection:
         return Vector3.from_coords(points.x * depth, points.y * depth, depth)
 
 
-class OrthographicProjection:
-    def project(self, points: Vector3) -> Vector2:
+class OrthographicProjection:  # noqa: D101
+    def project(self, points: Vector3) -> Vector2:  # noqa: D102
         raise NotImplementedError
 
-    def unproject(self, points: Vector2, depth: Tensor) -> Vector3:
+    def unproject(self, points: Vector2, depth: Tensor) -> Vector3:  # noqa: D102
         raise NotImplementedError

@@ -33,8 +33,9 @@ def _merge_box_list(boxes: list[torch.Tensor], method: str = "pad") -> tuple[tor
 
 
 def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
-    """Transforms 3D and 2D in kornia format by applying the transformation matrix M. Boxes and the transformation
-    matrix could be batched or not.
+    """Transform 3D and 2D in kornia format by applying the transformation matrix M.
+
+    Boxes and the transformation matrix could be batched or not.
 
     Args:
         boxes: 2D quadrilaterals or 3D hexahedrons in kornia format.
@@ -229,7 +230,7 @@ class Boxes:
         return self
 
     @property
-    def shape(self) -> tuple[int, ...] | Size:
+    def shape(self) -> tuple[int, ...] | Size:  # noqa: D102
         return self.data.shape
 
     def get_boxes_shape(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -251,7 +252,7 @@ class Boxes:
         return heights, widths
 
     def merge(self, boxes: Boxes, inplace: bool = False) -> Boxes:
-        """Merges boxes.
+        """Merge boxes.
 
         Say, current instance holds :math:`(B, N, 4, 2)` and the incoming boxes holds :math:`(B, M, 4, 2)`,
         the merge results in :math:`(B, N + M, 4, 2)`.
@@ -270,7 +271,7 @@ class Boxes:
         obj._data = data
         return obj
 
-    def index_put(
+    def index_put(  # noqa: D102
         self, indices: tuple[Tensor, ...] | list[Tensor], values: Tensor | Boxes, inplace: bool = False
     ) -> Boxes:
         if inplace:
@@ -316,7 +317,7 @@ class Boxes:
         self._data[..., 1] -= padding_size[..., None, 2:3].to(device=self._data.device)  # top padding
         return self
 
-    def clamp(
+    def clamp(  # noqa: D102
         self,
         topleft: Optional[Tensor | tuple[int, int]] = None,
         botright: Optional[Tensor | tuple[int, int]] = None,
@@ -376,7 +377,7 @@ class Boxes:
         """
         raise NotImplementedError
 
-    def filter_boxes_by_area(
+    def filter_boxes_by_area(  # noqa: D102
         self, min_area: Optional[float] = None, max_area: Optional[float] = None, inplace: bool = False
     ) -> Boxes:
         area = self.compute_area()
@@ -396,7 +397,7 @@ class Boxes:
         return obj
 
     def compute_area(self) -> torch.Tensor:
-        """Returns :math:`(B, N)`."""
+        """Return :math:`(B, N)`."""
         coords = self._data.view((-1, 4, 2)) if self._data.ndim == 4 else self._data
         # calculate centroid of the box
         centroid = coords.mean(dim=1, keepdim=True)
@@ -415,7 +416,7 @@ class Boxes:
     def from_tensor(
         cls, boxes: torch.Tensor | list[torch.Tensor], mode: str = "xyxy", validate_boxes: bool = True
     ) -> Boxes:
-        r"""Helper method to easily create :class:`Boxes` from boxes stored in another format.
+        r"""Create :class:`Boxes` from boxes stored in another format.
 
         Args:
             boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
@@ -468,8 +469,9 @@ class Boxes:
     def to_tensor(
         self, mode: Optional[str] = None, as_padded_sequence: bool = False
     ) -> torch.Tensor | list[torch.Tensor]:
-        r"""Cast :class:`Boxes` to a tensor. ``mode`` controls which 2D boxes format should be use to represent
-        boxes in the tensor.
+        r"""Cast :class:`Boxes` to a tensor.
+
+        ``mode`` controls which 2D boxes format should be use to represent boxes in the tensor.
 
         Args:
             mode: the output box format. It could be:
@@ -614,11 +616,11 @@ class Boxes:
         return obj
 
     def transform_boxes_(self, M: torch.Tensor) -> Boxes:
-        """Inplace version of :func:`Boxes.transform_boxes`"""
+        """Inplace version of :func:`Boxes.transform_boxes`."""
         return self.transform_boxes(M, inplace=True)
 
     def translate(self, size: Tensor, method: str = "warp", inplace: bool = False) -> Boxes:
-        """Translates boxes by the provided size.
+        """Translate boxes by the provided size.
 
         Args:
             size: translate size for x, y direction, shape of :math:`(B, 2)`.
@@ -641,11 +643,11 @@ class Boxes:
         return self.transform_boxes(M, inplace=inplace)
 
     @property
-    def data(self) -> torch.Tensor:
+    def data(self) -> torch.Tensor:  # noqa: D102
         return self._data
 
     @property
-    def mode(self) -> str:
+    def mode(self) -> str:  # noqa: D102
         return self._mode
 
     @property
@@ -666,14 +668,14 @@ class Boxes:
         self._data = self._data.to(device=device, dtype=dtype)
         return self
 
-    def clone(self) -> Boxes:
+    def clone(self) -> Boxes:  # noqa: D102
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
         obj._N = self._N
         obj._is_batched = self._is_batched
         return obj
 
-    def type(self, dtype: torch.dtype) -> Boxes:
+    def type(self, dtype: torch.dtype) -> Boxes:  # noqa: D102
         self._data = self._data.type(dtype)
         return self
 
@@ -765,7 +767,7 @@ class Boxes3D:
         return self
 
     @property
-    def shape(self) -> tuple[int, ...] | Size:
+    def shape(self) -> tuple[int, ...] | Size:  # noqa: D102
         return self.data.shape
 
     def get_boxes_shape(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -789,7 +791,7 @@ class Boxes3D:
 
     @classmethod
     def from_tensor(cls, boxes: torch.Tensor, mode: str = "xyzxyz", validate_boxes: bool = True) -> Boxes3D:
-        r"""Helper method to easily create :class:`Boxes3D` from 3D boxes stored in another format.
+        r"""Create :class:`Boxes3D` from 3D boxes stored in another format.
 
         Args:
             boxes: 3D boxes, shape of :math:`(N,6)` or :math:`(B,N,6)`.
@@ -866,8 +868,9 @@ class Boxes3D:
         return cls(hexahedrons, raise_if_not_floating_point=False, mode=mode)
 
     def to_tensor(self, mode: str = "xyzxyz") -> torch.Tensor:
-        r"""Cast :class:`Boxes3D` to a tensor. ``mode`` controls which 3D boxes format should be use to represent
-        boxes in the tensor.
+        r"""Cast :class:`Boxes3D` to a tensor.
+
+        ``mode`` controls which 3D boxes format should be use to represent boxes in the tensor.
 
         Args:
             mode: The format in which the boxes are provided.
@@ -1049,15 +1052,15 @@ class Boxes3D:
         return Boxes3D(transformed_boxes, False, "xyzxyz_plus")
 
     def transform_boxes_(self, M: torch.Tensor) -> Boxes3D:
-        """Inplace version of :func:`Boxes3D.transform_boxes`"""
+        """Inplace version of :func:`Boxes3D.transform_boxes`."""
         return self.transform_boxes(M, inplace=True)
 
     @property
-    def data(self) -> torch.Tensor:
+    def data(self) -> torch.Tensor:  # noqa: D102
         return self._data
 
     @property
-    def mode(self) -> str:
+    def mode(self) -> str:  # noqa: D102
         return self._mode
 
     @property

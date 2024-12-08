@@ -31,7 +31,7 @@ __all__ = [
 #################################################################################
 
 
-class ConvLayer(nn.Module):
+class ConvLayer(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -64,7 +64,7 @@ class ConvLayer(nn.Module):
         self.norm = build_norm(norm, num_features=out_channels)
         self.act = build_act(act_func)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         if self.dropout is not None:
             x = self.dropout(x)
         x = self.conv(x)
@@ -75,8 +75,8 @@ class ConvLayer(nn.Module):
         return x
 
 
-class IdentityLayer(nn.Module):
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+class IdentityLayer(nn.Module):  # noqa: D101
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         return x
 
 
@@ -85,7 +85,7 @@ class IdentityLayer(nn.Module):
 #################################################################################
 
 
-class DSConv(nn.Module):
+class DSConv(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -116,13 +116,13 @@ class DSConv(nn.Module):
             in_channels, out_channels, 1, norm=norm[1], act_func=act_func[1], use_bias=use_bias[1]
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         x = self.depth_conv(x)
         x = self.point_conv(x)
         return x
 
 
-class MBConv(nn.Module):
+class MBConv(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -159,14 +159,14 @@ class MBConv(nn.Module):
             mid_channels, out_channels, 1, norm=norm[2], act_func=act_func[2], use_bias=use_bias[2]
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         x = self.inverted_conv(x)
         x = self.depth_conv(x)
         x = self.point_conv(x)
         return x
 
 
-class FusedMBConv(nn.Module):
+class FusedMBConv(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -201,13 +201,13 @@ class FusedMBConv(nn.Module):
             mid_channels, out_channels, 1, use_bias=use_bias[1], norm=norm[1], act_func=act_func[1]
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         x = self.spatial_conv(x)
         x = self.point_conv(x)
         return x
 
 
-class ResBlock(nn.Module):
+class ResBlock(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -234,7 +234,7 @@ class ResBlock(nn.Module):
             mid_channels, out_channels, kernel_size, 1, use_bias=use_bias[1], norm=norm[1], act_func=act_func[1]
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         x = self.conv1(x)
         x = self.conv2(x)
         return x
@@ -332,7 +332,7 @@ class LiteMLA(nn.Module):
         return out
 
 
-class EfficientViTBlock(nn.Module):
+class EfficientViTBlock(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_channels: int,
@@ -359,7 +359,7 @@ class EfficientViTBlock(nn.Module):
         )
         self.local_module = ResidualBlock(local_module, IdentityLayer())
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         x = self.context_module(x)
         x = self.local_module(x)
         return x
@@ -370,7 +370,7 @@ class EfficientViTBlock(nn.Module):
 #################################################################################
 
 
-class ResidualBlock(nn.Module):
+class ResidualBlock(nn.Module):  # noqa: D101
     def __init__(
         self, main: nn.Module or None, shortcut: nn.Module or None, post_act=None, pre_norm: nn.Module or None = None
     ):
@@ -381,13 +381,13 @@ class ResidualBlock(nn.Module):
         self.shortcut = shortcut
         self.post_act = build_act(post_act)
 
-    def forward_main(self, x: torch.Tensor) -> torch.Tensor:
+    def forward_main(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         if self.pre_norm is None:
             return self.main(x)
         else:
             return self.main(self.pre_norm(x))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         if self.main is None:
             res = x
         elif self.shortcut is None:
@@ -399,7 +399,7 @@ class ResidualBlock(nn.Module):
         return res
 
 
-class OpSequential(nn.Module):
+class OpSequential(nn.Module):  # noqa: D101
     def __init__(self, op_list: list[nn.Module or None]):
         super().__init__()
         valid_op_list = []
@@ -408,7 +408,7 @@ class OpSequential(nn.Module):
                 valid_op_list.append(op)
         self.op_list = nn.ModuleList(valid_op_list)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         for op in self.op_list:
             x = op(x)
         return x

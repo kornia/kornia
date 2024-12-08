@@ -7,8 +7,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def project_points_orthographic(points_in_camera: Tensor) -> Tensor:
-    r"""Project one or more points from the camera frame into the canonical z=1 plane through orthographic
-    projection.
+    r"""Project points from the camera frame into the canonical z=1 plane through orthographic projection.
 
     .. math::
         \begin{bmatrix} u \\ v \end{bmatrix} =

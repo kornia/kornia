@@ -8,7 +8,7 @@ from kornia.metrics.average_meter import AverageMeter
 # import yaml
 
 
-class TrainerState(Enum):
+class TrainerState(Enum):  # noqa: D101
     STARTING = 0
     TRAINING = 1
     VALIDATE = 2
@@ -17,7 +17,7 @@ class TrainerState(Enum):
 
 # NOTE: this class needs to be redefined according to the needed parameters.
 @dataclass
-class Configuration:
+class Configuration:  # noqa: D101
     data_path: str = field(default="./", metadata={"help": "The input data directory."})
     batch_size: int = field(default=1, metadata={"help": "The number of batches for the training dataloader."})
     num_epochs: int = field(default=1, metadata={"help": "The number of epochs to run the training."})
@@ -57,7 +57,7 @@ class Lambda(Module):
         super().__init__()
         self.fcn = fcn
 
-    def forward(self, x: Tensor) -> Any:
+    def forward(self, x: Tensor) -> Any:  # noqa: D102
         return self.fcn(x)
 
 
@@ -68,7 +68,7 @@ class StatsTracker:
         self._stats: Dict[str, AverageMeter] = {}
 
     @property
-    def stats(self) -> Dict[str, AverageMeter]:
+    def stats(self) -> Dict[str, AverageMeter]:  # noqa: D102
         return self._stats
 
     def update(self, key: str, val: float, batch_size: int) -> None:

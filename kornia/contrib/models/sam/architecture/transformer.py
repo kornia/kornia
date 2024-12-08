@@ -15,8 +15,8 @@ from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
-class TwoWayTransformer(Module):
-    def __init__(
+class TwoWayTransformer(Module):  # noqa: D101
+    def __init__(  # noqa: D417
         self,
         depth: int,
         embedding_dim: int,
@@ -25,7 +25,7 @@ class TwoWayTransformer(Module):
         activation: type[Module] = nn.ReLU,
         attention_downsample_rate: int = 2,
     ) -> None:
-        """A transformer decoder that attends to an input image using queries whose positional embedding is
+        """Construct a transformer decoder that attends to an input image using queries whose positional embedding is
         supplied.
 
         Args:
@@ -35,7 +35,7 @@ class TwoWayTransformer(Module):
             mlp_dim: the channel dimension internal to the MLP block
             activation: the activation to use in the MLP block
 
-        """
+        """  # noqa: D205
         super().__init__()
         self.depth = depth
         self.embedding_dim = embedding_dim
@@ -59,7 +59,9 @@ class TwoWayTransformer(Module):
         self.norm_final_attn = nn.LayerNorm(embedding_dim)
 
     def forward(self, image_embedding: Tensor, image_pe: Tensor, point_embedding: Tensor) -> tuple[Tensor, Tensor]:
-        """Args:
+        """Run forward.
+
+        Args:
             image_embedding: image to attend to. Should be shape B x embedding_dim x h x w for any h and w.
             image_pe: the positional encoding to add to the image. Must have the same shape as image_embedding.
             point_embedding: the embedding to add to the query points. Must have shape B x N_points x embedding_dim
@@ -93,8 +95,8 @@ class TwoWayTransformer(Module):
         return queries, keys
 
 
-class TwoWayAttentionBlock(Module):
-    def __init__(
+class TwoWayAttentionBlock(Module):  # noqa: D101
+    def __init__(  # noqa: D417
         self,
         embedding_dim: int,
         num_heads: int,
@@ -103,8 +105,10 @@ class TwoWayAttentionBlock(Module):
         attention_downsample_rate: int = 2,
         skip_first_layer_pe: bool = False,
     ) -> None:
-        """A transformer block with four layers: (1) self-attention of sparse inputs, (2) cross attention of sparse
-        inputs to dense inputs, (3) mlp block on sparse inputs, and (4) cross attention of dense inputs to sparse
+        """Construct a transformer block with four layers.
+
+        (1) self-attention of sparse inputs, (2) cross attention of
+        sparse inputs to dense inputs, (3) mlp block on sparse inputs, and (4) cross attention of dense inputs to sparse
         inputs.
 
         Args:
@@ -130,7 +134,7 @@ class TwoWayAttentionBlock(Module):
 
         self.skip_first_layer_pe = skip_first_layer_pe
 
-    def forward(self, queries: Tensor, keys: Tensor, query_pe: Tensor, key_pe: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, queries: Tensor, keys: Tensor, query_pe: Tensor, key_pe: Tensor) -> tuple[Tensor, Tensor]:  # noqa: D102
         # Self attention block
         if self.skip_first_layer_pe:
             queries = self.self_attn(q=queries, k=queries, v=queries)
@@ -163,9 +167,7 @@ class TwoWayAttentionBlock(Module):
 
 
 class Attention(Module):
-    """An attention layer that allows for downscaling the size of the embedding after projection to queries, keys,
-    and values.
-    """
+    """Attention layer that allows for downscaling the embedding after projection to queries, keys, and values."""
 
     def __init__(self, embedding_dim: int, num_heads: int, downsample_rate: int = 1) -> None:
         super().__init__()
@@ -189,7 +191,7 @@ class Attention(Module):
         x = x.transpose(1, 2)
         return x.reshape(b, n_tokens, n_heads * c_per_head)  # B x N_tokens x C
 
-    def forward(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:
+    def forward(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:  # noqa: D102
         # Input projections
         q = self.q_proj(q)
         k = self.k_proj(k)

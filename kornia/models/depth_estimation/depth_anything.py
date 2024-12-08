@@ -7,12 +7,12 @@ from .base import DepthEstimation
 __all__ = ["DepthAnythingONNXBuilder"]
 
 
-class DepthAnythingONNXBuilder:
+class DepthAnythingONNXBuilder:  # noqa: D101
     @staticmethod
     def build(
         model_name: str = "depth-anything-v2-small", model_type: str = "model", cache_dir: Optional[str] = None
     ) -> DepthEstimation:
-        """Exports a DepthAnything model to an ONNX model file.
+        """Export a DepthAnything model to an ONNX model file.
 
         Args:
             model_name: The name of the model to be loaded. Valid model names include:

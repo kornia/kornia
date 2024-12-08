@@ -22,7 +22,7 @@ from kornia.contrib.models.efficient_vit.nn.ops import (  # type: ignore
 from kornia.contrib.models.efficient_vit.utils import build_kwargs_from_config
 
 
-class EfficientViTBackbone(nn.Module):
+class EfficientViTBackbone(nn.Module):  # noqa: D101
     def __init__(
         self,
         width_list: list[int],
@@ -99,7 +99,7 @@ class EfficientViTBackbone(nn.Module):
         self.stages = nn.ModuleList(stages)
 
     @staticmethod
-    def build_local_block(
+    def build_local_block(  # noqa: D102
         in_channels: int,
         out_channels: int,
         stride: int,
@@ -129,7 +129,7 @@ class EfficientViTBackbone(nn.Module):
             )
         return block
 
-    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:  # noqa: D102
         output_dict = {"input": x}
         output_dict["stage0"] = x = self.input_stem(x)
         for stage_id, stage in enumerate(self.stages, 1):
@@ -138,7 +138,7 @@ class EfficientViTBackbone(nn.Module):
         return output_dict
 
 
-def efficientvit_backbone_b0(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
+def efficientvit_backbone_b0(**kwargs: dict[str, Any]) -> EfficientViTBackbone:  # noqa: D103
     backbone = EfficientViTBackbone(
         width_list=[8, 16, 32, 64, 128],
         depth_list=[1, 2, 2, 2, 2],
@@ -148,7 +148,7 @@ def efficientvit_backbone_b0(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     return backbone
 
 
-def efficientvit_backbone_b1(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
+def efficientvit_backbone_b1(**kwargs: dict[str, Any]) -> EfficientViTBackbone:  # noqa: D103
     backbone = EfficientViTBackbone(
         width_list=[16, 32, 64, 128, 256],
         depth_list=[1, 2, 3, 3, 4],
@@ -158,7 +158,7 @@ def efficientvit_backbone_b1(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     return backbone
 
 
-def efficientvit_backbone_b2(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
+def efficientvit_backbone_b2(**kwargs: dict[str, Any]) -> EfficientViTBackbone:  # noqa: D103
     backbone = EfficientViTBackbone(
         width_list=[24, 48, 96, 192, 384],
         depth_list=[1, 3, 4, 4, 6],
@@ -168,7 +168,7 @@ def efficientvit_backbone_b2(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     return backbone
 
 
-def efficientvit_backbone_b3(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
+def efficientvit_backbone_b3(**kwargs: dict[str, Any]) -> EfficientViTBackbone:  # noqa: D103
     backbone = EfficientViTBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 4, 6, 6, 9],
@@ -178,7 +178,7 @@ def efficientvit_backbone_b3(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     return backbone
 
 
-class EfficientViTLargeBackbone(nn.Module):
+class EfficientViTLargeBackbone(nn.Module):  # noqa: D101
     def __init__(
         self,
         width_list: list[int],
@@ -257,7 +257,7 @@ class EfficientViTLargeBackbone(nn.Module):
         self.stages = nn.ModuleList(stages)
 
     @staticmethod
-    def build_local_block(
+    def build_local_block(  # noqa: D102
         stage_id: int,
         in_channels: int,
         out_channels: int,
@@ -298,7 +298,7 @@ class EfficientViTLargeBackbone(nn.Module):
             )
         return block
 
-    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:  # noqa: D102
         output_dict = {"input": x}
         for stage_id, stage in enumerate(self.stages):
             output_dict[f"stage{stage_id}"] = x = stage(x)
@@ -306,7 +306,7 @@ class EfficientViTLargeBackbone(nn.Module):
         return output_dict
 
 
-def efficientvit_backbone_l0(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
+def efficientvit_backbone_l0(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:  # noqa: D103
     backbone = EfficientViTLargeBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 1, 1, 4, 4],
@@ -315,7 +315,7 @@ def efficientvit_backbone_l0(**kwargs: dict[str, Any]) -> EfficientViTLargeBackb
     return backbone
 
 
-def efficientvit_backbone_l1(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
+def efficientvit_backbone_l1(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:  # noqa: D103
     backbone = EfficientViTLargeBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 1, 1, 6, 6],
@@ -324,7 +324,7 @@ def efficientvit_backbone_l1(**kwargs: dict[str, Any]) -> EfficientViTLargeBackb
     return backbone
 
 
-def efficientvit_backbone_l2(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
+def efficientvit_backbone_l2(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:  # noqa: D103
     backbone = EfficientViTLargeBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 2, 2, 8, 8],
@@ -333,7 +333,7 @@ def efficientvit_backbone_l2(**kwargs: dict[str, Any]) -> EfficientViTLargeBackb
     return backbone
 
 
-def efficientvit_backbone_l3(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
+def efficientvit_backbone_l3(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:  # noqa: D103
     backbone = EfficientViTLargeBackbone(
         width_list=[64, 128, 256, 512, 1024],
         depth_list=[1, 2, 2, 8, 8],

@@ -33,7 +33,7 @@ except ImportError:
     XFORMERS_AVAILABLE = False
 
 
-class Block(nn.Module):
+class Block(nn.Module):  # noqa: D101
     def __init__(
         self,
         dim: int,
@@ -79,7 +79,7 @@ class Block(nn.Module):
 
         self.sample_drop_ratio = drop_path
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         def attn_residual_func(x: Tensor) -> Tensor:
             return self.ls1(self.attn(self.norm1(x)))
 
@@ -107,7 +107,7 @@ class Block(nn.Module):
         return x
 
 
-def drop_add_residual_stochastic_depth(
+def drop_add_residual_stochastic_depth(  # noqa: D103
     x: Tensor,
     residual_func: Callable[[Tensor], Tensor],
     sample_drop_ratio: float = 0.0,
@@ -131,7 +131,7 @@ def drop_add_residual_stochastic_depth(
     return x_plus_residual.view_as(x)
 
 
-def get_branges_scales(x, sample_drop_ratio=0.0):
+def get_branges_scales(x, sample_drop_ratio=0.0):  # noqa: D103
     b, n, d = x.shape
     sample_subset_size = max(int(b * (1 - sample_drop_ratio)), 1)
     brange = (torch.randperm(b, device=x.device))[:sample_subset_size]
@@ -139,7 +139,7 @@ def get_branges_scales(x, sample_drop_ratio=0.0):
     return brange, residual_scale_factor
 
 
-def add_residual(x, brange, residual, residual_scale_factor, scaling_vector=None):
+def add_residual(x, brange, residual, residual_scale_factor, scaling_vector=None):  # noqa: D103
     if scaling_vector is None:
         x_flat = x.flatten(1)
         residual = residual.flatten(1)
@@ -155,7 +155,7 @@ attn_bias_cache: Dict[Tuple, Any] = {}
 
 
 def get_attn_bias_and_cat(x_list, branges=None):
-    """This will perform the index select, cat the tensors, and provide the attn_bias from cache."""
+    """Perform the index select, cat the tensors, and provide the attn_bias from cache."""
     batch_sizes = [b.shape[0] for b in branges] if branges is not None else [x.shape[0] for x in x_list]
     all_shapes = tuple((b, x.shape[1]) for b, x in zip(batch_sizes, x_list))
     if all_shapes not in attn_bias_cache.keys():
@@ -176,7 +176,7 @@ def get_attn_bias_and_cat(x_list, branges=None):
     return attn_bias_cache[all_shapes], cat_tensors
 
 
-def drop_add_residual_stochastic_depth_list(
+def drop_add_residual_stochastic_depth_list(  # noqa: D103
     x_list: List[Tensor],
     residual_func: Callable[[Tensor, Any], Tensor],
     sample_drop_ratio: float = 0.0,
@@ -199,7 +199,7 @@ def drop_add_residual_stochastic_depth_list(
     return outputs
 
 
-class NestedTensorBlock(Block):
+class NestedTensorBlock(Block):  # noqa: D101
     def forward_nested(self, x_list: List[Tensor]) -> List[Tensor]:
         """x_list contains a list of tensors to nest together and run."""
         KORNIA_CHECK(isinstance(self.attn, MemEffAttention))
@@ -238,7 +238,7 @@ class NestedTensorBlock(Block):
             x = x + ffn_residual_func(x)
             return attn_bias.split(x)
 
-    def forward(self, x_or_x_list):
+    def forward(self, x_or_x_list):  # noqa: D102
         if isinstance(x_or_x_list, Tensor):
             return super().forward(x_or_x_list)
         elif isinstance(x_or_x_list, list):

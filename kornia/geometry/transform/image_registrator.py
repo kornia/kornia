@@ -14,21 +14,19 @@ from .pyramid import build_pyramid
 __all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 
 
-class BaseModel(Module):
+class BaseModel(Module):  # noqa: D101
     @abstractmethod
-    def reset_model(self) -> None: ...
+    def reset_model(self) -> None: ...  # noqa: D102
 
     @abstractmethod
-    def forward(self) -> Tensor: ...
+    def forward(self) -> Tensor: ...  # noqa: D102
 
     @abstractmethod
-    def forward_inverse(self) -> Tensor: ...
+    def forward_inverse(self) -> Tensor: ...  # noqa: D102
 
 
 class Homography(BaseModel):
-    r"""Homography geometric model to be used together with ImageRegistrator module for the optimization-based
-    image registration.
-    """
+    r"""Homography geometric model to be used with ImageRegistrator for the optimization-based image registration."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -39,7 +37,7 @@ class Homography(BaseModel):
         return f"{self.__class__.__name__}({self.model})"
 
     def reset_model(self) -> None:
-        """Initializes the model with identity transform."""
+        """Initialize the model with identity transform."""
         torch.nn.init.eye_(self.model)
 
     def forward(self) -> Tensor:
@@ -62,8 +60,7 @@ class Homography(BaseModel):
 
 
 class Similarity(BaseModel):
-    """Similarity geometric model to be used together with ImageRegistrator module for the optimization-based image
-    registration.
+    """Similarity geometric model to be used with ImageRegistrator module for the optimization-based image registration.
 
     Args:
         rotation: if True, the rotation is optimizable, else constant zero.
@@ -205,14 +202,15 @@ class ImageRegistrator(Module):
         return loss
 
     def reset_model(self) -> None:
-        """Calls model reset function."""
+        """Call model reset function."""
         self.model.reset_model()
 
     def register(
         self, src_img: Tensor, dst_img: Tensor, verbose: bool = False, output_intermediate_models: bool = False
     ) -> Union[Tensor, Tuple[Tensor, List[Tensor]]]:
-        r"""Estimate the tranformation' which warps src_img into dst_img by gradient descent. The shape of the
-        tensors is not checked, because it may depend on the model, e.g. volume registration.
+        r"""Estimate the transformation which warps src_img into dst_img by gradient descent.
+
+        The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration.
 
         Args:
             src_img: Input image tensor.

@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 
-class SwiGLUFFN(nn.Module):
+class SwiGLUFFN(nn.Module):  # noqa: D101
     def __init__(
         self,
         in_features: int,
@@ -26,7 +26,7 @@ class SwiGLUFFN(nn.Module):
         self.w12 = nn.Linear(in_features, 2 * hidden_features, bias=bias)
         self.w3 = nn.Linear(hidden_features, out_features, bias=bias)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         x12 = self.w12(x)
         x1, x2 = x12.chunk(2, dim=-1)
         hidden = F.silu(x1) * x2
@@ -42,7 +42,7 @@ except ImportError:
     XFORMERS_AVAILABLE = False
 
 
-class SwiGLUFFNFused(SwiGLU):
+class SwiGLUFFNFused(SwiGLU):  # noqa: D101
     def __init__(
         self,
         in_features: int,

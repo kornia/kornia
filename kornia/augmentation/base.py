@@ -25,7 +25,7 @@ TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
 # https://github.com/python/mypy/issues/8795
 # Based on the trick that torch.nn.Module does for the forward method
 def _apply_transform_unimplemented(self: Module, *input: Any) -> Tensor:
-    r"""Defines the computation performed at every call.
+    r"""Define the computation performed at every call.
 
     Should be overridden by all subclasses.
     """

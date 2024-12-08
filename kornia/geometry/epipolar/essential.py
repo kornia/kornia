@@ -586,7 +586,9 @@ def relative_camera_motion(
 def find_essential(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Args:
+    r"""Find essential matrices.
+
+    Args:
          points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
          points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
          weights: Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.

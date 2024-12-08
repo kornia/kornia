@@ -7,7 +7,7 @@ from kornia.geometry.liegroup import Se2, Se3, So2, So3
 from kornia.geometry.quaternion import Quaternion
 
 
-def check_matrix_shape(matrix: Tensor, matrix_type: str = "R") -> None:
+def check_matrix_shape(matrix: Tensor, matrix_type: str = "R") -> None:  # noqa: D103
     target_shapes = []
     if matrix_type == "R":
         target_shapes = [[2, 2], [3, 3]]
@@ -37,8 +37,8 @@ class NamedPose:
 
     """
 
-    def __init__(self, dst_from_src: Se2 | Se3, frame_src: str | None = None, frame_dst: str | None = None) -> None:
-        """Constructor for NamedPose.
+    def __init__(self, dst_from_src: Se2 | Se3, frame_src: str | None = None, frame_dst: str | None = None) -> None:  # noqa: D417
+        """Construct NamedPose.
 
         Args:
             dst_from_src: Pose from source frame to destination frame.

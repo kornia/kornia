@@ -1,7 +1,7 @@
 """Based on the code from
 https://github.com/PaddlePaddle/PaddleDetection/blob/ec37e66685f3bc5a38cd13f60685acea175922e1/
 ppdet/modeling/transformers/hybrid_encoder.py.
-"""
+"""  # noqa: D205
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from kornia.core import Module, Tensor, concatenate, pad
 from kornia.utils._compat import torch_meshgrid
 
 
-class RepVggBlock(Module):
+class RepVggBlock(Module):  # noqa: D101
     def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 3, act="none")
@@ -26,7 +26,7 @@ class RepVggBlock(Module):
         self.act = nn.SiLU(inplace=True)
         self.conv: Optional[nn.Conv2d] = None
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         if self.conv is not None:
             out = self.act(self.conv(x))
         else:
@@ -34,7 +34,7 @@ class RepVggBlock(Module):
         return out
 
     @torch.no_grad()
-    def optimize_for_deployment(self) -> None:
+    def optimize_for_deployment(self) -> None:  # noqa: D102
         def _fuse_conv_bn_weights(m: ConvNormAct) -> tuple[nn.Parameter, nn.Parameter]:
             if m.norm.running_mean is None or m.norm.running_var is None:
                 raise ValueError
@@ -59,7 +59,7 @@ class RepVggBlock(Module):
         self.conv.bias = bias3x3
 
 
-class CSPRepLayer(Module):
+class CSPRepLayer(Module):  # noqa: D101
     def __init__(self, in_channels: int, out_channels: int, num_blocks: int, expansion: float = 1.0) -> None:
         super().__init__()
         hidden_channels = int(out_channels * expansion)
@@ -72,13 +72,13 @@ class CSPRepLayer(Module):
             else nn.Identity()
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return self.conv3(self.bottlenecks(self.conv1(x)) + self.conv2(x))
 
 
 # almost identical to nn.TransformerEncoderLayer
 # but add positional embeddings to q and k
-class AIFI(Module):
+class AIFI(Module):  # noqa: D101
     def __init__(self, embed_dim: int, num_heads: int, dim_feedforward: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout)  # NOTE: batch_first = False
@@ -93,7 +93,7 @@ class AIFI(Module):
         self.norm2 = nn.LayerNorm(embed_dim)
         self.act = nn.GELU()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         # using post-norm
         N, C, H, W = x.shape
         x = x.permute(2, 3, 0, 1).flatten(0, 1)  # (N, C, H, W) -> (H * W, N, C)
@@ -109,7 +109,7 @@ class AIFI(Module):
         x = x.view(H, W, N, C).permute(2, 3, 0, 1)  # (H * W, N, C) -> (N, C, H, W)
         return x
 
-    def ffn(self, x: Tensor) -> Tensor:
+    def ffn(self, x: Tensor) -> Tensor:  # noqa: D102
         return self.linear2(self.dropout(self.act(self.linear1(x))))
 
     # TODO: make this into a reusable function
@@ -153,13 +153,15 @@ class AIFI(Module):
         return pos_emb.unsqueeze(1)  # (H * W, 1, C)
 
 
-class TransformerEncoder(nn.Module):
+class TransformerEncoder(nn.Module):  # noqa: D101
     def __init__(self, encoder_layer: nn.Module, num_layers: int) -> None:
         super().__init__()
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(num_layers)])
         self.num_layers = num_layers
 
-    def forward(self, src: Tensor) -> Tensor:  # NOTE: Missing src_mask: Tensor = None, pos_embed: Tensor = None
+    def forward(  # noqa: D102
+        self, src: Tensor
+    ) -> Tensor:  # NOTE: Missing src_mask: Tensor = None, pos_embed: Tensor = None
         output = src
         for layer in self.layers:
             output = layer(output)
@@ -167,7 +169,7 @@ class TransformerEncoder(nn.Module):
         return output
 
 
-class CCFM(Module):
+class CCFM(Module):  # noqa: D101
     def __init__(self, num_fmaps: int, hidden_dim: int, expansion: float = 1.0) -> None:
         super().__init__()
         self.lateral_convs = nn.ModuleList()
@@ -182,7 +184,7 @@ class CCFM(Module):
             self.downsample_convs.append(ConvNormAct(hidden_dim, hidden_dim, 3, 2, "silu"))
             self.pan_blocks.append(CSPRepLayer(hidden_dim * 2, hidden_dim, 3, expansion))
 
-    def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
+    def forward(self, fmaps: list[Tensor]) -> list[Tensor]:  # noqa: D102
         # fmaps is ordered from hi-res to low-res
         fmaps = list(fmaps)  # shallow clone
 
@@ -207,7 +209,7 @@ class CCFM(Module):
         return fmaps
 
 
-class HybridEncoder(Module):
+class HybridEncoder(Module):  # noqa: D101
     def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int, expansion: float = 1.0) -> None:
         super().__init__()
         self.input_proj = nn.ModuleList(
@@ -222,7 +224,7 @@ class HybridEncoder(Module):
         self.encoder = nn.Sequential(TransformerEncoder(encoder_layer, 1))
         self.ccfm = CCFM(len(in_channels), hidden_dim, expansion)
 
-    def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
+    def forward(self, fmaps: list[Tensor]) -> list[Tensor]:  # noqa: D102
         projected_maps = [proj(fmap) for proj, fmap in zip(self.input_proj, fmaps)]
         projected_maps[-1] = self.encoder(projected_maps[-1])
         new_fmaps = self.ccfm(projected_maps)

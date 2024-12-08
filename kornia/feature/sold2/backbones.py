@@ -12,7 +12,7 @@ from torch.nn.functional import pixel_shuffle, softmax
 from kornia.core import Module, Tensor
 
 
-class HourglassConfig(NamedTuple):
+class HourglassConfig(NamedTuple):  # noqa: D101
     depth: int
     num_stacks: int
     num_blocks: int
@@ -41,11 +41,11 @@ class HourglassBackbone(Module):
         self.head = MultitaskHead
         self.net = hg(HourglassConfig(depth, num_stacks, num_blocks, num_classes, input_channel, head=self.head))
 
-    def forward(self, input_images: Tensor) -> Tensor:
+    def forward(self, input_images: Tensor) -> Tensor:  # noqa: D102
         return self.net(input_images)
 
 
-class MultitaskHead(Module):
+class MultitaskHead(Module):  # noqa: D101
     def __init__(self, input_channels: int) -> None:
         super().__init__()
 
@@ -63,11 +63,11 @@ class MultitaskHead(Module):
             )
         self.heads = nn.ModuleList(heads)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return torch.cat([head(x) for head in self.heads], dim=1)
 
 
-class Bottleneck2D(Module):
+class Bottleneck2D(Module):  # noqa: D101
     def __init__(
         self, inplanes: int, planes: int, stride: Union[int, Tuple[int, int]] = 1, downsample: Optional[Module] = None
     ) -> None:
@@ -83,7 +83,7 @@ class Bottleneck2D(Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         residual = x
 
         out = self.bn1(x)
@@ -106,7 +106,7 @@ class Bottleneck2D(Module):
         return out
 
 
-class Hourglass(Module):
+class Hourglass(Module):  # noqa: D101
     def __init__(self, block: Type[Bottleneck2D], num_blocks: int, planes: int, depth: int, expansion: int = 2) -> None:
         super().__init__()
         self.depth = depth
@@ -145,7 +145,7 @@ class Hourglass(Module):
         out = up1 + up2
         return out
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         return self._hour_glass_forward(self.depth, x)
 
 
@@ -215,7 +215,7 @@ class HourglassNet(Module):
         conv = nn.Conv2d(inplanes, outplanes, kernel_size=1)
         return nn.Sequential(conv, bn, self.relu)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         out = []
         x = self.conv1(x)
         x = self.bn1(x)
@@ -240,7 +240,7 @@ class HourglassNet(Module):
         return y
 
 
-def hg(cfg: HourglassConfig) -> HourglassNet:
+def hg(cfg: HourglassConfig) -> HourglassNet:  # noqa: D103
     return HourglassNet(
         Bottleneck2D,
         head=cfg.head,
@@ -272,7 +272,7 @@ class SuperpointDecoder(Module):
         self.convPb = nn.Conv2d(256, 65, kernel_size=1, stride=1, padding=0)
         self.grid_size = grid_size
 
-    def forward(self, input_features: Tensor) -> Tensor:
+    def forward(self, input_features: Tensor) -> Tensor:  # noqa: D102
         feat = self.relu(self.convPa(input_features))
         semi = self.convPb(feat)
 
@@ -336,7 +336,7 @@ class PixelShuffleDecoder(Module):
             return [256, 64, 16]
         return [256, 64, 16, 4]
 
-    def forward(self, input_features: Tensor) -> Tensor:
+    def forward(self, input_features: Tensor) -> Tensor:  # noqa: D102
         # Iterate til output block
         out = input_features
         for block in self.conv_block_lst[:-1]:
@@ -367,7 +367,7 @@ class SuperpointDescriptor(Module):
         self.convPa = nn.Conv2d(input_feat_dim, 256, kernel_size=3, stride=1, padding=1)
         self.convPb = nn.Conv2d(256, 128, kernel_size=1, stride=1, padding=0)
 
-    def forward(self, input_features: Tensor) -> Tensor:
+    def forward(self, input_features: Tensor) -> Tensor:  # noqa: D102
         feat = self.relu(self.convPa(input_features))
         semi = self.convPb(feat)
 
@@ -409,7 +409,7 @@ class SOLD2Net(Module):
         if "use_descriptor" in self.cfg:
             self.descriptor_decoder = SuperpointDescriptor(feat_channel)
 
-    def forward(self, input_images: Tensor) -> Dict[str, Tensor]:
+    def forward(self, input_images: Tensor) -> Dict[str, Tensor]:  # noqa: D102
         # The backbone
         features = self.backbone_net(input_images)
 

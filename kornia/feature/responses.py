@@ -308,7 +308,7 @@ class BlobDoG(Module):
     def __repr__(self) -> str:
         return self.__class__.__name__
 
-    def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
+    def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:  # noqa: D102
         return dog_response(input)
 
 
@@ -328,7 +328,7 @@ class BlobDoGSingle(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}, sigma1={self.sigma1}, sigma2={self.sigma2})"
 
-    def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
+    def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:  # noqa: D102
         return dog_response_single(input, self.sigma1, self.sigma2)
 
 
@@ -353,7 +353,7 @@ class CornerHarris(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(k={self.k}, grads_mode={self.grads_mode})"
 
-    def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
+    def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:  # noqa: D102
         return harris_response(input, self.k, self.grads_mode, sigmas)
 
 
@@ -372,7 +372,7 @@ class CornerGFTT(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(grads_mode={self.grads_mode})"
 
-    def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
+    def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:  # noqa: D102
         return gftt_response(input, self.grads_mode, sigmas)
 
 
@@ -391,5 +391,5 @@ class BlobHessian(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(grads_mode={self.grads_mode})"
 
-    def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
+    def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:  # noqa: D102
         return hessian_response(input, self.grads_mode, sigmas)

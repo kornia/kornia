@@ -266,7 +266,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self._transform_matrix = None
         self.extra_args = extra_args or {DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}}
 
-    def clear_state(self) -> None:
+    def clear_state(self) -> None:  # noqa: D102
         self._reset_transform_matrix_state()
         return super().clear_state()
 
@@ -470,14 +470,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return outputs
 
-    def __call__(
+    def __call__(  # noqa: D417
         self,
         *inputs: Any,
         input_names_to_handle: Optional[List[Any]] = None,
         output_type: str = "tensor",
         **kwargs: Any,
     ) -> Any:
-        """Overwrites the __call__ function to handle various inputs.
+        """Overwrite the __call__ function to handle various inputs.
 
         Args:
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
@@ -537,7 +537,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def _read_datakeys_from_dict(self, keys: Sequence[str]) -> Tuple[List[DataKey], Optional[List[str]]]:
         def retrieve_key(key: str) -> DataKey:
-            """Try to retrieve the datakey value by matching `<datakey>*`"""
+            """Try to retrieve the datakey value by matching `<datakey>*`."""
             # Alias cases, like INPUT, will not be get by the enum iterator.
             if key.upper().startswith("INPUT"):
                 return DataKey.INPUT

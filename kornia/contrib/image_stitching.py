@@ -94,7 +94,7 @@ class ImageStitcher(Module):
             raise NotImplementedError(f"The preprocessor for {self.matcher} has not been implemented.")
         return input_dict
 
-    def postprocess(self, image: Tensor, mask: Tensor) -> Tensor:
+    def postprocess(self, image: Tensor, mask: Tensor) -> Tensor:  # noqa: D102
         # NOTE: assumes no batch mode. This method keeps all valid regions after stitching.
         mask_ = mask.sum((0, 1))
         index = int(mask_.bool().any(0).long().argmin().item())
@@ -102,10 +102,10 @@ class ImageStitcher(Module):
             return image
         return image[..., :index]
 
-    def on_matcher(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
+    def on_matcher(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:  # noqa: D102
         return self.matcher(data)
 
-    def stitch_pair(
+    def stitch_pair(  # noqa: D102
         self,
         images_left: Tensor,
         images_right: Tensor,
@@ -130,7 +130,7 @@ class ImageStitcher(Module):
         dst_mask = concatenate([mask_left, zeros_like(mask_right)], -1)
         return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
 
-    def forward(self, *imgs: Tensor) -> Tensor:
+    def forward(self, *imgs: Tensor) -> Tensor:  # noqa: D102
         img_out = imgs[0]
         mask_left = torch.ones_like(img_out)
         for i in range(len(imgs) - 1):

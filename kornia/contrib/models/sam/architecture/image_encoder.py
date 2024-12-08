@@ -18,8 +18,8 @@ from kornia.core import Module, Tensor, zeros
 
 
 # This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa
-class ImageEncoderViT(Module):
-    def __init__(
+class ImageEncoderViT(Module):  # noqa: D101
+    def __init__(  # noqa: D417
         self,
         img_size: int = 1024,
         *,
@@ -39,7 +39,9 @@ class ImageEncoderViT(Module):
         window_size: int = 0,
         global_attn_indexes: tuple[int, ...] = (),
     ) -> None:
-        """Args:
+        """Construct Image Encoder ViT.
+
+        Args:
         img_size: Input image size.
         patch_size: Patch size.
         in_chans: Number of input image channels.
@@ -95,7 +97,7 @@ class ImageEncoderViT(Module):
             LayerNorm2d(out_chans),
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         x = self.patch_embed(x)
         if self.pos_embed is not None:
             x = x + self.pos_embed
@@ -124,7 +126,9 @@ class Block(Module):
         window_size: int = 0,
         input_size: Optional[tuple[int, int]] = None,
     ) -> None:
-        """Args:
+        """Construct transformer block.
+
+        Args:
         dim: Number of input channels.
         num_heads: Number of attention heads in each ViT block.
         mlp_ratio: Ratio of mlp hidden dim to embedding dim.
@@ -153,7 +157,7 @@ class Block(Module):
 
         self.window_size = window_size
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         shortcut = x
         x = self.norm1(x)
         # Window partition
@@ -175,7 +179,7 @@ class Block(Module):
 class Attention(Module):
     """Multi-head Attention block with relative position embeddings."""
 
-    def __init__(
+    def __init__(  # noqa: D417
         self,
         dim: int,
         num_heads: int = 8,
@@ -184,7 +188,9 @@ class Attention(Module):
         rel_pos_zero_init: bool = True,
         input_size: Optional[tuple[int, int]] = None,
     ) -> None:
-        """Args:
+        """Construct attention block.
+
+        Args:
         dim: Number of input channels.
         num_heads: Number of attention heads.
         qkv_bias:  If True, add a learnable bias to query, key, value.
@@ -207,7 +213,7 @@ class Attention(Module):
             self.rel_pos_h = nn.Parameter(zeros(2 * input_size[0] - 1, head_dim))
             self.rel_pos_w = nn.Parameter(zeros(2 * input_size[1] - 1, head_dim))
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         B, H, W, _ = x.shape
         # qkv with shape (3, B, nHead, H * W, C)
         qkv = self.qkv(x).reshape(B, H * W, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
@@ -306,7 +312,9 @@ class PatchEmbed(Module):
         in_chans: int = 3,
         embed_dim: int = 768,
     ) -> None:
-        """Args:
+        """Construct Patch Embedding.
+
+        Args:
         kernel_size: kernel size of the projection layer.
         stride: stride of the projection layer.
         padding: padding size of the projection layer.
@@ -318,7 +326,7 @@ class PatchEmbed(Module):
 
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=kernel_size, stride=stride, padding=padding)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         x = self.proj(x)
         # B C H W -> B H W C
         x = x.permute(0, 2, 3, 1)

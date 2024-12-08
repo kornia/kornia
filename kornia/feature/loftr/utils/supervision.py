@@ -24,7 +24,9 @@ def mask_pts_at_padded_regions(grid_pt: Tensor, mask: Tensor) -> Tensor:
 
 @torch.no_grad()
 def spvs_coarse(data: dict[str, Any], config: dict[str, Any]) -> None:
-    """Update:
+    """Perform coarse supervision.
+
+    Update:
         data (dict): {
             "conf_matrix_gt": [N, hw0, hw1],
             'spv_b_ids': [M]
@@ -106,7 +108,7 @@ def spvs_coarse(data: dict[str, Any], config: dict[str, Any]) -> None:
     data.update({"spv_w_pt0_i": w_pt0_i, "spv_pt1_i": grid_pt1_i})
 
 
-def compute_supervision_coarse(data: dict[str, Any], config: dict[str, Any]) -> None:
+def compute_supervision_coarse(data: dict[str, Any], config: dict[str, Any]) -> None:  # noqa: D103
     if len(set(data["dataset_name"])) != 1:
         raise ValueError("Do not support mixed datasets training!")
     data_source = data["dataset_name"][0]
@@ -119,7 +121,9 @@ def compute_supervision_coarse(data: dict[str, Any], config: dict[str, Any]) -> 
 #  Fine-Level supervision
 @torch.no_grad()
 def spvs_fine(data: dict[str, Any], config: dict[str, Any]) -> None:
-    """Update:
+    """Perform fine supervision.
+
+    Update:
     data (dict):{
         "expec_f_gt": [M, 2]}
     """
@@ -139,7 +143,7 @@ def spvs_fine(data: dict[str, Any], config: dict[str, Any]) -> None:
     data.update({"expec_f_gt": expec_f_gt})
 
 
-def compute_supervision_fine(data: dict[str, Any], config: dict[str, Any]) -> None:
+def compute_supervision_fine(data: dict[str, Any], config: dict[str, Any]) -> None:  # noqa: D103
     data_source = data["dataset_name"][0]
     if data_source.lower() in ["scannet", "megadepth"]:
         spvs_fine(data, config)

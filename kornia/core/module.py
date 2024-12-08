@@ -29,7 +29,7 @@ class ImageModuleMixIn:
         input_names_to_handle: Optional[list[Any]] = None,
         output_type: str = "tensor",
     ) -> Callable[[Any], Any]:
-        """Decorator to convert input and output types for a function.
+        """Convert input and output types for a function.
 
         Args:
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
@@ -186,8 +186,8 @@ class ImageModuleMixIn:
             return type(output_image)([self._detach_tensor_to_cpu(out) for out in output_image])  # type: ignore
         raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
 
-    def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:
-        """Returns PIL images.
+    def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:  # noqa: D417
+        """Return PIL images.
 
         Args:
             n_row: Number of images displayed in each row of the grid.
@@ -214,7 +214,7 @@ class ImageModuleMixIn:
         raise ValueError(f"Unsupported backend `{backend}`.")
 
     def save(self, name: Optional[str] = None, n_row: Optional[int] = None) -> None:
-        """Saves the output image(s) to a directory.
+        """Save the output image(s) to a directory.
 
         Args:
             name: Directory to save the images.
@@ -250,21 +250,21 @@ class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
         self._disable_features: bool = False
 
     @property
-    def disable_features(self) -> bool:
+    def disable_features(self) -> bool:  # noqa: D102
         return self._disable_features
 
     @disable_features.setter
     def disable_features(self, value: bool = True) -> None:
         self._disable_features = value
 
-    def __call__(
+    def __call__(  # noqa: D417
         self,
         *inputs: Any,
         input_names_to_handle: Optional[list[Any]] = None,
         output_type: str = "tensor",
         **kwargs: Any,
     ) -> Any:
-        """Overwrites the __call__ function to handle various inputs.
+        """Overwrite the __call__ function to handle various inputs.
 
         Args:
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
@@ -307,21 +307,21 @@ class ImageSequential(Sequential, ImageModuleMixIn, ONNXExportMixin):
         self._disable_features: bool = False
 
     @property
-    def disable_features(self) -> bool:
+    def disable_features(self) -> bool:  # noqa: D102
         return self._disable_features
 
     @disable_features.setter
     def disable_features(self, value: bool = True) -> None:
         self._disable_features = value
 
-    def __call__(
+    def __call__(  # noqa: D417
         self,
         *inputs: Any,
         input_names_to_handle: Optional[list[Any]] = None,
         output_type: str = "tensor",
         **kwargs: Any,
     ) -> Any:
-        """Overwrites the __call__ function to handle various inputs.
+        """Overwrite the __call__ function to handle various inputs.
 
         Args:
             input_names_to_handle: List of input names to convert, if None, handle all inputs.

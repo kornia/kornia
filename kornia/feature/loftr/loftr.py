@@ -102,7 +102,9 @@ class LoFTR(Module):
         self.eval()
 
     def forward(self, data: dict[str, Tensor]) -> dict[str, Tensor]:
-        """Args:
+        """Run forward.
+
+        Args:
             data: dictionary containing the input data in the following format:
 
         Keyword Args:
@@ -186,7 +188,7 @@ class LoFTR(Module):
                 raise TypeError(f"Expected Tensor for item `{k}`. Gotcha {type(_d)}")
         return out
 
-    def load_state_dict(self, state_dict: dict[str, Any], *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
+    def load_state_dict(self, state_dict: dict[str, Any], *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]  # noqa: D102
         for k in list(state_dict.keys()):
             if k.startswith("matcher."):
                 state_dict[k.replace("matcher.", "", 1)] = state_dict.pop(k)

@@ -15,8 +15,10 @@ from .orientation import PassLAF
 from .responses import BlobHessian
 
 
-def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -> Tensor:
-    r"""Auxiliary function for ScaleSpaceDetector. Converts scale level index from ConvSoftArgmax3d to the actual
+def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -> Tensor:  # noqa: D417
+    r"""Auxiliary function for ScaleSpaceDetector.
+
+    Converts scale level index from ConvSoftArgmax3d to the actual
     scale, using the sigmas from the ScalePyramid output.
 
     Args:
@@ -50,7 +52,9 @@ def _create_octave_mask(mask: Tensor, octave_shape: List[int]) -> Tensor:
 
 
 class ScaleSpaceDetector(Module):
-    r"""Module for differentiable local feature detection, as close as possible to classical local feature detectors
+    r"""Module for differentiable local feature detection.
+
+    As close as possible to classical local feature detectors
     like Harris, Hessian-Affine or SIFT (DoG).
 
     It has 5 modules inside: scale pyramid generator, response ("cornerness") function,
@@ -126,7 +130,7 @@ class ScaleSpaceDetector(Module):
             f"aff={self.aff.__repr__()})"
         )
 
-    def detect(self, img: Tensor, num_feats: int, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def detect(self, img: Tensor, num_feats: int, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:  # noqa: D102
         dev: Device = img.device
         dtype: torch.dtype = img.dtype
         sigmas: List[Tensor]
@@ -219,8 +223,10 @@ class ScaleSpaceDetector(Module):
         return responses, lafs
 
     def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-        """Three stage local feature detection. First the location and scale of interest points are determined by
-        detect function. Then affine shape and orientation.
+        """Three stage local feature detection.
+
+        First the location and scale of interest points are determined by detect function.
+        Then affine shape and orientation.
 
         Args:
             img: image to extract features with shape [BxCxHxW]
@@ -238,7 +244,7 @@ class ScaleSpaceDetector(Module):
         return lafs, responses
 
 
-class Detector_config(TypedDict):
+class Detector_config(TypedDict):  # noqa: D101
     nms_size: int
     pyramid_levels: int
     up_levels: int
@@ -246,7 +252,7 @@ class Detector_config(TypedDict):
     s_mult: float
 
 
-def get_default_detector_config() -> Detector_config:
+def get_default_detector_config() -> Detector_config:  # noqa: D103
     return {
         # Extraction Parameters
         "nms_size": 15,
@@ -307,12 +313,12 @@ class MultiResolutionDetector(Module):
             self.aff = aff_module
 
     def remove_borders(self, score_map: Tensor, borders: int = 15) -> Tensor:
-        """It removes the borders of the image to avoid detections on the corners."""
+        """Remove the borders of the image to avoid detections on the corners."""
         mask = torch.zeros_like(score_map)
         mask[:, :, borders:-borders, borders:-borders] = 1
         return mask * score_map
 
-    def detect_features_on_single_level(
+    def detect_features_on_single_level(  # noqa: D102
         self, level_img: Tensor, num_kp: int, factor: Tuple[float, float]
     ) -> Tuple[Tensor, Tensor]:
         det_map = self.nms(self.remove_borders(self.model(level_img)))
@@ -332,7 +338,7 @@ class MultiResolutionDetector(Module):
         lafs = laf_from_center_scale_ori(xy_projected, scale, zeros(1, current_kp_num, 1, device=device, dtype=dtype))
         return scores_sorted[:num_kp], lafs
 
-    def detect(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def detect(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:  # noqa: D102
         # Compute points per level
         num_features_per_level: List[float] = []
         tmp = 0.0
@@ -391,8 +397,10 @@ class MultiResolutionDetector(Module):
         return responses, lafs
 
     def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-        """Three stage local feature detection. First the location and scale of interest points are determined by
-        detect function. Then affine shape and orientation.
+        """Three stage local feature detection.
+
+        First the location and scale of interest points are determined by detect function.
+        Then affine shape and orientation.
 
         Args:
             img: image to extract features with shape [1xCxHxW]. KeyNetDetector does not support batch processing,

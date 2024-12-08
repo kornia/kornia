@@ -6,7 +6,7 @@ from torch import nn
 from kornia.core import Module
 
 
-class VGG(nn.Module):
+class VGG(nn.Module):  # noqa: D101
     def __init__(
         self, features: Module, num_classes: int = 1000, init_weights: bool = True, dropout: float = 0.5
     ) -> None:
@@ -35,7 +35,7 @@ class VGG(nn.Module):
                     nn.init.normal_(m.weight, 0, 0.01)
                     nn.init.constant_(m.bias, 0)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # noqa: D102
         x = self.features(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
@@ -43,7 +43,7 @@ class VGG(nn.Module):
         return x
 
 
-def make_layers(cfg: List[Union[str, int]], batch_norm: bool = False) -> nn.Sequential:
+def make_layers(cfg: List[Union[str, int]], batch_norm: bool = False) -> nn.Sequential:  # noqa: D103
     layers: List[nn.Module] = []
     in_channels = 3
     for v in cfg:

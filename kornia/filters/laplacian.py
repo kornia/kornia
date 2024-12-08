@@ -87,5 +87,5 @@ class Laplacian(Module):
             f"border_type={self.border_type})"
         )
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return laplacian(input, self.kernel_size, self.border_type, self.normalized)

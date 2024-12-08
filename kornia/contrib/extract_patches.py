@@ -13,7 +13,7 @@ TuplePadType = Union[Tuple[int, int], FullPadType]
 PadType = Union[int, TuplePadType]
 
 
-def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadType:
+def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadType:  # noqa: D103
     padding = cast(TuplePadType, _pair(padding))
 
     if len(padding) not in [2, 4]:
@@ -62,7 +62,7 @@ def compute_padding(
         This function will be implicitly used in :func:`extract_tensor_patches` and :func:`combine_tensor_patches` if
         `allow_auto_(un)padding` is set to True.
 
-    """
+    """  # noqa: D205
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
     if stride is None:
@@ -176,7 +176,7 @@ class ExtractTensorPatches(Module):
         self.padding: PadType = padding
         self.allow_auto_padding: bool = allow_auto_padding
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return extract_tensor_patches(
             input,
             self.window_size,
@@ -269,7 +269,7 @@ class CombineTensorPatches(Module):
         self.unpadding: PadType = unpadding
         self.allow_auto_unpadding: bool = allow_auto_unpadding
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return combine_tensor_patches(
             input,
             self.original_size,
@@ -414,14 +414,14 @@ def _extract_tensor_patchesnd(input: Tensor, window_sizes: Tuple[int, ...], stri
     return input.view(batch_size, -1, num_channels, *window_sizes)
 
 
-def extract_tensor_patches(
+def extract_tensor_patches(  # noqa: D417
     input: Tensor,
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]] = 1,
     padding: PadType = 0,
     allow_auto_padding: bool = False,
 ) -> Tensor:
-    r"""Function that extract patches from tensors and stacks them.
+    r"""Extract patches from tensors and stacks them.
 
     See :class:`~kornia.contrib.ExtractTensorPatches` for details.
 

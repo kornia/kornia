@@ -190,7 +190,7 @@ class SpatialGradient(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(order={self.order}, normalized={self.normalized}, mode={self.mode})"
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return spatial_gradient(input, self.mode, self.order, self.normalized)
 
 
@@ -228,7 +228,7 @@ class SpatialGradient3d(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(order={self.order}, mode={self.mode})"
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return spatial_gradient3d(input, self.mode, self.order)
 
 
@@ -260,5 +260,5 @@ class Sobel(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(normalized={self.normalized})"
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return sobel(input, self.normalized, self.eps)

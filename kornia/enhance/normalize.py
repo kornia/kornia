@@ -63,7 +63,7 @@ class Normalize(Module):
         self.mean = mean
         self.std = std
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return normalize(input, self.mean, self.std)
 
     def __repr__(self) -> str:
@@ -176,7 +176,7 @@ class Denormalize(Module):
         self.mean = mean
         self.std = std
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return denormalize(input, self.mean, self.std)
 
     def __repr__(self) -> str:
@@ -184,7 +184,7 @@ class Denormalize(Module):
         return self.__class__.__name__ + repr
 
 
-def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, float]) -> Tensor:
+def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, float]) -> Tensor:  # noqa: D417
     r"""Denormalize an image/video tensor with mean and standard deviation.
 
     .. math::

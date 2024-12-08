@@ -43,7 +43,7 @@ def get_sample_images(
     divisible_factor: Optional[int] = None,
     **kwargs: Any,
 ) -> Union[Tensor, List[Tensor]]:
-    """Loads multiple images from the given URLs.
+    """Load multiple images from the given URLs.
 
     Optionally download them, resize them if specified, and return them as a batch of tensors or a list of tensors.
 

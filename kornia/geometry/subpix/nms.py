@@ -7,7 +7,7 @@ from kornia.core import Module, Tensor, eye, pad, zeros
 
 
 def _get_nms_kernel2d(kx: int, ky: int) -> Tensor:
-    """Utility function, which returns neigh2channels conv kernel."""
+    """Return neigh2channels conv kernel."""
     numel: int = ky * kx
     center: int = numel // 2
     weight = eye(numel)
@@ -16,7 +16,7 @@ def _get_nms_kernel2d(kx: int, ky: int) -> Tensor:
 
 
 def _get_nms_kernel3d(kd: int, ky: int, kx: int) -> Tensor:
-    """Utility function, which returns neigh2channels conv kernel."""
+    """Return neigh2channels conv kernel."""
     numel: int = kd * ky * kx
     center: int = numel // 2
     weight = eye(numel)
@@ -52,7 +52,7 @@ class NonMaximaSuppression2d(Module):
         ky, kx = kernel_size  # we assume a cubic kernel
         return pad(ky), pad(ky), pad(kx), pad(kx)
 
-    def forward(self, x: Tensor, mask_only: bool = False) -> Tensor:
+    def forward(self, x: Tensor, mask_only: bool = False) -> Tensor:  # noqa: D102
         if len(x.shape) != 4:
             raise AssertionError(x.shape)
         B, CH, H, W = x.size()
@@ -93,7 +93,7 @@ class NonMaximaSuppression3d(Module):
         kd, ky, kx = kernel_size  # we assume a cubic kernel
         return pad(kd), pad(kd), pad(ky), pad(ky), pad(kx), pad(kx)
 
-    def forward(self, x: Tensor, mask_only: bool = False) -> Tensor:
+    def forward(self, x: Tensor, mask_only: bool = False) -> Tensor:  # noqa: D102
         if len(x.shape) != 5:
             raise AssertionError(x.shape)
         # find local maximum values

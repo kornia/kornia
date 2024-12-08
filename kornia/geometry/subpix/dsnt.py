@@ -1,5 +1,6 @@
-r"""Implementation of "differentiable spatial to numerical" (soft-argmax) operations, as described in the paper
-"Numerical Coordinate Regression with Convolutional Neural Networks" by Nibali et al.
+r"""Implementation of "differentiable spatial to numerical" (soft-argmax) operations.
+
+As described in the paper "Numerical Coordinate Regression with Convolutional Neural Networks" by Nibali et al.
 """
 
 from __future__ import annotations

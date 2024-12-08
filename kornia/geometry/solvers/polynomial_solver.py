@@ -207,7 +207,7 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
 # estimators/solver_essential_matrix_five_point_nister.h#L108
 
 
-def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:  # noqa: D417
     r"""Multiply two polynomials of the first order [@nister2004efficient].
 
     Args:

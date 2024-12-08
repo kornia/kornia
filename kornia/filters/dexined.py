@@ -16,7 +16,7 @@ from kornia.core.check import KORNIA_CHECK
 url: str = "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"
 
 
-def weight_init(m: nn.Module) -> None:
+def weight_init(m: nn.Module) -> None:  # noqa: D103
     if isinstance(m, (nn.Conv2d,)):
         # torch.nn.init.xavier_uniform_(m.weight, gain=1.0)
         torch.nn.init.xavier_normal_(m.weight, gain=1.0)
@@ -39,7 +39,7 @@ def weight_init(m: nn.Module) -> None:
             torch.nn.init.zeros_(m.bias)
 
 
-class CoFusion(Module):
+class CoFusion(Module):  # noqa: D101
     def __init__(self, in_ch: int, out_ch: int) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(in_ch, 64, kernel_size=3, stride=1, padding=1)
@@ -49,7 +49,7 @@ class CoFusion(Module):
         self.norm_layer1 = nn.GroupNorm(4, 64)
         self.norm_layer2 = nn.GroupNorm(4, 64)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         # fusecat = torch.cat(x, dim=1)
         attn = self.relu(self.norm_layer1(self.conv1(x)))
         attn = self.relu(self.norm_layer2(self.conv2(attn)))
@@ -97,7 +97,7 @@ class _DenseBlock(nn.Sequential):
         return x_out
 
 
-class UpConvBlock(Module):
+class UpConvBlock(Module):  # noqa: D101
     def __init__(self, in_features: int, up_scale: int) -> None:
         super().__init__()
         self.up_factor = 2
@@ -107,7 +107,7 @@ class UpConvBlock(Module):
         KORNIA_CHECK(layers is not None, "layers cannot be none")
         self.features = nn.Sequential(*layers)
 
-    def make_deconv_layers(self, in_features: int, up_scale: int) -> nn.ModuleList:
+    def make_deconv_layers(self, in_features: int, up_scale: int) -> nn.ModuleList:  # noqa: D102
         layers = nn.ModuleList([])
         all_pads = [0, 0, 1, 3, 7]
         for i in range(up_scale):
@@ -120,30 +120,30 @@ class UpConvBlock(Module):
             in_features = out_features
         return layers
 
-    def compute_out_features(self, idx: int, up_scale: int) -> int:
+    def compute_out_features(self, idx: int, up_scale: int) -> int:  # noqa: D102
         return 1 if idx == up_scale - 1 else self.constant_features
 
-    def forward(self, x: Tensor, out_shape: list[int]) -> Tensor:
+    def forward(self, x: Tensor, out_shape: list[int]) -> Tensor:  # noqa: D102
         out = self.features(x)
         out = F.interpolate(out, out_shape, mode="bilinear")
         return out
 
 
-class SingleConvBlock(Module):
+class SingleConvBlock(Module):  # noqa: D101
     def __init__(self, in_features: int, out_features: int, stride: int, use_bs: bool = True) -> None:
         super().__init__()
         self.use_bn = use_bs
         self.conv = nn.Conv2d(in_features, out_features, 1, stride=stride, bias=True)
         self.bn = nn.BatchNorm2d(out_features)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         x = self.conv(x)
         if self.use_bn:
             x = self.bn(x)
         return x
 
 
-class DoubleConvBlock(nn.Sequential):
+class DoubleConvBlock(nn.Sequential):  # noqa: D101
     def __init__(
         self,
         in_features: int,
@@ -222,13 +222,13 @@ class DexiNed(Module):
         else:
             self.apply(weight_init)
 
-    def load_from_file(self, path_file: str) -> None:
+    def load_from_file(self, path_file: str) -> None:  # noqa: D102
         # use torch.hub to load pretrained model
         pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def get_features(self, x: Tensor) -> list[Tensor]:
+    def get_features(self, x: Tensor) -> list[Tensor]:  # noqa: D102
         # Block 1
         block_1 = self.block_1(x)
         block_1_side = self.side_1(block_1)
@@ -274,7 +274,7 @@ class DexiNed(Module):
         results = [out_1, out_2, out_3, out_4, out_5, out_6]
         return results
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
         features = self.get_features(x)
 
         # concatenate multiscale outputs

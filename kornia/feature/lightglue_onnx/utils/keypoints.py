@@ -5,7 +5,7 @@ import torch
 from kornia.core import Tensor, tensor
 
 
-def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
+def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:  # noqa: D103
     if isinstance(size, torch.Size):
         size = tensor(size)[None]
     shift = size.float().to(kpts) / 2

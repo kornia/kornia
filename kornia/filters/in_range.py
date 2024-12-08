@@ -17,7 +17,7 @@ def in_range(
     upper: Union[tuple[Any, ...], Tensor],
     return_mask: bool = False,
 ) -> Tensor:
-    r"""Creates a mask indicating whether elements of the input tensor are within the specified range.
+    r"""Create a mask indicating whether elements of the input tensor are within the specified range.
 
     .. image:: _static/img/in_range.png
 
@@ -136,7 +136,7 @@ def in_range(
 
 
 class InRange(Module):
-    r"""Creates a module for applying lower and upper bounds to input tensors.
+    r"""Create a module for applying lower and upper bounds to input tensors.
 
     Args:
         input: The input tensor to be filtered.
@@ -175,5 +175,5 @@ class InRange(Module):
         self.upper = upper
         self.return_mask = return_mask
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return in_range(input, self.lower, self.upper, self.return_mask)

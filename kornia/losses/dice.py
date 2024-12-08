@@ -15,7 +15,7 @@ from kornia.utils.one_hot import one_hot
 # https://github.com/Lightning-AI/metrics/blob/v0.11.3/src/torchmetrics/functional/classification/dice.py#L66-L207
 
 
-def dice_loss(
+def dice_loss(  # noqa: D417
     pred: Tensor,
     target: Tensor,
     average: str = "micro",
@@ -193,5 +193,5 @@ class DiceLoss(nn.Module):
         self.weight = weight
         self.ignore_index = ignore_index
 
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # noqa: D102
         return dice_loss(pred, target, self.average, self.eps, self.weight, self.ignore_index)

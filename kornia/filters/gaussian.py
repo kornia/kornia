@@ -125,10 +125,10 @@ class GaussianBlur2d(Module):
             f"separable={self.separable})"
         )
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type, self.separable)
 
 
 @deprecated(replace_with="gaussian_blur2d", version="6.9.10")
-def gaussian_blur2d_t(*args: Any, **kwargs: Any) -> Tensor:
+def gaussian_blur2d_t(*args: Any, **kwargs: Any) -> Tensor:  # noqa: D103
     return gaussian_blur2d(*args, **kwargs)

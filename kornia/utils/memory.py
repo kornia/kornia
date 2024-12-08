@@ -6,7 +6,7 @@ from kornia.core import Device, Module, Tensor, concatenate
 def batched_forward(
     model: Module, data: Tensor, device: Device, batch_size: int = 128, **kwargs: Dict[str, Any]
 ) -> Tensor:
-    r"""Convenience function, which allows to run the forward in micro-batches.
+    r"""Run the forward in micro-batches.
 
     When the just model.forward(data) does not fit into device memory, e.g. on laptop GPU.
     In the end, it transfers the output to the device of the input data tensor.

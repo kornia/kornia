@@ -10,8 +10,9 @@ from kornia.filters import gaussian_blur2d
 
 
 class RandomGaussianBlur(IntensityAugmentationBase2D):
-    r"""Apply gaussian blur given tensor image or a batch of tensor images randomly. The standard deviation is
-    sampled for each instance.
+    r"""Apply gaussian blur given tensor image or a batch of tensor images randomly.
+
+    The standard deviation is sampled for each instance.
 
     .. image:: _static/img/RandomGaussianBlur.png
 

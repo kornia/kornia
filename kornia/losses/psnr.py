@@ -6,8 +6,8 @@ from torch import nn
 from kornia import metrics
 
 
-def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
-    r"""Function that computes the PSNR loss.
+def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:  # noqa: D417
+    r"""Compute the PSNR loss.
 
     The loss is computed as follows:
 
@@ -65,5 +65,5 @@ class PSNRLoss(nn.Module):
         super().__init__()
         self.max_val: float = max_val
 
-    def forward(self, image: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor, target: torch.Tensor) -> torch.Tensor:  # noqa: D102
         return psnr_loss(image, target, self.max_val)

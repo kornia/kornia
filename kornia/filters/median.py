@@ -10,7 +10,7 @@ from .kernels import _unpack_2d_ks, get_binary_kernel2d
 
 
 def _compute_zero_padding(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
-    r"""Utility function that computes zero padding tuple."""
+    r"""Compute zero padding tuple."""
     ky, kx = _unpack_2d_ks(kernel_size)
     return (ky - 1) // 2, (kx - 1) // 2
 
@@ -80,5 +80,5 @@ class MedianBlur(Module):
         super().__init__()
         self.kernel_size = kernel_size
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
         return median_blur(input, self.kernel_size)
