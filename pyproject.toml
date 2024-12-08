@@ -170,6 +170,9 @@ max-statements = 64                                        # Recommended: 50
   "RUF012",
   "S101",
   "S311",
+  "D101", # Allow undocumented benchmark classes
+  "D102", # Allow undocumented benchmark methods
+  "D103", # Allow undocumented benchmark methods
 ] # allow assert, random, ignore BLE, mutable class attr
 "docs/*" = [
   "PLR0912",

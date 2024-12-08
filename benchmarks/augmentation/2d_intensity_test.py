@@ -40,7 +40,7 @@ from kornia.augmentation import (
 )
 
 
-def test_aug_2d_collor_jiggle(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_collor_jiggle(benchmark, device, dtype, torch_optimizer, shape):
     if shape[1] != 3:
         pytest.skip("Skipping because input should be rgb")
     data = torch.rand(*shape, device=device, dtype=dtype)
@@ -52,7 +52,7 @@ def test_aug_2d_collor_jiggle(benchmark, device, dtype, torch_optimizer, shape):
     assert actual.shape == shape
 
 
-def test_aug_2d_collor_jitter(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_collor_jitter(benchmark, device, dtype, torch_optimizer, shape):
     if shape[1] != 3:
         pytest.skip("Skipping because input should be rgb")
     data = torch.rand(*shape, device=device, dtype=dtype)
@@ -63,7 +63,7 @@ def test_aug_2d_collor_jitter(benchmark, device, dtype, torch_optimizer, shape):
     assert actual.shape == shape
 
 
-def test_aug_2d_denormalize(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_denormalize(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = Denormalize(0.0, 1.0, p=1.0)
     op = torch_optimizer(aug)
@@ -73,7 +73,7 @@ def test_aug_2d_denormalize(benchmark, device, dtype, torch_optimizer, shape):  
     assert actual.shape == shape
 
 
-def test_aug_2d_auto_contrast(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_auto_contrast(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomAutoContrast(p=1.0)
     op = torch_optimizer(aug)
@@ -83,7 +83,7 @@ def test_aug_2d_auto_contrast(benchmark, device, dtype, torch_optimizer, shape):
     assert actual.shape == shape
 
 
-def test_aug_2d_box_blur(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_box_blur(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomBoxBlur(p=1.0)
     op = torch_optimizer(aug)
@@ -93,7 +93,7 @@ def test_aug_2d_box_blur(benchmark, device, dtype, torch_optimizer, shape):  # n
     assert actual.shape == shape
 
 
-def test_aug_2d_brightness(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_brightness(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomBrightness((0.1, 1), p=1.0)
     op = torch_optimizer(aug)
@@ -103,7 +103,7 @@ def test_aug_2d_brightness(benchmark, device, dtype, torch_optimizer, shape):  #
     assert actual.shape == shape
 
 
-def test_aug_2d_channel_dropout(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_channel_dropout(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomChannelDropout(p=1.0)
     op = torch_optimizer(aug)
@@ -113,7 +113,7 @@ def test_aug_2d_channel_dropout(benchmark, device, dtype, torch_optimizer, shape
     assert actual.shape == shape
 
 
-def test_aug_2d_channel_shuffle(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_channel_shuffle(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomChannelShuffle(p=1.0)
     op = torch_optimizer(aug)
@@ -123,7 +123,7 @@ def test_aug_2d_channel_shuffle(benchmark, device, dtype, torch_optimizer, shape
     assert actual.shape == shape
 
 
-def test_aug_2d_clahe(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_clahe(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomClahe((10, 40), p=1.0)
     op = torch_optimizer(aug)
@@ -133,7 +133,7 @@ def test_aug_2d_clahe(benchmark, device, dtype, torch_optimizer, shape):  # noqa
     assert actual.shape == shape
 
 
-def test_aug_2d_contrast(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_contrast(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomContrast((0.1, 1), p=1.0)
     op = torch_optimizer(aug)
@@ -143,7 +143,7 @@ def test_aug_2d_contrast(benchmark, device, dtype, torch_optimizer, shape):  # n
     assert actual.shape == shape
 
 
-def test_aug_2d_equalize(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_equalize(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomEqualize(p=1.0)
     op = torch_optimizer(aug)
@@ -153,7 +153,7 @@ def test_aug_2d_equalize(benchmark, device, dtype, torch_optimizer, shape):  # n
     assert actual.shape == shape
 
 
-def test_aug_2d_gamma(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_gamma(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomGamma((0.0, 1.0), (0.0, 1.0), p=1.0)
     op = torch_optimizer(aug)
@@ -163,7 +163,7 @@ def test_aug_2d_gamma(benchmark, device, dtype, torch_optimizer, shape):  # noqa
     assert actual.shape == shape
 
 
-def test_aug_2d_gaussian_blur(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_gaussian_blur(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomGaussianBlur(3, (1.6, 1.7), p=1.0)
     op = torch_optimizer(aug)
@@ -173,7 +173,7 @@ def test_aug_2d_gaussian_blur(benchmark, device, dtype, torch_optimizer, shape):
     assert actual.shape == shape
 
 
-def test_aug_2d_gaussian_illumination(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_gaussian_illumination(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomGaussianIllumination(p=1.0)
     op = torch_optimizer(aug)
@@ -183,7 +183,7 @@ def test_aug_2d_gaussian_illumination(benchmark, device, dtype, torch_optimizer,
     assert actual.shape == shape
 
 
-def test_aug_2d_gaussian_noise(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_gaussian_noise(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomGaussianNoise(0.0, 1.0, p=1.0)
     op = torch_optimizer(aug)
@@ -193,7 +193,7 @@ def test_aug_2d_gaussian_noise(benchmark, device, dtype, torch_optimizer, shape)
     assert actual.shape == shape
 
 
-def test_aug_2d_grayscale(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_grayscale(benchmark, device, dtype, torch_optimizer, shape):
     if shape[1] != 3:
         pytest.skip("Skipping because input should be rgb")
     data = torch.rand(*shape, device=device, dtype=dtype)
@@ -205,7 +205,7 @@ def test_aug_2d_grayscale(benchmark, device, dtype, torch_optimizer, shape):  # 
     assert actual.shape == shape
 
 
-def test_aug_2d_hue(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_hue(benchmark, device, dtype, torch_optimizer, shape):
     if shape[1] != 3:
         pytest.skip("Skipping because input should be rgb")
     data = torch.rand(*shape, device=device, dtype=dtype)
@@ -217,7 +217,7 @@ def test_aug_2d_hue(benchmark, device, dtype, torch_optimizer, shape):  # noqa: 
     assert actual.shape == shape
 
 
-def test_aug_2d_invert(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_invert(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomInvert(p=1.0)
     op = torch_optimizer(aug)
@@ -238,7 +238,7 @@ def test_aug_2d_invert(benchmark, device, dtype, torch_optimizer, shape):  # noq
 #     assert actual.shape == shape
 
 
-def test_aug_2d_linear_corner_illumination(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_linear_corner_illumination(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomLinearCornerIllumination(p=1.0)
     op = torch_optimizer(aug)
@@ -248,7 +248,7 @@ def test_aug_2d_linear_corner_illumination(benchmark, device, dtype, torch_optim
     assert actual.shape == shape
 
 
-def test_aug_2d_linear_illumination(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_linear_illumination(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomLinearIllumination(p=1.0)
     op = torch_optimizer(aug)
@@ -258,7 +258,7 @@ def test_aug_2d_linear_illumination(benchmark, device, dtype, torch_optimizer, s
     assert actual.shape == shape
 
 
-def test_aug_2d_median_blur(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_median_blur(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomMedianBlur(p=1.0)
     op = torch_optimizer(aug)
@@ -268,7 +268,7 @@ def test_aug_2d_median_blur(benchmark, device, dtype, torch_optimizer, shape):  
     assert actual.shape == shape
 
 
-def test_aug_2d_motion_blur(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_motion_blur(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomMotionBlur((3, 3), 45.0, 5.5, p=1.0)
     op = torch_optimizer(aug)
@@ -278,7 +278,7 @@ def test_aug_2d_motion_blur(benchmark, device, dtype, torch_optimizer, shape):  
     assert actual.shape == shape
 
 
-def test_aug_2d_normalize(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_normalize(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = Normalize(25.0, 2.5, p=1.0)
     op = torch_optimizer(aug)
@@ -288,7 +288,7 @@ def test_aug_2d_normalize(benchmark, device, dtype, torch_optimizer, shape):  # 
     assert actual.shape == shape
 
 
-def test_aug_2d_plackian_jitter(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_plackian_jitter(benchmark, device, dtype, torch_optimizer, shape):
     if shape[1] != 3:
         pytest.skip("Skipping because input should be rgb")
 
@@ -301,7 +301,7 @@ def test_aug_2d_plackian_jitter(benchmark, device, dtype, torch_optimizer, shape
     assert actual.shape == shape
 
 
-def test_aug_2d_plasma_briggtness(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_plasma_briggtness(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomPlasmaBrightness(p=1.0)
     op = torch_optimizer(aug)
@@ -311,7 +311,7 @@ def test_aug_2d_plasma_briggtness(benchmark, device, dtype, torch_optimizer, sha
     assert actual.shape == shape
 
 
-def test_aug_2d_plasma_contrast(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_plasma_contrast(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomPlasmaContrast(p=1.0)
     op = torch_optimizer(aug)
@@ -321,7 +321,7 @@ def test_aug_2d_plasma_contrast(benchmark, device, dtype, torch_optimizer, shape
     assert actual.shape == shape
 
 
-def test_aug_2d_plasma_shadow(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_plasma_shadow(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomPlasmaShadow(p=1.0)
     op = torch_optimizer(aug)
@@ -331,7 +331,7 @@ def test_aug_2d_plasma_shadow(benchmark, device, dtype, torch_optimizer, shape):
     assert actual.shape == shape
 
 
-def test_aug_2d_posterize(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_posterize(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomPosterize(p=1.0)
     op = torch_optimizer(aug)
@@ -341,7 +341,7 @@ def test_aug_2d_posterize(benchmark, device, dtype, torch_optimizer, shape):  # 
     assert actual.shape == shape
 
 
-def test_aug_2d_rain(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_rain(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomRain(p=1.0)
     op = torch_optimizer(aug)
@@ -351,7 +351,7 @@ def test_aug_2d_rain(benchmark, device, dtype, torch_optimizer, shape):  # noqa:
     assert actual.shape == shape
 
 
-def test_aug_2d_rgb_shift(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_rgb_shift(benchmark, device, dtype, torch_optimizer, shape):
     if shape[1] != 3:
         pytest.skip("Skipping because input should be rgb")
     data = torch.rand(*shape, device=device, dtype=dtype)
@@ -363,7 +363,7 @@ def test_aug_2d_rgb_shift(benchmark, device, dtype, torch_optimizer, shape):  # 
     assert actual.shape == shape
 
 
-def test_aug_2d_salt_and_peper_noise(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_salt_and_peper_noise(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomSaltAndPepperNoise(p=1.0)
     op = torch_optimizer(aug)
@@ -373,7 +373,7 @@ def test_aug_2d_salt_and_peper_noise(benchmark, device, dtype, torch_optimizer, 
     assert actual.shape == shape
 
 
-def test_aug_2d_saturation(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_saturation(benchmark, device, dtype, torch_optimizer, shape):
     if shape[1] != 3:
         pytest.skip("Skipping because input should be rgb")
     data = torch.rand(*shape, device=device, dtype=dtype)
@@ -385,7 +385,7 @@ def test_aug_2d_saturation(benchmark, device, dtype, torch_optimizer, shape):  #
     assert actual.shape == shape
 
 
-def test_aug_2d_sharpness(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_sharpness(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomSharpness(p=1.0)
     op = torch_optimizer(aug)
@@ -395,7 +395,7 @@ def test_aug_2d_sharpness(benchmark, device, dtype, torch_optimizer, shape):  # 
     assert actual.shape == shape
 
 
-def test_aug_2d_snow(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_snow(benchmark, device, dtype, torch_optimizer, shape):
     if shape[1] != 3:
         pytest.skip("Skipping because input should be rgb")
 
@@ -408,7 +408,7 @@ def test_aug_2d_snow(benchmark, device, dtype, torch_optimizer, shape):  # noqa:
     assert actual.shape == shape
 
 
-def test_aug_2d_solarize(benchmark, device, dtype, torch_optimizer, shape):  # noqa: D103
+def test_aug_2d_solarize(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomSolarize(p=1.0)
     op = torch_optimizer(aug)
