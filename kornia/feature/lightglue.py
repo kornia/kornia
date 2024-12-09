@@ -38,12 +38,12 @@ else:
     FLASH_AVAILABLE = False
 
 
-def math_clamp(x, min_, max_):  # type: ignore  # noqa: D103
+def math_clamp(x, min_, max_):  # type: ignore
     return max(min(x, min_), min_)
 
 
 @custom_fwd(cast_inputs=torch.float32)
-def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:  # noqa: D103
+def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
     if isinstance(size, torch.Size):
         size = Tensor(size)[None]
     shift = size.float().to(kpts) / 2
@@ -52,7 +52,7 @@ def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:  # noqa: D103
     return kpts
 
 
-def pad_to_length(x: Tensor, length: int) -> Tuple[Tensor, Tensor]:  # noqa: D103
+def pad_to_length(x: Tensor, length: int) -> Tuple[Tensor, Tensor]:
     if length <= x.shape[-2]:
         return x, ones_like(x[..., :1], dtype=torch.bool)
     pad = ones(*x.shape[:-2], length - x.shape[-2], x.shape[-1], device=x.device, dtype=x.dtype)
@@ -62,13 +62,13 @@ def pad_to_length(x: Tensor, length: int) -> Tuple[Tensor, Tensor]:  # noqa: D10
     return y, mask
 
 
-def rotate_half(x: Tensor) -> Tensor:  # noqa: D103
+def rotate_half(x: Tensor) -> Tensor:
     x = x.unflatten(-1, (-1, 2))
     x1, x2 = x.unbind(dim=-1)
     return stack((-x2, x1), dim=-1).flatten(start_dim=-2)
 
 
-def apply_cached_rotary_emb(freqs: Tensor, t: Tensor) -> Tensor:  # noqa: D103
+def apply_cached_rotary_emb(freqs: Tensor, t: Tensor) -> Tensor:
     return (t * freqs[0]) + (rotate_half(t) * freqs[1])
 
 

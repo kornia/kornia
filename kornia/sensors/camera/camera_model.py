@@ -18,7 +18,7 @@ class CameraModelType(Enum):
     ORTHOGRAPHIC = 3
 
 
-def get_model_from_type(model_type: CameraModelType, image_size: ImageSize, params: Tensor) -> CameraModelVariants:  # noqa: D103
+def get_model_from_type(model_type: CameraModelType, image_size: ImageSize, params: Tensor) -> CameraModelVariants:
     if model_type == CameraModelType.PINHOLE:
         return PinholeModel(image_size, params)
     elif model_type == CameraModelType.BROWN_CONRADY:

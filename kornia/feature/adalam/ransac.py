@@ -7,7 +7,7 @@ from kornia.core import Tensor
 from .utils import arange_sequence, batch_2x2_ellipse, batch_2x2_inv, draw_first_k_couples, piecewise_arange
 
 
-def stable_sort_residuals(residuals: Tensor, ransidx: Tensor) -> Tuple[Tensor, Tensor]:  # noqa: D103
+def stable_sort_residuals(residuals: Tensor, ransidx: Tensor) -> Tuple[Tensor, Tensor]:
     logres = torch.log(residuals + 1e-10)
     minlogres = torch.min(logres)
     maxlogres = torch.max(logres)
@@ -21,7 +21,7 @@ def stable_sort_residuals(residuals: Tensor, ransidx: Tensor) -> Tuple[Tensor, T
     return residuals[iters_range.unsqueeze(-1), sorting_idxes], sorting_idxes
 
 
-def group_sum_and_cumsum(  # noqa: D103
+def group_sum_and_cumsum(
     scores_mat: Tensor, end_group_idx: Tensor, group_idx: Union[Tensor, slice, None] = None
 ) -> Tuple[Tensor, Union[Tensor, None]]:
     cumulative_scores = torch.cumsum(scores_mat, dim=1)
@@ -41,7 +41,7 @@ def group_sum_and_cumsum(  # noqa: D103
     return grouped_sums, None
 
 
-def confidence_based_inlier_selection(  # noqa: D103
+def confidence_based_inlier_selection(
     residuals: Tensor, ransidx: Tensor, rdims: Tensor, idxoffsets: Tensor, dv: torch.device, min_confidence: Tensor
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
     numransacs = rdims.shape[0]
@@ -84,7 +84,7 @@ def confidence_based_inlier_selection(  # noqa: D103
     return inl_ransidx, inl_sampleidx, inl_counts, inl_iters, inl_counts.float() / expected_extra_inl
 
 
-def sample_padded_inliers(  # noqa: D103
+def sample_padded_inliers(
     xsamples: Tensor,
     ysamples: Tensor,
     inlier_counts: Tensor,
@@ -104,7 +104,7 @@ def sample_padded_inliers(  # noqa: D103
     return padded_inlier_x, padded_inlier_y
 
 
-def ransac(  # noqa: D103
+def ransac(
     xsamples: Tensor, ysamples: Tensor, rdims: Tensor, config: Dict[str, Any], iters: int = 128, refit: bool = True
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
     DET_THR = config["detected_scale_rate_threshold"]

@@ -294,7 +294,7 @@ def _strip_hash(rgb: str) -> str:
     return rgb
 
 
-def short2rgb(short: str) -> str:  # noqa: D103
+def short2rgb(short: str) -> str:
     return SHORT2RGB_DICT[short]
 
 

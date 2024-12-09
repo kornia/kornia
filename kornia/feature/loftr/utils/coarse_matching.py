@@ -30,7 +30,7 @@ def mask_border(m: Tensor, b: int, v: Union[Tensor, float, bool]) -> None:  # no
     m[:, :, :, :, -b:] = v
 
 
-def mask_border_with_padding(m: Tensor, bd: int, v: Union[Tensor, float, bool], p_m0: Tensor, p_m1: Tensor) -> None:  # noqa: D103
+def mask_border_with_padding(m: Tensor, bd: int, v: Union[Tensor, float, bool], p_m0: Tensor, p_m1: Tensor) -> None:
     if bd <= 0:
         return
 

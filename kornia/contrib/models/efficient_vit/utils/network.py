@@ -7,7 +7,7 @@ from inspect import signature
 from typing import Any, Union
 
 
-def get_same_padding(kernel_size: Union[int, tuple[int, ...]]) -> Union[int, tuple[int, ...]]:  # noqa: D103
+def get_same_padding(kernel_size: Union[int, tuple[int, ...]]) -> Union[int, tuple[int, ...]]:
     if isinstance(kernel_size, (tuple,)):
         return tuple([get_same_padding(ks) for ks in kernel_size])  # type: ignore
 
@@ -15,7 +15,7 @@ def get_same_padding(kernel_size: Union[int, tuple[int, ...]]) -> Union[int, tup
     return kernel_size // 2
 
 
-def build_kwargs_from_config(config: dict[str, Any], target_func: Any) -> dict[str, Any]:  # noqa: D103
+def build_kwargs_from_config(config: dict[str, Any], target_func: Any) -> dict[str, Any]:
     valid_keys = list(signature(target_func).parameters)
     kwargs = {}
     for key, value in config.items():

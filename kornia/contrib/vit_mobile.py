@@ -6,11 +6,11 @@ from torch import nn
 from kornia.core import Module, Tensor
 
 
-def conv_1x1_bn(inp: int, oup: int) -> Module:  # noqa: D103
+def conv_1x1_bn(inp: int, oup: int) -> Module:
     return nn.Sequential(nn.Conv2d(inp, oup, 1, 1, 0, bias=False), nn.BatchNorm2d(oup), nn.SiLU())
 
 
-def conv_nxn_bn(inp: int, oup: int, kernal_size: int = 3, stride: int = 1) -> Module:  # noqa: D103
+def conv_nxn_bn(inp: int, oup: int, kernal_size: int = 3, stride: int = 1) -> Module:
     return nn.Sequential(nn.Conv2d(inp, oup, kernal_size, stride, 1, bias=False), nn.BatchNorm2d(oup), nn.SiLU())
 
 

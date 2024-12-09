@@ -23,7 +23,7 @@ from .layers import MemEffAttention, Mlp, PatchEmbed, SwiGLUFFNFused
 from .layers import NestedTensorBlock as Block
 
 
-def named_apply(fn: Callable, module: nn.Module, name="", depth_first=True, include_root=False) -> nn.Module:  # noqa: D103
+def named_apply(fn: Callable, module: nn.Module, name="", depth_first=True, include_root=False) -> nn.Module:
     if not depth_first and include_root:
         fn(module=module, name=name)
     for child_name, child_module in module.named_children():
@@ -307,7 +307,7 @@ def init_weights_vit_timm(module: nn.Module, name: str = ""):
             nn.init.zeros_(module.bias)
 
 
-def vit_small(patch_size=16, **kwargs):  # noqa: D103
+def vit_small(patch_size=16, **kwargs):
     model = DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=384,
@@ -320,7 +320,7 @@ def vit_small(patch_size=16, **kwargs):  # noqa: D103
     return model
 
 
-def vit_base(patch_size=16, **kwargs):  # noqa: D103
+def vit_base(patch_size=16, **kwargs):
     model = DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=768,
@@ -333,7 +333,7 @@ def vit_base(patch_size=16, **kwargs):  # noqa: D103
     return model
 
 
-def vit_large(patch_size=16, **kwargs):  # noqa: D103
+def vit_large(patch_size=16, **kwargs):
     model = DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=1024,

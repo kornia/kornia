@@ -14,7 +14,7 @@ from .core import AdalamConfig, _no_match, adalam_core
 from .utils import dist_matrix
 
 
-def get_adalam_default_config() -> AdalamConfig:  # noqa: D103
+def get_adalam_default_config() -> AdalamConfig:
     return AdalamConfig(
         area_ratio=100,
         search_expansion=4,

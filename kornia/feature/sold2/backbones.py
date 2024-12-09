@@ -240,7 +240,7 @@ class HourglassNet(Module):
         return y
 
 
-def hg(cfg: HourglassConfig) -> HourglassNet:  # noqa: D103
+def hg(cfg: HourglassConfig) -> HourglassNet:
     return HourglassNet(
         Bottleneck2D,
         head=cfg.head,

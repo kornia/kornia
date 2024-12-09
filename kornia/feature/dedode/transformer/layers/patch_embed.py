@@ -15,7 +15,7 @@ from torch import Tensor, nn
 from kornia.core.check import KORNIA_CHECK
 
 
-def make_2tuple(x):  # noqa: D103
+def make_2tuple(x):
     if isinstance(x, tuple):
         KORNIA_CHECK(len(x) == 2)
         return x

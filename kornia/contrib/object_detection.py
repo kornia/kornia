@@ -41,7 +41,7 @@ class BoundingBox(BoundingBoxBase):
         )
 
 
-def results_from_detections(*args: Any, **kwargs: Any) -> list[ObjectDetectorResultBase]:  # noqa: D103
+def results_from_detections(*args: Any, **kwargs: Any) -> list[ObjectDetectorResultBase]:
     warnings.warn(
         "results_from_detections is deprecated and will be removed in v0.8.0. "
         "Use kornia.models.detection.results_from_detections instead.",

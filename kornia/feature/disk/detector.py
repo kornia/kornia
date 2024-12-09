@@ -10,7 +10,7 @@ from kornia.core import Tensor
 from .structs import Keypoints
 
 
-def nms(signal: Tensor, window_size: int = 5, cutoff: float = 0.0) -> Tensor:  # noqa: D103
+def nms(signal: Tensor, window_size: int = 5, cutoff: float = 0.0) -> Tensor:
     if window_size % 2 != 1:
         raise ValueError(f"window_size has to be odd, got {window_size}")
 

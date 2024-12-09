@@ -13,7 +13,7 @@ TuplePadType = Union[Tuple[int, int], FullPadType]
 PadType = Union[int, TuplePadType]
 
 
-def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadType:  # noqa: D103
+def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadType:
     padding = cast(TuplePadType, _pair(padding))
 
     if len(padding) not in [2, 4]:
