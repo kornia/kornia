@@ -138,13 +138,14 @@ ignore = [
   "UP007",   # Prefer Optional[], Union[] over | due to torch jit scripting
   "UP006",   # Prefer List[], over list due to torch jit scripting
   "UP035",   # Ignore deprecated typing because of jit scripting
-  'D100',    # TODO: Undocumented public module
+  'D100',    # Allow Undocumented public module
   'D101',    # TODO: Undocumented public class
   'D102',    # TODO: Undocumented public method
   'D103',    # TODO: Undocumented public function
-  'D104',    # TODO: Undocuemnted public package
-  'D105',    # TODO: Undocumented magic method
+  'D104',    # TODO: Undocumented public package
+  'D105',    # Allow Undocumented magic method
   'D107',    # TODO: Undocumented public init
+  'D417',    # TODO: Undocumented params
  ]
 
 [tool.ruff.lint.pydocstyle]
@@ -173,11 +174,13 @@ max-statements = 64                                        # Recommended: 50
   "RUF012",
   "S101",
   "S311",
+  "D",
 ] # allow assert, random, ignore BLE, mutable class attr
 "docs/*" = [
   "PLR0912",
   "PLR0915",
   "S101",
+  "D",
 ] # allow assert, ignore max branches and statements
 "docs/generate_examples.py" = ["C901"] # Allow too complex function
 "kornia/__init__.py" = ["I001"] # Allow unsorted imports

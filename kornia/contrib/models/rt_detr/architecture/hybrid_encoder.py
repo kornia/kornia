@@ -207,7 +207,7 @@ class CCFM(Module):
         return fmaps
 
 
-class HybridEncoder(Module):  # noqa: D101
+class HybridEncoder(Module):
     def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int, expansion: float = 1.0) -> None:
         super().__init__()
         self.input_proj = nn.ModuleList(
