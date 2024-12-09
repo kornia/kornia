@@ -339,7 +339,7 @@ class BgrToRgb(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return bgr_to_rgb(image)
 
 
@@ -365,7 +365,7 @@ class RgbToBgr(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return rgb_to_bgr(image)
 
 
@@ -401,7 +401,7 @@ class RgbToRgba(Module):
         super().__init__()
         self.alpha_val = alpha_val
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return rgb_to_rgba(image, self.alpha_val)
 
 
@@ -437,7 +437,7 @@ class BgrToRgba(Module):
         super().__init__()
         self.alpha_val = alpha_val
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return rgb_to_rgba(image, self.alpha_val)
 
 
@@ -463,7 +463,7 @@ class RgbaToRgb(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 4, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return rgba_to_rgb(image)
 
 
@@ -489,7 +489,7 @@ class RgbaToBgr(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 4, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return rgba_to_bgr(image)
 
 
@@ -523,7 +523,7 @@ class RgbToLinearRgb(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return rgb_to_linear_rgb(image)
 
 
@@ -556,7 +556,7 @@ class LinearRgbToRgb(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return linear_rgb_to_rgb(image)
 
 
@@ -577,7 +577,7 @@ class NormalsToRgb255(Module):
 
     """
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return normals_to_rgb255(image)
 
 
@@ -598,7 +598,7 @@ class RgbToRgb255(Module):
 
     """
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return rgb_to_rgb255(image)
 
 
@@ -619,7 +619,7 @@ class Rgb255ToRgb(Module):
 
     """
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return rgb255_to_rgb(image)
 
 
@@ -640,5 +640,5 @@ class Rgb255ToNormals(Module):
 
     """
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return rgb255_to_normals(image)

@@ -172,7 +172,7 @@ class ConvSoftArgmax2d(Module):
             f"output_value={self.output_value})"
         )
 
-    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:
         return conv_soft_argmax2d(
             x,
             self.kernel_size,
@@ -226,7 +226,7 @@ class ConvSoftArgmax3d(Module):
             f"output_value={self.output_value})"
         )
 
-    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:
         return conv_soft_argmax3d(
             x,
             self.kernel_size,
@@ -534,7 +534,7 @@ class SpatialSoftArgmax2d(Module):
             f"normalized_coordinates={self.normalized_coordinates})"
         )
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates)
 
 
@@ -641,5 +641,5 @@ class ConvQuadInterp3d(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(strict_maxima_bonus={self.strict_maxima_bonus})"
 
-    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:  # noqa: D102
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         return conv_quad_interp3d(x, self.strict_maxima_bonus, self.eps)

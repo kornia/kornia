@@ -24,10 +24,10 @@ class DiscreteSteerer(Module):
         super().__init__()
         self.generator = torch.nn.Parameter(generator)
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         return torch.nn.functional.linear(x, self.generator)
 
-    def steer_descriptions(  # noqa: D102
+    def steer_descriptions(
         self,
         descriptions: Tensor,
         steerer_power: int = 1,

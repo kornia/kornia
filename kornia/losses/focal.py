@@ -173,7 +173,7 @@ class FocalLoss(nn.Module):
         self.weight: Optional[Tensor] = weight
         self.ignore_index: Optional[int] = ignore_index
 
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         return focal_loss(pred, target, self.alpha, self.gamma, self.reduction, self.weight, self.ignore_index)
 
 
@@ -349,7 +349,7 @@ class BinaryFocalLossWithLogits(nn.Module):
         self.weight: Optional[Tensor] = weight
         self.ignore_index: Optional[int] = ignore_index
 
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         return binary_focal_loss_with_logits(
             pred, target, self.alpha, self.gamma, self.reduction, self.pos_weight, self.weight, self.ignore_index
         )

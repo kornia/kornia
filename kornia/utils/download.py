@@ -41,7 +41,7 @@ class CachedDownloader:
         return file_path
 
     @classmethod
-    def download_to_cache(cls, url: str, name: str, download: bool = True, **kwargs: Any) -> str:  # noqa: D102
+    def download_to_cache(cls, url: str, name: str, download: bool = True, **kwargs: Any) -> str:
         if url.startswith(("http:", "https:")):
             cache_dir = kwargs.get("cache_dir", None)
             suffix = kwargs.get("suffix", None)

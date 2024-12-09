@@ -407,7 +407,7 @@ class DescriptorMatcherWithSteerer(Module):
         self.match_mode = _match_mode
         self.th = th
 
-    def matching_function(self, d1: Tensor, d2: Tensor, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:  # noqa: D102
+    def matching_function(self, d1: Tensor, d2: Tensor, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         if self.match_mode == "nn":
             return match_nn(d1, d2, dm=dm)
         elif self.match_mode == "mnn":

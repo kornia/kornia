@@ -28,5 +28,5 @@ class Lambda(Module):
 
         self.func = func
 
-    def forward(self, img: Tensor, *args: Any, **kwargs: Any) -> Tensor:  # noqa: D102
+    def forward(self, img: Tensor, *args: Any, **kwargs: Any) -> Tensor:
         return self.func(img, *args, **kwargs)

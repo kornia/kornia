@@ -28,11 +28,11 @@ class DISKFeatures:
     detection_scores: Tensor
 
     @property
-    def n(self) -> int:  # noqa: D102
+    def n(self) -> int:
         return self.keypoints.shape[0]
 
     @property
-    def device(self) -> Device:  # noqa: D102
+    def device(self) -> Device:
         return self.keypoints.device
 
     @property

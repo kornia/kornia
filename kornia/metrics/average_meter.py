@@ -23,20 +23,20 @@ class AverageMeter:
     def __init__(self) -> None:
         self.reset()
 
-    def reset(self) -> None:  # noqa: D102
+    def reset(self) -> None:
         self.val = 0
         self._avg = 0
         self.sum = 0
         self.count = 0
 
-    def update(self, val: Union[float, bool, Tensor], n: int = 1) -> None:  # noqa: D102
+    def update(self, val: Union[float, bool, Tensor], n: int = 1) -> None:
         self.val = val
         self.sum += val * n
         self.count += n
         self._avg = self.sum / self.count
 
     @property
-    def avg(self) -> float:  # noqa: D102
+    def avg(self) -> float:
         if isinstance(self._avg, Tensor):
             return float(self._avg.item())
         return self._avg

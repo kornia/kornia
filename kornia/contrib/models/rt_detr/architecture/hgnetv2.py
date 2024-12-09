@@ -24,7 +24,7 @@ class StemBlock(Module):
         self.stem4 = ConvNormAct(mid_channels, out_channels, 1)
         self.pool = nn.Sequential(nn.ZeroPad2d((0, 1, 0, 1)), nn.MaxPool2d(2, 1))
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         x = self.stem1(x)
         x = concatenate([self.pool(x), self.stem2b(self.stem2a(x))], 1)
         x = self.stem4(self.stem3(x))
@@ -65,7 +65,7 @@ class HGBlock(Module):
         self.aggregation_squeeze_conv = ConvNormAct(total_channels, config.out_channels // 2, 1)
         self.aggregation_excitation_conv = ConvNormAct(config.out_channels // 2, config.out_channels, 1)
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         feats = [x]
         for layer in self.layers:
             feats.append(layer(feats[-1]))
@@ -97,7 +97,7 @@ class PPHGNetV2(Module):
         for cfg in stage_configs:
             self.stages.append(HGStage(cfg))
 
-    def forward(self, x: Tensor) -> list[Tensor]:  # noqa: D102
+    def forward(self, x: Tensor) -> list[Tensor]:
         x = self.stem(x)
         s2 = self.stages[0](x)
         s3 = self.stages[1](s2)
@@ -106,7 +106,7 @@ class PPHGNetV2(Module):
         return [s3, s4, s5]
 
     @staticmethod
-    def from_config(variant: str) -> PPHGNetV2:  # noqa: D102
+    def from_config(variant: str) -> PPHGNetV2:
         if variant == "L":
             return PPHGNetV2(
                 stem_channels=[3, 32, 48],

@@ -102,13 +102,13 @@ class Trainer:
         self._logger = logging.getLogger("train")
 
     @property
-    def device(self) -> torch.device:  # noqa: D102
+    def device(self) -> torch.device:
         return self.accelerator.device
 
-    def backward(self, loss: Tensor) -> None:  # noqa: D102
+    def backward(self, loss: Tensor) -> None:
         self.accelerator.backward(loss)
 
-    def fit_epoch(self, epoch: int) -> None:  # noqa: D102
+    def fit_epoch(self, epoch: int) -> None:
         # train loop
         self.model.train()
         losses = AverageMeter()
@@ -135,7 +135,7 @@ class Trainer:
                     f"Loss: {losses.val:.3f} {losses.avg:.3f}"
                 )
 
-    def fit(self) -> None:  # noqa: D102
+    def fit(self) -> None:
         # execute the main loop
         # NOTE: Do not change and keep this structure clear for readability.
         for epoch in range(self.num_epochs):
@@ -163,7 +163,7 @@ class Trainer:
     # events stubs
 
     @torch.no_grad()
-    def evaluate(self) -> Dict[str, AverageMeter]:  # noqa: D102
+    def evaluate(self) -> Dict[str, AverageMeter]:
         self.model.eval()
         stats = StatsTracker()
         for sample_id, sample in enumerate(self.valid_dataloader):
@@ -188,31 +188,31 @@ class Trainer:
 
         return stats.as_dict()
 
-    def on_epoch_start(self, *args: Any, **kwargs: Any) -> None: ...  # noqa: D102
+    def on_epoch_start(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def preprocess(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:  # noqa: D102
+    def preprocess(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:
         return x
 
-    def augmentations(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:  # noqa: D102
+    def augmentations(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:
         return x
 
     def compute_metrics(self, *args: Any) -> Dict[str, float]:
         """Compute metrics during the evaluation."""
         return {}
 
-    def compute_loss(self, *args: Tensor) -> Tensor:  # noqa: D102
+    def compute_loss(self, *args: Tensor) -> Tensor:
         if self.criterion is None:
             raise RuntimeError("`criterion` should not be None.")
         return self.criterion(*args)
 
-    def on_before_model(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:  # noqa: D102
+    def on_before_model(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:
         return x
 
-    def on_model(self, model: Module, sample: Dict[str, Tensor]) -> Tensor:  # noqa: D102
+    def on_model(self, model: Module, sample: Dict[str, Tensor]) -> Tensor:
         return model(sample["input"])
 
-    def on_after_model(self, output: Tensor, sample: Dict[str, Tensor]) -> None: ...  # noqa: D102
+    def on_after_model(self, output: Tensor, sample: Dict[str, Tensor]) -> None: ...
 
-    def on_checkpoint(self, *args: Any, **kwargs: Dict[str, Any]) -> None: ...  # noqa: D102
+    def on_checkpoint(self, *args: Any, **kwargs: Dict[str, Any]) -> None: ...
 
-    def on_epoch_end(self, *args: Any, **kwargs: Dict[str, Any]) -> None: ...  # noqa: D102
+    def on_epoch_end(self, *args: Any, **kwargs: Dict[str, Any]) -> None: ...

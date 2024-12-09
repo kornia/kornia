@@ -52,7 +52,7 @@ class NonMaximaSuppression2d(Module):
         ky, kx = kernel_size  # we assume a cubic kernel
         return pad(ky), pad(ky), pad(kx), pad(kx)
 
-    def forward(self, x: Tensor, mask_only: bool = False) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor, mask_only: bool = False) -> Tensor:
         if len(x.shape) != 4:
             raise AssertionError(x.shape)
         B, CH, H, W = x.size()
@@ -93,7 +93,7 @@ class NonMaximaSuppression3d(Module):
         kd, ky, kx = kernel_size  # we assume a cubic kernel
         return pad(kd), pad(kd), pad(ky), pad(ky), pad(kx), pad(kx)
 
-    def forward(self, x: Tensor, mask_only: bool = False) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor, mask_only: bool = False) -> Tensor:
         if len(x.shape) != 5:
             raise AssertionError(x.shape)
         # find local maximum values

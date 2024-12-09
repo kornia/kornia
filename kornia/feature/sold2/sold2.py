@@ -125,7 +125,7 @@ class SOLD2(Module):
         """
         return self.line_matcher(line_seg1, line_seg2, desc1, desc2)
 
-    def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D102
+    def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]

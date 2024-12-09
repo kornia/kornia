@@ -220,7 +220,7 @@ class BilateralBlur(_BilateralBlur):
 
     """
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         return bilateral_blur(
             input, self.kernel_size, self.sigma_color, self.sigma_space, self.border_type, self.color_distance_type
         )
@@ -263,7 +263,7 @@ class JointBilateralBlur(_BilateralBlur):
 
     """
 
-    def forward(self, input: Tensor, guidance: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor, guidance: Tensor) -> Tensor:
         return joint_bilateral_blur(
             input,
             guidance,

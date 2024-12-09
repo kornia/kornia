@@ -225,10 +225,10 @@ class VisionTransformer(Module):
         self.norm = nn.LayerNorm(hidden_dim, 1e-6)
 
     @property
-    def encoder_results(self) -> list[Tensor]:  # noqa: D102
+    def encoder_results(self) -> list[Tensor]:
         return self.encoder.results
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         if not isinstance(x, Tensor):
             raise TypeError(f"Input x type is not a Tensor. Got: {type(x)}")
 

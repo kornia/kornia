@@ -123,5 +123,5 @@ class CharbonnierLoss(Module):
         super().__init__()
         self.reduction = reduction
 
-    def forward(self, img1: Tensor, img2: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
         return charbonnier_loss(img1=img1, img2=img2, reduction=self.reduction)

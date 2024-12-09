@@ -108,5 +108,5 @@ class SSIMLoss(nn.Module):
         self.reduction: str = reduction
         self.padding: str = padding
 
-    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:  # noqa: D102
+    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
         return ssim_loss(img1, img2, self.window_size, self.max_val, self.eps, self.reduction, self.padding)

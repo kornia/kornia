@@ -65,7 +65,7 @@ class SOSNet(nn.Module):
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:  # noqa: D102
+    def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         descr = self.desc_norm(self.layers(input) + eps)
         descr = descr.view(descr.size(0), -1)

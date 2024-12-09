@@ -175,5 +175,5 @@ class InRange(Module):
         self.upper = upper
         self.return_mask = return_mask
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         return in_range(input, self.lower, self.upper, self.return_mask)

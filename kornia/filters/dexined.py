@@ -49,7 +49,7 @@ class CoFusion(Module):
         self.norm_layer1 = nn.GroupNorm(4, 64)
         self.norm_layer2 = nn.GroupNorm(4, 64)
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         # fusecat = torch.cat(x, dim=1)
         attn = self.relu(self.norm_layer1(self.conv1(x)))
         attn = self.relu(self.norm_layer2(self.conv2(attn)))
@@ -107,7 +107,7 @@ class UpConvBlock(Module):
         KORNIA_CHECK(layers is not None, "layers cannot be none")
         self.features = nn.Sequential(*layers)
 
-    def make_deconv_layers(self, in_features: int, up_scale: int) -> nn.ModuleList:  # noqa: D102
+    def make_deconv_layers(self, in_features: int, up_scale: int) -> nn.ModuleList:
         layers = nn.ModuleList([])
         all_pads = [0, 0, 1, 3, 7]
         for i in range(up_scale):
@@ -120,10 +120,10 @@ class UpConvBlock(Module):
             in_features = out_features
         return layers
 
-    def compute_out_features(self, idx: int, up_scale: int) -> int:  # noqa: D102
+    def compute_out_features(self, idx: int, up_scale: int) -> int:
         return 1 if idx == up_scale - 1 else self.constant_features
 
-    def forward(self, x: Tensor, out_shape: list[int]) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor, out_shape: list[int]) -> Tensor:
         out = self.features(x)
         out = F.interpolate(out, out_shape, mode="bilinear")
         return out
@@ -136,7 +136,7 @@ class SingleConvBlock(Module):
         self.conv = nn.Conv2d(in_features, out_features, 1, stride=stride, bias=True)
         self.bn = nn.BatchNorm2d(out_features)
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         x = self.conv(x)
         if self.use_bn:
             x = self.bn(x)
@@ -222,13 +222,13 @@ class DexiNed(Module):
         else:
             self.apply(weight_init)
 
-    def load_from_file(self, path_file: str) -> None:  # noqa: D102
+    def load_from_file(self, path_file: str) -> None:
         # use torch.hub to load pretrained model
         pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def get_features(self, x: Tensor) -> list[Tensor]:  # noqa: D102
+    def get_features(self, x: Tensor) -> list[Tensor]:
         # Block 1
         block_1 = self.block_1(x)
         block_1_side = self.side_1(block_1)
@@ -274,7 +274,7 @@ class DexiNed(Module):
         results = [out_1, out_2, out_3, out_4, out_5, out_6]
         return results
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         features = self.get_features(x)
 
         # concatenate multiscale outputs

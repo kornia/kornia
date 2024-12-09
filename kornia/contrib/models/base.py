@@ -41,7 +41,7 @@ class ModelBase(ABC, Module, Generic[ModelConfig]):
         """
         raise NotImplementedError
 
-    def compile(  # noqa: D102
+    def compile(
         self,
         *,
         fullgraph: bool = False,

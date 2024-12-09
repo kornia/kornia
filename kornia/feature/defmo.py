@@ -68,7 +68,7 @@ class Bottleneck(Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         identity = x
 
         out = self.conv1(x)
@@ -199,7 +199,7 @@ class ResNet(Module):
 
         return x
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         return self._forward_impl(x)
 
 
@@ -212,7 +212,7 @@ class EncoderDeFMO(Module):
         modelc1[0] = nn.Conv2d(6, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
         self.net = nn.Sequential(modelc1, modelc2)
 
-    def forward(self, input_data: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input_data: Tensor) -> Tensor:
         return self.net(input_data)
 
 
@@ -239,7 +239,7 @@ class RenderingDeFMO(Module):
         self.net = model
         self.times = torch.linspace(0, 1, self.tsr_steps)
 
-    def forward(self, latent: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, latent: Tensor) -> Tensor:
         times = self.times.to(latent.device).unsqueeze(0).repeat(latent.shape[0], 1)
         renders = []
         for ki in range(times.shape[1]):
@@ -298,7 +298,7 @@ class DeFMO(Module):
             self.rendering.load_state_dict(pretrained_dict_ren, strict=True)
         self.eval()
 
-    def forward(self, input_data: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input_data: Tensor) -> Tensor:
         latent = self.encoder(input_data)
         x_out = self.rendering(latent)
         return x_out

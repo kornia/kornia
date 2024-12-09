@@ -33,5 +33,5 @@ class DropPath(Module):
         super().__init__()
         self.drop_prob = drop_prob
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         return drop_path(x, self.drop_prob, self.training)

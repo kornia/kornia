@@ -14,7 +14,7 @@ class Decoder(nn.Module):
         self.super_resolution = super_resolution
         self.num_prototypes = num_prototypes
 
-    def forward(  # noqa: D102
+    def forward(
         self, features: Tensor, context: Optional[Tensor] = None, scale: Optional[int] = None
     ) -> Tuple[Tensor, Optional[Tensor]]:
         if context is not None:
@@ -61,7 +61,7 @@ class ConvRefiner(nn.Module):
         self.amp_dtype = amp_dtype
         self.residual = residual
 
-    def create_block(  # type: ignore[no-untyped-def]  # noqa: D102
+    def create_block(  # type: ignore[no-untyped-def]
         self,
         in_dim,
         out_dim,
@@ -88,7 +88,7 @@ class ConvRefiner(nn.Module):
         conv2 = nn.Conv2d(out_dim, out_dim, 1, 1, 0)
         return nn.Sequential(conv1, norm, relu, conv2)
 
-    def forward(self, feats: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, feats: Tensor) -> Tensor:
         b, c, hs, ws = feats.shape
         with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
             x0 = self.block1(feats)

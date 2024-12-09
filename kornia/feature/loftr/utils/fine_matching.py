@@ -71,7 +71,7 @@ class FineMatching(Module):
         self.get_fine_match(coords_normalized, data)
 
     @torch.no_grad()
-    def get_fine_match(self, coords_normed: Tensor, data: dict[str, Any]) -> None:  # noqa: D102
+    def get_fine_match(self, coords_normed: Tensor, data: dict[str, Any]) -> None:
         W, _, _, scale = self.W, self.WW, self.C, self.scale
 
         # mkpts0_f and mkpts1_f

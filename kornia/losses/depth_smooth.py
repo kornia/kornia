@@ -101,5 +101,5 @@ class InverseDepthSmoothnessLoss(nn.Module):
 
     """
 
-    def forward(self, idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:  # noqa: D102
+    def forward(self, idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
         return inverse_depth_smoothness_loss(idepth, image)

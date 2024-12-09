@@ -20,7 +20,7 @@ class PreNorm(Module):
         self.norm = nn.LayerNorm(dim)
         self.fn = fn
 
-    def forward(self, x: Tensor, **kwargs: Dict[str, Any]) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor, **kwargs: Dict[str, Any]) -> Tensor:
         return self.fn(self.norm(x), **kwargs)
 
 
@@ -31,7 +31,7 @@ class FeedForward(Module):
             nn.Linear(dim, hidden_dim), nn.SiLU(), nn.Dropout(dropout), nn.Linear(hidden_dim, dim), nn.Dropout(dropout)
         )
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         return self.net(x)
 
 
@@ -49,7 +49,7 @@ class Attention(Module):
 
         self.to_out = nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout)) if project_out else nn.Identity()
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         qkv = self.to_qkv(x).chunk(3, dim=-1)
 
         b, p, n, hd = qkv[0].shape
@@ -91,7 +91,7 @@ class Transformer(Module):
                 )
             )
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
@@ -144,7 +144,7 @@ class MV2Block(Module):
                 nn.BatchNorm2d(oup),
             )
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         if self.use_res_connect:
             return x + self.conv(x)
         else:
@@ -186,7 +186,7 @@ class MobileViTBlock(Module):
         self.conv3 = conv_1x1_bn(dim, channel)
         self.conv4 = conv_nxn_bn(2 * channel, channel, kernel_size)
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         y = x.clone()
 
         # Local representations
@@ -280,7 +280,7 @@ class MobileViT(Module):
 
         self.conv2 = conv_1x1_bn(channels[-2], channels[-1])
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         x = self.conv1(x)
         x = self.mv2[0](x)
 

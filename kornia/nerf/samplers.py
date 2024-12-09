@@ -36,19 +36,19 @@ class RaySampler:
         self._dtype = dtype
 
     @property
-    def origins(self) -> Tensor:  # noqa: D102
+    def origins(self) -> Tensor:
         return self._origins
 
     @property
-    def directions(self) -> Tensor:  # noqa: D102
+    def directions(self) -> Tensor:
         return self._directions
 
     @property
-    def camera_ids(self) -> Tensor:  # noqa: D102
+    def camera_ids(self) -> Tensor:
         return self._camera_ids
 
     @property
-    def points_2d(self) -> Tensor:  # noqa: D102
+    def points_2d(self) -> Tensor:
         return self._points_2d
 
     def __len__(self) -> int:
@@ -84,11 +84,11 @@ class RaySampler:
             self._camera_ids = camera_ids
 
         @property
-        def points_2d(self) -> Tensor:  # noqa: D102
+        def points_2d(self) -> Tensor:
             return self._points_2d
 
         @property
-        def camera_ids(self) -> List[int]:  # noqa: D102
+        def camera_ids(self) -> List[int]:
             return self._camera_ids
 
     def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]) -> None:
@@ -394,7 +394,7 @@ class UniformRaySampler(RaySampler):
             )
         return RaySampler._build_num_ray_dict_of_points2d(points2d_as_flat_tensors)
 
-    def calc_ray_params(self, cameras: PinholeCamera) -> None:  # noqa: D102
+    def calc_ray_params(self, cameras: PinholeCamera) -> None:
         points_2d_camera = self.sample_points_2d(cameras.height, cameras.width)
         self._calc_ray_params(cameras, points_2d_camera)
 

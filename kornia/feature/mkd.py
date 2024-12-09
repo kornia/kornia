@@ -73,7 +73,7 @@ class MKDGradients(nn.Module):
 
         self.grad = SpatialGradient(mode="diff", order=1, normalized=False)
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         if not isinstance(x, Tensor):
             raise TypeError(f"Input type is not a Tensor. Got {type(x)}")
         if not len(x.shape) == 4:
@@ -137,7 +137,7 @@ class VonMisesKernel(nn.Module):
         self.register_buffer("frange", frange)
         self.register_buffer("weights", weights)
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         if not isinstance(x, Tensor):
             raise TypeError(f"Input type is not a Tensor. Got {type(x)}")
 
@@ -200,7 +200,7 @@ class EmbedGradients(nn.Module):
         mags = torch.sqrt(mags + self.eps)
         return mags
 
-    def forward(self, grads: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, grads: Tensor) -> Tensor:
         if not isinstance(grads, Tensor):
             raise TypeError(f"Input type is not a Tensor. Got {type(grads)}")
         if not len(grads.shape) == 4:
@@ -328,7 +328,7 @@ class ExplicitSpacialEncoding(nn.Module):
         emb2 = torch.index_select(_emb, 1, kron[:, 1])
         return emb2, kron[:, 0]
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         if not isinstance(x, Tensor):
             raise TypeError(f"Input type is not a Tensor. Got {type(x)}")
         if not ((len(x.shape) == 4) | (x.shape[1] == self.in_dims)):
@@ -418,7 +418,7 @@ class Whitening(nn.Module):
         if whitening_model is not None:
             self.load_whitening_parameters(whitening_model)
 
-    def load_whitening_parameters(self, whitening_model: Dict[str, Dict[str, Tensor]]) -> None:  # noqa: D102
+    def load_whitening_parameters(self, whitening_model: Dict[str, Dict[str, Tensor]]) -> None:
         algo = "lw" if self.xform == "lw" else "pca"
         wh_model = whitening_model[algo]
         self.mean.data = wh_model["mean"]
@@ -453,7 +453,7 @@ class Whitening(nn.Module):
         m = -0.5 * self.t
         self.evecs.data = self.evecs @ torch.diag(torch.pow(self.evals, m))
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         if not isinstance(x, Tensor):
             raise TypeError(f"Input type is not a Tensor. Got {type(x)}")
         if not len(x.shape) == 2:
@@ -548,7 +548,7 @@ class MKDDescriptor(nn.Module):
             self.odims = self.output_dims
         self.eval()
 
-    def forward(self, patches: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, patches: Tensor) -> Tensor:
         if not isinstance(patches, Tensor):
             raise TypeError(f"Input type is not a Tensor. Got {type(patches)}")
         if not len(patches.shape) == 4:
@@ -619,5 +619,5 @@ class SimpleKD(nn.Module):
 
         self.features = nn.Sequential(smoothing, gradients, ori, ese, wh)
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         return self.features(x)

@@ -38,7 +38,7 @@ class SmallSRNet(Module):
         else:
             self.apply(weight_init)
 
-    def load_from_file(self, path_file: str) -> None:  # noqa: D102
+    def load_from_file(self, path_file: str) -> None:
         # use torch.hub to load pretrained model
         model_path = CachedDownloader.download_to_cache(
             path_file, "small_sr.pth", download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
@@ -47,7 +47,7 @@ class SmallSRNet(Module):
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
@@ -70,7 +70,7 @@ class SmallSRNetWrapper(Module):
         self.model = SmallSRNet(upscale_factor=upscale_factor, pretrained=pretrained)
         self.upscale_factor = upscale_factor
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         ycbcr = self.rgb_to_ycbcr(input)
         y, cb, cr = ycbcr.split(1, dim=1)
         out_y = self.model(y)
@@ -82,7 +82,7 @@ class SmallSRNetWrapper(Module):
 
 class SmallSRBuilder:
     @staticmethod
-    def build(  # noqa: D102
+    def build(
         model_name: str = "small_sr", pretrained: bool = True, upscale_factor: int = 3, image_size: Optional[int] = None
     ) -> SuperResolution:
         if model_name.lower() == "small_sr":

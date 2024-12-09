@@ -34,7 +34,7 @@ class DINOHead(nn.Module):
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, x):  # noqa: D102
+    def forward(self, x):
         x = self.mlp(x)
         eps = 1e-6 if x.dtype == torch.float16 else 1e-12
         x = nn.functional.normalize(x, dim=-1, p=2, eps=eps)

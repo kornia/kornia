@@ -133,5 +133,5 @@ class StableDiffusionDissolving(ImageModule):
 
         self.model = _DissolvingWraper_HF(self._sdm_model, num_ddim_steps=1000)
 
-    def forward(self, input: Tensor, step_number: int) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor, step_number: int) -> Tensor:
         return self.model.dissolve(input, step_number)

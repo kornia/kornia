@@ -78,5 +78,5 @@ class Sepia(Module):
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"(rescale={self.rescale}, eps={self.eps})"
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         return sepia_from_rgb(input, rescale=self.rescale, eps=self.eps)

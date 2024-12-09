@@ -51,16 +51,16 @@ class AffineTransform:
 
 
 class BrownConradyTransform:
-    def distort(self, params: Tensor, points: Vector2) -> Vector2:  # noqa: D102
+    def distort(self, params: Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError
 
-    def undistort(self, params: Tensor, points: Vector2) -> Vector2:  # noqa: D102
+    def undistort(self, params: Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError
 
 
 class KannalaBrandtK3Transform:
-    def distort(self, params: Tensor, points: Vector2) -> Vector2:  # noqa: D102
+    def distort(self, params: Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError
 
-    def undistort(self, params: Tensor, points: Vector2) -> Vector2:  # noqa: D102
+    def undistort(self, params: Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError

@@ -26,28 +26,28 @@ class Vector3(TensorWrapper):
         return Vector3(self.data[idx, ...])
 
     @property
-    def x(self) -> Tensor:  # noqa: D102
+    def x(self) -> Tensor:
         return self.data[..., 0]
 
     @property
-    def y(self) -> Tensor:  # noqa: D102
+    def y(self) -> Tensor:
         return self.data[..., 1]
 
     @property
-    def z(self) -> Tensor:  # noqa: D102
+    def z(self) -> Tensor:
         return self.data[..., 2]
 
-    def normalized(self) -> "Vector3":  # noqa: D102
+    def normalized(self) -> "Vector3":
         return Vector3(normalize(self.data, p=2, dim=-1))
 
-    def dot(self, right: "Vector3") -> Scalar:  # noqa: D102
+    def dot(self, right: "Vector3") -> Scalar:
         return Scalar(batched_dot_product(self.data, right.data))
 
-    def squared_norm(self) -> Scalar:  # noqa: D102
+    def squared_norm(self) -> Scalar:
         return Scalar(batched_squared_norm(self.data))
 
     @classmethod
-    def random(  # noqa: D102
+    def random(
         cls, shape: Optional[Tuple[int, ...]] = None, device: Optional[Device] = None, dtype: Dtype = None
     ) -> "Vector3":
         if shape is None:
@@ -75,7 +75,7 @@ class Vector3(TensorWrapper):
     #     return wrap(as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
 
     @classmethod
-    def from_coords(  # noqa: D102
+    def from_coords(
         cls,
         x: Union[float, Tensor],
         y: Union[float, Tensor],
@@ -104,30 +104,30 @@ class Vector2(TensorWrapper):
         return Vector2(self.data[idx, ...])
 
     @property
-    def x(self) -> Tensor:  # noqa: D102
+    def x(self) -> Tensor:
         return self.data[..., 0]
 
     @property
-    def y(self) -> Tensor:  # noqa: D102
+    def y(self) -> Tensor:
         return self.data[..., 1]
 
-    def normalized(self) -> "Vector2":  # noqa: D102
+    def normalized(self) -> "Vector2":
         return Vector2(normalize(self.data, p=2, dim=-1))
 
-    def dot(self, right: "Vector2") -> Scalar:  # noqa: D102
+    def dot(self, right: "Vector2") -> Scalar:
         return Scalar(batched_dot_product(self.data, right.data))
 
-    def squared_norm(self) -> Scalar:  # noqa: D102
+    def squared_norm(self) -> Scalar:
         return Scalar(batched_squared_norm(self.data))
 
     @classmethod
-    def random(cls, shape: Optional[Tuple[int, ...]] = None, device: Device = None, dtype: Dtype = None) -> "Vector2":  # noqa: D102
+    def random(cls, shape: Optional[Tuple[int, ...]] = None, device: Device = None, dtype: Dtype = None) -> "Vector2":
         if shape is None:
             shape = ()
         return cls(rand((*shape, 2), device=device, dtype=dtype))
 
     @classmethod
-    def from_coords(  # noqa: D102
+    def from_coords(
         cls, x: Union[float, Tensor], y: Union[float, Tensor], device: Device = None, dtype: Dtype = None
     ) -> "Vector2":
         KORNIA_CHECK(type(x) is type(y))

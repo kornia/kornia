@@ -60,16 +60,16 @@ class FilterResponseNorm2d(Module):
             self.register_buffer("eps", tensor([eps]))
         self.reset_parameters()
 
-    def reset_parameters(self) -> None:  # noqa: D102
+    def reset_parameters(self) -> None:
         nn.init.ones_(self.weight)
         nn.init.zeros_(self.bias)
         if self.is_eps_leanable:
             nn.init.constant_(self.eps, self.init_eps)
 
-    def extra_repr(self) -> str:  # noqa: D102
+    def extra_repr(self) -> str:
         return "num_features={num_features}, eps={init_eps}".format(**self.__dict__)
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         # Compute the mean norm of activations per channel.
         nu2 = x.pow(2).mean(dim=[2, 3], keepdim=True)
 
@@ -110,14 +110,14 @@ class TLU(Module):
         self.tau = Parameter(-torch.ones(1, num_features, 1, 1), requires_grad=True)
         self.reset_parameters()
 
-    def reset_parameters(self) -> None:  # noqa: D102
+    def reset_parameters(self) -> None:
         # nn.init.zeros_(self.tau)
         nn.init.constant_(self.tau, -1)
 
-    def extra_repr(self) -> str:  # noqa: D102
+    def extra_repr(self) -> str:
         return "num_features={num_features}".format(**self.__dict__)
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         return torch.max(x, self.tau)
 
 
@@ -215,7 +215,7 @@ class HyNet(Module):
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)

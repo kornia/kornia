@@ -123,7 +123,7 @@ class BoxBlur(Module):
             f"separable={self.separable})"
         )
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         KORNIA_CHECK_IS_TENSOR(input)
         if self.separable:
             return filter2d_separable(input, self.kernel_x, self.kernel_y, self.border_type)

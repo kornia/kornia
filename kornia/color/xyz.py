@@ -101,7 +101,7 @@ class RgbToXyz(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return rgb_to_xyz(image)
 
 
@@ -128,5 +128,5 @@ class XyzToRgb(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return xyz_to_rgb(image)

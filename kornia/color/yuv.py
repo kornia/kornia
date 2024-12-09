@@ -311,7 +311,7 @@ class RgbToYuv(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         return rgb_to_yuv(input)
 
 
@@ -346,7 +346,7 @@ class RgbToYuv420(Module):
     # TODO: Handle multiple inputs and outputs models later
     ONNX_EXPORTABLE = False
 
-    def forward(self, yuvinput: Tensor) -> tuple[Tensor, Tensor]:  # skipcq: PYL-R0201  # noqa: D102
+    def forward(self, yuvinput: Tensor) -> tuple[Tensor, Tensor]:  # skipcq: PYL-R0201
         return rgb_to_yuv420(yuvinput)
 
 
@@ -381,7 +381,7 @@ class RgbToYuv422(Module):
     # TODO: Handle multiple inputs and outputs models later
     ONNX_EXPORTABLE = False
 
-    def forward(self, yuvinput: Tensor) -> tuple[Tensor, Tensor]:  # skipcq: PYL-R0201  # noqa: D102
+    def forward(self, yuvinput: Tensor) -> tuple[Tensor, Tensor]:  # skipcq: PYL-R0201
         return rgb_to_yuv422(yuvinput)
 
 
@@ -412,7 +412,7 @@ class YuvToRgb(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         return yuv_to_rgb(input)
 
 
@@ -447,7 +447,7 @@ class Yuv420ToRgb(Module):
     # TODO: Handle multiple inputs and outputs models later
     ONNX_EXPORTABLE = False
 
-    def forward(self, inputy: Tensor, inputuv: Tensor) -> Tensor:  # skipcq: PYL-R0201  # noqa: D102
+    def forward(self, inputy: Tensor, inputuv: Tensor) -> Tensor:  # skipcq: PYL-R0201
         return yuv420_to_rgb(inputy, inputuv)
 
 
@@ -482,5 +482,5 @@ class Yuv422ToRgb(Module):
     # TODO: Handle multiple inputs and outputs models later
     ONNX_EXPORTABLE = False
 
-    def forward(self, inputy: Tensor, inputuv: Tensor) -> Tensor:  # skipcq: PYL-R0201  # noqa: D102
+    def forward(self, inputy: Tensor, inputuv: Tensor) -> Tensor:  # skipcq: PYL-R0201
         return yuv422_to_rgb(inputy, inputuv)

@@ -51,15 +51,15 @@ class HomographyTracker(Module):
         self.reset_tracking()
 
     @property
-    def device(self) -> torch.device:  # noqa: D102
+    def device(self) -> torch.device:
         return self.target.device
 
     @property
-    def dtype(self) -> torch.dtype:  # noqa: D102
+    def dtype(self) -> torch.dtype:
         return self.target.dtype
 
     @torch.no_grad()
-    def set_target(self, target: Tensor) -> None:  # noqa: D102
+    def set_target(self, target: Tensor) -> None:
         self.target = target
         self.target_initial_representation = {}
         self.target_fast_representation = {}
@@ -70,10 +70,10 @@ class HomographyTracker(Module):
         if hasattr(self.fast_matcher, "extract_features") and isinstance(self.fast_matcher.extract_features, Module):
             self.target_fast_representation = self.fast_matcher.extract_features(target)
 
-    def reset_tracking(self) -> None:  # noqa: D102
+    def reset_tracking(self) -> None:
         self.previous_homography = None
 
-    def no_match(self) -> Tuple[Tensor, bool]:  # noqa: D102
+    def no_match(self) -> Tuple[Tensor, bool]:
         self.inliers_num = 0
         self.keypoints0_num = 0
         self.keypoints1_num = 0
@@ -144,7 +144,7 @@ class HomographyTracker(Module):
         self.previous_homography = H.clone()
         return H, True
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, bool]:  # noqa: D102
+    def forward(self, x: Tensor) -> Tuple[Tensor, bool]:
         if self.previous_homography is not None:
             return self.track_next_frame(x)
         return self.match_initial(x)

@@ -130,7 +130,7 @@ class ScaleSpaceDetector(Module):
             f"aff={self.aff.__repr__()})"
         )
 
-    def detect(self, img: Tensor, num_feats: int, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:  # noqa: D102
+    def detect(self, img: Tensor, num_feats: int, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         dev: Device = img.device
         dtype: torch.dtype = img.dtype
         sigmas: List[Tensor]
@@ -318,7 +318,7 @@ class MultiResolutionDetector(Module):
         mask[:, :, borders:-borders, borders:-borders] = 1
         return mask * score_map
 
-    def detect_features_on_single_level(  # noqa: D102
+    def detect_features_on_single_level(
         self, level_img: Tensor, num_kp: int, factor: Tuple[float, float]
     ) -> Tuple[Tensor, Tensor]:
         det_map = self.nms(self.remove_borders(self.model(level_img)))
@@ -338,7 +338,7 @@ class MultiResolutionDetector(Module):
         lafs = laf_from_center_scale_ori(xy_projected, scale, zeros(1, current_kp_num, 1, device=device, dtype=dtype))
         return scores_sorted[:num_kp], lafs
 
-    def detect(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:  # noqa: D102
+    def detect(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         # Compute points per level
         num_features_per_level: List[float] = []
         tmp = 0.0

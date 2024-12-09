@@ -26,7 +26,7 @@ class RepVggBlock(Module):
         self.act = nn.SiLU(inplace=True)
         self.conv: Optional[nn.Conv2d] = None
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         if self.conv is not None:
             out = self.act(self.conv(x))
         else:
@@ -34,7 +34,7 @@ class RepVggBlock(Module):
         return out
 
     @torch.no_grad()
-    def optimize_for_deployment(self) -> None:  # noqa: D102
+    def optimize_for_deployment(self) -> None:
         def _fuse_conv_bn_weights(m: ConvNormAct) -> tuple[nn.Parameter, nn.Parameter]:
             if m.norm.running_mean is None or m.norm.running_var is None:
                 raise ValueError
@@ -72,7 +72,7 @@ class CSPRepLayer(Module):
             else nn.Identity()
         )
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         return self.conv3(self.bottlenecks(self.conv1(x)) + self.conv2(x))
 
 
@@ -93,7 +93,7 @@ class AIFI(Module):
         self.norm2 = nn.LayerNorm(embed_dim)
         self.act = nn.GELU()
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         # using post-norm
         N, C, H, W = x.shape
         x = x.permute(2, 3, 0, 1).flatten(0, 1)  # (N, C, H, W) -> (H * W, N, C)
@@ -109,7 +109,7 @@ class AIFI(Module):
         x = x.view(H, W, N, C).permute(2, 3, 0, 1)  # (H * W, N, C) -> (N, C, H, W)
         return x
 
-    def ffn(self, x: Tensor) -> Tensor:  # noqa: D102
+    def ffn(self, x: Tensor) -> Tensor:
         return self.linear2(self.dropout(self.act(self.linear1(x))))
 
     # TODO: make this into a reusable function
@@ -159,7 +159,7 @@ class TransformerEncoder(nn.Module):
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(num_layers)])
         self.num_layers = num_layers
 
-    def forward(self, src: Tensor) -> Tensor:  # NOTE: Missing src_mask: Tensor = None, pos_embed: Tensor = None  # noqa: D102
+    def forward(self, src: Tensor) -> Tensor:  # NOTE: Missing src_mask: Tensor = None, pos_embed: Tensor = None
         output = src
         for layer in self.layers:
             output = layer(output)
@@ -182,7 +182,7 @@ class CCFM(Module):
             self.downsample_convs.append(ConvNormAct(hidden_dim, hidden_dim, 3, 2, "silu"))
             self.pan_blocks.append(CSPRepLayer(hidden_dim * 2, hidden_dim, 3, expansion))
 
-    def forward(self, fmaps: list[Tensor]) -> list[Tensor]:  # noqa: D102
+    def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
         # fmaps is ordered from hi-res to low-res
         fmaps = list(fmaps)  # shallow clone
 
@@ -222,7 +222,7 @@ class HybridEncoder(Module):  # noqa: D101
         self.encoder = nn.Sequential(TransformerEncoder(encoder_layer, 1))
         self.ccfm = CCFM(len(in_channels), hidden_dim, expansion)
 
-    def forward(self, fmaps: list[Tensor]) -> list[Tensor]:  # noqa: D102
+    def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
         projected_maps = [proj(fmap) for proj, fmap in zip(self.input_proj, fmaps)]
         projected_maps[-1] = self.encoder(projected_maps[-1])
         new_fmaps = self.ccfm(projected_maps)

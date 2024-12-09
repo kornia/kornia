@@ -170,7 +170,7 @@ class TransformerDecoderLayer(Module):
     def _ffn(self, x: Tensor) -> Tensor:
         return self.linear2(self.dropout3(self.activation(self.linear1(x))))
 
-    def forward(  # noqa: D102
+    def forward(
         self,
         tgt: Tensor,
         ref_points: Tensor,
@@ -205,7 +205,7 @@ class TransformerDecoder(Module):
         self.num_layers = num_layers
         self.eval_idx = eval_idx if eval_idx >= 0 else num_layers + eval_idx
 
-    def forward(  # noqa: D102
+    def forward(
         self,
         tgt: Tensor,
         ref_points_unact: Tensor,
@@ -325,7 +325,7 @@ class RTDETRHead(Module):
             [MLP(hidden_dim, hidden_dim, 4, num_layers=3) for _ in range(num_decoder_layers)]
         )
 
-    def forward(self, feats: Tensor) -> tuple[Tensor, Tensor]:  # noqa: D102
+    def forward(self, feats: Tensor) -> tuple[Tensor, Tensor]:
         # input projection and embedding
         memory, spatial_shapes, level_start_index = self._get_encoder_input(feats)
 

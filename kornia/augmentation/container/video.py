@@ -160,7 +160,7 @@ class VideoSequential(ImageSequential):
 
         return input
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:  # noqa: D102
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         frame_num = batch_shape[self._temporal_channel]
         named_modules = self.get_forward_sequence()
         # Got param generation shape to (B, C, H, W). Ignoring T.
@@ -201,7 +201,7 @@ class VideoSequential(ImageSequential):
             params.append(param)
         return params
 
-    def transform_inputs(  # noqa: D102
+    def transform_inputs(
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
@@ -212,7 +212,7 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def inverse_inputs(  # noqa: D102
+    def inverse_inputs(
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
@@ -223,7 +223,7 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def transform_masks(  # noqa: D102
+    def transform_masks(
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
@@ -234,7 +234,7 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def inverse_masks(  # noqa: D102
+    def inverse_masks(
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)

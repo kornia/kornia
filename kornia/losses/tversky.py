@@ -149,5 +149,5 @@ class TverskyLoss(nn.Module):
         self.eps: float = eps
         self.ignore_index: Optional[int] = ignore_index
 
-    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:  # noqa: D102
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return tversky_loss(pred, target, self.alpha, self.beta, self.eps, self.ignore_index)

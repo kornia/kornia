@@ -133,7 +133,7 @@ class GrayscaleToRgb(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return grayscale_to_rgb(image)
 
 
@@ -165,7 +165,7 @@ class RgbToGrayscale(Module):
             rgb_weights = Tensor([0.299, 0.587, 0.114])
         self.rgb_weights = rgb_weights
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
 
 
@@ -191,5 +191,5 @@ class BgrToGrayscale(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return bgr_to_grayscale(image)

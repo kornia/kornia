@@ -57,7 +57,7 @@ class Lambda(Module):
         super().__init__()
         self.fcn = fcn
 
-    def forward(self, x: Tensor) -> Any:  # noqa: D102
+    def forward(self, x: Tensor) -> Any:
         return self.fcn(x)
 
 
@@ -68,7 +68,7 @@ class StatsTracker:
         self._stats: Dict[str, AverageMeter] = {}
 
     @property
-    def stats(self) -> Dict[str, AverageMeter]:  # noqa: D102
+    def stats(self) -> Dict[str, AverageMeter]:
         return self._stats
 
     def update(self, key: str, val: float, batch_size: int) -> None:

@@ -98,7 +98,7 @@ class IntegralTensor(Module):
         super().__init__()
         self.dim = dim
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         return integral_tensor(input, self.dim)
 
 
@@ -129,5 +129,5 @@ class IntegralImage(Module):
 
     """
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         return integral_image(input)

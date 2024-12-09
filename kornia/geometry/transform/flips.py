@@ -31,7 +31,7 @@ class Vflip(Module):
 
     """
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         return vflip(input)
 
     def __repr__(self) -> str:
@@ -63,7 +63,7 @@ class Hflip(Module):
 
     """
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         return hflip(input)
 
     def __repr__(self) -> str:
@@ -92,7 +92,7 @@ class Rot180(Module):
 
     """
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         return rot180(input)
 
     def __repr__(self) -> str:

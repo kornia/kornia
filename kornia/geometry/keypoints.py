@@ -58,11 +58,11 @@ class Keypoints:
         return self
 
     @property
-    def shape(self) -> Union[Tuple[int, ...], Size]:  # noqa: D102
+    def shape(self) -> Union[Tuple[int, ...], Size]:
         return self.data.shape
 
     @property
-    def data(self) -> Tensor:  # noqa: D102
+    def data(self) -> Tensor:
         return self._data
 
     @property
@@ -75,7 +75,7 @@ class Keypoints:
         """Returns keypoints dtype."""
         return self._data.dtype
 
-    def index_put(  # noqa: D102
+    def index_put(
         self,
         indices: Union[Tuple[Tensor, ...], List[Tensor]],
         values: Union[Tensor, "Keypoints"],
@@ -150,7 +150,7 @@ class Keypoints:
         return self.transform_keypoints(M, inplace=True)
 
     @classmethod
-    def from_tensor(cls, keypoints: Tensor) -> "Keypoints":  # noqa: D102
+    def from_tensor(cls, keypoints: Tensor) -> "Keypoints":
         return cls(keypoints)
 
     def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
@@ -170,10 +170,10 @@ class Keypoints:
             raise NotImplementedError
         return self._data
 
-    def clone(self) -> "Keypoints":  # noqa: D102
+    def clone(self) -> "Keypoints":
         return Keypoints(self._data.clone(), False)
 
-    def type(self, dtype: torch.dtype) -> "Keypoints":  # noqa: D102
+    def type(self, dtype: torch.dtype) -> "Keypoints":
         self._data = self._data.type(dtype)
         return self
 
@@ -258,11 +258,11 @@ class Keypoints3D:
         return self
 
     @property
-    def shape(self) -> Size:  # noqa: D102
+    def shape(self) -> Size:
         return self.data.shape
 
     @property
-    def data(self) -> Tensor:  # noqa: D102
+    def data(self) -> Tensor:
         return self._data
 
     def pad(self, padding_size: Tensor) -> "Keypoints3D":
@@ -301,7 +301,7 @@ class Keypoints3D:
         return self.transform_keypoints(M, inplace=True)
 
     @classmethod
-    def from_tensor(cls, keypoints: Tensor) -> "Keypoints3D":  # noqa: D102
+    def from_tensor(cls, keypoints: Tensor) -> "Keypoints3D":
         return cls(keypoints)
 
     def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
@@ -321,5 +321,5 @@ class Keypoints3D:
             raise NotImplementedError
         return self._data
 
-    def clone(self) -> "Keypoints3D":  # noqa: D102
+    def clone(self) -> "Keypoints3D":
         return Keypoints3D(self._data.clone(), False)

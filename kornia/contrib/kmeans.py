@@ -52,7 +52,7 @@ class KMeans:
             torch.manual_seed(seed)
 
     @property
-    def cluster_centers(self) -> Tensor:  # noqa: D102
+    def cluster_centers(self) -> Tensor:
         if isinstance(self._final_cluster_centers, Tensor):
             return self._final_cluster_centers
         if isinstance(self._cluster_centers, Tensor):
@@ -61,7 +61,7 @@ class KMeans:
             raise TypeError("Model has not been fit to a dataset")
 
     @property
-    def cluster_assignments(self) -> Tensor:  # noqa: D102
+    def cluster_assignments(self) -> Tensor:
         if isinstance(self._final_cluster_assignments, Tensor):
             return self._final_cluster_assignments
         else:

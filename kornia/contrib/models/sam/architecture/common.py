@@ -20,7 +20,7 @@ class MLPBlock(Module):
         self.lin2 = nn.Linear(mlp_dim, embedding_dim)
         self.act = act()
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         return self.lin2(self.act(self.lin1(x)))
 
 

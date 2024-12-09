@@ -16,7 +16,7 @@ class VGG19(Module):
         self.amp = amp
         self.amp_dtype = amp_dtype
 
-    def forward(self, x: Tensor, **kwargs):  # type: ignore[no-untyped-def]  # noqa: D102
+    def forward(self, x: Tensor, **kwargs):  # type: ignore[no-untyped-def]
         with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
             feats = []
             sizes = []
@@ -52,7 +52,7 @@ class FrozenDINOv2(Module):
             dinov2_vitl14 = dinov2_vitl14.to(self.amp_dtype)
         self.dinov2_vitl14 = [dinov2_vitl14]  # ugly hack to not show parameters to DDP
 
-    def forward(self, x: Tensor):  # type: ignore[no-untyped-def]  # noqa: D102
+    def forward(self, x: Tensor):  # type: ignore[no-untyped-def]
         B, C, H, W = x.shape
         if self.dinov2_vitl14[0].device != x.device:
             self.dinov2_vitl14[0] = self.dinov2_vitl14[0].to(x.device).to(self.amp_dtype)
@@ -70,7 +70,7 @@ class VGG_DINOv2(Module):
         self.vgg = VGG19(**vgg_kwargs)
         self.frozen_dinov2 = FrozenDINOv2(**dinov2_kwargs)
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tuple[int, int]]:  # noqa: D102
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tuple[int, int]]:
         feats_vgg, sizes_vgg = self.vgg(x)
         feat_dinov2, size_dinov2 = self.frozen_dinov2(x)
         return feats_vgg + feat_dinov2, sizes_vgg + size_dinov2

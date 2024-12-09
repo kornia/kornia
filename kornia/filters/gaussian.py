@@ -125,7 +125,7 @@ class GaussianBlur2d(Module):
             f"separable={self.separable})"
         )
 
-    def forward(self, input: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, input: Tensor) -> Tensor:
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type, self.separable)
 
 

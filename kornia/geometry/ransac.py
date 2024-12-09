@@ -106,12 +106,12 @@ class RANSAC(Module):
             return 1.0
         return math.log(1.0 - conf) / min(-eps, math.log(max(eps, 1.0 - math.pow(n_inl / num_tc, sample_size))))
 
-    def estimate_model_from_minsample(self, kp1: Tensor, kp2: Tensor) -> Tensor:  # noqa: D102
+    def estimate_model_from_minsample(self, kp1: Tensor, kp2: Tensor) -> Tensor:
         batch_size, sample_size = kp1.shape[:2]
         H = self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
         return H
 
-    def verify(self, kp1: Tensor, kp2: Tensor, models: Tensor, inl_th: float) -> Tuple[Tensor, Tensor, float]:  # noqa: D102
+    def verify(self, kp1: Tensor, kp2: Tensor, models: Tensor, inl_th: float) -> Tuple[Tensor, Tensor, float]:
         if len(kp1.shape) == 2:
             kp1 = kp1[None]
         if len(kp2.shape) == 2:
@@ -129,7 +129,7 @@ class RANSAC(Module):
         inliers_best = inl[best_model_idx]
         return model_best, inliers_best, best_model_score
 
-    def remove_bad_samples(self, kp1: Tensor, kp2: Tensor) -> Tuple[Tensor, Tensor]:  # noqa: D102
+    def remove_bad_samples(self, kp1: Tensor, kp2: Tensor) -> Tuple[Tensor, Tensor]:
         # ToDo: add (model-specific) verification of the samples,
         # E.g. constraints on not to be a degenerate sample
         if self.model_type == "homography":
@@ -137,14 +137,14 @@ class RANSAC(Module):
             return kp1[mask], kp2[mask]
         return kp1, kp2
 
-    def remove_bad_models(self, models: Tensor) -> Tensor:  # noqa: D102
+    def remove_bad_models(self, models: Tensor) -> Tensor:
         # ToDo: add more and better degenerate model rejection
         # For now it is simple and hardcoded
         main_diagonal = torch.diagonal(models, dim1=1, dim2=2)
         mask = main_diagonal.abs().min(dim=1)[0] > 1e-4
         return models[mask]
 
-    def polish_model(self, kp1: Tensor, kp2: Tensor, inliers: Tensor) -> Tensor:  # noqa: D102
+    def polish_model(self, kp1: Tensor, kp2: Tensor, inliers: Tensor) -> Tensor:
         # TODO: Replace this with MAGSAC++ polisher
         kp1_inl = kp1[inliers][None]
         kp2_inl = kp2[inliers][None]
@@ -154,7 +154,7 @@ class RANSAC(Module):
         )
         return model
 
-    def validate_inputs(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> None:  # noqa: D102
+    def validate_inputs(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> None:
         if self.model_type in ["homography", "fundamental"]:
             KORNIA_CHECK_SHAPE(kp1, ["N", "2"])
             KORNIA_CHECK_SHAPE(kp2, ["N", "2"])

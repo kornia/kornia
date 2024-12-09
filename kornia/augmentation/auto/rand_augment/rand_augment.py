@@ -73,18 +73,18 @@ class RandAugment(PolicyAugmentBase):
         self.n = n
         self.m = m
 
-    def rand_selector(self, n: int) -> Tensor:  # noqa: D102
+    def rand_selector(self, n: int) -> Tensor:
         perm = torch.randperm(len(self._modules))
         idx = perm[:n]
         return idx
 
-    def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:  # noqa: D102
+    def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
         if len(subpolicy) != 1:
             raise RuntimeError(f"Each policy must have only one operation for RandAugment. Got {len(subpolicy)}.")
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:  # noqa: D102
+    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
         if params is None:
             idx = self.rand_selector(
                 self.n,
@@ -93,7 +93,7 @@ class RandAugment(PolicyAugmentBase):
 
         return self.get_children_by_params(params)
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:  # noqa: D102
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, Tensor], List[ParamItem]]

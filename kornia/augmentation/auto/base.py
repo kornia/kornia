@@ -27,7 +27,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
     def _update_transform_matrix_for_valid_op(self, module: PolicySequential) -> None:  # type: ignore
         self._transform_matrices.append(module.transform_matrix)
 
-    def clear_state(self) -> None:  # noqa: D102
+    def clear_state(self) -> None:
         self._reset_transform_matrix_state()
         return super().clear_state()
 
@@ -35,7 +35,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         """Compose policy by the provided policy config."""
         return [self.compose_subpolicy_sequential(subpolicy) for subpolicy in policy]
 
-    def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:  # noqa: D102
+    def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
         raise NotImplementedError
 
     def identity_matrix(self, input: Tensor) -> Tensor:
@@ -72,7 +72,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
             res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
 
-    def is_intensity_only(self, params: Optional[List[ParamItem]] = None) -> bool:  # noqa: D102
+    def is_intensity_only(self, params: Optional[List[ParamItem]] = None) -> bool:
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence(params)
         for _, module in named_modules:
             module = cast(PolicySequential, module)
@@ -80,7 +80,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
                 return False
         return True
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:  # noqa: D102
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
 
         params: List[ParamItem] = []
@@ -92,7 +92,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
             params.append(param)
         return params
 
-    def transform_inputs(  # noqa: D102
+    def transform_inputs(
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         for param in params:
@@ -100,7 +100,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def forward(  # noqa: D102
+    def forward(
         self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         self.clear_state()

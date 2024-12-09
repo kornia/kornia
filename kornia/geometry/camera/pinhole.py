@@ -360,7 +360,7 @@ class PinholeCamera:
 
     # NOTE: just for test. Decide if we keep it.
     @classmethod
-    def from_parameters(  # noqa: D102
+    def from_parameters(
         self,
         fx: Tensor,
         fy: Tensor,

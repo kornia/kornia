@@ -30,7 +30,7 @@ class BasicBlock(Module):
         else:
             self.downsample = nn.Sequential(conv1x1(in_planes, planes, stride=stride), nn.BatchNorm2d(planes))
 
-    def forward(self, x: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, x: Tensor) -> Tensor:
         y = x
         y = self.relu(self.bn1(self.conv1(y)))
         y = self.bn2(self.conv2(y))
@@ -98,7 +98,7 @@ class ResNetFPN_8_2(nn.Module):
         self.in_planes = dim
         return nn.Sequential(*layers)
 
-    def forward(self, x: Tensor) -> List[Tensor]:  # noqa: D102
+    def forward(self, x: Tensor) -> List[Tensor]:
         # ResNet Backbone
         x0 = self.relu(self.bn1(self.conv1(x)))
         x1 = self.layer1(x0)  # 1/2
@@ -178,7 +178,7 @@ class ResNetFPN_16_4(nn.Module):
         self.in_planes = dim
         return nn.Sequential(*layers)
 
-    def forward(self, x: Tensor) -> List[Tensor]:  # noqa: D102
+    def forward(self, x: Tensor) -> List[Tensor]:
         # ResNet Backbone
         x0 = self.relu(self.bn1(self.conv1(x)))
         x1 = self.layer1(x0)  # 1/2

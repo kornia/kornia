@@ -132,7 +132,7 @@ class RgbToYcbcr(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return rgb_to_ycbcr(image)
 
 
@@ -158,5 +158,5 @@ class YcbcrToRgb(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return ycbcr_to_rgb(image)

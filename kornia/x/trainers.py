@@ -22,7 +22,7 @@ class ImageClassifierTrainer(Trainer):
         `example <https://github.com/kornia/tutorials/tree/master/scripts/training/image_classifier/>`__.
     """
 
-    def compute_metrics(self, *args: Tensor) -> Dict[str, float]:  # noqa: D102
+    def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
         if len(args) != 2:
             raise AssertionError
         out, target = args
@@ -41,7 +41,7 @@ class SemanticSegmentationTrainer(Trainer):
         `example <https://github.com/kornia/tutorials/tree/master/scripts/training/semantic_segmentation/>`__.
     """
 
-    def compute_metrics(self, *args: Tensor) -> Dict[str, float]:  # noqa: D102
+    def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
         if len(args) != 2:
             raise AssertionError
         out, target = args
@@ -80,12 +80,12 @@ class ObjectDetectionTrainer(Trainer):
         self.loss_computed_by_model = loss_computed_by_model
         self.num_classes = num_classes
 
-    def on_model(self, model: Module, sample: Dict[str, Tensor]) -> Tensor:  # noqa: D102
+    def on_model(self, model: Module, sample: Dict[str, Tensor]) -> Tensor:
         if self.loss_computed_by_model and model.training:
             return model(sample["input"], sample["target"])
         return model(sample["input"])
 
-    def compute_loss(self, *args: Tensor) -> Tensor:  # noqa: D102
+    def compute_loss(self, *args: Tensor) -> Tensor:
         if self.loss_computed_by_model:
             # Note: in case of dict losses obtained
             if isinstance(args[0], dict):
@@ -95,7 +95,7 @@ class ObjectDetectionTrainer(Trainer):
             raise RuntimeError("`criterion` should not be None if `loss_computed_by_model` is False.")
         return self.criterion(*args)
 
-    def compute_metrics(self, *args: Tuple[Dict[str, Tensor]]) -> Dict[str, float]:  # noqa: D102
+    def compute_metrics(self, *args: Tuple[Dict[str, Tensor]]) -> Dict[str, float]:
         if (
             isinstance(args[0], dict)
             and "boxes" in args[0]

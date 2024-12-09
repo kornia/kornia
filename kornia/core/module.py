@@ -250,7 +250,7 @@ class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
         self._disable_features: bool = False
 
     @property
-    def disable_features(self) -> bool:  # noqa: D102
+    def disable_features(self) -> bool:
         return self._disable_features
 
     @disable_features.setter
@@ -307,7 +307,7 @@ class ImageSequential(Sequential, ImageModuleMixIn, ONNXExportMixin):
         self._disable_features: bool = False
 
     @property
-    def disable_features(self) -> bool:  # noqa: D102
+    def disable_features(self) -> bool:
         return self._disable_features
 
     @disable_features.setter

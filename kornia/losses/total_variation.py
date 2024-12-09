@@ -81,5 +81,5 @@ class TotalVariation(Module):
 
     """
 
-    def forward(self, img: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, img: Tensor) -> Tensor:
         return total_variation(img)

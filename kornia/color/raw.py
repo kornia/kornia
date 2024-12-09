@@ -303,7 +303,7 @@ class RawToRgb(Module):
         super().__init__()
         self.cfa = cfa
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # noqa: D102
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return raw_to_rgb(image, cfa=self.cfa)
 
 
@@ -333,7 +333,7 @@ class RgbToRaw(Module):
         super().__init__()
         self.cfa = cfa
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:  # noqa: D102
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_raw(image, cfa=self.cfa)
 
 
@@ -358,5 +358,5 @@ class RawToRgb2x2Downscaled(Module):
         super().__init__()
         self.cfa = cfa
 
-    def forward(self, image: Tensor) -> Tensor:  # noqa: D102
+    def forward(self, image: Tensor) -> Tensor:
         return raw_to_rgb_2x2_downscaled(image, cfa=self.cfa)

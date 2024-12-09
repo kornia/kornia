@@ -89,7 +89,7 @@ class AEPE(nn.Module):
         super().__init__()
         self.reduction: str = reduction
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:  # noqa: D102
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return aepe(input, target, self.reduction)
 
 
