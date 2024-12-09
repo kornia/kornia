@@ -11,7 +11,7 @@ from kornia.sensors.camera.distortion_model import AffineTransform, BrownConrady
 from kornia.sensors.camera.projection_model import OrthographicProjection, Z1Projection
 
 
-class CameraModelType(Enum):  # noqa: D101
+class CameraModelType(Enum):
     PINHOLE = 0
     BROWN_CONRADY = 1
     KANNALA_BRANDT_K3 = 2

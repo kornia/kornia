@@ -12,7 +12,7 @@ import torch
 from torch import Tensor, nn
 
 
-class LayerScale(nn.Module):  # noqa: D101
+class LayerScale(nn.Module):
     def __init__(
         self,
         dim: int,

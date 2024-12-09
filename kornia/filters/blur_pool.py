@@ -114,7 +114,7 @@ class MaxBlurPool2D(Module):
         )
 
 
-class EdgeAwareBlurPool2D(Module):  # noqa: D101
+class EdgeAwareBlurPool2D(Module):
     def __init__(
         self, kernel_size: tuple[int, int] | int, edge_threshold: float = 1.25, edge_dilation_kernel_size: int = 3
     ) -> None:

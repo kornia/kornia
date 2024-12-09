@@ -33,7 +33,7 @@ except ImportError:
     XFORMERS_AVAILABLE = False
 
 
-class Block(nn.Module):  # noqa: D101
+class Block(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -199,7 +199,7 @@ def drop_add_residual_stochastic_depth_list(  # noqa: D103
     return outputs
 
 
-class NestedTensorBlock(Block):  # noqa: D101
+class NestedTensorBlock(Block):
     def forward_nested(self, x_list: List[Tensor]) -> List[Tensor]:
         """x_list contains a list of tensors to nest together and run."""
         KORNIA_CHECK(isinstance(self.attn, MemEffAttention))

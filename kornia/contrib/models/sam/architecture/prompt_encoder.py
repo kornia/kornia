@@ -16,7 +16,7 @@ from kornia.contrib.models.common import LayerNorm2d
 from kornia.core import Device, Module, Tensor, concatenate, cos, sin, stack, zeros
 
 
-class PromptEncoder(Module):  # noqa: D101
+class PromptEncoder(Module):
     def __init__(
         self,
         embed_dim: int,

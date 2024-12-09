@@ -14,7 +14,7 @@ from typing import Callable, Optional
 from torch import Tensor, nn
 
 
-class Mlp(nn.Module):  # noqa: D101
+class Mlp(nn.Module):
     def __init__(
         self,
         in_features: int,

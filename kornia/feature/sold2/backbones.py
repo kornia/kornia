@@ -12,7 +12,7 @@ from torch.nn.functional import pixel_shuffle, softmax
 from kornia.core import Module, Tensor
 
 
-class HourglassConfig(NamedTuple):  # noqa: D101
+class HourglassConfig(NamedTuple):
     depth: int
     num_stacks: int
     num_blocks: int
@@ -45,7 +45,7 @@ class HourglassBackbone(Module):
         return self.net(input_images)
 
 
-class MultitaskHead(Module):  # noqa: D101
+class MultitaskHead(Module):
     def __init__(self, input_channels: int) -> None:
         super().__init__()
 
@@ -67,7 +67,7 @@ class MultitaskHead(Module):  # noqa: D101
         return torch.cat([head(x) for head in self.heads], dim=1)
 
 
-class Bottleneck2D(Module):  # noqa: D101
+class Bottleneck2D(Module):
     def __init__(
         self, inplanes: int, planes: int, stride: Union[int, Tuple[int, int]] = 1, downsample: Optional[Module] = None
     ) -> None:
@@ -106,7 +106,7 @@ class Bottleneck2D(Module):  # noqa: D101
         return out
 
 
-class Hourglass(Module):  # noqa: D101
+class Hourglass(Module):
     def __init__(self, block: Type[Bottleneck2D], num_blocks: int, planes: int, depth: int, expansion: int = 2) -> None:
         super().__init__()
         self.depth = depth

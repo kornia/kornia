@@ -13,7 +13,7 @@ from kornia.utils.image import tensor_to_image
 logger = logging.getLogger(__name__)
 
 
-class ModelBaseMixin:  # noqa: D101
+class ModelBaseMixin:
     name: str = "model"
 
     def _tensor_to_type(

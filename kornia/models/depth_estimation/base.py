@@ -10,7 +10,7 @@ from kornia.models._hf_models import HFONNXComunnityModel
 __all__ = ["DepthEstimation"]
 
 
-class DepthEstimation(HFONNXComunnityModel):  # noqa: D101
+class DepthEstimation(HFONNXComunnityModel):
     name: str = "depth_estimation"
 
     def __call__(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:  # type: ignore[override]

@@ -14,7 +14,7 @@ from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK
 
 
-class StemBlock(Module):  # noqa: D101
+class StemBlock(Module):
     def __init__(self, in_channels: int, mid_channels: int, out_channels: int) -> None:
         super().__init__()
         self.stem1 = ConvNormAct(in_channels, mid_channels, 3, 2)
@@ -32,14 +32,14 @@ class StemBlock(Module):  # noqa: D101
 
 
 # Separable conv
-class LightConvNormAct(nn.Sequential):  # noqa: D101
+class LightConvNormAct(nn.Sequential):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 1, act="none")  # point-wise
         self.conv2 = ConvNormAct(out_channels, out_channels, kernel_size, groups=out_channels)  # depth-wise
 
 
-class StageConfig(NamedTuple):  # noqa: D101
+class StageConfig(NamedTuple):
     in_channels: int
     mid_channels: int
     out_channels: int
@@ -50,7 +50,7 @@ class StageConfig(NamedTuple):  # noqa: D101
     layer_num: int
 
 
-class HGBlock(Module):  # noqa: D101
+class HGBlock(Module):
     def __init__(self, in_channels: int, config: StageConfig, identity: bool) -> None:
         super().__init__()
         self.identity = identity
@@ -75,7 +75,7 @@ class HGBlock(Module):  # noqa: D101
         return x + out if self.identity else out
 
 
-class HGStage(nn.Sequential):  # noqa: D101
+class HGStage(nn.Sequential):
     def __init__(self, config: StageConfig) -> None:
         super().__init__()
         ch_in = config.in_channels
@@ -86,7 +86,7 @@ class HGStage(nn.Sequential):  # noqa: D101
         )
 
 
-class PPHGNetV2(Module):  # noqa: D101
+class PPHGNetV2(Module):
     def __init__(self, stem_channels: list[int], stage_configs: list[StageConfig]) -> None:
         KORNIA_CHECK(len(stem_channels) == 3)
         KORNIA_CHECK(len(stage_configs) == 4)

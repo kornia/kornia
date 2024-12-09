@@ -21,7 +21,7 @@ def _make_pair(x: int | tuple[int, int]) -> tuple[int, int]:
     return (x, x) if isinstance(x, int) else x
 
 
-class ConvBN(nn.Sequential):  # noqa: D101
+class ConvBN(nn.Sequential):
     def __init__(
         self,
         in_channels: int,
@@ -38,7 +38,7 @@ class ConvBN(nn.Sequential):  # noqa: D101
         self.act = activation()
 
 
-class PatchEmbed(nn.Sequential):  # noqa: D101
+class PatchEmbed(nn.Sequential):
     def __init__(self, in_channels: int, embed_dim: int, activation: type[Module] = nn.GELU) -> None:
         super().__init__()
         self.seq = nn.Sequential(
@@ -46,7 +46,7 @@ class PatchEmbed(nn.Sequential):  # noqa: D101
         )
 
 
-class MBConv(Module):  # noqa: D101
+class MBConv(Module):
     def __init__(
         self,
         in_channels: int,
@@ -67,7 +67,7 @@ class MBConv(Module):  # noqa: D101
         return self.act(x + self.drop_path(self.conv3(self.conv2(self.conv1(x)))))
 
 
-class PatchMerging(Module):  # noqa: D101
+class PatchMerging(Module):
     def __init__(
         self,
         input_resolution: int | tuple[int, int],
@@ -91,7 +91,7 @@ class PatchMerging(Module):  # noqa: D101
         return x
 
 
-class ConvLayer(Module):  # noqa: D101
+class ConvLayer(Module):
     def __init__(
         self,
         dim: int,
@@ -123,7 +123,7 @@ class ConvLayer(Module):  # noqa: D101
         return x
 
 
-class MLP(nn.Sequential):  # noqa: D101
+class MLP(nn.Sequential):
     def __init__(
         self,
         in_features: int,
@@ -144,7 +144,7 @@ class MLP(nn.Sequential):  # noqa: D101
 # NOTE: differences from image_encoder.Attention:
 # - different relative position encoding mechanism (separable/decomposed vs joint)
 # - this impl supports attn_ratio (increase output size for value), though it is not used
-class Attention(Module):  # noqa: D101
+class Attention(Module):
     def __init__(
         self,
         dim: int,
@@ -213,7 +213,7 @@ class Attention(Module):  # noqa: D101
         return x
 
 
-class TinyViTBlock(Module):  # noqa: D101
+class TinyViTBlock(Module):
     def __init__(
         self,
         dim: int,
@@ -259,7 +259,7 @@ class TinyViTBlock(Module):  # noqa: D101
         return x
 
 
-class BasicLayer(Module):  # noqa: D101
+class BasicLayer(Module):
     def __init__(
         self,
         dim: int,

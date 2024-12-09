@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 
-class SwiGLUFFN(nn.Module):  # noqa: D101
+class SwiGLUFFN(nn.Module):
     def __init__(
         self,
         in_features: int,
@@ -42,7 +42,7 @@ except ImportError:
     XFORMERS_AVAILABLE = False
 
 
-class SwiGLUFFNFused(SwiGLU):  # noqa: D101
+class SwiGLUFFNFused(SwiGLU):
     def __init__(
         self,
         in_features: int,

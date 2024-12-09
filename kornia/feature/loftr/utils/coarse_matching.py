@@ -61,7 +61,7 @@ def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:  # noqa: D417
     return max_cand
 
 
-class CoarseMatching(Module):  # noqa: D101
+class CoarseMatching(Module):
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
         self.config = config

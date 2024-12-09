@@ -62,7 +62,7 @@ def weight_init(model: Module) -> None:  # noqa: D103
     torch.nn.init.orthogonal_(model.conv4.weight)
 
 
-class SmallSRNetWrapper(Module):  # noqa: D101
+class SmallSRNetWrapper(Module):
     def __init__(self, upscale_factor: int = 3, pretrained: bool = True) -> None:
         super().__init__()
         self.rgb_to_ycbcr = RgbToYcbcr()
@@ -80,7 +80,7 @@ class SmallSRNetWrapper(Module):  # noqa: D101
         return self.ycbcr_to_rgb(out)
 
 
-class SmallSRBuilder:  # noqa: D101
+class SmallSRBuilder:
     @staticmethod
     def build(  # noqa: D102
         model_name: str = "small_sr", pretrained: bool = True, upscale_factor: int = 3, image_size: Optional[int] = None

@@ -6,7 +6,7 @@ from torch import nn
 from kornia.core import Module
 
 
-class VGG(nn.Module):  # noqa: D101
+class VGG(nn.Module):
     def __init__(
         self, features: Module, num_classes: int = 1000, init_weights: bool = True, dropout: float = 0.5
     ) -> None:

@@ -5,7 +5,7 @@ from enum import Enum
 __all__ = ["InstallationMode", "kornia_config"]
 
 
-class InstallationMode(str, Enum):  # noqa: D101
+class InstallationMode(str, Enum):
     # Ask the user if to install the dependencies
     ASK = "ASK"
     # Install the dependencies

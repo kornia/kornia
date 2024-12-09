@@ -11,7 +11,7 @@ from kornia.core import Module, Tensor
 from .linear_attention import FullAttention, LinearAttention
 
 
-class LoFTREncoderLayer(Module):  # noqa: D101
+class LoFTREncoderLayer(Module):
     def __init__(self, d_model: int, nhead: int, attention: Optional[Literal["linear"]] = "linear") -> None:
         super().__init__()
 

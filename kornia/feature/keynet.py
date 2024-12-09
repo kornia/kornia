@@ -12,7 +12,7 @@ from kornia.geometry.transform import pyrdown
 from .scale_space_detector import Detector_config, MultiResolutionDetector, get_default_detector_config
 
 
-class KeyNet_conf(TypedDict):  # noqa: D101
+class KeyNet_conf(TypedDict):
     num_filters: int
     num_levels: int
     kernel_size: int

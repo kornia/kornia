@@ -14,7 +14,7 @@ def conv_nxn_bn(inp: int, oup: int, kernal_size: int = 3, stride: int = 1) -> Mo
     return nn.Sequential(nn.Conv2d(inp, oup, kernal_size, stride, 1, bias=False), nn.BatchNorm2d(oup), nn.SiLU())
 
 
-class PreNorm(Module):  # noqa: D101
+class PreNorm(Module):
     def __init__(self, dim: int, fn: Module) -> None:
         super().__init__()
         self.norm = nn.LayerNorm(dim)
@@ -24,7 +24,7 @@ class PreNorm(Module):  # noqa: D101
         return self.fn(self.norm(x), **kwargs)
 
 
-class FeedForward(Module):  # noqa: D101
+class FeedForward(Module):
     def __init__(self, dim: int, hidden_dim: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.net = nn.Sequential(
@@ -35,7 +35,7 @@ class FeedForward(Module):  # noqa: D101
         return self.net(x)
 
 
-class Attention(Module):  # noqa: D101
+class Attention(Module):
     def __init__(self, dim: int, heads: int = 8, dim_head: int = 64, dropout: float = 0.0) -> None:
         super().__init__()
         inner_dim = dim_head * heads

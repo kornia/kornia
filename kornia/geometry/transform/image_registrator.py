@@ -14,7 +14,7 @@ from .pyramid import build_pyramid
 __all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 
 
-class BaseModel(Module):  # noqa: D101
+class BaseModel(Module):
     @abstractmethod
     def reset_model(self) -> None: ...  # noqa: D102
 

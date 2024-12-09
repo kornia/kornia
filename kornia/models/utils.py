@@ -51,7 +51,7 @@ class ResizePreProcessor(Module):
         return concatenate(resized_imgs), original_sizes
 
 
-class ResizePostProcessor(Module):  # noqa: D101
+class ResizePostProcessor(Module):
     def __init__(self, interpolation_mode: str = "bilinear") -> None:
         super().__init__()
         self.interpolation_mode = interpolation_mode
@@ -85,7 +85,7 @@ class ResizePostProcessor(Module):  # noqa: D101
         return resized_imgs
 
 
-class OutputRangePostProcessor(Module):  # noqa: D101
+class OutputRangePostProcessor(Module):
     def __init__(self, min_val: float = 0.0, max_val: float = 1.0) -> None:
         super().__init__()
         self.min_val = min_val

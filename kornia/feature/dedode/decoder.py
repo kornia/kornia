@@ -6,7 +6,7 @@ from torch import nn
 from kornia.core import Tensor
 
 
-class Decoder(nn.Module):  # noqa: D101
+class Decoder(nn.Module):
     def __init__(self, layers: Any, *args, super_resolution: bool = False, num_prototypes: int = 1, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self.layers = layers
@@ -24,7 +24,7 @@ class Decoder(nn.Module):  # noqa: D101
         return logits, context
 
 
-class ConvRefiner(nn.Module):  # noqa: D101
+class ConvRefiner(nn.Module):
     def __init__(  # type: ignore[no-untyped-def]
         self,
         in_dim=6,

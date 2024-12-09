@@ -50,7 +50,7 @@ def _get(cls: Type[T], value: TKEnum[T]) -> T:
     )
 
 
-class Resample(Enum, metaclass=_KORNIA_EnumMeta):  # noqa: D101
+class Resample(Enum, metaclass=_KORNIA_EnumMeta):
     NEAREST = 0
     BILINEAR = 1
     BICUBIC = 2
@@ -60,7 +60,7 @@ class Resample(Enum, metaclass=_KORNIA_EnumMeta):  # noqa: D101
         return _get(cls, value)
 
 
-class BorderType(Enum, metaclass=_KORNIA_EnumMeta):  # noqa: D101
+class BorderType(Enum, metaclass=_KORNIA_EnumMeta):
     CONSTANT = 0
     REFLECT = 1
     REPLICATE = 2
@@ -71,7 +71,7 @@ class BorderType(Enum, metaclass=_KORNIA_EnumMeta):  # noqa: D101
         return _get(cls, value)
 
 
-class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):  # noqa: D101
+class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):
     ZEROS = 0
     BORDER = 1
     REFLECTION = 2
@@ -81,7 +81,7 @@ class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):  # noqa: D101
         return _get(cls, value)
 
 
-class DType(Enum, metaclass=_KORNIA_EnumMeta):  # noqa: D101
+class DType(Enum, metaclass=_KORNIA_EnumMeta):
     INT64 = 0
     FLOAT16 = 1
     FLOAT32 = 2

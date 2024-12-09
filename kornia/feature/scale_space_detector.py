@@ -244,7 +244,7 @@ class ScaleSpaceDetector(Module):
         return lafs, responses
 
 
-class Detector_config(TypedDict):  # noqa: D101
+class Detector_config(TypedDict):
     nms_size: int
     pyramid_levels: int
     up_levels: int

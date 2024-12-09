@@ -96,7 +96,7 @@ def match_adalam(  # noqa: D417
     return quality, idxs
 
 
-class AdalamFilter:  # noqa: D101
+class AdalamFilter:
     def __init__(self, custom_config: Optional[AdalamConfig] = None) -> None:
         """Wrap the method AdaLAM for outlier filtering.
 

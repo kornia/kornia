@@ -13,7 +13,7 @@ from kornia.contrib.models.common import MLP, LayerNorm2d
 from kornia.core import Module, Tensor, concatenate, stack
 
 
-class MaskDecoder(Module):  # noqa: D101
+class MaskDecoder(Module):
     def __init__(
         self,
         *,

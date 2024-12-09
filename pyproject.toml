@@ -139,7 +139,8 @@ ignore = [
   "UP006",   # Prefer List[], over list due to torch jit scripting
   "UP035",   # Ignore deprecated typing because of jit scripting
   'D100',    # Allow Undocumented public module
-  'D104',    # Allow: Undocumented public package
+  'D101',    # TODO: Undocumented public class
+  'D104',    # Allow: Undocuemnted public package
   'D105',    # Allow Undocumented magic method
   'D107',    # Allow: Undocumented public init
  ]
@@ -170,13 +171,11 @@ max-statements = 64                                        # Recommended: 50
   "RUF012",
   "S101",
   "S311",
-  "D", # Don't enforce documentation rules
 ] # allow assert, random, ignore BLE, mutable class attr
 "docs/*" = [
   "PLR0912",
   "PLR0915",
   "S101",
-  "D", # Don't enforce documentation rules
 ] # allow assert, ignore max branches and statements
 "docs/generate_examples.py" = ["C901"] # Allow too complex function
 "kornia/__init__.py" = ["I001"] # Allow unsorted imports

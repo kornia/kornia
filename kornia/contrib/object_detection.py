@@ -30,7 +30,7 @@ __all__ = [
 ]
 
 
-class BoundingBox(BoundingBoxBase):  # noqa: D101
+class BoundingBox(BoundingBoxBase):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         warnings.warn(
@@ -51,7 +51,7 @@ def results_from_detections(*args: Any, **kwargs: Any) -> list[ObjectDetectorRes
     return results_from_detections_base(*args, **kwargs)
 
 
-class ResizePreProcessor(ResizePreProcessorBase):  # noqa: D101
+class ResizePreProcessor(ResizePreProcessorBase):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         warnings.warn(
@@ -62,7 +62,7 @@ class ResizePreProcessor(ResizePreProcessorBase):  # noqa: D101
         )
 
 
-class ObjectDetector(ObjectDetectorBase):  # noqa: D101
+class ObjectDetector(ObjectDetectorBase):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         warnings.warn(
@@ -73,7 +73,7 @@ class ObjectDetector(ObjectDetectorBase):  # noqa: D101
         )
 
 
-class ObjectDetectorResult(ObjectDetectorResultBase):  # noqa: D101
+class ObjectDetectorResult(ObjectDetectorResultBase):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         warnings.warn(

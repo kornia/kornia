@@ -25,7 +25,7 @@ def _make_shortcut(in_channels: int, out_channels: int, stride: int) -> Module:
     )
 
 
-class BasicBlockD(Module):  # noqa: D101
+class BasicBlockD(Module):
     expansion = 1
 
     def __init__(self, in_channels: int, out_channels: int, stride: int, shortcut: bool) -> None:
@@ -46,7 +46,7 @@ class BasicBlockD(Module):  # noqa: D101
         return self.relu(self.convs(x) + self.short(x))
 
 
-class BottleneckD(Module):  # noqa: D101
+class BottleneckD(Module):
     expansion = 4
 
     def __init__(self, in_channels: int, out_channels: int, stride: int, shortcut: bool) -> None:
@@ -69,13 +69,13 @@ class BottleneckD(Module):  # noqa: D101
         return self.relu(self.convs(x) + self.short(x))
 
 
-class Block(nn.Sequential):  # noqa: D101
+class Block(nn.Sequential):
     def __init__(self, blocks: Module) -> None:
         super().__init__()
         self.blocks = blocks
 
 
-class ResNetD(Module):  # noqa: D101
+class ResNetD(Module):
     def __init__(self, n_blocks: list[int], block: type[BasicBlockD | BottleneckD]) -> None:
         KORNIA_CHECK(len(n_blocks) == 4)
         super().__init__()

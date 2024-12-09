@@ -18,7 +18,7 @@ from kornia.core import Module, Tensor, concatenate, pad
 from kornia.utils._compat import torch_meshgrid
 
 
-class RepVggBlock(Module):  # noqa: D101
+class RepVggBlock(Module):
     def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 3, act="none")
@@ -59,7 +59,7 @@ class RepVggBlock(Module):  # noqa: D101
         self.conv.bias = bias3x3
 
 
-class CSPRepLayer(Module):  # noqa: D101
+class CSPRepLayer(Module):
     def __init__(self, in_channels: int, out_channels: int, num_blocks: int, expansion: float = 1.0) -> None:
         super().__init__()
         hidden_channels = int(out_channels * expansion)
@@ -78,7 +78,7 @@ class CSPRepLayer(Module):  # noqa: D101
 
 # almost identical to nn.TransformerEncoderLayer
 # but add positional embeddings to q and k
-class AIFI(Module):  # noqa: D101
+class AIFI(Module):
     def __init__(self, embed_dim: int, num_heads: int, dim_feedforward: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout)  # NOTE: batch_first = False
@@ -153,15 +153,13 @@ class AIFI(Module):  # noqa: D101
         return pos_emb.unsqueeze(1)  # (H * W, 1, C)
 
 
-class TransformerEncoder(nn.Module):  # noqa: D101
+class TransformerEncoder(nn.Module):
     def __init__(self, encoder_layer: nn.Module, num_layers: int) -> None:
         super().__init__()
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(num_layers)])
         self.num_layers = num_layers
 
-    def forward(  # noqa: D102
-        self, src: Tensor
-    ) -> Tensor:  # NOTE: Missing src_mask: Tensor = None, pos_embed: Tensor = None
+    def forward(self, src: Tensor) -> Tensor:  # NOTE: Missing src_mask: Tensor = None, pos_embed: Tensor = None  # noqa: D102
         output = src
         for layer in self.layers:
             output = layer(output)
@@ -169,7 +167,7 @@ class TransformerEncoder(nn.Module):  # noqa: D101
         return output
 
 
-class CCFM(Module):  # noqa: D101
+class CCFM(Module):
     def __init__(self, num_fmaps: int, hidden_dim: int, expansion: float = 1.0) -> None:
         super().__init__()
         self.lateral_convs = nn.ModuleList()

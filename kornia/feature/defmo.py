@@ -33,7 +33,7 @@ def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, d
     )
 
 
-class Bottleneck(Module):  # noqa: D101
+class Bottleneck(Module):
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
     # while original implementation places the stride at the first 1x1 convolution(self.conv1)
     # according to "Deep residual learning for image recognition"https://arxiv.org/abs/1512.03385.
@@ -91,7 +91,7 @@ class Bottleneck(Module):  # noqa: D101
         return out
 
 
-class ResNet(Module):  # noqa: D101
+class ResNet(Module):
     def __init__(
         self,
         block: Type[Bottleneck],
@@ -203,7 +203,7 @@ class ResNet(Module):  # noqa: D101
         return self._forward_impl(x)
 
 
-class EncoderDeFMO(Module):  # noqa: D101
+class EncoderDeFMO(Module):
     def __init__(self) -> None:
         super().__init__()
         model = ResNet(Bottleneck, [3, 4, 6, 3])  # ResNet50
@@ -216,7 +216,7 @@ class EncoderDeFMO(Module):  # noqa: D101
         return self.net(input_data)
 
 
-class RenderingDeFMO(Module):  # noqa: D101
+class RenderingDeFMO(Module):
     def __init__(self) -> None:
         super().__init__()
         self.tsr_steps: int = 24

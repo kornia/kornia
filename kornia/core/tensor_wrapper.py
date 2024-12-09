@@ -25,7 +25,7 @@ def unwrap(v):  # noqa: D103
     return v._data if isinstance(v, TensorWrapper) else v
 
 
-class TensorWrapper:  # noqa: D101
+class TensorWrapper:
     def __init__(self, data: Tensor) -> None:
         self.__dict__["_data"] = data
         self.__dict__["used_attrs"] = set()

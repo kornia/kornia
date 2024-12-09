@@ -16,7 +16,7 @@ def elu_feature_map(x: Tensor) -> Tensor:  # noqa: D103
     return torch.nn.functional.elu(x) + 1
 
 
-class LinearAttention(Module):  # noqa: D101
+class LinearAttention(Module):
     def __init__(self, eps: float = 1e-6) -> None:
         super().__init__()
         self.feature_map = elu_feature_map
@@ -62,7 +62,7 @@ class LinearAttention(Module):  # noqa: D101
         return queried_values.contiguous()
 
 
-class FullAttention(Module):  # noqa: D101
+class FullAttention(Module):
     def __init__(self, use_dropout: bool = False, attention_dropout: float = 0.1) -> None:
         super().__init__()
         self.use_dropout = use_dropout

@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from kornia.core import Module, Tensor
 
 
-class DeDoDeDescriptor(Module):  # noqa: D101
+class DeDoDeDescriptor(Module):
     def __init__(self, encoder: Module, decoder: Module, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self.encoder = encoder

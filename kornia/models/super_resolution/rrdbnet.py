@@ -18,7 +18,7 @@ URLs = {
 }
 
 
-class RRDBNetBuilder:  # noqa: D101
+class RRDBNetBuilder:
     @staticmethod
     def build(model_name: str = "RealESRNet_x4plus", pretrained: bool = True) -> SuperResolution:  # noqa: D102
         if model_name == "RealESRGAN_x4plus":

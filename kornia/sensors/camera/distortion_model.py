@@ -2,7 +2,7 @@ from kornia.core import Tensor
 from kornia.geometry.vector import Vector2
 
 
-class AffineTransform:  # noqa: D101
+class AffineTransform:
     def distort(self, params: Tensor, points: Vector2) -> Vector2:
         """Distort one or more Vector2 points using the affine transform.
 
@@ -50,7 +50,7 @@ class AffineTransform:  # noqa: D101
         return Vector2.from_coords(x, y)
 
 
-class BrownConradyTransform:  # noqa: D101
+class BrownConradyTransform:
     def distort(self, params: Tensor, points: Vector2) -> Vector2:  # noqa: D102
         raise NotImplementedError
 
@@ -58,7 +58,7 @@ class BrownConradyTransform:  # noqa: D101
         raise NotImplementedError
 
 
-class KannalaBrandtK3Transform:  # noqa: D101
+class KannalaBrandtK3Transform:
     def distort(self, params: Tensor, points: Vector2) -> Vector2:  # noqa: D102
         raise NotImplementedError
 

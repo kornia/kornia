@@ -22,7 +22,7 @@ from kornia.contrib.models.efficient_vit.nn.ops import (  # type: ignore
 from kornia.contrib.models.efficient_vit.utils import build_kwargs_from_config
 
 
-class EfficientViTBackbone(nn.Module):  # noqa: D101
+class EfficientViTBackbone(nn.Module):
     def __init__(
         self,
         width_list: list[int],
@@ -178,7 +178,7 @@ def efficientvit_backbone_b3(**kwargs: dict[str, Any]) -> EfficientViTBackbone: 
     return backbone
 
 
-class EfficientViTLargeBackbone(nn.Module):  # noqa: D101
+class EfficientViTLargeBackbone(nn.Module):
     def __init__(
         self,
         width_list: list[int],

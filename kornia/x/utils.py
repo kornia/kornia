@@ -8,7 +8,7 @@ from kornia.metrics.average_meter import AverageMeter
 # import yaml
 
 
-class TrainerState(Enum):  # noqa: D101
+class TrainerState(Enum):
     STARTING = 0
     TRAINING = 1
     VALIDATE = 2
@@ -17,7 +17,7 @@ class TrainerState(Enum):  # noqa: D101
 
 # NOTE: this class needs to be redefined according to the needed parameters.
 @dataclass
-class Configuration:  # noqa: D101
+class Configuration:
     data_path: str = field(default="./", metadata={"help": "The input data directory."})
     batch_size: int = field(default=1, metadata={"help": "The number of batches for the training dataloader."})
     num_epochs: int = field(default=1, metadata={"help": "The number of epochs to run the training."})
