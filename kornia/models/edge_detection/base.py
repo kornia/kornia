@@ -34,7 +34,7 @@ class EdgeDetector(ModelBase):
         out_images = self.model(images)
         return self.post_processor(out_images, image_sizes)
 
-    def visualize(  # noqa: D417
+    def visualize(
         self,
         images: Union[Tensor, list[Tensor]],
         edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
@@ -58,7 +58,7 @@ class EdgeDetector(ModelBase):
 
         return self._tensor_to_type(output, output_type, is_batch=isinstance(images, Tensor))
 
-    def save(  # noqa: D417
+    def save(
         self,
         images: Union[Tensor, list[Tensor]],
         edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
@@ -79,7 +79,7 @@ class EdgeDetector(ModelBase):
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(outputs, directory, suffix="_edge")
 
-    def to_onnx(  # type: ignore[override]  # noqa: D417
+    def to_onnx(  # type: ignore[override]
         self,
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 352,

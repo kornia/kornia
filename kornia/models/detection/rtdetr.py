@@ -26,7 +26,7 @@ class RTDETRDetectorBuilder:
     """
 
     @staticmethod
-    def build(  # noqa: D417
+    def build(
         model_name: Optional[str] = None,
         config: Optional[RTDETRConfig] = None,
         pretrained: bool = True,

@@ -256,7 +256,7 @@ def draw_rectangle(
     return image
 
 
-def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:  # noqa: D417
+def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     r"""Get the left and right edges of a polygon for each y-coordinate y \in [0, h).
 
     Args:
@@ -299,7 +299,7 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     return x_left, x_right
 
 
-def _batch_polygons(polygons: List[Tensor]) -> Tensor:  # noqa: D417
+def _batch_polygons(polygons: List[Tensor]) -> Tensor:
     r"""Convert a List of variable length polygons into a fixed size tensor.
 
     Works by repeating the last element in the tensor.
@@ -321,7 +321,7 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:  # noqa: D417
     return batched_polygons
 
 
-def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], colors: Tensor) -> Tensor:  # noqa: D417
+def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], colors: Tensor) -> Tensor:
     r"""Draws convex polygons on a batch of image tensors.
 
     Args:

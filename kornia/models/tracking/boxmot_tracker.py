@@ -148,7 +148,7 @@ class BoxMotTracker:
 
         return tensor(frame_raw).permute(2, 0, 1)
 
-    def save(self, image: Tensor, show_trajectories: bool = True, directory: Optional[str] = None) -> None:  # noqa: D417
+    def save(self, image: Tensor, show_trajectories: bool = True, directory: Optional[str] = None) -> None:
         """Save the model to ONNX format.
 
         Args:

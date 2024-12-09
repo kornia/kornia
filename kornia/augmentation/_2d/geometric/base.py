@@ -208,7 +208,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
         return output
 
-    def inverse_keypoints(  # noqa: D417
+    def inverse_keypoints(
         self,
         input: Keypoints,
         params: Dict[str, Tensor],

@@ -16,7 +16,7 @@ from .dsnt import spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
 
 
-def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> Tensor:  # noqa: D417
+def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> Tensor:
     r"""Generate a kernel to with window coordinates, residual to window center.
 
     Args:

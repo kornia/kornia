@@ -8,7 +8,7 @@ from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.conversions import quaternion_to_rotation_matrix
 
 
-def parse_colmap_output(  # noqa: D417
+def parse_colmap_output(
     cameras_path: str, images_path: str, device: Device, dtype: torch.dtype
 ) -> Tuple[List[str], PinholeCamera]:
     r"""Parse colmap output to create an PinholeCamera for aligned scene cameras.

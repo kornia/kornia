@@ -112,7 +112,7 @@ def projection_from_KRt(K: Tensor, R: Tensor, t: Tensor) -> Tensor:
     return K @ Rt
 
 
-def KRt_from_projection(P: Tensor, eps: float = 1e-6) -> Tuple[Tensor, Tensor, Tensor]:  # noqa: D417
+def KRt_from_projection(P: Tensor, eps: float = 1e-6) -> Tuple[Tensor, Tensor, Tensor]:
     r"""Decompose the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
 
     Args:

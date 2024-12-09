@@ -42,7 +42,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def transform(cls, input: T, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:  # noqa: D417
+    def transform(cls, input: T, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -56,7 +56,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def inverse(cls, input: T, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:  # noqa: D417
+    def inverse(cls, input: T, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -245,7 +245,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
     """Apply and inverse transformations for mask tensors."""
 
     @classmethod
-    def transform(  # noqa: D417
+    def transform(
         cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         """Apply a transformation with respect to the parameters.
@@ -294,7 +294,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         return input
 
     @classmethod
-    def transform_list(  # noqa: D417
+    def transform_list(
         cls, input: List[Tensor], module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> List[Tensor]:
         """Apply a transformation with respect to the parameters.
@@ -359,7 +359,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         return input
 
     @classmethod
-    def inverse(  # noqa: D417
+    def inverse(
         cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
@@ -407,7 +407,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
     """
 
     @classmethod
-    def transform(  # noqa: D417
+    def transform(
         cls, input: Boxes, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         """Apply a transformation with respect to the parameters.
@@ -453,7 +453,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
         return _input
 
     @classmethod
-    def inverse(  # noqa: D417
+    def inverse(
         cls, input: Boxes, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         """Inverse a transformation with respect to the parameters.
@@ -504,7 +504,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
     """
 
     @classmethod
-    def transform(  # noqa: D417
+    def transform(
         cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         """Apply a transformation with respect to the parameters.
@@ -551,7 +551,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
         return _input
 
     @classmethod
-    def inverse(  # noqa: D417
+    def inverse(
         cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         """Inverse a transformation with respect to the parameters.

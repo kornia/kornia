@@ -69,7 +69,7 @@ class ObjectDetectorResult:
     bbox: BoundingBox
 
 
-def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFormat) -> list[ObjectDetectorResult]:  # noqa: D417
+def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFormat) -> list[ObjectDetectorResult]:
     """Convert a detection tensor to a list of :py:class:`ObjectDetectorResult`.
 
     Args:
@@ -157,7 +157,7 @@ class ObjectDetector(ModelBase):
         outputs = self.visualize(images, detections)
         self._save_outputs(outputs, directory)
 
-    def to_onnx(  # type: ignore[override]  # noqa: D417
+    def to_onnx(  # type: ignore[override]
         self,
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 640,

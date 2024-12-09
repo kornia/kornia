@@ -21,7 +21,7 @@ class ONNXLoader(CachedDownloader):
     """Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models."""
 
     @classmethod
-    def load_config(cls, url: str, download: bool = True, **kwargs: Any) -> dict[str, Any]:  # noqa: D417
+    def load_config(cls, url: str, download: bool = True, **kwargs: Any) -> dict[str, Any]:
         """Load JSON config from the specified URL.
 
         Args:

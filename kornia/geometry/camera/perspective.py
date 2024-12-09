@@ -9,7 +9,7 @@ from kornia.geometry.conversions import (
 )
 
 
-def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:  # noqa: D417
+def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
     r"""Project a 3d point onto the 2d camera plane.
 
     Args:
@@ -37,7 +37,7 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
     return denormalize_points_with_intrinsics(xy_coords, camera_matrix)
 
 
-def unproject_points(  # noqa: D417
+def unproject_points(
     point_2d: torch.Tensor, depth: torch.Tensor, camera_matrix: torch.Tensor, normalize: bool = False
 ) -> torch.Tensor:
     r"""Unproject a 2d point in 3d.

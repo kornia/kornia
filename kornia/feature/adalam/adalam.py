@@ -30,7 +30,7 @@ def get_adalam_default_config() -> AdalamConfig:
     )
 
 
-def match_adalam(  # noqa: D417
+def match_adalam(
     desc1: Tensor,
     desc2: Tensor,
     lafs1: Tensor,

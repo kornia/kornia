@@ -3,7 +3,7 @@ import torch
 from kornia.core import Tensor, zeros
 
 
-def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch.dtype, eps: float = 1e-6) -> Tensor:  # noqa: D417
+def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch.dtype, eps: float = 1e-6) -> Tensor:
     r"""Convert an integer label x-D tensor to a one-hot (x+1)-D tensor.
 
     Args:

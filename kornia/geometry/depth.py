@@ -30,7 +30,7 @@ __all__ = [
 ]
 
 
-def unproject_meshgrid(  # noqa: D417
+def unproject_meshgrid(
     height: int,
     width: int,
     camera_matrix: Tensor,
@@ -72,7 +72,7 @@ def unproject_meshgrid(  # noqa: D417
     return points_xyz
 
 
-def depth_to_3d_v2(  # noqa: D417
+def depth_to_3d_v2(
     depth: Tensor, camera_matrix: Tensor, normalize_points: bool = False, xyz_grid: Optional[Tensor] = None
 ) -> Tensor:
     # NOTE: when this replaces the `depth_to_3d` behaviour, a deprecated function should be added here, instead
@@ -205,7 +205,7 @@ def depth_to_normals(depth: Tensor, camera_matrix: Tensor, normalize_points: boo
     return kornia_ops.normalize(normals, dim=1, p=2)
 
 
-def depth_from_plane_equation(  # noqa: D417
+def depth_from_plane_equation(
     plane_normals: Tensor, plane_offsets: Tensor, points_uv: Tensor, camera_matrix: Tensor, eps: float = 1e-8
 ) -> Tensor:
     """Compute depth values from plane equations and pixel coordinates.

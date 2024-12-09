@@ -27,7 +27,7 @@ def _get_default_fginn_params() -> Dict[str, Any]:
     return config
 
 
-def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None) -> Tensor:  # noqa: D417
+def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None) -> Tensor:
     """Check validity of provided distance matrix, or calculates L2-distance matrix if dm is not provided.
 
     Args:

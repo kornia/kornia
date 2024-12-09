@@ -71,7 +71,7 @@ def get_laf_orientation(LAF: Tensor) -> Tensor:
     return rad2deg(angle_rad).unsqueeze(-1)
 
 
-def rotate_laf(LAF: Tensor, angles_degrees: Tensor) -> Tensor:  # noqa: D417
+def rotate_laf(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
     """Apply additional rotation to the LAFs.
 
     Compared to `set_laf_orientation`, the resulting rotation is original LAF orientation plus angles_degrees.
@@ -92,7 +92,7 @@ def rotate_laf(LAF: Tensor, angles_degrees: Tensor) -> Tensor:  # noqa: D417
     return out_laf
 
 
-def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:  # noqa: D417
+def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
     """Change the orientation of the LAFs.
 
     Args:
@@ -109,7 +109,7 @@ def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:  # noqa:
     return rotate_laf(LAF, angles_degrees - ori)
 
 
-def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: Optional[Tensor] = None) -> Tensor:  # noqa: D417
+def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: Optional[Tensor] = None) -> Tensor:
     """Create a LAF from keypoint center, scale and orientation.
 
     Useful to create kornia LAFs from OpenCV keypoints.
@@ -138,7 +138,7 @@ def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: O
     return laf
 
 
-def scale_laf(laf: Tensor, scale_coef: Union[float, Tensor]) -> Tensor:  # noqa: D417
+def scale_laf(laf: Tensor, scale_coef: Union[float, Tensor]) -> Tensor:
     """Multiplies region part of LAF ([:, :, :2, :2]) by a scale_coefficient.
 
     So the center, shape and orientation of the local feature stays the same, but the region area changes.
@@ -270,7 +270,7 @@ def laf_to_boundary_points(LAF: Tensor, n_pts: int = 50) -> Tensor:
     return convert_points_from_homogeneous(pts_h.view(B, N, n_pts, 3))
 
 
-def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[int]]:  # noqa: D417
+def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[int]]:
     """Return list for drawing LAFs (local features).
 
     Args:

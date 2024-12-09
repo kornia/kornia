@@ -19,7 +19,7 @@ from kornia.core import Module, Tensor, zeros
 
 # This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa
 class ImageEncoderViT(Module):
-    def __init__(  # noqa: D417
+    def __init__(
         self,
         img_size: int = 1024,
         *,
@@ -179,7 +179,7 @@ class Block(Module):
 class Attention(Module):
     """Multi-head Attention block with relative position embeddings."""
 
-    def __init__(  # noqa: D417
+    def __init__(
         self,
         dim: int,
         num_heads: int = 8,

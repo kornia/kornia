@@ -250,7 +250,7 @@ class Se2(Module):
         return concatenate((upsilon, theta[..., None]), -1)
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> Se2:  # noqa: D417
+    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> Se2:
         """Create a Se2 group representing an identity rotation and zero translation.
 
         Args:
@@ -333,7 +333,7 @@ class Se2(Module):
         return Se2(r_inv, r_inv * _t)
 
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> Se2:  # noqa: D417
+    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> Se2:
         """Create a Se2 group representing a random transformation.
 
         Args:

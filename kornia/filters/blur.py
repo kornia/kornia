@@ -8,7 +8,7 @@ from .filter import filter2d, filter2d_separable
 from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
 
 
-def box_blur(  # noqa: D417
+def box_blur(
     input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = False
 ) -> Tensor:
     r"""Blur an image using the box filter.

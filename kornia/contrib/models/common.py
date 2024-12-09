@@ -124,7 +124,7 @@ def window_partition(x: Tensor, window_size: int) -> tuple[Tensor, tuple[int, in
     return windows, (Hp, Wp)
 
 
-def window_unpartition(windows: Tensor, window_size: int, pad_hw: tuple[int, int], hw: tuple[int, int]) -> Tensor:  # noqa: D417
+def window_unpartition(windows: Tensor, window_size: int, pad_hw: tuple[int, int], hw: tuple[int, int]) -> Tensor:
     """Window unpartition into original sequences and removing padding.
 
     Args:

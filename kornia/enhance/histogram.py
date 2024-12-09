@@ -144,7 +144,7 @@ def histogram2d(x1: Tensor, x2: Tensor, bins: Tensor, bandwidth: Tensor, epsilon
     return pdf
 
 
-def image_histogram2d(  # noqa: D417
+def image_histogram2d(
     image: Tensor,
     min: float = 0.0,
     max: float = 255.0,

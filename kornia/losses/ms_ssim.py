@@ -85,7 +85,7 @@ class MS_SSIMLoss(nn.Module):
 
         self.register_buffer("_g_masks", g_masks)
 
-    def _fspecial_gauss_1d(  # noqa: D417
+    def _fspecial_gauss_1d(
         self, size: int, sigma: float, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
     ) -> torch.Tensor:
         """Create 1-D gauss kernel.
@@ -104,7 +104,7 @@ class MS_SSIMLoss(nn.Module):
         g /= g.sum()
         return g.reshape(-1)
 
-    def _fspecial_gauss_2d(  # noqa: D417
+    def _fspecial_gauss_2d(
         self, size: int, sigma: float, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
     ) -> torch.Tensor:
         """Create 2-D gauss kernel.

@@ -121,7 +121,7 @@ class LAFAffineShapeEstimator(nn.Module):
             f"preserve_orientation={self.preserve_orientation})"
         )
 
-    def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:  # noqa: D417
+    def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """Run forward.
 
         Args:
@@ -216,7 +216,7 @@ class LAFAffNetShapeEstimator(nn.Module):
         # training totally unstable.
         return (x - mp.detach()) / (sp.detach() + eps)
 
-    def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:  # noqa: D417
+    def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """Run forward.
 
         Args:

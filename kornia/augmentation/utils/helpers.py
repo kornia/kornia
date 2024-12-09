@@ -205,7 +205,7 @@ def _validate_input_dtype(input: Tensor, accepted_dtypes: List[torch.dtype]) -> 
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
-def _transform_output_shape(  # noqa: D417
+def _transform_output_shape(
     output: Tensor, shape: Tuple[int, ...], *, reference_shape: Optional[Tensor] = None
 ) -> Tensor:
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.

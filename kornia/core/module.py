@@ -186,7 +186,7 @@ class ImageModuleMixIn:
             return type(output_image)([self._detach_tensor_to_cpu(out) for out in output_image])  # type: ignore
         raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
 
-    def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:  # noqa: D417
+    def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:
         """Return PIL images.
 
         Args:
@@ -257,7 +257,7 @@ class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
     def disable_features(self, value: bool = True) -> None:
         self._disable_features = value
 
-    def __call__(  # noqa: D417
+    def __call__(
         self,
         *inputs: Any,
         input_names_to_handle: Optional[list[Any]] = None,
@@ -314,7 +314,7 @@ class ImageSequential(Sequential, ImageModuleMixIn, ONNXExportMixin):
     def disable_features(self, value: bool = True) -> None:
         self._disable_features = value
 
-    def __call__(  # noqa: D417
+    def __call__(
         self,
         *inputs: Any,
         input_names_to_handle: Optional[list[Any]] = None,

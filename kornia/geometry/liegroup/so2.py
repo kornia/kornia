@@ -209,7 +209,7 @@ class So2(Module):
         return cls(z)
 
     @classmethod
-    def identity(  # noqa: D417
+    def identity(
         cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Optional[Dtype] = None
     ) -> So2:
         """Create a So2 group representing an identity rotation.
@@ -245,7 +245,7 @@ class So2(Module):
         return So2(1 / self.z)
 
     @classmethod
-    def random(  # noqa: D417
+    def random(
         cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Optional[Dtype] = None
     ) -> So2:
         """Create a So2 group representing a random rotation.

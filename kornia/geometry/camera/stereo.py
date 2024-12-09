@@ -8,7 +8,7 @@ from kornia.utils.grid import create_meshgrid
 
 
 class StereoException(Exception):
-    def __init__(self, msg: str, *args: Any, **kwargs: Any) -> None:  # noqa: D417
+    def __init__(self, msg: str, *args: Any, **kwargs: Any) -> None:
         r"""Construct custom exception for the :module:`~kornia.geometry.camera.stereo` module.
 
         Adds a general helper module redirecting the user to the proper documentation site.

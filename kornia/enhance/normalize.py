@@ -184,7 +184,7 @@ class Denormalize(Module):
         return self.__class__.__name__ + repr
 
 
-def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, float]) -> Tensor:  # noqa: D417
+def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, float]) -> Tensor:
     r"""Denormalize an image/video tensor with mean and standard deviation.
 
     .. math::

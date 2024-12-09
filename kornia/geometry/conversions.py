@@ -1039,7 +1039,7 @@ def normalize_homography(
     return dst_norm_trans_src_norm
 
 
-def normal_transform_pixel(  # noqa: D417
+def normal_transform_pixel(
     height: int,
     width: int,
     eps: float = 1e-14,
@@ -1069,7 +1069,7 @@ def normal_transform_pixel(  # noqa: D417
     return tr_mat.unsqueeze(0)  # 1x3x3
 
 
-def normal_transform_pixel3d(  # noqa: D417
+def normal_transform_pixel3d(
     depth: int,
     height: int,
     width: int,
@@ -1142,7 +1142,7 @@ def denormalize_homography(
     return dst_norm_trans_src_norm
 
 
-def normalize_homography3d(  # noqa: D417
+def normalize_homography3d(
     dst_pix_trans_src_pix: Tensor, dsize_src: tuple[int, int, int], dsize_dst: tuple[int, int, int]
 ) -> Tensor:
     r"""Normalize a given homography in pixels to [-1, 1].
@@ -1308,7 +1308,7 @@ def matrix4x4_to_Rt(extrinsics: Tensor) -> tuple[Tensor, Tensor]:
     return R, t
 
 
-def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:  # noqa: D417
+def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
     r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
 
     I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
@@ -1368,7 +1368,7 @@ def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tens
     return matrix4x4_to_Rt(mat4x4)
 
 
-def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:  # noqa: D417
+def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
     r"""Convert vision coordinate frame (e.g. OpenCV) to graphics coordinate frame (e.g. OpenGK.).
 
     I.e. flips y and z axis Graphics convention: [+x, +y, +z] == [right, up, backwards].
@@ -1522,7 +1522,7 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Ten
     return q_colmap, t_colmap
 
 
-def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:  # noqa: D417
+def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
     r"""Convert a vector to a skew symmetric matrix.
 
     A vector :math:`(v1, v2, v3)` has a corresponding skew-symmetric matrix, which is of the form:

@@ -30,7 +30,7 @@ class So3(Module):
 
     """
 
-    def __init__(self, q: Quaternion) -> None:  # noqa: D417
+    def __init__(self, q: Quaternion) -> None:
         """Construct the base class.
 
         Internally represented by a unit quaternion `q`.
@@ -259,7 +259,7 @@ class So3(Module):
         return cls(Quaternion(wxyz))
 
     @classmethod
-    def identity(  # noqa: D417
+    def identity(
         cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Optional[Dtype] = None
     ) -> So3:
         """Create a So3 group representing an identity rotation.
@@ -295,7 +295,7 @@ class So3(Module):
         return So3(self.q.conj())
 
     @classmethod
-    def random(  # noqa: D417
+    def random(
         cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Optional[Dtype] = None
     ) -> So3:
         """Create a So3 group representing a random rotation.

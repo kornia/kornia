@@ -44,7 +44,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         """Return identity matrix."""
         return eye_like(3, input)
 
-    def get_transformation_matrix(  # noqa: D417
+    def get_transformation_matrix(
         self,
         input: Tensor,
         params: Optional[List[ParamItem]] = None,

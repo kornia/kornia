@@ -11,7 +11,7 @@ class PositionEncodingSine(Module):
 
     pe: Tensor
 
-    def __init__(self, d_model: int, max_shape: Tuple[int, int] = (256, 256), temp_bug_fix: bool = True) -> None:  # noqa: D417
+    def __init__(self, d_model: int, max_shape: Tuple[int, int] = (256, 256), temp_bug_fix: bool = True) -> None:
         """Construct sinusoidal positional encoding.
 
         Args:
