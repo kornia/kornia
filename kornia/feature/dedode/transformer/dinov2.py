@@ -63,7 +63,9 @@ class DinoVisionTransformer(nn.Module):
         ffn_layer="mlp",
         block_chunks=1,
     ):
-        """Args:
+        """Construct dino vision transformer.
+
+        Args:
         img_size (int, tuple): input image size
         patch_size (int, tuple): patch size
         in_chans (int): number of input channels
@@ -298,7 +300,7 @@ class DinoVisionTransformer(nn.Module):
 
 
 def init_weights_vit_timm(module: nn.Module, name: str = ""):
-    """ViT weight initialization, original timm impl (for reproducibility)"""
+    """ViT weight initialization, original timm impl (for reproducibility)."""
     if isinstance(module, nn.Linear):
         trunc_normal_(module.weight, std=0.02)
         if module.bias is not None:

@@ -6,8 +6,7 @@ from kornia.core import Tensor
 
 
 def marginal_pdf(values: Tensor, bins: Tensor, sigma: Tensor, epsilon: float = 1e-10) -> Tuple[Tensor, Tensor]:
-    """Calculate the marginal probability distribution function of the input tensor based on the number of
-    histogram bins.
+    """Calculate the marginal probability distribution function of the input based on the number of histogram bins.
 
     Args:
         values: shape [BxNx1].
@@ -50,8 +49,7 @@ def marginal_pdf(values: Tensor, bins: Tensor, sigma: Tensor, epsilon: float = 1
 
 
 def joint_pdf(kernel_values1: Tensor, kernel_values2: Tensor, epsilon: float = 1e-10) -> Tensor:
-    """Calculate the joint probability distribution function of the input tensors based on the number of histogram
-    bins.
+    """Calculate the joint probability distribution function of the input tensors based on the number of histogram bins.
 
     Args:
         kernel_values1: shape [BxNxNUM_BINS].

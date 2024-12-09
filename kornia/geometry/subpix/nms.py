@@ -7,7 +7,7 @@ from kornia.core import Module, Tensor, eye, pad, zeros
 
 
 def _get_nms_kernel2d(kx: int, ky: int) -> Tensor:
-    """Utility function, which returns neigh2channels conv kernel."""
+    """Return neigh2channels conv kernel."""
     numel: int = ky * kx
     center: int = numel // 2
     weight = eye(numel)
@@ -16,7 +16,7 @@ def _get_nms_kernel2d(kx: int, ky: int) -> Tensor:
 
 
 def _get_nms_kernel3d(kd: int, ky: int, kx: int) -> Tensor:
-    """Utility function, which returns neigh2channels conv kernel."""
+    """Return neigh2channels conv kernel."""
     numel: int = kd * ky * kx
     center: int = numel // 2
     weight = eye(numel)

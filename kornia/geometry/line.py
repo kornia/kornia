@@ -25,7 +25,7 @@ class ParametrizedLine(Module):
     """
 
     def __init__(self, origin: Tensor, direction: Tensor) -> None:
-        """Initializes a parametrized line of direction and origin.
+        """Initialize a parametrized line of direction and origin.
 
         Args:
             origin: any point on the line of any dimension.
@@ -69,7 +69,7 @@ class ParametrizedLine(Module):
 
     @classmethod
     def through(cls, p0: Tensor, p1: Tensor) -> "ParametrizedLine":
-        """Constructs a parametrized line going from a point :math:`p0` to :math:`p1`.
+        """Construct a parametrized line going from a point :math:`p0` to :math:`p1`.
 
         Args:
             p0: tensor with first point :math:`(B, D)` where `D` is the point dimension.
@@ -84,7 +84,7 @@ class ParametrizedLine(Module):
         return ParametrizedLine(p0, normalize((p1 - p0), p=2, dim=-1))
 
     def point_at(self, t: Union[float, Tensor]) -> Tensor:
-        """The point at :math:`t` along this line.
+        """Get the point at :math:`t` along this line.
 
         Args:
             t: step along the line.

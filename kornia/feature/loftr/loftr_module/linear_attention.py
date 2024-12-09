@@ -1,4 +1,5 @@
-"""Linear Transformer proposed in "Transformers are RNNs: Fast Autoregressive Transformers with Linear Attention"
+"""Linear Transformer proposed in "Transformers are RNNs: Fast Autoregressive Transformers with Linear Attention".
+
 Modified from: https://github.com/idiap/fast-
 transformers/blob/master/fast_transformers/attention/linear_attention.py.
 """
@@ -29,7 +30,8 @@ class LinearAttention(Module):
         q_mask: Optional[Tensor] = None,
         kv_mask: Optional[Tensor] = None,
     ) -> Tensor:
-        """Multi-Head linear attention proposed in "Transformers are RNNs"
+        """Multi-Head linear attention proposed in "Transformers are RNNs".
+
         Args:
             queries: [N, L, H, D]
             keys: [N, S, H, D]

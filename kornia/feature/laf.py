@@ -32,8 +32,9 @@ def get_laf_scale(LAF: Tensor) -> Tensor:
 
 
 def get_laf_center(LAF: Tensor) -> Tensor:
-    """Return a center (keypoint) of the LAFs. The convention is that center of 5-pixel image (coordinates from 0
-    to 4) is 2, and not 2.5.
+    """Return a center (keypoint) of the LAFs.
+
+    The convention is that center of 5-pixel image (coordinates from 0 to 4) is 2, and not 2.5.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -71,8 +72,9 @@ def get_laf_orientation(LAF: Tensor) -> Tensor:
 
 
 def rotate_laf(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
-    """Apply additional rotation to the LAFs. Compared to `set_laf_orientation`, the resulting rotation is original
-    LAF orientation plus angles_degrees.
+    """Apply additional rotation to the LAFs.
+
+    Compared to `set_laf_orientation`, the resulting rotation is original LAF orientation plus angles_degrees.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -108,7 +110,7 @@ def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
 
 
 def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: Optional[Tensor] = None) -> Tensor:
-    """Creates a LAF from keypoint center, scale and orientation.
+    """Create a LAF from keypoint center, scale and orientation.
 
     Useful to create kornia LAFs from OpenCV keypoints.
 
@@ -269,7 +271,7 @@ def laf_to_boundary_points(LAF: Tensor, n_pts: int = 50) -> Tensor:
 
 
 def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[int]]:
-    """Returns list for drawing LAFs (local features).
+    """Return list for drawing LAFs (local features).
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -294,8 +296,9 @@ def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[
 
 
 def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
-    """De-normalize LAFs from scale to image scale. The convention is that center of 5-pixel image (coordinates
-    from 0 to 4) is 2, and not 2.5.
+    """De-normalize LAFs from scale to image scale.
+
+    The convention is that center of 5-pixel image (coordinates from 0 to 4) is 2, and not 2.5.
 
         B,N,H,W = images.size()
         MIN_SIZE = min(H - 1, W -1)
@@ -325,8 +328,9 @@ def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
 
 
 def normalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
-    """Normalize LAFs to [0,1] scale from pixel scale. See below:
+    """Normalize LAFs to [0,1] scale from pixel scale.
 
+    See below:
         B,N,H,W = images.size()
         MIN_SIZE =  min(H - 1, W -1)
         [a11 a21 x]
@@ -355,7 +359,7 @@ def normalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
 
 
 def generate_patch_grid_from_normalized_LAF(img: Tensor, LAF: Tensor, PS: int = 32) -> Tensor:
-    """Helper function for affine grid generation.
+    """Generate affine grid.
 
     Args:
         img: image tensor of shape :math:`(B, CH, H, W)`.
@@ -502,7 +506,7 @@ def laf_to_three_points(laf: Tensor) -> Tensor:
     Returns:
         threepts :math:`(B, N, 2, 3)`.
 
-    """
+    """  # noqa:D205
     KORNIA_CHECK_LAF(laf)
     three_pts = stack([laf[..., 2] + laf[..., 0], laf[..., 2] + laf[..., 1], laf[..., 2]], dim=-1)
     return three_pts
@@ -525,7 +529,7 @@ def laf_from_three_points(threepts: Tensor) -> Tensor:
 
 
 def perspective_transform_lafs(trans_01: Tensor, lafs_1: Tensor) -> Tensor:
-    r"""Function that applies perspective transformations to a set of local affine frames (LAFs).
+    r"""Apply perspective transformations to a set of local affine frames (LAFs).
 
     Args:
         trans_01: tensor for perspective transformations of shape :math:`(B, 3, 3)`.

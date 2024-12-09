@@ -23,7 +23,7 @@ class ImageModuleMixIn:
         input_names_to_handle: Optional[List[Any]] = None,
         output_type: str = "tensor",
     ) -> Callable[[Any], Any]:
-        """Decorator to convert input and output types for a function.
+        """Convert input and output types for a function.
 
         Args:
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
@@ -185,7 +185,7 @@ class ImageModuleMixIn:
         raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
 
     def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:
-        """Returns PIL images.
+        """Return PIL images.
 
         Args:
             n_row: Number of images displayed in each row of the grid.
@@ -214,7 +214,7 @@ class ImageModuleMixIn:
         raise ValueError(f"Unsupported backend `{backend}`.")
 
     def save(self, name: Optional[str] = None, n_row: Optional[int] = None) -> None:
-        """Saves the output image(s) to a directory.
+        """Save the output image(s) to a directory.
 
         Args:
             name: Directory to save the images.

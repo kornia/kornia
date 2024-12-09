@@ -195,7 +195,8 @@ def _transform_input3d(input: Tensor) -> Tensor:
 
 
 def _validate_input_dtype(input: Tensor, accepted_dtypes: List[torch.dtype]) -> None:
-    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
+    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes.
+
     Args:
         input: Tensor
         accepted_dtypes: List. e.g. [torch.float32, torch.float64]
@@ -231,7 +232,8 @@ def _transform_output_shape(
 
 
 def _validate_shape(shape: Union[Tuple[int, ...], torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
-    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
+    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes.
+
     Args:
         shape: tensor shape
         required_shapes: List. e.g. ["BCHW", "BCDHW"]
@@ -268,7 +270,7 @@ def _adapted_rsampling(
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
 ) -> Tensor:
-    r"""The uniform reparameterized sampling function that accepts 'same_on_batch'.
+    r"""Sample from a uniform reparameterized sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
@@ -288,7 +290,7 @@ def _adapted_sampling(
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
 ) -> Tensor:
-    r"""The uniform sampling function that accepts 'same_on_batch'.
+    r"""Sample from a uniform sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
@@ -307,7 +309,7 @@ def _adapted_uniform(
     high: Union[float, Tensor],
     same_on_batch: bool = False,
 ) -> Tensor:
-    r"""The uniform sampling function that accepts 'same_on_batch'.
+    r"""Sample from a uniform sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
@@ -332,7 +334,7 @@ def _adapted_beta(
     b: Union[float, Tensor],
     same_on_batch: bool = False,
 ) -> Tensor:
-    r"""The beta sampling function that accepts 'same_on_batch'.
+    r"""Sample from a beta sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
@@ -459,9 +461,7 @@ def preprocess_classes(input: Tensor) -> Tensor:
 
 
 class MultiprocessWrapper:
-    """Utility class which when used as a base class, makes the class work with the 'spawn' multiprocessing
-    context.
-    """
+    """When used as a base class, makes the class work with the 'spawn' multiprocessing context."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         args = tuple(arg.clone() if isinstance(arg, torch.Tensor) else arg for arg in args)

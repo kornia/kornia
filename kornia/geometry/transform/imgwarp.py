@@ -739,6 +739,7 @@ def get_shear_matrix3d(
     szy: Optional[Tensor] = None,
 ) -> Tensor:
     r"""Compose shear matrix Bx4x4 from the components.
+
     Note: Ordered shearing, shear x-axis then y-axis then z-axis.
 
     .. math::

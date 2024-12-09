@@ -69,7 +69,7 @@ class DeDoDe(Module):
         apply_imagenet_normalization: bool = True,
         pad_if_not_divisible: bool = True,
     ) -> Tuple[Tensor, Tensor, Tensor]:
-        """Detects and describes keypoints in the input images.
+        """Detect and describe keypoints in the input images.
 
         Args:
             images: A tensor of shape :math:`(B, 3, H, W)` containing the ImageNet-Normalized input images.
@@ -106,7 +106,7 @@ class DeDoDe(Module):
         crop_h: Optional[int] = None,
         crop_w: Optional[int] = None,
     ) -> Tuple[Tensor, Tensor]:
-        """Detects keypoints in the input images.
+        """Detect keypoints in the input images.
 
         Args:
             images: A tensor of shape :math:`(B, 3, H, W)` containing the input images.
@@ -143,7 +143,7 @@ class DeDoDe(Module):
     def describe(
         self, images: Tensor, keypoints: Optional[Tensor] = None, apply_imagenet_normalization: bool = True
     ) -> Tensor:
-        """Describes keypoints in the input images. If keypoints are not provided, returns the dense descriptors.
+        """Describe keypoints in the input images. If keypoints are not provided, returns the dense descriptors.
 
         Args:
             images: A tensor of shape :math:`(B, 3, H, W)` containing the input images.
@@ -177,7 +177,7 @@ class DeDoDe(Module):
         descriptor_weights: str = "G-upright",
         amp_dtype: torch.dtype = torch.float16,
     ) -> Module:
-        r"""Loads a pretrained model.
+        r"""Load a pretrained model.
 
         Args:
             detector_weights: The weights to load for the detector.

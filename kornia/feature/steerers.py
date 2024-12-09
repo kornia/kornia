@@ -45,7 +45,7 @@ class DiscreteSteerer(Module):
         generator_type: str = "C4",
         steerer_order: int = 8,
     ) -> Module:
-        r"""Creates a steerer for pretrained DeDoDe descriptors int the "C-setting"
+        r"""Create a steerer for pretrained DeDoDe descriptors int the "C-setting"
             from the paper https://arxiv.org/abs/2312.02152, where descriptors were
             trained for fixed steerers.
 
@@ -59,7 +59,7 @@ class DiscreteSteerer(Module):
         Returns:
             The pretrained model.
 
-        """
+        """  # noqa: D205
         descriptor_dim = 256
         if generator_type == "C4":
             generator = torch.block_diag(

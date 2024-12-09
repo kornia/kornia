@@ -24,7 +24,9 @@ def mask_pts_at_padded_regions(grid_pt: Tensor, mask: Tensor) -> Tensor:
 
 @torch.no_grad()
 def spvs_coarse(data: dict[str, Any], config: dict[str, Any]) -> None:
-    """Update:
+    """Perform coarse supervision.
+
+    Update:
         data (dict): {
             "conf_matrix_gt": [N, hw0, hw1],
             'spv_b_ids': [M]
@@ -119,7 +121,9 @@ def compute_supervision_coarse(data: dict[str, Any], config: dict[str, Any]) -> 
 #  Fine-Level supervision
 @torch.no_grad()
 def spvs_fine(data: dict[str, Any], config: dict[str, Any]) -> None:
-    """Update:
+    """Perform fine supervision.
+
+    Update:
     data (dict):{
         "expec_f_gt": [M, 2]}
     """

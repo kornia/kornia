@@ -7,12 +7,14 @@ from kornia.core import Module, Tensor, cos, sin, zeros
 
 
 class PositionEncodingSine(Module):
-    """This is a sinusoidal position encoding that generalized to 2-dimensional images."""
+    """A sinusoidal position encoding that generalized to 2-dimensional images."""
 
     pe: Tensor
 
     def __init__(self, d_model: int, max_shape: Tuple[int, int] = (256, 256), temp_bug_fix: bool = True) -> None:
-        """Args:
+        """Construct sinusoidal positional encoding.
+
+        Args:
         max_shape (tuple): for 1/8 featmap, the max length of 256 corresponds to 2048 pixels
         temp_bug_fix (bool): As noted in this [issue](https://github.com/zju3dv/LoFTR/issues/41),
             the original implementation of LoFTR includes a bug in the pos-enc impl, which has little impact
@@ -28,7 +30,7 @@ class PositionEncodingSine(Module):
         self.register_buffer("pe", pe, persistent=False)  # [1, C, H, W]
 
     def _create_position_encoding(self, max_shape: Tuple[int, int]) -> Tensor:
-        """Creates a position encoding from scratch.
+        """Create a position encoding from scratch.
 
         For 1/8 feature map (which is standard): If the input image size is H, W (both divisible by 8), the max_shape
         should be (H//8, W//8).
@@ -52,7 +54,7 @@ class PositionEncodingSine(Module):
         return pe.unsqueeze(0)
 
     def update_position_encoding_size(self, max_shape: Tuple[int, int]) -> None:
-        """Updates position encoding to new max_shape.
+        """Update position encoding to new max_shape.
 
         For 1/8 feature map (which is standard): If the input image size is H, W (both divisible by 8), the max_shape
         should be (H//8, W//8).
@@ -60,7 +62,9 @@ class PositionEncodingSine(Module):
         self.pe = self._create_position_encoding(max_shape).to(self.pe.device)
 
     def forward(self, x: Tensor) -> Tensor:
-        """Args:
+        """Run forward.
+
+        Args:
         x: [N, C, H, W]
 
         """

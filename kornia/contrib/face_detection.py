@@ -67,7 +67,7 @@ class FaceDetectorResult:
         return self._data[..., 3]
 
     def get_keypoint(self, keypoint: FaceKeypoint) -> torch.Tensor:
-        """The [x y] position of a given facial keypoint.
+        """Get the [x y] position of a given facial keypoint.
 
         Args:
             keypoint: the keypoint type to return the position.
@@ -343,8 +343,7 @@ class YuFaceDetectNet(nn.Module):
 
 # Adapted from https://github.com/Hakuyume/chainer-ssd
 def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> torch.Tensor:
-    """Decode locations from predictions using priors to undo the encoding we did for offset regression at train
-    time.
+    """Decode locations from predictions using priors to undo the encoding for offset regression at train time.
 
     Args:
         loc:location predictions for loc layers. Shape: [num_priors,4].

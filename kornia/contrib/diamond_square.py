@@ -22,7 +22,7 @@ def _diamond_square_seed(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
-    """Helper function to generate the diamond square image seee.
+    """Generate the diamond square image seee.
 
     Args:
         replicates: the num of batched replicas for the image.
@@ -148,7 +148,7 @@ def diamond_square(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
-    """Generates Plasma Fractal Images using the diamond square algorithm.
+    """Generate Plasma Fractal Images using the diamond square algorithm.
 
     See: https://en.wikipedia.org/wiki/Diamond-square_algorithm
 

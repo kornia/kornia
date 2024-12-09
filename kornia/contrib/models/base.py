@@ -33,7 +33,7 @@ class ModelBase(ABC, Module, Generic[ModelConfig]):
     @staticmethod
     @abstractmethod
     def from_config(config: ModelConfig) -> ModelBase[ModelConfig]:
-        """This function should build/load the model.
+        """Build/load the model.
 
         Args:
             config: The specifications for the model be build/loaded

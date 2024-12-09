@@ -22,8 +22,9 @@ WEIGHTS_CACHE_DIR = "weights/"
 
 
 def get_test_devices() -> dict[str, torch.device]:
-    """Create a dictionary with the devices to test the source code. CUDA devices will be test only in case the
-    current hardware supports it.
+    """Create a dictionary with the devices to test the source code.
+
+    CUDA devices will be test only in case the current hardware supports it.
 
     Return:
         dict(str, torch.device): list with devices names.

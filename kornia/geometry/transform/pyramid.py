@@ -22,7 +22,7 @@ __all__ = [
 
 
 def _get_pyramid_gaussian_kernel() -> Tensor:
-    """Utility function that return a pre-computed gaussian kernel."""
+    """Return a pre-computed gaussian kernel."""
     return (
         tensor(
             [

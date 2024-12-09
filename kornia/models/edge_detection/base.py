@@ -88,7 +88,7 @@ class EdgeDetector(ModelBase):
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> onnx.ModelProto:  # type: ignore
-        """Exports the current edge detection model to an ONNX model file.
+        """Export the current edge detection model to an ONNX model file.
 
         Args:
             onnx_name:

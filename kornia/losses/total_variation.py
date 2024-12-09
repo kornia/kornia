@@ -5,7 +5,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
-    r"""Function that computes Total Variation according to [1].
+    r"""Compute Total Variation according to [1].
 
     Args:
         img: the input image with shape :math:`(*, H, W)`.

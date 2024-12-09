@@ -5,7 +5,7 @@ from kornia.core import Tensor
 
 
 def connected_components(image: Tensor, num_iterations: int = 100) -> Tensor:
-    r"""Computes the Connected-component labelling (CCL) algorithm.
+    r"""Compute the Connected-component labelling (CCL) algorithm.
 
     .. image:: https://github.com/kornia/data/raw/main/cells_segmented.png
 

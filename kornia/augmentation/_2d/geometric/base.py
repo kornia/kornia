@@ -223,6 +223,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             params: the corresponding parameters for an operation.
             flags: static parameters.
             transform: the inverse transformation matrix
+            kwargs: additional arguments
 
         """
         output = input.clone()

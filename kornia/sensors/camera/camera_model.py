@@ -57,7 +57,7 @@ class CameraModelBase:
     def __init__(
         self, distortion: CameraDistortionType, projection: CameraProjectionType, image_size: ImageSize, params: Tensor
     ) -> None:
-        """Constructor method for CameraModelBase class.
+        """Construct CameraModelBase class.
 
         Args:
             distortion: Distortion type
@@ -117,11 +117,11 @@ class CameraModelBase:
         return self._params[..., 3]
 
     def matrix(self) -> Tensor:
-        """Returns the camera matrix."""
+        """Return the camera matrix."""
         raise NotImplementedError
 
     def K(self) -> Tensor:
-        """Returns the camera matrix."""
+        """Return the camera matrix."""
         return self.matrix()
 
     def project(self, points: Vector3) -> Vector2:
@@ -182,7 +182,7 @@ class PinholeModel(CameraModelBase):
     """
 
     def __init__(self, image_size: ImageSize, params: Tensor) -> None:
-        """Constructor method for PinholeModel class.
+        """Construct PinholeModel class.
 
         Args:
             image_size: Image size
@@ -194,7 +194,7 @@ class PinholeModel(CameraModelBase):
         super().__init__(AffineTransform(), Z1Projection(), image_size, params)
 
     def matrix(self) -> Tensor:
-        r"""Returns the camera matrix.
+        r"""Return the camera matrix.
 
         The matrix is of the form:
 
@@ -248,7 +248,7 @@ class BrownConradyModel(CameraModelBase):
     """Brown Conrady Camera Model."""
 
     def __init__(self, image_size: ImageSize, params: Tensor) -> None:
-        """Constructor method for BrownConradyModel class.
+        """Construct BrownConradyModel class.
 
         Args:
             image_size: Image size
@@ -265,7 +265,7 @@ class KannalaBrandtK3(CameraModelBase):
     """Kannala Brandt K3 Camera Model."""
 
     def __init__(self, image_size: ImageSize, params: Tensor) -> None:
-        """Constructor method for KannalaBrandtK3 class.
+        """Construct KannalaBrandtK3 class.
 
         Args:
             image_size: Image size
@@ -281,7 +281,7 @@ class Orthographic(CameraModelBase):
     """Orthographic Camera Model."""
 
     def __init__(self, image_size: ImageSize, params: Tensor) -> None:
-        """Constructor method for Orthographic class.
+        """Construct Orthographic class.
 
         Args:
             image_size: Image size
@@ -316,7 +316,7 @@ class CameraModel:
     """
 
     def __init__(self, image_size: ImageSize, model_type: CameraModelType, params: Tensor) -> None:
-        """Constructor method for CameraModel class.
+        """Construct CameraModel class.
 
         Args:
             image_size: Image size

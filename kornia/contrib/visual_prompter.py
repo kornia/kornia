@@ -16,7 +16,7 @@ from kornia.geometry.keypoints import Keypoints
 
 
 class VisualPrompter:
-    r"""This class allow the user to run multiple query with multiple prompts for a model.
+    r"""Allow the user to run multiple query with multiple prompts for a model.
 
     At the moment, we just support the SAM model. The model is loaded based on the given config.
 
@@ -306,7 +306,7 @@ class VisualPrompter:
         options: Optional[dict[Any, Any]] = None,
         disable: bool = False,
     ) -> None:
-        """Applies `torch.compile(...)`/dynamo API into the VisualPrompter API.
+        """Apply `torch.compile(...)`/dynamo API into the VisualPrompter API.
 
         .. note:: For more information about the dynamo API check the official docs
                   https://pytorch.org/docs/stable/generated/torch.compile.html

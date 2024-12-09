@@ -19,7 +19,7 @@ def _bilateral_blur(
     border_type: str = "reflect",
     color_distance_type: str = "l1",
 ) -> Tensor:
-    """Single implementation for both Bilateral Filter and Joint Bilateral Filter"""
+    """Single implementation for both Bilateral Filter and Joint Bilateral Filter."""
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     if guidance is not None:

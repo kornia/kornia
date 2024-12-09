@@ -77,14 +77,16 @@ class SOLD2(Module):
         self.line_matcher = WunschLineMatcher(self.config.line_matcher_cfg)
 
     def forward(self, img: Tensor) -> Dict[str, Any]:
-        """Args:
+        """Run forward.
+
+        Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
 
-        Return:
-            - ``line_segments``: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
-            - ``junction_heatmap``: raw junction heatmap of shape :math:`(B, H, W)`.
-            - ``line_heatmap``: raw line heatmap of shape :math:`(B, H, W)`.
-            - ``dense_desc``: the semi-dense descriptor map of shape :math:`(B, 128, H/4, W/4)`.
+        Returns:
+            line_segments: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
+            junction_heatmap: raw junction heatmap of shape :math:`(B, H, W)`.
+            line_heatmap: raw line heatmap of shape :math:`(B, H, W)`.
+            dense_desc: the semi-dense descriptor map of shape :math:`(B, 128, H/4, W/4)`.
 
         """
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
@@ -241,8 +243,9 @@ class WunschLineMatcher(Module):
         return line_points, valid_points
 
     def filter_and_match_lines(self, scores: Tensor) -> Tensor:
-        """Use the scores to keep the top k best lines, compute the Needleman- Wunsch algorithm on each candidate
-        pairs, and keep the highest score.
+        """Use scores to keep the top k best lines.
+
+        Compute the Needleman- Wunsch algorithm on each candidate pairs, and keep the highest score.
 
         Inputs:
             scores: a (N, M, n, n) Tensor containing the pairwise scores

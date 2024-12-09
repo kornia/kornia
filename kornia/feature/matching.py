@@ -28,8 +28,7 @@ def _get_default_fginn_params() -> Dict[str, Any]:
 
 
 def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None) -> Tensor:
-    """Helper function, which checks validity of provided distance matrix, or calculates L2-distance matrix dm is
-    not provided.
+    """Check validity of provided distance matrix, or calculates L2-distance matrix if dm is not provided.
 
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
@@ -47,7 +46,7 @@ def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor
 
 
 def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
-    """Helper function, which output empty tensors.
+    """Output empty tensors.
 
     Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
@@ -60,7 +59,7 @@ def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
 
 
 def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-    r"""Function, which finds nearest neighbors in desc2 for each vector in desc1.
+    r"""Find nearest neighbors in desc2 for each vector in desc1.
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
@@ -87,7 +86,7 @@ def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple
 
 
 def match_mnn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-    """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
+    """Find mutual nearest neighbors in desc2 for each vector in desc1.
 
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
@@ -125,7 +124,7 @@ def match_mnn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tupl
 
 
 def match_snn(desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-    """Function, which finds nearest neighbors in desc2 for each vector in desc1.
+    """Find nearest neighbors in desc2 for each vector in desc1.
 
     The method satisfies first to second nearest neighbor distance <= th.
 
@@ -163,7 +162,7 @@ def match_snn(desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor
 
 
 def match_smnn(desc1: Tensor, desc2: Tensor, th: float = 0.95, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-    """Function, which finds mutual nearest neighbors in desc2 for each vector in desc1.
+    """Find mutual nearest neighbors in desc2 for each vector in desc1.
 
     the method satisfies first to second nearest neighbor distance <= th.
 
@@ -227,7 +226,7 @@ def match_fginn(
     mutual: bool = False,
     dm: Optional[Tensor] = None,
 ) -> Tuple[Tensor, Tensor]:
-    """Function, which finds nearest neighbors in desc2 for each vector in desc1.
+    """Find nearest neighbors in desc2 for each vector in desc1.
 
     The method satisfies first to second nearest neighbor distance <= th,
     and assures 2nd nearest neighbor is geometrically inconsistent with the 1st one
@@ -317,11 +316,13 @@ class DescriptorMatcher(Module):
         self.th = th
 
     def forward(self, desc1: Tensor, desc2: Tensor) -> Tuple[Tensor, Tensor]:
-        """Args:
+        """Run forward.
+
+        Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
 
-        Return:
+        Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2,
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
@@ -425,7 +426,9 @@ class DescriptorMatcherWithSteerer(Module):
         normalize: bool = False,
         subset_size: Optional[int] = None,
     ) -> Tuple[Tensor, Tensor, Optional[int]]:
-        """Args:
+        """Run forward.
+
+        Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             normalize: bool to decide whether to normalize descriptors to unit norm.
@@ -433,7 +436,7 @@ class DescriptorMatcherWithSteerer(Module):
                 number of rotations. Smaller subset size leads to faster but less
                 accurate matching. Only used when `self.steer_mode` is `"global"`.
 
-        Return:
+        Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2,
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
@@ -506,13 +509,15 @@ class GeometryAwareDescriptorMatcher(Module):
         self.params = params or {}
 
     def forward(self, desc1: Tensor, desc2: Tensor, lafs1: Tensor, lafs2: Tensor) -> Tuple[Tensor, Tensor]:
-        """Args:
+        """Run forward.
+
+        Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
             lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
 
-        Return:
+        Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
             - Long tensor indexes of matching descriptors in desc1 and desc2,
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.

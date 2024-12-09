@@ -155,7 +155,7 @@ attn_bias_cache: Dict[Tuple, Any] = {}
 
 
 def get_attn_bias_and_cat(x_list, branges=None):
-    """This will perform the index select, cat the tensors, and provide the attn_bias from cache."""
+    """Perform the index select, cat the tensors, and provide the attn_bias from cache."""
     batch_sizes = [b.shape[0] for b in branges] if branges is not None else [x.shape[0] for x in x_list]
     all_shapes = tuple((b, x.shape[1]) for b, x in zip(batch_sizes, x_list))
     if all_shapes not in attn_bias_cache.keys():

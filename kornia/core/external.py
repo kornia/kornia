@@ -26,7 +26,7 @@ class LazyLoader:
     auto_install: bool = False
 
     def __init__(self, module_name: str, dev_dependency: bool = False) -> None:
-        """Initializes the LazyLoader with the name of the module.
+        """Initialize the LazyLoader with the name of the module.
 
         Args:
             module_name: The name of the module to be lazily loaded.
@@ -44,7 +44,7 @@ class LazyLoader:
         subprocess.run([sys.executable, "-m", "pip", "install", "-U", module_name], shell=False, check=False)  # noqa: S603
 
     def _load(self) -> None:
-        """Loads the module if it hasn't been loaded yet.
+        """Load the module if it hasn't been loaded yet.
 
         This method is called internally when an attribute of the module is accessed for the first time. It attempts to
         import the module and raises an ImportError with a custom message if the module is not installed.
@@ -99,7 +99,7 @@ class LazyLoader:
                 self.module = importlib.import_module(self.module_name)
 
     def __getattr__(self, item: str) -> object:
-        """Loads the module (if not already loaded) and returns the requested attribute.
+        """Load the module (if not already loaded) and returns the requested attribute.
 
         This method is called when an attribute of the LazyLoader instance is accessed.
         It ensures that the module is loaded and then returns the requested attribute.
@@ -115,7 +115,7 @@ class LazyLoader:
         return getattr(self.module, item)
 
     def __dir__(self) -> List[str]:
-        """Loads the module (if not already loaded) and returns the list of attributes of the module.
+        """Load the module (if not already loaded) and returns the list of attributes of the module.
 
         This method is called when the built-in dir() function is used on the LazyLoader instance.
         It ensures that the module is loaded and then returns the list of attributes of the module.

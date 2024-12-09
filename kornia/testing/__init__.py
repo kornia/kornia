@@ -154,7 +154,7 @@ class BaseTester(ABC):
         atol: Optional[float] = None,
         low_tolerance: bool = False,
     ) -> None:
-        """Asserts that `actual` and `expected` are close.
+        """Assert that `actual` and `expected` are close.
 
         Args:
             actual: Actual input.
