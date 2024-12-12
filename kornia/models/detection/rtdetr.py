@@ -34,7 +34,7 @@ class RTDETRDetectorBuilder:
         confidence_threshold: Optional[float] = None,
         confidence_filtering: Optional[bool] = None,
     ) -> ObjectDetector:
-        """Builds and returns an RT-DETR object detector model.
+        """Build and returns an RT-DETR object detector model.
 
         Either `model_name` or `config` must be provided. If neither is provided,
         a default pretrained model (`rtdetr_r18vd`) will be built.

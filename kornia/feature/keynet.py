@@ -97,7 +97,7 @@ def _KeyNetConvBlock(
     padding: int = 2,
     dilation: int = 1,
 ) -> nn.Sequential:
-    """Helper function for KeyNet.
+    """Create KeyNet Conv Block.
 
     Default learnable convolutional block for KeyNet.
     """
@@ -109,7 +109,9 @@ def _KeyNetConvBlock(
 
 
 class KeyNet(Module):
-    """Key.Net model definition -- local feature detector (response function). This is based on the original code
+    """Key.Net model definition -- local feature detector (response function).
+
+    This is based on the original code
     from paper "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters". See :cite:`KeyNet2019` for
     more details.
 
@@ -150,7 +152,7 @@ class KeyNet(Module):
         self.eval()
 
     def forward(self, x: Tensor) -> Tensor:
-        """X - input image"""
+        """X - input image."""
         shape_im = x.shape
         feats: List[Tensor] = [self.feature_extractor(x)]
         for _ in range(1, self.num_levels):

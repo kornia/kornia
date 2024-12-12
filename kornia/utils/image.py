@@ -57,7 +57,7 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> Tensor:
 
 
 def image_list_to_tensor(images: List[Any]) -> Tensor:
-    """Converts a list of numpy images to a PyTorch 4d tensor image.
+    """Convert a list of numpy images to a PyTorch 4d tensor image.
 
     Args:
         images: list of images, each of the form :math:`(H, W, C)`.
@@ -141,7 +141,7 @@ def _to_bcdhw(tensor: Tensor) -> Tensor:
 
 
 def tensor_to_image(tensor: Tensor, keepdim: bool = False, force_contiguous: bool = False) -> Any:
-    """Converts a PyTorch tensor image to a numpy image.
+    """Convert a PyTorch tensor image to a numpy image.
 
     In case the tensor is in the GPU, it will be copied back to CPU.
 
@@ -260,7 +260,7 @@ def make_grid(tensor: Tensor, n_row: Optional[int] = None, padding: int = 2) -> 
 
 
 def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
-    """A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, H, W)`.
+    """Apply `f` to an image of arbitrary leading dimensions `(*, C, H, W)`.
 
     It works by first viewing the image as `(B, C, H, W)`, applying the function and re-viewing the image as original
     shape.
@@ -292,7 +292,7 @@ def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
 
 
 def perform_keep_shape_video(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
-    """A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, D, H, W)`.
+    """Apply `f` to an image of arbitrary leading dimensions `(*, C, D, H, W)`.
 
     It works by first viewing the image as `(B, C, D, H, W)`, applying the function and re-viewing the image as original
     shape.

@@ -210,7 +210,7 @@ def depth_from_plane_equation(
 ) -> Tensor:
     """Compute depth values from plane equations and pixel coordinates.
 
-    Parameters:
+    Args:
         plane_normals (Tensor): Plane normal vectors of shape (B, 3).
         plane_offsets (Tensor): Plane offsets of shape (B, 1).
         points_uv (Tensor): Pixel coordinates of shape (B, N, 2).
@@ -372,8 +372,7 @@ class DepthWarper(Module):
         return kornia_ops.concatenate([_x, _y], 1)
 
     def compute_subpixel_step(self) -> Tensor:
-        """Compute the required inverse depth step to achieve sub pixel accurate sampling of the depth cost volume,
-        per camera.
+        """Compute the inverse depth step for sub pixel accurate sampling of the depth cost volume, per camera.
 
         Szeliski, Richard, and Daniel Scharstein. "Symmetric sub-pixel stereo matching." European Conference on Computer
         Vision. Springer Berlin Heidelberg, 2002.
@@ -468,7 +467,7 @@ def depth_warp(
     width: int,
     align_corners: bool = True,
 ) -> Tensor:
-    r"""Function that warps a tensor from destination frame to reference given the depth in the reference frame.
+    r"""Warp a tensor from destination frame to reference given the depth in the reference frame.
 
     See :class:`~kornia.geometry.warp.DepthWarper` for details.
 
@@ -490,7 +489,7 @@ def depth_warp(
 
 
 def depth_from_disparity(disparity: Tensor, baseline: float | Tensor, focal: float | Tensor) -> Tensor:
-    """Computes depth from disparity.
+    """Compute depth from disparity.
 
     Args:
         disparity: Disparity tensor of shape :math:`(*, H, W)`.

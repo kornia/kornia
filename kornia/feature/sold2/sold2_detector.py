@@ -78,13 +78,15 @@ class SOLD2_detector(Module):
         return state_dict
 
     def forward(self, img: Tensor) -> Dict[str, Any]:
-        """Args:
+        """Run forward.
+
+        Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
 
-        Return:
-            - ``line_segments``: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
-            - ``junction_heatmap``: raw junction heatmap of shape :math:`(B, H, W)`.
-            - ``line_heatmap``: raw line heatmap of shape :math:`(B, H, W)`.
+        Returns:
+            line_segments: list of N line segments in each of the B images :math:`List[(N, 2, 2)]`.
+            junction_heatmap: raw junction heatmap of shape :math:`(B, H, W)`.
+            line_heatmap: raw line heatmap of shape :math:`(B, H, W)`.
 
         """
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
@@ -176,7 +178,7 @@ class LineSegmentDetectionModule:
             raise ValueError("[Error] Missing junction refinement config.")
 
     def detect(self, junctions: Tensor, heatmap: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
-        """Main function performing line segment detection."""
+        """Perform line segment detection."""
         KORNIA_CHECK_SHAPE(heatmap, ["H", "W"])
         H, W = heatmap.shape
         device = junctions.device
@@ -466,7 +468,7 @@ class LineSegmentDetectionModule:
         return line_map
 
     def detect_bilinear(self, heatmap: Tensor, cand_h: Tensor, cand_w: Tensor) -> Tensor:
-        """Detection by bilinear sampling."""
+        """Detect by bilinear sampling."""
         # Get the floor and ceiling locations
         cand_h_floor = torch.floor(cand_h).to(torch.long)
         cand_h_ceil = torch.ceil(cand_h).to(torch.long)
@@ -493,7 +495,7 @@ class LineSegmentDetectionModule:
         normalized_seg_length: Tensor,
         device: torch.device,
     ) -> Tensor:
-        """Detection by local maximum search."""
+        """Detect by local maximum search."""
         # Compute the distance threshold
         dist_thresh = 0.5 * (2**0.5) + self.lambda_radius * normalized_seg_length
         # Make it N x 64

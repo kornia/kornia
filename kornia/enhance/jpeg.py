@@ -26,7 +26,7 @@ __all__ = ["JPEGCodecDifferentiable", "jpeg_codec_differentiable"]
 
 
 def _get_default_qt_y(device: Device, dtype: Dtype) -> Tensor:
-    """Generates default Quantization table of Y channel."""
+    """Generate default Quantization table of Y channel."""
     return torch.tensor(
         [
             [16, 11, 10, 16, 24, 40, 51, 61],
@@ -44,7 +44,7 @@ def _get_default_qt_y(device: Device, dtype: Dtype) -> Tensor:
 
 
 def _get_default_qt_c(device: Device, dtype: Dtype) -> Tensor:
-    """Generates default Quantization table of C channels."""
+    """Generate default Quantization table of C channels."""
     return torch.tensor(
         [
             [17, 18, 24, 47, 99, 99, 99, 99],
@@ -62,7 +62,7 @@ def _get_default_qt_c(device: Device, dtype: Dtype) -> Tensor:
 
 
 def _patchify_8x8(input: Tensor) -> Tensor:
-    """Function extracts non-overlapping 8 x 8 patches from the given input image.
+    """Extract non-overlapping 8 x 8 patches from the given input image.
 
     Args:
         input (Tensor): Input image of the shape :math:`(B, H, W)`.
@@ -79,7 +79,7 @@ def _patchify_8x8(input: Tensor) -> Tensor:
 
 
 def _unpatchify_8x8(input: Tensor, H: int, W: int) -> Tensor:
-    """Function reverses non-overlapping 8 x 8 patching.
+    """Reverse non-overlapping 8 x 8 patching.
 
     Args:
         input (Tensor): Input image of the shape :math:`(B, N, 8, 8)`.
@@ -96,7 +96,7 @@ def _unpatchify_8x8(input: Tensor, H: int, W: int) -> Tensor:
 
 
 def _dct_8x8(input: Tensor) -> Tensor:
-    """Performs an 8 x 8 discrete cosine transform.
+    """Perform an 8 x 8 discrete cosine transform.
 
     Args:
         input (Tensor): Patched input tensor of the shape :math:`(B, N, 8, 8)`.
@@ -121,7 +121,7 @@ def _dct_8x8(input: Tensor) -> Tensor:
 
 
 def _idct_8x8(input: Tensor) -> Tensor:
-    """Performs an 8 x 8 discrete cosine transform.
+    """Perform an 8 x 8 discrete cosine transform.
 
     Args:
         input (Tensor): Patched input tensor of the shape :math:`(B, N, 8, 8)`.
@@ -150,7 +150,7 @@ def _idct_8x8(input: Tensor) -> Tensor:
 def _jpeg_quality_to_scale(
     compression_strength: Tensor,
 ) -> Tensor:
-    """Converts a given JPEG quality to the scaling factor.
+    """Convert a given JPEG quality to the scaling factor.
 
     Args:
         compression_strength (Tensor): Compression strength ranging from 0 to 100. Any shape is supported.
@@ -175,7 +175,7 @@ def _quantize(
     jpeg_quality: Tensor,
     quantization_table: Tensor,
 ) -> Tensor:
-    """Function performs quantization.
+    """Perform quantization.
 
     Args:
         input (Tensor): Input tensor of the shape :math:`(B, N, 8, 8)`.
@@ -205,7 +205,7 @@ def _dequantize(
     jpeg_quality: Tensor,
     quantization_table: Tensor,
 ) -> Tensor:
-    """Function performs dequantization.
+    """Perform dequantization.
 
     Args:
         input (Tensor): Input tensor of the shape :math:`(B, N, 8, 8)`.
@@ -228,7 +228,7 @@ def _dequantize(
 
 
 def _chroma_subsampling(input_ycbcr: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-    """This function implements chroma subsampling.
+    """Implement chroma subsampling.
 
     Args:
         input_ycbcr (Tensor): YCbCr input tensor of the shape :math:`(B, 3, H, W)`.
@@ -262,7 +262,7 @@ def _chroma_subsampling(input_ycbcr: Tensor) -> tuple[Tensor, Tensor, Tensor]:
 
 
 def _chroma_upsampling(input_c: Tensor) -> Tensor:
-    """Function performs chroma upsampling.
+    """Perform chroma upsampling.
 
     Args:
         input_c (Tensor): Cb or Cr component to be upsampled of the shape :math:`(B, H, W)`.
@@ -288,7 +288,7 @@ def _jpeg_encode(
     quantization_table_y: Tensor,
     quantization_table_c: Tensor,
 ) -> tuple[Tensor, Tensor, Tensor]:
-    """Performs JPEG encoding.
+    """Perform JPEG encoding.
 
     Args:
         image_rgb (Tensor): RGB input images of the shape :math:`(B, 3, H, W)`.
@@ -339,7 +339,7 @@ def _jpeg_decode(
     quantization_table_y: Tensor,
     quantization_table_c: Tensor,
 ) -> Tensor:
-    """Performs JPEG decoding.
+    """Perform JPEG decoding.
 
     Args:
         input_y (Tensor): Compressed Y component of the shape :math:`(B, N, 8, 8)`.
@@ -384,7 +384,7 @@ def _jpeg_decode(
 
 
 def _perform_padding(image: Tensor) -> tuple[Tensor, int, int]:
-    """Pads a given image to be dividable by 16.
+    """Pad a given image to be dividable by 16.
 
     Args:
         image: Image of the shape :math:`(*, 3, H, W)`.

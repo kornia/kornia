@@ -7,7 +7,7 @@ from kornia.core import Tensor
 
 
 def arange_sequence(ranges: Tensor) -> Tensor:
-    """Returns a sequence of the ranges specified by the argument.
+    """Return a sequence of the ranges specified by the argument.
 
     Example:
     [2, 5, 1, 2] -> [0, 1, 0, 1, 2, 3, 4, 0, 0, 1]
@@ -39,7 +39,8 @@ def orientation_diff(o1: Tensor, o2: Tensor) -> Tensor:
 
 
 def piecewise_arange(piecewise_idxer: Tensor) -> Tensor:
-    """Count repeated indices
+    """Count repeated indices.
+
     Example:
     [0, 0, 0, 3, 3, 3, 3, 1, 1, 2] -> [0, 1, 2, 0, 1, 2, 3, 0, 1, 0]
     """

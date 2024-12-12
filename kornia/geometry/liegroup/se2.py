@@ -54,7 +54,7 @@ class Se2(Module):
     """
 
     def __init__(self, rotation: So2, translation: Vector2 | Tensor) -> None:
-        """Constructor for the base class.
+        """Construct the base class.
 
         Internally represented by a complex number `z` and a translation 2-vector.
 
@@ -155,7 +155,7 @@ class Se2(Module):
 
     @staticmethod
     def exp(v: Tensor) -> Se2:
-        """Converts elements of lie algebra to elements of lie group.
+        """Convert elements of lie algebra to elements of lie group.
 
         Args:
             v: vector of shape :math:`(B, 3)`.
@@ -184,7 +184,7 @@ class Se2(Module):
         return Se2(so2, t)
 
     def log(self) -> Tensor:
-        """Converts elements of lie group  to elements of lie algebra.
+        """Convert elements of lie group  to elements of lie algebra.
 
         Example:
             >>> v = torch.ones((1, 3))
@@ -207,7 +207,7 @@ class Se2(Module):
 
     @staticmethod
     def hat(v: Tensor) -> Tensor:
-        """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 3, 3)`.
+        """Convert elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 3, 3)`.
 
         Args:
             v: vector of shape:math:`(B, 3)`.
@@ -228,7 +228,7 @@ class Se2(Module):
 
     @staticmethod
     def vee(omega: Tensor) -> Tensor:
-        """Converts elements from lie algebra to vector space.
+        """Convert elements from lie algebra to vector space.
 
         Args:
             omega: 3x3-matrix representing lie algebra of shape :math:`(B, 3, 3)`.
@@ -273,7 +273,7 @@ class Se2(Module):
         return cls(So2.identity(batch_size, device, dtype), Vector2(t))
 
     def matrix(self) -> Tensor:
-        """Returns the matrix representation of shape :math:`(B, 3, 3)`.
+        """Return the matrix representation of shape :math:`(B, 3, 3)`.
 
         Example:
             >>> s = Se2(So2.identity(1), torch.ones(1, 2))
@@ -312,7 +312,7 @@ class Se2(Module):
         return cls(r, t)
 
     def inverse(self) -> Se2:
-        """Returns the inverse transformation.
+        """Return the inverse transformation.
 
         Example:
             >>> s = Se2(So2.identity(1), torch.ones(1,2))
@@ -391,7 +391,7 @@ class Se2(Module):
         return cls.trans(zs, y)
 
     def adjoint(self) -> Tensor:
-        """Returns the adjoint matrix of shape :math:`(B, 3, 3)`.
+        """Return the adjoint matrix of shape :math:`(B, 3, 3)`.
 
         Example:
             >>> s = Se2.identity()

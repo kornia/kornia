@@ -25,7 +25,7 @@ class PromptEncoder(Module):
         mask_in_chans: int,
         activation: type[Module] = nn.GELU,
     ) -> None:
-        """Encodes prompts for input to SAM's mask decoder.
+        """Encode prompts for input to SAM's mask decoder.
 
         Args:
             embed_dim: The prompts' embedding dimension
@@ -59,13 +59,13 @@ class PromptEncoder(Module):
         self.no_mask_embed = nn.Embedding(1, embed_dim)
 
     def get_dense_pe(self) -> Tensor:
-        """Returns the positional encoding used to encode point prompts, applied to a dense set of points the shape
+        """Return the positional encoding used to encode point prompts, applied to a dense set of points the shape
         of the image encoding.
 
         Returns:
             Positional encoding with shape 1x(embed_dim)x(embedding_h)x(embedding_w)
 
-        """
+        """  # noqa: D205
         return self.pe_layer(self.image_embedding_size)[None, ...]
 
     def _embed_points(self, points: Tensor, labels: Tensor, pad: bool) -> Tensor:
@@ -100,7 +100,7 @@ class PromptEncoder(Module):
     def _get_batch_size(
         self, points: Optional[tuple[Tensor, Tensor]], boxes: Optional[Tensor], masks: Optional[Tensor]
     ) -> int:
-        """Gets the batch size of the output given the batch size of the input prompts."""
+        """Get the batch size of the output given the batch size of the input prompts."""
         if points is not None:
             return points[0].shape[0]
         elif boxes is not None:

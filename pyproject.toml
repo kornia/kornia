@@ -138,8 +138,18 @@ ignore = [
   "UP007",   # Prefer Optional[], Union[] over | due to torch jit scripting
   "UP006",   # Prefer List[], over list due to torch jit scripting
   "UP035",   # Ignore deprecated typing because of jit scripting
-  'D100', 'D101', 'D102','D103', 'D104', 'D105', 'D107', 'D203', 'D204', 'D205', 'D213', 'D400', 'D401', 'D404', 'D406', 'D407', 'D415', 'D417'# docs -- TODO: unconment some of these rules..
-]
+  'D100',    # Allow Undocumented public module
+  'D101',    # TODO: Undocumented public class
+  'D102',    # TODO: Undocumented public method
+  'D103',    # TODO: Undocumented public function
+  'D104',    # TODO: Undocumented public package
+  'D105',    # Allow Undocumented magic method
+  'D107',    # TODO: Undocumented public init
+  'D417',    # TODO: Undocumented params
+ ]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.isort]
 forced-separate = ["testing", "tests"]
@@ -164,11 +174,13 @@ max-statements = 64                                        # Recommended: 50
   "RUF012",
   "S101",
   "S311",
+  "D",
 ] # allow assert, random, ignore BLE, mutable class attr
 "docs/*" = [
   "PLR0912",
   "PLR0915",
   "S101",
+  "D",
 ] # allow assert, ignore max branches and statements
 "docs/generate_examples.py" = ["C901"] # Allow too complex function
 "kornia/__init__.py" = ["I001"] # Allow unsorted imports
@@ -179,7 +191,10 @@ max-statements = 64                                        # Recommended: 50
   "FLY002",
   "PLR1714",
 ] # allow DINOv2 things
-"testing/*" = ["S101"] # allow assert
+"testing/*" = [
+  "S101", # allow assert
+  "D", # Don't enforce documentation rules
+]
 "tests/*" = [
   "BLE",
   "RUF005",
@@ -187,6 +202,7 @@ max-statements = 64                                        # Recommended: 50
   "S101",
   "S311",
   "B017", # Check for Exception since KORNIA_CHECK raises it
+  "D", # Don't enforce documentation rules
 ] # allow assert, random, ignore BLE, mutable class attr
 
 [tool.pytest.ini_options]

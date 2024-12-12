@@ -102,7 +102,9 @@ class LoFTR(Module):
         self.eval()
 
     def forward(self, data: dict[str, Tensor]) -> dict[str, Tensor]:
-        """Args:
+        """Run forward.
+
+        Args:
             data: dictionary containing the input data in the following format:
 
         Keyword Args:

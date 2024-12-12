@@ -307,7 +307,7 @@ class BasicLayer(Module):
 
 
 class TinyViT(Module):
-    """TinyViT model, as described in https://arxiv.org/abs/2207.10666
+    """TinyViT model, as described in https://arxiv.org/abs/2207.10666.
 
     Args:
         img_size: Size of input image.

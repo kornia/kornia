@@ -25,7 +25,7 @@ class MLP(Module):
     """
 
     def __init__(self, num_dims: int, num_units: int = 2, num_unit_layers: int = 4, num_hidden: int = 128) -> None:
-        """Constructor method.
+        """Construct MLP.
 
         Args:
             num_dims: Number of input dimensions (channels).
@@ -154,7 +154,7 @@ class NerfModelRenderer:
     def __init__(
         self, nerf_model: NerfModel, image_size: tuple[int, int], device: torch.device | None, dtype: torch.dtype | None
     ) -> None:
-        """Constructor method.
+        """Construct NerfModelRenderer.
 
         Args:
             nerf_model: NeRF model.
@@ -171,7 +171,7 @@ class NerfModelRenderer:
         self._pixels_grid, self._ones = self._create_pixels_grid()  # 1xHxWx2 and (H*W)x1
 
     def _create_pixels_grid(self) -> tuple[Tensor, Tensor]:
-        """Creates the pixels grid to unproject to plane z=1.
+        """Create the pixels grid to unproject to plane z=1.
 
         Args:
             image_size: image size: tuple[int, int]
@@ -192,7 +192,7 @@ class NerfModelRenderer:
         return pixels_grid, ones
 
     def render_view(self, camera: PinholeCamera) -> Tensor:
-        """Renders a novel synthesis view of a trained NeRF model for given camera.
+        """Render a novel synthesis view of a trained NeRF model for given camera.
 
         Args:
             camera: camera for image rendering: PinholeCamera.
@@ -213,7 +213,7 @@ class NerfModelRenderer:
         return rgb_image
 
     def _create_rays(self, camera: PinholeCamera) -> Ray:
-        """Creates rays for a given camera.
+        """Create rays for a given camera.
 
         Args:
             camera: camera for image rendering: PinholeCamera.

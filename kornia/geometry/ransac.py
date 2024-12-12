@@ -86,10 +86,9 @@ class RANSAC(Module):
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
 
     def sample(self, sample_size: int, pop_size: int, batch_size: int, device: Optional[Device] = None) -> Tensor:
-        """Minimal sampler, but unlike traditional RANSAC we sample in batches to get benefit of the parallel
-        processing, esp.
+        """Minimal sampler, but unlike traditional RANSAC we sample in batches.
 
-        on GPU.
+        Yields the benefit of the parallel processing, esp. on GPU.
         """
         if device is None:
             device = torch.device("cpu")
@@ -99,9 +98,7 @@ class RANSAC(Module):
 
     @staticmethod
     def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> float:
-        """Formula to update max_iter in order to stop iterations earlier
-        https://en.wikipedia.org/wiki/Random_sample_consensus.
-        """
+        """Update max_iter to stop iterations earlier https://en.wikipedia.org/wiki/Random_sample_consensus."""
         eps = 1e-9
         if num_tc <= sample_size:
             return 1.0
@@ -177,7 +174,7 @@ class RANSAC(Module):
                 )
 
     def forward(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-        r"""Main forward method to execute the RANSAC algorithm.
+        r"""Call main forward method to execute the RANSAC algorithm.
 
         Args:
             kp1: source image keypoints :math:`(N, 2)`.

@@ -12,8 +12,9 @@ from .structs import DISKFeatures
 
 
 class DISK(Module):
-    r"""Module which detects and described local features in an image using the DISK method. See
-    :cite:`tyszkiewicz2020disk` for details.
+    r"""Module which detects and described local features in an image using the DISK method.
+
+    See :cite:`tyszkiewicz2020disk` for details.
 
     .. image:: _static/img/disk_outdoor_depth.jpg
 
@@ -41,7 +42,7 @@ class DISK(Module):
         self.unet = unet
 
     def heatmap_and_dense_descriptors(self, images: Tensor) -> tuple[Tensor, Tensor]:
-        """Returns the heatmap and the dense descriptors.
+        """Return the heatmap and the dense descriptors.
 
         .. image:: _static/img/DISK.png
 
@@ -74,7 +75,7 @@ class DISK(Module):
         score_threshold: float = 0.0,
         pad_if_not_divisible: bool = False,
     ) -> list[DISKFeatures]:
-        """Detects features in an image, returning keypoint locations, descriptors and detection scores.
+        """Detect features in an image, returning keypoint locations, descriptors and detection scores.
 
         Args:
             images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
@@ -110,7 +111,7 @@ class DISK(Module):
 
     @classmethod
     def from_pretrained(cls, checkpoint: str = "depth", device: Optional[torch.device] = None) -> DISK:
-        r"""Loads a pretrained model.
+        r"""Load a pretrained model.
 
         Depth model was trained using depth map supervision and is slightly more precise but biased to detect keypoints
         only where SfM depth is available. Epipolar model was trained using epipolar geometry supervision and

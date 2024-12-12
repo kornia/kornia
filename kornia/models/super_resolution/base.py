@@ -101,7 +101,7 @@ class SuperResolution(ModelBase):
         additional_metadata: Optional[List[Tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> "onnx.ModelProto":  # type: ignore
-        """Exports the current super resolution model to an ONNX model file.
+        """Export the current super resolution model to an ONNX model file.
 
         Args:
             onnx_name:

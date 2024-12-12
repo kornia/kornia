@@ -146,7 +146,7 @@ class Keypoints:
         return Keypoints(transformed_boxes, False)
 
     def transform_keypoints_(self, M: Tensor) -> "Keypoints":
-        """Inplace version of :func:`Keypoints.transform_keypoints`"""
+        """Inplace version of :func:`Keypoints.transform_keypoints`."""
         return self.transform_keypoints(M, inplace=True)
 
     @classmethod
@@ -154,8 +154,9 @@ class Keypoints:
         return cls(keypoints)
 
     def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
-        r"""Cast :class:`Keypoints` to a tensor. ``mode`` controls which 2D keypoints format should be use to
-        represent keypoints in the tensor.
+        r"""Cast :class:`Keypoints` to a tensor.
+
+        ``mode`` controls which 2D keypoints format should be use to represent keypoints in the tensor.
 
         Args:
             as_padded_sequence: whether to keep the pads for a list of keypoints. This parameter is only valid
@@ -296,7 +297,7 @@ class Keypoints3D:
         raise NotImplementedError
 
     def transform_keypoints_(self, M: Tensor) -> "Keypoints3D":
-        """Inplace version of :func:`Keypoints.transform_keypoints`"""
+        """Inplace version of :func:`Keypoints.transform_keypoints`."""
         return self.transform_keypoints(M, inplace=True)
 
     @classmethod
@@ -304,8 +305,9 @@ class Keypoints3D:
         return cls(keypoints)
 
     def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
-        r"""Cast :class:`Keypoints` to a tensor. ``mode`` controls which 2D keypoints format should be use to
-        represent keypoints in the tensor.
+        r"""Cast :class:`Keypoints` to a tensor.
+
+        ``mode`` controls which 2D keypoints format should be use to represent keypoints in the tensor.
 
         Args:
             as_padded_sequence: whether to keep the pads for a list of keypoints. This parameter is only valid

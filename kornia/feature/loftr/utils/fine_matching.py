@@ -17,7 +17,9 @@ class FineMatching(Module):
         super().__init__()
 
     def forward(self, feat_f0: Tensor, feat_f1: Tensor, data: dict[str, Any]) -> None:
-        """Args:
+        """Run forward.
+
+        Args:
             feat0 (torch.Tensor): [M, WW, C]
             feat1 (torch.Tensor): [M, WW, C]
             data (dict)

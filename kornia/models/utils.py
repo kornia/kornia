@@ -11,13 +11,15 @@ __all__ = ["OutputRangePostProcessor", "ResizePostProcessor", "ResizePreProcesso
 
 
 class ResizePreProcessor(Module):
-    """This module resizes a list of image tensors to the given size.
+    """Resize a list of image tensors to the given size.
 
     Additionally, also returns the original image sizes for further post-processing.
     """
 
     def __init__(self, height: int, width: int, interpolation_mode: str = "bilinear") -> None:
-        """Args:
+        """Construct ResizePreprocessor module.
+
+        Args:
         height: height of the resized image.
         width: width of the resized image.
         interpolation_mode: interpolation mode for image resizing. Supported values: ``nearest``, ``bilinear``,
@@ -29,7 +31,9 @@ class ResizePreProcessor(Module):
         self.interpolation_mode = interpolation_mode
 
     def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Tuple[Tensor, Tensor]:
-        """Returns:
+        """Run forward.
+
+        Returns:
         resized_imgs: resized images in a batch.
         original_sizes: the original image sizes of (height, width).
 
@@ -53,7 +57,9 @@ class ResizePostProcessor(Module):
         self.interpolation_mode = interpolation_mode
 
     def forward(self, imgs: Union[Tensor, List[Tensor]], original_sizes: Tensor) -> Union[Tensor, List[Tensor]]:
-        """Returns:
+        """Run forward.
+
+        Returns:
         resized_imgs: resized images in a batch.
         original_sizes: the original image sizes of (height, width).
 

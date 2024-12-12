@@ -42,8 +42,7 @@ def _distort_points_kannala_brandt_impl(
 
 
 def distort_points_kannala_brandt(projected_points_in_camera_z1_plane: Tensor, params: Tensor) -> Tensor:
-    r"""Distort one or more points from the canonical z=1 plane into the camera frame using the Kannala-Brandt
-    model.
+    r"""Distort points from the canonical z=1 plane into the camera frame using the Kannala-Brandt model.
 
     Args:
         projected_points_in_camera_z1_plane: Tensor representing the points to distort with shape (..., 2).
@@ -81,8 +80,7 @@ def distort_points_kannala_brandt(projected_points_in_camera_z1_plane: Tensor, p
 
 
 def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: Tensor) -> Tensor:
-    r"""Undistort one or more points from the camera frame into the canonical z=1 plane using the Kannala-Brandt
-    model.
+    r"""Undistort points from the camera frame into the canonical z=1 plane using the Kannala-Brandt model.
 
     Args:
         distorted_points_in_camera: Tensor representing the points to undistort with shape (..., 2).

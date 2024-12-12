@@ -10,8 +10,9 @@ from kornia.core import Device, Tensor
 
 @dataclass
 class DISKFeatures:
-    r"""A data structure holding DISK keypoints, descriptors and detection scores for an image. Since DISK detects a
-    varying number of keypoints per image, `DISKFeatures` is not batched.
+    r"""A data structure holding DISK keypoints, descriptors and detection scores for an image.
+
+    Since DISK detects a varying number of keypoints per image, `DISKFeatures` is not batched.
 
     Args:
         keypoints: Tensor of shape :math:`(N, 2)`, where :math:`N` is the number of keypoints.
@@ -45,7 +46,7 @@ class DISKFeatures:
         return self.keypoints[:, 1]
 
     def to(self, *args: Any, **kwargs: Any) -> DISKFeatures:
-        """Calls :func:`torch.Tensor.to` on each tensor to move the keypoints, descriptors and detection scores to
+        """Call :func:`torch.Tensor.to` on each tensor to move the keypoints, descriptors and detection scores to
         the specified device and/or data type.
 
         Args:
@@ -55,7 +56,7 @@ class DISKFeatures:
         Returns:
             A new DISKFeatures object with tensors of appropriate type and location.
 
-        """
+        """  # noqa:D205
         return DISKFeatures(
             self.keypoints.to(*args, **kwargs),
             self.descriptors.to(*args, **kwargs),
@@ -74,7 +75,7 @@ class Keypoints:
     detection_logp: Tensor
 
     def merge_with_descriptors(self, descriptors: Tensor) -> DISKFeatures:
-        """Select descriptors from a dense `descriptors` tensor, at locations given by `self.xys`"""
+        """Select descriptors from a dense `descriptors` tensor, at locations given by `self.xys`."""
         dtype = descriptors.dtype
         x, y = self.xys.T
 

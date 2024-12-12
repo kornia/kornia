@@ -61,7 +61,7 @@ __all__ = [
 
 
 def rad2deg(tensor: Tensor) -> Tensor:
-    r"""Function that converts angles from radians to degrees.
+    r"""Convert angles from radians to degrees.
 
     Args:
         tensor: Tensor of arbitrary shape.
@@ -82,7 +82,7 @@ def rad2deg(tensor: Tensor) -> Tensor:
 
 
 def deg2rad(tensor: Tensor) -> Tensor:
-    r"""Function that converts angles from degrees to radians.
+    r"""Convert angles from degrees to radians.
 
     Args:
         tensor: Tensor of arbitrary shape.
@@ -103,7 +103,7 @@ def deg2rad(tensor: Tensor) -> Tensor:
 
 
 def pol2cart(rho: Tensor, phi: Tensor) -> tuple[Tensor, Tensor]:
-    r"""Function that converts polar coordinates to cartesian coordinates.
+    r"""Convert polar coordinates to cartesian coordinates.
 
     Args:
         rho: Tensor of arbitrary shape.
@@ -128,7 +128,7 @@ def pol2cart(rho: Tensor, phi: Tensor) -> tuple[Tensor, Tensor]:
 
 
 def cart2pol(x: Tensor, y: Tensor, eps: float = 1.0e-8) -> tuple[Tensor, Tensor]:
-    """Function that converts cartesian coordinates to polar coordinates.
+    """Convert cartesian coordinates to polar coordinates.
 
     Args:
         x: Tensor of arbitrary shape.
@@ -154,7 +154,7 @@ def cart2pol(x: Tensor, y: Tensor, eps: float = 1.0e-8) -> tuple[Tensor, Tensor]
 
 
 def convert_points_from_homogeneous(points: Tensor, eps: float = 1e-8) -> Tensor:
-    r"""Function that converts points from homogeneous to Euclidean space.
+    r"""Convert points from homogeneous to Euclidean space.
 
     Args:
         points: the points to be transformed of shape :math:`(B, N, D)`.
@@ -188,7 +188,7 @@ def convert_points_from_homogeneous(points: Tensor, eps: float = 1e-8) -> Tensor
 
 
 def convert_points_to_homogeneous(points: Tensor) -> Tensor:
-    r"""Function that converts points from Euclidean to homogeneous space.
+    r"""Convert points from Euclidean to homogeneous space.
 
     Args:
         points: the points to be transformed with shape :math:`(*, N, D)`.
@@ -217,7 +217,7 @@ def _convert_affinematrix_to_homography_impl(A: Tensor) -> Tensor:
 
 
 def convert_affinematrix_to_homography(A: Tensor) -> Tensor:
-    r"""Function that converts batch of affine matrices.
+    r"""Convert batch of affine matrices.
 
     Args:
         A: the affine matrix with shape :math:`(B,2,3)`.
@@ -244,7 +244,7 @@ def convert_affinematrix_to_homography(A: Tensor) -> Tensor:
 
 
 def convert_affinematrix_to_homography3d(A: Tensor) -> Tensor:
-    r"""Function that converts batch of 3d affine matrices.
+    r"""Convert batch of 3d affine matrices.
 
     Args:
         A: the affine matrix with shape :math:`(B,3,4)`.
@@ -1180,7 +1180,7 @@ def normalize_homography3d(
 
 
 def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor) -> Tensor:
-    """Normalizes points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
+    """Normalize points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
     Args:
         point_2d: tensor containing the 2d points in the image pixel coordinates. The shape of the tensor can be
@@ -1214,7 +1214,7 @@ def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor) ->
 
 
 def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Tensor) -> Tensor:
-    """Normalizes points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
+    """Normalize points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
     Args:
         point_2d_norm: tensor containing the 2d points in the image pixel coordinates. The shape of the tensor can be
@@ -1259,7 +1259,7 @@ def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Ten
 
 
 def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
-    r"""Combines 3x3 rotation matrix R and 1x3 translation vector t into 4x4 extrinsics.
+    r"""Combine 3x3 rotation matrix R and 1x3 translation vector t into 4x4 extrinsics.
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1284,7 +1284,7 @@ def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
 
 
 def matrix4x4_to_Rt(extrinsics: Tensor) -> tuple[Tensor, Tensor]:
-    r"""Converts 4x4 extrinsics into 3x3 rotation matrix R and 1x3 translation vector ts.
+    r"""Convert 4x4 extrinsics into 3x3 rotation matrix R and 1x3 translation vector ts.
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1309,10 +1309,10 @@ def matrix4x4_to_Rt(extrinsics: Tensor) -> tuple[Tensor, Tensor]:
 
 
 def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
-    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
-    and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
+    r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
 
-    [right, down, forwards]
+    I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1339,10 +1339,10 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
 
 
 def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
-    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
-    and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
+    r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
 
-    [right, down, forwards]
+    I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1369,9 +1369,10 @@ def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tens
 
 
 def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
-    r"""Converts vision coordinate frame (e.g. OpenCV) to graphics coordinate frame (e.g. OpenGK.), i.e. flips y and
-    z axis Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] == [right,
-    down, forwards]
+    r"""Convert vision coordinate frame (e.g. OpenCV) to graphics coordinate frame (e.g. OpenGK.).
+
+    I.e. flips y and z axis Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Args:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1398,10 +1399,10 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
 
 
 def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
-    r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
-    and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
+    r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
 
-    [right, down, forwards]
+    I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
+    Vision convention: [+x, +y, +z] == [right, down, forwards]
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1428,8 +1429,8 @@ def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tens
 
 
 def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
-    r"""Converts camtoworld, i.e. projection from camera coordinate system to world coordinate system, to worldtocam
-    frame i.e. projection from world to the camera coordinate system (used in Colmap).
+    r"""Convert camtoworld to worldtocam frame used in Colmap.
+
     See
     long-url: https://colmap.github.io/format.html#output-format
 
@@ -1461,8 +1462,7 @@ def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
 
 
 def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
-    r"""Converts worldtocam frame i.e. projection from world to the camera coordinate system (used in Colmap) to
-    camtoworld, i.e. projection from camera coordinate system to world coordinate system.
+    r"""Convert worldtocam frame used in Colmap to camtoworld.
 
     Args:
         R: Rotation matrix, :math:`(B, 3, 3).`
@@ -1492,8 +1492,9 @@ def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
 
 
 def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Tensor]:
-    r"""Converts output of Apple ARKit screen pose (in quaternion representation) to the camera-to-world
-    transformation, expected by Colmap, also in quaternion representation.
+    r"""Convert output of Apple ARKit screen pose to the camera-to-world transformation, expected by Colmap.
+
+    Both poses in quaternion representation.
 
     Args:
         qvec: ARKit rotation quaternion :math:`(B, 4)`, [x, y, z, w] format.
@@ -1522,7 +1523,7 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Ten
 
 
 def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
-    r"""Converts a vector to a skew symmetric matrix.
+    r"""Convert a vector to a skew symmetric matrix.
 
     A vector :math:`(v1, v2, v3)` has a corresponding skew-symmetric matrix, which is of the form:
 

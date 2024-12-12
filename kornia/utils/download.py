@@ -17,7 +17,7 @@ class CachedDownloader:
 
     @classmethod
     def _get_file_path(cls, model_name: str, cache_dir: Optional[str], suffix: Optional[str] = None) -> str:
-        """Constructs the file path for the ONNX model based on the model name and cache directory.
+        """Construct the file path for the ONNX model based on the model name and cache directory.
 
         Args:
             model_name: The name of the model or operator, typically in the format 'operators/model_name'.
@@ -57,7 +57,7 @@ class CachedDownloader:
         file_path: str,
         download_if_not_exists: bool = True,
     ) -> None:
-        """Downloads an ONNX model from the specified URL and saves it to the specified file path.
+        """Download an ONNX model from the specified URL and save it to the specified file path.
 
         Args:
             url: The URL of the ONNX model to download.

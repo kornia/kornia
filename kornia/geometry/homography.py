@@ -218,7 +218,7 @@ def find_homography_dlt_iterated(
 
 
 def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
-    """Function, which implements oriented constraint check from :cite:`Marquez-Neila2015`.
+    """Implement oriented constraint check from :cite:`Marquez-Neila2015`.
 
     Analogous to https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/usac/degeneracy.cpp#L88
 
@@ -325,8 +325,9 @@ def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor
 def find_homography_lines_dlt_iterated(
     ls1: Tensor, ls2: Tensor, weights: Tensor, soft_inl_th: float = 4.0, n_iter: int = 5
 ) -> Tensor:
-    r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS) from line segments. The
-    linear system is solved by using the Reweighted Least Squares Solution for the 4 line segments algorithm.
+    r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS) from line segments.
+
+    The linear system is solved by using the Reweighted Least Squares Solution for the 4 line segments algorithm.
 
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.

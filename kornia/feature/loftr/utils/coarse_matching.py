@@ -10,7 +10,8 @@ INF = 1e9
 
 
 def mask_border(m: Tensor, b: int, v: Union[Tensor, float, bool]) -> None:
-    """Mask borders with value
+    """Mask borders with value.
+
     Args:
         m (torch.Tensor): [N, H0, W0, H1, W1]
         b (int)
@@ -95,7 +96,9 @@ class CoarseMatching(Module):
         mask_c0: Optional[Tensor] = None,
         mask_c1: Optional[Tensor] = None,
     ) -> None:
-        """Args:
+        """Run forward.
+
+        Args:
             feat0 (torch.Tensor): [N, L, C]
             feat1 (torch.Tensor): [N, S, C]
             data (dict)
@@ -152,7 +155,9 @@ class CoarseMatching(Module):
 
     @torch.no_grad()
     def get_coarse_match(self, conf_matrix: Tensor, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
-        """Args:
+        """Get corase matching.
+
+        Args:
             conf_matrix (torch.Tensor): [N, L, S]
             data (dict): with keys ['hw0_i', 'hw1_i', 'hw0_c', 'hw1_c']
 

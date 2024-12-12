@@ -46,7 +46,9 @@ class PatchAffineShapeEstimator(nn.Module):
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, eps={self.eps})"
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
-        """Args:
+        """Run forward.
+
+        Args:
             patch: :math:`(B, 1, H, W)`
 
         Returns:
@@ -120,7 +122,9 @@ class LAFAffineShapeEstimator(nn.Module):
         )
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
-        """Args:
+        """Run forward.
+
+        Args:
             LAF: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 
@@ -205,7 +209,7 @@ class LAFAffNetShapeEstimator(nn.Module):
 
     @staticmethod
     def _normalize_input(x: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-        """Utility function that normalizes the input by batch."""
+        """Normalize the input by batch."""
         sp, mp = torch.std_mean(x, dim=(-3, -2, -1), keepdim=True)
         # WARNING: we need to .detach() input, otherwise the gradients produced by
         # the patches extractor with F.grid_sample are very noisy, making the detector
@@ -213,7 +217,9 @@ class LAFAffNetShapeEstimator(nn.Module):
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
-        """Args:
+        """Run forward.
+
+        Args:
             LAF: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 

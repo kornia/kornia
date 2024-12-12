@@ -101,7 +101,9 @@ class MultiScaleDeformableAttention(Module):
     def forward(
         self, query: Tensor, reference_points: Tensor, value: Tensor, value_spatial_shapes: list[tuple[int, int]]
     ) -> Tensor:
-        """Args:
+        """Run forward.
+
+        Args:
             query: shape (N, Lq, C)
             reference_points: shape (N, Lq, n_levels, 4)
             value: shape (N, Lv, C)

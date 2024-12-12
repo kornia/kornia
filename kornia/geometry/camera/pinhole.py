@@ -67,7 +67,7 @@ class PinholeCamera:
             KORNIA_CHECK_SAME_DEVICE(data, first)
 
     def device(self) -> torch.device:
-        r"""Returns the device for camera buffers.
+        r"""Return the device for camera buffers.
 
         Returns:
             Device type
@@ -454,7 +454,7 @@ class PinholeCamerasList(PinholeCamera):
 
 
 def pinhole_matrix(pinholes: Tensor, eps: float = 1e-6) -> Tensor:
-    r"""Function that returns the pinhole matrix from a pinhole model.
+    r"""Return the pinhole matrix from a pinhole model.
 
     .. note::
         This method is going to be deprecated in version 0.2 in favour of
