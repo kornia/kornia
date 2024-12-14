@@ -266,17 +266,18 @@ def adalam_core(
 
     No sanity check is performed on the inputs.
 
-    Inputs:
+    Args:
         k1: keypoint locations in the source image, in pixel coordinates.
             Expected a float32 tensor with shape (num_keypoints_in_source_image, 2).
         k2: keypoint locations in the destination image, in pixel coordinates.
             Expected a float32 tensor with shape (num_keypoints_in_destination_image, 2).
-        fn12: Initial set of putative matches to be filtered.
+        fnn12: Initial set of putative matches to be filtered.
               The current implementation assumes that these are unfiltered nearest neighbor matches,
               so it requires this to be a list of indices a_i such that the source keypoint i is associated to the
               destination keypoint a_i. For now to use AdaLAM on different inputs a workaround on the input format is
               required. Expected a long tensor with shape (num_keypoints_in_source_image,).
         scores1: Confidence scores on the putative_matches. Usually holds Lowe's ratio scores.
+        config: Adalam configuration.
         mnn: A mask indicating which putative matches are also mutual nearest neighbors. See documentation on
              'force_seed_mnn' in the DEFAULT_CONFIG. If None, it disables the mutual nearest neighbor filtering on seed
              point selection. Expected a bool tensor with shape (num_keypoints_in_source_image,)
@@ -286,12 +287,14 @@ def adalam_core(
         im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost of
                   wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width) of
                   destination image
-        o1/o2: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config is
+        o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config is
                set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
-        s1/s2: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
+        o2: Same as o1 but for destination.
+        s1: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
                Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
+        s2: Same as s1 but for destination.
         return_dist: if True, inverse confidence value is also outputted. Default is False
 
     Returns:

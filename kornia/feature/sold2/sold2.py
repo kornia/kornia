@@ -251,10 +251,11 @@ class WunschLineMatcher(Module):
 
         Compute the Needleman- Wunsch algorithm on each candidate pairs, and keep the highest score.
 
-        Inputs:
+        Args:
             scores: a (N, M, n, n) Tensor containing the pairwise scores
                     of the elements to match.
-        Outputs:
+
+        Returns:
             matches: a (N) Tensor containing the indices of the best match
         """
         KORNIA_CHECK_SHAPE(scores, ["M", "N", "n", "n"])
@@ -290,7 +291,8 @@ class WunschLineMatcher(Module):
 
         The cost of the InDel operation is set to 0 by subtracting the gap
         penalty to the scores.
-        Inputs:
+
+        Args:
             scores: a (B, N, M) Tensor containing the pairwise scores
                     of the elements to match.
         """

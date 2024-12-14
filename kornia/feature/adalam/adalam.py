@@ -131,7 +131,7 @@ class AdalamFilter:
 
         No sanity check is performed on the inputs.
 
-        Inputs:
+        Args:
             k1: keypoint locations in the source image, in pixel coordinates.
                 Expected a float32 tensor with shape (num_keypoints_in_source_image, 2).
             k2: keypoint locations in the destination image, in pixel coordinates.
@@ -152,12 +152,14 @@ class AdalamFilter:
             im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost
                       of wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
                       of destination image
-            o1/o2: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config
+            o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config
                    is set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                    Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
-            s1/s2: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
+            o2: same as o1 but for destination.
+            s1: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                    See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
                    Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
+            s2: same as s1 but for destination.
             return_dist: if True, inverse confidence value is also outputted.
 
         Returns:
