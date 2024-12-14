@@ -360,7 +360,7 @@ class ONNXMixin:
             op: onnx operation.
             file_path:
                 The file path to export the combined ONNX model.
-            kwargs: Addtional arguments to save onnx model.
+            kwargs: Additional arguments to save onnx model.
 
         """
         onnx.save(op, file_path, **kwargs)  # type:ignore
@@ -373,7 +373,7 @@ class ONNXMixin:
         """Add metadata to the combined ONNX model.
 
         Args:
-            op: onnx opperation.
+            op: onnx operation.
             additional_metadata:
                 A list of tuples representing additional metadata to add to the combined ONNX model.
                 Example: [("version", 0.1)], [("date", 20240909)].
