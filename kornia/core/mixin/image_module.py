@@ -190,6 +190,7 @@ class ImageModuleMixIn:
         Args:
             n_row: Number of images displayed in each row of the grid.
             backend: visualization backend. Only PIL is supported now.
+            display: Whether or not to show the image.
 
         """
         if self._output_image is None:

@@ -216,6 +216,8 @@ class So2(Module):
 
         Args:
             batch_size: the batch size of the underlying data.
+            device: device to place the result on.
+            dtype: dtype of the result.
 
         Example:
             >>> s = So2.identity(batch_size=2)
@@ -252,6 +254,8 @@ class So2(Module):
 
         Args:
             batch_size: the batch size of the underlying data.
+            device: device to place the result on.
+            dtype: dtype of the result.
 
         Example:
             >>> s = So2.random()

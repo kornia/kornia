@@ -142,6 +142,7 @@ class ParametrizedLine(Module):
 
         Args:
             plane: the plane to compute the intersection point.
+            eps: epsilon for numerical stability.
 
         Return:
             - the lambda value used to compute the look at point.

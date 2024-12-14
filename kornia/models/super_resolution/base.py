@@ -58,6 +58,7 @@ class SuperResolution(ModelBase):
 
         Args:
             images: input tensor.
+            edge_maps: detected edges.
             output_type: type of the output.
 
         Returns:
@@ -83,7 +84,10 @@ class SuperResolution(ModelBase):
 
         Args:
             images: input tensor.
+            edge_maps: detected edges.
             output_type: type of the output.
+            directory: where to save outputs.
+            output_type: backend used to generate outputs.
 
         Returns:
             output tensor.
@@ -116,6 +120,7 @@ class SuperResolution(ModelBase):
                 If to save the model or load it.
             additional_metadata:
                 Additional metadata to add to the ONNX model.
+            kwargs: Additional arguments for converting to onnx.
 
         """
         if onnx_name is None:

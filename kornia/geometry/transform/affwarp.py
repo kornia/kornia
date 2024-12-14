@@ -543,7 +543,7 @@ def resize(
     .. image:: _static/img/resize.png
 
     Args:
-        tensor: The image tensor to be skewed with shape of :math:`(..., H, W)`.
+        input: The image tensor to be skewed with shape of :math:`(..., H, W)`.
             `...` means there can be any number of dimensions.
         size: Desired output size. If size is a sequence like (h, w),
             output size will be matched to this. If size is an int, smaller edge of the image will

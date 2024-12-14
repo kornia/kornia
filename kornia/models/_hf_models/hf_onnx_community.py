@@ -133,6 +133,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
                 If to save the model or load it.
             additional_metadata:
                 Additional metadata to add to the ONNX model.
+            kwargs: Additional arguments to convert to onnx.
 
         """
         if onnx_name is None:

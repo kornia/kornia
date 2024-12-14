@@ -444,6 +444,7 @@ def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: 
         factor: Brightness adjust factor per element in the batch. It's recommended to
             bound the factor by [0, 1]. 0 does not modify the input image while any other
             number modify the brightness.
+        clip_output: Whether to clip output to be in [0,1].
 
     Return:
         Adjusted tensor in the shape of :math:`(*, H, W)`.
@@ -499,6 +500,7 @@ def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], 
         factor: Brightness adjust factor per element in the batch. It's recommended to
             bound the factor by [0, 1]. 0 does not modify the input image while any other
             number modify the brightness.
+        clip_output: Whether to clip output to be in [0,1].
 
     Return:
         Adjusted tensor in the shape of :math:`(*, H, W)`.
@@ -903,7 +905,7 @@ def _scale_channel(im: Tensor) -> Tensor:
     r"""Scale the data in the channel to implement equalize.
 
     Args:
-        input: image tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
+        im: image tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
 
     Returns:
         image tensor with the batch in the zero position.

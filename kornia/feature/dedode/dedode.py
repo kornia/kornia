@@ -75,6 +75,7 @@ class DeDoDe(Module):
             images: A tensor of shape :math:`(B, 3, H, W)` containing the ImageNet-Normalized input images.
             n: The number of keypoints to detect.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
+            pad_if_not_divisible: pad image shape if not evenly divisible.
 
         Returns:
             keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range,
@@ -112,6 +113,7 @@ class DeDoDe(Module):
             images: A tensor of shape :math:`(B, 3, H, W)` containing the input images.
             n: The number of keypoints to detect.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
+            pad_if_not_divisible: pad image shape if not evenly divisible.
             crop_h: The height of the crop to be used for detection. If None, the full image is used.
             crop_w: The width of the crop to be used for detection. If None, the full image is used.
 

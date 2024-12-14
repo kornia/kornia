@@ -24,6 +24,7 @@ def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -
     Args:
         max_coords: tensor [BxNx3].
         sigmas: tensor [BxNxD], D >= 1
+        num_levels: number of levels in the scale index.
 
     Returns:
         tensor [BxNx3].

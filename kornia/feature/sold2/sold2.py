@@ -115,8 +115,10 @@ class SOLD2(Module):
         """Find the best matches between two sets of line segments and their corresponding descriptors.
 
         Args:
-            line_seg1, line_seg2: list of line segments in two images, with shape [num_lines, 2, 2].
-            desc1, desc2: semi-dense descriptor maps of the images, with shape [1, 128, H/4, W/4].
+            line_seg1: list of line segments in image 1, with shape [num_lines, 2, 2].
+            line_seg2: list of line segments in image 2, with shape [num_lines, 2, 2].
+            desc1: semi-dense descriptor map of image 1, with shape [1, 128, H/4, W/4].
+            desc2: semi-dense descriptor map of image 2, with shape [1, 128, H/4, W/4].
 
         Returns:
             A np.array of size [num_lines1] indicating the index in line_seg2 of the matched line,
@@ -207,9 +209,11 @@ class WunschLineMatcher(Module):
         """Regularly sample points along each line segments, with a minimal distance between each point.
 
         Pad the remaining points.
-        Inputs:
+
+        Args:
             line_seg: an Nx2x2 Tensor.
-        Outputs:
+
+        Returns:
             line_points: an N x num_samples x 2 Tensor.
             valid_points: a boolean N x num_samples Tensor.
         """

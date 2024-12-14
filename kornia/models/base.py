@@ -57,6 +57,7 @@ class ModelBaseMixin:
         Args:
             outputs: output tensor.
             directory: directory to save the images.
+            suffix: filename suffix.
 
         """
         if directory is None:
@@ -84,6 +85,7 @@ class ModelBase(Module, ONNXExportMixin, ModelBaseMixin):
             model: an object detection model.
             pre_processor: a pre-processing module
             post_processor: a post-processing module.
+            name: name of a model.
 
         """
         super().__init__()

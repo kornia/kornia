@@ -83,6 +83,8 @@ def _unpatchify_8x8(input: Tensor, H: int, W: int) -> Tensor:
 
     Args:
         input (Tensor): Input image of the shape :math:`(B, N, 8, 8)`.
+        H: height of resulting tensor.
+        W: width of resulting tensor.
 
     Returns:
         output (Tensor): Image patchify of the shape :math:`(B, H, W)`.

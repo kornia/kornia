@@ -50,7 +50,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
-
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         raise NotImplementedError
 
@@ -64,7 +64,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
-
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         raise NotImplementedError
 
@@ -255,7 +255,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
-
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if extra_args is None:
             extra_args = {}
@@ -304,7 +304,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
-
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if extra_args is None:
             extra_args = {}
@@ -369,7 +369,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
-
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if extra_args is None:
             extra_args = {}
@@ -417,7 +417,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
-
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if extra_args is None:
             extra_args = {}
@@ -463,7 +463,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
-
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if extra_args is None:
             extra_args = {}
@@ -514,7 +514,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
-
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if extra_args is None:
             extra_args = {}
@@ -561,7 +561,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
-
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if extra_args is None:
             extra_args = {}

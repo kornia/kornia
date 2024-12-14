@@ -235,7 +235,7 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: Optional[str] = None, 
     """Check whether a list provided tensors live in the same device.
 
     Args:
-        x: a list of tensors.
+        tensors: a list of tensors.
         msg: message to show in the exception.
         raises: bool indicating whether an exception should be raised upon failure.
 

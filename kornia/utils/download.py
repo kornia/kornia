@@ -23,6 +23,7 @@ class CachedDownloader:
             model_name: The name of the model or operator, typically in the format 'operators/model_name'.
             cache_dir: The directory where the model should be cached.
                 Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
+            suffix: Optional file suffix when the filename is the model name.
 
         Returns:
             str: The full local path where the model should be stored or loaded from.

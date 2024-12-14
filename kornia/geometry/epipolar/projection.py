@@ -117,6 +117,7 @@ def KRt_from_projection(P: Tensor, eps: float = 1e-6) -> Tuple[Tensor, Tensor, T
 
     Args:
         P: the projection matrix with shape :math:`(B, 3, 4)`.
+        eps: epsilon for numerical stability.
 
     Returns:
         - The Camera matrix with shape :math:`(B, 3, 3)`.

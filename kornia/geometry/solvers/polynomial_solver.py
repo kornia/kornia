@@ -212,7 +212,7 @@ def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
     Args:
         a: a first order polynomial for variables :math:`(x,y,z,1)`.
-                b: a first order polynomial for variables :math:`(x,y,z,1)`.
+        b: a first order polynomial for variables :math:`(x,y,z,1)`.
 
     Returns:
         degree 2 poly with the order :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.

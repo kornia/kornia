@@ -157,6 +157,7 @@ class ONNXRuntimeMixin:
         """Create an optimized ONNXRuntime InferenceSession for the combined model.
 
         Args:
+            op: Onnx operation.
             providers:
                 Execution providers for ONNXRuntime (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
             session_options:
@@ -213,6 +214,7 @@ class ONNXRuntimeMixin:
 
         Args:
             device_id: Select GPU to execute.
+            kwargs: Additional arguments for cuda.
 
         """
         self._session.set_providers(["CUDAExecutionProvider"], provider_options=[{"device_id": device_id, **kwargs}])
@@ -226,6 +228,7 @@ class ONNXRuntimeMixin:
 
         Args:
             device_id: select GPU to execute.
+            kwargs: additional arguments from TensorRT.
 
         """
         self._session.set_providers(
@@ -233,7 +236,7 @@ class ONNXRuntimeMixin:
         )
 
     def as_openvino(self, device_type: str = "GPU", **kwargs: Any) -> None:
-        """Set the session to run on TensorRT.
+        """Set the session to run on OpenVINO.
 
         We set the ONNX runtime session to use OpenVINOExecutionProvider.
         For other OpenVINOExecutionProvider configurations, or CUDA/cuDNN/ONNX/TensorRT version issues,
@@ -242,6 +245,7 @@ class ONNXRuntimeMixin:
         Args:
             device_type: CPU, NPU, GPU, GPU.0, GPU.1 based on the available GPUs, NPU, Any valid Hetero combination,
                 Any valid Multi or Auto devices combination.
+            kwargs: Additional arguments for OpenVINO.
 
         """
         self._session.set_providers(
@@ -275,6 +279,7 @@ class ONNXMixin:
 
         Args:
             arg: Either an ONNX ModelProto object or a file path to an ONNX model.
+            cache_dir: Where to read onnx objects from if stored on disk.
 
         Returns:
             onnx.ModelProto: The loaded ONNX model.
@@ -297,6 +302,7 @@ class ONNXMixin:
             *args: A variable number of ONNX models (either ONNX ModelProto objects or file paths).
                 For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
                 https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
+            cache_dir: Where to read operations from if stored on disk.
 
         Returns:
             list[onnx.ModelProto]: The loaded ONNX models as a list of ONNX graphs.
@@ -317,6 +323,7 @@ class ONNXMixin:
         Optionally, map inputs and outputs between operators using the `io_map`.
 
         Args:
+            args: list of onnx operations.
             io_maps:
                 A list of list of tuples representing input-output mappings for combining the models.
                 Example: [[(model1_output_name, model2_input_name)], [(model2_output_name, model3_input_name)]].
@@ -350,8 +357,10 @@ class ONNXMixin:
         """Export the combined ONNX model to a file.
 
         Args:
+            op: onnx operation.
             file_path:
                 The file path to export the combined ONNX model.
+            kwargs: Addtional arguments to save onnx model.
 
         """
         onnx.save(op, file_path, **kwargs)  # type:ignore
@@ -364,6 +373,7 @@ class ONNXMixin:
         """Add metadata to the combined ONNX model.
 
         Args:
+            op: onnx opperation.
             additional_metadata:
                 A list of tuples representing additional metadata to add to the combined ONNX model.
                 Example: [("version", 0.1)], [("date", 20240909)].
@@ -381,6 +391,7 @@ class ONNXMixin:
         """Automatic conversion of the model's IR/OPSET version to the given target version.
 
         Args:
+            op: onnx operation.
             target_ir_version: The target IR version to convert to.
             target_opset_version: The target OPSET version to convert to.
 

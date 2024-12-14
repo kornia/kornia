@@ -475,6 +475,8 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
             lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
+            hw1: Height/width of image.
+            hw2: Height/width of image.
 
         Return:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.

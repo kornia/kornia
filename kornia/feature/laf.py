@@ -78,7 +78,7 @@ def rotate_laf(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
-        angles: :math:`(B, N, 1)` in degrees.
+        angles_degrees: :math:`(B, N, 1)` in degrees.
 
     Returns:
         LAF oriented with angles :math:`(B, N, 2, 3)`
@@ -97,7 +97,7 @@ def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
-        angles: :math:`(B, N, 1)` in degrees.
+        angles_degrees: :math:`(B, N, 1)` in degrees.
 
     Returns:
         LAF oriented with angles :math:`(B, N, 2, 3)`
@@ -117,7 +117,7 @@ def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: O
     Args:
         xy: :math:`(B, N, 2)`.
         scale: :math:`(B, N, 1, 1)`. If not provided, scale = 1.0 is assumed
-        angle in degrees: :math:`(B, N, 1)`. If not provided orientation = 0 is assumed
+        ori: angle in degrees :math:`(B, N, 1)`. If not provided orientation = 0 is assumed
 
     Returns:
         LAF :math:`(B, N, 2, 3)`
@@ -144,7 +144,7 @@ def scale_laf(laf: Tensor, scale_coef: Union[float, Tensor]) -> Tensor:
     So the center, shape and orientation of the local feature stays the same, but the region area changes.
 
     Args:
-        LAF :math:`(B, N, 2, 3)`
+        laf: :math:`(B, N, 2, 3)`
         scale_coef: broadcastable tensor or float.
 
     Returns:
@@ -275,7 +275,7 @@ def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
-        n_pts: number of points to output.
+        img_idx: which points to output.
 
     Returns:
         List of boundary points x, y`

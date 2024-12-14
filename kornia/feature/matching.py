@@ -33,7 +33,7 @@ def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor
     Args:
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
-        dm: Tensor containing the distances from each descriptor in desc1
+        dm_: Tensor containing the distances from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
     """

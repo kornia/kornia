@@ -125,7 +125,7 @@ class LAFAffineShapeEstimator(nn.Module):
         """Run forward.
 
         Args:
-            LAF: :math:`(B, N, 2, 3)`
+            laf: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 
         Returns:
@@ -220,7 +220,7 @@ class LAFAffNetShapeEstimator(nn.Module):
         """Run forward.
 
         Args:
-            LAF: :math:`(B, N, 2, 3)`
+            laf: :math:`(B, N, 2, 3)`
             img: :math:`(B, 1, H, W)`
 
         Returns:

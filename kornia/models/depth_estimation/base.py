@@ -55,6 +55,7 @@ class DepthEstimation(HFONNXComunnityModel):
 
         Args:
             images: input tensor.
+            depth_maps: estimated depths.
             output_type: type of the output.
             depth_type: 'metric' or 'relative' depth.
             max_depth: maximum depth value. Only valid for metric depth.
@@ -90,9 +91,11 @@ class DepthEstimation(HFONNXComunnityModel):
 
         Args:
             images: input tensor.
+            depth_maps: estimated depths.
             output_type: type of the output.
             depth_type: 'metric' or 'relative' depth.
             max_depth: maximum depth value. Only valid for metric depth.
+            directory: where to store outputs.
 
         Returns:
             output tensor.

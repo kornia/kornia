@@ -128,7 +128,7 @@ def window_unpartition(windows: Tensor, window_size: int, pad_hw: tuple[int, int
     """Window unpartition into original sequences and removing padding.
 
     Args:
-        x: input tokens with [B * num_windows, window_size, window_size, C].
+        windows: input tokens with [B * num_windows, window_size, window_size, C].
         window_size: window size.
         pad_hw: padded height and width (Hp, Wp).
         hw: original height and width (H, W) before padding.

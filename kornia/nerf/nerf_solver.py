@@ -86,7 +86,7 @@ class NerfSolver:
             batch_size: Number of rays to sample in a batch.
             num_ray_points: Number of points to sample along rays.
             irregular_ray_sampling: Whether to sample ray points irregularly.
-            log_space: Whether frequency sampling should be log spaced.
+            log_space_encoding: Whether frequency sampling should be log spaced.
             lr: Learning rate.
 
         """

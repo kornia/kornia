@@ -12,6 +12,7 @@ def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch
         num_classes: number of classes in labels.
         device: the desired device of returned tensor.
         dtype: the desired data type of returned tensor.
+        eps: epsilon for numerical stability.
 
     Returns:
         the labels in one hot tensor of shape :math:`(N, C, *)`,

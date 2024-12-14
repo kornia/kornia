@@ -37,6 +37,7 @@ class SegmentationModelsBuilder:
             decoder_channels: Number of channels in the decoder.
             in_channels: Number of channels in the input.
             classes: Number of classes to predict.
+            activation: Type of activation layer.
             **kwargs: Additional arguments to pass to the model. Detailed arguments can be found at:
                 https://github.com/qubvel-org/segmentation_models.pytorch/tree/main/segmentation_models_pytorch/decoders
 

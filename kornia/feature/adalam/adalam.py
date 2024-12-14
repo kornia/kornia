@@ -54,6 +54,9 @@ def match_adalam(
         config: dict with AdaLAM config
         dm: Tensor containing the distances from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
+        hw1: Height/width of image.
+        hw2: Height/width of image.
+
 
     Return:
         - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
@@ -203,7 +206,7 @@ class AdalamFilter:
             - finds mutual nearest neighbors if required;
             - finally calls AdaLAM filtering.
 
-        Inputs:
+        Args:
             k1: keypoint locations in the source image, in pixel coordinates.
                 Expected an array with shape (num_keypoints_in_source_image, 2).
             k2: keypoint locations in the destination image, in pixel coordinates.
@@ -218,12 +221,14 @@ class AdalamFilter:
             im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost
                       of wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
                       of destination image
-            o1/o2: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config
+            o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config
                    is set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                    Expected an array with shape (num_keypoints_in_source/destination_image,)
-            s1/s2: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
+            o2: Same as o1 for destination.
+            s1: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                    See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
                    Expected an array with shape (num_keypoints_in_source/destination_image,)
+            s2: Same as s1 for destination.
             return_dist: if True, inverse confidence value is also outputted.
 
         Returns:

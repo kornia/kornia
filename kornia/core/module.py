@@ -192,6 +192,7 @@ class ImageModuleMixIn:
         Args:
             n_row: Number of images displayed in each row of the grid.
             backend: visualization backend. Only PIL is supported now.
+            display: whether to display the image.
 
         """
         if self._output_image is None:
@@ -267,8 +268,10 @@ class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
         """Overwrite the __call__ function to handle various inputs.
 
         Args:
+            inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
             output_type: Desired output type ('tensor', 'numpy', or 'pil').
+            kwargs: Additional arguments.
 
         Returns:
             Callable: Decorated function with converted input and output types.
@@ -324,8 +327,10 @@ class ImageSequential(Sequential, ImageModuleMixIn, ONNXExportMixin):
         """Overwrite the __call__ function to handle various inputs.
 
         Args:
+            inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
             output_type: Desired output type ('tensor', 'numpy', or 'pil').
+            kwargs: Additional arguments.
 
         Returns:
             Callable: Decorated function with converted input and output types.

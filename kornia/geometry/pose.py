@@ -42,8 +42,8 @@ class NamedPose:
 
         Args:
             dst_from_src: Pose from source frame to destination frame.
-            src: Name of frame a.
-            dst: Name of frame b.
+            frame_src: Name of frame a.
+            frame_dst: Name of frame b.
 
         """
         self._dst_from_src = dst_from_src

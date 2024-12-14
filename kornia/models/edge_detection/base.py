@@ -44,6 +44,7 @@ class EdgeDetector(ModelBase):
 
         Args:
             images: input tensor.
+            edge_maps: detected edges.
             output_type: type of the output.
 
         Returns:
@@ -69,7 +70,9 @@ class EdgeDetector(ModelBase):
 
         Args:
             images: input tensor.
+            edge_maps: detected edges.
             output_type: type of the output.
+            directory: where to save outputs.
 
         Returns:
             output tensor.
@@ -103,6 +106,7 @@ class EdgeDetector(ModelBase):
                 If to save the model or load it.
             additional_metadata:
                 Additional metadata to add to the ONNX model.
+            kwargs: Additional arguments to convert to onnx.
 
         """
         if onnx_name is None:

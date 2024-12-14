@@ -15,8 +15,8 @@ class StereoException(Exception):
 
         Args:
             msg: Custom message to add to the general message.
-            *args:
-            **kwargs:
+            *args: Additional argument passthrough
+            **kwargs: Additional argument passthrough
 
         """
         doc_help = (

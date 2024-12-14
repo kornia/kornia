@@ -260,7 +260,7 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     r"""Get the left and right edges of a polygon for each y-coordinate y \in [0, h).
 
     Args:
-        polygons: represents polygons to draw in BxNx2
+        polygon: represents polygons to draw in BxNx2
             N is the number of points
             2 is (x, y).
         h: bottom most coordinate (top coordinate is assumed to be 0)
@@ -305,7 +305,7 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
     Works by repeating the last element in the tensor.
 
     Args:
-        polygon: List of variable length polygons of shape [N_1 x 2, N_2 x 2, ..., N_B x 2].
+        polygons: List of variable length polygons of shape [N_1 x 2, N_2 x 2, ..., N_B x 2].
                     B is the batch size,
                     N_i is the number of points,
                     2 is (x, y).
@@ -329,7 +329,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
         polygons: represents polygons as points, either BxNx2 or List of variable length polygons.
             N is the number of points.
             2 is (x, y).
-        color: a B x 3 tensor or 3 tensor with color to fill in.
+        colors: a B x 3 tensor or 3 tensor with color to fill in.
 
     Returns:
         This operation modifies image inplace but also returns the drawn tensor for

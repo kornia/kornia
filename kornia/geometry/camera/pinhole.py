@@ -303,7 +303,7 @@ class PinholeCamera:
         r"""Project a 3d point in world coordinates onto the 2d camera plane.
 
         Args:
-            point3d: tensor containing the 3d points to be projected
+            point_3d: tensor containing the 3d points to be projected
                 to the camera plane. The shape of the tensor can be :math:`(*, 3)`.
 
         Returns:
@@ -330,7 +330,7 @@ class PinholeCamera:
         Transform coordinates in the pixel frame to the world frame.
 
         Args:
-            point2d: tensor containing the 2d to be projected to
+            point_2d: tensor containing the 2d to be projected to
                 world coordinates. The shape of the tensor can be :math:`(*, 2)`.
             depth: tensor containing the depth value of each 2d
                 points. The tensor shape must be equal to point2d :math:`(*, 1)`.
@@ -462,6 +462,7 @@ def pinhole_matrix(pinholes: Tensor, eps: float = 1e-6) -> Tensor:
 
     Args:
         pinholes: tensor of pinhole models.
+        eps: epsilon for numerical stability.
 
     Returns:
         tensor of pinhole matrices.
@@ -506,7 +507,8 @@ def inverse_pinhole_matrix(pinhole: Tensor, eps: float = 1e-6) -> Tensor:
         :attr:`kornia.PinholeCamera.intrinsics_inverse()`.
 
     Args:
-        pinholes: tensor with pinhole models.
+        pinhole: tensor with pinhole models.
+        eps: epsilon for numerical stability.
 
     Returns:
         tensor of inverted pinhole matrices.
@@ -686,7 +688,7 @@ def cam2pixel(cam_coords_src: Tensor, dst_proj_src: Tensor, eps: float = 1e-12) 
     r"""Transform coordinates in the camera frame to the pixel frame.
 
     Args:
-        cam_coords: (x, y, z) coordinates defined in the first camera coordinates system. Shape must be BxHxWx3.
+        cam_coords_src: (x, y, z) coordinates defined in the first camera coordinates system. Shape must be BxHxWx3.
         dst_proj_src: the projection matrix between the
           reference and the non reference camera frame. Shape must be Bx4x4.
         eps: small value to avoid division by zero error.

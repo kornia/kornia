@@ -17,6 +17,7 @@ def parse_colmap_output(
         cameras_path: Path to camera.txt Colmap file with camera intrinsics: str
         images_path: Path to images.txt Colmap file with camera extrinsics for each image: str
         device: device for created camera object: Union[str, torch.device]
+        dtype: Intrinsics and extrinsics dtype.
 
     Returns:
         image names: List[str]

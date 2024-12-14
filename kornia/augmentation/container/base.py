@@ -185,7 +185,7 @@ class ImageSequentialBase(SequentialBase):
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
-
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         raise NotImplementedError
 
