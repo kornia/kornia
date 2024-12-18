@@ -33,7 +33,7 @@ class SOLD2_detector(Module):
 
     Example:
         >>> img = torch.rand(1, 1, 512, 512)
-        >>> sold2_detector = SOLD2_detector()
+        >>> sold2_detector = SOLD2_detector(pretrained=False)
         >>> line_segments = sold2_detector(img)["line_segments"]
 
     """

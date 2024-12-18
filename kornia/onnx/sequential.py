@@ -64,6 +64,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         If `target_opset_version` is not provided, the model is converted to 17 by default.
 
         Args:
+            args: List of operations to convert.
             target_ir_version: The target IR version to convert to.
             target_opset_version: The target OPSET version to convert to.
 

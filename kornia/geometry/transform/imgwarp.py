@@ -700,7 +700,7 @@ def get_affine_matrix3d(
         translations: tensor containing the translation vector (dx,dy,dz) with shape :math:`(B, 3)`.
         center: tensor containing the center vector (x,y,z) with shape :math:`(B, 3)`.
         scale: tensor containing the scale factor with shape :math:`(B)`.
-        angle: axis angle vector containing the rotation angles in degrees in the form
+        angles: axis angle vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape :math:`(B, 3)`. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
         sxy: tensor containing the shear factor in the xy-direction with shape :math:`(B)`.
@@ -855,7 +855,7 @@ def warp_affine3d(
         src : input tensor of shape :math:`(B, C, D, H, W)`.
         M: projective transformation matrix of shape :math:`(B, 3, 4)`.
         dsize: size of the output image (depth, height, width).
-        mode: interpolation mode to calculate output values
+        flags: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
           ``'zeros'`` | ``'border'`` | ``'reflection'``.

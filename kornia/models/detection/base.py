@@ -75,6 +75,7 @@ def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFor
     Args:
         detections: tensor with shape :math:`(D, 6)`, where :math:`D` is the number of detections in the given image,
             :math:`6` represents class id, score, and `xywh` bounding box.
+        format: detection format.
 
     Returns:
         list of :py:class:`ObjectDetectorResult`.
@@ -185,6 +186,7 @@ class ObjectDetector(ModelBase):
                 If to save the model or load it.
             additional_metadata:
                 Additional metadata to add to the ONNX model.
+            kwargs: Additional arguments to convert to onnx.
 
         """
         if onnx_name is None:

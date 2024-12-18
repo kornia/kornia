@@ -27,7 +27,7 @@ def box_blur(
         \end{bmatrix}
 
     Args:
-        image: the image to blur with shape :math:`(B,C,H,W)`.
+        input: the image to blur with shape :math:`(B,C,H,W)`.
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.

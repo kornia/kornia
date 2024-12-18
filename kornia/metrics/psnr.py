@@ -23,7 +23,7 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
 
     Args:
         image: the input image with arbitrary shape :math:`(*)`.
-        labels: the labels image with arbitrary shape :math:`(*)`.
+        target: the labels image with arbitrary shape :math:`(*)`.
         max_val: The maximum value in the input tensor.
 
     Return:

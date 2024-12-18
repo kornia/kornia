@@ -193,7 +193,7 @@ def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, flo
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        input: Image tensor of size :math:`(B, C, *)`.
+        data: Image tensor of size :math:`(B, C, *)`.
         mean: Mean for each channel.
         std: Standard deviations for each channel.
 

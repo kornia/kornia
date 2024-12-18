@@ -187,6 +187,7 @@ class Image:
             data: a numpy array containing the image data.
             color_space: the color space of the image.
             pixel_format: the pixel format of the image.
+            channels_order: what dimension the channels are in the image tensor.
 
         Example:
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC

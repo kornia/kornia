@@ -176,6 +176,7 @@ def image_histogram2d(
           each bin.
         kernel: kernel to perform kernel density estimation
           ``(`triangular`, `gaussian`, `uniform`, `epanechnikov`)``.
+        eps: epsilon for numerical stability.
 
     Returns:
         Computed histogram of shape :math:`(bins)`, :math:`(C, bins)`,

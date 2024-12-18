@@ -46,7 +46,7 @@ def dice_loss(
 
     Args:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
-        labels: labels tensor with shape :math:`(N, H, W)` where each value
+        target: labels tensor with shape :math:`(N, H, W)` where each value
           is :math:`0 ≤ targets[i] ≤ C-1`.
         average:
             Reduction applied in multi-class scenario:

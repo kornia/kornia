@@ -344,6 +344,8 @@ class Quaternion(Module):
 
         Args:
             batch_size: the batch size of the underlying data.
+            device: device to place the result on.
+            dtype: dtype of the result.
 
         Example:
             >>> q = Quaternion.identity()
@@ -388,6 +390,8 @@ class Quaternion(Module):
 
         Args:
             batch_size: the batch size of the underlying data.
+            device: device to place the result on.
+            dtype: dtype of the result.
 
         Example:
             >>> q = Quaternion.random()

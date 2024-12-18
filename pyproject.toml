@@ -145,7 +145,6 @@ ignore = [
   'D104',    # TODO: Undocumented public package
   'D105',    # Allow Undocumented magic method
   'D107',    # TODO: Undocumented public init
-  'D417',    # TODO: Undocumented params
  ]
 
 [tool.ruff.lint.pydocstyle]

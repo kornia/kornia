@@ -119,6 +119,8 @@ class VisualPrompter:
             image: RGB image. Normally images with range of [0-1], the model preprocess normalize the
                    pixel values with the mean and std defined in its initialization. Expected to be into a float32
                    dtype. Shape :math:`(3, H, W)`.
+            mean: mean value of dataset for normalization.
+            std: standard deviation of dataset for normalization.
 
         """
         KORNIA_CHECK_SHAPE(image, ["3", "H", "W"])
@@ -236,7 +238,7 @@ class VisualPrompter:
         Args:
             keypoints: Point prompts to the model. Each point is in (X,Y) in pixels. Shape :math:`(K, N, 2)`. Where
                        `N` is the number of points and `K` the number of prompts.
-            keypoint_labels: Labels for the point prompts. 1 indicates a foreground point and 0 indicates a background
+            keypoints_labels: Labels for the point prompts. 1 indicates a foreground point and 0 indicates a background
                              point. Shape :math:`(K, N)`. Where `N` is the number of points, and `K` the number of
                              prompts.
             boxes: A box prompt to the model. If a tensor, should be in a xyxy mode. Shape :math:`(K, 4)`

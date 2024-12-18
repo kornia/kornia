@@ -13,7 +13,7 @@ def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch
     r"""Project a 3d point onto the 2d camera plane.
 
     Args:
-        point3d: tensor containing the 3d points to be projected
+        point_3d: tensor containing the 3d points to be projected
             to the camera plane. The shape of the tensor can be :math:`(*, 3)`.
         camera_matrix: tensor containing the intrinsics camera
             matrix. The tensor shape must be :math:`(*, 3, 3)`.
@@ -45,7 +45,7 @@ def unproject_points(
     Transform coordinates in the pixel frame to the camera frame.
 
     Args:
-        point2d: tensor containing the 2d to be projected to
+        point_2d: tensor containing the 2d to be projected to
             world coordinates. The shape of the tensor can be :math:`(*, 2)`.
         depth: tensor containing the depth value of each 2d
             points. The tensor shape must be equal to point2d :math:`(*, 1)`.

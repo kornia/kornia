@@ -81,6 +81,7 @@ class RTDETRConfig:
 
         Args:
             model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
+            num_classes: Number of classes to detect.
 
         """
         if model_name == "rtdetr_r18vd":
@@ -107,8 +108,8 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
         Args:
             backbone: backbone network for feature extraction.
-            neck: neck network for feature fusion.
-            head: head network to decode features into detection results.
+            encoder: neck network for feature fusion.
+            decoder: head network to decode features into detection results.
 
         """
         super().__init__()
@@ -255,6 +256,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
         Args:
             model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
+            num_classes: number of classes to detect.
 
         """
         model = RTDETR.from_config(RTDETRConfig.from_name(model_name, num_classes))

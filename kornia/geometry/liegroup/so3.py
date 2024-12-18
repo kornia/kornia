@@ -36,7 +36,7 @@ class So3(Module):
         Internally represented by a unit quaternion `q`.
 
         Args:
-            data: Quaternion with the shape of :math:`(B, 4)`.
+            q: Quaternion with the shape of :math:`(B, 4)`.
 
         Example:
             >>> data = torch.ones((2, 4))
@@ -266,6 +266,8 @@ class So3(Module):
 
         Args:
             batch_size: the batch size of the underlying data.
+            device: device to place the result on.
+            dtype: dtype of the result.
 
         Example:
             >>> s = So3.identity()
@@ -302,6 +304,8 @@ class So3(Module):
 
         Args:
             batch_size: the batch size of the underlying data.
+            device: device to place the result on.
+            dtype: dtype of the result.
 
         Example:
             >>> s = So3.random()

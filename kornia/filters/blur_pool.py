@@ -139,8 +139,9 @@ def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int =
     See :cite:`zhang2019shiftinvar` for more details.
 
     Args:
-        kernel_size: the kernel size for max pooling..
-        ceil_mode: should be true to match output size of conv2d with same kernel size.
+        input: tensor to apply operation to.
+        kernel_size: the kernel size for max pooling.
+        stride: stride for pooling.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -187,6 +188,7 @@ def max_blur_pool2d(
     See :class:`~kornia.filters.MaxBlurPool2D` for details.
 
     Args:
+        input: tensor to apply operation to.
         kernel_size: the kernel size for max pooling.
         stride: stride for pooling.
         max_pool_size: the kernel size for max pooling.

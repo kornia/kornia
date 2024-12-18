@@ -1049,9 +1049,11 @@ def normal_transform_pixel(
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
     Args:
-        height image height.
+        height: image height.
         width: image width.
         eps: epsilon to prevent divide-by-zero errors
+        device: device to place the result on.
+        dtype: dtype of the result.
 
     Returns:
         normalized transform with shape :math:`(1, 3, 3)`.
@@ -1084,6 +1086,8 @@ def normal_transform_pixel3d(
         height: image height.
         width: image width.
         eps: epsilon to prevent divide-by-zero errors
+        device: device to place the result on.
+        dtype: dtype of the result.
 
     Returns:
         normalized transform with shape :math:`(1, 4, 4)`.
@@ -1151,7 +1155,7 @@ def normalize_homography3d(
         dst_pix_trans_src_pix: homography/ies from source to destination to be
           normalized. :math:`(B, 4, 4)`
         dsize_src: size of the source image (depth, height, width).
-        dsize_src: size of the destination image (depth, height, width).
+        dsize_dst: size of the destination image (depth, height, width).
 
     Returns:
         the normalized homography.
@@ -1315,7 +1319,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
     Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Args:
-        extrinsics: pose matrix :math:`(B, 4, 4)`.
+        extrinsics_graphics: pose matrix :math:`(B, 4, 4)`.
 
     Returns:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1375,7 +1379,7 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
     Vision convention: [+x, +y, +z] == [right, down, forwards].
 
     Args:
-        extrinsics: pose matrix :math:`(B, 4, 4)`.
+        extrinsics_vision: pose matrix :math:`(B, 4, 4)`.
 
     Returns:
         extrinsics: pose matrix :math:`(B, 4, 4)`.
@@ -1533,7 +1537,7 @@ def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
         -v2 & v1 & 0\end{bmatrix}
 
     Args:
-        x: tensor of shape :math:`(B, 3)`.
+        vec: tensor of shape :math:`(B, 3)`.
 
     Returns:
         tensor of shape :math:`(B, 3, 3)`.

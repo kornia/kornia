@@ -300,7 +300,7 @@ def crop_by_indices(
     """Crop tensors with naive indices.
 
     Args:
-        input: the 2D image tensor with shape (B, C, H, W).
+        input_tensor: the 2D image tensor with shape (B, C, H, W).
         src_box: a tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx4x2, where each box is defined in the clockwise
             order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in x, y order.

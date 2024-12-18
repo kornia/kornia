@@ -21,7 +21,7 @@ def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = N
 
     Args:
          h: kernel height.
-         : kernel width.
+         w: kernel width.
          device: device, on which generate.
 
     Returns:

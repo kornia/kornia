@@ -253,7 +253,8 @@ class VideoSequential(ImageSequential):
         Args:
             input: tensor with shape :math:`(B, T, N, 4, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
-
+            params: params for the sequence.
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if isinstance(input, Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
@@ -272,7 +273,8 @@ class VideoSequential(ImageSequential):
         Args:
             input: tensor with shape :math:`(B, T, N, 4, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
-
+            params: params for the sequence.
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if isinstance(input, Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
@@ -291,7 +293,8 @@ class VideoSequential(ImageSequential):
         Args:
             input: tensor with shape :math:`(B, T, N, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
-
+            params: params for the sequence.
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if isinstance(input, Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
@@ -310,7 +313,8 @@ class VideoSequential(ImageSequential):
         Args:
             input: tensor with shape :math:`(B, T, N, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
-
+            params: params for the sequence.
+            extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
         if isinstance(input, Tensor):
             frame_num, batchsize = input.size(0), input.size(1)

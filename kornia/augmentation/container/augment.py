@@ -480,8 +480,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """Overwrite the __call__ function to handle various inputs.
 
         Args:
+            inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
             output_type: Desired output type ('tensor', 'numpy', or 'pil').
+            kwargs: Additional arguments.
 
         Returns:
             Callable: Decorated function with converted input and output types.

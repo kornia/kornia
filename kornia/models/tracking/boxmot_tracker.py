@@ -153,6 +153,8 @@ class BoxMotTracker:
 
         Args:
             image: The input image.
+            show_trajectories: Whether to visualize trajectories.
+            directory: Where to save the file(s).
 
         """
         if directory is None:

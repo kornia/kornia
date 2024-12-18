@@ -14,8 +14,8 @@ def mask_border(m: Tensor, b: int, v: Union[Tensor, float, bool]) -> None:
 
     Args:
         m (torch.Tensor): [N, H0, W0, H1, W1]
-        b (int)
-        v (m.dtype)
+        b (int): border size.
+        v (m.dtype): border value.
     """
     if b <= 0:
         return
@@ -52,7 +52,8 @@ def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:
     """Compute the max candidates of all pairs within a batch.
 
     Args:
-        p_m0, p_m1 (torch.Tensor): padded masks
+        p_m0: padded mask 0
+        p_m1: padded mask 1
 
     """
     h0s, w0s = p_m0.sum(1).max(-1)[0], p_m0.sum(-1).max(-1)[0]
@@ -99,8 +100,8 @@ class CoarseMatching(Module):
         """Run forward.
 
         Args:
-            feat0 (torch.Tensor): [N, L, C]
-            feat1 (torch.Tensor): [N, S, C]
+            feat_c0 (torch.Tensor): [N, L, C]
+            feat_c1 (torch.Tensor): [N, S, C]
             data (dict)
             mask_c0 (torch.Tensor): [N, L] (optional)
             mask_c1 (torch.Tensor): [N, S] (optional)

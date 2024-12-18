@@ -211,8 +211,9 @@ def _transform_output_shape(
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
 
     Args:
-        input: Tensor
+        output: Tensor
         shape: List/tuple of int
+        reference_shape: Tensor representation of shape to control which dimensions are collapsed.
 
     Returns:
         Tensor

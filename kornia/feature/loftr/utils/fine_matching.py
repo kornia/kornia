@@ -20,8 +20,8 @@ class FineMatching(Module):
         """Run forward.
 
         Args:
-            feat0 (torch.Tensor): [M, WW, C]
-            feat1 (torch.Tensor): [M, WW, C]
+            feat_f0 (torch.Tensor): [M, WW, C]
+            feat_f1 (torch.Tensor): [M, WW, C]
             data (dict)
         Update:
             data (dict):{

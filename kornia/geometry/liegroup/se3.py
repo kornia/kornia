@@ -255,6 +255,8 @@ class Se3(Module):
 
         Args:
             batch_size: the batch size of the underlying data.
+            device: device to place the result on.
+            dtype: dtype of the result.
 
         Example:
             >>> s = Se3.identity()
@@ -362,6 +364,8 @@ class Se3(Module):
 
         Args:
             batch_size: the batch size of the underlying data.
+            device: device to place the result on.
+            dtype: dtype of the result.
 
         Example:
             >>> s = Se3.random()

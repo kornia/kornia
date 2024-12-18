@@ -51,6 +51,9 @@ class RTDETRDetectorBuilder:
                 The size to which input images will be resized during preprocessing.
                 If None, no resizing will be inferred from config file. Recommended scales include
                 [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
+            confidence_threshold: Threshold to filter results based on confidence scores.
+            confidence_filtering: Whether to filter results based on confidence scores.
+
 
         Returns:
             ObjectDetector

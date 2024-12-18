@@ -34,6 +34,7 @@ class TwoWayTransformer(Module):
             num_heads: the number of heads for multihead attention. Must divide embedding_dim
             mlp_dim: the channel dimension internal to the MLP block
             activation: the activation to use in the MLP block
+            attention_downsample_rate: downsampling rate from embedding dimension
 
         """  # noqa: D205
         super().__init__()
@@ -117,6 +118,7 @@ class TwoWayAttentionBlock(Module):
             mlp_dim: the hidden dimension of the mlp block
             activation: the activation of the mlp block
             skip_first_layer_pe: skip the PE on the first layer
+            attention_downsample_rate: downsampling rate from embedding dimension
 
         """
         super().__init__()

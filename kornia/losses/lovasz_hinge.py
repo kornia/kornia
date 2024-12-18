@@ -40,7 +40,7 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
 
     Args:
         pred: logits tensor with shape :math:`(N, 1, H, W)`.
-        labels: labels tensor with shape :math:`(N, H, W)` with binary values.
+        target: labels tensor with shape :math:`(N, H, W)` with binary values.
 
     Return:
         a scalar with the computed loss.

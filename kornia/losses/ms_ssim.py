@@ -93,6 +93,8 @@ class MS_SSIMLoss(nn.Module):
         Args:
             size: the size of gauss kernel.
             sigma: sigma of normal distribution.
+            device: device to store the result on.
+            dtype: dtype of the result.
 
         Returns:
             1D kernel (size).
@@ -112,6 +114,8 @@ class MS_SSIMLoss(nn.Module):
         Args:
             size: the size of gauss kernel.
             sigma: sigma of normal distribution.
+            device: device to store the result on.
+            dtype: dtype of the result.
 
         Returns:
             2D kernel (size x size).

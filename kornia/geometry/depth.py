@@ -46,9 +46,13 @@ def unproject_meshgrid(
         the meshgrid computation when warping multiple frames with the same camera intrinsics.
 
     Args:
+        height: height of image.
+        width: width of image.
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(3, 3)`.
         normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
           represented as the Euclidean ray length from the camera position.
+        device: device to place the result on.
+        dtype: dtype of the result.
 
     Return:
         tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
@@ -89,6 +93,7 @@ def depth_to_3d_v2(
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(*, 3, 3)`.
         normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
           represented as the Euclidean ray length from the camera position.
+        xyz_grid: explicit xyz point values.
 
     Return:
         tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
@@ -215,6 +220,7 @@ def depth_from_plane_equation(
         plane_offsets (Tensor): Plane offsets of shape (B, 1).
         points_uv (Tensor): Pixel coordinates of shape (B, N, 2).
         camera_matrix (Tensor): Camera intrinsic matrix of shape (B, 3, 3).
+        eps: epsilon for numerical stability.
 
     Returns:
         Tensor: Computed depth values at the given pixels, shape (B, N).

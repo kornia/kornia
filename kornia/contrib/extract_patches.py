@@ -430,7 +430,7 @@ def extract_tensor_patches(
         window_size: the size of the sliding window and the output patch size.
         stride: stride of the sliding window.
         padding: Zero-padding added to both side of the input.
-        allow_auto_adding: whether to allow automatic padding if the window and stride do not fit into the image.
+        allow_auto_padding: whether to allow automatic padding if the window and stride do not fit into the image.
 
     Returns:
         the tensor with the extracted patches with shape :math:`(B, N, C, H_{out}, W_{out})`.

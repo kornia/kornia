@@ -27,6 +27,7 @@ class ONNXLoader(CachedDownloader):
         Args:
             url: The URL of the preprocessor config to load.
             download: If True, the config will be downloaded if it's not already in the local cache.
+            kwargs: Additional download arguments.
 
         Returns:
             dict[str, Any]: The loaded preprocessor config.

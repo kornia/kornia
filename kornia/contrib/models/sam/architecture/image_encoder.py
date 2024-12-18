@@ -49,6 +49,7 @@ class ImageEncoderViT(Module):
         depth: Depth of ViT.
         num_heads: Number of attention heads in each ViT block.
         mlp_ratio: Ratio of mlp hidden dim to embedding dim.
+        out_chans: Number of output channels.
         qkv_bias: If True, add a learnable bias to query, key, value.
         norm_layer: Normalization layer.
         act_layer: Activation layer.
@@ -194,7 +195,7 @@ class Attention(Module):
         dim: Number of input channels.
         num_heads: Number of attention heads.
         qkv_bias:  If True, add a learnable bias to query, key, value.
-        rel_pos: If True, add relative positional embeddings to the attention map.
+        use_rel_pos: If True, add relative positional embeddings to the attention map.
         rel_pos_zero_init: If True, zero initialize relative positional parameters.
         input_size: Input resolution for calculating the relative positional parameter size.
 
