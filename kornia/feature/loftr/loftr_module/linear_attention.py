@@ -13,6 +13,7 @@ from kornia.core import Module, Tensor
 
 
 def elu_feature_map(x: Tensor) -> Tensor:
+    """Apply elu activation."""
     return torch.nn.functional.elu(x) + 1
 
 

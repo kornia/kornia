@@ -172,6 +172,7 @@ def make_input_only_sequential(module: "K.container.ImageSequentialBase") -> Cal
 
 
 def get_geometric_only_param(module: "K.container.ImageSequentialBase", param: List[ParamItem]) -> List[ParamItem]:
+    """Return geometry param."""
     named_modules = module.get_forward_sequence(param)
 
     res: List[ParamItem] = []

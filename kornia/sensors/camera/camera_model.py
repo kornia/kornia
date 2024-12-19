@@ -19,6 +19,7 @@ class CameraModelType(Enum):
 
 
 def get_model_from_type(model_type: CameraModelType, image_size: ImageSize, params: Tensor) -> CameraModelVariants:
+    """Get camera model from model type."""
     if model_type == CameraModelType.PINHOLE:
         return PinholeModel(image_size, params)
     elif model_type == CameraModelType.BROWN_CONRADY:

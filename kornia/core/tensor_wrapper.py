@@ -10,6 +10,7 @@ from torch import Tensor
 
 # TODO: promote to KORNIA_WRAP
 def wrap(v, cls):
+    """Wrap type."""
     # wrap inputs if necessary
     if type(v) in {tuple, list}:
         return type(v)(wrap(vi, cls) for vi in v)
@@ -19,6 +20,7 @@ def wrap(v, cls):
 
 # TODO: promote to KORNIA_UNWRAP
 def unwrap(v):
+    """Unwrap nested type."""
     if type(v) in {tuple, list}:
         return type(v)(unwrap(vi) for vi in v)
 

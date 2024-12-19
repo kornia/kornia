@@ -141,7 +141,6 @@ ignore = [
   'D100',    # Allow Undocumented public module
   'D101',    # TODO: Undocumented public class
   'D102',    # TODO: Undocumented public method
-  'D103',    # TODO: Undocumented public function
   'D104',    # TODO: Undocumented public package
   'D105',    # Allow Undocumented magic method
   'D107',    # TODO: Undocumented public init

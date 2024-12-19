@@ -39,11 +39,14 @@ else:
 
 
 def math_clamp(x, min_, max_):  # type: ignore
+    # FIXME this is wrong
+    """Clamp a value to lie within [min, max]."""
     return max(min(x, min_), min_)
 
 
 @custom_fwd(cast_inputs=torch.float32)
 def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
+    """Normalize tensor of keypoints."""
     if isinstance(size, torch.Size):
         size = torch.tensor(size)[None]
     shift = size.float().to(kpts) / 2
@@ -53,6 +56,7 @@ def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
 
 
 def pad_to_length(x: Tensor, length: int) -> Tuple[Tensor, Tensor]:
+    """Pad tensor to desired length."""
     if length <= x.shape[-2]:
         return x, ones_like(x[..., :1], dtype=torch.bool)
     pad = ones(*x.shape[:-2], length - x.shape[-2], x.shape[-1], device=x.device, dtype=x.dtype)
@@ -63,12 +67,14 @@ def pad_to_length(x: Tensor, length: int) -> Tuple[Tensor, Tensor]:
 
 
 def rotate_half(x: Tensor) -> Tensor:
+    """Apply half rotation."""
     x = x.unflatten(-1, (-1, 2))
     x1, x2 = x.unbind(dim=-1)
     return stack((-x2, x1), dim=-1).flatten(start_dim=-2)
 
 
 def apply_cached_rotary_emb(freqs: Tensor, t: Tensor) -> Tensor:
+    """Apply rotary embedding."""
     return (t * freqs[0]) + (rotate_half(t) * freqs[1])
 
 

@@ -6,6 +6,7 @@ from .resnet_fpn import ResNetFPN_8_2, ResNetFPN_16_4
 
 
 def build_backbone(config: dict[str, Any]) -> ResNetFPN_8_2 | ResNetFPN_16_4:
+    """Build model backbone."""
     if config["backbone_type"] == "ResNetFPN":
         if config["resolution"] == (8, 2):
             return ResNetFPN_8_2(config["resnetfpn"])
