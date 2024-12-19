@@ -17,6 +17,7 @@ url: str = "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"
 
 
 def weight_init(m: nn.Module) -> None:
+    """Initialize weights."""
     if isinstance(m, (nn.Conv2d,)):
         # torch.nn.init.xavier_uniform_(m.weight, gain=1.0)
         torch.nn.init.xavier_normal_(m.weight, gain=1.0)

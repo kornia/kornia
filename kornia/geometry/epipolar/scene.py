@@ -13,6 +13,7 @@ from .projection import projection_from_KRt, random_intrinsics
 
 
 def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
+    """Generate 3d scene."""
     # Generate the 3d points
     points3d = rand(1, num_points, 3)  # NxMx3
 

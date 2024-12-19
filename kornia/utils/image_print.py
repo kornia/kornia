@@ -295,6 +295,7 @@ def _strip_hash(rgb: str) -> str:
 
 
 def short2rgb(short: str) -> str:
+    """Convert short to RGB code."""
     return SHORT2RGB_DICT[short]
 
 

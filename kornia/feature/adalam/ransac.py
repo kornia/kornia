@@ -8,6 +8,7 @@ from .utils import arange_sequence, batch_2x2_ellipse, batch_2x2_inv, draw_first
 
 
 def stable_sort_residuals(residuals: Tensor, ransidx: Tensor) -> Tuple[Tensor, Tensor]:
+    """Sort residuals."""
     logres = torch.log(residuals + 1e-10)
     minlogres = torch.min(logres)
     maxlogres = torch.max(logres)
@@ -24,6 +25,7 @@ def stable_sort_residuals(residuals: Tensor, ransidx: Tensor) -> Tuple[Tensor, T
 def group_sum_and_cumsum(
     scores_mat: Tensor, end_group_idx: Tensor, group_idx: Union[Tensor, slice, None] = None
 ) -> Tuple[Tensor, Union[Tensor, None]]:
+    """Calculate cumulative sum over group."""
     cumulative_scores = torch.cumsum(scores_mat, dim=1)
     ending_cumusums = cumulative_scores[:, end_group_idx]
     shifted_ending_cumusums = torch.cat(
@@ -44,6 +46,7 @@ def group_sum_and_cumsum(
 def confidence_based_inlier_selection(
     residuals: Tensor, ransidx: Tensor, rdims: Tensor, idxoffsets: Tensor, dv: torch.device, min_confidence: Tensor
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    """Select inliers from confidence scores."""
     numransacs = rdims.shape[0]
     numiters = residuals.shape[0]
 
@@ -93,6 +96,7 @@ def sample_padded_inliers(
     numransacs: int,
     dv: torch.device,
 ) -> Tuple[Tensor, Tensor]:
+    """Sample from padded inliers."""
     maxinliers = int(torch.max(inlier_counts).item())
     dtype = xsamples.dtype
     padded_inlier_x = torch.zeros(size=(numransacs, maxinliers, 2), device=dv, dtype=dtype)
@@ -107,6 +111,7 @@ def sample_padded_inliers(
 def ransac(
     xsamples: Tensor, ysamples: Tensor, rdims: Tensor, config: Dict[str, Any], iters: int = 128, refit: bool = True
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Run ransac."""
     DET_THR = config["detected_scale_rate_threshold"]
     MIN_CONFIDENCE = config["min_confidence"]
     dv: torch.device = config["device"]

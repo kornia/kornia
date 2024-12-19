@@ -85,6 +85,8 @@ def map_location_to_cpu(storage: Union[str, Tensor], *args: Any, **kwargs: Any) 
 def deprecated(
     replace_with: Optional[str] = None, version: Optional[str] = None, extra_reason: Optional[str] = None
 ) -> Any:
+    """Mark methods as deprecated."""
+
     def _deprecated(func: Callable[..., Any]) -> Any:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:

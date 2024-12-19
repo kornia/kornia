@@ -10,8 +10,8 @@ from kornia.metrics import AverageMeter
 from .utils import TrainerState
 
 
-# default function to generate the filename in the model checkpoint
 def default_filename_fcn(epoch: Union[str, int], metric: Union[str, float]) -> str:
+    """Generate the filename in the model checkpoint."""
     return f"model_epoch={epoch}_metricValue={metric}.pt"
 
 

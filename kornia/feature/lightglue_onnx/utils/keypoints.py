@@ -6,6 +6,7 @@ from kornia.core import Tensor, tensor
 
 
 def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
+    """Normalize tensor of keypoints."""
     if isinstance(size, torch.Size):
         size = tensor(size)[None]
     shift = size.float().to(kpts) / 2

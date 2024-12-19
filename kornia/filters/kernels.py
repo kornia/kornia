@@ -434,18 +434,21 @@ def get_diff_kernel3d_2nd_order(device: Optional[Device] = None, dtype: Optional
 
 
 def get_sobel_kernel2d(*, device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
+    """Return 1st order gradient for sobel operator."""
     kernel_x = get_sobel_kernel_3x3(device=device, dtype=dtype)
     kernel_y = kernel_x.transpose(0, 1)
     return stack([kernel_x, kernel_y])
 
 
 def get_diff_kernel2d(*, device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
+    """Return 1st order gradient for diff operator."""
     kernel_x = get_diff_kernel_3x3(device=device, dtype=dtype)
     kernel_y = kernel_x.transpose(0, 1)
     return stack([kernel_x, kernel_y])
 
 
 def get_sobel_kernel2d_2nd_order(*, device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
+    """Return 2nd order gradient for sobel operator."""
     gxx = get_sobel_kernel_5x5_2nd_order(device=device, dtype=dtype)
     gyy = gxx.transpose(0, 1)
     gxy = _get_sobel_kernel_5x5_2nd_order_xy(device=device, dtype=dtype)
@@ -453,6 +456,7 @@ def get_sobel_kernel2d_2nd_order(*, device: Optional[Device] = None, dtype: Opti
 
 
 def get_diff_kernel2d_2nd_order(*, device: Optional[Device] = None, dtype: Optional[Dtype] = None) -> Tensor:
+    """Return 2nd order gradient for diff operator."""
     gxx = tensor([[0.0, 0.0, 0.0], [1.0, -2.0, 1.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype)
     gyy = gxx.transpose(0, 1)
     gxy = tensor([[-1.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, -1.0]], device=device, dtype=dtype)
@@ -985,15 +989,15 @@ def get_hanning_kernel2d(
 
 
 @deprecated(replace_with="get_gaussian_kernel1d", version="6.9.10")
-def get_gaussian_kernel1d_t(*args: Any, **kwargs: Any) -> Tensor:
+def get_gaussian_kernel1d_t(*args: Any, **kwargs: Any) -> Tensor:  # noqa: D103
     return get_gaussian_kernel1d(*args, **kwargs)
 
 
 @deprecated(replace_with="get_gaussian_kernel2d", version="6.9.10")
-def get_gaussian_kernel2d_t(*args: Any, **kwargs: Any) -> Tensor:
+def get_gaussian_kernel2d_t(*args: Any, **kwargs: Any) -> Tensor:  # noqa: D103
     return get_gaussian_kernel2d(*args, **kwargs)
 
 
 @deprecated(replace_with="get_gaussian_kernel3d", version="6.9.10")
-def get_gaussian_kernel3d_t(*args: Any, **kwargs: Any) -> Tensor:
+def get_gaussian_kernel3d_t(*args: Any, **kwargs: Any) -> Tensor:  # noqa: D103
     return get_gaussian_kernel3d(*args, **kwargs)

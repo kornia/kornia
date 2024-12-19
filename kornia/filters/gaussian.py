@@ -130,5 +130,5 @@ class GaussianBlur2d(Module):
 
 
 @deprecated(replace_with="gaussian_blur2d", version="6.9.10")
-def gaussian_blur2d_t(*args: Any, **kwargs: Any) -> Tensor:
+def gaussian_blur2d_t(*args: Any, **kwargs: Any) -> Tensor:  # noqa: D103
     return gaussian_blur2d(*args, **kwargs)

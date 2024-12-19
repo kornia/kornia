@@ -21,6 +21,7 @@ from kornia.core import linspace
 
 
 def shear_x(probability: float, magnitude: int) -> OperationBase:
+    """Return ShearX op."""
     magnitudes = linspace(-0.3, 0.3, 11) * 180.0
     return ShearX(
         None,
@@ -31,6 +32,7 @@ def shear_x(probability: float, magnitude: int) -> OperationBase:
 
 
 def shear_y(probability: float, magnitude: int) -> OperationBase:
+    """Return ShearY op."""
     magnitudes = linspace(-0.3, 0.3, 11) * 180.0
     return ShearY(
         None,
@@ -41,6 +43,7 @@ def shear_y(probability: float, magnitude: int) -> OperationBase:
 
 
 def translate_x(probability: float, magnitude: int) -> OperationBase:
+    """Return TranslateX op."""
     magnitudes = linspace(-0.5, 0.5, 11)
     return TranslateX(
         None,
@@ -51,6 +54,7 @@ def translate_x(probability: float, magnitude: int) -> OperationBase:
 
 
 def translate_y(probability: float, magnitude: int) -> OperationBase:
+    """Return TranslateY op."""
     magnitudes = linspace(-0.5, 0.5, 11)
     return TranslateY(
         None,
@@ -61,6 +65,7 @@ def translate_y(probability: float, magnitude: int) -> OperationBase:
 
 
 def rotate(probability: float, magnitude: int) -> OperationBase:
+    """Return rotate op."""
     magnitudes = linspace(-30, 30, 11)
     return Rotate(
         None,
@@ -71,23 +76,28 @@ def rotate(probability: float, magnitude: int) -> OperationBase:
 
 
 def auto_contrast(probability: float, _: int) -> OperationBase:
+    """Return AutoConstrast op."""
     return AutoContrast(probability)
 
 
 def invert(probability: float, _: int) -> OperationBase:
+    """Return invert op."""
     return Invert(probability)
 
 
 def equalize(probability: float, _: int) -> OperationBase:
+    """Return equalize op."""
     return Equalize(probability)
 
 
 def solarize(probability: float, magnitude: int) -> OperationBase:
+    """Return solarize op."""
     magnitudes = linspace(0, 255, 11) / 255.0
     return Solarize(None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))
 
 
 def posterize(probability: float, magnitude: int) -> OperationBase:
+    """Return posterize op."""
     magnitudes = linspace(4, 8, 11)
     return Posterize(
         None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item())
@@ -95,11 +105,13 @@ def posterize(probability: float, magnitude: int) -> OperationBase:
 
 
 def contrast(probability: float, magnitude: int) -> OperationBase:
+    """Return contrast op."""
     magnitudes = linspace(0.1, 1.9, 11)
     return Contrast(None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))
 
 
 def brightness(probability: float, magnitude: int) -> OperationBase:
+    """Return brightness op."""
     magnitudes = linspace(0.1, 1.9, 11)
     return Brightness(
         None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item())
@@ -107,6 +119,7 @@ def brightness(probability: float, magnitude: int) -> OperationBase:
 
 
 def sharpness(probability: float, magnitude: int) -> OperationBase:
+    """Return sharpness op."""
     magnitudes = linspace(0.1, 1.9, 11)
     return Sharpness(
         None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item())
@@ -114,5 +127,6 @@ def sharpness(probability: float, magnitude: int) -> OperationBase:
 
 
 def color(probability: float, magnitude: int) -> OperationBase:
+    """Return color op."""
     magnitudes = linspace(0.1, 1.9, 11)
     return Saturate(None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))

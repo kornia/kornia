@@ -13,6 +13,7 @@ from kornia.core import Module, Tensor
 
 
 def drop_path(x: Tensor, drop_prob: Optional[float] = 0.0, training: bool = False) -> Tensor:
+    """Apply stochastic depth sampling."""
     if drop_prob is None:
         drop_path = 0.0
     if drop_prob == 0.0 or not training:

@@ -8,6 +8,7 @@ from .encoder import VGG19, VGG_DINOv2
 
 
 def dedode_detector_L(amp_dtype: torch.dtype = torch.float16) -> DeDoDeDetector:
+    """Get DeDoDe descriptor of type L."""
     NUM_PROTOTYPES = 1
     residual = True
     hidden_blocks = 8
@@ -59,6 +60,7 @@ def dedode_detector_L(amp_dtype: torch.dtype = torch.float16) -> DeDoDeDetector:
 
 
 def dedode_descriptor_B(amp_dtype: torch.dtype = torch.float16) -> DeDoDeDescriptor:
+    """Get DeDoDe descriptor of type B."""
     NUM_PROTOTYPES = 256  # == descriptor size
     residual = True
     hidden_blocks = 5
@@ -110,6 +112,7 @@ def dedode_descriptor_B(amp_dtype: torch.dtype = torch.float16) -> DeDoDeDescrip
 
 
 def dedode_descriptor_G(amp_dtype: torch.dtype = torch.float16) -> DeDoDeDescriptor:
+    """Get DeDoDe descriptor of type G."""
     NUM_PROTOTYPES = 256  # == descriptor size
     residual = True
     hidden_blocks = 5
@@ -172,12 +175,14 @@ def dedode_descriptor_G(amp_dtype: torch.dtype = torch.float16) -> DeDoDeDescrip
 
 
 def get_detector(kind: str = "L", amp_dtype: torch.dtype = torch.float16) -> DeDoDeDetector:
+    """Get DeDoDe detector."""
     if kind == "L":
         return dedode_detector_L(amp_dtype)
     raise ValueError(f"Unknown detector kind: {kind}")
 
 
 def get_descriptor(kind: str = "B", amp_dtype: torch.dtype = torch.float16) -> DeDoDeDescriptor:
+    """Get DeDoDe descriptor."""
     if kind == "B":
         return dedode_descriptor_B(amp_dtype)
     if kind == "G":

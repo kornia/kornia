@@ -14,6 +14,7 @@ PadType = Union[int, TuplePadType]
 
 
 def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadType:
+    """Create argument for padding op."""
     padding = cast(TuplePadType, _pair(padding))
 
     if len(padding) not in [2, 4]:

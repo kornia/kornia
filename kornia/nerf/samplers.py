@@ -402,6 +402,7 @@ class UniformRaySampler(RaySampler):
 def sample_lengths(
     num_rays: int, num_ray_points: int, device: Device, dtype: torch.dtype, irregular: bool = False
 ) -> Tensor:
+    """Sample points along the length of rays."""
     if num_ray_points <= 1:
         raise ValueError("Number of ray points must be greater than 1")
     if not irregular:

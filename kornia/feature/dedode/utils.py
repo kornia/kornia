@@ -10,6 +10,7 @@ from kornia.core import Tensor
 def sample_keypoints(
     scoremap: Tensor, num_samples: Optional[int] = 10_000, return_scoremap: bool = True, increase_coverage: bool = True
 ) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+    """Sample keypoints from provided candidates."""
     device = scoremap.device
     dtype = scoremap.dtype
     B, H, W = scoremap.shape
@@ -28,6 +29,7 @@ def sample_keypoints(
 
 
 def get_grid(B: int, H: int, W: int, device: torch.device) -> torch.Tensor:
+    """Get grid of provided layout."""
     x1_n_ = torch.meshgrid(
         *[torch.linspace(-1 + 1 / n, 1 - 1 / n, n, device=device) for n in (B, H, W)],
         indexing="ij",
@@ -37,6 +39,7 @@ def get_grid(B: int, H: int, W: int, device: torch.device) -> torch.Tensor:
 
 
 def dedode_denormalize_pixel_coordinates(flow: torch.Tensor, h: int, w: int) -> torch.Tensor:
+    """Denormalize pixel coordinates."""
     flow = torch.stack(
         (
             w * (flow[..., 0] + 1) / 2,

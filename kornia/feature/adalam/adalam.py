@@ -15,6 +15,7 @@ from .utils import dist_matrix
 
 
 def get_adalam_default_config() -> AdalamConfig:
+    """Return default Adalam Config."""
     return AdalamConfig(
         area_ratio=100,
         search_expansion=4,

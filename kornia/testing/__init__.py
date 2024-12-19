@@ -301,6 +301,7 @@ def _default_tolerances(*inputs: Any) -> Tuple[float, float]:
 def assert_close(
     actual: Tensor, expected: Tensor, *, rtol: Optional[float] = None, atol: Optional[float] = None, **kwargs: Any
 ) -> None:
+    """Assert two tensors are similar within provided tolerance."""
     if rtol is None and atol is None:
         # `torch.testing.assert_close` used different default tolerances than `torch.testing.assert_allclose`.
         # TODO: remove this special handling as soon as https://github.com/kornia/kornia/issues/1134 is resolved

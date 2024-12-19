@@ -254,6 +254,7 @@ class Detector_config(TypedDict):
 
 
 def get_default_detector_config() -> Detector_config:
+    """Return default config."""
     return {
         # Extraction Parameters
         "nms_size": 15,

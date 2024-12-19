@@ -109,6 +109,7 @@ def spvs_coarse(data: dict[str, Any], config: dict[str, Any]) -> None:
 
 
 def compute_supervision_coarse(data: dict[str, Any], config: dict[str, Any]) -> None:
+    """Compute coarse supervision."""
     if len(set(data["dataset_name"])) != 1:
         raise ValueError("Do not support mixed datasets training!")
     data_source = data["dataset_name"][0]
@@ -144,6 +145,7 @@ def spvs_fine(data: dict[str, Any], config: dict[str, Any]) -> None:
 
 
 def compute_supervision_fine(data: dict[str, Any], config: dict[str, Any]) -> None:
+    """Compute fine supervision."""
     data_source = data["dataset_name"][0]
     if data_source.lower() in ["scannet", "megadepth"]:
         spvs_fine(data, config)

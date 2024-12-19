@@ -8,6 +8,7 @@ from typing import Any, Union
 
 
 def get_same_padding(kernel_size: Union[int, tuple[int, ...]]) -> Union[int, tuple[int, ...]]:
+    """Return padding values."""
     if isinstance(kernel_size, (tuple,)):
         return tuple([get_same_padding(ks) for ks in kernel_size])  # type: ignore
 
@@ -16,6 +17,7 @@ def get_same_padding(kernel_size: Union[int, tuple[int, ...]]) -> Union[int, tup
 
 
 def build_kwargs_from_config(config: dict[str, Any], target_func: Any) -> dict[str, Any]:
+    """Return kwargs from config object."""
     valid_keys = list(signature(target_func).parameters)
     kwargs = {}
     for key, value in config.items():

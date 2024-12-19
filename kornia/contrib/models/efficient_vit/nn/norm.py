@@ -25,6 +25,7 @@ REGISTERED_NORM_DICT: dict[str, type] = {"bn2d": nn.BatchNorm2d, "ln": nn.LayerN
 
 
 def build_norm(name: str = "bn2d", num_features: Optional[int] = None, **kwargs: Any) -> Optional[nn.Module]:
+    """Return norm op."""
     if name in ["ln", "ln2d"]:
         kwargs["normalized_shape"] = num_features
     else:

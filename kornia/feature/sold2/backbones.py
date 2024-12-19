@@ -241,6 +241,7 @@ class HourglassNet(Module):
 
 
 def hg(cfg: HourglassConfig) -> HourglassNet:
+    """Create HourglassNet."""
     return HourglassNet(
         Bottleneck2D,
         head=cfg.head,
