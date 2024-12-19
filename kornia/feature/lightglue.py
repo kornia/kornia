@@ -39,9 +39,8 @@ else:
 
 
 def math_clamp(x, min_, max_):  # type: ignore
-    # FIXME this is wrong
     """Clamp a value to lie within [min, max]."""
-    return max(min(x, min_), min_)
+    return min(max(x, min_), max_)
 
 
 @custom_fwd(cast_inputs=torch.float32)
