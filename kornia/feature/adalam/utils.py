@@ -21,6 +21,7 @@ def arange_sequence(ranges: Tensor) -> Tensor:
 
 
 def dist_matrix(d1: Tensor, d2: Tensor, is_normalized: bool = False) -> Tensor:
+    """Distance between two tensors."""
     if is_normalized:
         return 2 - 2.0 * d1 @ d2.t()
     x_norm = (d1**2).sum(1).view(-1, 1)
@@ -32,6 +33,7 @@ def dist_matrix(d1: Tensor, d2: Tensor, is_normalized: bool = False) -> Tensor:
 
 
 def orientation_diff(o1: Tensor, o2: Tensor) -> Tensor:
+    """Orientation difference between two tensors."""
     diff = o2 - o1
     diff[diff < -180] += 360
     diff[diff >= 180] -= 360
@@ -58,6 +60,7 @@ def piecewise_arange(piecewise_idxer: Tensor) -> Tensor:
 
 
 def batch_2x2_inv(m: Tensor, check_dets: bool = False) -> Tensor:
+    """Returns inverse of batch of 2x2 matrices."""
     a = m[..., 0, 0]
     b = m[..., 0, 1]
     c = m[..., 1, 0]
@@ -74,14 +77,17 @@ def batch_2x2_inv(m: Tensor, check_dets: bool = False) -> Tensor:
 
 
 def batch_2x2_Q(m: Tensor) -> Tensor:
+    """Returns Q of batch of 2x2 matrices."""
     return batch_2x2_inv(batch_2x2_invQ(m), check_dets=True)
 
 
 def batch_2x2_invQ(m: Tensor) -> Tensor:
+    """Returns inverse Q of batch of 2x2 matrices."""
     return m @ m.transpose(-1, -2)
 
 
 def batch_2x2_det(m: Tensor) -> Tensor:
+    """Returns determinant of batch of 2x2 matrices."""
     a = m[..., 0, 0]
     b = m[..., 0, 1]
     c = m[..., 1, 0]
@@ -90,6 +96,7 @@ def batch_2x2_det(m: Tensor) -> Tensor:
 
 
 def batch_2x2_ellipse(m: Tensor) -> Tuple[Tensor, Tensor]:
+    """Returns Eigenvalues and Eigenvectors of batch of 2x2 matrices."""
     am = m[..., 0, 0]
     bm = m[..., 0, 1]
     cm = m[..., 1, 0]
@@ -114,11 +121,14 @@ def batch_2x2_ellipse(m: Tensor) -> Tuple[Tensor, Tensor]:
 
 
 def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device) -> Tensor:
-    # exhaustive search over the first n samples:
-    # n(n+1)/2 = n2/2 + n/2 couples
-    # max n for which we can exhaustively sample with k couples:
-    # n2/2 + n/2 = k
-    # n = sqrt(1/4 + 2k)-1/2 = (sqrt(8k+1)-1)/2
+    """Returns first k couples.
+
+    Exhaustive search over the first n samples:
+     * n(n+1)/2 = n2/2 + n/2 couples
+    Max n for which we can exhaustively sample with k couples:
+    * n2/2 + n/2 = k
+    * n = sqrt(1/4 + 2k)-1/2 = (sqrt(8k+1)-1)/2
+    """
     max_exhaustive_search = int(math.sqrt(2 * k + 0.25) - 0.5)
     residual_search = int(k - max_exhaustive_search * (max_exhaustive_search + 1) / 2)
 
@@ -133,6 +143,7 @@ def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device) -> Tensor:
 
 
 def random_samples_indices(iters: int, rdims: Tensor, dv: torch.device) -> Tensor:
+    """Randomly sample indices of tensor."""
     rands = torch.rand(size=(iters, 2, rdims.shape[0]), device=dv)
     scaled_rands = rands * (rdims - 1e-8).float()
     rand_samples_rel = scaled_rands.long()

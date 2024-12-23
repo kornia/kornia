@@ -16,6 +16,7 @@ from kornia.core.check import KORNIA_CHECK
 
 
 def make_2tuple(x):
+    """Make a tuple of length 2."""
     if isinstance(x, tuple):
         KORNIA_CHECK(len(x) == 2)
         return x

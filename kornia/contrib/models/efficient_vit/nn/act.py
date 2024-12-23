@@ -21,6 +21,7 @@ REGISTERED_ACT_DICT: dict[str, type[nn.Module]] = {
 
 
 def build_act(name: Optional[str], **kwargs: dict[str, Any]) -> Union[nn.Module, None]:
+    """Return activation op."""
     if name in REGISTERED_ACT_DICT:
         act_cls = REGISTERED_ACT_DICT[name]
         args = build_kwargs_from_config(kwargs, act_cls)
