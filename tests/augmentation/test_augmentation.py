@@ -5150,6 +5150,11 @@ class TestRandomRain(BaseTester):
 
             assert err_msg in str(errinfo)
 
+    def test_zero_probability(self, device):
+        input_data = torch.rand(10, 3, 8, 8, device=device)
+        aug = RandomRain(p=0.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
+        aug(input_data)
+
 
 class TestMultiprocessing:
     torch.manual_seed(0)  # for random reproductibility

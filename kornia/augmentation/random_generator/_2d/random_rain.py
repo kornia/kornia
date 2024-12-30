@@ -64,7 +64,7 @@ class RainGenerator(RandomGeneratorBase):
             device=_device, dtype=torch.long
         )
         coordinates_factor = _adapted_rsampling(
-            (batch_size, int(number_of_drops_factor.max().item()), 2),
+            (batch_size, int(number_of_drops_factor.max().item()) if number_of_drops_factor.numel() > 0 else 0, 2),
             self.coordinates_sampler,
             same_on_batch=same_on_batch,
         ).to(device=_device)
