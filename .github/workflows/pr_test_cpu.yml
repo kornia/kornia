@@ -43,10 +43,10 @@ jobs:
         os: ['Ubuntu-latest', 'Windows-latest']
         pytorch-dtype: ['float32', 'float64']
 
-    uses: kornia/workflows/.github/workflows/tests.yml@v1.13.0
+    uses: kornia/workflows/.github/workflows/tests.yml@main # TODO: update
     with:
       os: ${{ matrix.os }}
-      python-version: '["3.9", "3.12"]'
+      python-version: '["3.9", "3.13"]'
       pytorch-version: '["1.9.1", "2.5.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       cache-path: weights/

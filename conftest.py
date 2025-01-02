@@ -89,9 +89,9 @@ def torch_optimizer(optimizer_backend):
 
     if hasattr(torch, "compile") and sys.platform == "linux":
         if (not (sys.version_info[:2] == (3, 11) and torch_version() in {"2.0.0", "2.0.1"})) and (
-            not sys.version_info[:2] == (3, 12)
+            not sys.version_info[:2] == (3, 13)
         ):
-            # torch compile don't have support for python3.12 yet
+            # torch compile don't have support for python3.13 yet
             torch._dynamo.reset()
             # torch compile just have support for python 3.11 after torch 2.1.0
             return partial(
@@ -169,7 +169,7 @@ def pytest_addoption(parser):
 
 
 def _setup_torch_compile():
-    if hasattr(torch, "compile") and sys.platform == "linux":
+    if hasattr(torch, "compile") and sys.platform == "linux" and not sys.version_info[:2] == (3, 13):
         print("Setting up torch compile...")
         torch.set_float32_matmul_precision("high")
 
