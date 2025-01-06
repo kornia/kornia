@@ -15,7 +15,7 @@ repos:
         exclude: ^$|.devcontainer
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.8.6
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
@@ -32,7 +32,7 @@ repos:
           - "*.bib,*.ipynb"
 
   - repo: https://github.com/arkinmodi/add-license-header
-    rev: v2.2.0
+    rev: v2.3.0
     hooks:
       - id: add-license-header
         types: [python]
