@@ -221,8 +221,10 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
             "hue_factor",
             "saturation_factor",
             "order",
-        }, "Redundant keys found apart from \
+        }, (
+            "Redundant keys found apart from \
                 'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order'"
+        )
 
         assert_close(
             jitter_params["brightness_factor"],
@@ -295,8 +297,10 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
             "hue_factor",
             "saturation_factor",
             "order",
-        }, "Redundant keys found apart from \
+        }, (
+            "Redundant keys found apart from \
                 'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order'"
+        )
 
         assert_close(
             jitter_params["brightness_factor"],
@@ -508,8 +512,10 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             "hue_factor",
             "saturation_factor",
             "order",
-        }, "Redundant keys found apart from \
+        }, (
+            "Redundant keys found apart from \
                 'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order'"
+        )
 
         assert_close(
             jitter_params["brightness_factor"],
