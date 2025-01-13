@@ -171,15 +171,15 @@ class CommonTests(BaseTester):
     ############################################################################################################
 
     def _test_smoke_implementation(self, params):
-        assert issubclass(
-            self._augmentation_cls, AugmentationBase2D
-        ), f"{self._augmentation_cls} is not a subclass of AugmentationBase2D"
+        assert issubclass(self._augmentation_cls, AugmentationBase2D), (
+            f"{self._augmentation_cls} is not a subclass of AugmentationBase2D"
+        )
 
         # Can be instantiated
         augmentation = self._create_augmentation_from_params(**params)
-        assert issubclass(
-            type(augmentation), AugmentationBase2D
-        ), f"{type(augmentation)} is not a subclass of AugmentationBase2D"
+        assert issubclass(type(augmentation), AugmentationBase2D), (
+            f"{type(augmentation)} is not a subclass of AugmentationBase2D"
+        )
 
         # generate_parameters can be called and returns the correct amount of parameters
         batch_shape = (4, 3, 5, 6)
@@ -2047,9 +2047,7 @@ class TestRandomBrightness(BaseTester):
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomBrightness(brightness=(0.5, 1.5))
-        repr = (
-            "RandomBrightness(brightness_factor=tensor([0.5000, 1.5000]), " "p=1.0, p_batch=1.0, same_on_batch=False))"
-        )
+        repr = "RandomBrightness(brightness_factor=tensor([0.5000, 1.5000]), p=1.0, p_batch=1.0, same_on_batch=False))"
         assert str(f.__repr__) == repr
 
     def test_random_brighness_identity(self, device, dtype):
@@ -2160,7 +2158,7 @@ class TestRandomContrast(BaseTester):
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomContrast(contrast=(0.7, 1.3))
-        repr = "RandomContrast(contrast=tensor([0.7000, 1.3000]), " "p=1.0, p_batch=1.0, same_on_batch=False)"
+        repr = "RandomContrast(contrast=tensor([0.7000, 1.3000]), p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_contrast_identity(self, device, dtype):
@@ -2271,7 +2269,7 @@ class TestRandomHue(BaseTester):
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomHue(hue=(-0.2, 0.3))
-        repr = "RandomHue(hue=tensor([-0.2000, 0.3000]), " "p=1.0, p_batch=1.0, same_on_batch=False)"
+        repr = "RandomHue(hue=tensor([-0.2000, 0.3000]), p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_hue_identity(self, device, dtype):
@@ -2388,7 +2386,7 @@ class TestRandomSaturation(BaseTester):
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomSaturation(saturation=(0.5, 1.5))
-        repr = "RandomSaturation(hue=tensor([0.5000, 1.5000]), " "p=1.0, p_batch=1.0, same_on_batch=False)"
+        repr = "RandomSaturation(hue=tensor([0.5000, 1.5000]), p=1.0, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_saturation_identity(self, device, dtype):
@@ -4376,7 +4374,7 @@ class TestNormalize(BaseTester):
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self, device, dtype):
         f = Normalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))
-        repr = "Normalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, " "same_on_batch=False)"
+        repr = "Normalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     @pytest.mark.parametrize(
@@ -4454,7 +4452,7 @@ class TestDenormalize(BaseTester):
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self, device, dtype):
         f = Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]))
-        repr = "Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, " "same_on_batch=False)"
+        repr = "Denormalize(mean=torch.tensor([1.]), std=torch.tensor([1.]), p=1., p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
     def test_random_denormalize(self, device, dtype):

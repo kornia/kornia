@@ -810,7 +810,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
     if bits.shape != input.shape[: len(bits.shape)]:
         raise AssertionError(
             "Batch and channel must be equal between bits and input. "
-            f"Got {bits.shape}, {input.shape[:len(bits.shape)]}."
+            f"Got {bits.shape}, {input.shape[: len(bits.shape)]}."
         )
     _input = input.view(-1, *input.shape[len(bits.shape) :])
     _bits = bits.flatten()

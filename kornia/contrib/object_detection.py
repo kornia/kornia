@@ -51,8 +51,7 @@ class BoundingBox(BoundingBoxBase):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         warnings.warn(
-            "BoundingBox is deprecated and will be removed in v0.8.0. "
-            "Use kornia.models.detection.BoundingBox instead.",
+            "BoundingBox is deprecated and will be removed in v0.8.0. Use kornia.models.detection.BoundingBox instead.",
             DeprecationWarning,
             stacklevel=1,
         )

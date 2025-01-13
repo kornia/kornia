@@ -288,7 +288,7 @@ def pytest_report_header(config):
     if "cpu" in env_info:
         desired_cpu_info = ["Model name", "Architecture", "CPU(s)", "Thread(s) per core", "CPU max MHz", "CPU min MHz"]
         cpu_info = "cpu info:\n" + "\n".join(
-            f'\t- {i}: {env_info["cpu"][i]}' for i in desired_cpu_info if i in env_info["cpu"]
+            f"\t- {i}: {env_info['cpu'][i]}" for i in desired_cpu_info if i in env_info["cpu"]
         )
     else:
         cpu_info = ""
@@ -303,7 +303,7 @@ main deps:
     - torch-{torch.__version__}
         - commit: {torch.version.git_version}
         - cuda: {torch.version.cuda}
-        - nvidia-driver: {env_info['nvidia'] if 'nvidia' in env_info else None}
+        - nvidia-driver: {env_info["nvidia"] if "nvidia" in env_info else None}
 x deps:
     - {accelerate_info}
 dev deps:

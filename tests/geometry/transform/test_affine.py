@@ -587,7 +587,7 @@ class TestAffine2d(BaseTester):
     def test_affine_rotate(self, device, dtype):
         # TODO: Remove when #666 is implemented
         if device.type == "cuda":
-            pytest.skip("Currently breaks in CUDA." "See https://github.com/kornia/kornia/issues/666")
+            pytest.skip("Currently breaks in CUDA.See https://github.com/kornia/kornia/issues/666")
         torch.manual_seed(0)
         angle = torch.rand(1, device=device, dtype=dtype) * 90.0
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -600,7 +600,7 @@ class TestAffine2d(BaseTester):
     def test_affine_translate(self, device, dtype):
         # TODO: Remove when #666 is implemented
         if device.type == "cuda":
-            pytest.skip("Currently breaks in CUDA." "See https://github.com/kornia/kornia/issues/666")
+            pytest.skip("Currently breaks in CUDA.See https://github.com/kornia/kornia/issues/666")
         torch.manual_seed(0)
         translation = torch.rand(1, 2, device=device, dtype=dtype) * 2.0
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -613,7 +613,7 @@ class TestAffine2d(BaseTester):
     def test_affine_scale(self, device, dtype):
         # TODO: Remove when #666 is implemented
         if device.type == "cuda":
-            pytest.skip("Currently breaks in CUDA." "See https://github.com/kornia/kornia/issues/666")
+            pytest.skip("Currently breaks in CUDA.See https://github.com/kornia/kornia/issues/666")
         torch.manual_seed(0)
         _scale_factor = torch.rand(1, device=device, dtype=dtype) * 2.0
         scale_factor = torch.stack([_scale_factor, _scale_factor], dim=1)
@@ -641,7 +641,7 @@ class TestAffine2d(BaseTester):
     def test_affine_rotate_translate(self, device, dtype):
         # TODO: Remove when #666 is implemented
         if device.type == "cuda":
-            pytest.skip("Currently breaks in CUDA." "See https://github.com/kornia/kornia/issues/666")
+            pytest.skip("Currently breaks in CUDA.See https://github.com/kornia/kornia/issues/666")
         batch_size = 2
 
         input = torch.tensor(
