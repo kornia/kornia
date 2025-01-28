@@ -280,7 +280,7 @@ class TestDrawLine:
         "p1,p2", [(torch.tensor([0, 0]), torch.tensor([0, 0])), (torch.tensor([0, 0]), torch.tensor([7, 7]))]
     )
     def test_p1_p2_bounds(self, p1, p2, dtype, device):
-        """Tests that that points do not error if they are on the bounds."""
+        """Tests to verify that points on the bounds do not trigger errors."""
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_line(img, p1, p2, torch.tensor([255]))
         assert img.shape == (1, 8, 8)
