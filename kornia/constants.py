@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import logging
 from enum import Enum, EnumMeta
 from typing import Iterator, Type, TypeVar, Union
 
@@ -24,9 +23,6 @@ import torch
 from kornia.core import Tensor
 
 __all__ = ["BorderType", "DType", "Resample", "SamplePadding", "TKEnum", "pi"]
-
-# NOTE: to remove later
-logging.basicConfig(level=logging.INFO)
 
 pi = torch.tensor(3.14159265358979323846)
 
