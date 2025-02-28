@@ -1,0 +1,1632 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="./">
+  <head><meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width,initial-scale=1"/>
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-YSCFZB2WDV"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+
+            gtag('config', 'G-YSCFZB2WDV');
+
+        </script>
+    <link rel="index" title="Index" href="genindex.html" /><link rel="search" title="Search" href="search.html" /><link rel="next" title="kornia.geometry.depth" href="geometry.depth.html" /><link rel="prev" title="Stereo Camera" href="geometry.camera.stereo.html" />
+        <link rel="canonical" href="https://kornia.readthedocs.io/geometry.conversions.html" />
+
+    <link rel="shortcut icon" href="_static/kornia_logo_favicon.png"/><!-- Generated with Sphinx 7.4.7 and Furo 2024.08.06 -->
+        <title>kornia.geometry.conversions - Kornia</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d75fae25" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=354aac6f" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=302659d7" />
+    <link rel="stylesheet" type="text/css" href="_static/css/main.css?v=9b880210" />
+
+
+
+
+<style>
+  body {
+    --color-code-background: #f0f0f0;
+  --color-code-foreground: black;
+  --color-sidebar-background: #3980F5;
+  --color-sidebar-background-border: #3980F5;
+  --color-sidebar-caption-text: white;
+  --color-sidebar-link-text--top-level: white;
+  --color-sidebar-link-text: white;
+  --sidebar-caption-font-size: normal;
+  --color-sidebar-item-background--hover:  #5dade2;
+
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-sidebar-background: #1a1c1e;
+  --color-sidebar-background-border: #1a1c1e;
+  --color-sidebar-caption-text: white;
+  --color-sidebar-link-text--top-level: white;
+
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-sidebar-background: #1a1c1e;
+  --color-sidebar-background-border: #1a1c1e;
+  --color-sidebar-caption-text: white;
+  --color-sidebar-link-text--top-level: white;
+
+      }
+    }
+  }
+</style></head>
+  <body>
+
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc">
+<label class="overlay sidebar-overlay" for="__navigation">
+  <div class="visually-hidden">Hide navigation sidebar</div>
+</label>
+<label class="overlay toc-overlay" for="__toc">
+  <div class="visually-hidden">Hide table of contents sidebar</div>
+</label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <div class="visually-hidden">Toggle site navigation sidebar</div>
+        <i class="icon"><svg><use href="#svg-menu"></use></svg></i>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="index.html"><div class="brand">Kornia</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle">
+          <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <div class="visually-hidden">Toggle table of contents sidebar</div>
+        <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="index.html">
+
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo only-light" src="_static/img/kornia_logo_only_light.svg" alt="Light Logo"/>
+    <img class="sidebar-logo only-dark" src="_static/img/kornia_logo_only_dark.svg" alt="Dark Logo"/>
+  </div>
+
+
+</a><form class="sidebar-search-container" method="get" action="search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">GET STARTED</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="get-started/introduction.html">What is Kornia library ?</a></li>
+<li class="toctree-l1"><a class="reference internal" href="get-started/highlights.html">Highlighted Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="get-started/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="get-started/about.html">About</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://kornia.github.io/tutorials/">Tutorials</a></li>
+<li class="toctree-l1"><a class="reference internal" href="get-started/multi-framework-support.html">Multi-Framework Support</a></li>
+<li class="toctree-l1"><a class="reference internal" href="get-started/training.html">Training API (experimental)</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia">OpenCV AI Kit</a></li>
+<li class="toctree-l1"><a class="reference internal" href="get-started/governance.html">Kornia AI Organization</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API REFERENCE</span></p>
+<ul class="current">
+<li class="toctree-l1 has-children"><a class="reference internal" href="augmentation.html">kornia.augmentation</a><input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><div class="visually-hidden">Toggle navigation of kornia.augmentation</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="augmentation.auto.html">Automatic Augmentation Methods</a></li>
+<li class="toctree-l2"><a class="reference internal" href="augmentation.base.html">Base Classes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="augmentation.container.html">Augmentation Containers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="augmentation.module.html">Image Augmentations</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="color.html">kornia.color</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contrib.html">kornia.contrib</a></li>
+<li class="toctree-l1"><a class="reference internal" href="core.html">kornia.core</a></li>
+<li class="toctree-l1"><a class="reference internal" href="enhance.html">kornia.enhance</a></li>
+<li class="toctree-l1"><a class="reference internal" href="feature.html">Local Features and Image Matching</a></li>
+<li class="toctree-l1"><a class="reference internal" href="filters.html">kornia.filters</a></li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="geometry.html">kornia.geometry</a><input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><div class="visually-hidden">Toggle navigation of kornia.geometry</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="geometry.bbox.html">kornia.geometry.bbox</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.boxes.html">kornia.geometry.boxes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.keypoints.html">kornia.geometry.keypoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.calibration.html">kornia.geometry.calibration</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="geometry.camera.html">kornia.geometry.camera</a><input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><div class="visually-hidden">Toggle navigation of kornia.geometry.camera</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="geometry.camera.pinhole.html">Pinhole Camera</a></li>
+<li class="toctree-l3"><a class="reference internal" href="geometry.camera.perspective.html">Perspective Camera</a></li>
+<li class="toctree-l3"><a class="reference internal" href="geometry.camera.stereo.html">Stereo Camera</a></li>
+</ul>
+</li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">kornia.geometry.conversions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.depth.html">kornia.geometry.depth</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.epipolar.html">kornia.geometry.epipolar</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.homography.html">kornia.geometry.homography</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.liegroup.html">kornia.geometry.liegroup</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.liegroup.html#lie-algebra">lie algebra</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.liegroup.html#lie-group-and-lie-algebra">lie group and lie algebra</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.linalg.html">kornia.geometry.linalg</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.line.html">kornia.geometry.line</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.quaternion.html">kornia.geometry.quaternion</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.solvers.html">kornia.geometry.solvers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.subpix.html">kornia.geometry.subpix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.transform.html">kornia.geometry.transform</a></li>
+<li class="toctree-l2"><a class="reference internal" href="geometry.ransac.html">kornia.geometry.ransac</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="sensors.html">kornia.sensors</a><input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" role="switch" type="checkbox"/><label for="toctree-checkbox-4"><div class="visually-hidden">Toggle navigation of kornia.sensors</div><i class="icon"><svg><use href="#svg-arrow-right"></use></svg></i></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="sensors.camera.html">kornia.sensors.camera</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="io.html">kornia.io</a></li>
+<li class="toctree-l1"><a class="reference internal" href="image.html">kornia.image</a></li>
+<li class="toctree-l1"><a class="reference internal" href="losses.html">kornia.losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models.html">Models Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="metrics.html">kornia.metrics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="morphology.html">kornia.morphology</a></li>
+<li class="toctree-l1"><a class="reference internal" href="nerf.html">kornia.nerf</a></li>
+<li class="toctree-l1"><a class="reference internal" href="onnx.html">ONNXSequential: Chain Multiple ONNX Models with Ease</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tracking.html">kornia.tracking</a></li>
+<li class="toctree-l1"><a class="reference internal" href="testing.html">kornia.testing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="utils.html">kornia.utils</a></li>
+<li class="toctree-l1"><a class="reference internal" href="x.html">kornia.x</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">KORNIA APPLICATIONS</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="applications/intro.html">Computer Vision Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications/visual_prompting.html">Visual Prompting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications/face_detection.html">Face Detection</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications/image_augmentations.html">Image Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications/image_classification.html">Image Classification</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications/image_matching.html">Image Matching</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications/image_stitching.html">Image Stitching</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications/image_registration.html">Image Registration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications/image_denoising.html">Image Denoising</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications/semantic_segmentation.html">Semantic segmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications/object_detection.html">Object detection</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">KORNIA MODELS</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="models/efficient_vit.html">EfficientViT</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/rt_detr.html">Real-Time Detection Transformer (RT-DETR)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/segment_anything.html">Segment Anything (SAM)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/mobile_sam.html">Faster Segment Anything (MobileSAM)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/yunet.html">YuNet</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/vit.html">Vision Transformer (ViT)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/vit_mobile.html">MobileViT</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/tiny_vit.html">TinyViT</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/loftr.html">LoFTR (matching)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/defmo.html">DeFMO (video)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/hardnet.html">Hardnet (descriptor)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/affnet.html">Affnet (detection)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/sold2.html">SOLD2 (Line detection and matching)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="models/dexined.html">Dexined (edge detection)</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SUPPORT</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/kornia/kornia/issues">Issue tracker</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA">Slack community</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://librecv.org">LibreCV community</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://twitter.com/kornia_foss">Twitter @kornia_foss</a></li>
+<li class="toctree-l1"><a class="reference internal" href="community/chinese.html">Kornia 社区</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://www.youtube.com/channel/UCI1SE1Ij2Fast5BSKxoa7Ag">Kornia Youtube</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://www.linkedin.com/company/kornia/">Kornia LinkedIn</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://kornia.org">Kornia AI</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">COMMUNITY</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="community/contribute.html">Contribute to Kornia</a></li>
+<li class="toctree-l1"><a class="reference internal" href="community/faqs.html">Frequently Asked Questions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="community/bibliography.html">Bibliography</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="_sources/geometry.conversions.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle">
+              <div class="visually-hidden">Toggle Light / Dark / Auto color theme</div>
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <div class="visually-hidden">Toggle table of contents sidebar</div>
+            <i class="icon"><svg><use href="#svg-toc"></use></svg></i>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="kornia-geometry-conversions">
+<h1>kornia.geometry.conversions<a class="headerlink" href="#kornia-geometry-conversions" title="Link to this heading">¶</a></h1>
+<section id="angles">
+<h2>Angles<a class="headerlink" href="#angles" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.rad2deg">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">rad2deg</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.rad2deg" title="Link to this definition">¶</a></dt>
+<dd><p>Convert angles from radians to degrees.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>tensor</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Tensor of arbitrary shape.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tensor with same shape as input.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">(</span><span class="mf">3.1415926535</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rad2deg</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>
+<span class="go">tensor(180.)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.deg2rad">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">deg2rad</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.deg2rad" title="Link to this definition">¶</a></dt>
+<dd><p>Convert angles from degrees to radians.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>tensor</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Tensor of arbitrary shape.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tensor with same shape as input.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">(</span><span class="mf">180.</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">deg2rad</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>
+<span class="go">tensor(3.1416)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.pol2cart">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">pol2cart</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rho</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">phi</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.pol2cart" title="Link to this definition">¶</a></dt>
+<dd><p>Convert polar coordinates to cartesian coordinates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rho</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Tensor of arbitrary shape.</p></li>
+<li><p><strong>phi</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Tensor of same arbitrary shape.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tensor with same shape as input.
+- y: Tensor with same shape as input.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><ul class="simple">
+<li><p>x</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">rho</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">phi</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">pol2cart</span><span class="p">(</span><span class="n">rho</span><span class="p">,</span> <span class="n">phi</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.cart2pol">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">cart2pol</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0e-8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.cart2pol" title="Link to this definition">¶</a></dt>
+<dd><p>Convert cartesian coordinates to polar coordinates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Tensor of arbitrary shape.</p></li>
+<li><p><strong>y</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Tensor of same arbitrary shape.</p></li>
+<li><p><strong>eps</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>, <em>optional</em>) – To avoid division by zero.
+Default:  <code class="code docutils literal notranslate"><span class="pre">1.0e-8</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tensor with same shape as input.
+- phi: Tensor with same shape as input.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><ul class="simple">
+<li><p>rho</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">y</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rho</span><span class="p">,</span> <span class="n">phi</span> <span class="o">=</span> <span class="n">cart2pol</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.angle_to_rotation_matrix">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">angle_to_rotation_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">angle</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.angle_to_rotation_matrix" title="Link to this definition">¶</a></dt>
+<dd><p>Create a rotation matrix out of angles in degrees.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>angle</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – tensor of angles in degrees, any shape <span class="math notranslate nohighlight">\((*)\)</span>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tensor of rotation matrices with shape <span class="math notranslate nohighlight">\((*, 2, 2)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>  <span class="c1"># Nx3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">output</span> <span class="o">=</span> <span class="n">angle_to_rotation_matrix</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>  <span class="c1"># Nx3x2x2</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+<section id="coordinates">
+<h2>Coordinates<a class="headerlink" href="#coordinates" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.convert_points_from_homogeneous">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">convert_points_from_homogeneous</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">points</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.convert_points_from_homogeneous" title="Link to this definition">¶</a></dt>
+<dd><p>Convert points from homogeneous to Euclidean space.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>points</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – the points to be transformed of shape <span class="math notranslate nohighlight">\((B, N, D)\)</span>.</p></li>
+<li><p><strong>eps</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>, <em>optional</em>) – to avoid division by zero.
+Default:  <code class="code docutils literal notranslate"><span class="pre">1e-8</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the points in Euclidean space <span class="math notranslate nohighlight">\((B, N, D-1)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([[</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">convert_points_from_homogeneous</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>
+<span class="go">tensor([[0., 0.]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.convert_points_to_homogeneous">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">convert_points_to_homogeneous</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">points</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.convert_points_to_homogeneous" title="Link to this definition">¶</a></dt>
+<dd><p>Convert points from Euclidean to homogeneous space.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>points</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – the points to be transformed with shape <span class="math notranslate nohighlight">\((*, N, D)\)</span>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the points in homogeneous coordinates <span class="math notranslate nohighlight">\((*, N, D+1)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([[</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">convert_points_to_homogeneous</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>
+<span class="go">tensor([[0., 0., 1.]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.convert_affinematrix_to_homography">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">convert_affinematrix_to_homography</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">A</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.convert_affinematrix_to_homography" title="Link to this definition">¶</a></dt>
+<dd><p>Convert batch of affine matrices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>A</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – the affine matrix with shape <span class="math notranslate nohighlight">\((B,2,3)\)</span>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the homography matrix with shape of <span class="math notranslate nohighlight">\((B,3,3)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">A</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([[[</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">],</span>
+<span class="gp">... </span>                   <span class="p">[</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">]]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">convert_affinematrix_to_homography</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
+<span class="go">tensor([[[1., 0., 0.],</span>
+<span class="go">         [0., 1., 0.],</span>
+<span class="go">         [0., 0., 1.]]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.denormalize_pixel_coordinates">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">denormalize_pixel_coordinates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pixel_coordinates</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.denormalize_pixel_coordinates" title="Link to this definition">¶</a></dt>
+<dd><p>Denormalize pixel coordinates.</p>
+<p>The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pixel_coordinates</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – the normalized grid coordinates. Shape can be <span class="math notranslate nohighlight">\((*, 2)\)</span>.</p></li>
+<li><p><strong>width</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – the maximum width in the x-axis.</p></li>
+<li><p><strong>height</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – the maximum height in the y-axis.</p></li>
+<li><p><strong>eps</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>, <em>optional</em>) – safe division by zero.
+Default:  <code class="code docutils literal notranslate"><span class="pre">1e-8</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the denormalized pixel coordinates with shape <span class="math notranslate nohighlight">\((*, 2)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">coords</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([[</span><span class="o">-</span><span class="mf">1.</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">denormalize_pixel_coordinates</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">50</span><span class="p">)</span>
+<span class="go">tensor([[0., 0.]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.normalize_pixel_coordinates">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">normalize_pixel_coordinates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pixel_coordinates</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.normalize_pixel_coordinates" title="Link to this definition">¶</a></dt>
+<dd><p>Normalize pixel coordinates between -1 and 1.</p>
+<p>Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pixel_coordinates</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – the grid with pixel coordinates. Shape can be <span class="math notranslate nohighlight">\((*, 2)\)</span>.</p></li>
+<li><p><strong>width</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – the maximum width in the x-axis.</p></li>
+<li><p><strong>height</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – the maximum height in the y-axis.</p></li>
+<li><p><strong>eps</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>, <em>optional</em>) – safe division by zero.
+Default:  <code class="code docutils literal notranslate"><span class="pre">1e-8</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the normalized pixel coordinates with shape <span class="math notranslate nohighlight">\((*, 2)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">coords</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([[</span><span class="mf">50.</span><span class="p">,</span> <span class="mf">100.</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">normalize_pixel_coordinates</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">50</span><span class="p">)</span>
+<span class="go">tensor([[1.0408, 1.0202]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.denormalize_pixel_coordinates3d">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">denormalize_pixel_coordinates3d</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pixel_coordinates</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">depth</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.denormalize_pixel_coordinates3d" title="Link to this definition">¶</a></dt>
+<dd><p>Denormalize pixel coordinates.</p>
+<p>The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pixel_coordinates</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – the normalized grid coordinates. Shape can be <span class="math notranslate nohighlight">\((*, 3)\)</span>.</p></li>
+<li><p><strong>depth</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – the maximum depth in the x-axis.</p></li>
+<li><p><strong>height</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – the maximum height in the y-axis.</p></li>
+<li><p><strong>width</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – the maximum width in the x-axis.</p></li>
+<li><p><strong>eps</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>, <em>optional</em>) – safe division by zero.
+Default:  <code class="code docutils literal notranslate"><span class="pre">1e-8</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the denormalized pixel coordinates.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.normalize_pixel_coordinates3d">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">normalize_pixel_coordinates3d</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pixel_coordinates</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">depth</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">width</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.normalize_pixel_coordinates3d" title="Link to this definition">¶</a></dt>
+<dd><p>Normalize pixel coordinates between -1 and 1.</p>
+<p>Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>pixel_coordinates</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – the grid with pixel coordinates. Shape can be <span class="math notranslate nohighlight">\((*, 3)\)</span>.</p></li>
+<li><p><strong>depth</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – the maximum depth in the z-axis.</p></li>
+<li><p><strong>height</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – the maximum height in the y-axis.</p></li>
+<li><p><strong>width</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a></span>) – the maximum width in the x-axis.</p></li>
+<li><p><strong>eps</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>, <em>optional</em>) – safe division by zero.
+Default:  <code class="code docutils literal notranslate"><span class="pre">1e-8</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the normalized pixel coordinates.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.normalize_points_with_intrinsics">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">normalize_points_with_intrinsics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">point_2d</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">camera_matrix</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.normalize_points_with_intrinsics" title="Link to this definition">¶</a></dt>
+<dd><p>Normalize points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>point_2d</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – tensor containing the 2d points in the image pixel coordinates. The shape of the tensor can be
+<span class="math notranslate nohighlight">\((*, 2)\)</span>.</p></li>
+<li><p><strong>camera_matrix</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – tensor containing the intrinsics camera matrix. The tensor shape must be <span class="math notranslate nohighlight">\((*, 3, 3)\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tensor of (u, v) cam coordinates with shape <span class="math notranslate nohighlight">\((*, 2)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">manual_seed</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">X</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">K</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">)[</span><span class="kc">None</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">normalize_points_with_intrinsics</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">K</span><span class="p">)</span>
+<span class="go">tensor([[0.4963, 0.7682]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.denormalize_points_with_intrinsics">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">denormalize_points_with_intrinsics</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">point_2d_norm</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">camera_matrix</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.denormalize_points_with_intrinsics" title="Link to this definition">¶</a></dt>
+<dd><p>Normalize points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>point_2d_norm</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – tensor containing the 2d points in the image pixel coordinates. The shape of the tensor can be
+<span class="math notranslate nohighlight">\((*, 2)\)</span>.</p></li>
+<li><p><strong>camera_matrix</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – tensor containing the intrinsics camera matrix. The tensor shape must be <span class="math notranslate nohighlight">\((*, 3, 3)\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tensor of (u, v) cam coordinates with shape <span class="math notranslate nohighlight">\((*, 2)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">_</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">manual_seed</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">X</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">K</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">)[</span><span class="kc">None</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">denormalize_points_with_intrinsics</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">K</span><span class="p">)</span>
+<span class="go">tensor([[0.4963, 0.7682]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+<section id="homography">
+<h2>Homography<a class="headerlink" href="#homography" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.normalize_homography">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">normalize_homography</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dst_pix_trans_src_pix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dsize_src</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dsize_dst</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.normalize_homography" title="Link to this definition">¶</a></dt>
+<dd><p>Normalize a given homography in pixels to [-1, 1].</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dst_pix_trans_src_pix</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – homography/ies from source to destination to be
+normalized. <span class="math notranslate nohighlight">\((B, 3, 3)\)</span></p></li>
+<li><p><strong>dsize_src</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>]</span>) – size of the source image (height, width).</p></li>
+<li><p><strong>dsize_dst</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>]</span>) – size of the destination image (height, width).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the normalized homography of shape <span class="math notranslate nohighlight">\((B, 3, 3)\)</span>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.denormalize_homography">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">denormalize_homography</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dst_pix_trans_src_pix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dsize_src</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dsize_dst</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.denormalize_homography" title="Link to this definition">¶</a></dt>
+<dd><p>De-normalize a given homography in pixels from [-1, 1] to actual height and width.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dst_pix_trans_src_pix</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – homography/ies from source to destination to be
+denormalized. <span class="math notranslate nohighlight">\((B, 3, 3)\)</span></p></li>
+<li><p><strong>dsize_src</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>]</span>) – size of the source image (height, width).</p></li>
+<li><p><strong>dsize_dst</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>]</span>) – size of the destination image (height, width).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the denormalized homography of shape <span class="math notranslate nohighlight">\((B, 3, 3)\)</span>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.normalize_homography3d">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">normalize_homography3d</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dst_pix_trans_src_pix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dsize_src</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dsize_dst</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.normalize_homography3d" title="Link to this definition">¶</a></dt>
+<dd><p>Normalize a given homography in pixels to [-1, 1].</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dst_pix_trans_src_pix</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – homography/ies from source to destination to be
+normalized. <span class="math notranslate nohighlight">\((B, 4, 4)\)</span></p></li>
+<li><p><strong>dsize_src</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>]</span>) – size of the source image (depth, height, width).</p></li>
+<li><p><strong>dsize_dst</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">int</span></code></a>]</span>) – size of the destination image (depth, height, width).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the normalized homography.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Shape:</dt><dd><p>Output: <span class="math notranslate nohighlight">\((B, 4, 4)\)</span></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="quaternion">
+<h2>Quaternion<a class="headerlink" href="#quaternion" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.quaternion_to_axis_angle">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">quaternion_to_axis_angle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quaternion</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.quaternion_to_axis_angle" title="Link to this definition">¶</a></dt>
+<dd><p>Convert quaternion vector to axis angle of rotation in radians.</p>
+<p>The quaternion should be in (w, x, y, z) format.</p>
+<p>Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>quaternion</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – tensor with quaternions.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tensor with axis angle of rotation.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Shape:</dt><dd><ul class="simple">
+<li><p>Input: <span class="math notranslate nohighlight">\((*, 4)\)</span> where <cite>*</cite> means, any number of dimensions</p></li>
+<li><p>Output: <span class="math notranslate nohighlight">\((*, 3)\)</span></p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">quaternion</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">((</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">quaternion_to_axis_angle</span><span class="p">(</span><span class="n">quaternion</span><span class="p">)</span>
+<span class="go">tensor([0., 0., 0.])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.quaternion_to_rotation_matrix">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">quaternion_to_rotation_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quaternion</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.quaternion_to_rotation_matrix" title="Link to this definition">¶</a></dt>
+<dd><p>Convert a quaternion to a rotation matrix.</p>
+<p>The quaternion should be in (w, x, y, z) format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>quaternion</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – a tensor containing a quaternion to be converted.
+The tensor can be of shape <span class="math notranslate nohighlight">\((*, 4)\)</span>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the rotation matrix of shape <span class="math notranslate nohighlight">\((*, 3, 3)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">quaternion</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">((</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">quaternion_to_rotation_matrix</span><span class="p">(</span><span class="n">quaternion</span><span class="p">)</span>
+<span class="go">tensor([[-1.,  0.,  0.],</span>
+<span class="go">        [ 0., -1.,  0.],</span>
+<span class="go">        [ 0.,  0.,  1.]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.quaternion_log_to_exp">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">quaternion_log_to_exp</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quaternion</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0e-8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.quaternion_log_to_exp" title="Link to this definition">¶</a></dt>
+<dd><p>Apply exponential map to log quaternion.</p>
+<p>The quaternion should be in (w, x, y, z) format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>quaternion</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – a tensor containing a quaternion to be converted.
+The tensor can be of shape <span class="math notranslate nohighlight">\((*, 3)\)</span>.</p></li>
+<li><p><strong>eps</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>, <em>optional</em>) – a small number for clamping.
+Default:  <code class="code docutils literal notranslate"><span class="pre">1.0e-8</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the quaternion exponential map of shape <span class="math notranslate nohighlight">\((*, 4)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">quaternion</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">((</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">quaternion_log_to_exp</span><span class="p">(</span><span class="n">quaternion</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="n">quaternion</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span><span class="p">)</span>
+<span class="go">tensor([1., 0., 0., 0.])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.quaternion_exp_to_log">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">quaternion_exp_to_log</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quaternion</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0e-8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.quaternion_exp_to_log" title="Link to this definition">¶</a></dt>
+<dd><p>Apply the log map to a quaternion.</p>
+<p>The quaternion should be in (w, x, y, z) format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>quaternion</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – a tensor containing a quaternion to be converted.
+The tensor can be of shape <span class="math notranslate nohighlight">\((*, 4)\)</span>.</p></li>
+<li><p><strong>eps</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>, <em>optional</em>) – a small number for clamping.
+Default:  <code class="code docutils literal notranslate"><span class="pre">1.0e-8</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the quaternion log map of shape <span class="math notranslate nohighlight">\((*, 3)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">quaternion</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">((</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">quaternion_exp_to_log</span><span class="p">(</span><span class="n">quaternion</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="n">quaternion</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span><span class="p">)</span>
+<span class="go">tensor([0., 0., 0.])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.normalize_quaternion">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">normalize_quaternion</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quaternion</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0e-12</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.normalize_quaternion" title="Link to this definition">¶</a></dt>
+<dd><p>Normalize a quaternion.</p>
+<p>The quaternion should be in (x, y, z, w) or (w, x, y, z) format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>quaternion</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – a tensor containing a quaternion to be normalized.
+The tensor can be of shape <span class="math notranslate nohighlight">\((*, 4)\)</span>.</p></li>
+<li><p><strong>eps</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>, <em>optional</em>) – small value to avoid division by zero.
+Default:  <code class="code docutils literal notranslate"><span class="pre">1.0e-12</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the normalized quaternion of shape <span class="math notranslate nohighlight">\((*, 4)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">quaternion</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">((</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">normalize_quaternion</span><span class="p">(</span><span class="n">quaternion</span><span class="p">)</span>
+<span class="go">tensor([0.7071, 0.0000, 0.7071, 0.0000])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+<section id="vector">
+<h2>Vector<a class="headerlink" href="#vector" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.vector_to_skew_symmetric_matrix">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">vector_to_skew_symmetric_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vec</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.vector_to_skew_symmetric_matrix" title="Link to this definition">¶</a></dt>
+<dd><p>Convert a vector to a skew symmetric matrix.</p>
+<p>A vector <span class="math notranslate nohighlight">\((v1, v2, v3)\)</span> has a corresponding skew-symmetric matrix, which is of the form:</p>
+<div class="math-wrapper docutils container">
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{bmatrix} 0 &amp; -v3 &amp; v2 \\
+v3 &amp; 0 &amp; -v1 \\
+-v2 &amp; v1 &amp; 0\end{bmatrix}\end{split}\]</div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>vec</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – tensor of shape <span class="math notranslate nohighlight">\((B, 3)\)</span>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tensor of shape <span class="math notranslate nohighlight">\((B, 3, 3)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">vector_to_skew_symmetric_matrix</span><span class="p">(</span><span class="n">vec</span><span class="p">)</span>
+<span class="go">tensor([[ 0., -3.,  2.],</span>
+<span class="go">        [ 3.,  0., -1.],</span>
+<span class="go">        [-2.,  1.,  0.]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+<section id="rotation-matrix">
+<h2>Rotation Matrix<a class="headerlink" href="#rotation-matrix" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.rotation_matrix_to_axis_angle">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">rotation_matrix_to_axis_angle</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rotation_matrix</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.rotation_matrix_to_axis_angle" title="Link to this definition">¶</a></dt>
+<dd><p>Convert 3x3 rotation matrix to Rodrigues vector in radians.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>rotation_matrix</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – rotation matrix of shape <span class="math notranslate nohighlight">\((N, 3, 3)\)</span>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Rodrigues vector transformation of shape <span class="math notranslate nohighlight">\((N, 3)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([[</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">],</span>
+<span class="gp">... </span>                      <span class="p">[</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">],</span>
+<span class="gp">... </span>                      <span class="p">[</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rotation_matrix_to_axis_angle</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>
+<span class="go">tensor([0., 0., 0.])</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([[</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">],</span>
+<span class="gp">... </span>                      <span class="p">[</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.</span><span class="p">],</span>
+<span class="gp">... </span>                      <span class="p">[</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rotation_matrix_to_axis_angle</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>
+<span class="go">tensor([1.5708, 0.0000, 0.0000])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.rotation_matrix_to_quaternion">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">rotation_matrix_to_quaternion</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rotation_matrix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0e-8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.rotation_matrix_to_quaternion" title="Link to this definition">¶</a></dt>
+<dd><p>Convert 3x3 rotation matrix to 4d quaternion vector.</p>
+<p>The quaternion vector has components in (w, x, y, z) format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rotation_matrix</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – the rotation matrix to convert with shape <span class="math notranslate nohighlight">\((*, 3, 3)\)</span>.</p></li>
+<li><p><strong>eps</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">float</span></code></a></span>, <em>optional</em>) – small value to avoid zero division.
+Default:  <code class="code docutils literal notranslate"><span class="pre">1.0e-8</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the rotation in quaternion with shape <span class="math notranslate nohighlight">\((*, 4)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([[</span><span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">],</span>
+<span class="gp">... </span>                      <span class="p">[</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">],</span>
+<span class="gp">... </span>                      <span class="p">[</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rotation_matrix_to_quaternion</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">eps</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">input</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span><span class="p">)</span>
+<span class="go">tensor([1., 0., 0., 0.])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+<section id="axis-angle">
+<h2>Axis Angle<a class="headerlink" href="#axis-angle" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.axis_angle_to_quaternion">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">axis_angle_to_quaternion</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">axis_angle</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.axis_angle_to_quaternion" title="Link to this definition">¶</a></dt>
+<dd><p>Convert an axis angle to a quaternion.</p>
+<p>The quaternion vector has components in (w, x, y, z) format.</p>
+<p>Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>axis_angle</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – tensor with axis angle in radians.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tensor with quaternion.</p>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Shape:</dt><dd><ul class="simple">
+<li><p>Input: <span class="math notranslate nohighlight">\((*, 3)\)</span> where <cite>*</cite> means, any number of dimensions</p></li>
+<li><p>Output: <span class="math notranslate nohighlight">\((*, 4)\)</span></p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">axis_angle</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">((</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">1.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">axis_angle_to_quaternion</span><span class="p">(</span><span class="n">axis_angle</span><span class="p">)</span>
+<span class="go">tensor([0.8776, 0.0000, 0.4794, 0.0000])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.axis_angle_to_rotation_matrix">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">axis_angle_to_rotation_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">axis_angle</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.axis_angle_to_rotation_matrix" title="Link to this definition">¶</a></dt>
+<dd><p>Convert 3d vector of axis-angle rotation to 3x3 rotation matrix.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>axis_angle</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – tensor of 3d vector of axis-angle rotations in radians with shape <span class="math notranslate nohighlight">\((N, 3)\)</span>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tensor of rotation matrices of shape <span class="math notranslate nohighlight">\((N, 3, 3)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([[</span><span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">axis_angle_to_rotation_matrix</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>
+<span class="go">tensor([[[1., 0., 0.],</span>
+<span class="go">         [0., 1., 0.],</span>
+<span class="go">         [0., 0., 1.]]])</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="nb">input</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([[</span><span class="mf">1.5708</span><span class="p">,</span> <span class="mf">0.</span><span class="p">,</span> <span class="mf">0.</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">axis_angle_to_rotation_matrix</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>
+<span class="go">tensor([[[ 1.0000e+00,  0.0000e+00,  0.0000e+00],</span>
+<span class="go">         [ 0.0000e+00, -3.6200e-06, -1.0000e+00],</span>
+<span class="go">         [ 0.0000e+00,  1.0000e+00, -3.6200e-06]]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+<section id="euler-angles">
+<h2>Euler Angles<a class="headerlink" href="#euler-angles" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.quaternion_from_euler">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">quaternion_from_euler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">roll</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pitch</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">yaw</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.quaternion_from_euler" title="Link to this definition">¶</a></dt>
+<dd><p>Convert Euler angles to quaternion coefficients.</p>
+<p>Euler angles are assumed to be in radians in XYZ convention.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>roll</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – the roll euler angle.</p></li>
+<li><p><strong>pitch</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – the pitch euler angle.</p></li>
+<li><p><strong>yaw</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – the yaw euler angle.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a>, <a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a>, <a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a>, <a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A tuple with quaternion coefficients in order of <cite>wxyz</cite>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.euler_from_quaternion">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">euler_from_quaternion</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">w</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">z</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.euler_from_quaternion" title="Link to this definition">¶</a></dt>
+<dd><p>Convert a quaternion coefficients to Euler angles.</p>
+<p>Returned angles are in radians in XYZ convention.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>w</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – quaternion <span class="math notranslate nohighlight">\(q_w\)</span> coefficient.</p></li>
+<li><p><strong>x</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – quaternion <span class="math notranslate nohighlight">\(q_x\)</span> coefficient.</p></li>
+<li><p><strong>y</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – quaternion <span class="math notranslate nohighlight">\(q_y\)</span> coefficient.</p></li>
+<li><p><strong>z</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – quaternion <span class="math notranslate nohighlight">\(q_z\)</span> coefficient.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.13)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a>, <a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a>, <a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A tuple with euler angles`roll`, <cite>pitch</cite>, <cite>yaw</cite>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="pose">
+<h2>Pose<a class="headerlink" href="#pose" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.Rt_to_matrix4x4">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">Rt_to_matrix4x4</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">R</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.Rt_to_matrix4x4" title="Link to this definition">¶</a></dt>
+<dd><p>Combine 3x3 rotation matrix R and 1x3 translation vector t into 4x4 extrinsics.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>R</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Rotation matrix, <span class="math notranslate nohighlight">\((B, 3, 3).\)</span></p></li>
+<li><p><strong>t</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Translation matrix <span class="math notranslate nohighlight">\((B, 3, 1)\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the extrinsics <span class="math notranslate nohighlight">\((B, 4, 4)\)</span>.</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">R</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">)[</span><span class="kc">None</span><span class="p">],</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Rt_to_matrix4x4</span><span class="p">(</span><span class="n">R</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+<span class="go">tensor([[[1., 0., 0., 1.],</span>
+<span class="go">         [0., 1., 0., 1.],</span>
+<span class="go">         [0., 0., 1., 1.],</span>
+<span class="go">         [0., 0., 0., 1.]]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.matrix4x4_to_Rt">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">matrix4x4_to_Rt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">extrinsics</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.matrix4x4_to_Rt" title="Link to this definition">¶</a></dt>
+<dd><p>Convert 4x4 extrinsics into 3x3 rotation matrix R and 1x3 translation vector ts.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>extrinsics</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – pose matrix <span class="math notranslate nohighlight">\((B, 4, 4)\)</span>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Rotation matrix, <span class="math notranslate nohighlight">\((B, 3, 3).\)</span>
+t: Translation matrix <span class="math notranslate nohighlight">\((B, 3, 1)\)</span>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>R</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">ext</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">4</span><span class="p">)[</span><span class="kc">None</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">matrix4x4_to_Rt</span><span class="p">(</span><span class="n">ext</span><span class="p">)</span>
+<span class="go">(tensor([[[1., 0., 0.],</span>
+<span class="go">         [0., 1., 0.],</span>
+<span class="go">         [0., 0., 1.]]]), tensor([[[0.],</span>
+<span class="go">         [0.],</span>
+<span class="go">         [0.]]]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.worldtocam_to_camtoworld_Rt">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">worldtocam_to_camtoworld_Rt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">R</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.worldtocam_to_camtoworld_Rt" title="Link to this definition">¶</a></dt>
+<dd><p>Convert worldtocam frame used in Colmap to camtoworld.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>R</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Rotation matrix, <span class="math notranslate nohighlight">\((B, 3, 3).\)</span></p></li>
+<li><p><strong>t</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Translation matrix <span class="math notranslate nohighlight">\((B, 3, 1)\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Rotation matrix, <span class="math notranslate nohighlight">\((B, 3, 3).\)</span>
+tinv: Translation matrix <span class="math notranslate nohighlight">\((B, 3, 1)\)</span>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Rinv</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">R</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">)[</span><span class="kc">None</span><span class="p">],</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">worldtocam_to_camtoworld_Rt</span><span class="p">(</span><span class="n">R</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+<span class="go">(tensor([[[1., 0., 0.],</span>
+<span class="go">         [0., 1., 0.],</span>
+<span class="go">         [0., 0., 1.]]]), tensor([[[-1.],</span>
+<span class="go">         [-1.],</span>
+<span class="go">         [-1.]]]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.camtoworld_to_worldtocam_Rt">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">camtoworld_to_worldtocam_Rt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">R</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.camtoworld_to_worldtocam_Rt" title="Link to this definition">¶</a></dt>
+<dd><p>Convert camtoworld to worldtocam frame used in Colmap.</p>
+<p>See
+long-url: <a class="reference external" href="https://colmap.github.io/format.html#output-format">https://colmap.github.io/format.html#output-format</a></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>R</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Rotation matrix, <span class="math notranslate nohighlight">\((B, 3, 3).\)</span></p></li>
+<li><p><strong>t</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Translation matrix <span class="math notranslate nohighlight">\((B, 3, 1)\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Rotation matrix, <span class="math notranslate nohighlight">\((B, 3, 3).\)</span>
+tinv: Translation matrix <span class="math notranslate nohighlight">\((B, 3, 1)\)</span>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Rinv</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">R</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">)[</span><span class="kc">None</span><span class="p">],</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">camtoworld_to_worldtocam_Rt</span><span class="p">(</span><span class="n">R</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+<span class="go">(tensor([[[1., 0., 0.],</span>
+<span class="go">         [0., 1., 0.],</span>
+<span class="go">         [0., 0., 1.]]]), tensor([[[-1.],</span>
+<span class="go">         [-1.],</span>
+<span class="go">         [-1.]]]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">camtoworld_graphics_to_vision_4x4</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">extrinsics_graphics</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4" title="Link to this definition">¶</a></dt>
+<dd><p>Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).</p>
+<p>I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
+Vision convention: [+x, +y, +z] == [right, down, forwards].</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>extrinsics_graphics</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – pose matrix <span class="math notranslate nohighlight">\((B, 4, 4)\)</span>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>pose matrix <span class="math notranslate nohighlight">\((B, 4, 4)\)</span>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>extrinsics</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">ext</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">4</span><span class="p">)[</span><span class="kc">None</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">camtoworld_graphics_to_vision_4x4</span><span class="p">(</span><span class="n">ext</span><span class="p">)</span>
+<span class="go">tensor([[[ 1.,  0.,  0.,  0.],</span>
+<span class="go">         [ 0., -1.,  0.,  0.],</span>
+<span class="go">         [ 0.,  0., -1.,  0.],</span>
+<span class="go">         [ 0.,  0.,  0.,  1.]]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.camtoworld_vision_to_graphics_4x4">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">camtoworld_vision_to_graphics_4x4</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">extrinsics_vision</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.camtoworld_vision_to_graphics_4x4" title="Link to this definition">¶</a></dt>
+<dd><p>Convert vision coordinate frame (e.g. OpenCV) to graphics coordinate frame (e.g. OpenGK.).</p>
+<p>I.e. flips y and z axis Graphics convention: [+x, +y, +z] == [right, up, backwards].
+Vision convention: [+x, +y, +z] == [right, down, forwards].</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>extrinsics_vision</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – pose matrix <span class="math notranslate nohighlight">\((B, 4, 4)\)</span>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>pose matrix <span class="math notranslate nohighlight">\((B, 4, 4)\)</span>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>extrinsics</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">ext</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">4</span><span class="p">)[</span><span class="kc">None</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">camtoworld_vision_to_graphics_4x4</span><span class="p">(</span><span class="n">ext</span><span class="p">)</span>
+<span class="go">tensor([[[ 1.,  0.,  0.,  0.],</span>
+<span class="go">         [ 0., -1.,  0.,  0.],</span>
+<span class="go">         [ 0.,  0., -1.,  0.],</span>
+<span class="go">         [ 0.,  0.,  0.,  1.]]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">camtoworld_graphics_to_vision_Rt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">R</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt" title="Link to this definition">¶</a></dt>
+<dd><p>Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).</p>
+<p>I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
+Vision convention: [+x, +y, +z] == [right, down, forwards].</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>R</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Rotation matrix, <span class="math notranslate nohighlight">\((B, 3, 3).\)</span></p></li>
+<li><p><strong>t</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Translation matrix <span class="math notranslate nohighlight">\((B, 3, 1)\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Rotation matrix, <span class="math notranslate nohighlight">\((B, 3, 3).\)</span>
+t: Translation matrix <span class="math notranslate nohighlight">\((B, 3, 1)\)</span>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>R</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">R</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">)[</span><span class="kc">None</span><span class="p">],</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">camtoworld_graphics_to_vision_Rt</span><span class="p">(</span><span class="n">R</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+<span class="go">(tensor([[[ 1.,  0.,  0.],</span>
+<span class="go">         [ 0., -1.,  0.],</span>
+<span class="go">         [ 0.,  0., -1.]]]), tensor([[[1.],</span>
+<span class="go">         [1.],</span>
+<span class="go">         [1.]]]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.camtoworld_vision_to_graphics_Rt">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">camtoworld_vision_to_graphics_Rt</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">R</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.camtoworld_vision_to_graphics_Rt" title="Link to this definition">¶</a></dt>
+<dd><p>Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).</p>
+<p>I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
+Vision convention: [+x, +y, +z] == [right, down, forwards]</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>R</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Rotation matrix, <span class="math notranslate nohighlight">\((B, 3, 3).\)</span></p></li>
+<li><p><strong>t</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – Translation matrix <span class="math notranslate nohighlight">\((B, 3, 1)\)</span>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Rotation matrix, <span class="math notranslate nohighlight">\((B, 3, 3).\)</span>
+t: Translation matrix <span class="math notranslate nohighlight">\((B, 3, 1)\)</span>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>R</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">R</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">)[</span><span class="kc">None</span><span class="p">],</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">camtoworld_vision_to_graphics_Rt</span><span class="p">(</span><span class="n">R</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+<span class="go">(tensor([[[ 1.,  0.,  0.],</span>
+<span class="go">         [ 0., -1.,  0.],</span>
+<span class="go">         [ 0.,  0., -1.]]]), tensor([[[1.],</span>
+<span class="go">         [1.],</span>
+<span class="go">         [1.]]]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="kornia.geometry.conversions.ARKitQTVecs_to_ColmapQTVecs">
+<span class="sig-prename descclassname"><span class="pre">kornia.geometry.conversions.</span></span><span class="sig-name descname"><span class="pre">ARKitQTVecs_to_ColmapQTVecs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">qvec</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tvec</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#kornia.geometry.conversions.ARKitQTVecs_to_ColmapQTVecs" title="Link to this definition">¶</a></dt>
+<dd><p>Convert output of Apple ARKit screen pose to the camera-to-world transformation, expected by Colmap.</p>
+<p>Both poses in quaternion representation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>qvec</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – ARKit rotation quaternion <span class="math notranslate nohighlight">\((B, 4)\)</span>, [x, y, z, w] format.</p></li>
+<li><p><strong>tvec</strong> (<span class="sphinx_autodoc_typehints-type"><a class="reference external" href="http://pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.6)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Tensor</span></code></a></span>) – translation vector <span class="math notranslate nohighlight">\((B, 3, 1)\)</span>, [x, y, z]</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Colmap rotation quaternion <span class="math notranslate nohighlight">\((B, 4)\)</span>, [w, x, y, z] format.
+tvec: translation vector <span class="math notranslate nohighlight">\((B, 3, 1)\)</span>, [x, y, z]</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>qvec</p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">q</span><span class="p">,</span> <span class="n">t</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1.</span><span class="p">])[</span><span class="kc">None</span><span class="p">],</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ARKitQTVecs_to_ColmapQTVecs</span><span class="p">(</span><span class="n">q</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+<span class="go">(tensor([[0.7071, 0.0000, 0.7071, 0.0000]]), tensor([[[-1.0000],</span>
+<span class="go">         [-1.0000],</span>
+<span class="go">         [ 1.0000]]]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+
+        <div class="related-pages">
+          <a class="next-page" href="geometry.depth.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">kornia.geometry.depth</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="geometry.camera.stereo.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+
+                <div class="title">Stereo Camera</div>
+
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2025, Kornia developers
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+
+          </div>
+          <div class="right-details">
+
+          </div>
+        </div>
+
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+
+
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">kornia.geometry.conversions</a><ul>
+<li><a class="reference internal" href="#angles">Angles</a><ul>
+<li><a class="reference internal" href="#kornia.geometry.conversions.rad2deg"><code class="docutils literal notranslate"><span class="pre">rad2deg()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.deg2rad"><code class="docutils literal notranslate"><span class="pre">deg2rad()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.pol2cart"><code class="docutils literal notranslate"><span class="pre">pol2cart()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.cart2pol"><code class="docutils literal notranslate"><span class="pre">cart2pol()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.angle_to_rotation_matrix"><code class="docutils literal notranslate"><span class="pre">angle_to_rotation_matrix()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#coordinates">Coordinates</a><ul>
+<li><a class="reference internal" href="#kornia.geometry.conversions.convert_points_from_homogeneous"><code class="docutils literal notranslate"><span class="pre">convert_points_from_homogeneous()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.convert_points_to_homogeneous"><code class="docutils literal notranslate"><span class="pre">convert_points_to_homogeneous()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.convert_affinematrix_to_homography"><code class="docutils literal notranslate"><span class="pre">convert_affinematrix_to_homography()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.denormalize_pixel_coordinates"><code class="docutils literal notranslate"><span class="pre">denormalize_pixel_coordinates()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.normalize_pixel_coordinates"><code class="docutils literal notranslate"><span class="pre">normalize_pixel_coordinates()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.denormalize_pixel_coordinates3d"><code class="docutils literal notranslate"><span class="pre">denormalize_pixel_coordinates3d()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.normalize_pixel_coordinates3d"><code class="docutils literal notranslate"><span class="pre">normalize_pixel_coordinates3d()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.normalize_points_with_intrinsics"><code class="docutils literal notranslate"><span class="pre">normalize_points_with_intrinsics()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.denormalize_points_with_intrinsics"><code class="docutils literal notranslate"><span class="pre">denormalize_points_with_intrinsics()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#homography">Homography</a><ul>
+<li><a class="reference internal" href="#kornia.geometry.conversions.normalize_homography"><code class="docutils literal notranslate"><span class="pre">normalize_homography()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.denormalize_homography"><code class="docutils literal notranslate"><span class="pre">denormalize_homography()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.normalize_homography3d"><code class="docutils literal notranslate"><span class="pre">normalize_homography3d()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#quaternion">Quaternion</a><ul>
+<li><a class="reference internal" href="#kornia.geometry.conversions.quaternion_to_axis_angle"><code class="docutils literal notranslate"><span class="pre">quaternion_to_axis_angle()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.quaternion_to_rotation_matrix"><code class="docutils literal notranslate"><span class="pre">quaternion_to_rotation_matrix()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.quaternion_log_to_exp"><code class="docutils literal notranslate"><span class="pre">quaternion_log_to_exp()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.quaternion_exp_to_log"><code class="docutils literal notranslate"><span class="pre">quaternion_exp_to_log()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.normalize_quaternion"><code class="docutils literal notranslate"><span class="pre">normalize_quaternion()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#vector">Vector</a><ul>
+<li><a class="reference internal" href="#kornia.geometry.conversions.vector_to_skew_symmetric_matrix"><code class="docutils literal notranslate"><span class="pre">vector_to_skew_symmetric_matrix()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#rotation-matrix">Rotation Matrix</a><ul>
+<li><a class="reference internal" href="#kornia.geometry.conversions.rotation_matrix_to_axis_angle"><code class="docutils literal notranslate"><span class="pre">rotation_matrix_to_axis_angle()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.rotation_matrix_to_quaternion"><code class="docutils literal notranslate"><span class="pre">rotation_matrix_to_quaternion()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#axis-angle">Axis Angle</a><ul>
+<li><a class="reference internal" href="#kornia.geometry.conversions.axis_angle_to_quaternion"><code class="docutils literal notranslate"><span class="pre">axis_angle_to_quaternion()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.axis_angle_to_rotation_matrix"><code class="docutils literal notranslate"><span class="pre">axis_angle_to_rotation_matrix()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#euler-angles">Euler Angles</a><ul>
+<li><a class="reference internal" href="#kornia.geometry.conversions.quaternion_from_euler"><code class="docutils literal notranslate"><span class="pre">quaternion_from_euler()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.euler_from_quaternion"><code class="docutils literal notranslate"><span class="pre">euler_from_quaternion()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#pose">Pose</a><ul>
+<li><a class="reference internal" href="#kornia.geometry.conversions.Rt_to_matrix4x4"><code class="docutils literal notranslate"><span class="pre">Rt_to_matrix4x4()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.matrix4x4_to_Rt"><code class="docutils literal notranslate"><span class="pre">matrix4x4_to_Rt()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.worldtocam_to_camtoworld_Rt"><code class="docutils literal notranslate"><span class="pre">worldtocam_to_camtoworld_Rt()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.camtoworld_to_worldtocam_Rt"><code class="docutils literal notranslate"><span class="pre">camtoworld_to_worldtocam_Rt()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.camtoworld_graphics_to_vision_4x4"><code class="docutils literal notranslate"><span class="pre">camtoworld_graphics_to_vision_4x4()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.camtoworld_vision_to_graphics_4x4"><code class="docutils literal notranslate"><span class="pre">camtoworld_vision_to_graphics_4x4()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.camtoworld_graphics_to_vision_Rt"><code class="docutils literal notranslate"><span class="pre">camtoworld_graphics_to_vision_Rt()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.camtoworld_vision_to_graphics_Rt"><code class="docutils literal notranslate"><span class="pre">camtoworld_vision_to_graphics_Rt()</span></code></a></li>
+<li><a class="reference internal" href="#kornia.geometry.conversions.ARKitQTVecs_to_ColmapQTVecs"><code class="docutils literal notranslate"><span class="pre">ARKitQTVecs_to_ColmapQTVecs()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+
+
+    </aside>
+  </div>
+</div><script src="_static/documentation_options.js?v=cce5339e"></script>
+    <script src="_static/doctools.js?v=9a2dae69"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/scripts/furo.js?v=5fa4622c"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
+    <script src="_static/design-tabs.js?v=f930bc37"></script>
+    <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/custom.js?v=107dad88"></script>
+    <script defer="defer" type="module" src="https://gradio.s3-us-west-2.amazonaws.com/4.38.1/gradio.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/iframe-resizer/4.3.2/iframeResizer.min.js"></script>
+    </body>
+</html>
