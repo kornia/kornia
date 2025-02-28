@@ -1,3 +1,6 @@
+.. meta::
+   :name: description
+   :content: "The Kornia.x module provides utilities for training Kornia models, including domain-specific trainers for image classification, semantic segmentation, and object detection. It also offers training callbacks like ModelCheckpoint and EarlyStopping."
 kornia.x
 ========
 

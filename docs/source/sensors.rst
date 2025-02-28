@@ -1,3 +1,6 @@
+.. meta::
+   :name: description
+   :content: "The Kornia.sensors module provides interfaces for sensor data handling, including Camera, IMU, and GNSS sensors. Note that this API is experimental and subject to future changes. Explore sensor-related functionalities within the module."
 kornia.sensors
 ===============
 
