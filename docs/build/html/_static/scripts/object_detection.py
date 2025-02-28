@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 import hydra
 import torch
 import torchvision
@@ -15,18 +32,17 @@ cs.store(name="config", node=Configuration)
 
 @hydra.main(config_path=".", config_name="config.yaml")
 def my_app(config: Configuration) -> None:
-
     def collate_fn(data):
         # To map from [{A, B}, ...] => [{A}, ...], [{B}, ...]
         return [d[0] for d in data], [d[1] for d in data]
 
     # create the dataset
     train_dataset = torchvision.datasets.WIDERFace(
-        root=to_absolute_path(config.data_path), transform=T.ToTensor(), split='train', download=False
+        root=to_absolute_path(config.data_path), transform=T.ToTensor(), split="train", download=False
     )
 
     valid_dataset = torchvision.datasets.WIDERFace(
-        root=to_absolute_path(config.data_path), transform=T.ToTensor(), split='val', download=False
+        root=to_absolute_path(config.data_path), transform=T.ToTensor(), split="val", download=False
     )
 
     # create the dataloaders
@@ -55,7 +71,7 @@ def my_app(config: Configuration) -> None:
         K.augmentation.RandomAffine(
             degrees=0.0, translate=(0.1, 0.1), scale=(0.9, 1.1)
         ),  # NOTE: XYXY bbox format cannot handle rotated boxes
-        data_keys=['input', 'bbox_xyxy'],
+        data_keys=["input", "bbox_xyxy"],
     )
 
     def bbox_xywh_to_xyxy(boxes: torch.Tensor):
@@ -64,10 +80,10 @@ def my_app(config: Configuration) -> None:
         return boxes
 
     def preprocess(self, x: dict) -> dict:
-        x['target'] = {
-            "boxes": [bbox_xywh_to_xyxy(a['bbox'].float()) for a in x['target']],
+        x["target"] = {
+            "boxes": [bbox_xywh_to_xyxy(a["bbox"].float()) for a in x["target"]],
             # labels are set to 1 for all faces
-            "labels": [torch.tensor([1] * len(a['bbox'])) for a in x['target']],
+            "labels": [torch.tensor([1] * len(a["bbox"])) for a in x["target"]],
         }
         return x
 

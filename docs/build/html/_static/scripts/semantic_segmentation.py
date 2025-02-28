@@ -1,10 +1,27 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 import hydra
 import numpy as np
 import torch
-import torch.nn as nn
 import torchvision
 from hydra.core.config_store import ConfigStore
 from hydra.utils import to_absolute_path
+from torch import nn
 
 import kornia as K
 from kornia.x import Configuration, Lambda, SemanticSegmentationTrainer
@@ -17,7 +34,7 @@ cs.store(name="config", node=Configuration)
 class Transform(nn.Module):
     def __init__(self, image_size):
         super().__init__()
-        self.resize = K.geometry.Resize(image_size, interpolation='nearest')
+        self.resize = K.geometry.Resize(image_size, interpolation="nearest")
 
     @torch.no_grad()
     def forward(self, x, y):
@@ -33,11 +50,11 @@ def my_app(config: Configuration) -> None:
 
     # create the dataset
     train_dataset = torchvision.datasets.SBDataset(
-        root=to_absolute_path(config.data_path), image_set='train', download=False, transforms=transform
+        root=to_absolute_path(config.data_path), image_set="train", download=False, transforms=transform
     )
 
     valid_dataset = torchvision.datasets.SBDataset(
-        root=to_absolute_path(config.data_path), image_set='val', download=False, transforms=transform
+        root=to_absolute_path(config.data_path), image_set="val", download=False, transforms=transform
     )
 
     # create the dataloaders
@@ -53,7 +70,7 @@ def my_app(config: Configuration) -> None:
     criterion = nn.CrossEntropyLoss()
 
     # create the model
-    model = nn.Sequential(torchvision.models.segmentation.fcn_resnet50(pretrained=False), Lambda(lambda x: x['out']))
+    model = nn.Sequential(torchvision.models.segmentation.fcn_resnet50(pretrained=False), Lambda(lambda x: x["out"]))
 
     # instantiate the optimizer and scheduler
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr)
@@ -64,7 +81,7 @@ def my_app(config: Configuration) -> None:
         K.augmentation.RandomHorizontalFlip(p=0.75),
         K.augmentation.RandomVerticalFlip(p=0.75),
         K.augmentation.RandomAffine(degrees=10.0),
-        data_keys=['input', 'mask'],
+        data_keys=["input", "mask"],
     )
 
     def preprocess(self, sample: dict) -> dict:
