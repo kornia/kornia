@@ -1,3 +1,6 @@
+.. meta::
+   :name: description
+   :content: "The Kornia.nerf module provides tools for working with Neural Radiance Fields (NeRF), including models, solvers, renderers, and samplers. Key components include NerfModel, NerfSolver, and VolumeRenderer for high-quality 3D scene rendering."
 kornia.nerf
 ===========
 

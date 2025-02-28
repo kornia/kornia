@@ -1,3 +1,6 @@
+.. meta::
+   :name: description
+   :content: "The Local Features and Image Matching module in Kornia offers tools to detect, describe, and match local features in images. It includes various detectors, descriptors, and matching algorithms based on classical methods and deep learning models like Harris, SIFT, KeyNet, DISK, and LoFTR. The module also provides tools for working with local affine frames (LAFs), including affine shape and orientation estimation."
 Local Features and Image Matching
 =================================
 

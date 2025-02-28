@@ -1,3 +1,6 @@
+.. meta::
+   :name: description
+   :content: "The Augmentation module in Kornia provides high-level data augmentation functionalities for computer vision tasks, including random rotations, affine transformations, color intensities, image noise distortion, and more. It supports batch processing, device compatibility, and backpropagation. Additionally, users can retrieve transformation details for more flexibility in complex pipelines."
 kornia.augmentation
 ===================
 

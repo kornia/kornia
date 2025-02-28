@@ -1,3 +1,6 @@
+.. meta::
+   :name: description
+   :content: "The Kornia.morphology module offers a set of morphological image processing operations such as dilation, erosion, opening, closing, gradient, top hat, and bottom hat. It enables users to apply these transformations to images for advanced computer vision tasks. Try the interactive demo on Hugging Face Spaces."
 kornia.morphology
 ======================
 
