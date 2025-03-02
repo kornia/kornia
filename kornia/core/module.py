@@ -197,7 +197,8 @@ class ImageModuleMixIn:
             output_image (Union[Tensor, list[Tensor], tuple[Tensor]]): The input tensor(s) to be moved.
 
         Returns:
-            Union[Tensor, list[Tensor], tuple[Tensor]]: The tensor(s) moved to the CPU and detached from the computational graph.
+            Union[Tensor, list[Tensor], tuple[Tensor]]: The tensor(s) moved to the CPU and detached from 
+            the computational graph.
         """
         if isinstance(output_image, (Tensor,)):
             return output_image.detach().cpu()
