@@ -191,8 +191,7 @@ class ImageModuleMixIn:
     def _detach_tensor_to_cpu(
         self, output_image: Union[Tensor, list[Tensor], tuple[Tensor]]
     ) -> Union[Tensor, list[Tensor], tuple[Tensor]]:
-        """
-        Detach the input tensor (or list/tuple of tensors) from the GPU and move it to the CPU.
+        """Detach the input tensor (or list/tuple of tensors) from the GPU and move it to the CPU.
 
         Args:
             output_image (Union[Tensor, list[Tensor], tuple[Tensor]]): The input tensor(s) to be moved.
