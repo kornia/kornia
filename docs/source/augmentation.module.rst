@@ -1,6 +1,10 @@
 Image Augmentations
 ===================
 
+.. meta::
+   :name: description
+   :content: "The Image Augmentations module in Kornia provides a wide range of 2D and 3D data augmentation transforms. It includes intensity-based augmentations, geometric transformations, mix-based augmentations, and normalization operations for both 2D and 3D image tensors. Key functions include random color shifts, rotations, cropping, elastic transformations, and more."
+
 .. currentmodule:: kornia.augmentation
 
 Transforms2D

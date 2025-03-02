@@ -1,6 +1,11 @@
 Models Overview
 ===============
 
+.. meta::
+   :name: description
+   :content: "The Kornia models overview provides detailed information about key built-in models for computer vision tasks, including real-time object detection (RT-DETR), edge detection (DexiNed), segmentation (UNet, DeepLabV3), and multi-object tracking (BoxMotTracker). It offers comprehensive documentation on each model, including methods, parameters, and example usage to streamline the integration of these models into computer vision workflows."
+
+
 This section covers several of Kornia's built-in models for key computer vision tasks. Each model is documented with its respective API and example usage.
 
 .. _RTDETRDetectorBuilder:

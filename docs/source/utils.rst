@@ -1,6 +1,10 @@
 kornia.utils
 ===================
 
+.. meta::
+   :name: description
+   :content: "The `kornia.utils` module provides a variety of utility functions for computer vision tasks, including image manipulation, pointcloud handling, device management, memory operations, and automatic mixed precision support. These utilities streamline workflows for tasks like image transformation, grid generation, and point cloud file handling."
+
 .. currentmodule:: kornia.utils
 
 Draw

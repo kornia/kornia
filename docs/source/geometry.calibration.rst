@@ -1,6 +1,10 @@
 kornia.geometry.calibration
 ===========================
 
+.. meta::
+   :name: description
+   :content: "The kornia.geometry.calibration module provides essential functions for camera calibration, including lens distortion modeling, undistortion, and Perspective-n-Point (PnP) solutions. This module supports advanced camera calibration techniques for both pinhole and distorted models, aiding in accurate 3D point projection, distortion correction, and camera pose estimation."
+
 .. currentmodule:: kornia.geometry.calibration
 
 Module with useful functionalities for camera calibration.

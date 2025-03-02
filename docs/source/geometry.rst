@@ -1,8 +1,9 @@
+kornia.geometry
+===============
+
 .. meta::
    :name: description
    :content: "The Kornia.geometry module provides essential geometric transformations for computer vision tasks, including 2D and 3D image manipulation. It includes submodules for image transforms, camera models, coordinate conversions, linear algebra operations, and depth map processing, supporting a wide range of geometric operations for accurate spatial transformations and 3D reconstructions."
-kornia.geometry
-===============
 
 Geometric image transformations is another key ingredient in computer vision to manipulate images.
 Since geometry operations are typically performed in 2D or 3D, we provide several algorithms to work

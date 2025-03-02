@@ -1,6 +1,10 @@
 kornia.geometry.transform
 =========================
 
+.. meta::
+   :name: description
+   :content: "The kornia.geometry.transform module provides a comprehensive set of functions for performing various geometric transformations on 2D and 3D images. It includes operators for warping, affine, and perspective transformations, as well as tools for resizing, scaling, rotating, and shearing images. Additionally, it supports advanced image registration techniques, pyramid building, and non-rigid transformations such as elastic transforms. This module is essential for tasks requiring image manipulation and alignment in computer vision and image processing workflows."
+
 .. currentmodule:: kornia.geometry.transform
 
 The functions in this section perform various geometrical transformations of 2D images.
