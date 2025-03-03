@@ -3,7 +3,7 @@ Base Classes
 
 .. meta::
    :name: description
-   :content: "The Base Classes module in Kornia provides foundational classes for creating new image transformations. It supports rigid (e.g., affine) and non-rigid (e.g., cut-out) augmentations, with predefined routines for sampling, applying, and reversing transformations. Custom augmentation classes like GeometricAugmentationBase2D and I
+   :content: "The Base Classes module in Kornia provides foundational classes for creating new image transformations. It supports rigid (e.g., affine) and non-rigid (e.g., cut-out) augmentations, with predefined routines for sampling, applying, and reversing transformations."
 
 .. currentmodule:: kornia.augmentation
 
