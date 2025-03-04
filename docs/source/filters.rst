@@ -1,6 +1,10 @@
 kornia.filters
 ==============
 
+.. meta::
+   :name: description
+   :content: "The Kornia filters module provides various image filtering operations such as blurring, edge detection, and noise reduction. It includes functions for bilateral, Gaussian, motion, median, and unsharp mask filtering, as well as pooling operations for blurring. These operations are designed to be differentiable and can be integrated seamlessly into deep learning pipelines."
+
 .. currentmodule:: kornia.filters
 
 The functions in this sections perform various image filtering operations.

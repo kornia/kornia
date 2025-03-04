@@ -1,6 +1,10 @@
 kornia.io
 =========
 
+.. meta::
+   :name: description
+   :content: "The Kornia.io package provides utilities to load and save image data efficiently. It integrates with `kornia_rs`, a low-level Rust implementation for computer vision, and supports the DLPack protocol to reduce memory footprint. This package is designed for Linux platforms and requires PyTorch 1.10.0 or higher."
+
 .. currentmodule:: kornia.io
 
 Package to load and save image data.

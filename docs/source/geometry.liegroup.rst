@@ -1,6 +1,10 @@
 kornia.geometry.liegroup
 ==========================
 
+.. meta::
+   :name: description
+   :content: "The kornia.geometry.liegroup module provides mathematical tools and operations for working with Lie groups and Lie algebras, which are fundamental in many areas of robotics and computer vision. Lie groups describe smooth manifolds that satisfy group axioms, while Lie algebras represent the tangent space at the identity element of these groups. This module includes key classes for common Lie groups like `SO2`, `SO3`, `SE2`, and `SE3`, and provides functions for performing operations like the exponential and logarithmic maps, which connect Lie algebras and Lie groups."
+
 .. currentmodule:: kornia.geometry.liegroup
 
 The Lie group encompasses the concepts of `group` and `smooth manifold` in a unique body.

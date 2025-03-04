@@ -1,6 +1,10 @@
 kornia.color
 ============
 
+.. meta::
+   :name: description
+   :content: "The Color module in Kornia provides a variety of functions for color space conversions, including RGB, HLS, HSV, Lab, and more. It also offers utilities for color maps and Bayer RAW processing."
+
 .. currentmodule:: kornia.color
 
 The functions in this section perform various color space conversions.

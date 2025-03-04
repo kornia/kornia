@@ -1,6 +1,10 @@
 kornia.geometry.epipolar
 ========================
 
+.. meta::
+   :name: description
+   :content: "The kornia.geometry.epipolar module provides essential tools for working with epipolar geometry, crucial in tasks like Structure from Motion (SfM). It includes functions for computing the essential and fundamental matrices, decomposing them, and deriving relative camera motion. The module also offers various metrics for evaluating epipolar constraints, triangulating 3D points, and handling projection transformations. Additionally, it supports functions for normalizing points and transformations, calculating epipolar distances, and generating camera intrinsics."
+
 .. currentmodule:: kornia.geometry.epipolar
 
 Module with useful functionalities for epipolar geometry used by Structure from Motion

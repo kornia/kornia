@@ -1,6 +1,10 @@
 kornia.contrib
 ==============
 
+.. meta::
+   :name: description
+   :content: "The Kornia.contrib module provides models and utilities for deep learning applications, including base models and the EfficientViT architecture. The module offers configurable, efficient Vision Transformer (ViT) models and tools to load and utilize pre-trained checkpoints, designed to be integrated into deep learning pipelines with PyTorch."
+
 .. currentmodule:: kornia.contrib
 
 Models

@@ -1,6 +1,10 @@
 kornia.losses
 =============
 
+.. meta::
+   :name: description
+   :content: "The kornia.losses module offers a comprehensive collection of loss functions for computer vision tasks, including image reconstruction, semantic segmentation, distribution-based losses, and morphological losses. With a wide range of loss types such as SSIM, PSNR, focal loss, and dice loss, this module enables efficient optimization for deep learning models across various domains, enhancing training for tasks like image restoration, segmentation, and object detection."
+
 .. currentmodule:: kornia.losses
 
 Reconstruction

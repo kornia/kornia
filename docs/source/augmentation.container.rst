@@ -1,6 +1,10 @@
 Augmentation Containers
 =======================
 
+.. meta::
+   :name: description
+   :content: "The Augmentation Containers module in Kornia provides advanced frameworks for building augmentation pipelines. It includes classes like AugmentationSequential, ManyToManyAugmentationDispatcher, and VideoSequential for managing data formats such as images, videos, and temporal data. It also supports processing masks, bounding boxes, and keypoints in augmentation workflows."
+
 .. currentmodule:: kornia.augmentation.container
 
 The classes in this section are containers for augmenting different data formats (e.g. images, videos).

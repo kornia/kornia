@@ -1,6 +1,10 @@
 Stereo Camera
 -------------
 
+.. meta::
+   :name: description
+   :content: "The kornia.geometry.camera.stereo module provides functionality for working with a horizontal stereo camera setup. It includes the StereoCamera class, which allows for the conversion of disparity maps into 3D point clouds using the stereo rectification model. This module leverages camera calibration matrices and disparity information to reproject pixels from 2D to 3D space, facilitating tasks such as depth estimation and 3D reconstruction."
+
 .. currentmodule:: kornia.geometry.camera.stereo
 
 In this module we provide the :class:`StereoCamera` that contains functionality for working with a horizontal stereo camera setup.

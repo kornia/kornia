@@ -1,6 +1,10 @@
 Pinhole Camera
 --------------
 
+.. meta::
+   :name: description
+   :content: "The kornia.geometry.camera.pinhole module provides functions and data structures to describe the projection of 3D scene space onto a 2D image plane using the Pinhole Camera model. This model is widely used in computer vision for tasks like camera calibration and 3D scene reconstruction, utilizing the projection of 3D points via perspective transformations."
+
 .. currentmodule:: kornia.geometry.camera.pinhole
 
 In this module we have all the functions and data structures needed to describe the projection of a 3D scene space onto a 2D image plane.
