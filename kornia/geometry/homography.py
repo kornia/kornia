@@ -186,8 +186,8 @@ def find_homography_dlt(
         # We should use provided weights
         if not (len(weights.shape) == 2 and weights.shape == points1.shape[:2]):
             raise AssertionError(weights.shape)
-        w_diag = torch.diag_embed(weights.unsqueeze(dim=-1).repeat(1, 1, 2).reshape(weights.shape[0], -1))
-        A = A.transpose(-2, -1) @ w_diag @ A
+        w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
+        A = (A.transpose(-2, -1) * w_full) @ A
 
     if solver == "svd":
         try:
