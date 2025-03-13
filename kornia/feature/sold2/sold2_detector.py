@@ -30,7 +30,7 @@ from kornia.utils import dataclass_to_dict, dict_to_dataclass, torch_meshgrid
 from .backbones import SOLD2Net
 
 urls: Dict[str, str] = {}
-urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/download"
+urls["wireframe"] = "https://cvg-data.inf.ethz.ch/SOLD2/sold2_wireframe.tar"
 
 
 class SOLD2_detector(Module):
