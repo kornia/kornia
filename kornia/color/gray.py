@@ -23,7 +23,7 @@ import torch
 
 from kornia.color.rgb import bgr_to_rgb
 from kornia.core import ImageModule as Module
-from kornia.core import Tensor, concatenate
+from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
 
@@ -50,7 +50,7 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 1:
         raise ValueError(f"Input size must have a shape of (*, 1, H, W). Got {image.shape}.")
 
-    return concatenate([image, image, image], -3)
+    return concatenate_triple(image)
 
 
 def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Tensor:
@@ -126,6 +126,12 @@ def bgr_to_grayscale(image: Tensor) -> Tensor:
 
     image_rgb: Tensor = bgr_to_rgb(image)
     return rgb_to_grayscale(image_rgb)
+
+
+def concatenate_triple(image: Tensor) -> Tensor:
+    """Efficiently concatenate an image tensor three times along a given dimension."""
+    # Utilize broadcasting to avoid explicit concatenation and improve performance
+    return image.expand(-1, 3, -1, -1)
 
 
 class GrayscaleToRgb(Module):
