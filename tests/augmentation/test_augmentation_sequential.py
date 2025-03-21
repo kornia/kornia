@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 import pytest
 import torch
+from reproducibility_test import reproducibility_test
 
 import kornia
 import kornia.augmentation as K
@@ -28,7 +29,6 @@ from kornia.constants import BorderType
 from kornia.geometry.bbox import bbox_to_mask
 
 from testing.base import assert_close
-from reproducibility_test import reproducibility_test
 
 
 class TestAugmentationSequential:

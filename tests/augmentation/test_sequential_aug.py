@@ -17,11 +17,10 @@
 
 import pytest
 import torch
+from reproducibility_test import reproducibility_test
 
 import kornia
 import kornia.augmentation as K
-
-from reproducibility_test import reproducibility_test
 
 
 class TestSequential:

@@ -17,10 +17,10 @@
 
 import pytest
 import torch
+from reproducibility_test import reproducibility_test
 
 import kornia.augmentation as K
 
-from reproducibility_test import reproducibility_test
 
 class TestPatchSequential:
     @pytest.mark.parametrize(
