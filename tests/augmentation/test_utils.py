@@ -23,4 +23,4 @@ def reproducibility_test(input, seq):
     elif isinstance(output_2, (torch.Tensor,)) and isinstance(output_1, (torch.Tensor,)):
         assert_close(output_1, output_2, msg=f"{seq._params}")
     else:
-        assert False, ("cannot compare", type(output_1), type(output_2))
+        raise AssertionError(f"cannot compare {type(output_1)} and {type(output_2)}")
