@@ -4,7 +4,7 @@ import torch
 import kornia
 import kornia.augmentation as K
 
-from test_utils import reproducibility_test
+from reproducibility_test import reproducibility_test
 
 
 class TestSequential:

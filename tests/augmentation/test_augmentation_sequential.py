@@ -11,7 +11,7 @@ from kornia.constants import BorderType
 from kornia.geometry.bbox import bbox_to_mask
 
 from testing.base import assert_close
-from test_utils import reproducibility_test
+from reproducibility_test import reproducibility_test
 
 
 class TestAugmentationSequential:
