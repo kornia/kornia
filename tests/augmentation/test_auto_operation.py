@@ -31,7 +31,7 @@ from kornia.geometry.bbox import bbox_to_mask
 
 from testing.base import BaseTester
 
-from tests.augmentation.test_container import reproducibility_test
+from tests.augmentation.reproducibility_test import reproducibility_test
 
 
 def _find_all_ops() -> List[OperationBase]:
