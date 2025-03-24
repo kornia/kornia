@@ -21,7 +21,7 @@ import torch
 import kornia
 import kornia.augmentation as K
 
-from reproducibility_test import reproducibility_test
+from testing.augmentation.utils import reproducibility_test
 
 
 class TestSequential:
