@@ -29,9 +29,8 @@ from kornia.augmentation.auto.trivial_augment import TrivialAugment
 from kornia.augmentation.container import AugmentationSequential
 from kornia.geometry.bbox import bbox_to_mask
 
-from testing.base import BaseTester
-
 from testing.augmentation.utils import reproducibility_test
+from testing.base import BaseTester
 
 
 def _find_all_ops() -> List[OperationBase]:

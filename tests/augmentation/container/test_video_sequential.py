@@ -21,7 +21,7 @@ import torch
 import kornia
 import kornia.augmentation as K
 
-from testing.augmentation.utils import reproducibility_test, assert_close
+from testing.augmentation.utils import assert_close, reproducibility_test
 
 
 class TestVideoSequential:

@@ -22,6 +22,7 @@ import kornia.augmentation as K
 
 from testing.augmentation.utils import reproducibility_test
 
+
 class TestPatchSequential:
     @pytest.mark.parametrize(
         "error_param",
