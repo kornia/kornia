@@ -251,7 +251,7 @@ def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
     For stable operation, the input matrices should be cast to fp64, and the output will
     be cast back to the input dtype. However, fp64 is not yet supported on MPS.
     """
-    if A.is_mps:
+    if is_mps_tensor_safe(A):
         dtype = torch.float32
     else:
         dtype = torch.float64
