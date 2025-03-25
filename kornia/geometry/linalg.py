@@ -240,13 +240,19 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
     if point.shape[-1] not in (2, 3):
         raise ValueError(f"pts must be a (*, 2 or 3) tensor. Got {point.shape}")
 
-    if not line.shape[-1] == 3:
+    if line.shape[-1] != 3:
         raise ValueError(f"lines must be a (*, 3) tensor. Got {line.shape}")
 
-    numerator = (line[..., 0] * point[..., 0] + line[..., 1] * point[..., 1] + line[..., 2]).abs()
-    denominator = line[..., :2].norm(dim=-1)
+    # Using in-place operations to improve performance
+    numerator = line[..., 0] * point[..., 0]
+    numerator += line[..., 1] * point[..., 1]
+    numerator += line[..., 2]
+    numerator.abs_()
 
-    return numerator / (denominator + eps)
+    # Avoid computing norm multiple times by saving its value
+    denom_norm = (line[..., 0].square() + line[..., 1].square()).sqrt()
+
+    return numerator / (denom_norm + eps)
 
 
 def batched_dot_product(x: Tensor, y: Tensor, keepdim: bool = False) -> Tensor:
