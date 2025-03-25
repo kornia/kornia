@@ -25,9 +25,12 @@ from typing import Any, Union
 
 def val2list(x: Union[list[Any], tuple[Any, ...], Any], repeat_time: int = 1) -> list[Any]:
     """Convert value to list."""
-    if isinstance(x, (list, tuple)):
+    if isinstance(x, list):
+        return x
+    elif isinstance(x, tuple):
         return list(x)
-    return [x for _ in range(repeat_time)]
+    else:
+        return [x] * repeat_time
 
 
 def val2tuple(x: Union[list[Any], tuple[Any, ...], Any], min_len: int = 1, idx_repeat: int = -1) -> tuple[Any, ...]:
