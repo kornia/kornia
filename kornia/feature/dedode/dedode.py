@@ -84,7 +84,7 @@ class DeDoDe(Module):
         images: Tensor,
         n: Optional[int] = 10_000,
         apply_imagenet_normalization: bool = True,
-        pad_if_not_divisible: bool = True,
+        pad_if_not_divisible: bool = False,
     ) -> Tuple[Tensor, Tensor, Tensor]:
         """Detect and describe keypoints in the input images.
 
@@ -120,7 +120,7 @@ class DeDoDe(Module):
         images: Tensor,
         n: Optional[int] = 10_000,
         apply_imagenet_normalization: bool = True,
-        pad_if_not_divisible: bool = True,
+        pad_if_not_divisible: bool = False,
         crop_h: Optional[int] = None,
         crop_w: Optional[int] = None,
     ) -> Tuple[Tensor, Tensor]:
