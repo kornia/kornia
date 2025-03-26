@@ -105,8 +105,8 @@ class DeDoDe(Module):
         if apply_imagenet_normalization:
             images = self.normalizer(images)
         B, C, H, W = images.shape
+        h, w = images.shape[2:]
         if pad_if_not_divisible:
-            h, w = images.shape[2:]
             pd_h = 14 - h % 14 if h % 14 > 0 else 0
             pd_w = 14 - w % 14 if w % 14 > 0 else 0
             images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
