@@ -105,8 +105,8 @@ class DeDoDe(Module):
         if apply_imagenet_normalization:
             images = self.normalizer(images)
         B, C, H, W = images.shape
+        h, w = images.shape[2:]
         if pad_if_not_divisible:
-            h, w = images.shape[2:]
             pd_h = 14 - h % 14 if h % 14 > 0 else 0
             pd_w = 14 - w % 14 if w % 14 > 0 else 0
             images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
@@ -142,6 +142,7 @@ class DeDoDe(Module):
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
         self.train(False)
+        B, C, H, W = images.shape
         if pad_if_not_divisible:
             h, w = images.shape[2:]
             pd_h = 14 - h % 14 if h % 14 > 0 else 0
@@ -149,8 +150,9 @@ class DeDoDe(Module):
             images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
         if apply_imagenet_normalization:
             images = self.normalizer(images)
-        B, C, H, W = images.shape
         logits = self.detector.forward(images)
+        # Remove the padding, if any
+        logits = logits[..., :H, :W]
         if crop_h is not None and crop_w is not None:
             logits = logits[..., :crop_h, :crop_w]
             H, W = crop_h, crop_w
