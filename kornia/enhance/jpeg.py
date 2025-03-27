@@ -555,6 +555,8 @@ def jpeg_codec_differentiable(
             f"Batch dimensions do not match. "
             f"Got {image_rgb.shape[0]} images and {jpeg_quality.shape[0]} JPEG qualities.",
         )
+    # keep jpeg_quality same device as input tensor
+    jpeg_quality = jpeg_quality.to(device, dtype)
     # Quantization tables to same device and dtype as input image
     quantization_table_y = quantization_table_y.to(device, dtype)
     quantization_table_c = quantization_table_c.to(device, dtype)
@@ -677,11 +679,17 @@ class JPEGCodecDifferentiable(Module):
         image_rgb: Tensor,
         jpeg_quality: Tensor,
     ) -> Tensor:
+        device = image_rgb.device
+        dtype = image_rgb.dtype
+        # Move quantization tables to the same device and dtype as input
+        # and store it in the local variables craeted in init
+        quantization_table_y = self.quantization_table_y.to(device, dtype)
+        quantization_table_c = self.quantization_table_c.to(device, dtype)
         # Perform encoding-decoding
         image_rgb_jpeg: Tensor = jpeg_codec_differentiable(
             image_rgb,
             jpeg_quality=jpeg_quality,
-            quantization_table_c=self.quantization_table_c,
-            quantization_table_y=self.quantization_table_y,
+            quantization_table_c=quantization_table_c,
+            quantization_table_y=quantization_table_y,
         )
         return image_rgb_jpeg
