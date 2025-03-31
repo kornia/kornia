@@ -268,3 +268,11 @@ ignore_errors = true
 
 [tool.pydocstyle]
 match = '.*\.py'
+
+[tool.codeflash]
+# All paths are relative to this pyproject.toml's directory.
+module-root = "kornia"
+tests-root = "tests"
+test-framework = "pytest"
+ignore-paths = []
+formatter-cmds = ["ruff check --exit-zero --fix $file", "ruff format $file"]
