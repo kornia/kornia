@@ -190,8 +190,16 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
             for y_i, s, dy_i in zip(y1[rest_mask], dy_sign[rest_mask], dy[rest_mask])
             for y in (y_i + s * torch.arange(0, dy_i + 1, 1, device=image.device))
         ]
-    x_coords = torch.tensor(dx_zero_x_coords + dy_zero_x_coords + dx_gt_dy_x_coords + rest_x_coords).long()
-    y_coords = torch.tensor(dx_zero_y_coords + dy_zero_y_coords + dx_gt_dy_y_coords + rest_y_coords).long()
+    x_coords = torch.clamp(
+        torch.tensor(dx_zero_x_coords + dy_zero_x_coords + dx_gt_dy_x_coords + rest_x_coords).long(),
+        min=0,
+        max=image.shape[-1] - 1,
+    )
+    y_coords = torch.clamp(
+        torch.tensor(dx_zero_y_coords + dy_zero_y_coords + dx_gt_dy_y_coords + rest_y_coords).long(),
+        min=0,
+        max=image.shape[-2] - 1,
+    )
     image[:, y_coords, x_coords] = color.view(-1, 1)
     return image
 
