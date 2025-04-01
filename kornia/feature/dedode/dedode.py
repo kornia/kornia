@@ -162,7 +162,10 @@ class DeDoDe(Module):
 
     @torch.inference_mode()
     def describe(
-        self, images: Tensor, keypoints: Optional[Tensor] = None, apply_imagenet_normalization: bool = True,
+        self,
+        images: Tensor,
+        keypoints: Optional[Tensor] = None,
+        apply_imagenet_normalization: bool = True,
         crop_h: Optional[int] = None,
         crop_w: Optional[int] = None,
     ) -> Tensor:
