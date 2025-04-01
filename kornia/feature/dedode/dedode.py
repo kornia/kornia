@@ -175,6 +175,8 @@ class DeDoDe(Module):
             images: A tensor of shape :math:`(B, 3, H, W)` containing the input images.
             keypoints: An optional tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
+            crop_h: The height of the crop to be used for description. If None, the full image is used.
+            crop_w: The width of the crop to be used for description. If None, the full image is used.
 
         Returns:
             descriptions: A tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints.
