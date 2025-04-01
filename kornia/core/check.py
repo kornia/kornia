@@ -365,9 +365,7 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None, raises: 
         True
 
     """
-    # Early return on small shapes or invalid channels
-    valid_shapes = {1, 3}
-    if len(x.shape) < 3 or x.shape[-3] not in valid_shapes:
+    if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
         if raises:
             raise TypeError(f"Not a color or gray tensor. Got: {type(x)}.\n{msg}")
         return False
