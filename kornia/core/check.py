@@ -393,8 +393,8 @@ def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: Optional[str] = None, raises: bool = T
 
     """
     # Combine the color or gray check with the range check
-    if not KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises):
-        return False if not raises else None
+    if not raises and not KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises):
+        return False
 
     min_val, max_val = x.min(), x.max()
     if x.dtype in [float16, float32, float64]:
