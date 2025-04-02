@@ -17,6 +17,7 @@
 
 import os
 
+import pypose as pp
 import torch
 
 import kornia
@@ -68,3 +69,4 @@ class TestSaveLoadPointCloud:
 
         if os.path.exists(filename):
             os.remove(filename)
+
