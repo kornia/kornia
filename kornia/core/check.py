@@ -456,7 +456,7 @@ def KORNIA_CHECK_LAF(laf: Tensor, raises: bool = True) -> bool:
     return KORNIA_CHECK_SHAPE(laf, ["B", "N", "2", "3"], raises)
 
 
-def _handle_invalid_range(msg: Optional[str], raises: bool, min_val: float | int, max_val: float | int) -> bool:
+def _handle_invalid_range(msg: Optional[str], raises: bool, min_val: float | int | Tensor, max_val: float | int | Tensor) -> bool:
     """Helper function to handle invalid range cases."""
     err_msg = f"Invalid image value range. Expect [0, 1] but got [{min_val}, {max_val}]."
     if msg is not None:
