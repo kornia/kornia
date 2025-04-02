@@ -44,7 +44,7 @@ def _unpack_2d_ks(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
     if isinstance(kernel_size, int):
         return kernel_size, kernel_size
     KORNIA_CHECK(len(kernel_size) == 2, "2D Kernel size should have a length of 2.")
-    return tuple(int(k) for k in kernel_size)
+    return tuple(int(k) for k in kernel_size)  # type: tuple[int, int]
 
 
 def _unpack_3d_ks(kernel_size: tuple[int, int, int] | int) -> tuple[int, int, int]:
