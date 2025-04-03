@@ -405,7 +405,3 @@ class TestBlobDoGSingle(BaseTester):
         batch_size, channels, height, width = 1, 2, 9, 11
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.feature.dog_response_single, (img), nondet_tol=1e-4)
-
-
-if __name__ == "__main__":
-    TestBlobDoGSingle().test_gradcheck(device="cpu")
