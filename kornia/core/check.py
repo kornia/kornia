@@ -361,7 +361,7 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None, raises: 
 
     Example:
         >>> img = torch.rand(2, 3, 4, 4)
-        >>> KORNIA_CHECK_IS_COLOR_OR_GRAY(img, "Image is not color orgrayscale")
+        >>> KORNIA_CHECK_IS_COLOR_OR_GRAY(img, "Image is not color or grayscale")
         True
 
     """
@@ -392,23 +392,18 @@ def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: Optional[str] = None, raises: bool = T
         True
 
     """
-    res = KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises=raises)
-
-    if not raises and not res:
+    # Combine the color or gray check with the range check
+    if not raises and not KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises):
         return False
 
-    err_msg = f"Invalid image value range. Expect [0, 1] but got [{x.min()}, {x.max()}]."
-    if msg is not None:
-        err_msg += f"\n{msg}"
-
-    if x.dtype in [float16, float32, float64] and (x.min() < 0.0 or x.max() > 1.0):
-        if raises:
-            raise ValueError(err_msg)
-        return False
-    elif x.min() < 0 or x.max() > 2**bits - 1:
-        if raises:
-            raise ValueError(err_msg)
-        return False
+    min_val, max_val = x.min(), x.max()
+    if x.dtype in [float16, float32, float64]:
+        if min_val < 0.0 or max_val > 1.0:
+            return _handle_invalid_range(msg, raises, min_val, max_val)
+    else:
+        max_int_value = 2**bits - 1
+        if min_val < 0 or max_val > max_int_value:
+            return _handle_invalid_range(msg, raises, min_val, max_val)
     return True
 
 
@@ -459,3 +454,13 @@ def KORNIA_CHECK_LAF(laf: Tensor, raises: bool = True) -> bool:
 
     """
     return KORNIA_CHECK_SHAPE(laf, ["B", "N", "2", "3"], raises)
+
+
+def _handle_invalid_range(msg: Optional[str], raises: bool, min_val: float | int | Tensor, max_val: float | int | Tensor) -> bool:
+    """Helper function to handle invalid range cases."""
+    err_msg = f"Invalid image value range. Expect [0, 1] but got [{min_val}, {max_val}]."
+    if msg is not None:
+        err_msg += f"\n{msg}"
+    if raises:
+        raise ValueError(err_msg)
+    return False
