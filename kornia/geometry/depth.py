@@ -83,7 +83,7 @@ def unproject_meshgrid(
 
     # project pixels to camera frame
     camera_matrix_tmp: Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
-    
+
     points_xy = normalize_points_with_intrinsics(points_uv, camera_matrix_tmp)  # HxWx2
 
     # unproject pixels to camera frame
