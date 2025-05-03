@@ -79,7 +79,7 @@ from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.geometry import transform_points
 from kornia.utils import create_meshgrid
-from kornia.utils._compat import torch_version
+from kornia.utils._compat import torch_version, torch_version_le
 from kornia.utils.helpers import _torch_inverse_cast
 
 from testing.augmentation.datasets import DummyMPDataset
@@ -5239,6 +5239,10 @@ class TestRandomJPEG(BaseTester):
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(
+    torch_version_le(2, 0, 1),
+    reason="Test requires distributed tensor support introduced in PyTorch > 2.0.1 for transformers clip model.",
+)
 class TestRandomDissolving(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
