@@ -5239,7 +5239,10 @@ class TestRandomJPEG(BaseTester):
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(torch_version_le(2, 0, 1), reason="Test requires distributed tensor support introduced in PyTorch > 2.0.1 for transformers clip model.")
+@pytest.mark.skipif(
+    torch_version_le(2, 0, 1),
+    reason="Test requires distributed tensor support introduced in PyTorch > 2.0.1 for transformers clip model.",
+)
 class TestRandomDissolving(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
