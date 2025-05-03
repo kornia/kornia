@@ -26,7 +26,7 @@ WEIGHTS_CACHE_DIR = "weights/"
 
 
 @pytest.mark.slow
-@pytest.mark.skipif(torch_version_le(2, 0, 1), reason="transformers clip model needs distributed tensor.")
+@pytest.mark.skipif(torch_version_le(2, 0, 1), reason="Skipped for torch versions <= 2.0.1: transformers clip model needs distributed tensor.")
 class TestStableDiffusionDissolving:
     @pytest.fixture(scope="class")
     def sdm_2_1(self):
