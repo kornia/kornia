@@ -48,20 +48,23 @@ class TestDepthTo3d(BaseTester):
         assert points3d.shape == (batch_size, 3, 3, 4)
 
     def test_depth_to_3d_v2(self, device, dtype):
-        depth = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
-        camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        depth = torch.rand(5, 1, 3, 4, device=device, dtype=dtype)
+        camera_matrix = torch.rand(5, 3, 3, device=device, dtype=dtype)
 
         points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix)
 
         # TODO: implement me with batch
-        points3d_v2 = kornia.geometry.depth.depth_to_3d_v2(depth[0, 0], camera_matrix[0])
-        self.assert_close(points3d[0].permute(1, 2, 0), points3d_v2)
+        # Permute the depth tensor to match the expected input shape for depth_to_3d_v2.
+        depth = torch.permute(depth, (1, 0, 2, 3))
+        points3d_v2 = kornia.geometry.depth.depth_to_3d_v2(depth[0], camera_matrix)
+        # Align the output format of depth_to_3d with depth_to_3d_v2 by reordering dimensions.
+        self.assert_close(points3d.permute(0, 2, 3, 1), points3d_v2)
 
     def test_unproject_meshgrid(self, device, dtype):
         # TODO: implement me with batch
-        camera_matrix = torch.eye(3, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).repeat(2, 1, 1)
         grid = kornia.geometry.unproject_meshgrid(3, 4, camera_matrix, device=device, dtype=dtype)
-        assert grid.shape == (3, 4, 3)
+        assert grid.shape == (2, 3, 4, 3)
         # test for now that the grid is correct and have homogeneous coords
         self.assert_close(grid[..., 2], torch.ones_like(grid[..., 2]))
 

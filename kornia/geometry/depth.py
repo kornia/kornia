@@ -74,14 +74,17 @@ def unproject_meshgrid(
         tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
 
     """
-    KORNIA_CHECK_SHAPE(camera_matrix, ["3", "3"])
+    KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
 
     # create base coordinates grid
     points_uv: Tensor = create_meshgrid(
         height, width, normalized_coordinates=False, device=device, dtype=dtype
     ).squeeze()  # HxWx2
 
-    points_xy = normalize_points_with_intrinsics(points_uv, camera_matrix)  # HxWx2
+    # project pixels to camera frame
+    camera_matrix_tmp: Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
+
+    points_xy = normalize_points_with_intrinsics(points_uv, camera_matrix_tmp)  # HxWx2
 
     # unproject pixels to camera frame
     points_xyz = convert_points_to_homogeneous(points_xy)  # HxWx3
@@ -116,9 +119,9 @@ def depth_to_3d_v2(
 
     Example:
         >>> depth = torch.rand(4, 4)
-        >>> K = torch.eye(3)
+        >>> K = torch.eye(3).repeat(2,1,1)
         >>> depth_to_3d_v2(depth, K).shape
-        torch.Size([4, 4, 3])
+        torch.Size([2, 4, 4, 3])
 
     """
     KORNIA_CHECK_SHAPE(depth, ["*", "H", "W"])
