@@ -54,6 +54,7 @@ class TestDepthTo3d(BaseTester):
         points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix)
 
         # TODO: implement me with batch
+        # Permute the depth tensor to match the expected input shape for depth_to_3d_v2.
         depth = torch.permute(depth, (1, 0, 2, 3))
         points3d_v2 = kornia.geometry.depth.depth_to_3d_v2(depth[0], camera_matrix)
         self.assert_close(points3d.permute(0, 2, 3, 1), points3d_v2)
