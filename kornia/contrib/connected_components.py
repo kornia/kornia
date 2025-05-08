@@ -66,7 +66,7 @@ def connected_components(image: Tensor, num_iterations: int = 100) -> Tensor:
 
     # allocate the output tensors for labels
     B, _, _, _ = image_view.shape
-    out = torch.arange(B * H * W, device=image.device, dtype=image.dtype).view((-1, 1, H, W))
+    out = torch.arange(1, B * H * W + 1, device=image.device, dtype=image.dtype).view((-1, 1, H, W))
     out[~mask] = 0
 
     for _ in range(num_iterations):
