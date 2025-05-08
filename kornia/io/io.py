@@ -59,9 +59,17 @@ def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
         if path_file.suffix.lower() in [".jpg", ".jpeg"]:
             img = kornia_rs.read_image_jpegturbo(str(path_file))
         elif path_file.suffix.lower() == ".png":
-            img = kornia_rs.read_image_png_u8(str(path_file), mode="rgb")
+            # TODO: implement in kornia_rs to read the headers
+            try:
+                img = kornia_rs.read_image_png_u8(str(path_file), mode="rgb")
+            except Exception as _:
+                img = kornia_rs.read_image_png_u8(str(path_file), mode="mono")
         elif path_file.suffix.lower() == ".tiff":
-            img = kornia_rs.read_image_tiff_u8(str(path_file), mode="rgb")
+            # TODO: implement in kornia_rs to read the headers
+            try:
+                img = kornia_rs.read_image_tiff_u8(str(path_file), mode="rgb")
+            except Exception as _:
+                img = kornia_rs.read_image_tiff_u8(str(path_file), mode="mono")
     else:
         img = kornia_rs.read_image_any(str(path_file))
 
