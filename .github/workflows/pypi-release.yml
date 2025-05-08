@@ -42,7 +42,6 @@ jobs:
 
     - name: Upload to release
       uses: AButler/upload-release-assets@v2.0
-      if: startsWith(github.event.ref, 'refs/tags')
       with:
         files: 'dist/*'
         repo-token: ${{ secrets.GITHUB_TOKEN }}
@@ -50,7 +49,6 @@ jobs:
   publish-pypi:
     runs-on: ubuntu-22.04
     needs: build-sdist
-    if: startsWith(github.event.ref, 'refs/tags')
     steps:
     - uses: actions/checkout@master
     - uses: actions/setup-python@v2
