@@ -30,7 +30,7 @@ jobs:
         path: dist
 
   upload-packages:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs: build-sdist
     steps:
     - uses: actions/checkout@v2
@@ -48,7 +48,7 @@ jobs:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
 
   publish-pypi:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs: build-sdist
     if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
     steps:
