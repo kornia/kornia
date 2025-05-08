@@ -149,7 +149,7 @@ def load_image(
     raise NotImplementedError(f"Unknown type: {desired_type}")
 
 
-def _write_uint8_image(path_file: Path, img_np: np.ndarray, quality: int) -> None:
+def _write_uint8_image(path_file: Path, img_np, quality: int) -> None:
     """Write uint8 image to file."""
     if path_file.suffix.lower() in [".jpg", ".jpeg"]:
         mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
@@ -164,7 +164,7 @@ def _write_uint8_image(path_file: Path, img_np: np.ndarray, quality: int) -> Non
         raise NotImplementedError(f"Unsupported file extension: {path_file.suffix} for uint8 image")
 
 
-def _write_uint16_image(path_file: Path, img_np: np.ndarray) -> None:
+def _write_uint16_image(path_file: Path, img_np) -> None:
     """Write uint16 image to file."""
     mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
     if path_file.suffix.lower() == ".png":
@@ -175,7 +175,7 @@ def _write_uint16_image(path_file: Path, img_np: np.ndarray) -> None:
         raise NotImplementedError(f"Unsupported file extension: {path_file.suffix} for uint16 image")
 
 
-def _write_float32_image(path_file: Path, img_np: np.ndarray) -> None:
+def _write_float32_image(path_file: Path, img_np) -> None:
     """Write float32 image to file."""
     mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
     if path_file.suffix.lower() == ".tiff":
