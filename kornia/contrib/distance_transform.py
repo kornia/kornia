@@ -82,7 +82,7 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
         if mask.sum() == 0:
             break
 
-        offset: int = i * kernel_size // 2
+        offset: int = i * (kernel_size // 2)
         out += (offset + cdt) * mask
         boundary = torch.where(mask == 1, signal_ones, boundary)
 

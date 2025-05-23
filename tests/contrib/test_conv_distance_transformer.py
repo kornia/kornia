@@ -104,3 +104,24 @@ class TestConvDistanceTransform(BaseTester):
         sample2 = kornia.contrib.distance_transform(sample2)
         loss = torch.nn.functional.mse_loss(sample1, sample2)
         loss.backward()
+
+    def test_offset_parenthesis_fix(self, device, dtype):
+        img = torch.zeros(1, 1, 8, 4, device=device, dtype=dtype)
+        img[0, 0, 1, :] = 1.0
+        out = kornia.contrib.distance_transform(img, kernel_size=3, h=0.01)
+        expected = torch.tensor(
+            [
+                [0.9998, 0.9998, 0.9998, 0.9998],
+                [0.0000, 0.0000, 0.0000, 0.0000],
+                [0.9998, 0.9998, 0.9998, 0.9998],
+                [1.9998, 1.9998, 1.9998, 1.9998],
+                [2.9998, 2.9998, 2.9998, 2.9998],
+                [3.9998, 3.9998, 3.9998, 3.9998],
+                [4.9998, 4.9998, 4.9998, 4.9998],
+                [5.9998, 5.9998, 5.9998, 5.9998],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        self.assert_close(out[0, 0], expected, rtol=1e-3, atol=1e-3)
