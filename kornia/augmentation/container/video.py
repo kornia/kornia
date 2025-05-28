@@ -147,7 +147,6 @@ class VideoSequential(ImageSequential):
 
     def __repeat_param_across_channels__(self, param: Tensor, frame_num: int) -> Tensor:
         """Repeat parameters across channels.
-
         The input is shaped as (B, ...), while to output (B * same_on_frame, ...), which
         to guarantee that the same transformation would happen for each frame.
 
@@ -195,11 +194,22 @@ class VideoSequential(ImageSequential):
                     mod_param["src"] = mod_param["src"].repeat(frame_num, 1, 1)
                     mod_param["dst"] = mod_param["dst"].repeat(frame_num, 1, 1)
                 param = ParamItem(name, mod_param)
-            elif isinstance(module, (SequentialBase,)):
-                seq_param = module.forward_parameters(batch_shape)
+            elif isinstance(module, SequentialBase):
+                inner_params = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
-                    raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
-                param = ParamItem(name, seq_param)
+                    def repeat_inner(params):
+                        if isinstance(params, list):
+                            for item in params:
+                                if isinstance(item, ParamItem):
+                                    if isinstance(item.data, dict):
+                                        for k, v in item.data.items():
+                                            if isinstance(v, Tensor):
+                                                item.data[k] = self.__repeat_param_across_channels__(v, frame_num)
+                                    elif isinstance(item.data, list):
+                                        repeat_inner(item.data)
+                        return params
+                    inner_params = repeat_inner(inner_params)
+                param = ParamItem(name, inner_params)
             elif isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
                 mod_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:

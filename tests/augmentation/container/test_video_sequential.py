@@ -166,3 +166,42 @@ class TestVideoSequential:
             output = aug(imgs)
 
         assert output.dtype == dtype, "Output image dtype should match the input dtype"
+
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
+    def test_same_on_frame_vs_different(self, data_format, device, dtype):
+        B, C, T, H, W = 1, 3, 4, 5, 5
+        if data_format == "BCTHW":
+            input = torch.randn(B, C, 1, H, W, device=device, dtype=dtype).repeat(1, 1, T, 1, 1)
+        else:
+            input = torch.randn(B, 1, C, H, W, device=device, dtype=dtype).repeat(1, T, 1, 1, 1)
+        torch.manual_seed(42)
+        aug_same = K.VideoSequential(
+            K.ColorJiggle(0.5, 0.5, 0.5, 0.5, p=1.0),
+            data_format=data_format,
+            same_on_frame=True,
+        )
+        out_same = aug_same(input)
+        if data_format == "BCTHW":
+            for t in range(1, T):
+                assert_close(out_same[:, :, t], out_same[:, :, 0])
+        else:
+            for t in range(1, T):
+                assert_close(out_same[:, t], out_same[:, 0])
+        torch.manual_seed(42)
+        aug_diff = K.VideoSequential(
+            K.ColorJiggle(0.5, 0.5, 0.5, 0.5, p=1.0),
+            data_format=data_format,
+            same_on_frame=False,
+        )
+        out_diff = aug_diff(input)
+        if data_format == "BCTHW":
+            has_diff = any(
+                not torch.allclose(out_diff[:, :, t], out_diff[:, :, 0], atol=1e-5)
+                for t in range(1, T)
+            )
+        else:
+            has_diff = any(
+                not torch.allclose(out_diff[:, t], out_diff[:, 0], atol=1e-5)
+                for t in range(1, T)
+            )
+        assert has_diff, "Expected different frames with same_on_frame=False"
