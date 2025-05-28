@@ -197,6 +197,7 @@ class VideoSequential(ImageSequential):
             elif isinstance(module, SequentialBase):
                 inner_params = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
+
                     def repeat_inner(params):
                         if isinstance(params, list):
                             for item in params:
@@ -208,6 +209,7 @@ class VideoSequential(ImageSequential):
                                     elif isinstance(item.data, list):
                                         repeat_inner(item.data)
                         return params
+
                     inner_params = repeat_inner(inner_params)
                 param = ParamItem(name, inner_params)
             elif isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):

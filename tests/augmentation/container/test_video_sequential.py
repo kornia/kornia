@@ -195,13 +195,7 @@ class TestVideoSequential:
         )
         out_diff = aug_diff(input)
         if data_format == "BCTHW":
-            has_diff = any(
-                not torch.allclose(out_diff[:, :, t], out_diff[:, :, 0], atol=1e-5)
-                for t in range(1, T)
-            )
+            has_diff = any(not torch.allclose(out_diff[:, :, t], out_diff[:, :, 0], atol=1e-5) for t in range(1, T))
         else:
-            has_diff = any(
-                not torch.allclose(out_diff[:, t], out_diff[:, 0], atol=1e-5)
-                for t in range(1, T)
-            )
+            has_diff = any(not torch.allclose(out_diff[:, t], out_diff[:, 0], atol=1e-5) for t in range(1, T))
         assert has_diff, "Expected different frames with same_on_frame=False"
