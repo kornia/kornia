@@ -149,7 +149,6 @@ class VideoSequential(ImageSequential):
         """Repeat parameters across channels.
         The input is shaped as (B, ...), while to output (B * same_on_frame, ...), which
         to guarantee that the same transformation would happen for each frame.
-
         (B1, B2, ..., Bn) => (B1, ... B1, B2, ..., B2, ..., Bn, ..., Bn)
                               | ch_size | | ch_size |  ..., | ch_size |
         """
@@ -173,7 +172,6 @@ class VideoSequential(ImageSequential):
             input = input.transpose(1, 2)
         if self.data_format == "BTCHW":
             pass
-
         return input
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
@@ -181,7 +179,6 @@ class VideoSequential(ImageSequential):
         named_modules = self.get_forward_sequence()
         # Got param generation shape to (B, C, H, W). Ignoring T.
         batch_shape = self.__infer_channel_exclusive_batch_shape__(batch_shape, self._temporal_channel)
-
         if not self.same_on_frame:
             # Overwrite param generation shape to (B * T, C, H, W).
             batch_shape = torch.Size([batch_shape[0] * frame_num, *batch_shape[1:]])
@@ -196,8 +193,7 @@ class VideoSequential(ImageSequential):
                 param = ParamItem(name, mod_param)
             elif isinstance(module, SequentialBase):
                 inner_params = module.forward_parameters(batch_shape)
-                if self.same_on_frame:
-
+                if self.same_on_frame:          
                     def repeat_inner(params):
                         if isinstance(params, list):
                             for item in params:
@@ -209,7 +205,6 @@ class VideoSequential(ImageSequential):
                                     elif isinstance(item.data, list):
                                         repeat_inner(item.data)
                         return params
-
                     inner_params = repeat_inner(inner_params)
                 param = ParamItem(name, inner_params)
             elif isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
