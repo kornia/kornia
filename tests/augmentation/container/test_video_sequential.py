@@ -166,10 +166,9 @@ class TestVideoSequential:
             output = aug(imgs)
 
         assert output.dtype == dtype, "Output image dtype should match the input dtype"
-        
+
     @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
     class TestVideoSequential:
-
         def test_same_on_frame_true(self, data_format, device, dtype):
             B, C, T, H, W = 1, 3, 4, 5, 5
             if data_format == "BCTHW":
@@ -208,14 +207,8 @@ class TestVideoSequential:
             out = aug(input)
 
             if data_format == "BCTHW":
-                has_diff = any(
-                    not torch.allclose(out[:, :, t], out[:, :, 0], atol=1e-5)
-                    for t in range(1, T)
-                )
+                has_diff = any(not torch.allclose(out[:, :, t], out[:, :, 0], atol=1e-5) for t in range(1, T))
             else:
-                has_diff = any(
-                    not torch.allclose(out[:, t], out[:, 0], atol=1e-5)
-                    for t in range(1, T)
-                )
+                has_diff = any(not torch.allclose(out[:, t], out[:, 0], atol=1e-5) for t in range(1, T))
 
             assert has_diff, "Expected different frames with same_on_frame=False"
