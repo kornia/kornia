@@ -60,6 +60,14 @@ Codec
 
 .. autofunction:: jpeg_codec_differentiable
 
+Threshold
+---------
+
+.. autofunction:: thresh_binary
+.. autofunction:: thresh_binary_inv
+.. autofunction:: thresh_tozero
+.. autofunction:: thresh_tozero_inv
+.. autofunction:: thresh_trunc
 
 Modules
 -------
@@ -82,6 +90,11 @@ Modules
 
 .. autoclass:: JPEGCodecDifferentiable
 
+.. autofunction:: ThreshBinary
+.. autofunction:: ThreshBinaryInv
+.. autofunction:: ThreshToZero
+.. autofunction:: ThreshToZeroInv
+.. autofunction:: ThreshTrunc
 
 ZCA Whitening Interactive Demo
 ------------------------------
