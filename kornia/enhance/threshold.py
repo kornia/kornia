@@ -21,12 +21,12 @@ import torch
 
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor, tensor
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_TYPE
 
 
 def _differentiable_binary_thresh(
     src: Tensor, thresh: Union[float, Tensor], beta: Union[float, Tensor], inv: bool = False
-):
+) -> Tensor:
     """Perform differentiable binary thresholding.
 
     Args:
@@ -55,7 +55,7 @@ def _differentiable_binary_thresh(
 
 def thresh_binary(
     src: Tensor, thresh: Union[float, Tensor], maxval: Union[float, Tensor], beta: Union[float, Tensor] = 50.0
-):
+) -> Tensor:
     r"""Apply differentiable binary thresholding to image.
 
     .. image:: _static/img/thresh_binary.png
@@ -89,7 +89,7 @@ def thresh_binary(
 
 def thresh_binary_inv(
     src: Tensor, thresh: Union[float, Tensor], maxval: Union[float, Tensor], beta: Union[float, Tensor] = 50.0
-):
+) -> Tensor:
     r"""Apply differentiable inverse binary thresholding to image.
 
     .. image:: _static/img/thresh_binary_inv.png
@@ -121,7 +121,7 @@ def thresh_binary_inv(
     return maxval * _differentiable_binary_thresh(src, thresh, beta, inv=True)
 
 
-def thresh_trunc(src: Tensor, thresh: Union[float, Tensor], beta: Union[float, Tensor] = 50.0):
+def thresh_trunc(src: Tensor, thresh: Union[float, Tensor], beta: float = 50.0) -> Tensor:
     r"""Apply differentiable truncate thresholding to image.
 
     .. image:: _static/img/thresh_trunc.png
@@ -144,12 +144,14 @@ def thresh_trunc(src: Tensor, thresh: Union[float, Tensor], beta: Union[float, T
         torch.Size([1, 3, 3, 3])
 
     Notes:
-        Tensor thresh/beta have to be with shape broadcastable to src shape.
+        Tensor thresh has to be with shape broadcastable to src shape.
     """
+    KORNIA_CHECK_TYPE(beta, float)
+
     return src - torch.nn.functional.softplus(src - thresh, beta)
 
 
-def thresh_tozero(src: Tensor, thresh: Union[float, Tensor], beta: Union[float, Tensor] = 50.0):
+def thresh_tozero(src: Tensor, thresh: Union[float, Tensor], beta: Union[float, Tensor] = 50.0) -> Tensor:
     r"""Apply differentiable to-zero thresholding to image.
 
     .. image:: _static/img/thresh_tozero.png
@@ -177,7 +179,7 @@ def thresh_tozero(src: Tensor, thresh: Union[float, Tensor], beta: Union[float, 
     return src * _differentiable_binary_thresh(src, thresh, beta)
 
 
-def thresh_tozero_inv(src: Tensor, thresh: Union[float, Tensor], beta: Union[float, Tensor] = 50.0):
+def thresh_tozero_inv(src: Tensor, thresh: Union[float, Tensor], beta: Union[float, Tensor] = 50.0) -> Tensor:
     r"""Apply differentiable inverse to-zero thresholding to image.
 
     .. image:: _static/img/thresh_tozero_inv.png
@@ -196,7 +198,6 @@ def thresh_tozero_inv(src: Tensor, thresh: Union[float, Tensor], beta: Union[flo
     Example:
         >>> x = torch.rand(1, 3, 3, 3)
         >>> out = thresh_tozero_inv(x, thresh=0.5)
-        >>> torch.unique(out[out != x])
         >>> out.shape
         torch.Size([1, 3, 3, 3])
 
@@ -261,7 +262,6 @@ class ThreshBinaryInv(Module):
     Example:
         >>> x = torch.rand(1, 3, 3, 3)
         >>> out = ThreshBinaryInv(thresh=0.5, maxval=255.)(x)
-        >>> torch.unique(out)
         >>> out.shape
         torch.Size([1, 3, 3, 3])
 
@@ -302,13 +302,13 @@ class ThreshTrunc(Module):
         torch.Size([1, 3, 3, 3])
 
     Notes:
-        Tensor thresh/beta have to be with shape broadcastable to Input shape.
+        Tensor thresh has to be with shape broadcastable to Input shape.
     """
 
-    def __init__(self, thresh: Union[float, Tensor], beta: Union[float, Tensor] = 50.0) -> None:
+    def __init__(self, thresh: Union[float, Tensor], beta: float = 50.0) -> None:
         super().__init__()
         self.thresh: Union[float, Tensor] = thresh
-        self.beta: Union[float, Tensor] = beta
+        self.beta: float = beta
 
     def forward(self, input: Tensor) -> Tensor:
         return thresh_trunc(input, self.thresh, self.beta)
