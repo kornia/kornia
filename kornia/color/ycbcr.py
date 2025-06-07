@@ -100,7 +100,7 @@ def rgb_to_ycbcr420(image: Tensor) -> tuple[Tensor, Tensor]:
     Returns:
         A Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
         A Tensor containing the CbCr planes with shape :math:`(*, 2, H/2, W/2)`
-        
+
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
         >>> output = rgb_to_ycbcr420(input)  # (2x1x4x6, 2x2x2x3)
@@ -132,7 +132,7 @@ def rgb_to_ycbcr422(image: Tensor) -> tuple[Tensor, Tensor]:
     Returns:
         A Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
         A Tensor containing the CbCr planes with shape :math:`(*, 2, H, W/2)`
-        
+
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
         >>> output = rgb_to_ycbcr420(input)  # (2x1x4x6, 2x2x4x3)
