@@ -91,6 +91,71 @@ def rgb_to_y(image: Tensor) -> Tensor:
     return y
 
 
+def rgb_to_ycbcr420(image: Tensor) -> tuple[Tensor, Tensor]:
+    r"""Convert an RGB image to YCbCr 420 (subsampled).
+
+    .. image:: _static/img/rgb_to_ycbcr.png
+
+    Args:
+        image: RGB Image to be converted to YCbCr with shape :math:`(*, 3, H, W)`.
+
+    Returns:
+        A Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
+        A Tensor containing the CbCr planes with shape :math:`(*, 2, H/2, W/2)`
+        
+    Example:
+        >>> input = torch.rand(2, 3, 4, 6)
+        >>> output = rgb_to_ycbcr420(input)  # (2x1x4x6, 2x2x2x3)
+
+    """
+    if not isinstance(image, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+
+    if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
+        raise ValueError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+
+    yuvimage = rgb_to_ycbcr(image)
+
+    return (
+        yuvimage[..., :1, :, :],
+        yuvimage[..., 1:3, :, :].unfold(-2, 2, 2).unfold(-2, 2, 2).mean((-1, -2)),
+    )
+
+
+def rgb_to_ycbcr422(image: Tensor) -> tuple[Tensor, Tensor]:
+    r"""Convert an RGB image to YCbCr 422 (subsampled).
+
+    .. image:: _static/img/rgb_to_ycbcr.png
+
+    Args:
+        image: RGB Image to be converted to YCbCr with shape :math:`(*, 3, H, W)`.
+
+    Returns:
+        A Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
+        A Tensor containing the CbCr planes with shape :math:`(*, 2, H, W/2)`
+        
+    Example:
+        >>> input = torch.rand(2, 3, 4, 6)
+        >>> output = rgb_to_ycbcr420(input)  # (2x1x4x6, 2x2x4x3)
+
+    """
+    if not isinstance(image, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
+
+    if len(image.shape) < 3 or image.shape[-3] != 3:
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+
+    if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
+        raise ValueError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+
+    yuvimage = rgb_to_ycbcr(image)
+
+    return (yuvimage[..., :1, :, :], yuvimage[..., 1:3, :, :].unfold(-1, 2, 2).mean(-1))
+
+
 def ycbcr_to_rgb(image: Tensor) -> Tensor:
     r"""Convert an YCbCr image to RGB.
 
