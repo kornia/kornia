@@ -262,7 +262,7 @@ def yuv422_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
 
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
-        imageuv: UV (luma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
+        imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
 
     Returns:
         RGB version of the image with shape :math:`(*, 3, H, W)`.
@@ -270,7 +270,7 @@ def yuv422_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
         >>> inputuv = torch.rand(2, 2, 2, 3)
-        >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x5
+        >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x6
 
     """
     if not isinstance(imagey, Tensor):
@@ -353,7 +353,7 @@ class RgbToYuv420(Module):
     Examples:
         >>> yuvinput = torch.rand(2, 3, 4, 6)
         >>> yuv = RgbToYuv420()
-        >>> output = yuv(yuvinput)  # # (2x1x4x6, 2x1x2x3)
+        >>> output = yuv(yuvinput)  # # (2x1x4x6, 2x2x2x3)
 
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
