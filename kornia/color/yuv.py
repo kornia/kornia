@@ -131,7 +131,7 @@ def rgb_to_yuv422(image: Tensor) -> tuple[Tensor, Tensor]:
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
-        >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x1x4x3)
+        >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x2x4x3)
 
     """
     if not isinstance(image, Tensor):
