@@ -5,28 +5,28 @@ Real-Time Detection Transformer (RT-DETR)
     import sys
     from kornia.io import load_image
     from kornia.models.detection.rtdetr import RTDETRDetectorBuilder
-    
+
     infile = sys.argv[1]
     outfile = sys.argv[2]
     print(f"Loading image: {infile}")
     input_img = load_image(infile)[None]  # Load image to BCHW
-    
+
     # NOTE: available models: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
     # NOTE: recommended image scales: [480, 512, 544, 576, 608, 640, 640, 640, 672, 704, 736, 768, 800]
     detector = RTDETRDetectorBuilder.build("rtdetr_r18vd", image_size=640)
-    
+
     # get the output boxes
     boxes = detector(input_img)
-    
-    # detector returns a tensor with format described in 
+
+    # detector returns a tensor with format described in
     # kornia/contrib/models/rt_detr/post_processor.py
     # I.e.,
     # For each image, the detections have shape (D, 6), where D is the number of detections
     # in that image, 6 represent (class_id, confidence_score, x, y, w, h).
-    
+
     # print the detection result
     print(boxes)
-    
+
 .. card::
     :link: https://arxiv.org/abs/2304.08069
 
