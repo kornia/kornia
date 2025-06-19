@@ -27,10 +27,8 @@ from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
-from .params import ParamItem
-
 from ..utils.helpers import repeat_param_item_nested_list
-
+from .params import ParamItem
 
 __all__ = ["VideoSequential"]
 
@@ -198,9 +196,7 @@ class VideoSequential(ImageSequential):
                 inner_params = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     inner_params = repeat_param_item_nested_list(
-                        inner_params,
-                        frame_num,
-                        repeat_fn=self.__repeat_param_across_channels__
+                        inner_params, frame_num, repeat_fn=self.__repeat_param_across_channels__
                     )
                 param = ParamItem(name, inner_params)
             elif isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):

@@ -215,9 +215,9 @@ class TestVideoSequential:
                 has_diff = any(
                     not torch.allclose(out[:, t], out[:, 0], atol=1e-5)
                     for t in range(1, T)
-                ) 
-                if not has_diff: 
-                    for t in range(T): 
+                )
+                if not has_diff:
+                    for t in range(T):
                         print(f"Frame {t} mean: {out [:, :, t].mean().item()}")
 >>>>>>> 8967bbac (Implement per-frame param repetition for VideoSequential; add repeat_param_item_nested_list helper and test for same_on_frame=False)
 

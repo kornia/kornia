@@ -477,11 +477,8 @@ def preprocess_classes(input: Tensor) -> Tensor:
     # TODO: We may allow list here.
     return input
 
-def repeat_param_item_nested_list(
-    params: list,
-    frame_num: int,
-    repeat_fn: Callable[[Tensor, int], Tensor]
-) -> list:
+
+def repeat_param_item_nested_list(params: list, frame_num: int, repeat_fn: Callable[[Tensor, int], Tensor]) -> list:
     r"""Recursively repeat tensor values in a nested parameter structure for a given number of video frames.
 
     This function traverses a potentially nested list of parameter objects, where each object is expected to
@@ -510,7 +507,7 @@ def repeat_param_item_nested_list(
         This function modifies the input `params` in-place and returns the same reference.
     """
     for item in params:
-        if not hasattr(item, 'data'):
+        if not hasattr(item, "data"):
             continue
 
         data = item.data
@@ -524,6 +521,7 @@ def repeat_param_item_nested_list(
             repeat_param_item_nested_list(data, frame_num, repeat_fn)
 
     return params
+
 
 class MultiprocessWrapper:
     """When used as a base class, makes the class work with the 'spawn' multiprocessing context."""
