@@ -8,7 +8,7 @@ onnx
 onnxruntime
 pillow
 pre-commit>=2
-pytest==8.3.5
+pytest==8.4.1
 pytest-timeout
 requests
 setuptools>=61.2  # needed by pytorch dynamo / triton
