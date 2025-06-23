@@ -21,13 +21,14 @@ from typing import Any, Union, Tuple, Optional
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK
 from kornia.utils.image import perform_keep_shape_image
 
 
 class ThreshOtsu(torch.nn.Module):
     """Otsu thresholding module for PyTorch tensors."""
 
-    def __init__(self, nbins: Optional[int] = 256) -> None:
+    def __init__(self, nbins: int = 256) -> None:
         """
         Initialize the ThreshOtsu module.
 
@@ -36,13 +37,13 @@ class ThreshOtsu(torch.nn.Module):
 
         Attributes:
             nbins (int): Number of bins for histogram computation.
-            _threshold (float): Otsu-computed threshold, initialized to -1.
+            _threshold (Union[float, torch.Tensor]): Otsu-computed threshold, initialized to -1.
             _early_stop (float): Fraction of max iterations without improvement before early stopping.
         """
         super().__init__()
         self.nbins: int = nbins
 
-        self._threshold: float = -1
+        self._threshold: Union[float, torch.Tensor] = -1
         self._early_stop: float = 0.1
 
     @staticmethod
@@ -84,25 +85,25 @@ class ThreshOtsu(torch.nn.Module):
                         min=min_val.item(),
                         max=max_val.item()
                     ),
-                    length=max_val - min_val
+                    length=int(max_val.item() - min_val.item())
                 )
             )
             boundaries.append(
                 ThreshOtsu.__rfill(
                     torch.linspace(
                         min_val.item(), max_val.item(), bins + 1),
-                    length=max_val - min_val + 1
+                    length=int(max_val.item() - min_val.item()) + 1
                 )
             )
         return torch.stack(counts).to(xs.device), torch.stack(boundaries).to(xs.device)
 
     @property
-    def threshold(self) -> float:
+    def threshold(self) -> Union[float, torch.Tensor]:
         """Return the Otsu-computed threshold."""
         return self._threshold
 
     @threshold.setter
-    def threshold(self, value: float) -> None:
+    def threshold(self, value: Union[float, torch.Tensor]) -> None:
         """Manually set the threshold."""
         self._threshold = value
 
@@ -158,18 +159,17 @@ class ThreshOtsu(torch.nn.Module):
         # Check tensor type compatibility
         if x.device.type == 'cpu':
             # Error of torch.histc on CPU with int and uint types
-            assert any([x.dtype is std_dtype for std_dtype in [
+            KORNIA_CHECK(x.dtype in [
                 torch.float32, torch.float64, torch.float16, torch.bfloat16
-            ]]), "Tensor dtype not supported for Otsu thresholding: only float types are supported on CPU."
+            ], "Tensor dtype not supported for Otsu thresholding: only float types are supported on CPU.")
         else:
-            assert any([x.dtype is std_dtype for std_dtype in [
+            KORNIA_CHECK(x.dtype in [
                 torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64,
                 torch.float32, torch.float64, torch.float16, torch.bfloat16
-            ]]), "Tensor dtype not supported for Otsu thresholding."
+            ], "Tensor dtype not supported for Otsu thresholding.")
 
         min_value = x.min(dim=-1)[0]
         x = (x.T - min_value).T  # Shift values to start at 0
-        max_val = torch.max(x, dim=-1)[0]
 
         histogram, bin_edges = ThreshOtsu.__histogram(x, bins=self.nbins)
         nb_px = x[0, :].numel()
@@ -229,7 +229,8 @@ class ThreshOtsu(torch.nn.Module):
 @perform_keep_shape_image
 def otsu_threshold(
     x: torch.Tensor,
-    nbins: Optional[int] = 256,
+    nbins: int = 256,
+    return_mask: bool = False,
     use_thresh: bool = False,
     threshold: Optional[Union[float, torch.Tensor]] = None
 ) -> torch.Tensor:
@@ -238,7 +239,9 @@ def otsu_threshold(
 
     Args:
         x (Tensor): Input tensor (image or batch of images).
-        nbins (Optional[int]): Number of bins for histogram computation, default is 256.
+        nbins (int): Number of bins for histogram computation, default is 256.
+        return_mask (bool): If True, return a binary mask indicating the thresholded pixels. If False, \\
+            return the thresholded image.
         use_thresh (bool): If True, use the already computed threshold.
         threshold (Optional[Union[float, Tensor]]): Manually set threshold value.
 
@@ -249,7 +252,8 @@ def otsu_threshold(
         ValueError: If the input tensor has unsupported dimensionality or dtype.
 
     .. note::
-        - The input tensor should be of type `torch.uint8`, `torch.int8`, `torch.int16`, `torch.int32`, or `torch.int64`.
+        - The input tensor should be of type `torch.uint8`, `torch.int8`, `torch.int16`, `torch.int32`, or \\
+            `torch.int64`.
         - If `use_thresh` is True, the threshold must have been computed previously and set in the module.
         - If `threshold` is provided, it overrides the computed threshold.
 
@@ -259,22 +263,26 @@ def otsu_threshold(
     Example:
         >>> import torch
         >>> from kornia.filters.otsu_thresholding import otsu_threshold
-        >>> image = (torch.rand(1, 4, 6, 1)) # Example image tensor
+        >>> torch.manual_seed(0)
+        >>> image = torch.rand(1, 4, 6) # Example image tensor
         >>> image
-        tensor([[[0.3242, 0.9274, 0.2698, 0.6051, 0.5593, 0.9046],
-                [0.5523, 0.3117, 0.9998, 0.8168, 0.6106, 0.8170],
-                [0.6732, 0.2573, 0.8742, 0.6480, 0.6437, 0.4655],
-                [0.9192, 0.7064, 0.8363, 0.0825, 0.3442, 0.8216]]])
+        tensor([[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074, 0.6341],
+                 [0.4901, 0.8964, 0.4556, 0.6323, 0.3489, 0.4017],
+                 [0.0223, 0.1689, 0.2939, 0.5185, 0.6977, 0.8000],
+                 [0.1610, 0.2823, 0.6816, 0.9152, 0.3971, 0.8742]]])
         >>> otsu_threshold(image, nbins=3)
-        tensor([[[0.0000, 0.9274, 0.0000, 0.0000, 0.0000, 0.9046],
-                [0.0000, 0.0000, 0.9998, 0.8168, 0.0000, 0.8170],
-                [0.0000, 0.0000, 0.8742, 0.0000, 0.0000, 0.0000],
-                [0.9192, 0.7064, 0.8363, 0.0000, 0.0000, 0.8216]]],
-            dtype=torch.float64)
+        tensor([[[0.4963, 0.7682, 0.0000, 0.0000, 0.0000, 0.6341],
+                 [0.4901, 0.8964, 0.4556, 0.6323, 0.3489, 0.4017],
+                 [0.0000, 0.0000, 0.0000, 0.5185, 0.6977, 0.8000],
+                 [0.0000, 0.0000, 0.6816, 0.9152, 0.3971, 0.8742]]],
+               dtype=torch.float64)
     """
 
     module = ThreshOtsu(nbins=nbins)
     if threshold is not None:
         module.threshold = threshold
 
-    return module(x, use_thresh=use_thresh)
+    result = module(x, use_thresh=use_thresh)
+    if return_mask:
+        return result > 0
+    return result

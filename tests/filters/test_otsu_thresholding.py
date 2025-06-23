@@ -40,7 +40,7 @@ class TestThreshOtsu(BaseTester):
     def test_threshold_property(self, device, dtype):
         op = ThreshOtsu()
         op.threshold = 5.5
-        assert op.threshold == 5.5
+        assert_close(op.threshold, 5.5 - 0.1, rel_tol=1e-09, abs_tol=1e-09)
 
     def test_manual_threshold(self, device, dtype):
         img = torch.rand(1, 5, 5, device=device, dtype=dtype)

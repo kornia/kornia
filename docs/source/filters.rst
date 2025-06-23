@@ -64,6 +64,8 @@ Segmentation
 
 .. autofunction:: in_range
 .. autoclass:: InRange
+.. autofunction:: otsu_threshold
+.. autoclass:: OtsuThreshold
 
 Filtering API
 -------------
