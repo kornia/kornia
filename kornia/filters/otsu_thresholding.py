@@ -125,8 +125,7 @@ class ThreshOtsu(torch.nn.Module):
             f, b, c, h, w = x.shape
             return self.transform_input(x.reshape(f * b * c, h, w), original_shape=original_shape)
         else:
-            raise ValueError(
-                f"Unsupported tensor dimensionality: {dimensionality}")
+            raise ValueError(f"Unsupported tensor dimensionality: {dimensionality}")
 
     def forward(self, x: torch.Tensor, use_thresh: bool = False) -> torch.Tensor:
         """Apply Otsu thresholding to the input x.
@@ -176,12 +175,9 @@ class ThreshOtsu(torch.nn.Module):
         nb_px = x[0, :].numel()
 
         # Initialize Otsu variables
-        px_bellow = torch.zeros(
-            (x.shape[0]), device=x.device, requires_grad=False)
-        best_thresh = torch.zeros(
-            (x.shape[0]), device=x.device, requires_grad=False)
-        max_intra_class_var = torch.zeros(
-            (x.shape[0]), device=x.device, requires_grad=False)
+        px_bellow = torch.zeros((x.shape[0]), device=x.device, requires_grad=False)
+        best_thresh = torch.zeros((x.shape[0]), device=x.device, requires_grad=False)
+        max_intra_class_var = torch.zeros((x.shape[0]), device=x.device, requires_grad=False)
 
         # Initialize mean variables
         mu0 = torch.zeros((x.shape[0]), device=x.device, requires_grad=False)

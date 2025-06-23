@@ -71,8 +71,7 @@ class TestThreshOtsu(BaseTester):
                 op(img)
 
     def test_gradcheck(self, device):
-        img = torch.rand(1, 1, 5, 5, device=device,
-                         dtype=torch.float64, requires_grad=True)
+        img = torch.rand(1, 1, 5, 5, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(otsu_threshold, (img, 3, False, None))
 
 
