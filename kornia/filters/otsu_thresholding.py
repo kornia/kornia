@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Union, Tuple, Optional
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -28,8 +28,7 @@ class ThreshOtsu(torch.nn.Module):
     """Otsu thresholding module for PyTorch tensors."""
 
     def __init__(self, nbins: Optional[int] = 256) -> None:
-        """
-        Initialize the ThreshOtsu module.
+        """Initialize the ThreshOtsu module.
 
         Args:
             nbins (int, optional): Number of bins for histogram computation. Default is 256.
@@ -47,8 +46,7 @@ class ThreshOtsu(torch.nn.Module):
 
     @staticmethod
     def __rfill(x: torch.Tensor, length: int, dim: int = 0) -> torch.Tensor:
-        """
-        Right-fill a tensor with zeros to reach a given length along a dimension.
+        """Right-fill a tensor with zeros to reach a given length along a dimension.
 
         Args:
             x (torch.Tensor): Tensor to pad.
@@ -62,8 +60,7 @@ class ThreshOtsu(torch.nn.Module):
 
     @staticmethod
     def __histogram(xs: torch.Tensor, bins: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Compute a histogram for each row of xs, CUDA compatible.
+        """Compute a histogram for each row of xs, CUDA compatible.
 
         Args:
             xs (torch.Tensor): 2D tensor (n, N) with values to histogram.
@@ -78,20 +75,12 @@ class ThreshOtsu(torch.nn.Module):
         for lx in xs:
             counts.append(
                 ThreshOtsu.__rfill(
-                    torch.histc(
-                        input=lx,
-                        bins=bins,
-                        min=min_val.item(),
-                        max=max_val.item()
-                    ),
-                    length=max_val - min_val
+                    torch.histc(input=lx, bins=bins, min=min_val.item(), max=max_val.item()), length=max_val - min_val
                 )
             )
             boundaries.append(
                 ThreshOtsu.__rfill(
-                    torch.linspace(
-                        min_val.item(), max_val.item(), bins + 1),
-                    length=max_val - min_val + 1
+                    torch.linspace(min_val.item(), max_val.item(), bins + 1), length=max_val - min_val + 1
                 )
             )
         return torch.stack(counts).to(xs.device), torch.stack(boundaries).to(xs.device)
@@ -109,8 +98,7 @@ class ThreshOtsu(torch.nn.Module):
     def transform_input(
         self, x: torch.Tensor, original_shape: Optional[torch.Size] = None
     ) -> Tuple[torch.Tensor, torch.Size]:
-        """
-        Flatten the input to make it compatible with threshold computation.
+        """Flatten the input to make it compatible with threshold computation.
 
         Args:
             x (torch.Tensor): Image or batch of images.
@@ -134,12 +122,10 @@ class ThreshOtsu(torch.nn.Module):
             f, b, c, h, w = x.shape
             return self.transform_input(x.reshape(f * b * c, h, w), original_shape=original_shape)
         else:
-            raise ValueError(
-                "Unsupported tensor dimensionality: {}".format(dimensionality))
+            raise ValueError(f"Unsupported tensor dimensionality: {dimensionality}")
 
     def forward(self, x: torch.Tensor, use_thresh: bool = False) -> torch.Tensor:
-        """
-        Apply Otsu thresholding to the input x.
+        """Apply Otsu thresholding to the input x.
 
         Args:
             x (torch.Tensor): Image or batch of images to threshold.
@@ -156,16 +142,28 @@ class ThreshOtsu(torch.nn.Module):
             return features.reshape(orig_shape)
 
         # Check tensor type compatibility
-        if x.device.type == 'cpu':
+        if x.device.type == "cpu":
             # Error of torch.histc on CPU with int and uint types
-            assert any([x.dtype is std_dtype for std_dtype in [
-                torch.float32, torch.float64, torch.float16, torch.bfloat16
-            ]]), "Tensor dtype not supported for Otsu thresholding: only float types are supported on CPU."
+            assert any(
+                [x.dtype is std_dtype for std_dtype in [torch.float32, torch.float64, torch.float16, torch.bfloat16]]
+            ), "Tensor dtype not supported for Otsu thresholding: only float types are supported on CPU."
         else:
-            assert any([x.dtype is std_dtype for std_dtype in [
-                torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64,
-                torch.float32, torch.float64, torch.float16, torch.bfloat16
-            ]]), "Tensor dtype not supported for Otsu thresholding."
+            assert any(
+                [
+                    x.dtype is std_dtype
+                    for std_dtype in [
+                        torch.uint8,
+                        torch.int8,
+                        torch.int16,
+                        torch.int32,
+                        torch.int64,
+                        torch.float32,
+                        torch.float64,
+                        torch.float16,
+                        torch.bfloat16,
+                    ]
+                ]
+            ), "Tensor dtype not supported for Otsu thresholding."
 
         min_value = x.min(dim=-1)[0]
         x = (x.T - min_value).T  # Shift values to start at 0
@@ -175,12 +173,9 @@ class ThreshOtsu(torch.nn.Module):
         nb_px = x[0, :].numel()
 
         # Initialize Otsu variables
-        px_bellow = torch.zeros(
-            (x.shape[0]), device=x.device, requires_grad=False)
-        best_thresh = torch.zeros(
-            (x.shape[0]), device=x.device, requires_grad=False)
-        max_intra_class_var = torch.zeros(
-            (x.shape[0]), device=x.device, requires_grad=False)
+        px_bellow = torch.zeros((x.shape[0]), device=x.device, requires_grad=False)
+        best_thresh = torch.zeros((x.shape[0]), device=x.device, requires_grad=False)
+        max_intra_class_var = torch.zeros((x.shape[0]), device=x.device, requires_grad=False)
 
         # Initialize mean variables
         mu0 = torch.zeros((x.shape[0]), device=x.device, requires_grad=False)
@@ -221,7 +216,7 @@ class ThreshOtsu(torch.nn.Module):
         # Apply the found threshold
         x = (x.T + min_value).T
         x[x < (best_thresh + min_value).repeat(1, nb_px).reshape(x.shape)] = 0
-        self._threshold = (best_thresh + min_value)
+        self._threshold = best_thresh + min_value
 
         return x.reshape(orig_shape)
 
@@ -231,10 +226,9 @@ def otsu_threshold(
     x: torch.Tensor,
     nbins: Optional[int] = 256,
     use_thresh: bool = False,
-    threshold: Optional[Union[float, torch.Tensor]] = None
+    threshold: Optional[Union[float, torch.Tensor]] = None,
 ) -> torch.Tensor:
-    """
-    Apply automatic image thresholding using Otsu algorithm to the input tensor.
+    """Apply automatic image thresholding using Otsu algorithm to the input tensor.
 
     Args:
         x (Tensor): Input tensor (image or batch of images).
@@ -272,7 +266,6 @@ def otsu_threshold(
                 [0.9192, 0.7064, 0.8363, 0.0000, 0.0000, 0.8216]]],
             dtype=torch.float64)
     """
-
     module = ThreshOtsu(nbins=nbins)
     if threshold is not None:
         module.threshold = threshold
