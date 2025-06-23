@@ -29,8 +29,7 @@ class ThreshOtsu(torch.nn.Module):
     """Otsu thresholding module for PyTorch tensors."""
 
     def __init__(self, nbins: int = 256) -> None:
-        """
-        Initialize the ThreshOtsu module.
+        """Initialize the ThreshOtsu module.
 
         Args:
             nbins (int, optional): Number of bins for histogram computation. Default is 256.
@@ -77,20 +76,14 @@ class ThreshOtsu(torch.nn.Module):
         for lx in xs:
             counts.append(
                 ThreshOtsu.__rfill(
-                    torch.histc(
-                        input=lx,
-                        bins=bins,
-                        min=min_val.item(),
-                        max=max_val.item()
-                    ),
-                    length=int(max_val.item() - min_val.item())
+                    torch.histc(input=lx, bins=bins, min=min_val.item(), max=max_val.item()),
+                    length=int(max_val.item() - min_val.item()),
                 )
             )
             boundaries.append(
                 ThreshOtsu.__rfill(
-                    torch.linspace(
-                        min_val.item(), max_val.item(), bins + 1),
-                    length=int(max_val.item() - min_val.item()) + 1
+                    torch.linspace(min_val.item(), max_val.item(), bins + 1),
+                    length=int(max_val.item() - min_val.item()) + 1,
                 )
             )
         return torch.stack(counts).to(xs.device), torch.stack(boundaries).to(xs.device)
@@ -155,14 +148,26 @@ class ThreshOtsu(torch.nn.Module):
         # Check tensor type compatibility
         if x.device.type == "cpu":
             # Error of torch.histc on CPU with int and uint types
-            KORNIA_CHECK(x.dtype in [
-                torch.float32, torch.float64, torch.float16, torch.bfloat16
-            ], "Tensor dtype not supported for Otsu thresholding: only float types are supported on CPU.")
+            KORNIA_CHECK(
+                x.dtype in [torch.float32, torch.float64, torch.float16, torch.bfloat16],
+                "Tensor dtype not supported for Otsu thresholding: only float types are supported on CPU.",
+            )
         else:
-            KORNIA_CHECK(x.dtype in [
-                torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64,
-                torch.float32, torch.float64, torch.float16, torch.bfloat16
-            ], "Tensor dtype not supported for Otsu thresholding.")
+            KORNIA_CHECK(
+                x.dtype
+                in [
+                    torch.uint8,
+                    torch.int8,
+                    torch.int16,
+                    torch.int32,
+                    torch.int64,
+                    torch.float32,
+                    torch.float64,
+                    torch.float16,
+                    torch.bfloat16,
+                ],
+                "Tensor dtype not supported for Otsu thresholding.",
+            )
 
         min_value = x.min(dim=-1)[0]
         x = (x.T - min_value).T  # Shift values to start at 0
