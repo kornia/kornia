@@ -132,7 +132,8 @@ class ThreshOtsu(torch.nn.Module):
             f, b, c, h, w = x.shape
             return self.transform_input(x.reshape(f * b * c, h, w), original_shape=original_shape)
         else:
-            raise ValueError(f"Unsupported tensor dimensionality: {dimensionality}")
+            raise ValueError(
+                f"Unsupported tensor dimensionality: {dimensionality}")
 
     def forward(self, x: torch.Tensor, use_thresh: bool = False) -> torch.Tensor:
         """Apply Otsu thresholding to the input x.
@@ -170,9 +171,12 @@ class ThreshOtsu(torch.nn.Module):
         nb_px = x[0, :].numel()
 
         # Initialize Otsu variables
-        px_bellow = torch.zeros((x.shape[0]), device=x.device, requires_grad=False)
-        best_thresh = torch.zeros((x.shape[0]), device=x.device, requires_grad=False)
-        max_intra_class_var = torch.zeros((x.shape[0]), device=x.device, requires_grad=False)
+        px_bellow = torch.zeros(
+            (x.shape[0]), device=x.device, requires_grad=False)
+        best_thresh = torch.zeros(
+            (x.shape[0]), device=x.device, requires_grad=False)
+        max_intra_class_var = torch.zeros(
+            (x.shape[0]), device=x.device, requires_grad=False)
 
         # Initialize mean variables
         mu0 = torch.zeros((x.shape[0]), device=x.device, requires_grad=False)
@@ -226,7 +230,7 @@ def otsu_threshold(
     use_thresh: bool = False,
     threshold: Optional[Union[float, torch.Tensor]] = None,
 ) -> torch.Tensor:
-    """Apply automatic image thresholding using Otsu algorithm to the input tensor.
+    r"""Apply automatic image thresholding using Otsu algorithm to the input tensor.
 
     Args:
         x (Tensor): Input tensor (image or batch of images).
@@ -254,8 +258,10 @@ def otsu_threshold(
     Example:
         >>> import torch
         >>> from kornia.filters.otsu_thresholding import otsu_threshold
-        >>> torch.manual_seed(0)
-        >>> image = torch.rand(1, 4, 6) # Example image tensor
+        >>> image = torch.tensor([[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074, 0.6341],
+                 [0.4901, 0.8964, 0.4556, 0.6323, 0.3489, 0.4017],
+                 [0.0223, 0.1689, 0.2939, 0.5185, 0.6977, 0.8000],
+                 [0.1610, 0.2823, 0.6816, 0.9152, 0.3971, 0.8742]]])
         >>> image
         tensor([[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074, 0.6341],
                  [0.4901, 0.8964, 0.4556, 0.6323, 0.3489, 0.4017],
