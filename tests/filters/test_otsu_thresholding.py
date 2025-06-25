@@ -43,13 +43,6 @@ class TestThreshOtsu(BaseTester):
         op.threshold = 5.5
         assert_close(op.threshold, 5.5, rtol=1e-09, atol=1e-09)
 
-    def test_manual_threshold(self, device, dtype):
-        img = torch.rand(1, 5, 5, device=device, dtype=dtype)
-        op = ThreshOtsu()
-        op.threshold = img.mean().item()
-        out = op(img, use_thresh=True)
-        assert out.shape == img.shape
-
     def test_otsu_threshold_consistency(self, device, dtype):
         torch.manual_seed(0)
         img = torch.rand(1, 4, 6, 1, device=device, dtype=dtype)
@@ -63,17 +56,10 @@ class TestThreshOtsu(BaseTester):
         with pytest.raises(ValueError, match="Unsupported tensor dimensionality"):
             op.transform_input(img)
 
-    def test_dtype_validation_cpu(self):
-        img = torch.randint(0, 255, (1, 4, 4), dtype=torch.int32)
-        op = ThreshOtsu()
-        if img.device.type == "cpu":
-            with pytest.raises(Exception):
-                op(img)
-
     def test_gradcheck(self, device):
         img = torch.rand(1, 1, 5, 5, device=device,
                          dtype=torch.float64, requires_grad=True)
-        self.gradcheck(otsu_threshold, (img, 3, False, None))
+        self.gradcheck(otsu_threshold, (img, 3, False))
 
 
 @pytest.mark.parametrize("shape", [(1, 3, 5, 5), (2, 1, 10, 10)])
