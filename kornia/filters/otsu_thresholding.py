@@ -23,6 +23,7 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.enhance.histogram import histogram as diff_histogram
+from kornia.utils.helpers import _torch_histc_cast
 
 
 class ThreshOtsu(torch.nn.Module):
@@ -53,13 +54,18 @@ class ThreshOtsu(torch.nn.Module):
         max_val = xs.max()
 
         histograms = []
-        bin_edges = torch.linspace(min_val.item(), max_val.item(), bins, device=xs.device)
+        bin_edges = torch.linspace(
+            min_val.item(), max_val.item(), bins, device=xs.device)
 
         for i in range(xs.shape[0]):
             if diff:
-                hist = diff_histogram(xs[i].view(1, -1), bin_edges, torch.tensor(0.001)).squeeze()
+                hist = diff_histogram(xs[i].view(
+                    1, -1), bin_edges, torch.tensor(0.001)).squeeze()
             else:
-                hist, bin_edges = torch.histogram(input=xs[i], bins=bins, range=(min_val.item(), max_val.item()))
+                # Use torch.histc for non-differentiable histogram
+                # Note: torch.histogram is in PyTorch 1.10+, and should replace histc in future versions when
+                #       no longer supporting older pytorch versions.
+                hist = _torch_histc_cast(xs[i], bins=bins, min=min_val.item(), max=max_val.item())
 
             # Normalize and append the histogram
             histograms.append(hist / hist.sum())
@@ -93,7 +99,8 @@ class ThreshOtsu(torch.nn.Module):
             f, b, c, h, w = x.shape
             return self.transform_input(x.reshape(f * b * c, h, w), original_shape=original_shape)
         else:
-            raise ValueError(f"Unsupported tensor dimensionality: {dimensionality}")
+            raise ValueError(
+                f"Unsupported tensor dimensionality: {dimensionality}")
 
     def forward(
         self, x: torch.Tensor, nbins: int = 256, slow_and_differentiable: bool = False
@@ -128,8 +135,10 @@ class ThreshOtsu(torch.nn.Module):
             "Tensor dtype not supported for Otsu thresholding.",
         )
 
-        histograms, bin_edges = ThreshOtsu.__histogram(x_flattened, bins=nbins, diff=slow_and_differentiable)
-        best_thresholds = torch.zeros(nchannel, device=x_flattened.device, dtype=x.dtype)
+        histograms, bin_edges = ThreshOtsu.__histogram(
+            x_flattened, bins=nbins, diff=slow_and_differentiable)
+        best_thresholds = torch.zeros(
+            nchannel, device=x_flattened.device, dtype=x.dtype)
 
         # Iterate over each image/flattened channel in the batch
         for i in range(nchannel):
@@ -144,7 +153,8 @@ class ThreshOtsu(torch.nn.Module):
             weight_bg = 0.0
 
             # Sum of pixels for foreground (initially total sum)
-            sum_fg = torch.sum(hist * torch.arange(nbins, device=x.device).to(hist.dtype))
+            sum_fg = torch.sum(
+                hist * torch.arange(nbins, device=x.device).to(hist.dtype))
 
             # Iterate over each possible threshold (each bin)
             for t in range(nbins):
@@ -166,11 +176,12 @@ class ThreshOtsu(torch.nn.Module):
                 mean_fg = sum_fg / weight_fg
 
                 # Calculate inter-class variance
-                inter_class_var = weight_bg * weight_fg * ((mean_bg - mean_fg) ** 2)
+                inter_class_var = weight_bg * \
+                    weight_fg * ((mean_bg - mean_fg) ** 2)
 
                 if inter_class_var > max_inter_class_var:
                     max_inter_class_var = inter_class_var
-                    optimal_thresh_val = current_bin_edges[t + 1]
+                    optimal_thresh_val = current_bin_edges[t + 1].item()
 
             best_thresholds[i] = optimal_thresh_val
 
@@ -187,7 +198,7 @@ def otsu_threshold(
     nbins: int = 256,
     slow_and_differentiable: bool = False,
     return_mask: bool = False,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Apply automatic image thresholding using Otsu algorithm to the input tensor.
 
     Args:
@@ -198,7 +209,7 @@ def otsu_threshold(
             return the thresholded image.
 
     Returns:
-        Tensor: Thresholded image or binary mask.
+        Tuple[torch.Tensor, torch.Tensor]: Thresholded tensor and the computed threshold values.
 
     Raises:
         ValueError: If the input tensor has unsupported dimensionality or dtype.
@@ -222,12 +233,13 @@ def otsu_threshold(
                 [70, 80, 90]])
         >>> otsu_threshold(x)
         (tensor([[ 0,  0,  0],
-                 [ 0, 50, 60],
-                 [70, 80, 90]]), tensor([40]))
+                [ 0, 50, 60],
+                [70, 80, 90]]), tensor([40]))
     """
     module = ThreshOtsu()
 
-    result, threshold = module(x, nbins=nbins, slow_and_differentiable=slow_and_differentiable)
+    result, threshold = module(
+        x, nbins=nbins, slow_and_differentiable=slow_and_differentiable)
 
     if return_mask:
         return result > 0, threshold
