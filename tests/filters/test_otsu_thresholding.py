@@ -53,10 +53,26 @@ class TestThreshOtsu(BaseTester):
         with pytest.raises(ValueError, match="Unsupported tensor dimensionality"):
             op.transform_input(img)
 
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 1, 5, 5, device=device,
-                         dtype=torch.float64, requires_grad=True)
-        self.gradcheck(otsu_threshold, (img, 3, False))
+                         dtype=dtype, requires_grad=True)
+        self.gradcheck(otsu_threshold, (img, 3, True, False))
+
+    def test_differentiable_tensor_otsu(self, device, dtype):
+        differentiable_input = torch.rand(
+            1, 1, 5, 5,
+            device=device,
+            dtype=dtype,
+            requires_grad=True
+        )
+
+        input = differentiable_input.clone().detach().requires_grad_(False)
+
+        op = ThreshOtsu()
+        diff_thresh_result, diff_thresh_value = op(
+            input, slow_and_differentiable=True)
+        thresh_result, thresh_value = op(input)
+        self.assert_close(diff_thresh_result, thresh_result)
 
     def test_threshold_result(self, device, dtype):
         input = torch.tensor(
