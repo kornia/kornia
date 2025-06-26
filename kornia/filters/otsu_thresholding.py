@@ -28,19 +28,10 @@ from kornia.utils.image import perform_keep_shape_image
 class ThreshOtsu(torch.nn.Module):
     """Otsu thresholding module for PyTorch tensors."""
 
-    def __init__(self, nbins: int = 256) -> None:
+    def __init__(self) -> None:
         """Initialize the ThreshOtsu module.
-
-        Args:
-            nbins (int, optional): Number of bins for histogram computation. Default is 256.
-
-        Attributes:
-            nbins (int): Number of bins for histogram computation.
-            _threshold (Union[float, torch.Tensor]): Otsu-computed threshold, initialized to -1.
         """
         super().__init__()
-        self.nbins: int = nbins
-        self._threshold: Union[float, torch.Tensor] = -1
 
     @staticmethod
     def __histogram(xs: torch.Tensor, bins: int) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -72,16 +63,6 @@ class ThreshOtsu(torch.nn.Module):
 
         return torch.stack(histograms), bin_edges
 
-    @property
-    def threshold(self) -> Union[float, torch.Tensor]:
-        """Return the Otsu-computed threshold."""
-        return self._threshold
-
-    @threshold.setter
-    def threshold(self, value: Union[float, torch.Tensor]) -> None:
-        """Manually set the threshold."""
-        self._threshold = value
-
     def transform_input(
         self, x: torch.Tensor, original_shape: Optional[torch.Size] = None
     ) -> Tuple[torch.Tensor, torch.Size]:
@@ -112,15 +93,15 @@ class ThreshOtsu(torch.nn.Module):
             raise ValueError(
                 f"Unsupported tensor dimensionality: {dimensionality}")
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, nbins: int = 256) -> Tuple[torch.Tensor, torch.Tensor]:
         """Apply Otsu thresholding to the input x.
 
         Args:
             x (torch.Tensor): Image or batch of images to threshold.
-            use_thresh (bool): If True, use the already computed threshold.
+            nbins (int, optional): Number of bins for histogram computation. Default is 256.
 
         Returns:
-            torch.Tensor: Thresholded image.
+            Tuple[torch.Tensor, torch.Tensor]: Thresholded tensor, threshold values.
         """
         x_flattened, orig_shape = self.transform_input(x)
         nchannel = x_flattened.shape[0]
@@ -142,11 +123,8 @@ class ThreshOtsu(torch.nn.Module):
             "Tensor dtype not supported for Otsu thresholding.",
         )
 
-        # Normalize data to range [0, self.nbins-1] for histogram, or use min/max for histc directly.
-        # It's generally better to work with original values and iterate through potential thresholds.
-
         histograms, bin_edges = ThreshOtsu.__histogram(
-            x_flattened, bins=self.nbins)
+            x_flattened, bins=nbins)
         best_thresholds = torch.zeros(
             nchannel, device=x_flattened.device, dtype=x.dtype)
 
@@ -154,7 +132,7 @@ class ThreshOtsu(torch.nn.Module):
         for i in range(nchannel):
             # Get histogram and bin edges for the current image/channel
             hist = histograms[i]
-            current_bin_edges = bin_edges  # Bin edges are global in this updated __histogram
+            current_bin_edges = bin_edges
 
             max_inter_class_var = -1.0
             optimal_thresh_val = 0.0
@@ -164,10 +142,10 @@ class ThreshOtsu(torch.nn.Module):
 
             # Sum of pixels for foreground (initially total sum)
             sum_fg = torch.sum(
-                hist * torch.arange(self.nbins, device=x.device).to(hist.dtype))
+                hist * torch.arange(nbins, device=x.device).to(hist.dtype))
 
             # Iterate over each possible threshold (each bin)
-            for t in range(self.nbins):
+            for t in range(nbins):
                 bin_value = (t * hist[t]).item()
 
                 # Update background
@@ -178,7 +156,8 @@ class ThreshOtsu(torch.nn.Module):
                 sum_fg -= bin_value
                 weight_fg = 1.0 - weight_bg
 
-                if weight_bg == 0 or weight_fg == 0:  # Avoid division by zero
+                # Avoid division by zero
+                if weight_bg == 0 or weight_fg == 0:
                     continue
 
                 mean_bg = sum_bg / weight_bg
@@ -194,17 +173,14 @@ class ThreshOtsu(torch.nn.Module):
 
             best_thresholds[i] = optimal_thresh_val
 
-        self._threshold = best_thresholds
-
         x_out, _ = self.transform_input(x.clone())
         # Apply threshold to each flattened image/channel
         for i in range(nchannel):
             x_out[i][x_out[i] <= best_thresholds[i]] = 0
 
-        return x_out.reshape(orig_shape)
+        return x_out.reshape(orig_shape), best_thresholds
 
 
-@perform_keep_shape_image
 def otsu_threshold(
     x: torch.Tensor,
     nbins: int = 256,
@@ -236,24 +212,20 @@ def otsu_threshold(
     Example:
         >>> import torch
         >>> from kornia.filters.otsu_thresholding import otsu_threshold
-        >>> image = torch.tensor([[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074, 0.6341],
-        ...                       [0.4901, 0.8964, 0.4556, 0.6323, 0.3489, 0.4017],
-        ...                       [0.0223, 0.1689, 0.2939, 0.5185, 0.6977, 0.8000],
-        ...                       [0.1610, 0.2823, 0.6816, 0.9152, 0.3971, 0.8742]]])
-        >>> image
-        tensor([[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074, 0.6341],
-                 [0.4901, 0.8964, 0.4556, 0.6323, 0.3489, 0.4017],
-                 [0.0223, 0.1689, 0.2939, 0.5185, 0.6977, 0.8000],
-                 [0.1610, 0.2823, 0.6816, 0.9152, 0.3971, 0.8742]]])
-        >>> otsu_threshold(image)
+        >>> x = torch.tensor([[10, 20, 30], [40, 50, 60], [70, 80, 90]])
+        >>> x
+        tensor([[10, 20, 30],
+                [40, 50, 60],
+                [70, 80, 90]])
+        >>> otsu_threshold(x)
         tensor([[[0.0000, 0.7682, 0.0000, 0.0000, 0.0000, 0.6341],
                  [0.0000, 0.8964, 0.0000, 0.6323, 0.0000, 0.0000],
                  [0.0000, 0.0000, 0.0000, 0.0000, 0.6977, 0.8000],
                  [0.0000, 0.0000, 0.6816, 0.9152, 0.0000, 0.8742]]])
     """
-    module = ThreshOtsu(nbins=nbins)
+    module = ThreshOtsu()
 
-    result = module(x)
+    result, threshold = module(x, nbins=nbins)
     if return_mask:
-        return result > 0
-    return result
+        return result > 0, threshold
+    return result, threshold
