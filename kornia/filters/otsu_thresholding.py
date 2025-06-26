@@ -123,6 +123,7 @@ class ThreshOtsu(torch.nn.Module):
             torch.Tensor: Thresholded image.
         """
         x_flattened, orig_shape = self.transform_input(x)
+        nchannel = x_flattened.shape[0]
 
         # Check tensor type compatibility
         KORNIA_CHECK(
@@ -147,10 +148,10 @@ class ThreshOtsu(torch.nn.Module):
         histograms, bin_edges = ThreshOtsu.__histogram(
             x_flattened, bins=self.nbins)
         best_thresholds = torch.zeros(
-            x_flattened.shape[0], device=x_flattened.device, dtype=x.dtype)
+            nchannel, device=x_flattened.device, dtype=x.dtype)
 
         # Iterate over each image/flattened channel in the batch
-        for i in range(x_flattened.shape[0]):
+        for i in range(nchannel):
             # Get histogram and bin edges for the current image/channel
             hist = histograms[i]
             current_bin_edges = bin_edges  # Bin edges are global in this updated __histogram
@@ -195,12 +196,12 @@ class ThreshOtsu(torch.nn.Module):
 
         self._threshold = best_thresholds
 
-        x_out = x.clone()
+        x_out, _ = self.transform_input(x.clone())
         # Apply threshold to each flattened image/channel
-        for i in range(x_out.shape[0]):
+        for i in range(nchannel):
             x_out[i][x_out[i] <= best_thresholds[i]] = 0
 
-        return x_out
+        return x_out.reshape(orig_shape)
 
 
 @perform_keep_shape_image

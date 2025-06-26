@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+from cv2 import threshold
 import pytest
 import torch
 
@@ -60,6 +61,93 @@ class TestThreshOtsu(BaseTester):
         img = torch.rand(1, 1, 5, 5, device=device,
                          dtype=torch.float64, requires_grad=True)
         self.gradcheck(otsu_threshold, (img, 3, False))
+
+    def test_threshold_result(self, device, dtype):
+        input = torch.tensor(
+            [[10, 10, 10, 10],
+             [10, 10, 10, 10],
+             [200, 200, 200, 200],
+             [200, 200, 200, 200]],
+            device=device,
+            dtype=dtype
+        )
+
+        expected = torch.tensor(
+            [[0, 0, 0, 0],
+             [0, 0, 0, 0],
+             [200, 200, 200, 200],
+             [200, 200, 200, 200]],
+            device=device,
+            dtype=dtype
+        )
+
+        op = ThreshOtsu()
+        threshold_result = op(input)
+        self.assert_close(threshold_result, expected)
+
+    def test_gradual_threshold(self, device, dtype):
+        input = torch.tensor(
+            [[10, 20, 30],
+             [40, 50, 60],
+             [70, 80, 90]],
+            device=device,
+            dtype=dtype
+        )
+
+        expected = torch.tensor(
+            [[0, 0, 0],
+             [0, 50, 60],
+             [70, 80, 90]],
+            device=device,
+            dtype=dtype
+        )
+
+        op = ThreshOtsu()
+        threshold_result = op(input)
+        self.assert_close(threshold_result, expected)
+
+    def test_uniform_result(self, device, dtype):
+        input = torch.tensor(
+            [[10, 10, 10, 10],
+             [10, 10, 10, 10],
+             [10, 10, 10, 10],
+             [10, 10, 10, 10]],
+            device=device,
+            dtype=dtype
+        )
+
+        expected = torch.tensor(
+            [[10, 10, 10, 10],
+             [10, 10, 10, 10],
+             [10, 10, 10, 10],
+             [10, 10, 10, 10]],
+            device=device,
+            dtype=dtype
+        )
+
+        op = ThreshOtsu()
+        threshold_result = op(input)
+        self.assert_close(threshold_result, expected)
+
+    def test_mask(self, device, dtype):
+        input = torch.tensor(
+            [[10, 20, 30],
+             [40, 50, 60],
+             [70, 80, 90]],
+            device=device,
+            dtype=dtype
+        )
+
+        expected = torch.tensor(
+            [[0, 0, 0],
+             [0, 1, 1],
+             [1, 1, 1]],
+            device=device,
+            dtype=torch.bool
+        )
+
+        threshold_result = otsu_threshold(input, return_mask=True)
+        self.assert_close(threshold_result, expected)
 
 
 @pytest.mark.parametrize("shape", [(1, 3, 5, 5), (2, 1, 10, 10)])
