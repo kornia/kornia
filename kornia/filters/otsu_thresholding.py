@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple
 
 import torch
 
@@ -29,8 +29,7 @@ class ThreshOtsu(torch.nn.Module):
     """Otsu thresholding module for PyTorch tensors."""
 
     def __init__(self) -> None:
-        """Initialize the ThreshOtsu module.
-        """
+        """Initialize the ThreshOtsu module."""
         super().__init__()
 
     @staticmethod
@@ -54,21 +53,13 @@ class ThreshOtsu(torch.nn.Module):
         max_val = xs.max()
 
         histograms = []
-        bin_edges = torch.linspace(
-            min_val.item(), max_val.item(), bins, device=xs.device
-        )
+        bin_edges = torch.linspace(min_val.item(), max_val.item(), bins, device=xs.device)
 
         for i in range(xs.shape[0]):
             if diff:
-                hist = diff_histogram(
-                    xs[i].view(1, -1), bin_edges, torch.tensor(0.001)
-                ).squeeze()
+                hist = diff_histogram(xs[i].view(1, -1), bin_edges, torch.tensor(0.001)).squeeze()
             else:
-                hist, bin_edges = torch.histogram(
-                    input=xs[i],
-                    bins=bins,
-                    range=(min_val.item(), max_val.item())
-                )
+                hist, bin_edges = torch.histogram(input=xs[i], bins=bins, range=(min_val.item(), max_val.item()))
 
             # Normalize and append the histogram
             histograms.append(hist / hist.sum())
@@ -102,10 +93,11 @@ class ThreshOtsu(torch.nn.Module):
             f, b, c, h, w = x.shape
             return self.transform_input(x.reshape(f * b * c, h, w), original_shape=original_shape)
         else:
-            raise ValueError(
-                f"Unsupported tensor dimensionality: {dimensionality}")
+            raise ValueError(f"Unsupported tensor dimensionality: {dimensionality}")
 
-    def forward(self, x: torch.Tensor, nbins: int = 256, slow_and_differentiable: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, x: torch.Tensor, nbins: int = 256, slow_and_differentiable: bool = False
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Apply Otsu thresholding to the input x.
 
         Args:
@@ -136,12 +128,8 @@ class ThreshOtsu(torch.nn.Module):
             "Tensor dtype not supported for Otsu thresholding.",
         )
 
-        histograms, bin_edges = ThreshOtsu.__histogram(
-            x_flattened, bins=nbins, diff=slow_and_differentiable
-        )
-        best_thresholds = torch.zeros(
-            nchannel, device=x_flattened.device, dtype=x.dtype
-        )
+        histograms, bin_edges = ThreshOtsu.__histogram(x_flattened, bins=nbins, diff=slow_and_differentiable)
+        best_thresholds = torch.zeros(nchannel, device=x_flattened.device, dtype=x.dtype)
 
         # Iterate over each image/flattened channel in the batch
         for i in range(nchannel):
@@ -156,8 +144,7 @@ class ThreshOtsu(torch.nn.Module):
             weight_bg = 0.0
 
             # Sum of pixels for foreground (initially total sum)
-            sum_fg = torch.sum(
-                hist * torch.arange(nbins, device=x.device).to(hist.dtype))
+            sum_fg = torch.sum(hist * torch.arange(nbins, device=x.device).to(hist.dtype))
 
             # Iterate over each possible threshold (each bin)
             for t in range(nbins):
@@ -179,8 +166,7 @@ class ThreshOtsu(torch.nn.Module):
                 mean_fg = sum_fg / weight_fg
 
                 # Calculate inter-class variance
-                inter_class_var = weight_bg * \
-                    weight_fg * ((mean_bg - mean_fg) ** 2)
+                inter_class_var = weight_bg * weight_fg * ((mean_bg - mean_fg) ** 2)
 
                 if inter_class_var > max_inter_class_var:
                     max_inter_class_var = inter_class_var
@@ -241,9 +227,7 @@ def otsu_threshold(
     """
     module = ThreshOtsu()
 
-    result, threshold = module(
-        x, nbins=nbins, slow_and_differentiable=slow_and_differentiable
-    )
+    result, threshold = module(x, nbins=nbins, slow_and_differentiable=slow_and_differentiable)
 
     if return_mask:
         return result > 0, threshold

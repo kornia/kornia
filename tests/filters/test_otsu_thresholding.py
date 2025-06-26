@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-from cv2 import threshold
 import pytest
 import torch
 
@@ -42,8 +41,7 @@ class TestThreshOtsu(BaseTester):
     def test_otsu_threshold_consistency(self, device, dtype):
         torch.manual_seed(0)
         img = torch.rand(1, 4, 6, 1, device=device, dtype=dtype)
-        out_func_tensor, out_func_value = otsu_threshold(
-            img, nbins=3, return_mask=False)
+        out_func_tensor, out_func_value = otsu_threshold(img, nbins=3, return_mask=False)
         out_class_tensor, out_class_value = ThreshOtsu()(img, nbins=3)
         assert_close(out_func_tensor, out_class_tensor)
 
@@ -54,43 +52,26 @@ class TestThreshOtsu(BaseTester):
             op.transform_input(img)
 
     def test_gradcheck(self, device, dtype):
-        img = torch.rand(1, 1, 5, 5, device=device,
-                         dtype=dtype, requires_grad=True)
+        img = torch.rand(1, 1, 5, 5, device=device, dtype=dtype, requires_grad=True)
         self.gradcheck(otsu_threshold, (img, 3, True, False))
 
     def test_differentiable_tensor_otsu(self, device, dtype):
-        differentiable_input = torch.rand(
-            1, 1, 5, 5,
-            device=device,
-            dtype=dtype,
-            requires_grad=True
-        )
+        differentiable_input = torch.rand(1, 1, 5, 5, device=device, dtype=dtype, requires_grad=True)
 
         input = differentiable_input.clone().detach().requires_grad_(False)
 
         op = ThreshOtsu()
-        diff_thresh_result, diff_thresh_value = op(
-            input, slow_and_differentiable=True)
+        diff_thresh_result, diff_thresh_value = op(input, slow_and_differentiable=True)
         thresh_result, thresh_value = op(input)
         self.assert_close(diff_thresh_result, thresh_result)
 
     def test_threshold_result(self, device, dtype):
         input = torch.tensor(
-            [[10, 10, 10, 10],
-             [10, 10, 10, 10],
-             [200, 200, 200, 200],
-             [200, 200, 200, 200]],
-            device=device,
-            dtype=dtype
+            [[10, 10, 10, 10], [10, 10, 10, 10], [200, 200, 200, 200], [200, 200, 200, 200]], device=device, dtype=dtype
         )
 
         expected = torch.tensor(
-            [[0, 0, 0, 0],
-             [0, 0, 0, 0],
-             [200, 200, 200, 200],
-             [200, 200, 200, 200]],
-            device=device,
-            dtype=dtype
+            [[0, 0, 0, 0], [0, 0, 0, 0], [200, 200, 200, 200], [200, 200, 200, 200]], device=device, dtype=dtype
         )
 
         op = ThreshOtsu()
@@ -98,21 +79,9 @@ class TestThreshOtsu(BaseTester):
         self.assert_close(thresh_result, expected)
 
     def test_gradual_threshold(self, device, dtype):
-        input = torch.tensor(
-            [[10, 20, 30],
-             [40, 50, 60],
-             [70, 80, 90]],
-            device=device,
-            dtype=dtype
-        )
+        input = torch.tensor([[10, 20, 30], [40, 50, 60], [70, 80, 90]], device=device, dtype=dtype)
 
-        expected = torch.tensor(
-            [[0, 0, 0],
-             [0, 50, 60],
-             [70, 80, 90]],
-            device=device,
-            dtype=dtype
-        )
+        expected = torch.tensor([[0, 0, 0], [0, 50, 60], [70, 80, 90]], device=device, dtype=dtype)
 
         op = ThreshOtsu()
         thresh_result, thresh_value = op(input)
@@ -120,21 +89,11 @@ class TestThreshOtsu(BaseTester):
 
     def test_uniform_result(self, device, dtype):
         input = torch.tensor(
-            [[10, 10, 10, 10],
-             [10, 10, 10, 10],
-             [10, 10, 10, 10],
-             [10, 10, 10, 10]],
-            device=device,
-            dtype=dtype
+            [[10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10]], device=device, dtype=dtype
         )
 
         expected = torch.tensor(
-            [[10, 10, 10, 10],
-             [10, 10, 10, 10],
-             [10, 10, 10, 10],
-             [10, 10, 10, 10]],
-            device=device,
-            dtype=dtype
+            [[10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10]], device=device, dtype=dtype
         )
 
         op = ThreshOtsu()
@@ -143,24 +102,11 @@ class TestThreshOtsu(BaseTester):
 
 
 def test_mask(device, dtype):
-    input = torch.tensor(
-        [[10, 20, 30],
-         [40, 50, 60],
-         [70, 80, 90]],
-        device=device,
-        dtype=dtype
-    )
+    input = torch.tensor([[10, 20, 30], [40, 50, 60], [70, 80, 90]], device=device, dtype=dtype)
 
-    expected = torch.tensor(
-        [[0, 0, 0],
-         [0, 1, 1],
-         [1, 1, 1]],
-        device=device,
-        dtype=torch.bool
-    )
+    expected = torch.tensor([[0, 0, 0], [0, 1, 1], [1, 1, 1]], device=device, dtype=torch.bool)
 
-    thresh_result, thresh_value = otsu_threshold(
-        input, return_mask=True)
+    thresh_result, thresh_value = otsu_threshold(input, return_mask=True)
     assert_close(thresh_result, expected)
 
 
