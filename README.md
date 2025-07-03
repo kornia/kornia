@@ -17,6 +17,7 @@ English | [简体中文](README_zh-CN.md)
 
 [![PyPI version](https://badge.fury.io/py/kornia.svg)](https://pypi.org/project/kornia)
 [![Downloads](https://static.pepy.tech/badge/kornia)](https://pepy.tech/project/kornia)
+[![star](https://gitcode.com/kornia/kornia/star/badge.svg)](https://gitcode.com/kornia/kornia)
 [![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/HfnywwpBnD)
 [![Twitter](https://img.shields.io/twitter/follow/kornia_foss?style=social)](https://twitter.com/kornia_foss)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENCE)
