@@ -10,29 +10,19 @@
 [English](README.md) | 简体中文
 
 <!-- prettier-ignore -->
-<a href="https://kornia.org">网站</a> •
-<a href="https://kornia.readthedocs.io">文档</a> •
-<a href="https://colab.sandbox.google.com/github/kornia/tutorials/blob/main/nbs/hello_world_tutorial.ipynb">快速尝试</a> •
-<a href="https://kornia.github.io/tutorials/">教程</a> •
-<a href="https://github.com/kornia/kornia-examples">例子</a> •
-<a href="https://kornia.github.io//kornia-blog">博客</a> •
-<a href="https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ">Slack社区</a>
-
-[![PyPI python](https://img.shields.io/pypi/pyversions/kornia)](https://pypi.org/project/kornia)
-[![pytorch](https://img.shields.io/badge/PyTorch_1.9.1+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENCE)
+<a href="https://kornia.readthedocs.io">Docs</a> •
+<a href="https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/nbs/hello_world_tutorial.ipynb">Try it Now</a> •
+<a href="https://kornia.github.io/tutorials/">Tutorials</a> •
+<a href="https://github.com/kornia/kornia-examples">Examples</a> •
+<a href="https://kornia.github.io//kornia-blog">Blog</a> •
+<a href="https://discord.gg/HfnywwpBnD">Community</a>
 
 [![PyPI version](https://badge.fury.io/py/kornia.svg)](https://pypi.org/project/kornia)
 [![Downloads](https://static.pepy.tech/badge/kornia)](https://pepy.tech/project/kornia)
-[![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA)
+[![star](https://gitcode.com/kornia/kornia/star/badge.svg)](https://gitcode.com/kornia/kornia)
+[![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/HfnywwpBnD)
 [![Twitter](https://img.shields.io/twitter/follow/kornia_foss?style=social)](https://twitter.com/kornia_foss)
-
-[![tests-cpu](https://github.com/kornia/kornia/actions/workflows/scheduled_test_cpu.yml/badge.svg?event=schedule&&branch=main)](https://github.com/kornia/kornia/actions/workflows/scheduled_test_cpu.yml)
-[![codecov](https://codecov.io/gh/kornia/kornia/branch/main/graph/badge.svg?token=FzCb7e0Bso)](https://codecov.io/gh/kornia/kornia)
-[![Documentation Status](https://readthedocs.org/projects/kornia/badge/?version=latest)](https://kornia.readthedocs.io/en/latest/?badge=latest)
-[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/kornia/kornia/main.svg)](https://results.pre-commit.ci/latest/github/kornia/kornia/main)
-
-<a href="https://www.producthunt.com/posts/kornia?utm_source=badge-featured&utm_medium=badge&utm_souce=badge-kornia" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=306439&theme=light" alt="Kornia - Computer vision library for deep learning | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENCE)
 
 </p>
 </div>
@@ -69,23 +59,22 @@
 | [kornia.morphology](https://kornia.readthedocs.io/en/latest/morphology.html)     | 执行形态学操作的模块                                                                                          |
 | [kornia.utils](https://kornia.readthedocs.io/en/latest/utils.html)               | 图像/张量常用工具以及metrics                                                                             |
 
+## 支持我们
+
+<a href="https://opencollective.com/kornia/donate" target="_blank">
+  <img src="https://opencollective.com/webpack/donate/button@2x.png?color=blue" width=300 />
+</a>
+
 ## 安装说明
 
 ### 通过 pip 安装:
 
   ```bash
   pip install kornia
-  pip install kornia[x]  # 安装训练相关API
   ```
 
 <details>
   <summary>其他安装方法</summary>
-
-  #### 通过源码安装:
-
-  ```bash
-  python setup.py install
-  ```
 
   #### 通过源码安装（软链接至当前路径）:
 
@@ -98,7 +87,6 @@
   ```bash
   pip install git+https://github.com/kornia/kornia
   ```
-
 </details>
 
 
