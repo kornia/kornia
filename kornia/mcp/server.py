@@ -1,49 +1,61 @@
 """MCP Server implementation for Kornia."""
 
-import cv2
 import typing
 import inspect
 import logging
 import torch
+import itertools
 from typing import Any, Dict, List, Union, Tuple, Optional
 
 from kornia.core.external import mcp as _mcp
 from kornia.core import Tensor
 from kornia.io import load_image, write_image
-from kornia import enhance
 
 logger = logging.getLogger(__name__)
 
-EXCLUDED_ENHANCE_FUNCTIONS = [
-    "histogram", "histogram2d", "image_histogram2d", "invert", "jpeg_codec_differentiable", "linear_transform",
-    "normalize", "shift_rgb", "zca_mean", "zca_whiten"
-]
+shared_namespace = {
+    'Dict': Dict,
+    'Any': Any,
+    'Union': Union,
+    'Tuple': Tuple,
+    'List': List,
+    'Optional': Optional,
+    'typing': typing,
+    'load_image': load_image,
+    'write_image': write_image,
+    'torch': torch,
+    'Tensor': Tensor,
+    'logger': logger,
+}
 
-
-def create_kornia_mcp_server(name: str = "enhance") -> "_mcp.server.fastmcp.FastMCP":
-    """Create an MCP server for Kornia's modules."""
-    mcp = _mcp.server.fastmcp.FastMCP(name)
-
-    # Register functions from enhance module
-    for name, func in inspect.getmembers(enhance, inspect.isfunction):
-        if not name.startswith('_'):  # Skip private functions
-            if name in EXCLUDED_ENHANCE_FUNCTIONS:
-                continue
-            # Create a wrapper function with proper type hints
-            wrapper = _create_enhance_function_wrapper(func)
-            # Register the wrapper as a tool
-            mcp.add_tool(wrapper, name=f"kornia.enhance.{name}", description=func.__doc__)
-
+def add_func_as_tool(
+    mcp: "_mcp.server.fastmcp.FastMCP",
+    func: Any,
+    tool_prefix: str = "kornia.enhance"
+) -> "_mcp.server.fastmcp.FastMCP":
+    """Add a function as a tool to the MCP server."""
+    wrapper = _create_function_wrapper(func)
+    mcp.add_tool(wrapper, name=f"{tool_prefix}.{func.__name__}", description=func.__doc__)
     return mcp
 
 
-def _create_enhance_function_wrapper(func: Any):
+def add_class_as_tool(
+    mcp: "_mcp.server.fastmcp.FastMCP",
+    cls: Any,
+    tool_prefix: str = "kornia.enhance"
+) -> "_mcp.server.fastmcp.FastMCP":
+    """Add a class as a tool to the MCP server."""
+    wrapper = _create_class_wrapper(cls)
+    mcp.add_tool(wrapper, name=f"{tool_prefix}.{cls.__name__}", description=cls.__doc__)
+    return mcp
+
+
+def _create_function_wrapper(func: Any):
     """Create a wrapper function for an enhance function with proper type hints."""
     sig = inspect.signature(func)
     
     # Create parameter list with type hints
     params = []
-    param_names = []
     for param_name, param in sig.parameters.items():
         if param.annotation == Tensor or param.annotation == "Tensor":
             if (
@@ -51,18 +63,21 @@ def _create_enhance_function_wrapper(func: Any):
                 or param_name == "data" or param_name == "x"
             ):
                 params.append(f"{param_name}_path: str")
-                param_names.append(f"{param_name}_path")
             else:
                 # an error will throw if the type is Tensor. I will keep it for now.
-                params.append(f"{param_name}: Tensor")
-                param_names.append(f"{param_name}")
+                if param.default != inspect.Parameter.empty:
+                    params.append(f"{param_name}: Tensor = {param.default}")
+                else:
+                    params.append(f"{param_name}: Tensor")
         else:
             if type(param.annotation) == str:
                 annotation = param.annotation
             else:
                 annotation = "str" if param.annotation == inspect.Parameter.empty else param.annotation.__name__
-            params.append(f"{param_name}: {annotation}")
-            param_names.append(f"{param_name}")
+            if param.default != inspect.Parameter.empty:
+                params.append(f"{param_name}: {annotation} = {param.default}")
+            else:
+                params.append(f"{param_name}: {annotation}")
 
     # Create the wrapper function with dynamic signature
     wrapper_code = f'''
@@ -76,7 +91,7 @@ def wrapper({", ".join(params)}):
     # Process each argument
     for k, v in kwargs.items():
         if k.endswith('_path'):  # Handle image paths
-            img = load_image(v)
+            img = load_image(v) / 255.0
             processed_kwargs[k.replace('_path', '')] = img
         else:
             processed_kwargs[k] = v
@@ -86,23 +101,88 @@ def wrapper({", ".join(params)}):
 
     return result
 '''
-    
-    # Create namespace for the wrapper
-    namespace = {
-        'Dict': Dict,
-        'Any': Any,
-        'Union': Union,
-        'Tuple': Tuple,
-        'List': List,
-        'Optional': Optional,
-        'typing': typing,
-        'load_image': load_image,
-        'write_image': write_image,
-        'torch': torch,
-        'Tensor': Tensor,
-        'func': func,
-        'logger': logger,
-    }
+    namespace = {**shared_namespace, 'func': func}
     # Execute the wrapper code
     exec(wrapper_code, namespace)
     return namespace['wrapper'] 
+
+
+def _create_class_wrapper(cls: Any):
+    """Create a wrapper function for an enhance class with proper type hints."""
+    # Get signatures for both constructor and forward method
+    init_sig = inspect.signature(cls)
+    forward_sig = inspect.signature(cls.forward)
+    
+    # Create parameter list with type hints
+    params = []
+    params_with_default = []
+
+    for param_name, param in forward_sig.parameters.items():
+        if param_name == 'self':
+            continue
+        if param.annotation == Tensor or param.annotation == "Tensor":
+            if (
+                param_name == "input" or param_name == "image" or param_name == "src1" or param_name == "src2"
+                or param_name == "data" or param_name == "x"
+            ):
+                params.append(f"{param_name}_path: str")
+            else:
+                # an error will throw if the type is Tensor. I will keep it for now.
+                if param.default != inspect.Parameter.empty:
+                    params_with_default.append(f"{param_name}: Tensor = {param.default}")
+                else:
+                    params.append(f"{param_name}: Tensor")
+        else:
+            if type(param.annotation) == str:
+                annotation = param.annotation
+            else:
+                annotation = "str" if param.annotation == inspect.Parameter.empty else param.annotation.__name__
+            params.append(f"{param_name}: {annotation}")
+
+    for param_name, param in init_sig.parameters.items():
+        if param_name == 'self':
+            continue
+        if type(param.annotation) == str:
+            annotation = param.annotation
+        else:
+            annotation = "str" if param.annotation == inspect.Parameter.empty else param.annotation.__name__
+        if param.default != inspect.Parameter.empty:
+            if annotation == "str":
+                params_with_default.append(f"{param_name}: {annotation} = '{param.default}'")
+            else:
+                params_with_default.append(f"{param_name}: {annotation} = {param.default}")
+        else:
+            params.append(f"{param_name}: {annotation}")
+
+    # Create the wrapper function with dynamic signature
+    wrapper_code = f'''
+def wrapper({", ".join(itertools.chain(params, params_with_default))}):
+    """Call the enhance class with proper argument handling."""
+    kwargs = locals()
+
+    # Process arguments
+    processed_kwargs = {{}}
+
+    # Process each argument
+    for k, v in kwargs.items():
+        if k.endswith('_path'):  # Handle image paths
+            img = load_image(v) / 255.0
+            processed_kwargs[k.replace('_path', '')] = img
+        else:
+            processed_kwargs[k] = v
+
+    init_arguments = [{", ".join(["'" + str(k) + "'" for k in init_sig.parameters])}]
+    # Create an instance of the class
+    instance = cls(**{{k: processed_kwargs[k] for k in init_arguments}})
+
+    # Call the forward method
+    result = instance(**{{k: processed_kwargs[k] for k in processed_kwargs if k not in init_arguments}})
+
+    return result
+'''
+    print(wrapper_code)
+    # Create namespace for the wrapper
+    namespace = {**shared_namespace, 'cls': cls}
+    # Execute the wrapper code
+    exec(wrapper_code, namespace)
+    return namespace['wrapper']
