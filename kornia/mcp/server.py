@@ -1,37 +1,54 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """MCP Server implementation for Kornia."""
 
-import typing
 import inspect
-import logging
-import torch
 import itertools
-from typing import Any, Dict, List, Union, Tuple, Optional
+import logging
+import typing
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from kornia.core.external import mcp as _mcp
+import torch
+
 from kornia.core import Tensor
+from kornia.core.external import mcp as _mcp
 from kornia.io import load_image, write_image
 
 logger = logging.getLogger(__name__)
 
 shared_namespace = {
-    'Dict': Dict,
-    'Any': Any,
-    'Union': Union,
-    'Tuple': Tuple,
-    'List': List,
-    'Optional': Optional,
-    'typing': typing,
-    'load_image': load_image,
-    'write_image': write_image,
-    'torch': torch,
-    'Tensor': Tensor,
-    'logger': logger,
+    "Dict": Dict,
+    "Any": Any,
+    "Union": Union,
+    "Tuple": Tuple,
+    "List": List,
+    "Optional": Optional,
+    "typing": typing,
+    "load_image": load_image,
+    "write_image": write_image,
+    "torch": torch,
+    "Tensor": Tensor,
+    "logger": logger,
 }
 
+
 def add_func_as_tool(
-    mcp: "_mcp.server.fastmcp.FastMCP",
-    func: Any,
-    tool_prefix: str = "kornia.enhance"
+    mcp: "_mcp.server.fastmcp.FastMCP", func: Any, tool_prefix: str = "kornia.enhance"
 ) -> "_mcp.server.fastmcp.FastMCP":
     """Add a function as a tool to the MCP server."""
     wrapper = _create_function_wrapper(func)
@@ -40,9 +57,7 @@ def add_func_as_tool(
 
 
 def add_class_as_tool(
-    mcp: "_mcp.server.fastmcp.FastMCP",
-    cls: Any,
-    tool_prefix: str = "kornia.enhance"
+    mcp: "_mcp.server.fastmcp.FastMCP", cls: Any, tool_prefix: str = "kornia.enhance"
 ) -> "_mcp.server.fastmcp.FastMCP":
     """Add a class as a tool to the MCP server."""
     wrapper = _create_class_wrapper(cls)
@@ -53,22 +68,25 @@ def add_class_as_tool(
 def _create_function_wrapper(func: Any):
     """Create a wrapper function for an enhance function with proper type hints."""
     sig = inspect.signature(func)
-    
+
     # Create parameter list with type hints
     params = []
     for param_name, param in sig.parameters.items():
         if param.annotation == Tensor or param.annotation == "Tensor":
             if (
-                param_name == "input" or param_name == "image" or param_name == "src1" or param_name == "src2"
-                or param_name == "data" or param_name == "x"
+                param_name == "input"
+                or param_name == "image"
+                or param_name == "src1"
+                or param_name == "src2"
+                or param_name == "data"
+                or param_name == "x"
             ):
                 params.append(f"{param_name}_path: str")
+            # an error will throw if the type is Tensor. I will keep it for now.
+            elif param.default != inspect.Parameter.empty:
+                params.append(f"{param_name}: Tensor = {param.default}")
             else:
-                # an error will throw if the type is Tensor. I will keep it for now.
-                if param.default != inspect.Parameter.empty:
-                    params.append(f"{param_name}: Tensor = {param.default}")
-                else:
-                    params.append(f"{param_name}: Tensor")
+                params.append(f"{param_name}: Tensor")
         else:
             if type(param.annotation) == str:
                 annotation = param.annotation
@@ -101,10 +119,10 @@ def wrapper({", ".join(params)}):
 
     return result
 '''
-    namespace = {**shared_namespace, 'func': func}
+    namespace = {**shared_namespace, "func": func}
     # Execute the wrapper code
     exec(wrapper_code, namespace)
-    return namespace['wrapper'] 
+    return namespace["wrapper"]
 
 
 def _create_class_wrapper(cls: Any):
@@ -112,26 +130,29 @@ def _create_class_wrapper(cls: Any):
     # Get signatures for both constructor and forward method
     init_sig = inspect.signature(cls)
     forward_sig = inspect.signature(cls.forward)
-    
+
     # Create parameter list with type hints
     params = []
     params_with_default = []
 
     for param_name, param in forward_sig.parameters.items():
-        if param_name == 'self':
+        if param_name == "self":
             continue
         if param.annotation == Tensor or param.annotation == "Tensor":
             if (
-                param_name == "input" or param_name == "image" or param_name == "src1" or param_name == "src2"
-                or param_name == "data" or param_name == "x"
+                param_name == "input"
+                or param_name == "image"
+                or param_name == "src1"
+                or param_name == "src2"
+                or param_name == "data"
+                or param_name == "x"
             ):
                 params.append(f"{param_name}_path: str")
+            # an error will throw if the type is Tensor. I will keep it for now.
+            elif param.default != inspect.Parameter.empty:
+                params_with_default.append(f"{param_name}: Tensor = {param.default}")
             else:
-                # an error will throw if the type is Tensor. I will keep it for now.
-                if param.default != inspect.Parameter.empty:
-                    params_with_default.append(f"{param_name}: Tensor = {param.default}")
-                else:
-                    params.append(f"{param_name}: Tensor")
+                params.append(f"{param_name}: Tensor")
         else:
             if type(param.annotation) == str:
                 annotation = param.annotation
@@ -140,7 +161,7 @@ def _create_class_wrapper(cls: Any):
             params.append(f"{param_name}: {annotation}")
 
     for param_name, param in init_sig.parameters.items():
-        if param_name == 'self':
+        if param_name == "self":
             continue
         if type(param.annotation) == str:
             annotation = param.annotation
@@ -182,7 +203,7 @@ def wrapper({", ".join(itertools.chain(params, params_with_default))}):
 '''
     print(wrapper_code)
     # Create namespace for the wrapper
-    namespace = {**shared_namespace, 'cls': cls}
+    namespace = {**shared_namespace, "cls": cls}
     # Execute the wrapper code
     exec(wrapper_code, namespace)
-    return namespace['wrapper']
+    return namespace["wrapper"]
