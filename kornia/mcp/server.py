@@ -1,12 +1,13 @@
 """MCP Server implementation for Kornia."""
 
+import cv2
 import typing
 import inspect
 import logging
 import torch
 from typing import Any, Dict, List, Union, Tuple, Optional
 
-from kornia.core.external import mcp
+from kornia.core.external import mcp as _mcp
 from kornia.core import Tensor
 from kornia.io import load_image, write_image
 from kornia import enhance
@@ -19,9 +20,9 @@ EXCLUDED_ENHANCE_FUNCTIONS = [
 ]
 
 
-def create_kornia_mcp_server() -> "mcp.server.fastmcp.FastMCP":
+def create_kornia_mcp_server(name: str = "enhance") -> "_mcp.server.fastmcp.FastMCP":
     """Create an MCP server for Kornia's modules."""
-    mcp = mcp.server.fastmcp.FastMCP("Kornia")
+    mcp = _mcp.server.fastmcp.FastMCP(name)
 
     # Register functions from enhance module
     for name, func in inspect.getmembers(enhance, inspect.isfunction):
@@ -65,7 +66,7 @@ def _create_enhance_function_wrapper(func: Any):
 
     # Create the wrapper function with dynamic signature
     wrapper_code = f'''
-def wrapper({", ".join(params)}) -> Dict[str, Any]:
+def wrapper({", ".join(params)}):
     """Call the enhance function with proper argument handling."""
     kwargs = locals()
 
@@ -79,11 +80,11 @@ def wrapper({", ".join(params)}) -> Dict[str, Any]:
             processed_kwargs[k.replace('_path', '')] = img
         else:
             processed_kwargs[k] = v
-            
+
     # Call the original function
     result = func(**processed_kwargs)
 
-    return {{'output': result}}
+    return result
 '''
     
     # Create namespace for the wrapper
@@ -100,6 +101,7 @@ def wrapper({", ".join(params)}) -> Dict[str, Any]:
         'torch': torch,
         'Tensor': Tensor,
         'func': func,
+        'logger': logger,
     }
     # Execute the wrapper code
     exec(wrapper_code, namespace)

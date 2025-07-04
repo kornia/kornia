@@ -42,7 +42,7 @@ class LazyLoader:
 
     auto_install: bool = False
 
-    def __init__(self, module_name: str, dev_dependency: bool = False) -> None:
+    def __init__(self, module_name: str, dev_dependency: bool = False, pip_name: str = None) -> None:
         """Initialize the LazyLoader with the name of the module.
 
         Args:
@@ -50,11 +50,13 @@ class LazyLoader:
             dev_dependency: If the dependency is required in the dev environment.
                 If True, the module will be loaded in the dev environment.
                 If False, the module will not be loaded in the dev environment.
-
+            pip_name: The name of the package to be installed if the module is not installed.
+                If None, the module_name will be used.
         """
         self.module_name = module_name
         self.module: Optional[ModuleType] = None
         self.dev_dependency = dev_dependency
+        self.pip_name = pip_name or module_name
 
     def _install_package(self, module_name: str) -> None:
         logger.info(f"Installing `{module_name}` ...")
@@ -82,7 +84,7 @@ class LazyLoader:
                 self.module = importlib.import_module(self.module_name)
             except ImportError as e:
                 if kornia_config.lazyloader.installation_mode == InstallationMode.AUTO or self.auto_install:
-                    self._install_package(self.module_name)
+                    self._install_package(self.pip_name)
                 elif kornia_config.lazyloader.installation_mode == InstallationMode.ASK:
                     to_ask = True
                     if_install = input(
@@ -92,12 +94,12 @@ class LazyLoader:
                     )
                     while to_ask:
                         if if_install.lower() == "y" or if_install.lower() == "yes":
-                            self._install_package(self.module_name)
+                            self._install_package(self.pip_name)
                             self.module = importlib.import_module(self.module_name)
                             to_ask = False
                         elif if_install.lower() == "a" or if_install.lower() == "all":
                             self.auto_install = True
-                            self._install_package(self.module_name)
+                            self._install_package(self.pip_name)
                             self.module = importlib.import_module(self.module_name)
                             to_ask = False
                         elif if_install.lower() == "n" or if_install.lower() == "no":
@@ -160,4 +162,5 @@ segmentation_models_pytorch = LazyLoader("segmentation_models_pytorch")
 basicsr = LazyLoader("basicsr")
 requests = LazyLoader("requests")
 ivy = LazyLoader("ivy")
-mcp = LazyLoader("mcp")
+mcp = LazyLoader("mcp", pip_name="mcp[cli]")
+fastapi = LazyLoader("fastapi", pip_name="fastapi[standard]")

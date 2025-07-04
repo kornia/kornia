@@ -5,7 +5,6 @@ This module provides MCP server functionality for Kornia's image processing capa
 import logging
 
 from .server import create_kornia_mcp_server
-from .start import main as cli_main
 
 logger = logging.getLogger(__name__)
 
