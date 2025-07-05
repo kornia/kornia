@@ -61,20 +61,22 @@ VALID_FEATURE_FUNCTIONS = [
     "TFeat",
 ]
 
+# NOTE: It seems the tuple arguments (e.g. kernel_size) are not
+# handeld correctly. The inputSchema may not be correct by this automatic approach.
 VALID_FILTER_FUNCTIONS = [
-    "BoxBlur",
-    "BlurPool2D",
-    "DexiNed",
-    "EdgeAwareBlurPool2D",
-    "MaxBlurPool2D",
-    "StableDiffusionDissolving",
-    "GaussianBlur2d",
-    "InRange",
-    "Laplacian",
-    "MedianBlur",
-    "MotionBlur",
-    "Sobel",
-    "UnsharpMask",
+    # "BoxBlur",
+    # "BlurPool2D",
+    # "DexiNed",
+    # "EdgeAwareBlurPool2D",
+    # "MaxBlurPool2D",
+    # "StableDiffusionDissolving",
+    # "GaussianBlur2d",
+    # "InRange",
+    # "Laplacian",
+    # "MedianBlur",
+    # "MotionBlur",
+    # "Sobel",
+    # "UnsharpMask",
 ]
 
 VALID_GEOMETRY_FUNCTIONS = [
@@ -110,9 +112,9 @@ def add_tools_from_module(
 def main():
     """Main entry point for the CLI."""
     mcp = _mcp.server.fastmcp.FastMCP("Kornia MCP Toolbox")
-    add_tools_from_module(mcp, kornia.enhance, "kornia.enhance", VALID_ENHANCE_FUNCTIONS)
-    add_tools_from_module(mcp, kornia.feature, "kornia.feature", VALID_FEATURE_FUNCTIONS)
-    add_tools_from_module(mcp, kornia.filters, "kornia.filters", VALID_FILTER_FUNCTIONS)
+    add_tools_from_module(mcp, kornia.enhance, "kornia_enhance", VALID_ENHANCE_FUNCTIONS)
+    add_tools_from_module(mcp, kornia.feature, "kornia_feature", VALID_FEATURE_FUNCTIONS)
+    add_tools_from_module(mcp, kornia.filters, "kornia_filters", VALID_FILTER_FUNCTIONS)
     return mcp
 
 

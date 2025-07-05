@@ -48,20 +48,20 @@ shared_namespace = {
 
 
 def add_func_as_tool(
-    mcp: "_mcp.server.fastmcp.FastMCP", func: Any, tool_prefix: str = "kornia.enhance"
+    mcp: "_mcp.server.fastmcp.FastMCP", func: Any, tool_prefix: str
 ) -> "_mcp.server.fastmcp.FastMCP":
     """Add a function as a tool to the MCP server."""
     wrapper = _create_function_wrapper(func)
-    mcp.add_tool(wrapper, name=f"{tool_prefix}.{func.__name__}", description=func.__doc__)
+    mcp.add_tool(wrapper, name=f"{tool_prefix}_{func.__name__}", description=func.__doc__)
     return mcp
 
-
+    
 def add_class_as_tool(
-    mcp: "_mcp.server.fastmcp.FastMCP", cls: Any, tool_prefix: str = "kornia.enhance"
+    mcp: "_mcp.server.fastmcp.FastMCP", cls: Any, tool_prefix: str
 ) -> "_mcp.server.fastmcp.FastMCP":
     """Add a class as a tool to the MCP server."""
     wrapper = _create_class_wrapper(cls)
-    mcp.add_tool(wrapper, name=f"{tool_prefix}.{cls.__name__}", description=cls.__doc__)
+    mcp.add_tool(wrapper, name=f"{tool_prefix}_{cls.__name__}", description=cls.__doc__)
     return mcp
 
 
