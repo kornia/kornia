@@ -70,10 +70,8 @@ def _create_function_wrapper(func: Any):
     sig = inspect.signature(func)
 
     if not (sig.return_annotation == "Tensor" or sig.return_annotation == Tensor):
-        raise ValueError(
-            f"Currently, the function must return a Tensor. Obtained {sig.return_annotation}."
-        )
-    
+        raise ValueError(f"Currently, the function must return a Tensor. Obtained {sig.return_annotation}.")
+
     # Create parameter list with type hints
     params = []
     for param_name, param in sig.parameters.items():
@@ -146,7 +144,7 @@ def _create_class_wrapper(cls: Any):
         raise ValueError(
             f"Currently, the forward method must return a Tensor. Obtained {forward_sig.return_annotation}."
         )
-    
+
     # Create parameter list with type hints
     params = []
     params_with_default = []
