@@ -69,6 +69,11 @@ def _create_function_wrapper(func: Any):
     """Create a wrapper function for an enhance function with proper type hints."""
     sig = inspect.signature(func)
 
+    if not (sig.return_annotation == "Tensor" or sig.return_annotation == Tensor):
+        raise ValueError(
+            f"Currently, the function must return a Tensor. Obtained {sig.return_annotation}."
+        )
+    
     # Create parameter list with type hints
     params = []
     for param_name, param in sig.parameters.items():
@@ -99,7 +104,7 @@ def _create_function_wrapper(func: Any):
 
     # Create the wrapper function with dynamic signature
     wrapper_code = f'''
-def wrapper({", ".join(params)}):
+def wrapper({", ".join(params)}, return_type: str = "numpy"):
     """Call the enhance function with proper argument handling."""
     kwargs = locals()
 
@@ -111,13 +116,19 @@ def wrapper({", ".join(params)}):
         if k.endswith('_path'):  # Handle image paths
             img = load_image(v) / 255.0
             processed_kwargs[k.replace('_path', '')] = img
+        elif k == "return_type":
+            continue
         else:
             processed_kwargs[k] = v
 
     # Call the original function
     result = func(**processed_kwargs)
 
-    return result
+    if return_type == "numpy":
+        return result.cpu().numpy()
+    elif return_type == "torch":
+        return result
+    raise ValueError(f"Invalid return type: {{return_type}}")
 '''
     namespace = {**shared_namespace, "func": func}
     # Execute the wrapper code
@@ -131,6 +142,11 @@ def _create_class_wrapper(cls: Any):
     init_sig = inspect.signature(cls)
     forward_sig = inspect.signature(cls.forward)
 
+    if not (forward_sig.return_annotation == "Tensor" or forward_sig.return_annotation == Tensor):
+        raise ValueError(
+            f"Currently, the forward method must return a Tensor. Obtained {forward_sig.return_annotation}."
+        )
+    
     # Create parameter list with type hints
     params = []
     params_with_default = []
@@ -177,7 +193,7 @@ def _create_class_wrapper(cls: Any):
 
     # Create the wrapper function with dynamic signature
     wrapper_code = f'''
-def wrapper({", ".join(itertools.chain(params, params_with_default))}):
+def wrapper({", ".join(itertools.chain(params, params_with_default))}, return_type: str = "numpy"):
     """Call the enhance class with proper argument handling."""
     kwargs = locals()
 
@@ -189,6 +205,8 @@ def wrapper({", ".join(itertools.chain(params, params_with_default))}):
         if k.endswith('_path'):  # Handle image paths
             img = load_image(v) / 255.0
             processed_kwargs[k.replace('_path', '')] = img
+        elif k == "return_type":
+            continue
         else:
             processed_kwargs[k] = v
 
@@ -197,11 +215,15 @@ def wrapper({", ".join(itertools.chain(params, params_with_default))}):
     instance = cls(**{{k: processed_kwargs[k] for k in init_arguments}})
 
     # Call the forward method
-    result = instance(**{{k: processed_kwargs[k] for k in processed_kwargs if k not in init_arguments}})
+    result = instance(**{{
+        k: processed_kwargs[k] for k in processed_kwargs if k not in init_arguments}})
 
-    return result
+    if return_type == "numpy":
+        return result.cpu().numpy()
+    elif return_type == "torch":
+        return result
+    raise ValueError(f"Invalid return type: {{return_type}}")
 '''
-    print(wrapper_code)
     # Create namespace for the wrapper
     namespace = {**shared_namespace, "cls": cls}
     # Execute the wrapper code
