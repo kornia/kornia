@@ -41,7 +41,7 @@ class TestONNXSequential:
     @pytest.fixture
     def onnx_sequential(self, mock_model_proto):
         # Return an ONNXSequential instance with mocked models
-        return ONNXSequential(mock_model_proto, mock_model_proto)
+        return ONNXSequential(mock_model_proto, mock_model_proto, auto_ir_version_conversion=True, target_ir_version=10)
 
     def test_load_op_from_proto(self, mock_model_proto, onnx_sequential):
         # Test loading a model from an ONNX ModelProto object
@@ -56,13 +56,21 @@ class TestONNXSequential:
         node = make_node("Identity", ["input"], ["output"])
         graph = make_graph([node], "combined_graph", [input_info], [output_info])
         op = onnx.OperatorSetIdProto()
-        op.version = 17
-        combined_model = make_model(graph, opset_imports=[op])
+        opset_version = 17
+        ir_version = 10
+        op.version = opset_version
+        combined_model = make_model(graph, opset_imports=[op], ir_version=ir_version)
 
         mock_merge_models.return_value = combined_model
 
         # Test combining multiple ONNX models with io_maps
-        onnx_sequential = ONNXSequential(mock_model_proto, mock_model_proto)
+        onnx_sequential = ONNXSequential(
+            mock_model_proto,
+            mock_model_proto,
+            auto_ir_version_conversion=True,
+            target_ir_version=ir_version,
+            target_opset_version=opset_version,
+        )
         combined_op = onnx_sequential.combine([("output1", "input2")])
 
         assert isinstance(combined_op, onnx.ModelProto)
