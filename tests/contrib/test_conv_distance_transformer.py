@@ -123,5 +123,4 @@ class TestConvDistanceTransform(BaseTester):
             device=device,
             dtype=dtype,
         )
-
         self.assert_close(out[0, 0], expected, rtol=1e-3, atol=1e-3)
