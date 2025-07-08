@@ -1518,7 +1518,7 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Ten
     Both poses in quaternion representation.
 
     Args:
-        qvec: ARKit rotation quaternion :math:`(B, 4)`, [x, y, z, w] format.
+        qvec: ARKit rotation quaternion :math:`(B, 4)`, [w, x, y, z] format.
         tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
 
     Returns:
