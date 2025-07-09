@@ -877,7 +877,7 @@ def quaternion_from_euler(roll: Tensor, pitch: Tensor, yaw: Tensor) -> tuple[Ten
 def normalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: int, eps: float = 1e-8) -> Tensor:
     r"""Normalize pixel coordinates between -1 and 1.
 
-    Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
+    Normalized, -1 if on extreme left, 1 if on extreme right (x = w).
 
     Args:
         pixel_coordinates: the grid with pixel coordinates. Shape can be :math:`(*, 2)`.
@@ -905,7 +905,7 @@ def normalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: i
         ]
     )
 
-    factor: Tensor = tensor(2.0, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype) / (hw - 1).clamp(eps)
+    factor: Tensor = tensor(2.0, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype) / hw.clamp(eps)
 
     return factor * pixel_coordinates - 1
 
@@ -913,7 +913,7 @@ def normalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: i
 def denormalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: int, eps: float = 1e-8) -> Tensor:
     r"""Denormalize pixel coordinates.
 
-    The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
+    The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w).
 
     Args:
         pixel_coordinates: the normalized grid coordinates. Shape can be :math:`(*, 2)`.
@@ -935,7 +935,7 @@ def denormalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width:
     # compute normalization factor
     hw: Tensor = stack([tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
 
-    factor: Tensor = tensor(2.0) / (hw - 1).clamp(eps)
+    factor: Tensor = tensor(2.0) / hw.clamp(eps)
 
     return tensor(1.0) / factor * (pixel_coordinates + 1)
 
@@ -945,7 +945,7 @@ def normalize_pixel_coordinates3d(
 ) -> Tensor:
     r"""Normalize pixel coordinates between -1 and 1.
 
-    Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
+    Normalized, -1 if on extreme left, 1 if on extreme right (x = w).
 
     Args:
         pixel_coordinates: the grid with pixel coordinates. Shape can be :math:`(*, 3)`.
@@ -965,7 +965,7 @@ def normalize_pixel_coordinates3d(
         stack([tensor(depth), tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
     )
 
-    factor: Tensor = tensor(2.0) / (dhw - 1).clamp(eps)
+    factor: Tensor = tensor(2.0) / (dhw).clamp(eps)
 
     return factor * pixel_coordinates - 1
 
@@ -975,7 +975,7 @@ def denormalize_pixel_coordinates3d(
 ) -> Tensor:
     r"""Denormalize pixel coordinates.
 
-    The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
+    The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w).
 
     Args:
         pixel_coordinates: the normalized grid coordinates. Shape can be :math:`(*, 3)`.
@@ -995,7 +995,7 @@ def denormalize_pixel_coordinates3d(
         stack([tensor(depth), tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
     )
 
-    factor: Tensor = tensor(2.0) / (dhw - 1).clamp(eps)
+    factor: Tensor = tensor(2.0) / (dhw).clamp(eps)
 
     return tensor(1.0) / factor * (pixel_coordinates + 1)
 
