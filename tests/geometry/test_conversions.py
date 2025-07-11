@@ -801,7 +801,7 @@ class TestNormalizePixelCoordinates(BaseTester):
         self.assert_close(actual, expected)
 
 
-class d(BaseTester):
+class TestDenormalizePixelCoordinates(BaseTester):
     def test_tensor_bhw2(self, device, dtype):
         height, width = 3, 4
         grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(dtype=dtype)
