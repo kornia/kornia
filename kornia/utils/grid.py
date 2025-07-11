@@ -75,8 +75,8 @@ def create_meshgrid(
     #     base_grid = K.geometry.normalize_pixel_coordinates(base_grid, height, width)
     # return torch.unsqueeze(base_grid.transpose(0, 1), dim=0)
     if normalized_coordinates:
-        xs = (xs / (width - 1) - 0.5) * 2
-        ys = (ys / (height - 1) - 0.5) * 2
+        xs = (xs / width - 0.5) * 2
+        ys = (ys / height - 0.5) * 2
     # generate grid by stacking coordinates
     # TODO: torchscript doesn't like `torch_version_ge`
     # if torch_version_ge(1, 13, 0):
