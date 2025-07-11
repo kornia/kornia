@@ -441,6 +441,11 @@ def main():
         "equalize_clahe": ((), 1),
         "add_weighted": ((0.75, 0.25, 2.0), 1),
         "jpeg_codec_differentiable": ((torch.tensor([50]),), 1),
+        "thresh_binary": ((0.5, 1.0, 1e3), 1),
+        "thresh_binary_inv": ((0.5, 1.0, 1e3), 1),
+        "thresh_tozero": ((0.5, 1e3), 1),
+        "thresh_tozero_inv": ((0.5, 1e3), 1),
+        "thresh_trunc": ((0.5, 1e3), 1),
     }
     # ITERATE OVER THE TRANSFORMS
     for fn_name, (args, num_samples) in transforms.items():
@@ -451,6 +456,13 @@ def main():
             args_in = (img_in, args[0], img2, args[1], args[2])
         else:
             args_in = (img_in, *args)
+
+        if fn_name.startswith("thresh_"):
+            # make grayscale
+            weights = Tensor([0.299, 0.587, 0.114]).reshape((1, 3, 1, 1))
+            img_in = (img_in * weights).sum(1, keepdim=True)
+            args_in = (img_in, *args)
+
         # import function and apply
         fn = getattr(mod, fn_name)
         out = fn(*args_in)
