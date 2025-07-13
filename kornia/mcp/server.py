@@ -27,7 +27,12 @@ import torch
 
 from kornia.core import Tensor
 from kornia.core.external import mcp as _mcp
-from kornia.io import load_image, write_image
+from kornia.mcp.utils import (
+    load_any_image,
+    tensor_to_base64,
+    parse_args_from_docstring,
+    parse_description_from_docstring,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +44,8 @@ shared_namespace = {
     "List": List,
     "Optional": Optional,
     "typing": typing,
-    "load_image": load_image,
-    "write_image": write_image,
+    "load_any_image": load_any_image,
+    "tensor_to_base64": tensor_to_base64,
     "torch": torch,
     "Tensor": Tensor,
     "logger": logger,
@@ -52,7 +57,12 @@ def add_func_as_tool(
 ) -> "_mcp.server.fastmcp.FastMCP":
     """Add a function as a tool to the MCP server."""
     wrapper = _create_function_wrapper(func)
-    mcp.add_tool(wrapper, name=f"{tool_prefix}_{func.__name__}", description=func.__doc__)
+    description = parse_description_from_docstring(func.__doc__)
+    mcp.add_tool(
+        wrapper,
+        name=f"{tool_prefix}_{func.__name__}",
+        description=description,
+    )
     return mcp
 
     
@@ -61,7 +71,12 @@ def add_class_as_tool(
 ) -> "_mcp.server.fastmcp.FastMCP":
     """Add a class as a tool to the MCP server."""
     wrapper = _create_class_wrapper(cls)
-    mcp.add_tool(wrapper, name=f"{tool_prefix}_{cls.__name__}", description=cls.__doc__)
+    description = parse_description_from_docstring(cls.__doc__)
+    mcp.add_tool(
+        wrapper,
+        name=f"{tool_prefix}_{cls.__name__}",
+        description=description,
+    )
     return mcp
 
 
@@ -84,12 +99,12 @@ def _create_function_wrapper(func: Any):
                 or param_name == "data"
                 or param_name == "x"
             ):
-                params.append(f"{param_name}_path: str")
+                params.append(f"{param_name}_uri: Any")
             # an error will throw if the type is Tensor. I will keep it for now.
             elif param.default != inspect.Parameter.empty:
-                params.append(f"{param_name}: Tensor = {param.default}")
+                params.append(f"{param_name}: Any = {param.default}")
             else:
-                params.append(f"{param_name}: Tensor")
+                params.append(f"{param_name}: Any")
         else:
             if type(param.annotation) == str:
                 annotation = param.annotation
@@ -102,7 +117,7 @@ def _create_function_wrapper(func: Any):
 
     # Create the wrapper function with dynamic signature
     wrapper_code = f'''
-def wrapper({", ".join(params)}, return_type: str = "numpy"):
+def wrapper({", ".join(params)}, return_type: str = "base64"):
     """Call the enhance function with proper argument handling."""
     kwargs = locals()
 
@@ -111,9 +126,9 @@ def wrapper({", ".join(params)}, return_type: str = "numpy"):
 
     # Process each argument
     for k, v in kwargs.items():
-        if k.endswith('_path'):  # Handle image paths
-            img = load_image(v) / 255.0
-            processed_kwargs[k.replace('_path', '')] = img
+        if k.endswith('_uri'):  # Handle image paths
+            img = load_any_image(v) / 255.0
+            processed_kwargs[k.replace('_uri', '')] = img
         elif k == "return_type":
             continue
         else:
@@ -126,6 +141,8 @@ def wrapper({", ".join(params)}, return_type: str = "numpy"):
         return result.cpu().numpy()
     elif return_type == "torch":
         return result
+    elif return_type == "base64":
+        return tensor_to_base64(result)
     raise ValueError(f"Invalid return type: {{return_type}}")
 '''
     namespace = {**shared_namespace, "func": func}
@@ -161,12 +178,12 @@ def _create_class_wrapper(cls: Any):
                 or param_name == "data"
                 or param_name == "x"
             ):
-                params.append(f"{param_name}_path: str")
-            # an error will throw if the type is Tensor. I will keep it for now.
+                params.append(f"{param_name}_uri: Any")
+            # an error will throw if the type is Tensor. I will change it to Any for now.
             elif param.default != inspect.Parameter.empty:
-                params_with_default.append(f"{param_name}: Tensor = {param.default}")
+                params_with_default.append(f"{param_name}: Any = {param.default}")
             else:
-                params.append(f"{param_name}: Tensor")
+                params.append(f"{param_name}: Any")
         else:
             if type(param.annotation) == str:
                 annotation = param.annotation
@@ -191,7 +208,7 @@ def _create_class_wrapper(cls: Any):
 
     # Create the wrapper function with dynamic signature
     wrapper_code = f'''
-def wrapper({", ".join(itertools.chain(params, params_with_default))}, return_type: str = "numpy"):
+def wrapper({", ".join(itertools.chain(params, params_with_default))}, return_type: str = "base64"):
     """Call the enhance class with proper argument handling."""
     kwargs = locals()
 
@@ -200,9 +217,9 @@ def wrapper({", ".join(itertools.chain(params, params_with_default))}, return_ty
 
     # Process each argument
     for k, v in kwargs.items():
-        if k.endswith('_path'):  # Handle image paths
-            img = load_image(v) / 255.0
-            processed_kwargs[k.replace('_path', '')] = img
+        if k.endswith('_uri'):  # Handle image paths
+            img = load_any_image(v) / 255.0
+            processed_kwargs[k.replace('_uri', '')] = img
         elif k == "return_type":
             continue
         else:
@@ -220,6 +237,8 @@ def wrapper({", ".join(itertools.chain(params, params_with_default))}, return_ty
         return result.cpu().numpy()
     elif return_type == "torch":
         return result
+    elif return_type == "base64":
+        return tensor_to_base64(result)
     raise ValueError(f"Invalid return type: {{return_type}}")
 '''
     # Create namespace for the wrapper

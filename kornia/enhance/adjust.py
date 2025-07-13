@@ -1324,9 +1324,9 @@ class AdjustBrightness(Module):
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        brightness_factor: Brightness adjust factor per element
-          in the batch. 0 does not modify the input image while any other number modify the
-          brightness.
+        brightness_factor: Brightness adjust factor per element in the batch. It's recommended to
+            bound the factor by [0, 1]. 0 does not modify the input image while any other
+            number modify the brightness.
 
     Shape:
         - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
@@ -1426,9 +1426,9 @@ class AdjustBrightnessAccumulative(Module):
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        brightness_factor: Brightness adjust factor per element
-          in the batch. 0 does not modify the input image while any other number modify the
-          brightness.
+        brightness_factor: Brightness adjust factor per element in the batch. It's recommended to
+            bound the factor by [0, 1]. 0 does not modify the input image while any other
+            number modify the brightness.
 
     Shape:
         - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.

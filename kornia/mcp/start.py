@@ -31,14 +31,14 @@ logger = logging.getLogger(__name__)
 
 VALID_ENHANCE_FUNCTIONS = [
     "AdjustBrightness",
-    "AdjustBrightnessAccumulative",
+    # "AdjustBrightnessAccumulative",
     "AdjustContrast",
-    "AdjustContrastWithMeanSubtraction",
+    # "AdjustContrastWithMeanSubtraction",
     "AdjustGamma",
     "AdjustHue",
     "AdjustLog",
     "AdjustSaturation",
-    "AdjustSaturationWithGraySubtraction",
+    # "AdjustSaturationWithGraySubtraction",
     "AdjustSigmoid",
     "Denormalize",
     "Normalize",
