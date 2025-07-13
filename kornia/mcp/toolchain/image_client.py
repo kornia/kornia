@@ -1,28 +1,42 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 from typing import Any, Dict, List, Optional
-import torch
-import kornia
+
 from kornia.core import Tensor
 from kornia.core.external import mcp as _mcp
-from kornia.core.external import numpy as np
-from kornia.mcp.utils import tensor_to_base64, base64_to_tensor
 from kornia.mcp.toolchain.base import MCPOpenAIClient
+from kornia.mcp.utils import base64_to_tensor, tensor_to_base64
 
 
 class MCPImageProcessingClient(MCPOpenAIClient):
-    """
-    Stateful client for single-frame image processing using OpenAI and MCP tools.
+    """Stateful client for single-frame image processing using OpenAI and MCP tools.
     - On first query, asks OpenAI for the toolchain, saves it.
     - Can process new images using the saved toolchain without re-querying OpenAI.
     - Allows updating the toolchain with a new query.
     """
+
     def __init__(self, api_key: str, session: "_mcp.ClientSession", model: str = "gpt-4o"):
         super().__init__(api_key, session, model)
         self.toolchain: Optional[List[Dict[str, Any]]] = None
         self.message_history: Optional[List[Dict[str, Any]]] = None
 
     async def process_query(self, query: str, image: Tensor) -> Any:
-        """
-        Query OpenAI for a toolchain, process the image, and save the toolchain.
+        """Query OpenAI for a toolchain, process the image, and save the toolchain.
         Returns the final output and saves the toolchain for future use.
         """
         # Query OpenAI and get the toolchain (sequence of tool calls)
@@ -33,7 +47,8 @@ class MCPImageProcessingClient(MCPOpenAIClient):
                     "role": "system",
                     "content": "You are an expert assistant. When calling tools, "
                     "always follow the tool documentation and parameter constraints exactly. "
-                    "Assume image path is ./input.jpg."}
+                    "Assume image path is ./input.jpg.",
+                }
             ]
         self.message_history.append({"role": "user", "content": query})
         response = await self.openai_client.chat.completions.create(
@@ -60,8 +75,7 @@ class MCPImageProcessingClient(MCPOpenAIClient):
         return await self.process_image(image)
 
     async def process_image(self, image: Tensor) -> Any:
-        """
-        Process an image using the saved toolchain.
+        """Process an image using the saved toolchain.
         Returns the final output after applying all tools in the chain.
         """
         if not self.toolchain:
@@ -81,9 +95,7 @@ class MCPImageProcessingClient(MCPOpenAIClient):
         return base64_to_tensor(current_data)
 
     async def update_toolchain(self, query: str):
-        """
-        Update the toolchain state with a new query (does not process an image).
-        """
+        """Update the toolchain state with a new query (does not process an image)."""
         tools = await self.get_mcp_tools()
         messages = [{"role": "user", "content": query}]
         response = await self.openai_client.chat.completions.create(

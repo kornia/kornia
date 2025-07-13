@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 import base64
 import io
 import tempfile
@@ -17,6 +34,7 @@ def test_load_input_image_from_numpy():
     assert isinstance(img_tensor, torch.Tensor)
     assert img_tensor.shape == (3, 100, 100)
 
+
 def test_load_input_image_from_tensor():
     # Test loading from tensor
     img_tensor_input = torch.randn(3, 100, 100)
@@ -24,12 +42,14 @@ def test_load_input_image_from_tensor():
     assert isinstance(img_tensor, torch.Tensor)
     assert img_tensor.shape == (3, 100, 100)
 
+
 def test_load_input_image_from_tensor_gray():
     # Test loading grayscale tensor
     img_tensor_gray = torch.randn(100, 100)
     img_tensor = load_any_image(img_tensor_gray)
     assert isinstance(img_tensor, torch.Tensor)
     assert img_tensor.shape == (1, 100, 100)
+
 
 def test_load_input_image_from_tensor_hwc():
     # Test loading HWC tensor
@@ -46,13 +66,14 @@ def test_load_input_image_from_tensor_hwc():
     with pytest.raises(TypeError):
         load_any_image(123)
 
+
 def test_load_input_image_from_file_path():
     # Test loading from file path
-    with tempfile.NamedTemporaryFile(suffix='.jpg') as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".jpg") as tmp:
         # Create a temporary test image
-        img = Image.fromarray((np.random.rand(100, 100, 3) * 255).astype('uint8'))
+        img = Image.fromarray((np.random.rand(100, 100, 3) * 255).astype("uint8"))
         img_byte_arr = io.BytesIO()
-        img.save(img_byte_arr, format='JPEG')
+        img.save(img_byte_arr, format="JPEG")
         img_bytes = img_byte_arr.getvalue()
         tmp.write(img_bytes)
         tmp.flush()
@@ -63,14 +84,15 @@ def test_load_input_image_from_file_path():
         assert img_tensor.shape[0] in [1, 3]  # Either grayscale or RGB
         assert len(img_tensor.shape) == 3
 
+
 def test_load_input_image_from_base64_string():
     # Test loading from base64 string
-    img_np = (np.random.rand(100, 100, 3) * 255).astype('uint8')
+    img_np = (np.random.rand(100, 100, 3) * 255).astype("uint8")
     img = Image.fromarray(img_np)
     buffer = io.BytesIO()
-    img.save(buffer, format='JPEG')
+    img.save(buffer, format="JPEG")
     base64_str = base64.b64encode(buffer.getvalue()).decode()
-    img_tensor = load_any_image(f'data:image/jpeg;base64,{base64_str}')
+    img_tensor = load_any_image(f"data:image/jpeg;base64,{base64_str}")
     assert isinstance(img_tensor, torch.Tensor)
     assert img_tensor.shape[0] in [1, 3]
     assert len(img_tensor.shape) == 3

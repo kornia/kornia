@@ -29,9 +29,8 @@ from kornia.core import Tensor
 from kornia.core.external import mcp as _mcp
 from kornia.mcp.utils import (
     load_any_image,
-    tensor_to_base64,
-    parse_args_from_docstring,
     parse_description_from_docstring,
+    tensor_to_base64,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,9 +51,7 @@ shared_namespace = {
 }
 
 
-def add_func_as_tool(
-    mcp: "_mcp.server.fastmcp.FastMCP", func: Any, tool_prefix: str
-) -> "_mcp.server.fastmcp.FastMCP":
+def add_func_as_tool(mcp: "_mcp.server.fastmcp.FastMCP", func: Any, tool_prefix: str) -> "_mcp.server.fastmcp.FastMCP":
     """Add a function as a tool to the MCP server."""
     wrapper = _create_function_wrapper(func)
     description = parse_description_from_docstring(func.__doc__)
@@ -65,10 +62,8 @@ def add_func_as_tool(
     )
     return mcp
 
-    
-def add_class_as_tool(
-    mcp: "_mcp.server.fastmcp.FastMCP", cls: Any, tool_prefix: str
-) -> "_mcp.server.fastmcp.FastMCP":
+
+def add_class_as_tool(mcp: "_mcp.server.fastmcp.FastMCP", cls: Any, tool_prefix: str) -> "_mcp.server.fastmcp.FastMCP":
     """Add a class as a tool to the MCP server."""
     wrapper = _create_class_wrapper(cls)
     description = parse_description_from_docstring(cls.__doc__)
