@@ -24,7 +24,8 @@ from torch import Tensor
 
 def torch_version() -> str:
     """Parse the `torch.__version__` variable and removes +cu*/cpu."""
-    return torch.__version__.split("+")[0]
+    # Use partition to avoid allocating a list as in split; faster for a single delimiter search.
+    return torch.__version__.partition("+")[0]
 
 
 def torch_version_lt(major: int, minor: int, patch: int) -> bool:
