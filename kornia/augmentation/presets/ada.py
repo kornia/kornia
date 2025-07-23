@@ -53,9 +53,9 @@ class AdaptiveAugmentationSequential(K.AugmentationSequential):
             self.p = min(self.p + self.adjustment_speed, self.max_p)
 
 
-    def forward(self, *inputs, real_acc):
-        assert isinstance(real_acc, (int, float)), "missing real_acc"
-        self.update(real_acc)
+    def forward(self, *inputs, real_acc=None):
+        if real_acc is not None:
+            self.update(real_acc)
 
         if self.p == 0:
             return inputs
