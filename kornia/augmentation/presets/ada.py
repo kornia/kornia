@@ -17,8 +17,10 @@ class AdaptiveAugmentationSequential(K.AugmentationSequential):
             args = [
                 K.RandomHorizontalFlip(p=1),
                 K.RandomRotation90(times=[0, 3], p=1),
+                K.RandomCrop(padding=0.1, p=1.0),
                 K.RandomAffine(degrees=10, translate=(.1, .1), scale=(.9, 1.1), p=1),
                 K.ColorJitter(brightness=.2, contrast=.2, saturation=.2, hue=.1, p=1),
+                K.RandomGaussianNoise(std=0.1, p=1.0),
             ]
         super().__init__(
             *args,
