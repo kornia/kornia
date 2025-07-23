@@ -1,3 +1,5 @@
+from kornia.augmentation.container import AugmentationSequential
+
 class AdaptiveAugmentationSequential(K.AugmentationSequential):
     def __init__(
         self, 
