@@ -18,22 +18,22 @@
 import pytest
 import torch
 
-from kornia.filters.otsu_thresholding import ThreshOtsu, otsu_threshold
+from kornia.filters.otsu_thresholding import OtsuThreshold, otsu_threshold
 
 from testing.base import BaseTester, assert_close
 
 
-class TestThreshOtsu(BaseTester):
+class TestOtsuThreshold(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
-        op = ThreshOtsu()
+        op = OtsuThreshold()
         thresh_result, thresh_value = op(img, nbins=4)
         assert thresh_result.shape == img.shape
 
     @pytest.mark.parametrize("input_shape", [(3, 3), (1, 3, 3), (1, 1, 3, 3), (2, 1, 1, 3, 3)])
     def test_transform_input_shapes(self, input_shape, device, dtype):
         img = torch.rand(input_shape, device=device, dtype=dtype)
-        op = ThreshOtsu()
+        op = OtsuThreshold()
         flat, orig_shape = op.transform_input(img)
         assert orig_shape == img.shape
         assert flat.ndim == 2
@@ -42,12 +42,12 @@ class TestThreshOtsu(BaseTester):
         torch.manual_seed(0)
         img = torch.rand(1, 4, 6, 1, device=device, dtype=dtype)
         out_func_tensor, out_func_value = otsu_threshold(img, nbins=3, return_mask=False)
-        out_class_tensor, out_class_value = ThreshOtsu()(img, nbins=3)
+        out_class_tensor, out_class_value = OtsuThreshold()(img, nbins=3)
         assert_close(out_func_tensor, out_class_tensor)
 
     def test_invalid_dim(self, device, dtype):
         img = torch.rand(1, 1, 1, 1, 3, 3, device=device, dtype=dtype)
-        op = ThreshOtsu()
+        op = OtsuThreshold()
         with pytest.raises(ValueError, match="Unsupported tensor dimensionality"):
             op.transform_input(img)
 
@@ -60,7 +60,7 @@ class TestThreshOtsu(BaseTester):
 
         input = differentiable_input.clone().detach().requires_grad_(False)
 
-        op = ThreshOtsu()
+        op = OtsuThreshold()
         diff_thresh_result, diff_thresh_value = op(input, slow_and_differentiable=True)
         thresh_result, thresh_value = op(input)
         self.assert_close(diff_thresh_result, thresh_result)
@@ -74,7 +74,7 @@ class TestThreshOtsu(BaseTester):
             [[0, 0, 0, 0], [0, 0, 0, 0], [200, 200, 200, 200], [200, 200, 200, 200]], device=device, dtype=dtype
         )
 
-        op = ThreshOtsu()
+        op = OtsuThreshold()
         thresh_result, thresh_value = op(input)
         self.assert_close(thresh_result, expected)
 
@@ -83,7 +83,7 @@ class TestThreshOtsu(BaseTester):
 
         expected = torch.tensor([[0, 0, 0], [0, 50, 60], [70, 80, 90]], device=device, dtype=dtype)
 
-        op = ThreshOtsu()
+        op = OtsuThreshold()
         thresh_result, thresh_value = op(input)
         self.assert_close(thresh_result, expected)
 
@@ -96,7 +96,7 @@ class TestThreshOtsu(BaseTester):
             [[10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10], [10, 10, 10, 10]], device=device, dtype=dtype
         )
 
-        op = ThreshOtsu()
+        op = OtsuThreshold()
         thresh_result, thresh_value = op(input)
         self.assert_close(thresh_result, expected)
 
