@@ -122,15 +122,15 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         self.num_calls = -update_every  # to avoid updating in the first `update_every` steps
 
     def update(self, real_acc):
-        r"""Updates internal params `p` once every `update_every` calls based on the `real_acc` arg by
+        r"""
+        Updates internal params `p` once every `update_every` calls based on the `real_acc` arg by
         adding / subtracting the `adjustment_speed` from it and clamp it at [0, `max_p`]
         increment the internal counter `num_calls` by 1 on each call.
 
         Args:
             real_acc: the Discriminator's accuracy labeling real samples
-        
-        """
 
+        """
         self.num_calls += 1
 
         if self.num_calls < self.update_every:
