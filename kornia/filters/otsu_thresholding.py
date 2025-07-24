@@ -26,11 +26,11 @@ from kornia.enhance.histogram import histogram as diff_histogram
 from kornia.utils.helpers import _torch_histc_cast
 
 
-class ThreshOtsu(torch.nn.Module):
+class OtsuThreshold(torch.nn.Module):
     """Otsu thresholding module for PyTorch tensors."""
 
     def __init__(self) -> None:
-        """Initialize the ThreshOtsu module."""
+        """Initialize the OtsuThreshold module."""
         super().__init__()
 
     @staticmethod
@@ -107,7 +107,8 @@ class ThreshOtsu(torch.nn.Module):
         Args:
             x (torch.Tensor): Image or batch of images to threshold.
             nbins (int, optional): Number of bins for histogram computation. Default is 256.
-            slow_and_differentiable (bool, optional): If True, use a differentiable histogram computation. Default is False.
+            slow_and_differentiable (bool, optional): If True, use a differentiable histogram computation.
+                Default is False.
 
         Returns:
             Tuple[torch.Tensor, torch.Tensor]: Thresholded tensor, threshold values.
@@ -132,7 +133,7 @@ class ThreshOtsu(torch.nn.Module):
             "Tensor dtype not supported for Otsu thresholding.",
         )
 
-        histograms, bin_edges = ThreshOtsu.__histogram(x_flattened, bins=nbins, diff=slow_and_differentiable)
+        histograms, bin_edges = OtsuThreshold.__histogram(x_flattened, bins=nbins, diff=slow_and_differentiable)
         best_thresholds = torch.zeros(nchannel, device=x_flattened.device, dtype=x.dtype)
 
         # Iterate over each image/flattened channel in the batch
@@ -229,7 +230,7 @@ def otsu_threshold(
                 [ 0, 50, 60],
                 [70, 80, 90]]), tensor([40]))
     """
-    module = ThreshOtsu()
+    module = OtsuThreshold()
 
     result, threshold = module(x, nbins=nbins, slow_and_differentiable=slow_and_differentiable)
 
