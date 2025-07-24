@@ -1,6 +1,9 @@
 from kornia.augmentation.container import AugmentationSequential
 
-class AdaptiveAugmentationSequential(K.AugmentationSequential):
+class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
+    """
+    Implementation of Adaptive Discriminator Augmentation
+    """
     def __init__(
         self, 
         *args, 
