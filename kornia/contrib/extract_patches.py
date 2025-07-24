@@ -381,7 +381,6 @@ def combine_tensor_patches(
 
     if unpadding:
         unpadding = create_padding_tuple(unpadding)
-        unpadding = cast(FullPadType, unpadding)
 
     ones = torch.ones(
         patches.shape[0],
