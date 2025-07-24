@@ -96,26 +96,26 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
     def __init__(
         self,
         *args: Optional[Union[_AugmentationBase, ImageSequential]],
-        initial_p: Optional[float] = 1e-5,
-        adjustment_speed: Optional[float] = 1e-2,
-        max_p: Optional[float] = 0.8,
-        target_real_acc: Optional[float] = 0.85,
-        ema_lambda: Optional[float] = 0.99,
-        update_every: Optional[int] = 5,
+        initial_p: float = 1e-5,
+        adjustment_speed: float = 1e-2,
+        max_p: float = 0.8,
+        target_real_acc: float = 0.85,
+        ema_lambda: float = 0.99,
+        update_every: int = 5,
         crop_size: Tuple[int, int] = (64, 64),
-        data_keys: Optional[Union[Sequence[str], Sequence[int], Sequence[DataKey]]] = ("input",),
+        data_keys: Union[Sequence[str], Sequence[int], Sequence[DataKey]] = ("input",),
         same_on_batch: Optional[bool] = False,
         **kwargs: Any,
     ) -> None:
-        if not args:
-            args = [
+        if args is None:
+            args = tuple([
                 K.RandomHorizontalFlip(p=1),
-                K.RandomRotation90(times=[0, 3], p=1.0),
-                K.RandomCrop(size=crop_size, padding=0.1, p=1.0),
+                K.RandomRotation90(times=(0, 3), p=1.0),
+                K.RandomCrop(size=crop_size, padding=0, p=1.0),
                 K.RandomAffine(degrees=10, translate=(0.1, 0.1), scale=(0.9, 1.1), p=1.0),
                 K.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0),
                 K.RandomGaussianNoise(std=0.1, p=1.0),
-            ]
+            ])
         super().__init__(*args, data_keys=data_keys, same_on_batch=same_on_batch, **kwargs)
 
         self.p = initial_p
@@ -125,7 +125,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         self.real_acc_ema = 0.5
         self.ema_lambda = ema_lambda
         self.update_every = update_every
-        self.num_calls = -update_every  # to avoid updating in the first `update_every` steps
+        self.num_calls = - update_every  # to avoid updating in the first `update_every` steps
 
     def update(self, real_acc: float) -> None:
         r"""Updates internal params `p` once every `update_every` calls based on the `real_acc` arg by
@@ -149,8 +149,8 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
             self.p = min(self.p + self.adjustment_speed, self.max_p)
 
     def forward(
-        self, *inputs: Union[DataType, Dict[str, DataType]], real_acc: Optional[float] = None
-    ) -> Union[DataType, List[DataType], Dict[str, DataType]]:
+        self, *inputs: Union[DataType, Dict[str, torch.Tensor]], real_acc: Optional[float] = None
+    ) -> Union[DataType, List[DataType], Dict[str, torch.Tensor]]:
         r"""Apply augmentations to a subset of input tensors with global probability `p`.
 
         This method applies the augmentation pipeline to a subset of input samples, selected stochastically
@@ -183,4 +183,4 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
 
         outputs = inputs[0].clone()
         outputs[P] = augmented_inputs
-        return outputs
+        return tuple(outputs, )
