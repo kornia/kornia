@@ -63,6 +63,7 @@ from .median import MedianBlur, median_blur
 from .motion import MotionBlur, MotionBlur3D, motion_blur, motion_blur3d
 from .sobel import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
 from .unsharp import UnsharpMask, unsharp_mask
+from .otsu_thresholding import ThreshOtsu, otsu_threshold
 
 __all__ = [
     "BilateralBlur",
@@ -71,6 +72,7 @@ __all__ = [
     "Canny",
     "DexiNed",
     "EdgeAwareBlurPool2D",
+    "edge_aware_blur_pool2d",
     "GaussianBlur2d",
     "GuidedBlur",
     "InRange",
@@ -85,6 +87,8 @@ __all__ = [
     "SpatialGradient3d",
     "StableDiffusionDissolving",
     "UnsharpMask",
+    "ThreshOtsu",
+    "otsu_threshold",
     "bilateral_blur",
     "blur_pool2d",
     "box_blur",

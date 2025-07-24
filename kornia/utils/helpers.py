@@ -181,7 +181,7 @@ def _torch_inverse_cast(input: Tensor) -> Tensor:
     return torch.linalg.inv(input.to(dtype)).to(input.dtype)
 
 
-def _torch_histc_cast(input: Tensor, bins: int, min: int, max: int) -> Tensor:
+def _torch_histc_cast(input: Tensor, bins: int, min: Union[int, float, bool], max: Union[int, float, bool]) -> Tensor:
     """Make torch.histc work with other than fp32/64.
 
     The function torch.histc is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
@@ -384,4 +384,4 @@ def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
         else:
             constructor_args[key] = value
     # TODO: remove type ignore when https://github.com/python/mypy/issues/14941 be andressed
-    return dataclass_type(**constructor_args)  # type: ignore[return-value]
+    return dataclass_type(**constructor_args)

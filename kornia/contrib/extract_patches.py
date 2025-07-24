@@ -115,7 +115,7 @@ def compute_padding(
         right_padding = ceil(horizontal_padding / 2)
     # the new implementation with unfolding requires symmetric padding
     padding = int(top_padding), int(bottom_padding), int(left_padding), int(right_padding)
-    return cast(FullPadType, padding)
+    return padding
 
 
 class ExtractTensorPatches(Module):
