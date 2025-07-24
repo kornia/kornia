@@ -15,9 +15,15 @@
 # limitations under the License.
 #
 
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+
 import torch
 
 import kornia.augmentation as K
+from kornia.augmentation import ImageSequential
+from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.ops import DataType
+from kornia.constants import DataKey
 
 
 class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
@@ -89,18 +95,18 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
 
     def __init__(
         self,
-        *args,
-        initial_p=1e-5,
-        adjustment_speed=1e-2,
-        max_p=0.8,
-        target_real_acc=0.85,
-        ema_lambda=0.99,
-        update_every=5,
-        crop_size=(64, 64),
-        data_keys=("input",),
-        same_on_batch=False,
-        **kwargs,
-    ):
+        *args: Optional[Union[_AugmentationBase, ImageSequential]],
+        initial_p: Optional[float] = 1e-5,
+        adjustment_speed: Optional[float] = 1e-2,
+        max_p: Optional[float] = 0.8,
+        target_real_acc: Optional[float] = 0.85,
+        ema_lambda: Optional[float] = 0.99,
+        update_every: Optional[int] = 5,
+        crop_size: Tuple[int, int] = (64, 64),
+        data_keys: Optional[Union[Sequence[str], Sequence[int], Sequence[DataKey]]] = ("input",),
+        same_on_batch: Optional[bool] = False,
+        **kwargs: Any,
+    ) -> None:
         if not args:
             args = [
                 K.RandomHorizontalFlip(p=1),
@@ -121,14 +127,13 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         self.update_every = update_every
         self.num_calls = -update_every  # to avoid updating in the first `update_every` steps
 
-    def update(self, real_acc):
+    def update(self, real_acc: float) -> None:
         r"""Updates internal params `p` once every `update_every` calls based on the `real_acc` arg by
         adding / subtracting the `adjustment_speed` from it and clamp it at [0, `max_p`]
         increment the internal counter `num_calls` by 1 on each call.
 
         Args:
-            real_acc: the Discriminator's accuracy labeling real samples
-
+            real_acc: the Discriminator's accuracy labeling real samples.
         """
         self.num_calls += 1
 
@@ -143,7 +148,9 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         else:
             self.p = min(self.p + self.adjustment_speed, self.max_p)
 
-    def forward(self, *inputs, real_acc=None):
+    def forward(
+        self, *inputs: Union[DataType, Dict[str, DataType]], real_acc: Optional[float] = None
+    ) -> Union[DataType, List[DataType], Dict[str, DataType]]:
         r"""Apply augmentations to a subset of input tensors with global probability `p`.
 
         This method applies the augmentation pipeline to a subset of input samples, selected stochastically
