@@ -1,3 +1,4 @@
+import torch
 import kornia.augmentation as K
 
 class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
