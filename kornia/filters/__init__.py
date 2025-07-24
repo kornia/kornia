@@ -61,9 +61,9 @@ from .kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
 from .laplacian import Laplacian, laplacian
 from .median import MedianBlur, median_blur
 from .motion import MotionBlur, MotionBlur3D, motion_blur, motion_blur3d
+from .otsu_thresholding import OtsuThreshold, otsu_threshold
 from .sobel import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
 from .unsharp import UnsharpMask, unsharp_mask
-from .otsu_thresholding import OtsuThreshold, otsu_threshold
 
 __all__ = [
     "BilateralBlur",
@@ -72,7 +72,6 @@ __all__ = [
     "Canny",
     "DexiNed",
     "EdgeAwareBlurPool2D",
-    "edge_aware_blur_pool2d",
     "GaussianBlur2d",
     "GuidedBlur",
     "InRange",
@@ -82,17 +81,17 @@ __all__ = [
     "MedianBlur",
     "MotionBlur",
     "MotionBlur3D",
+    "OtsuThreshold",
     "Sobel",
     "SpatialGradient",
     "SpatialGradient3d",
     "StableDiffusionDissolving",
     "UnsharpMask",
-    "OtsuThreshold",
-    "otsu_threshold",
     "bilateral_blur",
     "blur_pool2d",
     "box_blur",
     "canny",
+    "edge_aware_blur_pool2d",
     "filter2d",
     "filter2d_separable",
     "filter3d",
@@ -129,6 +128,7 @@ __all__ = [
     "median_blur",
     "motion_blur",
     "motion_blur3d",
+    "otsu_threshold",
     "sobel",
     "spatial_gradient",
     "spatial_gradient3d",
