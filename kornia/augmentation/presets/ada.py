@@ -1,8 +1,67 @@
 from kornia.augmentation.container import AugmentationSequential
 
 class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
-    """
-    Implementation of Adaptive Discriminator Augmentation
+    r"""
+    Implementation of Adaptive Discriminator Augmentation (ADA) for GANs training
+
+    adjust a global probability p over all augmentations list to select a subset of images to augment
+    based on an exponential moving average of the Discriminator's accuracy labeling real samples
+
+    Args:
+        *args: a list of kornia augmentation modules, set to a default list if not specified.
+
+        initial_p: initial global probability `p` for applying the augmentations on 
+
+        adjustment_speed: step size for updating the global probability `p`
+
+        max_p: the maximum value to clamp `p` at
+
+        target_real_acc: target `discriminator` accuracy to prevent overfitting
+
+        ema_lambda: EMA smoothing factor to compute the $ \mathrm{ema_real_accuracy} = \lambda_\text{EMA} * mathrm{real_accuracy} + (1 - \lambda_\text{EMA}) * mathrm{real_accuracy}
+        
+        update_every: `p` update frequency
+
+        same_on_batch: apply the same transformation across the batch. If None, it will not overwrite the function-wise settings.
+
+        data_keys: the input type sequential for applying augmentations. Accepts "input", "image", "mask",
+            "bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "class", "label".
+
+        **kwargs: the rest of the `kwargs` passed to the `AugmentationSequential` attribute containing augmentation
+
+
+    Examples:
+
+        >>> from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
+        >>> input = torch.randn(2, 3, 5, 6)
+        >>> ada = AdaptiveDiscriminatorAugmentation()
+        ... ...
+        >>> Discriminator = ...
+        >>> dataloader = ...
+        >>> real_acc = None
+        >>> for real_samples in dataloader:
+        ...     real_samples = ada(real_samples, real_acc=real_acc)
+        ...     ....
+        ...     real_logits = Discriminator(real_samples)
+        ...     real_acc = ...
+        ...     ...
+
+    This example demonstrates using default augmentations with AdaptiveDiscriminatorAugmentation in a GAN training loop
+
+
+        >>> from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
+        >>> input = torch.randn(2, 3, 5, 6)
+        >>> aug_list = [
+        ...     K.RandomRotation90(times=[0, 3], p=1),
+        ...     K.RandomAffine(degrees=10, translate=(.1, .1), scale=(.9, 1.1), p=1),
+        ...     K.ColorJitter(brightness=.2, contrast=.2, saturation=.2, hue=.1, p=1),
+        ... ]
+
+        >>> ada = AdaptiveDiscriminatorAugmentation(*aug_list)
+        >>> out = aug_list(input)
+
+    This example demonstrates using custom augmentations with AdaptiveDiscriminatorAugmentation
+
     """
     def __init__(
         self, 
