@@ -18,7 +18,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
 
         target_real_acc: target Discriminator accuracy to prevent overfitting
 
-        ema_lambda: EMA smoothing factor to compute the $ \mathrm{ema_real_accuracy} = \lambda_\text{EMA} * mathrm{real_accuracy} + (1 - \lambda_\text{EMA}) * mathrm{real_accuracy}
+        ema_lambda: EMA smoothing factor to compute the $ \mathrm{ema_real_accuracy} = \lambda_\text{EMA} * mathrm{real_accuracy} + (1 - \lambda_\text{EMA}) * mathrm{real_accuracy} $
         
         update_every: `p` update frequency
 
@@ -30,7 +30,6 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
             "bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "class", "label".
 
         **kwargs: the rest of the `kwargs` passed to the `AugmentationSequential` attribute containing augmentation
-
 
     Examples:
 
@@ -108,6 +107,14 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
     
 
     def update(self, real_acc):
+        r"""
+        updates internal params `p` once every `update_every` calls based on the `real_acc` arg by adding / substracting the `adjustment_speed` from it and clam it at [0, `max_p`]
+            increment the internal counter `num_calls` by 1 on each call
+
+        Args:
+            real_acc: the Discriminator's accuracy labeling real samples
+        """
+
         self.num_calls += 1
         
         if self.num_calls < self.update_every:
@@ -124,6 +131,15 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
 
 
     def forward(self, *inputs, real_acc=None):
+        r"""
+        Apply augmentations to a subset of input tensors with global probability `p`.
+
+        This method applies the augmentation pipeline to a subset of input samples, selected stochastically
+        using a Bernoulli distribution with probability $p :math:`P_i \\sim \\text{Bernoulli}(p)`, where :math:`P_i` is a boolean mask for the :math:`i`-th
+        if `real_acc` is provided, the internal probability `p` is updated via the `update` method. Non-augmented samples retain their original
+        values, and the output matches the input structure.
+        """
+
         if real_acc is not None:
             self.update(real_acc)
 
