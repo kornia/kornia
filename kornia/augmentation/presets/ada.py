@@ -22,6 +22,8 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         
         update_every: `p` update frequency
 
+        crop_size: the used in the `RandomCrop` default augmentation
+
         same_on_batch: apply the same transformation across the batch. If None, it will not overwrite the function-wise settings.
 
         data_keys: the input type sequential for applying augmentations. Accepts "input", "image", "mask",
@@ -73,6 +75,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         target_real_acc=0.85,
         ema_lambda=.99,
         update_every=5,
+        crop_size=(64, 64),
         data_keys=["input"],
         same_on_batch=False,
         **kwargs
@@ -82,7 +85,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
             args = [
                 K.RandomHorizontalFlip(p=1),
                 K.RandomRotation90(times=[0, 3], p=1.0),
-                K.RandomCrop(padding=0.1, p=1.0),
+                K.RandomCrop(size=crop_size, padding=0.1, p=1.0),
                 K.RandomAffine(degrees=10, translate=(.1, .1), scale=(.9, 1.1), p=1.0),
                 K.ColorJitter(brightness=.2, contrast=.2, saturation=.2, hue=.1, p=1.0),
                 K.RandomGaussianNoise(std=0.1, p=1.0),
