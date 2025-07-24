@@ -515,7 +515,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             )(super(ImageSequential, self).__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
 
-            in_data_keys: List[DataKey]
+            in_data_keys: Optional[List[DataKey]]
             if len(inputs) == 1 and isinstance(inputs[0], dict):
                 original_keys, in_data_keys, inputs, invalid_data = self._preproc_dict_data(inputs[0])
             else:
