@@ -1,4 +1,4 @@
-from kornia.augmentation.container import AugmentationSequential
+import kornia.augmentation as K
 
 class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
     r"""
@@ -16,7 +16,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
 
         max_p: the maximum value to clamp `p` at
 
-        target_real_acc: target `discriminator` accuracy to prevent overfitting
+        target_real_acc: target Discriminator accuracy to prevent overfitting
 
         ema_lambda: EMA smoothing factor to compute the $ \mathrm{ema_real_accuracy} = \lambda_\text{EMA} * mathrm{real_accuracy} + (1 - \lambda_\text{EMA}) * mathrm{real_accuracy}
         
@@ -49,6 +49,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
     This example demonstrates using default augmentations with AdaptiveDiscriminatorAugmentation in a GAN training loop
 
 
+        >>> import kornia.augmentation as K
         >>> from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
         >>> input = torch.randn(2, 3, 5, 6)
         >>> aug_list = [
@@ -80,10 +81,10 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         if not args:
             args = [
                 K.RandomHorizontalFlip(p=1),
-                K.RandomRotation90(times=[0, 3], p=1),
+                K.RandomRotation90(times=[0, 3], p=1.0),
                 K.RandomCrop(padding=0.1, p=1.0),
-                K.RandomAffine(degrees=10, translate=(.1, .1), scale=(.9, 1.1), p=1),
-                K.ColorJitter(brightness=.2, contrast=.2, saturation=.2, hue=.1, p=1),
+                K.RandomAffine(degrees=10, translate=(.1, .1), scale=(.9, 1.1), p=1.0),
+                K.ColorJitter(brightness=.2, contrast=.2, saturation=.2, hue=.1, p=1.0),
                 K.RandomGaussianNoise(std=0.1, p=1.0),
             ]
         super().__init__(
