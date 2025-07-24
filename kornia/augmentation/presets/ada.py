@@ -170,7 +170,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         if not P.any():
             return inputs if len(inputs) > 1 else inputs[0]
 
-        selected_inputs = tuple(inputs[P] for input_ in inputs) if len(inputs) > 1 else inputs[0][P]
+        selected_inputs = tuple(input_[P] for input_ in inputs) if len(inputs) > 1 else inputs[0][P]
         augmented_inputs = super().forward(selected_inputs)
 
         if len(inputs) > 1:
