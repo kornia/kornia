@@ -64,7 +64,7 @@ from .motion import MotionBlur, MotionBlur3D, motion_blur, motion_blur3d
 from .otsu_thresholding import OtsuThreshold, otsu_threshold
 from .sobel import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
 from .unsharp import UnsharpMask, unsharp_mask
-from .otsu_thresholding import ThreshOtsu, otsu_threshold
+from .otsu_thresholding import OtsuThreshold, otsu_threshold
 
 __all__ = [
     "BilateralBlur",
@@ -89,7 +89,7 @@ __all__ = [
     "SpatialGradient3d",
     "StableDiffusionDissolving",
     "UnsharpMask",
-    "ThreshOtsu",
+    "OtsuThreshold",
     "otsu_threshold",
     "bilateral_blur",
     "blur_pool2d",
