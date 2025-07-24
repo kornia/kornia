@@ -107,7 +107,8 @@ class OtsuThreshold(torch.nn.Module):
         Args:
             x (torch.Tensor): Image or batch of images to threshold.
             nbins (int, optional): Number of bins for histogram computation. Default is 256.
-            slow_and_differentiable (bool, optional): If True, use a differentiable histogram computation. Default is False.
+            slow_and_differentiable (bool, optional): If True, use a differentiable histogram computation.
+                Default is False.
 
         Returns:
             Tuple[torch.Tensor, torch.Tensor]: Thresholded tensor, threshold values.
