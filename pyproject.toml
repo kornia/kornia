@@ -141,6 +141,7 @@ ignore = [
   "UP006",   # Prefer List[], over list due to torch jit scripting
   "UP035",   # Ignore deprecated typing because of jit scripting
   "UP045",   # Use `X | None` for type annotations
+  "RUF005",  # Consider `(*points_in_cam_canonical.shape[:-1], 1)` instead of concatenation. Note: breaks JIT.
   'D100',    # Allow Undocumented public module
   'D101',    # TODO: Undocumented public class
   'D102',    # TODO: Undocumented public method
