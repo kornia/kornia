@@ -153,7 +153,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         else:
             self.p = min(self.p + self.adjustment_speed, self.max_p)
 
-    def _get_input_metadata(self, inputs: _inputs_type, data_keys: _data_keys_type) -> Tuple[int, torch.device]:
+    def _get_inputs_metadata(self, inputs: _inputs_type, data_keys: _data_keys_type) -> Tuple[int, torch.device]:
         if isinstance(inputs, dict):
             key = data_keys[0]
             batch_size = inputs[key].size(0)
