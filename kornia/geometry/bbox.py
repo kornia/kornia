@@ -63,10 +63,15 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
     width_t, width_b = x_tr - x_tl + 1, x_br - x_bl + 1
     height_t, height_b = y_tr - y_tl + 1, y_br - y_bl + 1
 
-    if not torch.allclose(width_t, width_b, atol=1e-4):
+    # Replace torch.allclose with exportable operations
+    width_diff = torch.abs(width_t - width_b)
+    height_diff = torch.abs(height_t - height_b)
+    
+    # Check if differences are within tolerance (1e-4)
+    if torch.any(width_diff > 1e-4):
         return False
 
-    if not torch.allclose(height_t, height_b, atol=1e-4):
+    if torch.any(height_diff > 1e-4):
         return False
 
     return True
