@@ -15,14 +15,16 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+from torch import Tensor
 
 import kornia.augmentation as K
 from kornia.augmentation import ImageSequential
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.ops import DataType
+from kornia.augmentation.container.params import ParamItem
 from kornia.constants import DataKey
 
 
@@ -82,7 +84,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         >>> from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
         >>> input = torch.randn(2, 3, 5, 6)
         >>> aug_list = [
-        ...     K.RandomRotation90(times=[0, 3], p=1),
+        ...     K.RandomRotation90(times=(0, 3), p=1),
         ...     K.RandomAffine(degrees=10, translate=(.1, .1), scale=(.9, 1.1), p=1),
         ...     K.ColorJitter(brightness=.2, contrast=.2, saturation=.2, hue=.1, p=1),
         ... ]
@@ -93,9 +95,12 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
     This example demonstrates using custom augmentations with AdaptiveDiscriminatorAugmentation.
     """
 
+    _inputs_type = Union[DataType, Dict[str, DataType]]
+    _data_keys_type = Union[List[str], List[int], List[DataKey]]
+
     def __init__(
         self,
-        *args: Optional[Union[_AugmentationBase, ImageSequential]],
+        *args: Union[_AugmentationBase, ImageSequential],
         initial_p: float = 1e-5,
         adjustment_speed: float = 1e-2,
         max_p: float = 0.8,
@@ -103,29 +108,29 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         ema_lambda: float = 0.99,
         update_every: int = 5,
         crop_size: Tuple[int, int] = (64, 64),
-        data_keys: Union[Sequence[str], Sequence[int], Sequence[DataKey]] = ("input",),
+        data_keys: _data_keys_type = ("input",),
         same_on_batch: Optional[bool] = False,
         **kwargs: Any,
     ) -> None:
-        if args is None:
-            args = tuple([
+        if not args:
+            args = (
                 K.RandomHorizontalFlip(p=1),
                 K.RandomRotation90(times=(0, 3), p=1.0),
                 K.RandomCrop(size=crop_size, padding=0, p=1.0),
                 K.RandomAffine(degrees=10, translate=(0.1, 0.1), scale=(0.9, 1.1), p=1.0),
                 K.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0),
                 K.RandomGaussianNoise(std=0.1, p=1.0),
-            ])
+            )
         super().__init__(*args, data_keys=data_keys, same_on_batch=same_on_batch, **kwargs)
 
         self.p = initial_p
         self.adjustment_speed = adjustment_speed
         self.max_p = max_p
         self.target_real_acc = target_real_acc
-        self.real_acc_ema = 0.5
         self.ema_lambda = ema_lambda
         self.update_every = update_every
-        self.num_calls = - update_every  # to avoid updating in the first `update_every` steps
+        self.real_acc_ema: float = 0.5
+        self.num_calls = -update_every  # to avoid updating in the first `update_every` steps
 
     def update(self, real_acc: float) -> None:
         r"""Updates internal params `p` once every `update_every` calls based on the `real_acc` arg by
@@ -135,6 +140,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         Args:
             real_acc: the Discriminator's accuracy labeling real samples.
         """
+        
         self.num_calls += 1
 
         if self.num_calls < self.update_every:
@@ -143,14 +149,61 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
 
         self.real_acc_ema = self.ema_lambda * self.real_acc_ema + (1 - self.ema_lambda) * real_acc
 
-        if self.real_acc_ema < self.target_acc:
+        if self.real_acc_ema < self.target_real_acc:
             self.p = max(0, self.p - self.adjustment_speed)
         else:
             self.p = min(self.p + self.adjustment_speed, self.max_p)
 
+    def _get_input_metadata(self, inputs: _inputs_type, data_keys: _data_keys_type) -> Tuple[int, torch.device]:
+        if isinstance(inputs, dict):
+            key = data_keys[0]
+            batch_size = inputs[key].size(0)
+            device = inputs[key].device
+
+        elif isinstance(inputs, (tuple, list)):
+            batch_size = inputs[0].size(0)
+            device = inputs[0].device
+
+        return batch_size, device
+
+    def _sample_inputs(self, inputs: _inputs_type, data_keys: _data_keys_type, P: Tensor) -> _inputs_type:
+        if isinstance(inputs, dict):
+            return dict.fromkeys(data_keys, inputs[P])
+        else:
+            return tuple(input_[P] for input_ in inputs)
+
+    def _merge_inputs(
+        self,
+        original: _inputs_type,
+        augmented: _inputs_type,
+        P: Tensor,
+    ) -> _inputs_type:
+        if isinstance(original, dict):
+            merged = {}
+            for key in original.keys():
+                merged_tensor = original[key].clone()
+                merged_tensor[P] = augmented[key]
+                merged[key] = merged_tensor
+
+        else:
+            merged = []
+            for original_tensor, augmented_tensor in zip(original, augmented):
+                merged_tensor = original_tensor.clone()
+                merged_tensor[P] = augmented_tensor
+                merged.append(merged_tensor)
+
+            if len(merged) == 1:
+                merged = merged[0]
+
+        return merged
+
     def forward(
-        self, *inputs: Union[DataType, Dict[str, torch.Tensor]], real_acc: Optional[float] = None
-    ) -> Union[DataType, List[DataType], Dict[str, torch.Tensor]]:
+        self,
+        *inputs: _inputs_type,
+        params: Optional[List[ParamItem]] = None,
+        data_keys: Optional[_data_keys_type] = None,
+        real_acc: Optional[float] = None,
+    ) -> _inputs_type:
         r"""Apply augmentations to a subset of input tensors with global probability `p`.
 
         This method applies the augmentation pipeline to a subset of input samples, selected stochastically
@@ -163,24 +216,19 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
             self.update(real_acc)
 
         if self.p == 0:
-            return inputs
+            return inputs[0] if len(inputs) == 1 else inputs
 
-        P = torch.bernoulli(torch.full((inputs[0].size(0),), self.p, device=inputs[0].device)).bool()
+        if data_keys is None:
+            data_keys = self.data_keys
+
+        batch_size, device = self._get_inputs_metadata(inputs, data_keys)
+
+        P = torch.bernoulli(torch.full((batch_size,), self.p, device=device)).bool()
 
         if not P.any():
-            return inputs if len(inputs) > 1 else inputs[0]
+            return inputs[0] if len(inputs) == 1 else inputs
 
-        selected_inputs = tuple(input_[P] for input_ in inputs) if len(inputs) > 1 else inputs[0][P]
-        augmented_inputs = super().forward(selected_inputs)
+        selected_inputs = self._sample_inputs(*inputs, data_keys, P)
+        augmented_inputs = super().forward(selected_inputs, params=params, data_keys=data_keys)
 
-        if len(inputs) > 1:
-            outputs = []
-            for input_ in inputs:
-                output_ = input_.clone()
-                output_[P] = augmented_inputs[inputs.index(input_)]
-                outputs.append(output_)
-            return tuple(outputs)
-
-        outputs = inputs[0].clone()
-        outputs[P] = augmented_inputs
-        return tuple(outputs, )
+        return self._merge_inputs(inputs, augmented_inputs, P)
