@@ -140,7 +140,6 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         Args:
             real_acc: the Discriminator's accuracy labeling real samples.
         """
-        
         self.num_calls += 1
 
         if self.num_calls < self.update_every:
