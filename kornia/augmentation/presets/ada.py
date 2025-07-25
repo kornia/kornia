@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
@@ -22,7 +23,6 @@ import torch
 import kornia.augmentation as K
 from kornia.augmentation import ImageSequential
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.constants.ops import DataType
 from kornia.augmentation.container.params import ParamItem
 from kornia.core import Device, Tensor
 
@@ -130,6 +130,32 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
             same_on_batch=same_on_batch,
             **kwargs,
         )
+
+        if adjustment_speed <= 0:
+            raise ValueError(f"Invalid `adjustment_speed` ({adjustment_speed}) — must be greater than 0")
+
+        if not 0 <= target_real_acc <= 1:
+            raise ValueError(f"Invalid `target_real_acc` ({target_real_acc}) — must be in [0, 1]")
+
+        if not 0 <= ema_lambda <= 1:
+            raise ValueError(f"Invalid `ema_lambda` ({ema_lambda}) — must be in [0, 1]")
+
+        if update_every < 1:
+            raise ValueError(f"Invalid `update_every` ({update_every}) — must be at least 1")
+
+        if not 0 <= max_p <= 1:
+            raise ValueError(f"Invalid `max_p` ({max_p}) — must be in [0, 1]")
+
+        if not 0 <= initial_p <= 1:
+            raise ValueError(f"Invalid `initial_p` ({initial_p}) — must be in [0, 1]")
+
+        if initial_p > max_p:
+            warnings.warn(
+                f"`initial_p` ({initial_p}) is greater than `max_p` ({max_p}), resetting `initial_p` to `max_p`",
+                stacklevel=2,
+            )
+            initial_p = max_p
+
         self.p = initial_p
         self.adjustment_speed = adjustment_speed
         self.max_p = max_p
@@ -240,7 +266,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         if not P.any():
             return inputs[0]
 
-        selected_inputs: DataType = self._sample_inputs(*inputs, data_keys=data_keys, P=P)
+        selected_inputs: _inputs_type = self._sample_inputs(*inputs, data_keys=data_keys, P=P)
         augmented_inputs = cast(_inputs_type, super().forward(*selected_inputs, params=params, data_keys=data_keys))
 
         return self._merge_inputs(inputs[0], augmented_inputs, P)
