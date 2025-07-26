@@ -80,17 +80,17 @@ class TestBbox2D(BaseTester):
     def test_jit(self, device, dtype):
         # Test with valid rectangular box
         boxes = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)
-        
+
         # JIT compile the validate_bbox function
         scripted_fn = torch.jit.script(validate_bbox)
-        
+
         # Test with valid box
         self.assert_close(scripted_fn(boxes), validate_bbox(boxes))
-        
+
         # Test with non-rectangular box
         boxes_invalid = torch.tensor([[[0.0, 0.0], [2.0, 0.0], [3.0, 1.0], [1.0, 1.0]]], device=device, dtype=dtype)
         self.assert_close(scripted_fn(boxes_invalid), validate_bbox(boxes_invalid))
-        
+
         # Test with invalid shape
         boxes_wrong_shape = torch.rand(1, 3, 2, device=device, dtype=dtype)
         self.assert_close(scripted_fn(boxes_wrong_shape), validate_bbox(boxes_wrong_shape))

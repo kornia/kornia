@@ -20,14 +20,21 @@ from typing import Optional, Tuple, Union
 import torch
 
 from kornia.constants import Resample
-from kornia.core import Tensor, as_tensor, pad, tensor, Module
+from kornia.core import Module, Tensor, as_tensor, pad, tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import infer_bbox_shape, validate_bbox
 
 from .affwarp import resize
 from .imgwarp import get_perspective_transform, warp_affine
 
-__all__ = ["center_crop", "crop_and_resize", "crop_by_boxes", "crop_by_indices", "crop_by_transform_mat", "CenterCrop2D"]
+__all__ = [
+    "CenterCrop2D",
+    "center_crop",
+    "crop_and_resize",
+    "crop_by_boxes",
+    "crop_by_indices",
+    "crop_by_transform_mat",
+]
 
 
 def crop_and_resize(
@@ -389,7 +396,7 @@ class CenterCrop2D(Module):
         align_corners: interpolation flag.
         resample: Resampling mode.
         cropping_mode: Cropping mode, "resample" or "slice".
-    
+
     Note:
         For JIT, the cropping mode must be "resample".
     """
@@ -410,10 +417,9 @@ class CenterCrop2D(Module):
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int). Got: {type(size)}.")
 
         dst_h, dst_w = self.size
-        points_dst = torch.tensor(
-            [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]], dtype=torch.long)
-        self.register_buffer('points_src', points_dst.clone())
-        self.register_buffer('points_dst', points_dst)
+        points_dst = torch.tensor([[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]], dtype=torch.long)
+        self.register_buffer("points_src", points_dst.clone())
+        self.register_buffer("points_dst", points_dst)
 
         self.flags = {
             "resample": Resample.get(resample),
@@ -422,7 +428,7 @@ class CenterCrop2D(Module):
             "size": self.size,
             "padding_mode": "zeros",
         }
-    
+
     def forward(self, input: Tensor) -> Tensor:
         device = input.device
         batch_size = input.shape[0]
@@ -448,16 +454,19 @@ class CenterCrop2D(Module):
         self.points_src[0, 3, 1] = end_y
 
         if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-
             transform = get_perspective_transform(
                 self.points_src.expand(batch_size, -1, -1).to(input),
-                self.points_dst.expand(batch_size, -1, -1).to(input)
+                self.points_dst.expand(batch_size, -1, -1).to(input),
             )
             transform = transform.expand(batch_size, -1, -1)
 
             return crop_by_transform_mat(
-                input, transform[:, :2, :], self.size, self.flags["resample"].name.lower(), "zeros",
-                self.flags["align_corners"]
+                input,
+                transform[:, :2, :],
+                self.size,
+                self.flags["resample"].name.lower(),
+                "zeros",
+                self.flags["align_corners"],
             )
 
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
