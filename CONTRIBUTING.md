@@ -75,7 +75,7 @@ repository under your GitHub account.
 
     ```bash
     $ source ./path.bash.inc
-    $ python setup.py develop
+    $ pip install -e .[dev]
     $ python -c "import kornia; print(kornia.__version__)"
     ```
 
