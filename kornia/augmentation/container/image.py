@@ -394,7 +394,7 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
             if prob <= 0.5:
                 return batch_shape
         else:
-            # batch_prob missing, fallback – do NOT update shape
+            # batch_prob missing, fallback do not update shape
             return batch_shape
         # Mutate only last two dims
         new_batch_shape = list(batch_shape)
