@@ -433,7 +433,7 @@ class MultiResolutionDetector(Module):
         return lafs, responses
 
 
-_DEFAULT_DETECTOR_CONFIG = {
+_DEFAULT_DETECTOR_CONFIG: Detector_config = {
     # Extraction Parameters
     "nms_size": 15,
     "pyramid_levels": 4,
