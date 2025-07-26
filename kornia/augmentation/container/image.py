@@ -374,17 +374,31 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
        Augmentations that change the image size must provide the parameter `output_size`.
 
     """
-    if param.data is None:
+    data = param.data
+    if data is None:
         return batch_shape
-    if isinstance(param.data, list):
-        for p in param.data:
+
+    # If data is a list, process all subitems (exit early if all subitems are None)
+    if isinstance(data, list):
+        for p in data:
             batch_shape = _get_new_batch_shape(p, batch_shape)
-    elif "output_size" in param.data:
-        if not (param.data["batch_prob"] > 0.5)[0]:
-            # Augmentations that change the image size must be applied equally to all elements in batch.
-            # If the augmentation is not applied, return the same batch shape.
+        return batch_shape
+
+    # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element tensor
+    if "output_size" in data:
+        # Inline check for common PyTorch float tensor case
+        batch_prob = data.get("batch_prob", None)
+        if batch_prob is not None:
+            # Avoid repeated indexing, always fetch scalar efficiently
+            prob = batch_prob.item() if batch_prob.numel() == 1 else batch_prob[0].item()
+            if prob <= 0.5:
+                return batch_shape
+        else:
+            # batch_prob missing, fallback do not update shape
             return batch_shape
+        # Mutate only last two dims
         new_batch_shape = list(batch_shape)
-        new_batch_shape[-2:] = param.data["output_size"][0]
-        batch_shape = torch.Size(new_batch_shape)
+        new_batch_shape[-2:] = data["output_size"][0]
+        return torch.Size(new_batch_shape)
+
     return batch_shape
