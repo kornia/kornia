@@ -15,14 +15,16 @@ kornia.egg-info/
 .pytest_cache/*
 .dev_env
 .mypy_cache/*
-.coverage
+.coverage*
 *bak
 *ipynb_checkpoints*
 docs/source/_static/*jpg
 docs/source/_static/img/*jpg
 docs/source/_static/scripts/*
 *DS_Store
+*jpg
 
 # onnx tests create temp.onnx file
 *.onnx
 venv/
+weights/
