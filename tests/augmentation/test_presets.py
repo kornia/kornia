@@ -15,16 +15,16 @@
 # limitations under the License.
 #
 
-from math import isclose
 
 import pytest
 import torch
-from torch.testing import assert_close
 
 from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
 
+from testing.base import BaseTester
 
-class PresetTests:
+
+class PresetTests(BaseTester):
     pass
 
 
@@ -39,7 +39,7 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         assert 0 <= ada_preset.max_p <= 1
         assert 0 <= ada_preset.p <= ada_preset.max_p  # initial p
         assert ada_preset.real_acc_ema == 0.5
-        assert ada_preset.num_calls == 0
+        assert ada_preset._num_calls == 0
 
         transforms = list(ada_preset.children())
         expected_transforms = [
@@ -64,7 +64,7 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
 
         ada_preset.p = 0
         ada_outputs = ada_preset(inputs)
-        assert_close(inputs, ada_outputs)
+        self.assert_close(inputs, ada_outputs)
 
     def test_adaptive_probability(self, device, dtype):
         inputs = torch.randn(2, 3, 32, 32)
@@ -82,14 +82,14 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
 
         # p increasing, without reaching max_p
         for i in range(ada.update_every * n_runs):
-            assert isclose(ada.p, initial_p + (i // update_every) * ada.adjustment_speed)
+            self.assert_close(ada.p, initial_p + (i // update_every) * ada.adjustment_speed)
             ada(inputs, real_acc=ada.target_real_acc + 0.1)
         assert ada.p == initial_p + n_runs * ada.adjustment_speed
 
         # decreasing without reaching 0
         initial_p = ada.p
         for i in range(ada.update_every * n_runs):
-            assert isclose(ada.p, initial_p - (i // update_every) * ada.adjustment_speed)
+            self.assert_close(ada.p, initial_p - (i // update_every) * ada.adjustment_speed)
             ada(inputs, real_acc=ada.target_real_acc - 0.1)
         assert ada.p == initial_p - n_runs * ada.adjustment_speed
 
@@ -97,10 +97,10 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         ada.p = ada.adjustment_speed / 2
         for _ in range(ada.update_every):
             ada(inputs, real_acc=ada.target_real_acc - 0.1)
-        assert isclose(ada.p, 0)
+        self.assert_close(ada.p, 0)
 
         # p clamped at max_p
         ada.p = ada.max_p - ada.adjustment_speed / 2
         for _ in range(ada.update_every):
             ada(inputs, real_acc=ada.target_real_acc + 0.1)
-        assert isclose(ada.p, ada.max_p)
+        self.assert_close(ada.p, ada.max_p)
