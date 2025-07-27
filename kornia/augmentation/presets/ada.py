@@ -44,37 +44,51 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
     adjust a global probability p over all augmentations list to select a subset of images to augment
     based on an exponential moving average of the Discriminator's accuracy labeling real samples.
 
+
     Args:
         *args: a list of kornia augmentation modules, set to a default list if not specified.
 
-        initial_p: initial global probability `p` for applying the augmentations on
+        initial_p: float
+            initial global probability `p` for applying the augmentations
 
-        adjustment_speed: step size for updating the global probability `p`
+        adjustment_speed: float
+            step size for updating the global probability `p`
 
-        max_p: the maximum value to clamp `p` at
+        max_p: float
+            maximum allowed value for `p`
 
-        target_real_acc: target Discriminator accuracy to prevent overfitting
+        target_real_acc: float
+            target Discriminator accuracy to guide `p` adjustments
 
-        ema_lambda: EMA smoothing factor to compute the $
-        \mathrm{ema_real_accuracy} = \lambda_\text{EMA} * mathrm{real_accuracy} +
-        (1 - \lambda_\text{EMA}) * mathrm{real_accuracy}
-        $
 
-        update_every: `p` update frequency
+        ema_lambda: float
+            EMA smoothing factor. The real accuracy EMA is what's used to determine the `p` update
 
-        crop_size: the used in the `RandomCrop` default augmentation
+        update_every: int
+            `p` update frequency (in steps)
 
-        same_on_batch: apply the same transformation across the batch.
-        If None, it will not overwrite the function-wise settings.
+        erasing_scale: Tuple[float, float]
+            scale range used for `RandomErasing` if default augmentations are used
 
-        data_keys: the input type sequential for applying augmentations. Accepts "input", "image", "mask",
-            "bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "class", "label".
+        erasing_ratio: Tuple[float, float]
+            aspect ratio range used for `RandomErasing` if default augmentations are used
 
-        **kwargs: the rest of the `kwargs` passed to the `AugmentationSequential` attribute containing augmentation
+        erasing_fill_value: float
+            fill value used in `RandomErasing`
+
+        same_on_batch: Optional[bool]
+            apply the same transformation across the batch
+
+        data_keys: Optional[List[str]]
+            input types to apply augmentations on
+
+
+        **kwargs: Additional keyword arguments passed to `AugmentationSequential`
+
 
     Examples:
         >>> from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
-        >>> original = torch.randn(2, 3, 5, 6)
+        >>> original = torch.randn(2, 3, 16, 16)
         >>> ada = AdaptiveDiscriminatorAugmentation()
         >>> augmented = ada(original)
 
@@ -174,13 +188,13 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         )
 
     def update(self, real_acc: float) -> None:
-        r"""Updates internal params `p` once every `update_every` calls.
+        r"""Updates internal params `p` once every `update_every` calls based on discriminator accuracy.
 
-        `p` is updated based on the `real_acc` arg by adding / subtracting the `adjustment_speed`
-        from it and clamp it at [0, `max_p`] increment the internal counter `num_calls` by 1 on each call.
+        the update is based on an exponential moving average of `real_acc`
+        `p` is updated by adding or subtracting `adjustment_speed` from it and clamp it at [0, `max_p`]
 
         Args:
-            real_acc: the Discriminator's accuracy labeling real samples.
+            real_acc (float): the Discriminator's accuracy labeling real samples.
         """
         self._num_calls += 1
 
@@ -244,9 +258,9 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
     ) -> _inputs_type:
         r"""Apply augmentations to a subset of input tensors with global probability `p`.
 
-        This method applies the augmentation pipeline to a subset of input samples, selected stochastically
-        using a Bernoulli distribution with probability $p :math:`P_i \\sim \\text{Bernoulli}(p)`,
-        where :math:`P_i` is a boolean mask for the :math:`i`-th
+        This method applies the augmentation pipeline to a subset of input samples, randomly selected
+        via a Bernoulli distribution with probability `p`
+
         if `real_acc` is provided, the internal probability `p` is updated via the `update` method.
         Non-augmented samples retain their original values, and the output matches the input structure.
         """
