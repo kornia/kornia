@@ -80,13 +80,27 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
             ema_lambda=0,
         )
 
+        # p increasing, without reaching max_p
         for i in range(ada.update_every * n_runs):
             assert isclose(ada.p, initial_p + (i // update_every) * ada.adjustment_speed)
             ada(inputs, real_acc=ada.target_real_acc + 0.1)
         assert ada.p == initial_p + n_runs * ada.adjustment_speed
 
+        # decreasing without reaching 0
         initial_p = ada.p
         for i in range(ada.update_every * n_runs):
             assert isclose(ada.p, initial_p - (i // update_every) * ada.adjustment_speed)
             ada(inputs, real_acc=ada.target_real_acc - 0.1)
         assert ada.p == initial_p - n_runs * ada.adjustment_speed
+
+        # p clamped at 0
+        ada.p = ada.adjustment_speed / 2
+        for _ in range(ada.update_every):
+            ada(inputs, real_acc=ada.target_real_acc - 0.1)
+        assert isclose(ada.p, 0)
+
+        # p clamped at max_p
+        ada.p = ada.max_p - ada.adjustment_speed / 2
+        for _ in range(ada.update_every):
+            ada(inputs, real_acc=ada.target_real_acc + 0.1)
+        assert isclose(ada.p, ada.max_p)
