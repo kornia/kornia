@@ -20,17 +20,25 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 
-import kornia.augmentation as K
-from kornia.augmentation import ImageSequential
-from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.container.params import ParamItem
-from kornia.core import Device, Tensor
+from ...core import Device, Tensor  # noqa: TID252
+from .. import (  # noqa: TID252
+    AugmentationSequential,
+    ColorJitter,
+    ImageSequential,
+    RandomAffine,
+    RandomErasing,
+    RandomGaussianNoise,
+    RandomHorizontalFlip,
+    RandomRotation90,
+)
+from ..base import _AugmentationBase  # noqa: TID252
+from ..container.params import ParamItem  # noqa: TID252
 
 _data_keys_type = List[str]
 _inputs_type = Union[Tensor, Dict[str, Tensor]]
 
 
-class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
+class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
     r"""Implementation of Adaptive Discriminator Augmentation (ADA) for GANs training.
 
     adjust a global probability p over all augmentations list to select a subset of images to augment
@@ -107,12 +115,12 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         if not args:
             # if changed in the future, please change the expected transforms list in test_presets.py
             args = (
-                K.RandomHorizontalFlip(p=1),
-                K.RandomRotation90(times=(0, 3), p=1.0),
-                K.RandomErasing(scale=erasing_scale, ratio=erasing_ratio, value=erasing_fill_value, p=0.9),
-                K.RandomAffine(degrees=10, translate=(0.1, 0.1), scale=(0.9, 1.1), p=1.0),
-                K.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0),
-                K.RandomGaussianNoise(std=0.1, p=1.0),
+                RandomHorizontalFlip(p=1),
+                RandomRotation90(times=(0, 3), p=1.0),
+                RandomErasing(scale=erasing_scale, ratio=erasing_ratio, value=erasing_fill_value, p=0.9),
+                RandomAffine(degrees=10, translate=(0.1, 0.1), scale=(0.9, 1.1), p=1.0),
+                ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0),
+                RandomGaussianNoise(std=0.1, p=1.0),
             )
         super().__init__(
             *args,
