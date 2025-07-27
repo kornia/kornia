@@ -103,6 +103,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         **kwargs: Any,
     ) -> None:
         if not args:
+            # if changed in the future, please change the expected transforms list in test_presets.py
             args = (
                 K.RandomHorizontalFlip(p=1),
                 K.RandomRotation90(times=(0, 3), p=1.0),
@@ -122,7 +123,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
             **kwargs,
         )
 
-        if adjustment_speed <= 0:
+        if not adjustment_speed > 0:
             raise ValueError(f"Invalid `adjustment_speed` ({adjustment_speed}) — must be greater than 0")
 
         if not 0 <= target_real_acc <= 1:
@@ -178,20 +179,20 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         else:
             self.p = min(self.p + self.adjustment_speed, self.max_p)
 
-    def _get_inputs_metadata(self, *inputs: _inputs_type, data_keys: _data_keys_type) -> Tuple[int, Device]:
-        if isinstance(inputs[0], dict):
+    def _get_inputs_metadata(self, inputs: _inputs_type, data_keys: _data_keys_type) -> Tuple[int, Device]:
+        if isinstance(inputs, dict):
             key = data_keys[0]
-            batch_size = inputs[0][key].size(0)
-            device = inputs[0][key].device
+            batch_size = inputs[key].size(0)
+            device = inputs[key].device
         else:
-            batch_size = inputs[0].size(0)
-            device = inputs[0].device
+            batch_size = inputs.size(0)
+            device = inputs.device
 
         return batch_size, device
 
     def _sample_inputs(self, *inputs: _inputs_type, data_keys: _data_keys_type, P: Tensor) -> _inputs_type:
-        if isinstance(inputs[0], dict):
-            return {key: inputs[0][key][P] for key in data_keys}
+        if isinstance(inputs, dict):
+            return {key: inputs[key][P] for key in data_keys}
         else:
             return inputs[P]
 
@@ -220,7 +221,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
 
     def forward(  # type: ignore[override]
         self,
-        *inputs: _inputs_type,
+        inputs: _inputs_type,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[_data_keys_type] = None,
         real_acc: Optional[float] = None,
@@ -237,7 +238,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
             self.update(real_acc)
 
         if self.p == 0:
-            return inputs[0]
+            return inputs
 
         if data_keys is None:
             data_keys = (
@@ -250,14 +251,21 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
 
         # assert data_keys is not None, "data_keys is None"
 
-        batch_size, device = self._get_inputs_metadata(*inputs, data_keys=data_keys)
+        batch_size, device = self._get_inputs_metadata(inputs, data_keys=data_keys)
 
-        P = torch.bernoulli(torch.full((batch_size,), self.p, device=device)).bool()
+        P = torch.bernoulli(torch.full((batch_size,), self.p, dtype=torch.float32, device=device)).bool()
 
         if not P.any():
-            return inputs[0]
+            return inputs
 
-        selected_inputs: _inputs_type = self._sample_inputs(*inputs, data_keys=data_keys, P=P)
-        augmented_inputs = cast(_inputs_type, super().forward(*selected_inputs, params=params, data_keys=data_keys))
+        selected_inputs: _inputs_type = self._sample_inputs(inputs, data_keys=data_keys, P=P)
+        augmented_inputs = cast(
+            _inputs_type,
+            super().forward(
+                selected_inputs,  # type: ignore[arg-type]
+                params=params,
+                data_keys=data_keys,
+            ),
+        )
 
-        return self._merge_inputs(inputs[0], augmented_inputs, P)
+        return self._merge_inputs(inputs, augmented_inputs, P)
