@@ -113,15 +113,8 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         **kwargs: Any,
     ) -> None:
         if not args:
-            # if changed in the future, please change the expected transforms list in test_presets.py
-            args = (
-                RandomHorizontalFlip(p=1),
-                RandomRotation90(times=(0, 3), p=1.0),
-                RandomErasing(scale=erasing_scale, ratio=erasing_ratio, value=erasing_fill_value, p=0.9),
-                RandomAffine(degrees=10, translate=(0.1, 0.1), scale=(0.9, 1.1), p=1.0),
-                ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0),
-                RandomGaussianNoise(std=0.1, p=1.0),
-            )
+            args = self.default_ada_transfroms(erasing_scale, erasing_ratio, erasing_fill_value)
+
         super().__init__(
             *args,
             data_keys=data_keys
@@ -166,6 +159,19 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         self.update_every = update_every
         self.real_acc_ema: float = 0.5
         self.num_calls = 0  # -update_every  # to avoid updating in the first `update_every` steps
+
+    def default_ada_transfroms(
+        self, scale: Union[Tensor, Tuple[float, float]], ratio: Union[Tensor, Tuple[float, float]], value: float
+    ) -> Tuple[Union[_AugmentationBase, ImageSequential], ...]:
+        # if changed in the future, please change the expected transforms list in test_presets.py
+        return (
+            RandomHorizontalFlip(p=1),
+            RandomRotation90(times=(0, 3), p=1.0),
+            RandomErasing(scale=scale, ratio=ratio, value=value, p=0.9),
+            RandomAffine(degrees=10, translate=(0.1, 0.1), scale=(0.9, 1.1), p=1.0),
+            ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0),
+            RandomGaussianNoise(std=0.1, p=1.0),
+        )
 
     def update(self, real_acc: float) -> None:
         r"""Updates internal params `p` once every `update_every` calls.
