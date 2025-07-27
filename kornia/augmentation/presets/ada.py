@@ -190,7 +190,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
 
         return batch_size, device
 
-    def _sample_inputs(self, *inputs: _inputs_type, data_keys: _data_keys_type, P: Tensor) -> _inputs_type:
+    def _sample_inputs(self, inputs: _inputs_type, data_keys: _data_keys_type, P: Tensor) -> _inputs_type:
         if isinstance(inputs, dict):
             return {key: inputs[key][P] for key in data_keys}
         else:
@@ -242,7 +242,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
 
         if data_keys is None:
             data_keys = (
-                [str(k) for k in self.data_keys]
+                [k.name for k in self.data_keys]
                 if self.data_keys is not None
                 else [
                     "input",
