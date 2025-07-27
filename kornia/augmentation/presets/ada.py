@@ -157,7 +157,7 @@ class AdaptiveDiscriminatorAugmentation(K.AugmentationSequential):
         self.ema_lambda = ema_lambda
         self.update_every = update_every
         self.real_acc_ema: float = 0.5
-        self.num_calls = -update_every  # to avoid updating in the first `update_every` steps
+        self.num_calls = 0  # -update_every  # to avoid updating in the first `update_every` steps
 
     def update(self, real_acc: float) -> None:
         r"""Updates internal params `p` once every `update_every` calls.
