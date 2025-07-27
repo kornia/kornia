@@ -158,7 +158,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         self.ema_lambda = ema_lambda
         self.update_every = update_every
         self.real_acc_ema: float = 0.5
-        self.num_calls = 0  # -update_every  # to avoid updating in the first `update_every` steps
+        self._num_calls = 0  # -update_every  # to avoid updating in the first `update_every` steps
 
     def default_ada_transfroms(
         self, scale: Union[Tensor, Tuple[float, float]], ratio: Union[Tensor, Tuple[float, float]], value: float
@@ -182,11 +182,11 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         Args:
             real_acc: the Discriminator's accuracy labeling real samples.
         """
-        self.num_calls += 1
+        self._num_calls += 1
 
-        if self.num_calls < self.update_every:
+        if self._num_calls < self.update_every:
             return
-        self.num_calls = 0
+        self._num_calls = 0
 
         self.real_acc_ema = self.ema_lambda * self.real_acc_ema + (1 - self.ema_lambda) * real_acc
 
