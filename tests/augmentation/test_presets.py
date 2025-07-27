@@ -1,6 +1,8 @@
 import pytest
+# from unittest.mock import MagicMock, patch
 
 import torch
+# from torch.testing import assert_close
 
 import kornia
 from kornia.augmentation.presets.ada import AdaptiveDiscriminatorAugmentation
@@ -36,3 +38,11 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         for t, et in zip(transforms, expected_transforms):
             assert et == str(t.__class__.__name__)
 
+
+    def test_transforms_behaviour(self, device, dtype):
+        ada_preset = AdaptiveDiscriminatorAugmentation().to(device)
+        inputs = torch.randn(2, 3, 32, 32).to(device)
+        outputs = ada_preset(inputs)
+        assert outputs.dtype == inputs.dtype
+        assert outputs.shape == inputs.shape
+        
