@@ -38,8 +38,8 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         assert ada_preset.update_every >= 1
         assert 0 <= ada_preset.max_p <= 1
         assert 0 <= ada_preset.p <= ada_preset.max_p  # initial p
-        assert ada_preset.real_acc_ema == 0.5
         assert ada_preset._num_calls == 0
+        self.assert_close(ada_preset.real_acc_ema, 0.5)
 
         transforms = list(ada_preset.children())
         expected_transforms = [
