@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from math import isclose
+
 import pytest
 import torch
 from torch.testing import assert_close
@@ -63,3 +65,28 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         ada_preset.p = 0
         ada_outputs = ada_preset(inputs)
         assert_close(inputs, ada_outputs)
+
+    def test_adaptive_probability(self, device, dtype):
+        inputs = torch.randn(2, 3, 32, 32)
+        n_runs = 3
+        initial_p = 0.5
+        update_every = 3
+        ada = AdaptiveDiscriminatorAugmentation(
+            initial_p=initial_p,
+            adjustment_speed=0.01,
+            max_p=0.8,
+            update_every=update_every,
+            target_real_acc=0.9,
+            ema_lambda=0,
+        )
+
+        for i in range(ada.update_every * n_runs):
+            assert isclose(ada.p, initial_p + (i // update_every) * ada.adjustment_speed)
+            ada(inputs, real_acc=ada.target_real_acc + 0.1)
+        assert ada.p == initial_p + n_runs * ada.adjustment_speed
+
+        initial_p = ada.p
+        for i in range(ada.update_every * n_runs):
+            assert isclose(ada.p, initial_p - (i // update_every) * ada.adjustment_speed)
+            ada(inputs, real_acc=ada.target_real_acc - 0.1)
+        assert ada.p == initial_p - n_runs * ada.adjustment_speed
