@@ -126,7 +126,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
             **kwargs,
         )
 
-        if not adjustment_speed > 0:
+        if adjustment_speed <= 0:
             raise ValueError(f"Invalid `adjustment_speed` ({adjustment_speed}) — must be greater than 0")
 
         if not 0 <= target_real_acc <= 1:
@@ -206,32 +206,32 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
 
         return batch_size, device
 
-    def _sample_inputs(self, inputs: _inputs_type, data_keys: _data_keys_type, P: Tensor) -> _inputs_type:
+    def _sample_inputs(self, inputs: _inputs_type, data_keys: _data_keys_type, p_tensor: Tensor) -> _inputs_type:
         if isinstance(inputs, dict):
-            return {key: inputs[key][P] for key in data_keys}
+            return {key: inputs[key][p_tensor] for key in data_keys}
         else:
-            return inputs[P]
+            return inputs[p_tensor]
 
     def _merge_inputs(
         self,
         original: _inputs_type,
         augmented: _inputs_type,
-        P: Tensor,
+        p_tensor: Tensor,
     ) -> _inputs_type:
         merged: _inputs_type
         if isinstance(original, dict) and isinstance(augmented, dict):
             merged = {}
             for key in original.keys():
                 merged_tensor = original[key].clone()
-                merged_tensor[P] = augmented[key]
+                merged_tensor[p_tensor] = augmented[key]
                 merged[key] = merged_tensor
         elif isinstance(original, Tensor) and isinstance(augmented, Tensor):
             merged = original.clone()
-            merged[P] = augmented
+            merged[p_tensor] = augmented
         else:
-            raise Exception(
-                "original inputs and augmented inputs aren't of the same type "
-                "(type({type(original)}), type({type(augmented)}))"
+            raise TypeError(
+                f"original inputs and augmented inputs aren't of the same type "
+                f"(type({type(original)}), type({type(augmented)}))"
             )
         return merged
 
@@ -265,16 +265,14 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
                 ]
             )
 
-        # assert data_keys is not None, "data_keys is None"
-
         batch_size, device = self._get_inputs_metadata(inputs, data_keys=data_keys)
 
-        P = torch.bernoulli(torch.full((batch_size,), self.p, dtype=torch.float32, device=device)).bool()
+        p_tensor = torch.bernoulli(torch.full((batch_size,), self.p, dtype=torch.float32, device=device)).bool()
 
-        if not P.any():
+        if not p_tensor.any():
             return inputs
 
-        selected_inputs: _inputs_type = self._sample_inputs(inputs, data_keys=data_keys, P=P)
+        selected_inputs: _inputs_type = self._sample_inputs(inputs, data_keys=data_keys, p_tensor=p_tensor)
         augmented_inputs = cast(
             _inputs_type,
             super().forward(
@@ -284,4 +282,4 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
             ),
         )
 
-        return self._merge_inputs(inputs, augmented_inputs, P)
+        return self._merge_inputs(inputs, augmented_inputs, p_tensor)

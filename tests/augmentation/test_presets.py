@@ -84,14 +84,14 @@ class TestAdaptiveDiscriminatorAugmentation(PresetTests):
         for i in range(ada.update_every * n_runs):
             self.assert_close(ada.p, initial_p + (i // update_every) * ada.adjustment_speed)
             ada(inputs, real_acc=ada.target_real_acc + 0.1)
-        assert ada.p == initial_p + n_runs * ada.adjustment_speed
+        self.assert_close(ada.p, initial_p + n_runs * ada.adjustment_speed)
 
         # decreasing without reaching 0
         initial_p = ada.p
         for i in range(ada.update_every * n_runs):
             self.assert_close(ada.p, initial_p - (i // update_every) * ada.adjustment_speed)
             ada(inputs, real_acc=ada.target_real_acc - 0.1)
-        assert ada.p == initial_p - n_runs * ada.adjustment_speed
+        self.assert_close(ada.p, initial_p - n_runs * ada.adjustment_speed)
 
         # p clamped at 0
         ada.p = ada.adjustment_speed / 2
