@@ -258,8 +258,11 @@ class DenseSIFTDescriptor(Module):
         self.rootsift = rootsift
         self.stride = stride
         self.pad = padding
+
+        # Only allocate pooling kernels once during construction
         nw = get_sift_pooling_kernel(ksize=self.spatial_bin_size).float()
-        self.bin_pooling_kernel = nn.Conv2d(
+        self.register_buffer("_bin_pooling_kernel_weight", nw.reshape(1, 1, nw.size(0), nw.size(1)))
+        bin_pooling_kernel = nn.Conv2d(
             1,
             1,
             kernel_size=(nw.size(0), nw.size(1)),
@@ -267,8 +270,12 @@ class DenseSIFTDescriptor(Module):
             bias=False,
             padding=(nw.size(0) // 2, nw.size(1) // 2),
         )
-        self.bin_pooling_kernel.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))
-        self.PoolingConv = nn.Conv2d(
+        bin_pooling_kernel.weight.data.copy_(self._bin_pooling_kernel_weight)
+        self.bin_pooling_kernel = bin_pooling_kernel
+
+        Pw = _get_reshape_kernel(num_ang_bins, num_spatial_bins, num_spatial_bins).float()
+        self.register_buffer("_poolingconv_weight", Pw)
+        PoolingConv = nn.Conv2d(
             num_ang_bins,
             num_ang_bins * num_spatial_bins**2,
             kernel_size=(num_spatial_bins, num_spatial_bins),
@@ -276,12 +283,15 @@ class DenseSIFTDescriptor(Module):
             bias=False,
             padding=(self.pad, self.pad),
         )
-        self.PoolingConv.weight.data.copy_(
-            _get_reshape_kernel(num_ang_bins, num_spatial_bins, num_spatial_bins).float()
-        )
+        PoolingConv.weight.data.copy_(self._poolingconv_weight)
+        self.PoolingConv = PoolingConv
+
+        # Cache pooling kernel tensor for fast return in get_pooling_kernel
+        self._pooling_kernel = self._bin_pooling_kernel_weight.detach()
 
     def get_pooling_kernel(self) -> Tensor:
-        return self.bin_pooling_kernel.weight.detach()
+        # Return the cached detached pooling kernel directly for optimal speed
+        return self._pooling_kernel
 
     def forward(self, input: Tensor) -> Tensor:
         KORNIA_CHECK_SHAPE(input, ["B", "1", "H", "W"])
