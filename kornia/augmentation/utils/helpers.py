@@ -478,6 +478,51 @@ def preprocess_classes(input: Tensor) -> Tensor:
     return input
 
 
+def repeat_param_item_nested_list(params: list, frame_num: int, repeat_fn: Callable[[Tensor, int], Tensor]) -> list:
+    r"""Recursively repeat tensor values in a nested parameter structure for a given number of video frames.
+
+    This function traverses a potentially nested list of parameter objects, where each object is expected to
+    have a `.data` attribute. If `.data` contains tensors (directly or in a dictionary), those tensors are
+    repeated across the temporal dimension using the provided `repeat_fn`.
+
+    Args:
+        params (list): A list of parameter objects (possibly nested), each potentially containing a `.data` attribute.
+            The `.data` attribute is expected to be either:
+            - A dictionary with Tensor values (e.g., {'param1': Tensor, 'param2': Tensor, ...}), or
+            - A list of similar parameter objects (i.e., recursive structure).
+        frame_num (int): The number of frames in the video. Used to repeat tensor data to match the temporal length.
+        repeat_fn (Callable[[Tensor, int], Tensor]): A function that repeats a tensor across `frame_num` frames.
+            The signature must be: `repeat_fn(tensor: Tensor, frame_num: int) -> Tensor`.
+
+    Returns:
+        list: The modified `params` list where all applicable tensor fields have been repeated along the
+        temporal dimension.
+
+    Example:
+        >>> def repeat_fn(t, n): return t.unsqueeze(0).repeat(n, 1, 1)
+        >>> param_obj = SomeObjectWithData({'weights': torch.randn(4, 2)})
+        >>> repeat_param_item_nested_list([param_obj], 8, repeat_fn)
+
+    Note:
+        This function modifies the input `params` in-place and returns the same reference.
+    """
+    for item in params:
+        if not hasattr(item, "data"):
+            continue
+
+        data = item.data
+
+        if isinstance(data, dict):
+            for k, v in data.items():
+                if isinstance(v, Tensor):
+                    data[k] = repeat_fn(v, frame_num)
+
+        elif isinstance(data, list):
+            repeat_param_item_nested_list(data, frame_num, repeat_fn)
+
+    return params
+
+
 class MultiprocessWrapper:
     """When used as a base class, makes the class work with the 'spawn' multiprocessing context."""
 
