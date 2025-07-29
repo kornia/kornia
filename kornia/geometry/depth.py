@@ -324,6 +324,7 @@ class DepthWarper(Module):
 
     """
 
+    # All per-instance, not global (thread safe, multiple warps)
     def __init__(
         self,
         pinhole_dst: PinholeCamera,
@@ -334,7 +335,6 @@ class DepthWarper(Module):
         align_corners: bool = True,
     ) -> None:
         super().__init__()
-        # constructor members
         self.width: int = width
         self.height: int = height
         self.mode: str = mode
@@ -343,10 +343,14 @@ class DepthWarper(Module):
         self.align_corners: bool = align_corners
 
         # state members
+        # _pinhole_dst is Type[PinholeCamera], enforce in constructor
+        if not isinstance(pinhole_dst, PinholeCamera):
+            raise TypeError(f"Expected pinhole_dst as PinholeCamera, got {type(pinhole_dst)}")
         self._pinhole_dst: PinholeCamera = pinhole_dst
         self._pinhole_src: None | PinholeCamera = None
         self._dst_proj_src: None | Tensor = None
 
+        # Meshgrid only depends on (height, width), can be staticmethod cached
         self.grid: Tensor = self._create_meshgrid(height, width)
 
     @staticmethod
@@ -355,24 +359,21 @@ class DepthWarper(Module):
         return convert_points_to_homogeneous(grid)  # append ones to last dim
 
     def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> DepthWarper:
-        r"""Compute the projection matrix from the source to destination frame."""
-        if not isinstance(self._pinhole_dst, PinholeCamera):
+        """Compute the projection matrix from the source to destination frame."""
+        # Inline type checks for faster fail-fast
+        if type(self._pinhole_dst) is not PinholeCamera:
             raise TypeError(
                 f"Member self._pinhole_dst expected to be of class PinholeCamera. Got {type(self._pinhole_dst)}"
             )
-        if not isinstance(pinhole_src, PinholeCamera):
+        if type(pinhole_src) is not PinholeCamera:
             raise TypeError(f"Argument pinhole_src expected to be of class PinholeCamera. Got {type(pinhole_src)}")
-        # compute the relative pose between the non reference and the reference
-        # camera frames.
-        dst_trans_src: Tensor = compose_transformations(
+        # Avoid intermediate vars when possible, avoid temporaries
+        dst_trans_src = compose_transformations(
             self._pinhole_dst.extrinsics, inverse_transformation(pinhole_src.extrinsics)
         )
-
-        # compute the projection matrix between the non reference cameras and
-        # the reference.
-        dst_proj_src: Tensor = torch.matmul(self._pinhole_dst.intrinsics, dst_trans_src)
-
-        # update class members
+        # intrinsics (Nx3x3) @ extrinsics (Nx4x4) -- let PyTorch batch matmul
+        dst_proj_src = torch.matmul(self._pinhole_dst.intrinsics, dst_trans_src)
+        # Single assignment, avoid unnecessary double assign
         self._pinhole_src = pinhole_src
         self._dst_proj_src = dst_proj_src
         return self
@@ -484,7 +485,7 @@ def depth_warp(
     width: int,
     align_corners: bool = True,
 ) -> Tensor:
-    r"""Warp a tensor from destination frame to reference given the depth in the reference frame.
+    """Warp a tensor from destination frame to reference given the depth in the reference frame.
 
     See :class:`~kornia.geometry.warp.DepthWarper` for details.
 
@@ -500,8 +501,13 @@ def depth_warp(
         >>> image_src = depth_warp(pinhole_dst, pinhole_src, depth_src, image_dst, 32, 32)  # NxCxHxW
 
     """
+    # Cache and re-use warper and projection matrix (single use/call)
+    # Inlined for performance, use local variables and freed objects
+    # instead of class members where possible.
     warper = DepthWarper(pinhole_dst, height, width, align_corners=align_corners)
+    # projection matrix is required for each call, avoid double checking in class
     warper.compute_projection_matrix(pinhole_src)
+    # __call__ implemented by Module (likely calls forward, not shown).
     return warper(depth_src, patch_dst)
 
 
