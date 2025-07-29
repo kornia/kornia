@@ -501,7 +501,7 @@ def depth_warp(
         >>> image_src = depth_warp(pinhole_dst, pinhole_src, depth_src, image_dst, 32, 32)  # NxCxHxW
 
     """
-    # Cache and re-use warper and projection matrix (single use/call)
+    # Cache and reuse warper and projection matrix (single use/call)
     # Inlined for performance, use local variables and freed objects
     # instead of class members where possible.
     warper = DepthWarper(pinhole_dst, height, width, align_corners=align_corners)
