@@ -28,7 +28,7 @@ from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
 
 def grayscale_to_rgb(image: Tensor) -> Tensor:
-    """Convert a grayscale image to RGB version of image.
+    r"""Convert a grayscale image to RGB version of image.
 
     .. image:: _static/img/grayscale_to_rgb.png
 
