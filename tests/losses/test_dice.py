@@ -32,7 +32,7 @@ class TestDiceLoss(BaseTester):
 
         criterion = kornia.losses.DiceLoss()
         assert criterion(logits, labels) is not None
-        
+
         # Test that none average option works
         criterion_none = kornia.losses.DiceLoss(average="none")
         loss_none = criterion_none(logits, labels)
@@ -198,10 +198,10 @@ class TestDiceLoss(BaseTester):
 
         criterion = kornia.losses.DiceLoss(average="none", eps=eps)
         loss = criterion(logits, labels)
-        
+
         # Should return per-sample losses without averaging
         assert loss.shape == (batch_size,), f"Expected shape ({batch_size},), got {loss.shape}"
-        
+
         # Compare with macro average - should be the same values but not averaged
         macro_loss = kornia.losses.dice_loss(logits, labels, average="macro", eps=eps)
         none_loss_mean = loss.mean()
@@ -219,14 +219,14 @@ class TestDiceLoss(BaseTester):
         criterion = kornia.losses.DiceLoss(average="none", eps=eps)
         loss = criterion(logits, labels)
         assert loss.shape == (4,), f"Expected shape (4,), got {loss.shape}"
-        
+
         # Test with weights for none averaging
         weight = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
         criterion_weighted = kornia.losses.DiceLoss(average="none", eps=eps, weight=weight)
         loss_weighted = criterion_weighted(logits, labels)
         assert loss_weighted.shape == (4,), f"Expected shape (4,), got {loss_weighted.shape}"
-        
-        # When only class 0 is weighted and class 0 predictions are perfect, 
+
+        # When only class 0 is weighted and class 0 predictions are perfect,
         # loss should be very low (close to 0)
         assert (loss_weighted < 0.1).all(), "Loss should be low when only correct class is weighted"
 
