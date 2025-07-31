@@ -88,7 +88,7 @@ class TestDiceLoss(BaseTester):
         loss = criterion(logits, labels)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
-    @pytest.mark.parametrize("avg", ["micro", "macro", "none"])
+    @pytest.mark.parametrize("avg", ["micro", "macro"])
     def test_weight(self, device, dtype, avg):
         num_classes = 3
         eps = 1e-8
@@ -206,6 +206,29 @@ class TestDiceLoss(BaseTester):
         macro_loss = kornia.losses.dice_loss(logits, labels, average="macro", eps=eps)
         none_loss_mean = loss.mean()
         self.assert_close(none_loss_mean, macro_loss, rtol=1e-3, atol=1e-3)
+
+    def test_weight_none(self, device, dtype):
+        num_classes = 3
+        eps = 1e-8
+        logits = torch.zeros(4, num_classes, 1, 4, device=device, dtype=dtype)
+        logits[:, 0, :, 0] = 100.0
+        logits[:, 2, :, 1:] = 100.0
+        labels = torch.tensor([0, 1, 2, 2], device=device, dtype=torch.int64).expand((4, 1, -1))
+
+        # Test with "none" averaging - should return per-sample losses
+        criterion = kornia.losses.DiceLoss(average="none", eps=eps)
+        loss = criterion(logits, labels)
+        assert loss.shape == (4,), f"Expected shape (4,), got {loss.shape}"
+        
+        # Test with weights for none averaging
+        weight = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        criterion_weighted = kornia.losses.DiceLoss(average="none", eps=eps, weight=weight)
+        loss_weighted = criterion_weighted(logits, labels)
+        assert loss_weighted.shape == (4,), f"Expected shape (4,), got {loss_weighted.shape}"
+        
+        # When only class 0 is weighted and class 0 predictions are perfect, 
+        # loss should be very low (close to 0)
+        assert (loss_weighted < 0.1).all(), "Loss should be low when only correct class is weighted"
 
     @pytest.mark.parametrize("ignore_index", [-100, 255])
     def test_ignore_index(self, device, dtype, ignore_index):
