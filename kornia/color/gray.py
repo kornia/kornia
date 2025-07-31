@@ -50,7 +50,6 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 1:
         raise ValueError(f"Input size must have a shape of (*, 1, H, W). Got {image.shape}.")
 
-    # More efficient than concatenate, avoids copy:
     shape = list(image.shape)
     shape[-3] = 3
     # Use expand to create a view that repeats along channel dimension, no memory overhead.
