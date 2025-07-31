@@ -144,9 +144,7 @@ def dice_loss(
     dice_loss = -dice_score + 1.0
 
     # reduce the loss across samples (and classes in case of `macro` averaging)
-    if average == "macro":
-        dice_loss = (dice_loss * weight).sum(-1) / weight.sum()
-    elif average == "none":
+    if average in ["macro", "none"]:
         dice_loss = (dice_loss * weight).sum(-1) / weight.sum()
 
     if average != "none":
