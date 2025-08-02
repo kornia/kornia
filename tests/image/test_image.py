@@ -106,11 +106,9 @@ class TestImage:
         else:
             H, W, channels = data.shape
         pf = PixelFormat(color_space=cs, bit_depth=data.element_size() * 8)
-        layout = ImageLayout(image_size=ImageSize(height=H, width=W),
-                             channels=channels,
-                             channels_order=order)
+        layout = ImageLayout(image_size=ImageSize(height=H, width=W), channels=channels, channels_order=order)
         return Image(data.clone(), pf, layout)
-    
+
     @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
     def test_identity_to_color_space(self, order, device):
         # RGB → RGB no-op
@@ -122,16 +120,18 @@ class TestImage:
         out = img.to_color_space(ColorSpace.RGB)
         assert out is img
 
-    @pytest.mark.parametrize("src, dst", [
-        (ColorSpace.RGB, ColorSpace.BGR),
-        (ColorSpace.BGR, ColorSpace.RGB),
-    ])
+    @pytest.mark.parametrize(
+        "src, dst",
+        [
+            (ColorSpace.RGB, ColorSpace.BGR),
+            (ColorSpace.BGR, ColorSpace.RGB),
+        ],
+    )
     def test_flip_channels(self, src, dst, device):
         # verify RGB↔BGR channel reversal
-        data = torch.stack([
-            torch.full((2, 2), fill_value=i, dtype=torch.uint8, device=device)
-            for i in (10, 20, 30)
-        ])  # C×H×W
+        data = torch.stack(
+            [torch.full((2, 2), fill_value=i, dtype=torch.uint8, device=device) for i in (10, 20, 30)]
+        )  # C×H×W
         img = self.make_image(data, src, ChannelsOrder.CHANNELS_FIRST)
         out = img.to_color_space(dst)
         assert torch.equal(out.data, data[[2, 1, 0]])

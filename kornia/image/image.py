@@ -202,7 +202,7 @@ class Image:
             if dst_cs == ColorSpace.GRAY:
                 r, g, b = data[0], data[1], data[2]
                 gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
-                gray = gray.round().to(self.dtype)            # ← cast back to uint8
+                gray = gray.round().to(self.dtype)  # ← cast back to uint8
                 out = gray.unsqueeze(0)
             elif dst_cs == ColorSpace.BGR:
                 out = data[[2, 1, 0], ...]
@@ -212,7 +212,7 @@ class Image:
             if dst_cs == ColorSpace.GRAY:
                 b, g, r = data[0], data[1], data[2]
                 gray = 0.1140 * b + 0.5870 * g + 0.2989 * r
-                gray = gray.round().to(self.dtype)            # ← cast back to uint8
+                gray = gray.round().to(self.dtype)  # ← cast back to uint8
                 out = gray.unsqueeze(0)
             elif dst_cs == ColorSpace.RGB:
                 out = data[[2, 1, 0], ...]
@@ -220,13 +220,11 @@ class Image:
                 raise ValueError(...)
         elif src_cs == ColorSpace.GRAY:
             if dst_cs in (ColorSpace.RGB, ColorSpace.BGR):
-                out = data.repeat(3, 1, 1).to(self.dtype)   # ensure same dtype
+                out = data.repeat(3, 1, 1).to(self.dtype)  # ensure same dtype
             else:
                 raise ValueError(...)
         else:
             raise ValueError(...)
-
-
 
         # restore original layout
         new_channels = out.shape[0]
@@ -241,7 +239,6 @@ class Image:
             channels_order=self._layout.channels_order,
         )
         return Image(out, new_pf, new_layout)
-
 
     @classmethod
     def from_numpy(
