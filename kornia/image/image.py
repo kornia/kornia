@@ -194,7 +194,7 @@ class Image:
             return self
 
         data = self._data
-        # bring to CxHxW
+        # bring to C*H*W
         if self._layout.channels_order == ChannelsOrder.CHANNELS_LAST:
             data = data.permute(2, 0, 1)
 
@@ -229,7 +229,7 @@ class Image:
         # restore original layout
         new_channels = out.shape[0]
         if self._layout.channels_order == ChannelsOrder.CHANNELS_LAST:
-            out = out.permute(1, 2, 0)  # CxHxW -> HxWxC
+            out = out.permute(1, 2, 0)  # C*H*W -> HxWxC
 
         # build new pixel_format + layout
         new_pf = PixelFormat(color_space=dst_cs, bit_depth=self._pixel_format.bit_depth)
