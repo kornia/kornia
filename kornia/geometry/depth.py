@@ -33,6 +33,8 @@ from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproje
 from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
 from .linalg import compose_transformations, convert_points_to_homogeneous, inverse_transformation, transform_points
 
+"""Module containing operators to work on RGB-Depth images."""
+
 __all__ = [
     "DepthWarper",
     "depth_from_disparity",
@@ -395,12 +397,35 @@ class DepthWarper(Module):
         Szeliski, Richard, and Daniel Scharstein. "Symmetric sub-pixel stereo matching." European Conference on Computer
         Vision. Springer Berlin Heidelberg, 2002.
         """
+        # Optimized: avoid redundant attribute lookups, fuse x/y/invd into batched operation
         delta_d = 0.01
-        xy_m1 = self._compute_projection(self.width / 2, self.height / 2, 1.0 - delta_d)
-        xy_p1 = self._compute_projection(self.width / 2, self.height / 2, 1.0 + delta_d)
-        dx = torch.norm((xy_p1 - xy_m1), 2, dim=-1) / 2.0
-        dxdd = dx / (delta_d)  # pixel*(1/meter)
-        # half pixel sampling, we're interested in the min for all cameras
+        center_x = self.width / 2
+        center_y = self.height / 2
+
+        # Batch both invds in one call (for potential fused kernels in future) for efficiency
+        invds = (1.0 - delta_d, 1.0 + delta_d)
+        # Instead of two calls, process both at once with minimal tensor construction
+        points = (
+            torch.tensor(
+                [[center_x, center_y, invds[0], 1.0], [center_x, center_y, invds[1], 1.0]],
+                dtype=self._dst_proj_src.dtype,
+                device=self._dst_proj_src.device,
+            )
+            .transpose(0, 1)
+            .unsqueeze(0)
+        )  # (1, 4, 2)
+        # Repeat projection matrix for batch
+        proj = self._dst_proj_src
+        flow = torch.matmul(proj, points)  # (N, 3/4, 2)
+        zs = 1.0 / flow[:, 2]  # (N, 2)
+        xs = flow[:, 0] * zs
+        ys = flow[:, 1] * zs
+        xys = torch.stack((xs, ys), dim=-1)  # (N, 2, 2)
+        # dx = torch.norm(xy_p1 - xy_m1, 2, dim=-1) / 2.0
+        # xys[:,0] for invd0, xys[:,1] for invd1
+        dxy = torch.norm(xys[:, 1] - xys[:, 0], p=2, dim=1) / 2.0
+        dxdd = dxy / delta_d
+        # half pixel sampling, min for all cameras
         return torch.min(0.5 / dxdd)
 
     def warp_grid(self, depth_src: Tensor) -> Tensor:
