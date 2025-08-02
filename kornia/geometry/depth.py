@@ -397,6 +397,10 @@ class DepthWarper(Module):
         Szeliski, Richard, and Daniel Scharstein. "Symmetric sub-pixel stereo matching." European Conference on Computer
         Vision. Springer Berlin Heidelberg, 2002.
         """
+        # Add None check first
+        if self._dst_proj_src is None:
+            raise ValueError("Please, call compute_projection_matrix.")
+        
         delta_d = 0.01
         center_x = self.width / 2
         center_y = self.height / 2
