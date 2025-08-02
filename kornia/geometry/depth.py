@@ -397,7 +397,6 @@ class DepthWarper(Module):
         Szeliski, Richard, and Daniel Scharstein. "Symmetric sub-pixel stereo matching." European Conference on Computer
         Vision. Springer Berlin Heidelberg, 2002.
         """
-        # Optimized: avoid redundant attribute lookups, fuse x/y/invd into batched operation
         delta_d = 0.01
         center_x = self.width / 2
         center_y = self.height / 2
@@ -421,8 +420,6 @@ class DepthWarper(Module):
         xs = flow[:, 0] * zs
         ys = flow[:, 1] * zs
         xys = torch.stack((xs, ys), dim=-1)  # (N, 2, 2)
-        # dx = torch.norm(xy_p1 - xy_m1, 2, dim=-1) / 2.0
-        # xys[:,0] for invd0, xys[:,1] for invd1
         dxy = torch.norm(xys[:, 1] - xys[:, 0], p=2, dim=1) / 2.0
         dxdd = dxy / delta_d
         # half pixel sampling, min for all cameras
