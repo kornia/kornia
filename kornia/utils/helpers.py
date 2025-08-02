@@ -105,29 +105,32 @@ def deprecated(
     """Mark methods as deprecated."""
 
     def _deprecated(func: Callable[..., Any]) -> Any:
+        # Precompute name at decoration time, since isclass/isfunction and name are constant per func
+        if isclass(func):
+            name = func.__class__.__name__
+        elif isfunction(func):
+            name = func.__name__
+        else:
+            name = ""
+
+        beginning = f"Since kornia {version} the " if version is not None else ""
+        if replace_with is not None:
+            warn_message = f"{beginning}`{name}` is deprecated in favor of `{replace_with}`.{extra_reason}"
+        else:
+            warn_message = (
+                f"{beginning}`{name}` is deprecated and will be removed in the future versions.{extra_reason}"
+            )
+
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            name = ""
-            beginning = f"Since kornia {version} the " if version is not None else ""
-
-            if isclass(func):
-                name = func.__class__.__name__
-            if isfunction(func):
-                name = func.__name__
-            warnings.simplefilter("always", DeprecationWarning)
-            if replace_with is not None:
+            # Setting the filter globally every call is expensive; instead, use catch_warnings context manager
+            with warnings.catch_warnings():
+                warnings.simplefilter("always", DeprecationWarning)
                 warnings.warn(
-                    f"{beginning}`{name}` is deprecated in favor of `{replace_with}`.{extra_reason}",
+                    warn_message,
                     category=DeprecationWarning,
                     stacklevel=2,
                 )
-            else:
-                warnings.warn(
-                    f"{beginning}`{name}` is deprecated and will be removed in the future versions.{extra_reason}",
-                    category=DeprecationWarning,
-                    stacklevel=2,
-                )
-            warnings.simplefilter("default", DeprecationWarning)
             return func(*args, **kwargs)
 
         return wrapper
