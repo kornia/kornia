@@ -186,7 +186,6 @@ class Image:
         self._data = self.data.float()
         return self
 
-    # TODO implement this
     def to_color_space(self, color_space: ColorSpace) -> Image:
         """Convert the image to a different color space."""
         src_cs = self._pixel_format.color_space
