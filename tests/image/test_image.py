@@ -98,3 +98,62 @@ class TestImage:
         data = np.ones((4, 5, 3), dtype=np.uint8)
         img = Image.from_numpy(data, color_space=ColorSpace.RGB, channels_order=ChannelsOrder.CHANNELS_LAST)
         img.write(tmp_path / "image.jpg")
+
+    def make_image(self, data: torch.Tensor, cs: ColorSpace, order: ChannelsOrder) -> Image:
+        """Wrap a tensor into Kornia's Image with given color space & layout"""
+        if order == ChannelsOrder.CHANNELS_FIRST:
+            channels, H, W = data.shape
+        else:
+            H, W, channels = data.shape
+        pf = PixelFormat(color_space=cs, bit_depth=data.element_size() * 8)
+        layout = ImageLayout(image_size=ImageSize(height=H, width=W),
+                             channels=channels,
+                             channels_order=order)
+        return Image(data.clone(), pf, layout)
+    
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
+    def test_identity_to_color_space(self, order, device):
+        # RGB → RGB no-op
+        if order == ChannelsOrder.CHANNELS_FIRST:
+            data = torch.arange(12, dtype=torch.uint8, device=device).view(3, 2, 2)
+        else:
+            data = torch.arange(12, dtype=torch.uint8, device=device).view(2, 2, 3)
+        img = self.make_image(data, ColorSpace.RGB, order)
+        out = img.to_color_space(ColorSpace.RGB)
+        assert out is img
+
+    @pytest.mark.parametrize("src, dst", [
+        (ColorSpace.RGB, ColorSpace.BGR),
+        (ColorSpace.BGR, ColorSpace.RGB),
+    ])
+    def test_flip_channels(self, src, dst, device):
+        # verify RGB↔BGR channel reversal
+        data = torch.stack([
+            torch.full((2, 2), fill_value=i, dtype=torch.uint8, device=device)
+            for i in (10, 20, 30)
+        ])  # C×H×W
+        img = self.make_image(data, src, ChannelsOrder.CHANNELS_FIRST)
+        out = img.to_color_space(dst)
+        assert torch.equal(out.data, data[[2, 1, 0]])
+        assert out.pixel_format.color_space == dst
+
+    def test_gray_from_rgb(self, device):
+        # single‐pixel luminosity formula
+        data = torch.tensor([[[8]], [[16]], [[32]]], dtype=torch.uint8, device=device)
+        img = self.make_image(data, ColorSpace.RGB, ChannelsOrder.CHANNELS_FIRST)
+        out = img.to_color_space(ColorSpace.GRAY)
+        expected = int(0.2989 * 8 + 0.5870 * 16 + 0.1140 * 32)
+        assert out.pixel_format.color_space == ColorSpace.GRAY
+        assert out.data.shape == (1, 1, 1)
+        assert out.data.item() == expected
+
+    def test_gray_to_rgb_and_bgr(self, device):
+        # Gray→RGB/BGR replication
+        gray = torch.tensor([[[42, 84]]], dtype=torch.uint8, device=device)  # 1×1×2
+        img = self.make_image(gray, ColorSpace.GRAY, ChannelsOrder.CHANNELS_FIRST)
+        rgb = img.to_color_space(ColorSpace.RGB)
+        assert rgb.data.shape == (3, 1, 2)
+        for c in range(3):
+            assert torch.equal(rgb.data[c], gray[0])
+        bgr = img.to_color_space(ColorSpace.BGR)
+        assert torch.equal(bgr.data, rgb.data)

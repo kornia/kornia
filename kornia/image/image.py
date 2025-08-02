@@ -189,7 +189,60 @@ class Image:
     # TODO implement this
     def to_color_space(self, color_space: ColorSpace) -> Image:
         """Convert the image to a different color space."""
-        raise NotImplementedError
+        src_cs = self._pixel_format.color_space
+        dst_cs = color_space
+        if src_cs == dst_cs:
+            return self
+
+        data = self._data
+        # bring to CxHxW
+        if self._layout.channels_order == ChannelsOrder.CHANNELS_LAST:
+            data = data.permute(2, 0, 1)
+
+        if src_cs == ColorSpace.RGB:
+            if dst_cs == ColorSpace.GRAY:
+                r, g, b = data[0], data[1], data[2]
+                gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
+                gray = gray.round().to(self.dtype)            # ← cast back to uint8
+                out = gray.unsqueeze(0)
+            elif dst_cs == ColorSpace.BGR:
+                out = data[[2, 1, 0], ...]
+            else:
+                raise ValueError(...)
+        elif src_cs == ColorSpace.BGR:
+            if dst_cs == ColorSpace.GRAY:
+                b, g, r = data[0], data[1], data[2]
+                gray = 0.1140 * b + 0.5870 * g + 0.2989 * r
+                gray = gray.round().to(self.dtype)            # ← cast back to uint8
+                out = gray.unsqueeze(0)
+            elif dst_cs == ColorSpace.RGB:
+                out = data[[2, 1, 0], ...]
+            else:
+                raise ValueError(...)
+        elif src_cs == ColorSpace.GRAY:
+            if dst_cs in (ColorSpace.RGB, ColorSpace.BGR):
+                out = data.repeat(3, 1, 1).to(self.dtype)   # ensure same dtype
+            else:
+                raise ValueError(...)
+        else:
+            raise ValueError(...)
+
+
+
+        # restore original layout
+        new_channels = out.shape[0]
+        if self._layout.channels_order == ChannelsOrder.CHANNELS_LAST:
+            out = out.permute(1, 2, 0)  # CxHxW -> HxWxC
+
+        # build new pixel_format + layout
+        new_pf = PixelFormat(color_space=dst_cs, bit_depth=self._pixel_format.bit_depth)
+        new_layout = ImageLayout(
+            image_size=self._layout.image_size,
+            channels=new_channels,
+            channels_order=self._layout.channels_order,
+        )
+        return Image(out, new_pf, new_layout)
+
 
     @classmethod
     def from_numpy(
