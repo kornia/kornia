@@ -28,3 +28,7 @@ Module to provide a high level API to process images.
 .. autoclass:: Image
     :members:
     :undoc-members:
+
+.. autoclass:: ColorSpace
+    :members:
+    :undoc-members:
