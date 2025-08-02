@@ -274,7 +274,6 @@ ignore_errors = true
 match = '.*\.py'
 
 [tool.codeflash]
-# All paths are relative to this pyproject.toml's directory.
 module-root = "kornia"
 tests-root = "tests"
 test-framework = "pytest"
