@@ -129,24 +129,28 @@ class ParametrizedLine(Module):
 
     # TODO: improve order and speed
     def squared_distance(self, point: Tensor) -> Tensor:
-        """Return the squared distance of a point to its projection onte the line.
-
-        Args:
-            point: the point to calculate the distance onto the line.
-
         """
-        diff: Tensor = point - self.origin
-        return squared_norm(diff - (self.direction @ diff) * self.direction)
+        Fast squared distance from `point` to this line.
+        Uses: ||d - (d·u)u||^2 = ||d||^2 - (d·u)^2.
+        """
+        # d: (..., D)
+        d = point - self.origin
+        # proj = d·u, shape (...,)
+        proj = torch.sum(d * self.direction, dim=-1)
+        # sq_norm_d = ||d||^2, shape (...,)
+        sq_norm_d = torch.sum(d * d, dim=-1)
+        return sq_norm_d - proj * proj
 
-    # TODO: improve order and speed
+
     def distance(self, point: Tensor) -> Tensor:
-        """Return the distance of a point to its projections onto the line.
-
-        Args:
-            point: the point to calculate the distance into the line.
-
         """
-        return self.squared_distance(point).sqrt()
+        Fast Euclidean distance from `point` to this line,
+        simply sqrt of squared_distance.
+        """
+        # you can do an in-place sqrt if you don't need the squared result
+        sqd = self.squared_distance(point)
+        return sqd.sqrt()
+
 
     # TODO(edgar) implement the following:
     # - intersection
