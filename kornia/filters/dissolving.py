@@ -24,7 +24,6 @@ from kornia.core.external import diffusers
 
 
 class _DissolvingWraper_HF:
-    # Constructor unchanged
     def __init__(self, model: Module, num_ddim_steps: int = 50) -> None:
         self.model = model
         self.num_ddim_steps = num_ddim_steps
