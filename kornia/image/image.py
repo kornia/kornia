@@ -186,10 +186,8 @@ class Image:
         self._data = self.data.float()
         return self
 
-
-    def to_color_space(self, color_space: ColorSpace) -> "Image":
-        """
-        Convert the image to a different color space.
+    def to_color_space(self, color_space: ColorSpace) -> Image:
+        """Convert the image to a different color space.
 
         Args:
             color_space (ColorSpace): The desired target color space.
@@ -200,7 +198,6 @@ class Image:
         Raises:
             ValueError: If the conversion between the given color spaces is unsupported.
         """
-
         src_cs = self._pixel_format.color_space
         dst_cs = color_space
         # no-op

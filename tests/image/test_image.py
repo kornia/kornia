@@ -99,15 +99,17 @@ class TestImage:
         img = Image.from_numpy(data, color_space=ColorSpace.RGB, channels_order=ChannelsOrder.CHANNELS_LAST)
         img.write(tmp_path / "image.jpg")
 
-    @pytest.mark.parametrize("src_cs,dst_cs", [
-        (ColorSpace.RGB, ColorSpace.BGR),
-        (ColorSpace.RGB, ColorSpace.GRAY),
-        (ColorSpace.BGR, ColorSpace.RGB),
-        (ColorSpace.BGR, ColorSpace.GRAY),
-        (ColorSpace.GRAY, ColorSpace.RGB),
-        (ColorSpace.GRAY, ColorSpace.BGR),
-    ])
-        
+    @pytest.mark.parametrize(
+        "src_cs,dst_cs",
+        [
+            (ColorSpace.RGB, ColorSpace.BGR),
+            (ColorSpace.RGB, ColorSpace.GRAY),
+            (ColorSpace.BGR, ColorSpace.RGB),
+            (ColorSpace.BGR, ColorSpace.GRAY),
+            (ColorSpace.GRAY, ColorSpace.RGB),
+            (ColorSpace.GRAY, ColorSpace.BGR),
+        ],
+    )
     @pytest.mark.parametrize("channels_order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
     def test_to_color_space_conversion(self, src_cs, dst_cs, channels_order):
         torch.manual_seed(42)
@@ -172,4 +174,3 @@ class TestImage:
 
         with pytest.raises(ValueError, match="Unsupported source color space"):
             img.to_color_space(ColorSpace.RGB)
-
