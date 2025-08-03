@@ -48,39 +48,29 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
     Args:
         *args: a list of kornia augmentation modules, set to a default list if not specified.
 
-        initial_p: float
-            initial global probability `p` for applying the augmentations
+        initial_p: initial global probability `p` for applying the augmentations
 
         adjustment_speed: float
             step size for updating the global probability `p`
 
-        max_p: float
-            maximum allowed value for `p`
+        max_p: maximum allowed value for `p`
 
-        target_real_acc: float
-            target Discriminator accuracy to guide `p` adjustments
+        target_real_acc: target Discriminator accuracy to guide `p` adjustments
 
 
-        ema_lambda: float
-            EMA smoothing factor. The real accuracy EMA is what's used to determine the `p` update
+        ema_lambda: EMA smoothing factor. The real accuracy EMA is what's used to determine the `p` update
 
-        update_every: int
-            `p` update frequency (in steps)
+        update_every: `p` update frequency (in steps)
 
-        erasing_scale: Tuple[float, float]
-            scale range used for `RandomErasing` if default augmentations are used
+        erasing_scale: scale range used for `RandomErasing` if default augmentations are used
 
-        erasing_ratio: Tuple[float, float]
-            aspect ratio range used for `RandomErasing` if default augmentations are used
+        erasing_ratio: aspect ratio range used for `RandomErasing` if default augmentations are used
 
-        erasing_fill_value: float
-            fill value used in `RandomErasing`
+        erasing_fill_value: fill value used in `RandomErasing`
 
-        same_on_batch: Optional[bool]
-            apply the same transformation across the batch
+        same_on_batch: apply the same transformation across the batch
 
-        data_keys: Optional[List[str]]
-            input types to apply augmentations on
+        data_keys: input types to apply augmentations on
 
 
         **kwargs: Additional keyword arguments passed to `AugmentationSequential`
@@ -194,7 +184,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         `p` is updated by adding or subtracting `adjustment_speed` from it and clamp it at [0, `max_p`]
 
         Args:
-            real_acc (float): the Discriminator's accuracy labeling real samples.
+            real_acc: the Discriminator's accuracy labeling real samples.
         """
         self._num_calls += 1
 
