@@ -16,11 +16,12 @@
 #
 
 # inspired by: shttps://github.com/farm-ng/sophus-rs/blob/main/src/sensor/kannala_brandt.rs
+import torch
+
 import kornia.core as ops
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.camera.distortion_affine import distort_points_affine
-import torch
 
 
 def _distort_points_kannala_brandt_impl(
@@ -145,7 +146,7 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
     iters = 0
 
     # gauss-newton
- 
+
     converged_mask = torch.zeros_like(th, dtype=torch.bool)
 
     while True:
@@ -155,13 +156,7 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
         th8 = th4**2
 
         thd = th * (1.0 + k0 * th2 + k1 * th4 + k2 * th6 + k3 * th8)
-        d_thd_wtr_th = (
-            1.0
-            + 3.0 * k0 * th2
-            + 5.0 * k1 * th4
-            + 7.0 * k2 * th6
-            + 9.0 * k3 * th8
-        )
+        d_thd_wtr_th = 1.0 + 3.0 * k0 * th2 + 5.0 * k1 * th4 + 7.0 * k2 * th6 + 9.0 * k3 * th8
 
         step = (thd - rth) / d_thd_wtr_th
 
