@@ -144,7 +144,6 @@ class ParametrizedLine(Module):
         """
         return self.squared_distance(point).sqrt()
 
-
     # TODO(edgar) implement the following:
     # - intersection
     # - intersection_parameter
