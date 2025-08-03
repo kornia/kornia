@@ -16,7 +16,6 @@
 #
 
 # inspired by: shttps://github.com/farm-ng/sophus-rs/blob/main/src/sensor/kannala_brandt.rs
-import torch
 
 import kornia.core as ops
 from kornia.core import Tensor
