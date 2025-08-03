@@ -186,10 +186,80 @@ class Image:
         self._data = self.data.float()
         return self
 
-    # TODO implement this
-    def to_color_space(self, color_space: ColorSpace) -> Image:
-        """Convert the image to a different color space."""
-        raise NotImplementedError
+
+    def to_color_space(self, color_space: ColorSpace) -> "Image":
+        """
+        Convert the image to a different color space.
+
+        Args:
+            color_space (ColorSpace): The desired target color space.
+
+        Returns:
+            Image: A new Image instance in the desired color space.
+
+        Raises:
+            ValueError: If the conversion between the given color spaces is unsupported.
+        """
+
+        src_cs = self._pixel_format.color_space
+        dst_cs = color_space
+        # no-op
+        if src_cs == dst_cs:
+            return self
+
+        # bring data to CHANNELS_FIRST for easy channel ops
+        data = self._data
+        if self._layout.channels_order == ChannelsOrder.CHANNELS_LAST:
+            # H * W * C -> C * H * W
+            data = data.permute(2, 0, 1)
+
+        C, H, W = data.shape
+        dtype = self._data.dtype
+
+        # perform conversion in C*H*W
+        if src_cs == ColorSpace.RGB:
+            if dst_cs == ColorSpace.BGR:
+                out = data[[2, 1, 0], ...]
+            elif dst_cs == ColorSpace.GRAY:
+                # luminosity: 0.2989 R + 0.5870 G + 0.1140 B
+                r, g, b = data[0].float(), data[1].float(), data[2].float()
+                gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
+                gray = gray.round().clamp(0, 255).to(dtype)
+                out = gray.unsqueeze(0)
+            else:
+                raise ValueError(f"Can't convert RGB → {dst_cs}")
+        elif src_cs == ColorSpace.BGR:
+            if dst_cs == ColorSpace.RGB:
+                out = data[[2, 1, 0], ...]
+            elif dst_cs == ColorSpace.GRAY:
+                b, g, r = data[0].float(), data[1].float(), data[2].float()
+                gray = 0.1140 * b + 0.5870 * g + 0.2989 * r
+                gray = gray.round().clamp(0, 255).to(dtype)
+                out = gray.unsqueeze(0)
+            else:
+                raise ValueError(f"Can't convert BGR → {dst_cs}")
+        elif src_cs == ColorSpace.GRAY:
+            if dst_cs in (ColorSpace.RGB, ColorSpace.BGR):
+                # 1 * H * W -> 3 * H * W by replication
+                out = data.repeat(3, 1, 1)
+            else:
+                raise ValueError(f"Can't convert GRAY → {dst_cs}")
+        else:
+            raise ValueError(f"Unsupported source color space: {src_cs}")
+
+        # restore original layout
+        new_channels = out.shape[0]
+        if self._layout.channels_order == ChannelsOrder.CHANNELS_LAST:
+            out = out.permute(1, 2, 0)  # C*H*W -> H*W*C
+
+        # build new pixel_format + layout
+        new_pf = PixelFormat(color_space=dst_cs, bit_depth=self._pixel_format.bit_depth)
+        new_layout = ImageLayout(
+            image_size=self._layout.image_size,
+            channels=new_channels,
+            channels_order=self._layout.channels_order,
+        )
+        return Image(out, new_pf, new_layout)
 
     @classmethod
     def from_numpy(
