@@ -20,11 +20,13 @@ import kornia.core as ops
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.camera.distortion_affine import distort_points_affine
+import torch
 
 
 def _distort_points_kannala_brandt_impl(
     projected_points_in_camera_z1_plane: Tensor,
     params: Tensor,
+    radius_sq: Tensor,
 ) -> Tensor:
     # https://github.com/farm-ng/sophus-rs/blob/20f6cac68f17fe1ac41d0aa8a27489e2b886806f/src/sensor/kannala_brandt.rs#L51-L67
     x = projected_points_in_camera_z1_plane[..., 0]
@@ -37,8 +39,6 @@ def _distort_points_kannala_brandt_impl(
     k1 = params[..., 5]
     k2 = params[..., 6]
     k3 = params[..., 7]
-
-    radius_sq = x**2 + y**2
 
     radius = radius_sq.sqrt()
     radius_inverse = 1.0 / radius
@@ -83,12 +83,12 @@ def distort_points_kannala_brandt(projected_points_in_camera_z1_plane: Tensor, p
 
     radius_sq = x**2 + y**2
 
-    # TODO: we can optimize this by passing the radius_sq to the impl functions. Check if it's worth it.
     distorted_points = ops.where(
         radius_sq[..., None] > 1e-8,
         _distort_points_kannala_brandt_impl(
             projected_points_in_camera_z1_plane,
             params,
+            radius_sq,
         ),
         distort_points_affine(projected_points_in_camera_z1_plane, params[..., :4]),
     )
@@ -145,6 +145,8 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
     iters = 0
 
     # gauss-newton
+ 
+    converged_mask = torch.zeros_like(th, dtype=torch.bool)
 
     while True:
         th2 = th**2
@@ -153,21 +155,25 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
         th8 = th4**2
 
         thd = th * (1.0 + k0 * th2 + k1 * th4 + k2 * th6 + k3 * th8)
-
-        d_thd_wtr_th = 1.0 + 3.0 * k0 * th2 + 5.0 * k1 * th4 + 7.0 * k2 * th6 + 9.0 * k3 * th8
+        d_thd_wtr_th = (
+            1.0
+            + 3.0 * k0 * th2
+            + 5.0 * k1 * th4
+            + 7.0 * k2 * th6
+            + 9.0 * k3 * th8
+        )
 
         step = (thd - rth) / d_thd_wtr_th
-        th = th - step
+
+        # Compute convergence mask BEFORE update
+        newly_converged = step.abs() < 1e-8
+        converged_mask = converged_mask | newly_converged
+
+        # Clone `th` and apply masked update
+        th = torch.where(converged_mask, th, th - step)
 
         iters += 1
-
-        # TODO: improve stop condition by masking only the elements that have converged
-        th_abs_mask = th.abs() < 1e-8
-
-        if th_abs_mask.all():
-            break
-
-        if iters >= 20:
+        if converged_mask.all() or iters >= 20:
             break
 
     radius_undistorted = th.tan()
