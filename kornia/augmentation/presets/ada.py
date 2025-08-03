@@ -253,6 +253,9 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
 
         if `real_acc` is provided, the internal probability `p` is updated via the `update` method.
         Non-augmented samples retain their original values, and the output matches the input structure.
+
+        `real_acc` is the Discriminator's accuracy on real images; for example,
+        `(real_logits > 0).float().mean().item()` if using logits andn assuming real labels are positive.
         """
         if real_acc is not None:
             self.update(real_acc)
