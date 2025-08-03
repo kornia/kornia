@@ -23,7 +23,7 @@ import torch
 
 from kornia.core import Module, Parameter, Tensor, normalize, where
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.geometry.linalg import batched_dot_product, squared_norm
+from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
 from kornia.utils.helpers import _torch_svd_cast
 
@@ -129,8 +129,7 @@ class ParametrizedLine(Module):
 
     # TODO: improve order and speed
     def squared_distance(self, point: Tensor) -> Tensor:
-        """
-        Fast squared distance from `point` to this line.
+        """Fast squared distance from `point` to this line.
         Uses: ||d - (d·u)u||^2 = ||d||^2 - (d·u)^2.
         """
         # d: (..., D)
@@ -141,16 +140,13 @@ class ParametrizedLine(Module):
         sq_norm_d = torch.sum(d * d, dim=-1)
         return sq_norm_d - proj * proj
 
-
     def distance(self, point: Tensor) -> Tensor:
-        """
-        Fast Euclidean distance from `point` to this line,
+        """Fast Euclidean distance from `point` to this line,
         simply sqrt of squared_distance.
         """
         # you can do an in-place sqrt if you don't need the squared result
         sqd = self.squared_distance(point)
         return sqd.sqrt()
-
 
     # TODO(edgar) implement the following:
     # - intersection
