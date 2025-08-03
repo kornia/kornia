@@ -39,7 +39,7 @@ _inputs_type = Union[Tensor, Dict[str, Tensor]]
 
 
 class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
-    r"""Implementation of Adaptive Discriminator Augmentation (ADA) for GANs training.
+    r"""Implementation of Adaptive Discriminator Augmentation for GANs training as introduced in :cite:`Karras2020ada`.
 
     adjust a global probability p over all augmentations list to select a subset of images to augment
     based on an exponential moving average of the Discriminator's accuracy labeling real samples.
