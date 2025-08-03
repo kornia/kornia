@@ -179,18 +179,40 @@ class ParametrizedLine(Module):
         res_point = self.point_at(res_lambda)
         return res_lambda, res_point
 
+def _fit_line_ols_2d(points: Tensor) -> ParametrizedLine:
+    x = points[..., 0]
+    y = points[..., 1]
+    x_mean = x.mean(dim=-1, keepdim=True)
+    y_mean = y.mean(dim=-1, keepdim=True)
+    dx = x - x_mean
+    dy = y - y_mean
+
+    denom = (dx * dx).sum(dim=-1, keepdim=True)  # (B, 1)
+    slope = torch.where(denom > 1e-8, (dx * dy).sum(dim=-1, keepdim=True) / denom, torch.zeros_like(denom))
+
+    # For vertical lines, fallback to [0,1] direction
+    direction = torch.where(
+        denom > 1e-8,
+        torch.cat([torch.ones_like(slope), slope], dim=-1),
+        torch.tensor([0.0, 1.0], device=points.device).expand(points.shape[0], 2)
+    )
+
+    direction = direction / direction.norm(dim=-1, keepdim=True)
+    origin = torch.cat([x_mean, y_mean], dim=-1)
+    return ParametrizedLine(origin, direction)
+
 
 def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLine:
     """Fit a line from a set of points.
 
     Args:
-        points: tensor containing a batch of sets of n-dimensional points. The  expected
+        points: tensor containing a batch of sets of n-dimensional points. The expected
             shape of the tensor is :math:`(B, N, D)`.
-        weights: weights to use to solve the equations system. The  expected
+        weights: weights to use to solve the equations system. The expected
             shape of the tensor is :math:`(B, N)`.
 
     Return:
-        A tensor containing the direction of the fited line of shape :math:`(B, D)`.
+        A tensor containing the direction of the fitted line of shape :math:`(B, D)`.
 
     Example:
         >>> points = torch.rand(2, 10, 3)
@@ -198,10 +220,15 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLi
         >>> line = fit_line(points, weights)
         >>> line.direction.shape
         torch.Size([2, 3])
-
     """
     KORNIA_CHECK_IS_TENSOR(points, "points must be a tensor")
     KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])
+
+    B, N, D = points.shape
+
+    # Fast path: use OLS for unweighted 2D case
+    if weights is None and D == 2:
+        return _fit_line_ols_2d(points)
 
     mean = points.mean(-2, True)
     A = points - mean
@@ -218,7 +245,7 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLi
     _, _, V = _torch_svd_cast(A)
     V = V.transpose(-2, -1)
 
-    # the first left eigenvector is the direction on the fited line
+    # the first left eigenvector is the direction on the fitted line
     direction = V[..., 0, :]  # BxD
     origin = mean[..., 0, :]  # BxD
 
