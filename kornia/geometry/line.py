@@ -179,6 +179,7 @@ class ParametrizedLine(Module):
         res_point = self.point_at(res_lambda)
         return res_lambda, res_point
 
+
 def _fit_line_ols_2d(points: Tensor) -> ParametrizedLine:
     x = points[..., 0]
     y = points[..., 1]
@@ -194,7 +195,7 @@ def _fit_line_ols_2d(points: Tensor) -> ParametrizedLine:
     direction = torch.where(
         denom > 1e-8,
         torch.cat([torch.ones_like(slope), slope], dim=-1),
-        torch.tensor([0.0, 1.0], device=points.device).expand(points.shape[0], 2)
+        torch.tensor([0.0, 1.0], device=points.device).expand(points.shape[0], 2),
     )
 
     direction = direction / direction.norm(dim=-1, keepdim=True)
