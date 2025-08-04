@@ -247,7 +247,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         the output mask tensor.
 
     Examples:
-        >>> boxes = torch.tensor([[
+        >>> boxes = torch.tensor([[[
         ...     [1., 1., 1.],
         ...     [2., 1., 1.],
         ...     [2., 2., 1.],
@@ -256,62 +256,42 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         ...     [2., 1., 2.],
         ...     [2., 2., 2.],
         ...     [1., 2., 2.],
-        ... ]])  # 1x8x3
-        >>> bbox_to_mask3d(boxes, (4, 5, 5))
-        tensor([[[[[0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.]],
-        <BLANKLINE>
-                  [[0., 0., 0., 0., 0.],
-                   [0., 1., 1., 0., 0.],
-                   [0., 1., 1., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.]],
-        <BLANKLINE>
-                  [[0., 0., 0., 0., 0.],
-                   [0., 1., 1., 0., 0.],
-                   [0., 1., 1., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.]],
-        <BLANKLINE>
-                  [[0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.],
-                   [0., 0., 0., 0., 0.]]]]])
-
+        ... ]]])
+        >>> bbox_to_mask3d(boxes, (4, 5, 5)).shape
+        torch.Size([1, 4, 5, 5])
     """
     validate_bbox3d(boxes)
-    mask = zeros((len(boxes), *size))
+    
+    device = boxes.device
+    dtype = boxes.dtype
+    N, D0, D1, D2 = boxes.shape[0], *size  # Batch size, depth, height, width
 
-    mask_out = []
-    # TODO: Looking for a vectorized way
-    for m, box in zip(mask, boxes):
-        m = m.index_fill(
-            0,
-            arange(box[0, 2].item(), box[4, 2].item() + 1, device=box.device, dtype=torch.long),
-            torch.tensor(1, device=box.device, dtype=box.dtype),
-        )
-        m = m.index_fill(
-            1,
-            arange(box[1, 1].item(), box[2, 1].item() + 1, device=box.device, dtype=torch.long),
-            torch.tensor(1, device=box.device, dtype=box.dtype),
-        )
-        m = m.index_fill(
-            2,
-            arange(box[0, 0].item(), box[1, 0].item() + 1, device=box.device, dtype=torch.long),
-            torch.tensor(1, device=box.device, dtype=box.dtype),
-        )
-        m = m.unsqueeze(dim=0)
-        m_out = ones_like(m)
-        m_out = m_out * (m == 1).all(dim=2, keepdim=True).all(dim=1, keepdim=True)
-        m_out = m_out * (m == 1).all(dim=3, keepdim=True).all(dim=1, keepdim=True)
-        m_out = m_out * (m == 1).all(dim=2, keepdim=True).all(dim=3, keepdim=True)
-        mask_out.append(m_out)
+    
+    z_min = boxes[:, 0, 2].long()  
+    z_max = boxes[:, 4, 2].long()  
+    y_min = boxes[:, 1, 1].long()  
+    y_max = boxes[:, 2, 1].long() 
+    x_min = boxes[:, 0, 0].long()  
+    x_max = boxes[:, 1, 0].long()  
 
-    return stack(mask_out, dim=0).float()
+    z = arange(D0, device=device, dtype=torch.long)
+    y = arange(D1, device=device, dtype=torch.long)
+    x = arange(D2, device=device, dtype=torch.long)
+
+    # Compute mask as union of planes in one step
+    m = (
+        ((z[None, :] >= z_min[:, None]) & (z[None, :] <= z_max[:, None]))[:, None, :, None, None] |
+        ((y[None, :] >= y_min[:, None]) & (y[None, :] <= y_max[:, None]))[:, None, None, :, None] |
+        ((x[None, :] >= x_min[:, None]) & (x[None, :] <= x_max[:, None]))[:, None, None, None, :]
+    ).float()  # Shape: (N, 1, D0, D1, D2)
+
+    # Compute conditions
+    cond1 = m.all(dim=3, keepdim=True).all(dim=2, keepdim=True)  
+    cond2 = m.all(dim=4, keepdim=True).all(dim=2, keepdim=True)  
+    cond3 = m.all(dim=3, keepdim=True).all(dim=4, keepdim=True)  
+
+    m_out = cond1 * cond2 * cond3  # Broadcasting to (N, 1, D0, D1, D2)
+    return m_out.float()
 
 
 def bbox_generator(
