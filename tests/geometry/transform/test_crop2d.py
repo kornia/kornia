@@ -136,6 +136,7 @@ class TestCenterCrop(BaseTester):
 
         out_crop = kornia.geometry.transform.center_crop(inp, (2, 4))
         self.assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(kornia.geometry.transform.CenterCrop2D((2, 4))(inp), expected, rtol=1e-4, atol=1e-4)
 
     def test_center_crop_h4_w2(self, device, dtype):
         inp = torch.tensor(
@@ -149,6 +150,7 @@ class TestCenterCrop(BaseTester):
 
         out_crop = kornia.geometry.transform.center_crop(inp, (height, width))
         self.assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(kornia.geometry.transform.CenterCrop2D((height, width))(inp), expected, rtol=1e-4, atol=1e-4)
 
     def test_center_crop_h4_w2_batch(self, device, dtype):
         inp = torch.tensor(
@@ -171,11 +173,13 @@ class TestCenterCrop(BaseTester):
 
         out_crop = kornia.geometry.transform.center_crop(inp, (4, 2))
         self.assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(kornia.geometry.transform.CenterCrop2D((4, 2))(inp), expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
 
         self.gradcheck(kornia.geometry.transform.center_crop, (img, (4, 2)))
+        self.gradcheck(kornia.geometry.transform.CenterCrop2D((4, 2)), (img))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script

@@ -430,7 +430,6 @@ class CenterCrop2D(Module):
         }
 
     def forward(self, input: Tensor) -> Tensor:
-        device = input.device
         batch_size = input.shape[0]
 
         dst_h, dst_w = self.size
@@ -470,6 +469,6 @@ class CenterCrop2D(Module):
             )
 
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
-            return crop_by_indices(input, self.points_src, self.flags["size"])
+            return crop_by_indices(input, self.points_src.expand(batch_size, -1, -1).to(input), self.flags["size"])
 
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
