@@ -128,9 +128,10 @@ class ParametrizedLine(Module):
         return self.origin + (self.direction @ (point - self.origin)) * self.direction
 
     def squared_distance(self, point: Tensor) -> Tensor:
-        """Fast squared distance from `point` to this line.
+        """Return the squared distance of a point to its projection onte the line.
 
-        Uses: ||d - (d·u)u||^2 = ||d||^2 - (d·u)^2.
+        Args:
+            point: the point to calculate the distance onto the line.
         """
         d = point - self.origin
         proj = torch.sum(d * self.direction, dim=-1)
@@ -138,9 +139,10 @@ class ParametrizedLine(Module):
         return sq_norm_d - proj * proj
 
     def distance(self, point: Tensor) -> Tensor:
-        """Fast Euclidean distance from `point` to this line.
+        """Return the distance of a point to its projections onto the line.
 
-        Simply sqrt of squared_distance.
+        Args:
+            point: the point to calculate the distance into the line.
         """
         return self.squared_distance(point).sqrt()
 
