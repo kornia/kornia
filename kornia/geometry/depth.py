@@ -398,7 +398,7 @@ class DepthWarper(Module):
         Vision. Springer Berlin Heidelberg, 2002.
         """
         if self._dst_proj_src is None:
-            raise ValueError("Please, call compute_projection_matrix.")
+            raise RuntimeError("Expected Tensor, but got None Type from the projection matrix")
 
         delta_d = 0.01
         center_x = self.width / 2
