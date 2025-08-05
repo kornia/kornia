@@ -23,12 +23,12 @@ from typing import Any
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
+import kornia.color
 from kornia.core import Device, Dtype, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
 from kornia.io.io import ImageLoadType, load_image, write_image
 from kornia.utils.image_print import image_to_string
-import kornia.color
 
 # placeholder for numpy
 np_ndarray = Any
@@ -191,9 +191,9 @@ class Image:
         """Converts the image to grayscale."""
         src = self._pixel_format.color_space
         data = self._data
-        
+
         if src == ColorSpace.GRAY:
-            return self 
+            return self
 
         is_channels_last = self._layout.channels_order == ChannelsOrder.CHANNELS_LAST
         if is_channels_last:
@@ -209,9 +209,9 @@ class Image:
 
         if is_channels_last:
             if out.ndim == 4:
-                out = out.permute(0, 2, 3, 1)  
+                out = out.permute(0, 2, 3, 1)
             elif out.ndim == 3:
-                out = out.permute(1, 2, 0)   
+                out = out.permute(1, 2, 0)
             else:
                 raise ValueError(f"Unexpected shape after grayscale conversion: {out.shape}")
 

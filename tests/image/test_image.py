@@ -27,6 +27,7 @@ from kornia.utils._compat import torch_version_le
 
 from testing.base import assert_close
 
+
 class TestImage:
     def test_smoke(self, device):
         data = torch.randint(0, 255, (3, 4, 5), device=device, dtype=torch.uint8)
@@ -98,6 +99,7 @@ class TestImage:
         img = Image.from_numpy(data, color_space=ColorSpace.RGB, channels_order=ChannelsOrder.CHANNELS_LAST)
         img.write(tmp_path / "image.jpg")
 
+
 def make_image(data: torch.Tensor, cs: ColorSpace, order: ChannelsOrder) -> Image:
     if order not in [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST]:
         pytest.skip(f"Skipping unsupported channels_order: {order}")
@@ -116,11 +118,11 @@ def test_color_space_conversions(order):
     bgr_val = rgb_val.flip(0)
 
     if order == ChannelsOrder.CHANNELS_FIRST:
-        rgb_data = rgb_val.view(3,1,1)
-        bgr_data = bgr_val.view(3,1,1)
+        rgb_data = rgb_val.view(3, 1, 1)
+        bgr_data = bgr_val.view(3, 1, 1)
     else:
-        rgb_data = rgb_val.view(1,1,3)
-        bgr_data = bgr_val.view(1,1,3)
+        rgb_data = rgb_val.view(1, 1, 3)
+        bgr_data = bgr_val.view(1, 1, 3)
 
     # Create images
     img_rgb = make_image(rgb_data, ColorSpace.RGB, order)
