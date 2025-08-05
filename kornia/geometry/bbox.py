@@ -247,7 +247,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         the output mask tensor.
 
     Examples:
-        >>> boxes = torch.tensor([[[
+        >>> boxes = torch.tensor([[
         ...     [1., 1., 1.],
         ...     [2., 1., 1.],
         ...     [2., 2., 1.],
@@ -256,27 +256,46 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         ...     [2., 1., 2.],
         ...     [2., 2., 2.],
         ...     [1., 2., 2.],
-        ... ]]])
-        >>> bbox_to_mask3d(boxes, (4, 5, 5)).shape
-        torch.Size([1, 4, 5, 5])
+        ... ]])  # 1x8x3
+        >>> bbox_to_mask3d(boxes, (4, 5, 5))
+        tensor([[[[[0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.]],
+        <BLANKLINE>
+                  [[0., 0., 0., 0., 0.],
+                   [0., 1., 1., 0., 0.],
+                   [0., 1., 1., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.]],
+        <BLANKLINE>
+                  [[0., 0., 0., 0., 0.],
+                   [0., 1., 1., 0., 0.],
+                   [0., 1., 1., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.]],
+        <BLANKLINE>
+                  [[0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.],
+                   [0., 0., 0., 0., 0.]]]]])
+
     """
     validate_bbox3d(boxes)
-    
-    device = boxes.device
-    dtype = boxes.dtype
-    N, D0, D1, D2 = boxes.shape[0], *size  # Batch size, depth, height, width
+    D0, D1, D2 = size  # Batch size, depth, height, width
 
-    
-    z_min = boxes[:, 0, 2].long()  
-    z_max = boxes[:, 4, 2].long()  
+    z_min = boxes[:, 0, 2].long()
+    z_max = boxes[:, 4, 2].long()
     y_min = boxes[:, 1, 1].long()  
     y_max = boxes[:, 2, 1].long() 
     x_min = boxes[:, 0, 0].long()  
     x_max = boxes[:, 1, 0].long()  
 
-    z = arange(D0, device=device, dtype=torch.long)
-    y = arange(D1, device=device, dtype=torch.long)
-    x = arange(D2, device=device, dtype=torch.long)
+    z = arange(D0, device=boxes.device, dtype=torch.long)
+    y = arange(D1, device=boxes.device, dtype=torch.long)
+    x = arange(D2, device=boxes.device, dtype=torch.long)
 
     # Compute mask as union of planes in one step
     m = (
