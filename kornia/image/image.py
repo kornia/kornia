@@ -28,6 +28,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
 from kornia.io.io import ImageLoadType, load_image, write_image
 from kornia.utils.image_print import image_to_string
+import kornia.color
 
 # placeholder for numpy
 np_ndarray = Any
@@ -186,76 +187,89 @@ class Image:
         self._data = self.data.float()
         return self
 
-    def to_color_space(self, color_space: ColorSpace) -> Image:
-        """Convert the image to a different color space.
+    def to_gray(self) -> Image:
+        """Converts the image to grayscale."""
+        src = self._pixel_format.color_space
+        data = self._data
+        
+        if src == ColorSpace.GRAY:
+            return self 
 
-        Args:
-            color_space (ColorSpace): The desired target color space.
+        is_channels_last = self._layout.channels_order == ChannelsOrder.CHANNELS_LAST
+        if is_channels_last:
+            data = data.permute(0, 3, 1, 2) if data.ndim == 4 else data.permute(2, 0, 1)
 
-        Returns:
-            Image: A new Image instance in the desired color space.
+        # Perform the color space conversion
+        if src == ColorSpace.RGB:
+            out = kornia.color.rgb_to_grayscale(data)
+        elif src == ColorSpace.BGR:
+            out = kornia.color.bgr_to_grayscale(data)
+        else:
+            raise ValueError(f"Unsupported source color space for to_gray(): {src}")
 
-        Raises:
-            ValueError: If the conversion between the given color spaces is unsupported.
-        """
-        src_cs = self._pixel_format.color_space
-        dst_cs = color_space
-        # no-op
-        if src_cs == dst_cs:
+        if is_channels_last:
+            if out.ndim == 4:
+                out = out.permute(0, 2, 3, 1)  
+            elif out.ndim == 3:
+                out = out.permute(1, 2, 0)   
+            else:
+                raise ValueError(f"Unexpected shape after grayscale conversion: {out.shape}")
+
+        new_pf = PixelFormat(color_space=ColorSpace.GRAY, bit_depth=self._pixel_format.bit_depth)
+        new_layout = ImageLayout(self._layout.image_size, channels=1, channels_order=self._layout.channels_order)
+        return Image(out, new_pf, new_layout)
+
+    def to_rgb(self) -> Image:
+        """Converts the image to RGB."""
+        src = self._pixel_format.color_space
+        data = self._data
+
+        if src == ColorSpace.RGB:
             return self
 
-        # bring data to CHANNELS_FIRST for easy channel ops
-        data = self._data
-        if self._layout.channels_order == ChannelsOrder.CHANNELS_LAST:
-            # H * W * C -> C * H * W
-            data = data.permute(2, 0, 1)
+        is_channels_last = self._layout.channels_order == ChannelsOrder.CHANNELS_LAST
+        if is_channels_last:
+            data = data.permute(0, 3, 1, 2) if data.ndim == 4 else data.permute(2, 0, 1)
 
-        C, H, W = data.shape
-        dtype = self._data.dtype
-
-        # perform conversion in C*H*W
-        if src_cs == ColorSpace.RGB:
-            if dst_cs == ColorSpace.BGR:
-                out = data[[2, 1, 0], ...]
-            elif dst_cs == ColorSpace.GRAY:
-                # luminosity: 0.2989 R + 0.5870 G + 0.1140 B
-                r, g, b = data[0].float(), data[1].float(), data[2].float()
-                gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
-                gray = gray.round().clamp(0, 255).to(dtype)
-                out = gray.unsqueeze(0)
-            else:
-                raise ValueError(f"Can't convert RGB → {dst_cs}")
-        elif src_cs == ColorSpace.BGR:
-            if dst_cs == ColorSpace.RGB:
-                out = data[[2, 1, 0], ...]
-            elif dst_cs == ColorSpace.GRAY:
-                b, g, r = data[0].float(), data[1].float(), data[2].float()
-                gray = 0.1140 * b + 0.5870 * g + 0.2989 * r
-                gray = gray.round().clamp(0, 255).to(dtype)
-                out = gray.unsqueeze(0)
-            else:
-                raise ValueError(f"Can't convert BGR → {dst_cs}")
-        elif src_cs == ColorSpace.GRAY:
-            if dst_cs in (ColorSpace.RGB, ColorSpace.BGR):
-                # 1 * H * W -> 3 * H * W by replication
-                out = data.repeat(3, 1, 1)
-            else:
-                raise ValueError(f"Can't convert GRAY → {dst_cs}")
+        if src == ColorSpace.GRAY:
+            out = kornia.color.grayscale_to_rgb(data)
+        elif src == ColorSpace.BGR:
+            out = data[:, [2, 1, 0], ...] if data.ndim == 4 else data[[2, 1, 0], ...]
         else:
-            raise ValueError(f"Unsupported source color space: {src_cs}")
+            raise ValueError(f"Unsupported source color space for to_rgb(): {src}")
 
-        # restore original layout
-        new_channels = out.shape[0]
-        if self._layout.channels_order == ChannelsOrder.CHANNELS_LAST:
-            out = out.permute(1, 2, 0)  # C*H*W -> H*W*C
+        if is_channels_last:
+            out = out.permute(0, 2, 3, 1) if out.ndim == 4 else out.permute(1, 2, 0)
 
-        # build new pixel_format + layout
-        new_pf = PixelFormat(color_space=dst_cs, bit_depth=self._pixel_format.bit_depth)
-        new_layout = ImageLayout(
-            image_size=self._layout.image_size,
-            channels=new_channels,
-            channels_order=self._layout.channels_order,
-        )
+        new_pf = PixelFormat(color_space=ColorSpace.RGB, bit_depth=self._pixel_format.bit_depth)
+        new_layout = ImageLayout(self._layout.image_size, channels=3, channels_order=self._layout.channels_order)
+        return Image(out, new_pf, new_layout)
+
+    def to_bgr(self) -> Image:
+        """Converts the image to BGR."""
+        src = self._pixel_format.color_space
+        data = self._data
+
+        if src == ColorSpace.BGR:
+            return self
+
+        is_channels_last = self._layout.channels_order == ChannelsOrder.CHANNELS_LAST
+        if is_channels_last:
+            data = data.permute(0, 3, 1, 2) if data.ndim == 4 else data.permute(2, 0, 1)
+
+        if src == ColorSpace.GRAY:
+            rgb_data = kornia.color.grayscale_to_rgb(data)
+            out = rgb_data[:, [2, 1, 0], ...] if rgb_data.ndim == 4 else rgb_data[[2, 1, 0], ...]
+        elif src == ColorSpace.RGB:
+            out = data[:, [2, 1, 0], ...] if data.ndim == 4 else data[[2, 1, 0], ...]
+        else:
+            raise ValueError(f"Unsupported source color space for to_bgr(): {src}")
+
+        if is_channels_last:
+            out = out.permute(0, 2, 3, 1) if out.ndim == 4 else out.permute(1, 2, 0)
+
+        new_pf = PixelFormat(color_space=ColorSpace.BGR, bit_depth=self._pixel_format.bit_depth)
+        new_layout = ImageLayout(self._layout.image_size, channels=3, channels_order=self._layout.channels_order)
         return Image(out, new_pf, new_layout)
 
     @classmethod
