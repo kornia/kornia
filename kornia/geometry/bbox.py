@@ -284,7 +284,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
 
     """
     validate_bbox3d(boxes)
-    D0, D1, D2 = size # get depth, height, width
+    D0, D1, D2 = size  # get depth, height, width
 
     z_min = boxes[:, 0, 2].long()
     z_max = boxes[:, 4, 2].long()
