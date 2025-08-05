@@ -463,12 +463,12 @@ class CenterCrop2D(Module):
                 input,
                 transform[:, :2, :],
                 self.size,
-                self.flags["resample"].name.lower(),
+                self.flags["resample"].name.lower(),  # type:ignore
                 "zeros",
-                self.flags["align_corners"],
+                self.flags["align_corners"],  # type:ignore
             )
 
         if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
-            return crop_by_indices(input, self.points_src.expand(batch_size, -1, -1).to(input), self.flags["size"])
+            return crop_by_indices(input, self.points_src.expand(batch_size, -1, -1).to(input), self.flags["size"])  # type:ignore
 
         raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")
