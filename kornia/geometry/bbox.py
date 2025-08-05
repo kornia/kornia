@@ -22,7 +22,7 @@ from typing import Optional
 
 import torch
 
-from kornia.core import arange, ones_like, stack, where, zeros
+from kornia.core import arange, stack, where, zeros
 
 from .linalg import transform_points
 
@@ -288,10 +288,10 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
 
     z_min = boxes[:, 0, 2].long()
     z_max = boxes[:, 4, 2].long()
-    y_min = boxes[:, 1, 1].long()  
-    y_max = boxes[:, 2, 1].long() 
-    x_min = boxes[:, 0, 0].long()  
-    x_max = boxes[:, 1, 0].long()  
+    y_min = boxes[:, 1, 1].long()
+    y_max = boxes[:, 2, 1].long()
+    x_min = boxes[:, 0, 0].long()
+    x_max = boxes[:, 1, 0].long()
 
     z = arange(D0, device=boxes.device, dtype=torch.long)
     y = arange(D1, device=boxes.device, dtype=torch.long)
@@ -299,15 +299,15 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
 
     # Compute mask as union of planes in one step
     m = (
-        ((z[None, :] >= z_min[:, None]) & (z[None, :] <= z_max[:, None]))[:, None, :, None, None] |
-        ((y[None, :] >= y_min[:, None]) & (y[None, :] <= y_max[:, None]))[:, None, None, :, None] |
-        ((x[None, :] >= x_min[:, None]) & (x[None, :] <= x_max[:, None]))[:, None, None, None, :]
+        ((z[None, :] >= z_min[:, None]) & (z[None, :] <= z_max[:, None]))[:, None, :, None, None]
+        | ((y[None, :] >= y_min[:, None]) & (y[None, :] <= y_max[:, None]))[:, None, None, :, None]
+        | ((x[None, :] >= x_min[:, None]) & (x[None, :] <= x_max[:, None]))[:, None, None, None, :]
     ).float()  # Shape: (N, 1, D0, D1, D2)
 
     # Compute conditions
-    cond1 = m.all(dim=3, keepdim=True).all(dim=2, keepdim=True)  
-    cond2 = m.all(dim=4, keepdim=True).all(dim=2, keepdim=True)  
-    cond3 = m.all(dim=3, keepdim=True).all(dim=4, keepdim=True)  
+    cond1 = m.all(dim=3, keepdim=True).all(dim=2, keepdim=True)
+    cond2 = m.all(dim=4, keepdim=True).all(dim=2, keepdim=True)
+    cond3 = m.all(dim=3, keepdim=True).all(dim=4, keepdim=True)
 
     m_out = cond1 * cond2 * cond3  # Broadcasting to (N, 1, D0, D1, D2)
     return m_out.float()
