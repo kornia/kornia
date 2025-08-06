@@ -202,6 +202,38 @@ def _fit_line_ols_2d(points: Tensor) -> ParametrizedLine:
     origin = torch.cat([x_mean, y_mean], dim=-1)
     return ParametrizedLine(origin, direction)
 
+def _fit_line_weighted_ols_2d(points: Tensor, weights: Tensor) -> ParametrizedLine:
+
+    x = points[..., 0]  # (B, N)
+    y = points[..., 1]  # (B, N)
+
+    w_sum = weights.sum(dim=-1, keepdim=True)  # (B, 1)
+    x_mean = (weights * x).sum(dim=-1, keepdim=True) / w_sum  # (B, 1)
+    y_mean = (weights * y).sum(dim=-1, keepdim=True) / w_sum  # (B, 1)
+
+    dx = x - x_mean  # (B, N)
+    dy = y - y_mean  # (B, N)
+
+    weighted_dx2 = weights * dx * dx
+    weighted_dxdy = weights * dx * dy
+
+    denom = weighted_dx2.sum(dim=-1, keepdim=True)  # (B, 1)
+    slope = weighted_dxdy.sum(dim=-1, keepdim=True) / denom  # (B, 1)
+
+    # Replace NaNs or infs from division by zero
+    slope = torch.where(torch.isfinite(slope), slope, torch.zeros_like(slope))
+
+    # direction = normalize([1, slope]) or [0,1] if vertical
+    is_vertical = denom <= 1e-8
+    direction = torch.cat([torch.ones_like(slope), slope], dim=-1)  # (B, 2)
+    direction[is_vertical.squeeze(-1)] = torch.tensor([0.0, 1.0], device=points.device)
+
+    direction = direction / direction.norm(dim=-1, keepdim=True)
+    origin = torch.cat([x_mean, y_mean], dim=-1)
+
+    return ParametrizedLine(origin, direction)
+
+
 
 def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLine:
     """Fit a line from a set of points.
@@ -228,8 +260,14 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLi
     B, N, D = points.shape
 
     # Fast path: use OLS for unweighted 2D case
-    if weights is None and D == 2:
-        return _fit_line_ols_2d(points)
+    if D == 2:
+        if weights is not None:
+            KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
+            KORNIA_CHECK_SHAPE(weights, ["B", "N"])
+            KORNIA_CHECK(points.shape[0] == weights.shape[0])
+            return _fit_line_weighted_ols_2d(points, weights)
+        else:
+            return _fit_line_ols_2d(points)
 
     mean = points.mean(-2, True)
     A = points - mean
