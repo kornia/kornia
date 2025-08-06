@@ -23,7 +23,7 @@ import torch
 
 from kornia.core import Module, Parameter, Tensor, normalize, where
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.geometry.linalg import batched_dot_product, squared_norm
+from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
 from kornia.utils.helpers import _torch_svd_cast
 
@@ -127,24 +127,22 @@ class ParametrizedLine(Module):
         """
         return self.origin + (self.direction @ (point - self.origin)) * self.direction
 
-    # TODO: improve order and speed
     def squared_distance(self, point: Tensor) -> Tensor:
         """Return the squared distance of a point to its projection onte the line.
 
         Args:
             point: the point to calculate the distance onto the line.
-
         """
-        diff: Tensor = point - self.origin
-        return squared_norm(diff - (self.direction @ diff) * self.direction)
+        d = point - self.origin
+        proj = torch.sum(d * self.direction, dim=-1)
+        sq_norm_d = torch.sum(d * d, dim=-1)
+        return sq_norm_d - proj * proj
 
-    # TODO: improve order and speed
     def distance(self, point: Tensor) -> Tensor:
         """Return the distance of a point to its projections onto the line.
 
         Args:
             point: the point to calculate the distance into the line.
-
         """
         return self.squared_distance(point).sqrt()
 
