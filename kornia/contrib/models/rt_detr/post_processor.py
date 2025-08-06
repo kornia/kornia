@@ -45,7 +45,11 @@ def mod(a: Tensor, b: int) -> Tensor:
         1
 
     """
-    return a%b
+    if torch.__version__.startswith("2.0."):
+        return a - (a // b) * b
+    else:
+        return torch.remainder(a, b)
+
 
 
 # TODO: deprecate the confidence threshold and add the num_top_queries as a parameter and num_classes as a parameter
