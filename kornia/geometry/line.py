@@ -226,7 +226,9 @@ def _fit_line_weighted_ols_2d(points: Tensor, weights: Tensor) -> ParametrizedLi
     # direction = normalize([1, slope]) or [0,1] if vertical
     is_vertical = denom <= 1e-8
     direction = torch.cat([torch.ones_like(slope), slope], dim=-1)  # (B, 2)
-    direction[is_vertical.squeeze(-1)] = torch.tensor([0.0, 1.0], device=points.device)
+    replacement = torch.tensor([0.0, 1.0], device=points.device, dtype=points.dtype)
+    direction[is_vertical.squeeze(-1)] = replacement
+
 
     direction = direction / direction.norm(dim=-1, keepdim=True)
     origin = torch.cat([x_mean, y_mean], dim=-1)
