@@ -352,7 +352,8 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
         parts_match = _RE_RGB_SPLIT.match(rgb)
         if not parts_match:
             raise ValueError(f"Invalid RGB hex string: {rgb}") from None
-        parts = tuple(int(val, 16) for val in parts_match.groups())
+        r, g, b = (int(val, 16) for val in parts_match.groups())
+        parts = (r, g, b)
 
     res = []
     for part in parts:
