@@ -142,4 +142,3 @@ class TestDisk(BaseTester):
         result = heatmap_to_keypoints(heatmap, score_threshold=0.5)
         kp = result[0]
         assert kp.xys.shape[0] == 0
-

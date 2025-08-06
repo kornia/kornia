@@ -54,11 +54,7 @@ def heatmap_to_keypoints(
 
     nms_mask = nms(heatmap, window_size=window_size, cutoff=score_threshold)
 
-    y, x = torch.meshgrid(
-        torch.arange(H, device=device),
-        torch.arange(W, device=device),
-        indexing='ij'
-    )
+    y, x = torch.meshgrid(torch.arange(H, device=device), torch.arange(W, device=device), indexing="ij")
     coords = torch.stack((x, y), dim=-1).unsqueeze(0).expand(B, -1, -1, -1)  # (B, H, W, 2)
 
     coords_flat = coords[nms_mask]
