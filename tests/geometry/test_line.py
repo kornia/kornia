@@ -189,7 +189,7 @@ class TestFitLine(BaseTester):
         angle_est = torch.nn.functional.cosine_similarity(line_est.direction, dir_exp, -1)
         angle_exp = torch.tensor([1.0], device=device, dtype=dtype)
         self.assert_close(angle_est.abs(), angle_exp)
-    
+
     def test_fit_line_weighted(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
         p1 = torch.tensor([1.0, 1.0], device=device, dtype=dtype)

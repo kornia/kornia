@@ -202,8 +202,8 @@ def _fit_line_ols_2d(points: Tensor) -> ParametrizedLine:
     origin = torch.cat([x_mean, y_mean], dim=-1)
     return ParametrizedLine(origin, direction)
 
-def _fit_line_weighted_ols_2d(points: Tensor, weights: Tensor) -> ParametrizedLine:
 
+def _fit_line_weighted_ols_2d(points: Tensor, weights: Tensor) -> ParametrizedLine:
     x = points[..., 0]  # (B, N)
     y = points[..., 1]  # (B, N)
 
@@ -232,7 +232,6 @@ def _fit_line_weighted_ols_2d(points: Tensor, weights: Tensor) -> ParametrizedLi
     origin = torch.cat([x_mean, y_mean], dim=-1)
 
     return ParametrizedLine(origin, direction)
-
 
 
 def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLine:
