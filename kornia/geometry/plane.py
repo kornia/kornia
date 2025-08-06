@@ -19,6 +19,7 @@
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h
 
 from typing import Optional
+
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, stack, where
