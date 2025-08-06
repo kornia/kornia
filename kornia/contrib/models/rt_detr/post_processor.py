@@ -51,7 +51,6 @@ def mod(a: Tensor, b: int) -> Tensor:
         return torch.remainder(a, b)
 
 
-
 # TODO: deprecate the confidence threshold and add the num_top_queries as a parameter and num_classes as a parameter
 class DETRPostProcessor(Module):
     def __init__(
