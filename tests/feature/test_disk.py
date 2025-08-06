@@ -21,6 +21,8 @@ import pytest
 import torch
 
 from kornia.feature.disk import DISK, DISKFeatures
+from kornia.feature.disk.detector import heatmap_to_keypoints
+from kornia.feature.disk.structs import Keypoints
 
 from testing.base import BaseTester
 from testing.casts import dict_to
@@ -102,3 +104,42 @@ class TestDisk(BaseTester):
         inp = torch.ones(1, 1, 64, 64, device=device)
         with pytest.raises(ValueError):
             _ = disk(inp)
+
+    def test_basic_case(self):
+        heatmap = torch.zeros(1, 1, 10, 10)
+        heatmap[0, 0, 5, 5] = 1.0  # single peak
+
+        result = heatmap_to_keypoints(heatmap)
+        assert len(result) == 1
+        kp = result[0]
+        assert isinstance(kp, Keypoints)
+        assert kp.xys.shape[0] == 1
+        assert torch.allclose(kp.xys[0], torch.tensor([5, 5]))
+        assert torch.allclose(kp.detection_logp, torch.tensor([1.0]))
+
+    def test_thresholding(self):
+        heatmap = torch.zeros(1, 1, 10, 10)
+        heatmap[0, 0, 1, 1] = 0.4
+        heatmap[0, 0, 4, 4] = 0.6
+
+        result = heatmap_to_keypoints(heatmap, score_threshold=0.5)
+        kp = result[0]
+        assert kp.xys.shape[0] == 1
+        assert torch.all(kp.xys[0] == torch.tensor([4, 4]))
+
+    def test_batched_input(self):
+        heatmap = torch.zeros(2, 1, 8, 8)
+        heatmap[0, 0, 1, 1] = 0.8
+        heatmap[1, 0, 6, 6] = 0.9
+
+        result = heatmap_to_keypoints(heatmap)
+        assert len(result) == 2
+        assert torch.all(result[0].xys[0] == torch.tensor([1, 1]))
+        assert torch.all(result[1].xys[0] == torch.tensor([6, 6]))
+
+    def test_no_keypoints_due_to_threshold(self):
+        heatmap = torch.ones(1, 1, 5, 5) * 0.1
+        result = heatmap_to_keypoints(heatmap, score_threshold=0.5)
+        kp = result[0]
+        assert kp.xys.shape[0] == 0
+

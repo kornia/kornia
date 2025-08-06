@@ -46,33 +46,39 @@ def nms(signal: Tensor, window_size: int = 5, cutoff: float = 0.0) -> Tensor:
 
 def heatmap_to_keypoints(
     heatmap: Tensor, n: Optional[int] = None, window_size: int = 5, score_threshold: float = 0.0
-) -> list[Keypoints]:
-    """Inference-time nms-based detection protocol."""
-    heatmap = heatmap.squeeze(1)
-    nmsed = nms(heatmap, window_size=window_size, cutoff=score_threshold)
+) -> List[Keypoints]:
+    heatmap = heatmap.squeeze(1)  # (B, H, W)
+    B, H, W = heatmap.shape
+    device = heatmap.device
+
+    nms_mask = nms(heatmap, window_size=window_size, cutoff=score_threshold)
+
+    y, x = torch.meshgrid(
+        torch.arange(H, device=device),
+        torch.arange(W, device=device),
+        indexing='ij'
+    )
+    coords = torch.stack((x, y), dim=-1).unsqueeze(0).expand(B, -1, -1, -1)  # (B, H, W, 2)
+
+    coords_flat = coords[nms_mask]
+    scores_flat = heatmap[nms_mask]
+    batch_indices = torch.arange(B, device=device).view(-1, 1, 1).expand(-1, H, W)[nms_mask]
 
     keypoints = []
-    for b in range(heatmap.shape[0]):
-        yx = nmsed[b].nonzero(as_tuple=False)
-        detection_logp = heatmap[b][nmsed[b]]
-        xy = yx.flip((1,))
+    for b in range(B):
+        mask = batch_indices == b
+        if not mask.any():
+            keypoints.append(Keypoints(coords_flat.new_zeros((0, 2)), scores_flat.new_zeros((0,))))
+            continue
 
-        if n is not None:
-            n_ = min(n + 1, detection_logp.numel())
-            # torch.kthvalue picks in ascending order and we want to pick in
-            # descending order, so we pick n-th smallest among -logp to get
-            # -threshold
-            minus_threshold, _indices = torch.kthvalue(-detection_logp, n_)
-            mask = detection_logp > -minus_threshold
+        xys = coords_flat[mask]
+        detection_logp = scores_flat[mask]
 
-            xy = xy[mask]
-            detection_logp = detection_logp[mask]
+        if n is not None and detection_logp.numel() > n:
+            topk = torch.topk(detection_logp, k=n, largest=True, sorted=False)
+            xys = xys[topk.indices]
+            detection_logp = topk.values
 
-            # it may be that due to numerical saturation on the threshold we have
-            # more than n keypoints, so we need to clip them
-            xy = xy[:n]
-            detection_logp = detection_logp[:n]
-
-        keypoints.append(Keypoints(xy, detection_logp))
+        keypoints.append(Keypoints(xys, detection_logp))
 
     return keypoints
