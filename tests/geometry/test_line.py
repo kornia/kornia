@@ -197,20 +197,24 @@ class TestFitLine(BaseTester):
 
         num_points = 20
         ts = torch.linspace(-10, 10, num_points)
-        points = torch.stack([l1.point_at(t) for t in ts])  # (N, 2)
+        points = torch.stack([l1.point_at(t) for t in ts])  
 
         noise = torch.randn_like(points) * 0.05
         points_noisy = points + noise
 
         distances = torch.norm(points, dim=1)
-        weights = torch.exp(-distances)  
-        weights = weights / weights.max()  
+        weights = torch.exp(-distances * 0.2)  
+        weights = weights / weights.max()
 
         line_est = fit_line(points_noisy[None], weights=weights[None])
 
         expected_dir = torch.tensor([0.7071, 0.7071], device=device, dtype=dtype)
+        expected_dir = expected_dir / expected_dir.norm()
+
         angle_est = torch.nn.functional.cosine_similarity(line_est.direction, expected_dir, dim=-1)
-        self.assert_close(angle_est.abs(), torch.tensor([1.0], device=device, dtype=dtype), rtol=1e-2, atol=1e-2)
+
+        assert angle_est.abs() > 0.998
+
 
 
     @pytest.mark.skip(reason="numerical do not match with analytical")
