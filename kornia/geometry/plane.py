@@ -19,6 +19,7 @@
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h
 
 from typing import Optional
+import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, stack, where
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
@@ -31,7 +32,7 @@ __all__ = ["Hyperplane", "fit_plane"]
 
 
 def normalized(v: Tensor, eps: float = 1e-6) -> Tensor:
-    return v / batched_dot_product(v, v).add(eps).sqrt()
+    return F.normalize(v, p=2, dim=-1, eps=eps)
 
 
 class Hyperplane(Module):
