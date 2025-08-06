@@ -298,6 +298,8 @@ CLUT = [
 ]
 SHORT2RGB_DICT = dict(CLUT)
 RGB2SHORT_DICT = {v: k for k, v in SHORT2RGB_DICT.items()}
+_INCS = (0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF)
+_RE_RGB_SPLIT = re.compile(r"(..)(..)(..)")
 
 
 def _str2hex(hexstr: str) -> int:
@@ -335,25 +337,35 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
 
     """
     rgb = _strip_hash(rgb)
-    incs = (0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF)
-    # Break 6-char RGB code into 3 integer vals.
-    parts = [int(h, 16) for h in re.split(r"(..)(..)(..)", rgb)[1:4]]
+    if len(rgb) == 6:
+        try:
+            r = int(rgb[0:2], 16)
+            g = int(rgb[2:4], 16)
+            b = int(rgb[4:6], 16)
+        except ValueError:
+            parts_match = _RE_RGB_SPLIT.match(rgb)
+            if not parts_match:
+                raise ValueError(f"Invalid RGB hex string: {rgb}")
+            r, g, b = (int(val, 16) for val in parts_match.groups())
+        parts = (r, g, b)
+    else:
+        parts_match = _RE_RGB_SPLIT.match(rgb)
+        if not parts_match:
+            raise ValueError(f"Invalid RGB hex string: {rgb}")
+        parts = tuple(int(val, 16) for val in parts_match.groups())
+
     res = []
     for part in parts:
-        i = 0
-        while i < len(incs) - 1:
-            s, b = incs[i], incs[i + 1]  # smaller, bigger
-            if s <= part <= b:
-                s1 = abs(s - part)
-                b1 = abs(b - part)
-                if s1 < b1:
-                    closest = s
-                else:
-                    closest = b
-                res.append(closest)
-                break
-            i += 1
-    _res = "".join([f"{i:02x}" for i in res])
+        min_diff = 1 << 16
+        best_val = None
+        for inc in _INCS:
+            diff = abs(part - inc)
+            if best_val is None or diff < min_diff or (diff == min_diff and inc > best_val):
+                min_diff = diff
+                best_val = inc
+        res.append(best_val)
+
+    _res = f"{res[0]:02x}{res[1]:02x}{res[2]:02x}"
     equiv = RGB2SHORT_DICT[_res]
     return equiv, _res
 
