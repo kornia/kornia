@@ -197,13 +197,13 @@ class TestFitLine(BaseTester):
 
         num_points = 20
         ts = torch.linspace(-10, 10, num_points)
-        points = torch.stack([l1.point_at(t) for t in ts])  
+        points = torch.stack([l1.point_at(t) for t in ts])
 
         noise = torch.randn_like(points) * 0.05
         points_noisy = points + noise
 
         distances = torch.norm(points, dim=1)
-        weights = torch.exp(-distances * 0.2)  
+        weights = torch.exp(-distances * 0.2)
         weights = weights / weights.max()
 
         line_est = fit_line(points_noisy[None], weights=weights[None])
@@ -214,8 +214,6 @@ class TestFitLine(BaseTester):
         angle_est = torch.nn.functional.cosine_similarity(line_est.direction, expected_dir, dim=-1)
 
         assert angle_est.abs() > 0.998
-
-
 
     @pytest.mark.skip(reason="numerical do not match with analytical")
     def test_gradcheck(self, device):
