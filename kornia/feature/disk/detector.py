@@ -46,7 +46,8 @@ def nms(signal: Tensor, window_size: int = 5, cutoff: float = 0.0) -> Tensor:
 
 def heatmap_to_keypoints(
     heatmap: Tensor, n: Optional[int] = None, window_size: int = 5, score_threshold: float = 0.0
-) -> List[Keypoints]:
+) -> list[Keypoints]:
+    """Inference-time nms-based detection protocol."""
     heatmap = heatmap.squeeze(1)  # (B, H, W)
     B, H, W = heatmap.shape
     device = heatmap.device
