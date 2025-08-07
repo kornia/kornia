@@ -21,7 +21,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, concatenate, pad, stack
+from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.feature.sold2.structures import DetectorCfg, LineMatcherCfg
 from kornia.geometry.conversions import normalize_pixel_coordinates
@@ -234,30 +234,26 @@ class WunschLineMatcher(Module):
             line_points: an N x num_samples x 2 Tensor.
             valid_points: a boolean N x num_samples Tensor.
         """
-
         N, _, _ = line_seg.shape
         M = self.num_samples
         dev = line_seg.device
 
         lengths = torch.norm(line_seg[:, 0] - line_seg[:, 1], dim=1)
-        num_pts = torch.clamp(
-            (lengths / self.min_dist_pts).floor().int(), min=2, max=M
-        )  # (N,)
+        num_pts = torch.clamp((lengths / self.min_dist_pts).floor().int(), min=2, max=M)  # (N,)
 
-        orig = line_seg[:, 0].unsqueeze(1)                  # (N×1×2)
+        orig = line_seg[:, 0].unsqueeze(1)  # (N×1×2)
         dirs = (line_seg[:, 1] - line_seg[:, 0]).unsqueeze(1)  # (N×1×2)
 
-        idx = torch.arange(M, device=dev).unsqueeze(0)       # (1×M)
-        denom = (num_pts - 1).unsqueeze(1)                   # (N×1)
-        alpha = idx / denom                                  # (N×M)
+        idx = torch.arange(M, device=dev).unsqueeze(0)  # (1×M)
+        denom = (num_pts - 1).unsqueeze(1)  # (N×1)
+        alpha = idx / denom  # (N×M)
 
-        pts = orig + dirs * alpha.unsqueeze(-1)              # (N×M×2)
+        pts = orig + dirs * alpha.unsqueeze(-1)  # (N×M×2)
 
-        valid = idx < num_pts.unsqueeze(1)                   # (N×M)
+        valid = idx < num_pts.unsqueeze(1)  # (N×M)
         pts = pts.masked_fill(~valid.unsqueeze(-1), 0.0)
 
         return pts, valid
-
 
     def filter_and_match_lines(self, scores: Tensor) -> Tensor:
         """Use scores to keep the top k best lines.
