@@ -70,7 +70,7 @@ def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
             - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
 
     """
-    # Cache by device and dtype to avoid repeated empty allocation ops.
+    # Cache by device and dtype for cached allocation ops.
     key = (dm.device, dm.dtype)
     cache = _empty_tensors_cache.get(key)
     if cache is not None:
