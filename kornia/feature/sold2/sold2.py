@@ -222,46 +222,30 @@ class WunschLineMatcher(Module):
 
         return matches
 
-    def sample_line_points(self, line_seg: Tensor) -> Tuple[Tensor, Tensor]:
-        """Regularly sample points along each line segments, with a minimal distance between each point.
-
-        Pad the remaining points.
-
-        Args:
-            line_seg: an Nx2x2 Tensor.
-
-        Returns:
-            line_points: an N x num_samples x 2 Tensor.
-            valid_points: a boolean N x num_samples Tensor.
-        """
-        KORNIA_CHECK_SHAPE(line_seg, ["N", "2", "2"])
-        num_lines = len(line_seg)
-        line_lengths = torch.norm(line_seg[:, 0] - line_seg[:, 1], dim=1)
+    def sample_line_points(self, line_seg: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        N, _, _ = line_seg.shape
+        M = self.num_samples
         dev = line_seg.device
-        # Sample the points separated by at least min_dist_pts along each line
-        # The number of samples depends on the length of the line
-        num_samples_lst = torch.clamp(
-            torch.div(line_lengths, self.min_dist_pts, rounding_mode="floor"), 2, self.num_samples
-        ).int()
-        line_points = torch.empty((num_lines, self.num_samples, 2), dtype=torch.float, device=dev)
-        valid_points = torch.empty((num_lines, self.num_samples), dtype=torch.bool, device=dev)
-        for n_samp in range(2, self.num_samples + 1):
-            # Consider all lines where we can fit up to n_samp points
-            cur_mask = num_samples_lst == n_samp
-            cur_line_seg = line_seg[cur_mask]
-            line_points_x = batched_linspace(cur_line_seg[:, 0, 0], cur_line_seg[:, 1, 0], n_samp, dim=-1)
-            line_points_y = batched_linspace(cur_line_seg[:, 0, 1], cur_line_seg[:, 1, 1], n_samp, dim=-1)
-            cur_line_points = stack([line_points_x, line_points_y], -1)
 
-            # Pad
-            cur_line_points = pad(cur_line_points, (0, 0, 0, self.num_samples - n_samp))
-            cur_valid_points = torch.ones(len(cur_line_seg), self.num_samples, dtype=torch.bool, device=dev)
-            cur_valid_points[:, n_samp:] = False
+        lengths = torch.norm(line_seg[:, 0] - line_seg[:, 1], dim=1)
+        num_pts = torch.clamp(
+            (lengths / self.min_dist_pts).floor().int(), min=2, max=M
+        )  # (N,)
 
-            line_points[cur_mask] = cur_line_points
-            valid_points[cur_mask] = cur_valid_points
+        orig = line_seg[:, 0].unsqueeze(1)                  # (N×1×2)
+        dirs = (line_seg[:, 1] - line_seg[:, 0]).unsqueeze(1)  # (N×1×2)
 
-        return line_points, valid_points
+        idx = torch.arange(M, device=dev).unsqueeze(0)       # (1×M)
+        denom = (num_pts - 1).unsqueeze(1)                   # (N×1)
+        alpha = idx / denom                                  # (N×M)
+
+        pts = orig + dirs * alpha.unsqueeze(-1)              # (N×M×2)
+
+        valid = idx < num_pts.unsqueeze(1)                   # (N×M)
+        pts = pts.masked_fill(~valid.unsqueeze(-1), 0.0)
+
+        return pts, valid
+
 
     def filter_and_match_lines(self, scores: Tensor) -> Tensor:
         """Use scores to keep the top k best lines.
