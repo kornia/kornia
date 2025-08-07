@@ -27,7 +27,7 @@ from kornia.core import Module, Tensor, concatenate, tensor
 from kornia.models.detection.utils import BoxFiltering
 
 
-def mod(a: Union[int, float, Tensor], b: Union[int, Tensor]) -> Tensor:
+def mod(a: Union[float, Tensor], b: Union[int, Tensor]) -> Tensor:
     """Compute the modulo operation for two numbers.
 
     This function calculates the remainder of the division of 'a' by 'b'
@@ -52,7 +52,7 @@ def mod(a: Union[int, float, Tensor], b: Union[int, Tensor]) -> Tensor:
     if not a.dtype.is_floating_point and a.dtype != torch.long:
         a = a.to(torch.long)
     return torch.remainder(a, b)
-    
+
 
 # TODO: deprecate the confidence threshold and add the num_top_queries as a parameter and num_classes as a parameter
 class DETRPostProcessor(Module):
