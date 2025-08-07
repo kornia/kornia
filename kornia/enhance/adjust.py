@@ -21,7 +21,6 @@ from math import pi
 from typing import ClassVar, Optional, Union
 
 import torch
-import torch.nn as nn
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
 from kornia.core import ImageModule as Module
@@ -31,9 +30,10 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_TENSOR,
 )
+from kornia.grad_estimator.ste import STEFunction
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
-from kornia.grad_estimator.ste import STEFunction
+
 
 def adjust_saturation_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
     r"""Adjust color saturation of an image.
@@ -797,9 +797,10 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
     if bits_t.ndim == 1:
         if bits_t.shape[0] != input.shape[0]:
             raise ValueError(f"Batch mismatch: bits.shape={bits_t.shape}, input.shape={input.shape}")
-    else:
-        if bits_t.shape != input.shape[: bits_t.ndim]:
-            raise ValueError(f"Shape mismatch: bits.shape={bits_t.shape}, input.shape[:bits.ndim]={input.shape[:bits_t.ndim]}")
+    elif bits_t.shape != input.shape[: bits_t.ndim]:
+        raise ValueError(
+            f"Shape mismatch: bits.shape={bits_t.shape}, input.shape[:bits.ndim]={input.shape[: bits_t.ndim]}"
+        )
 
     # broadcast trailing dims
     trailing = input.ndim - bits_t.ndim
