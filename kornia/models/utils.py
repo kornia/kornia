@@ -21,7 +21,7 @@ from typing import List, Tuple, Union
 import torch
 from torch import Tensor
 
-from kornia.core import Module, concatenate
+from kornia.core import Module, Tensor, concatenate
 from kornia.geometry.transform import resize
 
 __all__ = ["OutputRangePostProcessor", "ResizePostProcessor", "ResizePreProcessor"]
@@ -56,16 +56,35 @@ class ResizePreProcessor(Module):
 
         """
         # TODO: support other input formats e.g. file path, numpy
-        resized_imgs: list[Tensor] = []
 
-        iters = len(imgs) if isinstance(imgs, list) else imgs.shape[0]
-        original_sizes = imgs[0].new_zeros((iters, 2))
-        for i in range(iters):
-            img = imgs[i]
-            original_sizes[i, 0] = img.shape[-2]  # Height
-            original_sizes[i, 1] = img.shape[-1]  # Width
-            resized_imgs.append(resize(img[None], size=self.size, interpolation=self.interpolation_mode))
-        return concatenate(resized_imgs), original_sizes
+        # Optimize: support batch tensors, or list of tensors of equal shape
+        if isinstance(imgs, Tensor):
+            iters = imgs.shape[0]
+            original_sizes = imgs.new_zeros((iters, 2))
+            # Get shape info up front (batch, ...) for last two dims
+            # Vectorized version:
+            original_sizes[:, 0] = imgs.shape[-2]
+            original_sizes[:, 1] = imgs.shape[-1]
+            resized_imgs = resize(imgs, size=self.size, interpolation=self.interpolation_mode)
+            return resized_imgs, original_sizes
+
+        else:  # handle list[Tensor]
+            iters = len(imgs)
+            # preallocate
+            original_sizes = imgs[0].new_zeros((iters, 2))
+            resized_imgs: List[Tensor] = []
+            # Optimize: minimize repeated properties/method calls
+            size = self.size
+            interp = self.interpolation_mode
+            for i, img in enumerate(imgs):
+                h, w = img.shape[-2], img.shape[-1]
+                original_sizes[i, 0] = h
+                original_sizes[i, 1] = w
+                # Call resize as batched for each image to avoid shape mismatch
+                resized_imgs.append(resize(img[None], size=size, interpolation=interp))
+            # Concatenate on batch dim
+            out = concatenate(resized_imgs)
+            return out, original_sizes
 
 
 class ResizePostProcessor(Module):

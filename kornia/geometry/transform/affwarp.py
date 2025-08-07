@@ -21,13 +21,14 @@ from typing import Optional, Tuple, Union
 import torch
 
 from kornia.core import ImageModule as Module
-from kornia.core import Tensor, ones, ones_like, zeros
+from kornia.core import Module, Tensor, ones, ones_like, zeros
 from kornia.filters import gaussian_blur2d
 from kornia.utils import _extract_device_dtype
 from kornia.utils.image import perform_keep_shape_image
 from kornia.utils.misc import eye_like
 
-from .imgwarp import get_affine_matrix2d, get_projective_transform, get_rotation_matrix2d, warp_affine, warp_affine3d
+from .imgwarp import (get_affine_matrix2d, get_projective_transform,
+                      get_rotation_matrix2d, warp_affine, warp_affine3d)
 
 __all__ = [
     "Affine",
@@ -555,7 +556,7 @@ def resize(
     side: str = "short",
     antialias: bool = False,
 ) -> Tensor:
-    r"""Resize the input Tensor to the given size.
+    """Resize the input Tensor to the given size.
 
     .. image:: _static/img/resize.png
 
@@ -606,10 +607,10 @@ def resize(
 
     factors = (h / size[0], w / size[1])
 
-    # We do bluring only for downscaling
-    antialias = antialias and (max(factors) > 1)
+    # We do blurring only for downscaling
+    antialias_do = antialias and (max(factors) > 1)  # alias filter only if downscaling and requested
 
-    if antialias:
+    if antialias_do:
         # First, we have to determine sigma
         # Taken from skimage: https://github.com/scikit-image/scikit-image/blob/v0.19.2/skimage/transform/_warps.py#L171
         sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
@@ -617,14 +618,13 @@ def resize(
         # Now kernel size. Good results are for 3 sigma, but that is kind of slow. Pillow uses 1 sigma
         # https://github.com/python-pillow/Pillow/blob/master/src/libImaging/Resample.c#L206
         # But they do it in the 2 passes, which gives better results. Let's try 2 sigmas for now
-        ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
+        k0 = int(max(2.0 * 2 * sigmas[0], 3))
+        k1 = int(max(2.0 * 2 * sigmas[1], 3))
 
-        # Make sure it is odd
-        if (ks[0] % 2) == 0:
-            ks = ks[0] + 1, ks[1]
-
-        if (ks[1] % 2) == 0:
-            ks = ks[0], ks[1] + 1
+        # Make sure it is odd (faster, avoid tuple creation)
+        k0 = k0 + 1 if (k0 % 2) == 0 else k0
+        k1 = k1 + 1 if (k1 % 2) == 0 else k1
+        ks = (k0, k1)
 
         input = gaussian_blur2d(input, ks, sigmas)
 
