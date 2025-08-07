@@ -21,7 +21,7 @@ from typing import List, Tuple, Union
 import torch
 from torch import Tensor
 
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Module, concatenate
 from kornia.geometry.transform import resize
 
 __all__ = ["OutputRangePostProcessor", "ResizePostProcessor", "ResizePreProcessor"]
