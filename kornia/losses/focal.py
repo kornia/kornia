@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 from torch import nn
@@ -34,7 +34,8 @@ from kornia.utils.one_hot import one_hot
 def focal_loss(
     pred: Tensor,
     target: Tensor,
-    alpha: Optional[float],
+    # alpha: Optional[float],
+    alpha: Optional[Union[float, Tensor]],  # Changed to accept Tensor
     gamma: float = 2.0,
     reduction: str = "none",
     weight: Optional[Tensor] = None,
@@ -107,9 +108,26 @@ def focal_loss(
     num_of_classes = pred.shape[1]
     broadcast_dims = [-1] + [1] * len(pred.shape[2:])
     if alpha is not None:
-        alpha_fac = tensor([1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device)
-        alpha_fac = alpha_fac.view(broadcast_dims)
-        loss_tmp = alpha_fac * loss_tmp
+        if isinstance(alpha, Tensor):
+            # Per-class alpha handling
+            KORNIA_CHECK_IS_TENSOR(alpha, "alpha must be Tensor or float")
+            KORNIA_CHECK(
+                (alpha.shape[0] == num_of_classes and alpha.numel() == num_of_classes),
+                f"alpha shape must be (num_of_classes,): ({num_of_classes},), got {alpha.shape}",
+            )
+            KORNIA_CHECK(
+                alpha.device == pred.device,
+                f"alpha and pred must be in the same device. Got: {alpha.device} and {pred.device}",
+            )
+            alpha_fac = alpha.view(broadcast_dims)
+        else:
+            alpha_fac = tensor(
+                [1 - alpha] + [alpha] * (num_of_classes - 1),
+                dtype=loss_tmp.dtype,
+                device=loss_tmp.device,
+            )
+            alpha_fac = alpha_fac.view(broadcast_dims)
+            loss_tmp = alpha_fac * loss_tmp
 
     if weight is not None:
         KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
@@ -177,21 +195,49 @@ class FocalLoss(nn.Module):
 
     def __init__(
         self,
-        alpha: Optional[float],
+        # alpha: Optional[float],
+        alpha: Optional[Union[float, Tensor]],  # Changed to accept Tensor
         gamma: float = 2.0,
         reduction: str = "none",
         weight: Optional[Tensor] = None,
         ignore_index: Optional[int] = -100,
     ) -> None:
         super().__init__()
-        self.alpha: Optional[float] = alpha
+        # self.alpha: Optional[float] = alpha
+
+        # New addition
+        # Register alpha as buffer if it's a tensor
+        # Store alpha properly based on type
+        if isinstance(alpha, Tensor):
+            self.register_buffer("_alpha", alpha)
+        else:
+            self._alpha = alpha
+        # New addition end
+
         self.gamma: float = gamma
         self.reduction: str = reduction
         self.weight: Optional[Tensor] = weight
         self.ignore_index: Optional[int] = ignore_index
 
+    # def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+    #     return focal_loss(pred, target, self.alpha, self.gamma, self.reduction, self.weight, self.ignore_index)
+    # new addition as of August 8, 2025
+    @property
+    def alpha(self):
+        return self._alpha
+
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
-        return focal_loss(pred, target, self.alpha, self.gamma, self.reduction, self.weight, self.ignore_index)
+        return focal_loss(
+            pred,
+            target,
+            alpha=self.alpha,
+            gamma=self.gamma,
+            reduction=self.reduction,
+            weight=self.weight,
+            ignore_index=self.ignore_index,
+        )
+
+    # new addition ends as of August 8, 2025
 
 
 def binary_focal_loss_with_logits(
@@ -244,7 +290,10 @@ def binary_focal_loss_with_logits(
 
     """
     KORNIA_CHECK_SHAPE(pred, ["B", "C", "*"])
-    KORNIA_CHECK(pred.shape == target.shape, f"Expected target size {pred.shape}, got {target.shape}")
+    KORNIA_CHECK(
+        pred.shape == target.shape,
+        f"Expected target size {pred.shape}, got {target.shape}",
+    )
     KORNIA_CHECK(
         pred.device == target.device,
         f"pred and target must be in the same device. Got: {pred.device} and {target.device}",
@@ -368,5 +417,12 @@ class BinaryFocalLossWithLogits(nn.Module):
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         return binary_focal_loss_with_logits(
-            pred, target, self.alpha, self.gamma, self.reduction, self.pos_weight, self.weight, self.ignore_index
+            pred,
+            target,
+            self.alpha,
+            self.gamma,
+            self.reduction,
+            self.pos_weight,
+            self.weight,
+            self.ignore_index,
         )

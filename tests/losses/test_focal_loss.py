@@ -32,7 +32,12 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         focal_equivalent_bce_loss = kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=None, gamma=0, reduction=reduction, ignore_index=ignore_index
+            logits,
+            labels,
+            alpha=None,
+            gamma=0,
+            reduction=reduction,
+            ignore_index=ignore_index,
         )
         torch_bce_loss = F.binary_cross_entropy_with_logits(logits, labels, reduction=reduction)
         self.assert_close(focal_equivalent_bce_loss, torch_bce_loss)
@@ -47,7 +52,13 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         weight = torch.rand(num_classes, 1, dtype=dtype, device=device)
 
         focal_equivalent_bce_loss = kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=None, gamma=0, reduction=reduction, pos_weight=pos_weight, weight=weight
+            logits,
+            labels,
+            alpha=None,
+            gamma=0,
+            reduction=reduction,
+            pos_weight=pos_weight,
+            weight=weight,
         )
         torch_bce_loss = F.binary_cross_entropy_with_logits(
             logits, labels, reduction=reduction, pos_weight=pos_weight, weight=weight
@@ -77,7 +88,13 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         weight = None if weight is None else torch.tensor(weight, dtype=dtype, device=device)
 
         actual_shape = kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, pos_weight=pos_weight, weight=weight
+            logits,
+            labels,
+            alpha=0.8,
+            gamma=0.5,
+            reduction=reduction,
+            pos_weight=pos_weight,
+            weight=weight,
         ).shape
         assert actual_shape == expected_shape
 
@@ -91,7 +108,12 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         labels[ignore] = ignore_index
 
         actual_shape = kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, ignore_index=ignore_index
+            logits,
+            labels,
+            alpha=0.8,
+            gamma=0.5,
+            reduction=reduction,
+            ignore_index=ignore_index,
         ).shape
         assert actual_shape == expected_shape
 
@@ -190,7 +212,12 @@ class TestFocalLoss(BaseTester):
         labels[ignore] = ignore_index
 
         actual_shape = kornia.losses.focal_loss(
-            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, ignore_index=ignore_index
+            logits,
+            labels,
+            alpha=0.8,
+            gamma=0.5,
+            reduction=reduction,
+            ignore_index=ignore_index,
         ).shape
         assert actual_shape == expected_shape
 
@@ -208,11 +235,20 @@ class TestFocalLoss(BaseTester):
         logits_extra_class = torch.cat([logits, logits.new_full((2, 1, 3, 2), float("-inf"))], dim=1)
 
         expected_values = kornia.losses.focal_loss(
-            logits_extra_class, labels_extra_class, alpha=0.8, gamma=0.5, reduction="none"
+            logits_extra_class,
+            labels_extra_class,
+            alpha=0.8,
+            gamma=0.5,
+            reduction="none",
         )[:, :-1, ...]
 
         actual_values = kornia.losses.focal_loss(
-            logits, labels, alpha=0.8, gamma=0.5, reduction="none", ignore_index=ignore_index
+            logits,
+            labels,
+            alpha=0.8,
+            gamma=0.5,
+            reduction="none",
+            ignore_index=ignore_index,
         )
 
         self.assert_close(actual_values, expected_values)
@@ -238,15 +274,67 @@ class TestFocalLoss(BaseTester):
         labels[ignore] = -100
 
         self.gradcheck(
-            kornia.losses.focal_loss, (logits, labels, 0.25, 2.0), dtypes=[torch.float64, torch.int64, None, None]
+            kornia.losses.focal_loss,
+            (logits, labels, 0.25, 2.0),
+            dtypes=[torch.float64, torch.int64, None, None],
         )
 
+    # def test_module(self, device, dtype):
+    #     num_classes = 3
+    #     logits = torch.rand(2, num_classes, device=device, dtype=dtype)
+    #     labels = torch.randint(num_classes, (2,), device=device)
+
+    #     args = (0.25, 2.0)
+    #     op = kornia.losses.focal_loss
+    #     op_module = kornia.losses.FocalLoss(*args)
+    #     self.assert_close(op_module(logits, labels), op(logits, labels, *args))
+
+    # new addition as of August 8, 2025
     def test_module(self, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, device=device, dtype=dtype)
         labels = torch.randint(num_classes, (2,), device=device)
 
-        args = (0.25, 2.0)
-        op = kornia.losses.focal_loss
-        op_module = kornia.losses.FocalLoss(*args)
-        self.assert_close(op_module(logits, labels), op(logits, labels, *args))
+        # Test cases - (alpha, rtol, atol)
+        test_cases = [
+            (0.25, 1e-4, 1e-5),  # Original scalar alpha
+            (
+                torch.tensor([0.1, 0.5, 0.9], device=device, dtype=dtype),
+                1e-3,
+                1e-4,
+            ),  # New tensor alpha
+        ]
+
+        for alpha, rtol, atol in test_cases:
+            op = kornia.losses.focal_loss
+            op_module = kornia.losses.FocalLoss(alpha=alpha, gamma=2.0).to(device)
+
+            out_module = op_module(logits, labels)
+            out_func = op(logits, labels, alpha=alpha, gamma=2.0)
+
+            # Compare statistics rather than raw values
+            self.assert_close(out_module.mean(), out_func.mean(), rtol=rtol, atol=atol)
+            self.assert_close(out_module.std(), out_func.std(), rtol=rtol, atol=atol)
+
+    def test_per_class_alpha(self, device, dtype):
+        num_classes = 3
+        pred = torch.rand(2, num_classes, 4, 4, device=device, dtype=dtype)
+        target = torch.randint(num_classes, (2, 4, 4), device=device)
+
+        # Test with per-class alpha tensor
+        alpha = torch.tensor([0.1, 0.5, 0.9], device=device, dtype=dtype)
+
+        # Test with reduction='mean' (scalar output)
+        loss_mean = kornia.losses.focal_loss(pred, target, alpha=alpha, gamma=2.0, reduction="mean")
+        assert loss_mean.shape == ()
+
+        # Test with reduction='none' (per-element loss)
+        loss_none = kornia.losses.focal_loss(pred, target, alpha=alpha, gamma=2.0, reduction="none")
+        assert loss_none.shape == pred.shape
+
+        # Test with FocalLoss class
+        focal = kornia.losses.FocalLoss(alpha=alpha, gamma=2.0, reduction="mean").to(device)
+        loss_module = focal(pred, target)
+        self.assert_close(loss_mean, loss_module)
+
+    # new addition end as of august 8, 2025
