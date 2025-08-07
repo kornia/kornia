@@ -766,7 +766,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor],
 
     .. image:: _static/img/posterize.png
 
-    Non-differentiable function, ``torch.uint8`` involved.
+    Non-differentiable function, ``torch.uint8`` involved. but allows gradient flow using STE.
 
     Args:
         input: image tensor with shape :math:`(*, C, H, W)` to posterize.
