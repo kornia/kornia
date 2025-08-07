@@ -351,6 +351,7 @@ def bbox_generator(
                  [1, 3]]])
 
     """
+    # Input shape and dtype checks unchanged for safety
     if not (x_start.shape == y_start.shape and x_start.dim() in [0, 1]):
         raise AssertionError(f"`x_start` and `y_start` must be a scalar or (B,). Got {x_start}, {y_start}.")
     if not (width.shape == height.shape and width.dim() in [0, 1]):
@@ -366,19 +367,31 @@ def bbox_generator(
             f"`x_start`({x_start.device}), `y_start`({x_start.device}), "
             f"`width`({width.device}), `height`({height.device})."
         )
+    # Fast batched construction, avoids repeat and in-place addition.
+    # Scalar input handling
+    if x_start.dim() == 0:
+        x_start = x_start.unsqueeze(0)
+        y_start = y_start.unsqueeze(0)
+        width = width.unsqueeze(0)
+        height = height.unsqueeze(0)
+    N = x_start.shape[0]
+    # Vectorized for all B, optimized for PyTorch backend
+    x0 = x_start
+    x1 = x_start + width - 1
+    y0 = y_start
+    y1 = y_start + height - 1
 
-    bbox = torch.tensor([[[0, 0], [0, 0], [0, 0], [0, 0]]], device=x_start.device, dtype=x_start.dtype).repeat(
-        1 if x_start.dim() == 0 else len(x_start), 1, 1
+    # Shape: (B, 4, 2)
+    corners = torch.stack(
+        [
+            torch.stack([x0, y0], 1),  # Top-left
+            torch.stack([x1, y0], 1),  # Top-right
+            torch.stack([x1, y1], 1),  # Bottom-right
+            torch.stack([x0, y1], 1),  # Bottom-left
+        ],
+        1,
     )
-
-    bbox[:, :, 0] += x_start.view(-1, 1)
-    bbox[:, :, 1] += y_start.view(-1, 1)
-    bbox[:, 1, 0] += width - 1
-    bbox[:, 2, 0] += width - 1
-    bbox[:, 2, 1] += height - 1
-    bbox[:, 3, 1] += height - 1
-
-    return bbox
+    return corners
 
 
 def bbox_generator3d(

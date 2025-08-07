@@ -15,13 +15,15 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 from typing import Dict, Tuple, Union
 
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _common_param_check
-from kornia.core import Device, Tensor, tensor
+from kornia.core import Device, Tensor
 from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
@@ -75,14 +77,15 @@ class ResizeGenerator(RandomGeneratorBase):
                 "dst": torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
             }
 
-        input_size = h, w = (batch_shape[-2], batch_shape[-1])
+        h, w = batch_shape[-2], batch_shape[-1]
 
-        src = bbox_generator(
-            tensor(0, device=_device, dtype=_dtype),
-            tensor(0, device=_device, dtype=_dtype),
-            tensor(input_size[1], device=_device, dtype=_dtype),
-            tensor(input_size[0], device=_device, dtype=_dtype),
-        ).repeat(batch_size, 1, 1)
+        # Avoid tensor() for scalars, use torch.full for batch if batch_size > 1.
+        xs = torch.zeros(batch_size, device=_device, dtype=_dtype)
+        ys = torch.zeros(batch_size, device=_device, dtype=_dtype)
+        ws = torch.full((batch_size,), w, device=_device, dtype=_dtype)
+        hs = torch.full((batch_size,), h, device=_device, dtype=_dtype)
+
+        src = bbox_generator(xs, ys, ws, hs)
 
         if isinstance(self.output_size, int):
             aspect_ratio = w / h
@@ -98,15 +101,15 @@ class ResizeGenerator(RandomGeneratorBase):
             and output_size[1] > 0
         ):
             raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {output_size}.")
+        ow, oh = output_size[1], output_size[0]
+        wdst = torch.full((batch_size,), ow, device=_device, dtype=_dtype)
+        hdst = torch.full((batch_size,), oh, device=_device, dtype=_dtype)
+        dst = bbox_generator(xs, ys, wdst, hdst)
 
-        dst = bbox_generator(
-            tensor(0, device=_device, dtype=_dtype),
-            tensor(0, device=_device, dtype=_dtype),
-            tensor(output_size[1], device=_device, dtype=_dtype),
-            tensor(output_size[0], device=_device, dtype=_dtype),
-        ).repeat(batch_size, 1, 1)
-
-        _input_size = tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
-        _output_size = tensor(output_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+        # Vectorized and efficient
+        _input_size = torch.tensor([h, w], device=_device, dtype=torch.long)
+        _output_size = torch.tensor([oh, ow], device=_device, dtype=torch.long)
+        _input_size = _input_size.unsqueeze(0).expand(batch_size, -1)
+        _output_size = _output_size.unsqueeze(0).expand(batch_size, -1)
 
         return {"src": src, "dst": dst, "input_size": _input_size, "output_size": _output_size}
