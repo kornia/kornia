@@ -317,16 +317,16 @@ class WunschLineMatcher(Module):
         # Recalibrate the scores to get a gap score of 0
         gap = 0.1
         B, N, M = scores.shape
-        dp = torch.zeros(B, N+1, M+1, device=scores.device)
-        S  = scores - gap
-        for k in range(2, N+M+1):
+        dp = torch.zeros(B, N + 1, M + 1, device=scores.device)
+        S = scores - gap
+        for k in range(2, N + M + 1):
             i_min = max(1, k - M)
             i_max = min(N, k - 1)
-            i = torch.arange(i_min, i_max+1, device=scores.device)
+            i = torch.arange(i_min, i_max + 1, device=scores.device)
             j = k - i
-            up   = dp[:, i-1, j    ]
-            left = dp[:, i,   j-1  ]
-            diag = dp[:, i-1, j-1] + S[:, i-1, j-1]
+            up = dp[:, i - 1, j]
+            left = dp[:, i, j - 1]
+            diag = dp[:, i - 1, j - 1] + S[:, i - 1, j - 1]
             dp[:, i, j] = torch.max(torch.max(up, left), diag)
         return dp[:, -1, -1]
 
