@@ -734,10 +734,6 @@ def solarize(
 class PosterizeSTE(Function):
     @staticmethod
     def forward(ctx, input: Tensor, shift: Tensor) -> Tensor:
-        """
-        Forward: Perform exact posterization by masking bits (like PIL).
-        Backward: Straight-through estimator (STE) on input.
-        """
         # Convert input to uint8 [0..255]
         x = (input * 255.0).to(torch.uint8)
 
