@@ -560,4 +560,4 @@ class GeometryAwareDescriptorMatcher(Module):
         return out
 
 
-_empty_tensors_cache = {}
+_empty_tensors_cache: dict[tuple[torch.device, torch.dtype], tuple[torch.Tensor, torch.Tensor]] = {}
