@@ -21,7 +21,7 @@ from math import pi
 from typing import ClassVar, Optional, Union
 
 import torch
-from torch.autograd import Function
+import torch.nn as nn
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
 from kornia.core import ImageModule as Module
@@ -33,7 +33,7 @@ from kornia.core.check import (
 )
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
-
+from kornia.grad_estimator.ste import STEFunction
 
 def adjust_saturation_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
     r"""Adjust color saturation of an image.
@@ -731,102 +731,68 @@ def solarize(
     return _solarize(input, thresholds)
 
 
-class PosterizeSTE(Function):
-    @staticmethod
-    def forward(ctx, input: Tensor, shift: Tensor) -> Tensor:
-        # Convert input to uint8 [0..255]
-        x = (input * 255.0).to(torch.uint8)
-
-        # Apply bitmask via shift (mask = 0xFF << shift)
-        if shift.numel() == 1:
-            s = int(shift.item())
-            m = torch.tensor((0xFF << s) & 0xFF, dtype=torch.uint8, device=x.device)
-            y = x & m
-        else:
-            m = ((0xFF << shift) & 0xFF).to(dtype=torch.uint8, device=x.device)
-            y = x & m
-
-        # Rescale to float [0..1]
-        return y.to(input.dtype).mul_(1.0 / 255.0)
-
-    @staticmethod
-    def backward(ctx, grad_output: Tensor):
-        # Straight-through estimator: gradient flows through input only
-        return grad_output, None
-
-
-posterize_ste_fused = PosterizeSTE.apply
-
-
-def posterize(
-    input: Tensor,
-    bits: Union[int, Tensor],
-) -> Tensor:
-    r"""Reduce the number of bits for each color channel.
-
-    .. image:: _static/img/posterize.png
-
-    Non-differentiable function, ``torch.uint8`` involved. but allows gradient flow using STE.
+def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
+    """
+    Reduce the number of bits for each color channel with PIL-exact quantization
+    in the forward, and straight-through gradients on the backward.
 
     Args:
-        input: image tensor with shape :math:`(*, C, H, W)` to posterize.
-        bits: number of high bits. Must be in range [0, 8].
-            If int or one element tensor, input will be posterized by this bits.
-            If 1-d tensor, input will be posterized element-wisely, len(bits) == input.shape[-3].
-            If n-d tensor, input will be posterized element-channel-wisely, bits.shape == input.shape[:len(bits.shape)]
+        input: float Tensor in [0,1], shape (..., C, H, W)
+        bits: int or integer Tensor in [0..8]. Scalar, per-batch 1-D, or per-pixel ND.
 
     Returns:
-        Image with reduced color channels with shape :math:`(*, C, H, W)`.
-
-    Example:
-        >>> x = torch.rand(1, 6, 3, 3)
-        >>> out = posterize(x, bits=8)
-        >>> torch.testing.assert_close(x, out)
-
-        >>> x = torch.rand(2, 6, 3, 3)
-        >>> bits = torch.tensor([4, 2])
-        >>> posterize(x, bits).shape
-        torch.Size([2, 6, 3, 3])
-
+        Tensor same shape/dtype as input.
     """
+    # 1) Safety checks
     if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
     if not isinstance(bits, (int, Tensor)):
         raise TypeError(f"bits type is not int or Tensor. Got {type(bits)}")
 
-    # Normalize `bits` to int32 tensor on input's device
+    # 2) Normalize bits to int32 Tensor on input.device
     if isinstance(bits, int):
-        bits = torch.tensor(bits, device=input.device, dtype=torch.int32)
+        bits_t = torch.tensor(bits, device=input.device, dtype=torch.int32)
     else:
-        bits = bits.to(device=input.device, dtype=torch.int32)
+        bits_t = bits.to(device=input.device, dtype=torch.int32)
 
-    # Fast path for scalar bit-depth
-    if bits.numel() == 1:
-        b = int(bits.item())
+    # 3) Helper: exact uint8 mask
+    def _mask(x: Tensor, shift: Tensor) -> Tensor:
+        xb = (x.clamp(0.0, 1.0) * 255.0).to(torch.uint8)
+        m = ((0xFF << shift) & 0xFF).to(device=xb.device, dtype=torch.uint8)
+        yb = xb & m
+        return yb.to(x.dtype).mul_(1.0 / 255.0)
+
+    # 4) Scalar-bits fast path
+    if bits_t.numel() == 1:
+        b = int(bits_t.item())
         if b == 0:
-            return torch.zeros_like(input)
-        if b == 8:
-            return input.clone()
-        shift_val = torch.tensor(8 - b, device=input.device, dtype=torch.int32)
-        return posterize_ste_fused(input, shift_val)
+            out = torch.zeros_like(input)
+        elif b == 8:
+            out = input.clone()
+        else:
+            shift = torch.tensor(8 - b, device=input.device, dtype=torch.int32)
+            out = _mask(input, shift)
+        return STEFunction.apply(input, out, None)
 
-    # Multi-bit mode: shape checking
-    if bits.ndim > input.ndim:
-        raise ValueError(f"bits.ndim ({bits.ndim}) must be ≤ input.ndim ({input.ndim})")
+    # 5) Multi-bits: shape check and broadcast
+    if bits_t.ndim > input.ndim:
+        raise ValueError(f"bits.ndim ({bits_t.ndim}) > input.ndim ({input.ndim})")
 
-    if bits.ndim == 1:
-        if bits.shape[0] != input.shape[0]:
-            raise ValueError(f"Batch mismatch: bits.shape={bits.shape}, input.shape={input.shape}")
-    elif bits.shape != input.shape[: bits.ndim]:
-        raise ValueError(f"Shape mismatch: bits.shape={bits.shape}, input.shape[:bits.ndim]={input.shape[: bits.ndim]}")
+    if bits_t.ndim == 1:
+        if bits_t.shape[0] != input.shape[0]:
+            raise ValueError(f"Batch mismatch: bits.shape={bits_t.shape}, input.shape={input.shape}")
+    else:
+        if bits_t.shape != input.shape[: bits_t.ndim]:
+            raise ValueError(f"Shape mismatch: bits.shape={bits_t.shape}, input.shape[:bits.ndim]={input.shape[:bits_t.ndim]}")
 
-    # Broadcast trailing dims
-    trailing = input.ndim - bits.ndim
+    # broadcast trailing dims
+    trailing = input.ndim - bits_t.ndim
     if trailing:
-        bits = bits.view(*bits.shape, *([1] * trailing))
+        bits_t = bits_t.view(*bits_t.shape, *([1] * trailing))
 
-    shift = (8 - bits).to(dtype=torch.int32, device=input.device)
-    return posterize_ste_fused(input, shift)
+    shift = (8 - bits_t).to(dtype=torch.int32, device=input.device)
+    out = _mask(input, shift)
+    return STEFunction.apply(input, out, None)
 
 
 @perform_keep_shape_image
