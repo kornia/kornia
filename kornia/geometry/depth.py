@@ -344,7 +344,7 @@ class DepthWarper(Module):
         self.eps = 1e-6
         self.align_corners: bool = align_corners
 
-         # state members
+        # state members
         # _pinhole_dst is Type[PinholeCamera], enforce in constructor
         if not isinstance(pinhole_dst, PinholeCamera):
             raise TypeError(f"Expected pinhole_dst as PinholeCamera, got {type(pinhole_dst)}")
