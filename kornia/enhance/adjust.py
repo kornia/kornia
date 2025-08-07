@@ -732,16 +732,32 @@ def solarize(
 
 
 def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
-    """
-    Reduce the number of bits for each color channel with PIL-exact quantization
-    in the forward, and straight-through gradients on the backward.
+    r"""Reduce the number of bits for each color channel.
+
+    .. image:: _static/img/posterize.png
+
+    Non-differentiable function, ``torch.uint8`` involved.
 
     Args:
-        input: float Tensor in [0,1], shape (..., C, H, W)
-        bits: int or integer Tensor in [0..8]. Scalar, per-batch 1-D, or per-pixel ND.
+        input: image tensor with shape :math:`(*, C, H, W)` to posterize.
+        bits: number of high bits. Must be in range [0, 8].
+            If int or one element tensor, input will be posterized by this bits.
+            If 1-d tensor, input will be posterized element-wisely, len(bits) == input.shape[-3].
+            If n-d tensor, input will be posterized element-channel-wisely, bits.shape == input.shape[:len(bits.shape)]
 
     Returns:
-        Tensor same shape/dtype as input.
+        Image with reduced color channels with shape :math:`(*, C, H, W)`.
+
+    Example:
+        >>> x = torch.rand(1, 6, 3, 3)
+        >>> out = posterize(x, bits=8)
+        >>> torch.testing.assert_close(x, out)
+
+        >>> x = torch.rand(2, 6, 3, 3)
+        >>> bits = torch.tensor([4, 2])
+        >>> posterize(x, bits).shape
+        torch.Size([2, 6, 3, 3])
+
     """
     # 1) Safety checks
     if not isinstance(input, Tensor):
