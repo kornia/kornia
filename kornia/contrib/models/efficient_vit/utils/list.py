@@ -36,12 +36,7 @@ def val2list(x: Union[list[Any], tuple[Any, ...], Any], repeat_time: int = 1) ->
 def val2tuple(x: Union[list[Any], tuple[Any, ...], Any], min_len: int = 1, idx_repeat: int = -1) -> tuple[Any, ...]:
     """Convert value to tuple."""
     xt = type(x)
-    if xt is list:
-        xlist = x
-    elif xt is tuple:
-        xlist = list(x)
-    else:
-        xlist = [x]
+    xlist = list(x) if isinstance(x, (list, tuple)) else [x]
     cur_len = len(xlist)
     if cur_len < min_len and cur_len > 0:
         v = xlist[idx_repeat]
