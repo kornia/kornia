@@ -223,6 +223,18 @@ class WunschLineMatcher(Module):
         return matches
 
     def sample_line_points(self, line_seg: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Regularly sample points along each line segments, with a minimal distance between each point.
+
+        Pad the remaining points.
+
+        Args:
+            line_seg: an Nx2x2 Tensor.
+
+        Returns:
+            line_points: an N x num_samples x 2 Tensor.
+            valid_points: a boolean N x num_samples Tensor.
+        """
+
         N, _, _ = line_seg.shape
         M = self.num_samples
         dev = line_seg.device
