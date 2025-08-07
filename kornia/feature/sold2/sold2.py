@@ -239,9 +239,7 @@ class WunschLineMatcher(Module):
         dev = line_seg.device
 
         lengths = torch.norm(line_seg[:, 0] - line_seg[:, 1], dim=1)
-        num_pts = torch.clamp(
-            (lengths / self.min_dist_pts).floor().int(), min=2, max=M
-        )  # (N,)
+        num_pts = torch.clamp((lengths / self.min_dist_pts).floor().int(), min=2, max=M)  # (N,)
 
         orig = line_seg[:, 0].unsqueeze(1)
         dirs = (line_seg[:, 1] - line_seg[:, 0]).unsqueeze(1)
@@ -253,7 +251,6 @@ class WunschLineMatcher(Module):
         pts = pts.masked_fill(~valid.unsqueeze(-1), 0.0)
 
         return pts, valid
-
 
     def filter_and_match_lines(self, scores: Tensor) -> Tensor:
         """Use scores to keep the top k best lines.
