@@ -734,8 +734,7 @@ def solarize(
 class PosterizeSTE(Function):
     @staticmethod
     def forward(ctx, input: Tensor, shift: Tensor) -> Tensor:
-        """
-        Forward: Perform exact posterization by masking bits (like PIL).
+        """Forward: Perform exact posterization by masking bits (like PIL).
         Backward: Straight-through estimator (STE) on input.
         """
         # Convert input to uint8 [0..255]
@@ -758,9 +757,13 @@ class PosterizeSTE(Function):
         # Straight-through estimator: gradient flows through input only
         return grad_output, None
 
+
 posterize_ste_fused = PosterizeSTE.apply
 
-def posterize(input: Tensor, bits: Union[int, Tensor],
+
+def posterize(
+    input: Tensor,
+    bits: Union[int, Tensor],
 ) -> Tensor:
     r"""Reduce the number of bits for each color channel.
 
@@ -812,20 +815,13 @@ def posterize(input: Tensor, bits: Union[int, Tensor],
 
     # Multi-bit mode: shape checking
     if bits.ndim > input.ndim:
-        raise ValueError(
-            f"bits.ndim ({bits.ndim}) must be ≤ input.ndim ({input.ndim})"
-        )
+        raise ValueError(f"bits.ndim ({bits.ndim}) must be ≤ input.ndim ({input.ndim})")
 
     if bits.ndim == 1:
         if bits.shape[0] != input.shape[0]:
-            raise ValueError(
-                f"Batch mismatch: bits.shape={bits.shape}, input.shape={input.shape}"
-            )
+            raise ValueError(f"Batch mismatch: bits.shape={bits.shape}, input.shape={input.shape}")
     elif bits.shape != input.shape[: bits.ndim]:
-        raise ValueError(
-            f"Shape mismatch: bits.shape={bits.shape}, "
-            f"input.shape[:bits.ndim]={input.shape[:bits.ndim]}"
-        )
+        raise ValueError(f"Shape mismatch: bits.shape={bits.shape}, input.shape[:bits.ndim]={input.shape[: bits.ndim]}")
 
     # Broadcast trailing dims
     trailing = input.ndim - bits.ndim
@@ -834,7 +830,6 @@ def posterize(input: Tensor, bits: Union[int, Tensor],
 
     shift = (8 - bits).to(dtype=torch.int32, device=input.device)
     return posterize_ste_fused(input, shift)
-
 
 
 @perform_keep_shape_image
