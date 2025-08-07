@@ -34,6 +34,7 @@ def normalized(v: Tensor, eps: float = 1e-6) -> Tensor:
     norm_sq = (v * v).sum(dim=-1, keepdim=True) + eps
     return v * norm_sq.rsqrt()
 
+
 class Hyperplane(Module):
     def __init__(self, n: Vector3, d: Scalar) -> None:
         super().__init__()
