@@ -46,9 +46,9 @@ def mod(a: Tensor, b: int) -> Tensor:
 
     """
     if not isinstance(b, torch.Tensor):
-      b = torch.tensor(b, dtype=a.dtype, device=a.device)
+        b = torch.tensor(b, dtype=a.dtype, device=a.device)
     if not a.dtype.is_floating_point and a.dtype != torch.long:
-      a = a.to(torch.long)
+        a = a.to(torch.long)
     return torch.remainder(a, b)
 
 
