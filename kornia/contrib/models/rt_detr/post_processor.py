@@ -45,6 +45,8 @@ def mod(a: Tensor, b: int) -> Tensor:
         1
 
     """
+    if not isinstance(b, torch.Tensor):
+        b = torch.tensor(b, dtype=a.dtype, device=a.device)
     return a - (a // b) * b
 
 
