@@ -20,8 +20,6 @@
 
 from typing import Optional
 
-import torch.nn.functional as F
-
 from kornia.core import Module, Tensor, stack, where
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.core.tensor_wrapper import unwrap, wrap  # type: ignore[attr-defined]
@@ -33,8 +31,8 @@ __all__ = ["Hyperplane", "fit_plane"]
 
 
 def normalized(v: Tensor, eps: float = 1e-6) -> Tensor:
-    return F.normalize(v, p=2, dim=-1, eps=eps)
-
+    norm_sq = (v * v).sum(dim=-1, keepdim=True) + eps
+    return v * norm_sq.rsqrt()
 
 class Hyperplane(Module):
     def __init__(self, n: Vector3, d: Scalar) -> None:
