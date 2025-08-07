@@ -369,7 +369,6 @@ class DepthWarper(Module):
             )
         if type(pinhole_src) is not PinholeCamera:
             raise TypeError(f"Argument pinhole_src expected to be of class PinholeCamera. Got {type(pinhole_src)}")
-        # Inlined 'compose_transformations' and 'inverse_transformation' for maximal performance
         pinhole_dst = self._pinhole_dst
         pinhole_src_extr = pinhole_src.extrinsics
         # Inline inverse:
