@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
+from kornia.core.check import KORNIA_CHECK
 import torch
 
 from kornia.enhance.histogram import histogram as diff_histogram
@@ -117,19 +118,21 @@ class OtsuThreshold(torch.nn.Module):
         nchannel = x_flattened.shape[0]
 
         # Check tensor type compatibility
-        supported_dtypes = [
-            torch.uint8,
-            torch.int8,
-            torch.int16,
-            torch.int32,
-            torch.int64,
-            torch.float16,
-            torch.float32,
-            torch.float64,
-            torch.bfloat16,
-        ]
-        if x.dtype not in supported_dtypes:
-            raise ValueError("Tensor dtype not supported for Otsu thresholding.")
+        KORNIA_CHECK(
+            x.dtype
+            in [
+                torch.uint8,
+                torch.int8,
+                torch.int16,
+                torch.int32,
+                torch.int64,
+                torch.float32,
+                torch.float64,
+                torch.float16,
+                torch.bfloat16,
+            ],
+            "Tensor dtype not supported for Otsu thresholding.",
+        )
 
         # Compute histogram and bin edges
         histograms, bin_edges = self.__histogram(x_flattened, bins=nbins, diff=slow_and_differentiable)
