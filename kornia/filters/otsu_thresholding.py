@@ -19,9 +19,9 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-from kornia.core.check import KORNIA_CHECK
 import torch
 
+from kornia.core.check import KORNIA_CHECK
 from kornia.enhance.histogram import histogram as diff_histogram
 from kornia.utils.helpers import _torch_histc_cast
 
