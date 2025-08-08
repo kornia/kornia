@@ -551,5 +551,3 @@ class GeometryAwareDescriptorMatcher(Module):
         else:
             raise NotImplementedError
         return out
-
-
