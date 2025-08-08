@@ -27,7 +27,7 @@ from kornia.core import Module, Tensor, concatenate, tensor
 from kornia.models.detection.utils import BoxFiltering
 
 
-def mod(a: Tensor, b) -> Tensor:
+def mod(a: Tensor, b: Tensor) -> Tensor:
     """Compute the modulo operation for two numbers.
 
     This function calculates the remainder of the division of 'a' by 'b'
