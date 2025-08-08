@@ -303,8 +303,10 @@ RGB2SHORT_DICT = {v: k for k, v in SHORT2RGB_DICT.items()}
 def _str2hex(hexstr: str) -> int:
     return int(hexstr, 16)
 
+
 def _strip_hash(rgb: str) -> str:
     return rgb.removeprefix("#")
+
 
 def short2rgb(short: str) -> str:
     """Convert short to RGB code."""
