@@ -26,6 +26,7 @@ import re
 from typing import Tuple, Union
 
 from torch import float16, float32, float64
+import torch
 
 import kornia
 from kornia.core import Tensor
@@ -358,7 +359,7 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
     return equiv, _res
 
 
-def image_to_string(image: Tensor, max_width: int = 256) -> str:
+def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
     """Obtain the closest xterm-256 approximation string from an image tensor.
 
     The tensor shall be either 0~1 float type or 0~255 long type.
@@ -366,29 +367,37 @@ def image_to_string(image: Tensor, max_width: int = 256) -> str:
     Args:
         image: an RGB image with shape :math:`3HW`.
         max_width: maximum width of the input image.
-
     """
     KORNIA_CHECK_IS_IMAGE(image, None, raises=True)
     KORNIA_CHECK_SHAPE(image, ["C", "H", "W"])
 
     if image.dtype not in [float16, float32, float64]:
-        image = image / 255.0  # In case of resizing.
+        image = image / 255.0  
 
     if image.shape[-1] > max_width:
-        image = kornia.geometry.resize(image, (image.size(-2) * max_width // image.size(-1), max_width))
+        new_h = image.size(-2) * max_width // image.size(-1)
+        image = kornia.geometry.resize(image, (new_h, max_width))
 
-    image = (image * 255).long()
+    image = (image * 255).clamp(0, 255).long()
 
-    res = ""
-    for y in range(image.size(-2)):
-        for x in range(image.size(-1)):
-            r, g, b = image[:, y, x]
-            h = f"{r:2x}{g:2x}{b:2x}"
-            short, _ = rgb2short(h)
-            res += f"\033[48;5;{short}m  "
-        res += "\033[0m\n"
-    return res
+    H, W = image.shape[-2:]
+    flat = image.permute(1, 2, 0).reshape(-1, 3)
 
+    rgb2short_fn = rgb2short
+    lines = []
+    idx = 0
+    for _ in range(H):
+        row_parts = []
+        for _ in range(W):
+            r, g, b = flat[idx].tolist()
+            h = f"{r:02x}{g:02x}{b:02x}"
+            short, _ = rgb2short_fn(h)
+            row_parts.append(f"\033[48;5;{short}m  ")
+            idx += 1
+        row_parts.append("\033[0m\n")
+        lines.append("".join(row_parts))
+
+    return "".join(lines)
 
 def print_image(image: Union[str, Tensor], max_width: int = 96) -> None:
     """Print an image to the terminal.
