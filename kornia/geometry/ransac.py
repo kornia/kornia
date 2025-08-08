@@ -65,6 +65,18 @@ class RANSAC(Module):
         confidence: float = 0.99,
         max_lo_iters: int = 5,
     ) -> None:
+        """Initialize the RANSAC estimator.
+
+        Args:
+            model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
+                "homography_from_linesegments".
+            inl_th: threshold for the correspondence to be an inlier.
+            batch_size: number of generated samples at once.
+            max_iter: maximum batches to generate. Actual number of models to try is ``batch_size * max_iter``.
+            confidence: desired confidence of the result, used for the early stopping.
+            max_lo_iters: number of local optimization (polishing) iterations.
+
+        """
         super().__init__()
         self.supported_models = ["homography", "fundamental", "fundamental_7pt", "homography_from_linesegments"]
         self.inl_th = inl_th
