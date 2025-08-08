@@ -43,10 +43,6 @@ def mod(a: Tensor, b: int) -> Tensor:
         torch.Tensor: Element-wise remainder of `a` divided by `b`.
 
     Examples:
-        >>> mod(7, 3)
-        1
-        >>> mod(7.5, 3)
-        1.5
         >>> mod(torch.tensor(7), 3)
         tensor(1)
         >>> mod(torch.tensor([7, -1, 2]), 3)
