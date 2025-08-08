@@ -279,17 +279,6 @@ class TestFocalLoss(BaseTester):
             dtypes=[torch.float64, torch.int64, None, None],
         )
 
-    # def test_module(self, device, dtype):
-    #     num_classes = 3
-    #     logits = torch.rand(2, num_classes, device=device, dtype=dtype)
-    #     labels = torch.randint(num_classes, (2,), device=device)
-
-    #     args = (0.25, 2.0)
-    #     op = kornia.losses.focal_loss
-    #     op_module = kornia.losses.FocalLoss(*args)
-    #     self.assert_close(op_module(logits, labels), op(logits, labels, *args))
-
-    # new addition as of August 8, 2025
     def test_module(self, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, device=device, dtype=dtype)
@@ -315,6 +304,18 @@ class TestFocalLoss(BaseTester):
             # Compare statistics rather than raw values
             self.assert_close(out_module.mean(), out_func.mean(), rtol=rtol, atol=atol)
             self.assert_close(out_module.std(), out_func.std(), rtol=rtol, atol=atol)
+
+    # def test_module(self, device, dtype):
+    #     num_classes = 3
+    #     logits = torch.rand(2, num_classes, device=device, dtype=dtype)
+    #     labels = torch.randint(num_classes, (2,), device=device)
+
+    #     args = (0.25, 2.0)
+    #     op = kornia.losses.focal_loss
+    #     op_module = kornia.losses.FocalLoss(*args)
+    #     self.assert_close(op_module(logits, labels), op(logits, labels, *args))
+
+    # new addition as of August 8, 2025
 
     def test_per_class_alpha(self, device, dtype):
         num_classes = 3

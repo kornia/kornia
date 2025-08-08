@@ -34,8 +34,8 @@ from kornia.utils.one_hot import one_hot
 def focal_loss(
     pred: Tensor,
     target: Tensor,
-    # alpha: Optional[float],
     alpha: Optional[Union[float, Tensor]],  # Changed to accept Tensor
+    # alpha: Optional[float],
     gamma: float = 2.0,
     reduction: str = "none",
     weight: Optional[Tensor] = None,
