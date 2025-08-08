@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import numbers
 from typing import Optional, Union
 
 import torch
@@ -28,26 +29,36 @@ from kornia.models.detection.utils import BoxFiltering
 
 
 def mod(a: Tensor, b: int) -> Tensor:
-    """Compute the modulo operation for two numbers.
+    """Compute the element-wise remainder of tensor `a` divided by integer `b`.
 
-    This function calculates the remainder of the division of 'a' by 'b'
-    using the formula: a - (a // b) * b, which is equivalent to the modulo operation.
+    This function requires `a` to be a `torch.Tensor` and `b` to be an `int`.
+    It returns a `torch.Tensor` with the same shape/device as `a`. The
+    implementation uses `a % b` (equivalent to `torch.remainder(a, b)`).
 
     Args:
-        a: The dividend.
-        b: The divisor.
+        a (torch.Tensor): Dividend tensor (any numeric dtype).
+        b (int): Divisor (must be non-zero).
 
     Returns:
-        The remainder of a divided by b.
+        torch.Tensor: Element-wise remainder of `a` divided by `b`.
 
-    Example:
+    Examples:
         >>> mod(7, 3)
         1
-
+        >>> mod(7.5, 3)
+        1.5
+        >>> mod(torch.tensor(7), 3)
+        tensor(1)
+        >>> mod(torch.tensor([7, -1, 2]), 3)
+        tensor([1, 2, 2])
     """
-    if not a.dtype.is_floating_point and a.dtype != torch.long:
-        a = a.to(torch.long)
-    return torch.remainder(a, b)
+    if isinstance(a, torch.Tensor):
+        # torch.remainder supports both integer and floating dtypes
+        return torch.remainder(a, b)
+    else:
+        # Use Python modulo for Python scalars (keeps scalar result and semantics)
+        return a % b
+
 
 
 # TODO: deprecate the confidence threshold and add the num_top_queries as a parameter and num_classes as a parameter
