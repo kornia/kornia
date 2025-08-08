@@ -21,7 +21,6 @@ from typing import Optional, Tuple
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK
 from kornia.enhance.histogram import histogram as diff_histogram
 from kornia.utils.helpers import _torch_histc_cast
 
@@ -119,8 +118,15 @@ class OtsuThreshold(torch.nn.Module):
 
         # Check tensor type compatibility
         supported_dtypes = [
-            torch.uint8, torch.int8, torch.int16, torch.int32, torch.int64,
-            torch.float16, torch.float32, torch.float64, torch.bfloat16
+            torch.uint8,
+            torch.int8,
+            torch.int16,
+            torch.int32,
+            torch.int64,
+            torch.float16,
+            torch.float32,
+            torch.float64,
+            torch.bfloat16,
         ]
         if x.dtype not in supported_dtypes:
             raise ValueError("Tensor dtype not supported for Otsu thresholding.")
@@ -151,18 +157,14 @@ class OtsuThreshold(torch.nn.Module):
         # Compute inter-class variance, setting invalid cases to -1
         valid = (weight_bg > 0) & (weight_fg > 0)
         inter_class_var = torch.where(
-            valid,
-            weight_bg * weight_fg * (mean_bg - mean_fg) ** 2,
-            torch.tensor(-1.0, device=histograms.device)
+            valid, weight_bg * weight_fg * (mean_bg - mean_fg) ** 2, torch.tensor(-1.0, device=histograms.device)
         )
 
         # Find the maximum inter-class variance and corresponding threshold
         t_max = torch.argmax(inter_class_var, dim=1)  # Shape: (nchannel,)
         max_var = inter_class_var.gather(1, t_max[:, None]).squeeze(1)  # Shape: (nchannel,)
         best_thresholds = torch.where(
-            max_var > 0,
-            bin_edges[t_max + 1],
-            torch.tensor(0.0, device=histograms.device)
+            max_var > 0, bin_edges[t_max + 1], torch.tensor(0.0, device=histograms.device)
         ).to(x.dtype)
 
         # Apply thresholding: keep values strictly greater than the threshold
@@ -170,7 +172,6 @@ class OtsuThreshold(torch.nn.Module):
         thresholded = thresholded.reshape(orig_shape)
 
         return thresholded, best_thresholds
-
 
 
 def otsu_threshold(
