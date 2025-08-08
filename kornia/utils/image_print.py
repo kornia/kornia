@@ -25,8 +25,8 @@ Taken from https://gist.github.com/klange/1687427
 import re
 from typing import Tuple, Union
 
-from torch import float16, float32, float64
 import torch
+from torch import float16, float32, float64
 
 import kornia
 from kornia.core import Tensor
@@ -372,7 +372,7 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
     KORNIA_CHECK_SHAPE(image, ["C", "H", "W"])
 
     if image.dtype not in [float16, float32, float64]:
-        image = image / 255.0  
+        image = image / 255.0
 
     if image.shape[-1] > max_width:
         new_h = image.size(-2) * max_width // image.size(-1)
@@ -398,6 +398,7 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
         lines.append("".join(row_parts))
 
     return "".join(lines)
+
 
 def print_image(image: Union[str, Tensor], max_width: int = 96) -> None:
     """Print an image to the terminal.
