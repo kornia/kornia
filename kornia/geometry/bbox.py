@@ -593,4 +593,4 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
         order = order[1:][iou <= iou_threshold]
 
-    return torch.tensor(keep, dtype=torch.long, device=boxes.device)   
+    return torch.tensor(keep, dtype=torch.long, device=boxes.device)
