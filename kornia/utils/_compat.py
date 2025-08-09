@@ -24,7 +24,9 @@ from torch import Tensor
 
 def torch_version() -> str:
     """Parse the `torch.__version__` variable and removes +cu*/cpu."""
-    return torch.__version__.partition("+")[0]
+    v = torch.__version__
+    i = v.find("+")
+    return v[:i] if i != -1 else v
 
 
 def torch_version_lt(major: int, minor: int, patch: int) -> bool:
