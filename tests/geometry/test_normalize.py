@@ -20,7 +20,7 @@ import torch
 import torch.nn.functional as F
 
 
-# For demonstration, re-define them inline:
+# Reference implementations used in the test suite:
 def batched_dot_product(x: torch.Tensor, y: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
     return (x * y).sum(-1, keepdim)
 
