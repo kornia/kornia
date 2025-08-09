@@ -69,23 +69,22 @@ def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
     if not ((trans_12.dim() in (2, 3)) and (trans_12.shape[-2:] == (4, 4))):
         raise ValueError(f"Input trans_12 must be a of the shape Nx4x4 or 4x4. Got {trans_12.shape}")
 
-    if not trans_01.dim() == trans_12.dim():
+    if trans_01.dim() != trans_12.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_12.dim()}")
 
     # unpack input data
-    rmat_01 = trans_01[..., :3, :3]  # Nx3x3 or 3x3
-    rmat_12 = trans_12[..., :3, :3]  # Nx3x3 or 3x3
-    tvec_01 = trans_01[..., :3, 3:4]  # Nx3x1 or 3x1
-    tvec_12 = trans_12[..., :3, 3:4]  # Nx3x1 or 3x1
+    rmat_01 = trans_01[..., :3, :3]
+    rmat_12 = trans_12[..., :3, :3]
+    tvec_01 = trans_01[..., :3, 3:]
+    tvec_12 = trans_12[..., :3, 3:]
 
     # compute the actual transforms composition
     rmat_02 = torch.matmul(rmat_01, rmat_12)
     tvec_02 = torch.matmul(rmat_01, tvec_12) + tvec_01
 
-    # pack output tensor
     trans_02 = trans_01.new_zeros(trans_01.shape)
-    trans_02[..., :3, :3].copy_(rmat_02)
-    trans_02[..., :3, 3:4].copy_(tvec_02)
+    trans_02[..., :3, :3] = rmat_02
+    trans_02[..., :3, 3:] = tvec_02
     trans_02[..., 3, 3] = 1.0
     return trans_02
 
