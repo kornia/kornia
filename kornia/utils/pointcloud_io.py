@@ -16,8 +16,6 @@
 #
 
 import os
-
-import numpy as np
 import torch
 
 
@@ -29,7 +27,6 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         pointcloud: tensor containing the pointcloud to save.
           The tensor must be in the shape of :math:`(*, 3)` where the last
           component is assumed to be a 3d point coordinate :math:`(X, Y, Z)`.
-
     """
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
         raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
@@ -44,9 +41,10 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
     xyz = pointcloud.reshape(-1, 3)
 
     valid_mask = torch.isfinite(xyz).any(dim=1)
-    valid_count = int(valid_mask.sum().item())
+    valid_points = xyz[valid_mask]
+    valid_count = valid_points.shape[0]
 
-    with open(filename, "w") as f:
+    with open(filename, "w", encoding="utf-8") as f:
         # Write PLY header
         f.write("ply\n")
         f.write("format ascii 1.0\n")
@@ -58,8 +56,11 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         f.write("end_header\n")
 
         if valid_count > 0:
-            arr = xyz[valid_mask].detach().cpu().numpy()
-            np.savetxt(f, arr, fmt="%.9g", delimiter=" ")
+            # Move to CPU, convert to float64 for matching 'double' in header
+            arr = valid_points.detach().cpu().to(torch.float64)
+            # Write each row as space-separated floats
+            for x, y, z in arr.tolist():
+                f.write(f"{x:.9g} {y:.9g} {z:.9g}\n")
 
 
 def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
