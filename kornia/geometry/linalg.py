@@ -282,7 +282,7 @@ def euclidean_distance(x: Tensor, y: Tensor, keepdim: bool = False, eps: float =
     KORNIA_CHECK_SHAPE(x, ["*", "N"])
     KORNIA_CHECK_SHAPE(y, ["*", "N"])
 
-    return torch.sqrt(((x - y).pow(2)).sum(dim=-1, keepdim=keepdim) + eps)
+    return (x - y).pow(2).sum(dim=-1, keepdim=keepdim).add_(eps).sqrt_()
 
 
 # aliases
