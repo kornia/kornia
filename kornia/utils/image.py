@@ -18,9 +18,10 @@
 from functools import wraps
 from typing import Any, Callable, List, Optional
 
+import numpy as np
 import torch
 from torch import nn
-import numpy as np
+
 from kornia.core import Tensor
 
 
@@ -94,7 +95,7 @@ def image_list_to_tensor(images: List[Any]) -> Tensor:
     if len(images[0].shape) != 3:
         raise ValueError("Input images must be three dimensional arrays")
 
-    batch_np = np.stack(images)  
+    batch_np = np.stack(images)
     return torch.from_numpy(batch_np).permute(0, 3, 1, 2)
 
 
