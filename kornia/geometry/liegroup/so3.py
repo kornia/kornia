@@ -21,7 +21,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-from kornia.core import Device, Dtype, Module, Tensor, concatenate, eye, stack, tensor, where, zeros, zeros_like
+import torch
+
+from kornia.core import Device, Dtype, Module, Tensor, concatenate, eye, stack, where, zeros, zeros_like
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import vector_to_skew_symmetric_matrix
 from kornia.geometry.linalg import batched_dot_product
@@ -123,16 +125,17 @@ class So3(Module):
 
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
-        theta = batched_dot_product(v, v).sqrt()[..., None]
-        theta_nonzeros = theta != 0.0
+        theta = v.norm(dim=-1, keepdim=True)
         theta_half = 0.5 * theta
-        # TODO: uncomment me after deprecate pytorch 10.2
-        # w = where(theta_nonzeros, theta_half.cos(), 1.0)
-        # b = where(theta_nonzeros, theta_half.sin() / theta, 0.0)
-        w = where(theta_nonzeros, theta_half.cos(), tensor(1.0, device=v.device, dtype=v.dtype))
-        b = where(theta_nonzeros, theta_half.sin() / theta, tensor(0.0, device=v.device, dtype=v.dtype))
+        w = torch.cos(theta_half)
+        eps = torch.finfo(v.dtype).eps * 1e3
+        small_mask = theta <= eps
+        b_large = torch.sin(theta_half) / theta
+        b_small = 0.5 - (theta * theta) / 48.0
+        b = torch.where(small_mask, b_small, b_large)
         xyz = b * v
-        return So3(Quaternion(concatenate((w, xyz), -1)))
+        q = torch.cat((w, xyz), dim=-1)
+        return So3(Quaternion(q))
 
     def log(self) -> Tensor:
         """Convert elements of lie group  to elements of lie algebra.
