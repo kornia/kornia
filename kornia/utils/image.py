@@ -17,8 +17,6 @@
 
 from functools import wraps
 from typing import Any, Callable, List, Optional
-
-import numpy as np
 import torch
 from torch import nn
 
@@ -91,12 +89,23 @@ def image_list_to_tensor(images: List[Any]) -> Tensor:
 
     """
     if not images:
-        raise ValueError("Input list of numpy images is empty")
-    if len(images[0].shape) != 3:
-        raise ValueError("Input images must be three dimensional arrays")
+        raise ValueError("Input list of images is empty")
 
-    batch_np = np.stack(images)
-    return torch.from_numpy(batch_np).permute(0, 3, 1, 2)
+    images_t = []
+    for img in images:
+        if not torch.is_tensor(img):
+            img = torch.as_tensor(img)
+        images_t.append(img)
+
+    shape = images_t[0].shape
+    if len(shape) != 3:
+        raise ValueError("Each image must have shape (H, W, C)")
+    if any(img.shape != shape for img in images_t):
+        raise ValueError("All images must have the same shape")
+
+    # Stack into (N, H, W, C) then permute to (N, C, H, W)
+    return torch.stack(images_t, dim=0).permute(0, 3, 1, 2)
+
 
 
 def _to_bchw(tensor: Tensor) -> Tensor:
