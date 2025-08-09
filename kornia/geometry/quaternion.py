@@ -444,23 +444,73 @@ class Quaternion(Module):
         q1 = q1.normalize()
         return q0 * (q0.inv() * q1) ** t
 
-    # TODO: add docs
     def norm(self, keepdim: bool = False) -> Tensor:
+        """Compute the norm (magnitude) of the quaternion.
+
+        Args:
+            keepdim: whether to retain the last dimension.
+
+        Returns:
+            The norm of the quaternion(s) as a tensor.
+
+        Example:
+            >>> q = Quaternion.identity()
+            >>> q.norm()
+            tensor(1.)
+
+        """
         # p==2, dim|axis==-1, keepdim
         return self.data.norm(2, -1, keepdim)
 
-    # TODO: add docs
     def normalize(self) -> "Quaternion":
+        """Return a normalized (unit) quaternion.
+
+        Returns:
+            The normalized quaternion.
+
+        Example:
+            >>> q = Quaternion(tensor([2., 1., 0., 0.]))
+            >>> q_norm = q.normalize()
+
+        """
         return Quaternion(normalize_quaternion(self.data))
 
-    # TODO: add docs
     def conj(self) -> "Quaternion":
+        """Compute the conjugate of the quaternion.
+
+        Returns:
+            The conjugate quaternion, with the vector part negated.
+
+        Example:
+            >>> q = Quaternion(tensor([1., 2., 3., 4.]))
+            >>> q_conj = q.conj()
+
+        """
         return Quaternion(concatenate((self.real[..., None], -self.vec), -1))
 
-    # TODO: add docs
     def inv(self) -> "Quaternion":
+        """Compute the inverse of the quaternion.
+
+        Returns:
+            The inverse quaternion.
+
+        Example:
+            >>> q = Quaternion.identity()
+            >>> q_inv = q.inv()
+
+        """
         return self.conj() / self.squared_norm()
 
-    # TODO: add docs
     def squared_norm(self) -> Tensor:
+        """Compute the squared norm (magnitude) of the quaternion.
+
+        Returns:
+            The squared norm of the quaternion(s) as a tensor.
+
+        Example:
+            >>> q = Quaternion.identity()
+            >>> q.squared_norm()
+            tensor(1.)
+
+        """
         return batched_dot_product(self.vec, self.vec) + self.real**2
