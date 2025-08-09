@@ -173,13 +173,18 @@ class ImageModuleMixIn:
 
         """
         if isinstance(x, (Tensor,)):
-            x = x.cpu().detach() * 255
-            if x.dim() == 3:
-                x = x.permute(1, 2, 0)
-                return Image.fromarray(x.byte().numpy())  # type: ignore
-            elif x.dim() == 4:
-                x = x.permute(0, 2, 3, 1)
-                return [Image.fromarray(_x.byte().numpy()) for _x in x]  # type: ignore
+            tensor = x.detach().cpu()
+            if tensor.ndim == 3:
+                tensor.mul_(255)
+                arr = tensor.permute(1, 2, 0).contiguous().byte().numpy()
+                if arr.shape[2] == 1:
+                    arr = arr[:, :, 0]
+                return Image.fromarray(arr)  # type: ignore
+            if tensor.ndim == 4:
+                tensor.mul_(255)
+                tensor_chw = tensor.permute(0, 2, 3, 1).contiguous()
+                numpy_batch = tensor_chw.byte().numpy()
+                return [Image.fromarray(img) for img in numpy_batch] # type: ignore
             else:
                 raise NotImplementedError
         if isinstance(x, (np.ndarray,)):  # type: ignore
