@@ -306,10 +306,7 @@ def _str2hex(hexstr: str) -> int:
 
 
 def _strip_hash(rgb: str) -> str:
-    # Strip leading `#` if exists.
-    if rgb.startswith("#"):
-        rgb = rgb.lstrip("#")
-    return rgb
+    return rgb.removeprefix("#")
 
 
 def short2rgb(short: str) -> str:
