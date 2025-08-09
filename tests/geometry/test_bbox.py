@@ -312,7 +312,8 @@ class TestNMS(BaseTester):
                 [20, 20, 30, 30],
                 [40, 40, 50, 50],
             ],
-            device=device, dtype=dtype
+            device=device,
+            dtype=dtype,
         )
         scores = torch.tensor([0.9, 0.8, 0.7], device=device, dtype=dtype)
         expected = torch.tensor([0, 1, 2], device=device, dtype=torch.long)
@@ -326,7 +327,8 @@ class TestNMS(BaseTester):
                 [0, 0, 10, 10],
                 [0, 0, 10, 10],
             ],
-            device=device, dtype=dtype
+            device=device,
+            dtype=dtype,
         )
         scores = torch.tensor([0.5, 0.9, 0.7], device=device, dtype=dtype)
         # Highest score (idx=1) kept, others removed
@@ -354,7 +356,8 @@ class TestNMS(BaseTester):
                 [0, 0, 10, 10],
                 [1, 1, 11, 11],  # High overlap
             ],
-            device=device, dtype=dtype
+            device=device,
+            dtype=dtype,
         )
         scores = torch.tensor([0.9, 0.8], device=device, dtype=dtype)
         # Low threshold removes second box
@@ -370,7 +373,8 @@ class TestNMS(BaseTester):
                 [0, 0, 10, 10],
                 [5, 5, 15, 15],
             ],
-            device=device, dtype=dtype
+            device=device,
+            dtype=dtype,
         )
         scores = torch.tensor([0.8, 0.8], device=device, dtype=dtype)
         actual = nms(boxes, scores, iou_threshold=0.5)

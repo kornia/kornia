@@ -22,7 +22,7 @@ from typing import Optional
 
 import torch
 
-from kornia.core import arange, stack, where, zeros
+from kornia.core import arange, zeros
 
 from .linalg import transform_points
 
