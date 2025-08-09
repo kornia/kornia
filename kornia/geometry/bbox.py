@@ -22,7 +22,7 @@ from typing import Optional
 
 import torch
 
-from kornia.core import arange, stack, where, zeros
+from kornia.core import arange, zeros
 
 from .linalg import transform_points
 
@@ -562,7 +562,7 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
     if boxes.shape[0] != scores.shape[0]:
         raise ValueError(f"boxes and scores mus have same shape. Got: {boxes.shape, scores.shape}.")
-    
+
     scores_sorted, order = scores.sort(descending=True)
 
     # Coordinates
@@ -595,4 +595,3 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         order = order[1:][iou <= iou_threshold]
 
     return torch.tensor(keep, dtype=torch.long, device=boxes.device)
-
