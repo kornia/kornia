@@ -20,8 +20,10 @@
 from __future__ import annotations
 
 from typing import Optional
+
 import torch
-from kornia.core import Device, Dtype, Module, Tensor, concatenate, eye, stack, tensor, where, zeros, zeros_like
+
+from kornia.core import Device, Dtype, Module, Tensor, concatenate, eye, stack, where, zeros, zeros_like
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import vector_to_skew_symmetric_matrix
 from kornia.geometry.linalg import batched_dot_product
@@ -134,7 +136,7 @@ class So3(Module):
         xyz = b * v
         q = torch.cat((w, xyz), dim=-1)
         return So3(Quaternion(q))
-    
+
     def log(self) -> Tensor:
         """Convert elements of lie group  to elements of lie algebra.
 
