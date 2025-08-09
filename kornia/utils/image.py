@@ -20,7 +20,7 @@ from typing import Any, Callable, List, Optional
 
 import torch
 from torch import nn
-
+import numpy as np
 from kornia.core import Tensor
 
 
@@ -94,11 +94,8 @@ def image_list_to_tensor(images: List[Any]) -> Tensor:
     if len(images[0].shape) != 3:
         raise ValueError("Input images must be three dimensional arrays")
 
-    list_of_tensors: List[Tensor] = []
-    for image in images:
-        list_of_tensors.append(image_to_tensor(image))
-    tensor: Tensor = torch.stack(list_of_tensors)
-    return tensor
+    batch_np = np.stack(images)  
+    return torch.from_numpy(batch_np).permute(0, 3, 1, 2)
 
 
 def _to_bchw(tensor: Tensor) -> Tensor:
