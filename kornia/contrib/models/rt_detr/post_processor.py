@@ -48,12 +48,7 @@ def mod(a: Tensor, b: int) -> Tensor:
         >>> mod(torch.tensor([7, -1, 2]), 3)
         tensor([1, 2, 2])
     """
-    if isinstance(a, torch.Tensor):
-        # torch.remainder supports both integer and floating dtypes
-        return torch.remainder(a, b)
-    else:
-        # Use Python modulo for Python scalars (keeps scalar result and semantics)
-        return a % b
+    return a % b
 
 
 
