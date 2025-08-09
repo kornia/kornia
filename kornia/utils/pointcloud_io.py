@@ -17,7 +17,6 @@
 
 import os
 
-import numpy as np
 import torch
 
 
@@ -101,6 +100,5 @@ def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
         raise ValueError(f"Expected 3 columns per point, got a total of {len(parts)} values.")
 
     # Convert directly to a float32 tensor in one go
-    tensor = torch.tensor(list(map(float, parts[: (len(parts) // 3) * 3])),
-                          dtype=torch.float32).view(-1, 3)
+    tensor = torch.tensor(list(map(float, parts[: (len(parts) // 3) * 3])), dtype=torch.float32).view(-1, 3)
     return tensor
