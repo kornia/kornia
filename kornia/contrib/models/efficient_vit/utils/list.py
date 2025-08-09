@@ -39,6 +39,6 @@ def val2tuple(x: Union[list[Any], tuple[Any, ...], Any], min_len: int = 1, idx_r
     cur_len = len(xlist)
     if cur_len < min_len and cur_len > 0:
         v = xlist[idx_repeat]
-        # Only append as many as needed:
+        # Only append as many values as needed:
         xlist[idx_repeat:idx_repeat] = [v] * (min_len - cur_len)
     return tuple(xlist)
