@@ -37,11 +37,11 @@ __all__ = [
 
 
 def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
-    """Compose two homogeneous transformations.
+    r"""Compose two homogeneous transformations.
 
     .. math::
         T_0^{2} = \begin{bmatrix} R_0^1 R_1^{2} & R_0^{1} t_1^{2} + t_0^{1} \\
-        \\mathbf{0} & 1\\end{bmatrix}
+        \mathbf{0} & 1\end{bmatrix}
 
     Args:
         trans_01: tensor with the homogeneous transformation from
@@ -82,7 +82,6 @@ def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
     rmat_02 = torch.matmul(rmat_01, rmat_12)
     tvec_02 = torch.matmul(rmat_01, tvec_12) + tvec_01
 
-    # Instead of incrementally building zeros, assign directly for better performance
     trans_02 = trans_01.new_zeros(trans_01.shape)
     trans_02[..., :3, :3] = rmat_02
     trans_02[..., :3, 3:] = tvec_02
