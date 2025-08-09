@@ -17,6 +17,7 @@
 
 from functools import wraps
 from typing import Any, Callable, List, Optional
+
 import torch
 from torch import nn
 
@@ -105,7 +106,6 @@ def image_list_to_tensor(images: List[Any]) -> Tensor:
 
     # Stack into (N, H, W, C) then permute to (N, C, H, W)
     return torch.stack(images_t, dim=0).permute(0, 3, 1, 2)
-
 
 
 def _to_bchw(tensor: Tensor) -> Tensor:
