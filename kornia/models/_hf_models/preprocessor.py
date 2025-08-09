@@ -32,9 +32,7 @@ class PreprocessingLoader:
         return Normalize(mean=mean, std=std)
 
     @staticmethod
-    @lru_cache(maxsize=16)
     def rescale(rescale_factor: float) -> Rescale:
-        # Use lru_cache to speed up repeated instantiation with the same factor
         return Rescale(factor=rescale_factor)
 
     @staticmethod
