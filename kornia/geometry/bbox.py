@@ -533,7 +533,7 @@ def transform_bbox(
 
 
 def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torch.Tensor:
-    """Perform non-maxima suppression (NMS) on a tensor of bounding boxes according to the intersection-over-union (IoU).
+    """Perform non-maxima suppression (NMS) on a tensor of bounding boxes according to the intersection-over-union.
 
     Args:
         boxes: tensor containing the encoded bounding boxes with the shape :math:`(N, (x_1, y_1, x_2, y_2))`.
@@ -593,4 +593,4 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
         order = order[1:][iou <= iou_threshold]
 
-    return torch.tensor(keep, dtype=torch.long, device=boxes.device)   
+    return torch.tensor(keep, dtype=torch.long, device=boxes.device)
