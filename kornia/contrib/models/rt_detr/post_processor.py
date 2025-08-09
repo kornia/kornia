@@ -19,7 +19,6 @@
 
 from __future__ import annotations
 
-import numbers
 from typing import Optional, Union
 
 import torch
