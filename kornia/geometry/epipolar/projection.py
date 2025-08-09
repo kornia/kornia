@@ -73,11 +73,7 @@ def random_intrinsics(low: Union[float, Tensor], high: Union[float, Tensor]) -> 
     sampler = torch.distributions.Uniform(low, high)
     params = sampler.sample((4,))
     fx, fy, cx, cy = params[0], params[1], params[2], params[3]
-    camera_matrix = torch.tensor([
-        [fx, 0.0, cx],
-        [0.0, fy, cy],
-        [0.0, 0.0, 1.0]
-    ], dtype=fx.dtype, device=fx.device)
+    camera_matrix = torch.tensor([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]], dtype=fx.dtype, device=fx.device)
     return camera_matrix.unsqueeze(0)
 
 
