@@ -194,7 +194,6 @@ class FocalLoss(nn.Module):
 
     def __init__(
         self,
-        # alpha: Optional[float],
         alpha: Optional[Union[float, Tensor]],  # Changed to accept Tensor
         gamma: float = 2.0,
         reduction: str = "none",
@@ -202,27 +201,20 @@ class FocalLoss(nn.Module):
         ignore_index: Optional[int] = -100,
     ) -> None:
         super().__init__()
-        # self.alpha: Optional[float] = alpha
 
-        # New addition
-        # Register alpha as buffer if it's a tensor
         # Store alpha properly based on type
         if isinstance(alpha, Tensor):
             self.register_buffer("_alpha", alpha)
         else:
             self._alpha = alpha
-        # New addition end
 
         self.gamma: float = gamma
         self.reduction: str = reduction
         self.weight: Optional[Tensor] = weight
         self.ignore_index: Optional[int] = ignore_index
 
-    # def forward(self, pred: Tensor, target: Tensor) -> Tensor:
-    #     return focal_loss(pred, target, self.alpha, self.gamma, self.reduction, self.weight, self.ignore_index)
-    # new addition as of August 8, 2025
     @property
-    def alpha(self):
+    def alpha(self) -> Union[Tensor, float, None]:  # Added this return type
         return self._alpha
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
@@ -235,8 +227,6 @@ class FocalLoss(nn.Module):
             weight=self.weight,
             ignore_index=self.ignore_index,
         )
-
-    # new addition ends as of August 8, 2025
 
 
 def binary_focal_loss_with_logits(
