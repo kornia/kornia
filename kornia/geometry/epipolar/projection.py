@@ -22,7 +22,7 @@ from typing import Tuple, Union
 import torch
 from torch.linalg import qr as linalg_qr
 
-from kornia.core import Tensor, concatenate, ones_like, pad, stack, zeros_like
+from kornia.core import Tensor, concatenate, pad, stack
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.utils import eye_like, vec_like
 from kornia.utils.helpers import _torch_svd_cast
@@ -73,11 +73,7 @@ def random_intrinsics(low: Union[float, Tensor], high: Union[float, Tensor]) -> 
     sampler = torch.distributions.Uniform(low, high)
     params = sampler.sample((4,))
     fx, fy, cx, cy = params[0], params[1], params[2], params[3]
-    camera_matrix = torch.tensor([
-        [fx, 0.0, cx],
-        [0.0, fy, cy],
-        [0.0, 0.0, 1.0]
-    ], dtype=fx.dtype, device=fx.device)
+    camera_matrix = torch.tensor([[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]], dtype=fx.dtype, device=fx.device)
     return camera_matrix.unsqueeze(0), (fx.item(), fy.item(), cx.item(), cy.item())
 
 
