@@ -375,6 +375,7 @@ def is_powerof_two(x: int) -> bool:
 def find_next_powerof_two(x: int) -> int:
     return 1 << (x - 1).bit_length()
 
+
 def build_laplacian_pyramid(
     input: Tensor, max_level: int, border_type: str = "reflect", align_corners: bool = False
 ) -> list[Tensor]:
