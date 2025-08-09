@@ -117,7 +117,7 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
     KORNIA_CHECK_SHAPE(distorted_points_in_camera, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "8"])
 
-    iters = 20
+    iters = 10
     eps = 1e-8
     device = distorted_points_in_camera.device
     out_dtype = distorted_points_in_camera.dtype
@@ -144,7 +144,7 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
     rth = rth2.sqrt()
 
     th = rth.clamp(min=1e-16).sqrt()
-    
+
     # gauss-newton
     for _ in range(iters):
         th2 = th * th         
