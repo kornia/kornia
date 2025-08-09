@@ -78,7 +78,7 @@ def random_intrinsics(low: Union[float, Tensor], high: Union[float, Tensor]) -> 
         [0.0, fy, cy],
         [0.0, 0.0, 1.0]
     ], dtype=fx.dtype, device=fx.device)
-    return camera_matrix.unsqueeze(0), (fx.item(), fy.item(), cx.item(), cy.item())
+    return camera_matrix.unsqueeze(0)
 
 
 def scale_intrinsics(camera_matrix: Tensor, scale_factor: Union[float, Tensor]) -> Tensor:
