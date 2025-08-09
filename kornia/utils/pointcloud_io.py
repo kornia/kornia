@@ -72,13 +72,11 @@ def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
 
     Args:
         filename: the path to the pointcloud.
-        header_size: the size of the ply file header that will
-          be skipped during loading.
+        header_size: the number of header lines to skip.
 
     Return:
-        tensor containing the loaded point with shape :math:`(*, 3)` where
+        tensor containing the loaded points with shape :math:`(*, 3)` where
         :math:`*` represents the number of points.
-
     """
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
         raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
@@ -87,9 +85,22 @@ def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
     if not (isinstance(header_size, int) and header_size > 0):
         raise TypeError(f"Input header_size must be a positive integer. Got {header_size}.")
 
-    arr = np.loadtxt(filename, dtype=np.float32, usecols=(0, 1, 2), skiprows=header_size)
-    if arr.ndim == 1:
-        arr = arr.reshape(1, 3)
-    if arr.shape[1] != 3:
-        raise ValueError(f"Expected 3 columns per point, got {arr.shape[1]} columns.")
-    return torch.from_numpy(arr)
+    # Read all file bytes
+    with open(filename, "rb") as f:
+        # Skip header lines
+        for _ in range(header_size):
+            f.readline()
+        raw_data = f.read()
+
+    # Decode once and split (faster than line-by-line parsing in Python)
+    text = raw_data.decode("utf-8", errors="ignore")
+    parts = text.split()
+
+    # We only take the first 3 columns per point
+    if len(parts) % 3 != 0:
+        raise ValueError(f"Expected 3 columns per point, got a total of {len(parts)} values.")
+
+    # Convert directly to a float32 tensor in one go
+    tensor = torch.tensor(list(map(float, parts[: (len(parts) // 3) * 3])),
+                          dtype=torch.float32).view(-1, 3)
+    return tensor
