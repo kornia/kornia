@@ -31,7 +31,8 @@ __all__ = ["Hyperplane", "fit_plane"]
 
 
 def normalized(v: Tensor, eps: float = 1e-6) -> Tensor:
-    return v / batched_dot_product(v, v).add(eps).sqrt()
+    norm_sq = (v * v).sum(dim=-1, keepdim=True) + eps
+    return v * norm_sq.rsqrt()
 
 
 class Hyperplane(Module):

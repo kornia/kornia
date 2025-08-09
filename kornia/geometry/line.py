@@ -23,7 +23,7 @@ import torch
 
 from kornia.core import Module, Parameter, Tensor, normalize, where
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.geometry.linalg import batched_dot_product, squared_norm
+from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
 from kornia.utils.helpers import _torch_svd_cast
 
@@ -127,24 +127,22 @@ class ParametrizedLine(Module):
         """
         return self.origin + (self.direction @ (point - self.origin)) * self.direction
 
-    # TODO: improve order and speed
     def squared_distance(self, point: Tensor) -> Tensor:
         """Return the squared distance of a point to its projection onte the line.
 
         Args:
             point: the point to calculate the distance onto the line.
-
         """
-        diff: Tensor = point - self.origin
-        return squared_norm(diff - (self.direction @ diff) * self.direction)
+        d = point - self.origin
+        proj = torch.sum(d * self.direction, dim=-1)
+        sq_norm_d = torch.sum(d * d, dim=-1)
+        return sq_norm_d - proj * proj
 
-    # TODO: improve order and speed
     def distance(self, point: Tensor) -> Tensor:
         """Return the distance of a point to its projections onto the line.
 
         Args:
             point: the point to calculate the distance into the line.
-
         """
         return self.squared_distance(point).sqrt()
 
@@ -180,17 +178,72 @@ class ParametrizedLine(Module):
         return res_lambda, res_point
 
 
+def _fit_line_ols_2d(points: Tensor) -> ParametrizedLine:
+    x = points[..., 0]
+    y = points[..., 1]
+    x_mean = x.mean(dim=-1, keepdim=True)
+    y_mean = y.mean(dim=-1, keepdim=True)
+    dx = x - x_mean
+    dy = y - y_mean
+
+    denom = (dx * dx).sum(dim=-1, keepdim=True)  # (B, 1)
+    slope = torch.where(denom > 1e-8, (dx * dy).sum(dim=-1, keepdim=True) / denom, torch.zeros_like(denom))
+
+    # For vertical lines, fallback to [0,1] direction
+    direction = torch.where(
+        denom > 1e-8,
+        torch.cat([torch.ones_like(slope), slope], dim=-1),
+        torch.tensor([0.0, 1.0], device=points.device).expand(points.shape[0], 2),
+    )
+
+    direction = direction / direction.norm(dim=-1, keepdim=True)
+    origin = torch.cat([x_mean, y_mean], dim=-1)
+    return ParametrizedLine(origin, direction)
+
+
+def _fit_line_weighted_ols_2d(points: Tensor, weights: Tensor) -> ParametrizedLine:
+    x = points[..., 0]  # (B, N)
+    y = points[..., 1]  # (B, N)
+
+    w_sum = weights.sum(dim=-1, keepdim=True)  # (B, 1)
+    x_mean = (weights * x).sum(dim=-1, keepdim=True) / w_sum  # (B, 1)
+    y_mean = (weights * y).sum(dim=-1, keepdim=True) / w_sum  # (B, 1)
+
+    dx = x - x_mean  # (B, N)
+    dy = y - y_mean  # (B, N)
+
+    weighted_dx2 = weights * dx * dx
+    weighted_dxdy = weights * dx * dy
+
+    denom = weighted_dx2.sum(dim=-1, keepdim=True)  # (B, 1)
+    slope = weighted_dxdy.sum(dim=-1, keepdim=True) / denom  # (B, 1)
+
+    # Replace NaNs or infs from division by zero
+    slope = torch.where(torch.isfinite(slope), slope, torch.zeros_like(slope))
+
+    # direction = normalize([1, slope]) or [0,1] if vertical
+    is_vertical = denom <= 1e-8
+    direction = torch.cat([torch.ones_like(slope), slope], dim=-1)  # (B, 2)
+    replacement = torch.tensor([0.0, 1.0], device=points.device, dtype=points.dtype)
+    direction[is_vertical.squeeze(-1)] = replacement
+
+    direction = direction / direction.norm(dim=-1, keepdim=True)
+    origin = torch.cat([x_mean, y_mean], dim=-1)
+
+    return ParametrizedLine(origin, direction)
+
+
 def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLine:
     """Fit a line from a set of points.
 
     Args:
-        points: tensor containing a batch of sets of n-dimensional points. The  expected
+        points: tensor containing a batch of sets of n-dimensional points. The expected
             shape of the tensor is :math:`(B, N, D)`.
-        weights: weights to use to solve the equations system. The  expected
+        weights: weights to use to solve the equations system. The expected
             shape of the tensor is :math:`(B, N)`.
 
     Return:
-        A tensor containing the direction of the fited line of shape :math:`(B, D)`.
+        A tensor containing the direction of the fitted line of shape :math:`(B, D)`.
 
     Example:
         >>> points = torch.rand(2, 10, 3)
@@ -198,10 +251,21 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLi
         >>> line = fit_line(points, weights)
         >>> line.direction.shape
         torch.Size([2, 3])
-
     """
     KORNIA_CHECK_IS_TENSOR(points, "points must be a tensor")
     KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])
+
+    B, N, D = points.shape
+
+    # Fast path: use OLS for unweighted 2D case
+    if D == 2:
+        if weights is not None:
+            KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
+            KORNIA_CHECK_SHAPE(weights, ["B", "N"])
+            KORNIA_CHECK(points.shape[0] == weights.shape[0])
+            return _fit_line_weighted_ols_2d(points, weights)
+        else:
+            return _fit_line_ols_2d(points)
 
     mean = points.mean(-2, True)
     A = points - mean
@@ -218,7 +282,7 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLi
     _, _, V = _torch_svd_cast(A)
     V = V.transpose(-2, -1)
 
-    # the first left eigenvector is the direction on the fited line
+    # the first left eigenvector is the direction on the fitted line
     direction = V[..., 0, :]  # BxD
     origin = mean[..., 0, :]  # BxD
 
