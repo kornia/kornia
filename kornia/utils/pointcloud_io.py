@@ -18,6 +18,7 @@
 import os
 
 import torch
+import numpy as np
 
 
 def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
@@ -30,41 +31,35 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
           component is assumed to be a 3d point coordinate :math:`(X, Y, Z)`.
 
     """
-    if not isinstance(filename, str) and filename[-3:] == ".ply":
-        raise TypeError(f"Input filename must be a string in with the .ply  extension. Got {filename}")
+    if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
+        raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
 
     if not torch.is_tensor(pointcloud):
         raise TypeError(f"Input pointcloud type is not a torch.Tensor. Got {type(pointcloud)}")
 
-    if not len(pointcloud.shape) >= 2 and pointcloud.shape[-1] == 3:
-        raise TypeError(f"Input pointcloud must be in the following shape HxWx3. Got {pointcloud.shape}.")
+    if pointcloud.ndim < 2 or pointcloud.shape[-1] != 3:
+        raise TypeError(f"Input pointcloud must have shape (..., 3). Got {tuple(pointcloud.shape)}")
 
-    # flatten the input pointcloud in a vector to iterate points
-    xyz_vec: torch.Tensor = pointcloud.reshape(-1, 3)
+    # Flatten points
+    xyz = pointcloud.reshape(-1, 3)
+
+    valid_mask = torch.isfinite(xyz).any(dim=1)
+    valid_count = int(valid_mask.sum().item())
 
     with open(filename, "w") as f:
-        data_str: str = ""
-        num_points: int = xyz_vec.shape[0]
-        for idx in range(num_points):
-            xyz = xyz_vec[idx]
-            if not bool(torch.isfinite(xyz).any()):
-                num_points -= 1
-                continue
-            x: float = float(xyz[0])
-            y: float = float(xyz[1])
-            z: float = float(xyz[2])
-            data_str += f"{x} {y} {z}\n"
-
+        # Write PLY header
         f.write("ply\n")
         f.write("format ascii 1.0\n")
         f.write("comment arraiy generated\n")
-        f.write(f"element vertex {num_points}\n")
+        f.write(f"element vertex {valid_count}\n")
         f.write("property double x\n")
         f.write("property double y\n")
         f.write("property double z\n")
         f.write("end_header\n")
-        f.write(data_str)
 
+        if valid_count > 0:
+            arr = xyz[valid_mask].detach().cpu().numpy()
+            np.savetxt(f, arr, fmt="%.9g", delimiter=" ")
 
 def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
     r"""Load from disk a pointcloud in PLY format.
