@@ -306,10 +306,12 @@ def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps
     if len(x.shape) < 3:
         raise ValueError(f"Input shape must be at least a 3d tensor. Got: {x.shape}.")
 
-    dims = tuple(range(2, x.ndim))
-    x_min = x.amin(dim=dims, keepdim=True)
-    x_max = x.amax(dim=dims, keepdim=True)
+    shape = x.shape
+    B, C = shape[0], shape[1]
 
-    # Broadcasting is handled automatically with keepdim=True
-    x_out = (max_val - min_val) * (x - x_min) / (x_max - x_min + eps) + min_val
-    return x_out
+    x_reshaped = x.view(B, C, -1)
+    x_min = x_reshaped.min(-1, keepdim=True)[0]  # Shape: (B, C, 1)
+    x_max = x_reshaped.max(-1, keepdim=True)[0]  # Shape: (B, C, 1)
+
+    x_out = (max_val - min_val) * (x_reshaped - x_min) / (x_max - x_min + eps) + min_val
+    return x_out.view(shape)
