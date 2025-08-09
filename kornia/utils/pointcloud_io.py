@@ -17,8 +17,8 @@
 
 import os
 
-import torch
 import numpy as np
+import torch
 
 
 def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
@@ -60,6 +60,7 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         if valid_count > 0:
             arr = xyz[valid_mask].detach().cpu().numpy()
             np.savetxt(f, arr, fmt="%.9g", delimiter=" ")
+
 
 def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
     r"""Load from disk a pointcloud in PLY format.
