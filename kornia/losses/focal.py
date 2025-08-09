@@ -214,7 +214,7 @@ class FocalLoss(nn.Module):
         self.ignore_index: Optional[int] = ignore_index
 
     @property
-    def alpha(self) -> Union[Tensor, float, None]:  # Added this return type
+    def alpha(self) -> Union[Tensor, float, None]:
         return self._alpha
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
