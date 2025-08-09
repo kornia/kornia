@@ -562,30 +562,37 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
     if boxes.shape[0] != scores.shape[0]:
         raise ValueError(f"boxes and scores mus have same shape. Got: {boxes.shape, scores.shape}.")
+    
+    scores_sorted, order = scores.sort(descending=True)
 
-    x1, y1, x2, y2 = boxes.unbind(-1)
+    # Coordinates
+    x1 = boxes[:, 0]
+    y1 = boxes[:, 1]
+    x2 = boxes[:, 2]
+    y2 = boxes[:, 3]
+
     areas = (x2 - x1) * (y2 - y1)
 
-    _, order = scores.sort(descending=True)
-
     keep = []
-    while order.shape[0] > 0:
-        i = order[0]
+    while order.numel() > 0:
+        i = order[0].item()
         keep.append(i)
-        xx1 = torch.max(x1[i], x1[order[1:]])
-        yy1 = torch.max(y1[i], y1[order[1:]])
-        xx2 = torch.min(x2[i], x2[order[1:]])
-        yy2 = torch.min(y2[i], y2[order[1:]])
 
-        w = torch.clamp(xx2 - xx1, min=0.0)
-        h = torch.clamp(yy2 - yy1, min=0.0)
+        if order.numel() == 1:
+            break
+
+        xx1 = torch.maximum(x1[i], x1[order[1:]])
+        yy1 = torch.maximum(y1[i], y1[order[1:]])
+        xx2 = torch.minimum(x2[i], x2[order[1:]])
+        yy2 = torch.minimum(y2[i], y2[order[1:]])
+
+        w = torch.clamp(xx2 - xx1, min=0)
+        h = torch.clamp(yy2 - yy1, min=0)
         inter = w * h
-        ovr = inter / (areas[i] + areas[order[1:]] - inter)
+        union = areas[i] + areas[order[1:]] - inter
+        iou = inter / union
 
-        inds = where(ovr <= iou_threshold)[0]
-        order = order[inds + 1]
+        order = order[1:][iou <= iou_threshold]
 
-    if len(keep) > 0:
-        return stack(keep)
+    return torch.tensor(keep, dtype=torch.long, device=boxes.device)
 
-    return torch.tensor(keep)

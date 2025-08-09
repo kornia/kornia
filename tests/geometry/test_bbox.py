@@ -304,3 +304,85 @@ class TestNMS(BaseTester):
         expected = torch.tensor([0, 3, 1], device=device, dtype=torch.long)
         actual = nms(boxes, scores, iou_threshold=0.8)
         self.assert_close(actual, expected)
+
+    def test_no_overlap(self, device, dtype):
+        boxes = torch.tensor(
+            [
+                [0, 0, 10, 10],
+                [20, 20, 30, 30],
+                [40, 40, 50, 50],
+            ],
+            device=device, dtype=dtype
+        )
+        scores = torch.tensor([0.9, 0.8, 0.7], device=device, dtype=dtype)
+        expected = torch.tensor([0, 1, 2], device=device, dtype=torch.long)
+        actual = nms(boxes, scores, iou_threshold=0.5)
+        self.assert_close(actual, expected)
+
+    def test_complete_overlap(self, device, dtype):
+        boxes = torch.tensor(
+            [
+                [0, 0, 10, 10],
+                [0, 0, 10, 10],
+                [0, 0, 10, 10],
+            ],
+            device=device, dtype=dtype
+        )
+        scores = torch.tensor([0.5, 0.9, 0.7], device=device, dtype=dtype)
+        # Highest score (idx=1) kept, others removed
+        expected = torch.tensor([1], device=device, dtype=torch.long)
+        actual = nms(boxes, scores, iou_threshold=0.5)
+        self.assert_close(actual, expected)
+
+    def test_empty_input(self, device, dtype):
+        boxes = torch.empty((0, 4), device=device, dtype=dtype)
+        scores = torch.empty((0,), device=device, dtype=dtype)
+        expected = torch.empty((0,), device=device, dtype=torch.long)
+        actual = nms(boxes, scores, iou_threshold=0.5)
+        self.assert_close(actual, expected)
+
+    def test_single_box(self, device, dtype):
+        boxes = torch.tensor([[0, 0, 10, 10]], device=device, dtype=dtype)
+        scores = torch.tensor([0.8], device=device, dtype=dtype)
+        expected = torch.tensor([0], device=device, dtype=torch.long)
+        actual = nms(boxes, scores, iou_threshold=0.5)
+        self.assert_close(actual, expected)
+
+    def test_threshold_effect(self, device, dtype):
+        boxes = torch.tensor(
+            [
+                [0, 0, 10, 10],
+                [1, 1, 11, 11],  # High overlap
+            ],
+            device=device, dtype=dtype
+        )
+        scores = torch.tensor([0.9, 0.8], device=device, dtype=dtype)
+        # Low threshold removes second box
+        out_low = nms(boxes, scores, iou_threshold=0.3)
+        self.assert_close(out_low, torch.tensor([0], device=device, dtype=torch.long))
+        # High threshold keeps both
+        out_high = nms(boxes, scores, iou_threshold=0.95)
+        self.assert_close(out_high, torch.tensor([0, 1], device=device, dtype=torch.long))
+
+    def test_identical_scores(self, device, dtype):
+        boxes = torch.tensor(
+            [
+                [0, 0, 10, 10],
+                [5, 5, 15, 15],
+            ],
+            device=device, dtype=dtype
+        )
+        scores = torch.tensor([0.8, 0.8], device=device, dtype=dtype)
+        actual = nms(boxes, scores, iou_threshold=0.5)
+        # Ensure deterministic ordering (PyTorch NMS is stable)
+        expected = torch.tensor([0, 1], device=device, dtype=torch.long)
+        self.assert_close(actual, expected)
+
+    def test_large_random(self, device, dtype):
+        torch.manual_seed(42)
+        boxes = torch.rand((1000, 4), device=device, dtype=dtype) * 100
+        boxes[:, 2:] += boxes[:, :2]  # ensure x2 >= x1, y2 >= y1
+        scores = torch.rand((1000,), device=device, dtype=dtype)
+        out = nms(boxes, scores, iou_threshold=0.5)
+        assert out.ndim == 1
+        assert out.dtype == torch.long
