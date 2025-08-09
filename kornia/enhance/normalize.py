@@ -267,7 +267,7 @@ def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, flo
 
 
 def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6) -> Tensor:
-    """Normalise an image/video tensor by MinMax and re-scales the value between a range.
+    r"""Normalise an image/video tensor by MinMax and re-scales the value between a range.
 
     The data is normalised using the following formulation:
 
@@ -306,7 +306,6 @@ def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps
     if len(x.shape) < 3:
         raise ValueError(f"Input shape must be at least a 3d tensor. Got: {x.shape}.")
 
-    # Optimize: use amax/amin over the last dimensions, keeping (B, C, ...)
     dims = tuple(range(2, x.ndim))
     x_min = x.amin(dim=dims, keepdim=True)
     x_max = x.amax(dim=dims, keepdim=True)
