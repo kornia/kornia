@@ -367,15 +367,12 @@ def bbox_generator(
             f"`x_start`({x_start.device}), `y_start`({x_start.device}), "
             f"`width`({width.device}), `height`({height.device})."
         )
-    # Fast batched construction, avoids repeat and in-place addition.
     # Scalar input handling
     if x_start.dim() == 0:
         x_start = x_start.unsqueeze(0)
         y_start = y_start.unsqueeze(0)
         width = width.unsqueeze(0)
         height = height.unsqueeze(0)
-    N = x_start.shape[0]
-    # Vectorized for all B, optimized for PyTorch backend
     x0 = x_start
     x1 = x_start + width - 1
     y0 = y_start
