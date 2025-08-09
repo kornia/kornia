@@ -533,12 +533,12 @@ def transform_bbox(
 
 
 def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torch.Tensor:
-    """Perform non-maxima suppression (NMS) on tensor of bounding boxes according to the intersection-over-union (IoU).
+    """Perform non-maxima suppression (NMS) on a tensor of bounding boxes according to the intersection-over-union (IoU).
 
     Args:
         boxes: tensor containing the encoded bounding boxes with the shape :math:`(N, (x_1, y_1, x_2, y_2))`.
-        scores: tensor containing the scores associated to each bounding box with shape :math:`(N,)`.
-        iou_threshold: the throshold to discard the overlapping boxes.
+        scores: tensor containing the scores associated with each bounding box with shape :math:`(N,)`.
+        iou_threshold: the threshold to discard the overlapping boxes.
 
     Return:
         A tensor mask with the indices to keep from the input set of boxes and scores.
@@ -552,7 +552,6 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         >>> scores = torch.tensor([0.9, 0.8, 0.7, 0.9])
         >>> nms(boxes, scores, iou_threshold=0.8)
         tensor([0, 3, 1])
-
     """
     if len(boxes.shape) != 2 and boxes.shape[-1] != 4:
         raise ValueError(f"boxes expected as Nx4. Got: {boxes.shape}.")
@@ -561,9 +560,9 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         raise ValueError(f"scores expected as N. Got: {scores.shape}.")
 
     if boxes.shape[0] != scores.shape[0]:
-        raise ValueError(f"boxes and scores mus have same shape. Got: {boxes.shape, scores.shape}.")
-    
-    scores_sorted, order = scores.sort(descending=True)
+        raise ValueError(f"boxes and scores must have same shape. Got: {boxes.shape, scores.shape}.")
+
+    _, order = scores.sort(descending=True)
 
     # Coordinates
     x1 = boxes[:, 0]
@@ -575,8 +574,8 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
     keep = []
     while order.numel() > 0:
-        i = order[0].item()
-        keep.append(i)
+        i = order[0]
+        keep.append(i.item())
 
         if order.numel() == 1:
             break
@@ -594,5 +593,4 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
         order = order[1:][iou <= iou_threshold]
 
-    return torch.tensor(keep, dtype=torch.long, device=boxes.device)
-
+    return torch.tensor(keep, dtype=torch.long, device=boxes.device)   
