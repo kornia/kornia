@@ -184,7 +184,7 @@ class ImageModuleMixIn:
                 tensor.mul_(255)
                 tensor_chw = tensor.permute(0, 2, 3, 1).contiguous()
                 numpy_batch = tensor_chw.byte().numpy()
-                return [Image.fromarray(img) for img in numpy_batch] # type: ignore
+                return [Image.fromarray(img) for img in numpy_batch]  # type: ignore
             else:
                 raise NotImplementedError
         if isinstance(x, (np.ndarray,)):  # type: ignore
