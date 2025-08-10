@@ -112,28 +112,40 @@ def batch_2x2_det(m: Tensor) -> Tensor:
     return a * d - b * c
 
 
-def batch_2x2_ellipse(m: Tensor) -> Tuple[Tensor, Tensor]:
+def batch_2x2_ellipse(m: Tensor, *, eps: float = 0.0) -> Tuple[Tensor, Tensor]:
     """Returns Eigenvalues and Eigenvectors of batch of 2x2 matrices."""
     am = m[..., 0, 0]
     bm = m[..., 0, 1]
     cm = m[..., 1, 0]
     dm = m[..., 1, 1]
 
-    a = am**2 + bm**2
+    a = am * am + bm * bm
     b = am * cm + bm * dm
-    d = cm**2 + dm**2
+    d = cm * cm + dm * dm
 
-    trh = (a + d) / 2
-    # det = a * d - b * c
-    sqrtdisc = torch.sqrt(((a - d) / 2) ** 2 + b**2)
+    trh = 0.5 * (a + d)
+    diff = 0.5 * (a - d)
 
-    eigenvals = torch.stack([trh + sqrtdisc, trh - sqrtdisc], dim=-1).clamp(min=0)
-    dens = eigenvals - a.unsqueeze(-1)
-    dens[torch.abs(dens) < 1e-6] = 1e-6
-    eigenvecs = torch.stack([b.unsqueeze(-1) / dens, torch.ones_like(dens)], dim=-2)
-    eigenvecs = eigenvecs / torch.norm(eigenvecs, dim=-2, keepdim=True)
+    # stable hypot
+    sqrtdisc = torch.hypot(diff, b)
 
-    # err = eigenvecs @ torch.diag_embed(eigenvals) @ eigenvecs.transpose(-2, -1) - q
+    e1 = trh + sqrtdisc
+    e2 = trh - sqrtdisc
+    if eps > 0:
+        e1 = e1.clamp(min=eps)
+        e2 = e2.clamp(min=eps)
+    else:
+        e1 = e1.clamp(min=0.0)
+        e2 = e2.clamp(min=0.0)
+    eigenvals = torch.stack([e1, e2], dim=-1)
+
+    theta = 0.5 * torch.atan2(2.0 * b, a - d)
+    c = torch.cos(theta)
+    s = torch.sin(theta)
+
+    ev1 = torch.stack([c, s], dim=-1)   # (...,2)
+    ev2 = torch.stack([-s, c], dim=-1)  # orthogonal (...,2)
+    eigenvecs = torch.stack([ev1, ev2], dim=-1)  # (...,2,2) columns are eigenvectors
     return eigenvals, eigenvecs
 
 
