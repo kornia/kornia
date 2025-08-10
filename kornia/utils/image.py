@@ -251,29 +251,38 @@ def make_grid(tensor: Tensor, n_row: Optional[int] = None, padding: int = 2) -> 
 
     B, C, H, W = tensor.shape
     if n_row is None:
-        n_row = int(torch.sqrt(torch.tensor(B, dtype=torch.float32)).ceil())
+        n_row = int(torch.sqrt(torch.tensor(B, dtype=torch.float32)).ceil().item())
     n_col = (B + n_row - 1) // n_row
 
-    # Calculate new dimensions with padding
     padded_H = H + padding
     padded_W = W + padding
+
+    # pad each image on right and bottom with `padding` zeros
+    tensor_padded = torch.pad(tensor, (0, padding, 0, padding))
+
+    total = n_row * n_col
+    if total > B:
+        pad_tiles = torch.zeros((total - B, C, padded_H, padded_W),
+                                dtype=tensor.dtype, device=tensor.device)
+        tensor_padded = torch.cat((tensor_padded, pad_tiles), dim=0)
+
+    # ensure contiguous memory layout before reshaping / permuting
+    tensor_padded = tensor_padded.contiguous()
+
+    # reshape into (n_row, n_col, C, padded_H, padded_W)
+    grid = tensor_padded.view(n_row, n_col, C, padded_H, padded_W)
+
+    # permute to (C, n_row, padded_H, n_col, padded_W) then collapse
+    grid = grid.permute(2, 0, 3, 1, 4).contiguous()
+    combined = grid.view(C, n_row * padded_H, n_col * padded_W)
+
+    # crop trailing right/bottom padding to match original
     combined_H = n_row * padded_H - padding
     combined_W = n_col * padded_W - padding
+    combined = combined[:, :combined_H, :combined_W]
 
-    # Initialize an empty canvas with the padding value
-    pad_value = 0
-    combined_image = torch.full((C, combined_H, combined_W), pad_value, dtype=tensor.dtype)
+    return combined
 
-    for idx in range(B):
-        row = idx // n_col
-        col = idx % n_col
-
-        top = row * padded_H
-        left = col * padded_W
-
-        combined_image[:, top : top + H, left : left + W] = tensor[idx]
-
-    return combined_image
 
 
 def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
