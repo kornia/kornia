@@ -611,7 +611,9 @@ class Boxes:
 
             # Reshape mask to (BxN, H, W) and boxes to (BxN, 4) to iterate over all of them.
             # Cast boxes coordinates to be integer to use them as indexes. Use round to handle decimal values.
-            for mask_channel, box_xyxy in zip(mask.view(-1, height, width), clipped_boxes_xyxy.view(-1, 4).round().int()):
+            for mask_channel, box_xyxy in zip(
+                mask.view(-1, height, width), clipped_boxes_xyxy.view(-1, 4).round().int()
+            ):
                 # Mask channel dimensions: (height, width)
                 mask_channel[box_xyxy[1] : box_xyxy[3], box_xyxy[0] : box_xyxy[2]] = 1
 
