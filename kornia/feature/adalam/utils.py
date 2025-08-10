@@ -143,7 +143,7 @@ def batch_2x2_ellipse(m: Tensor, *, eps: float = 0.0) -> Tuple[Tensor, Tensor]:
     c = torch.cos(theta)
     s = torch.sin(theta)
 
-    ev1 = torch.stack([c, s], dim=-1)   # (...,2)
+    ev1 = torch.stack([c, s], dim=-1)  # (...,2)
     ev2 = torch.stack([-s, c], dim=-1)  # orthogonal (...,2)
     eigenvecs = torch.stack([ev1, ev2], dim=-1)  # (...,2,2) columns are eigenvectors
     return eigenvals, eigenvecs
