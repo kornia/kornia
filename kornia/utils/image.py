@@ -262,8 +262,7 @@ def make_grid(tensor: Tensor, n_row: Optional[int] = None, padding: int = 2) -> 
 
     total = n_row * n_col
     if total > B:
-        pad_tiles = torch.zeros((total - B, C, padded_H, padded_W),
-                                dtype=tensor.dtype, device=tensor.device)
+        pad_tiles = torch.zeros((total - B, C, padded_H, padded_W), dtype=tensor.dtype, device=tensor.device)
         tensor_padded = torch.cat((tensor_padded, pad_tiles), dim=0)
 
     # ensure contiguous memory layout before reshaping / permuting
@@ -282,7 +281,6 @@ def make_grid(tensor: Tensor, n_row: Optional[int] = None, padding: int = 2) -> 
     combined = combined[:, :combined_H, :combined_W]
 
     return combined
-
 
 
 def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
