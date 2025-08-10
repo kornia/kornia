@@ -456,7 +456,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.identity()
             >>> q.norm()
-            tensor(1.)
+            tensor(1., grad_fn=<LinalgVectorNormBackward0>)
 
         """
         # p==2, dim|axis==-1, keepdim
@@ -510,7 +510,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.identity()
             >>> q.squared_norm()
-            tensor(1.)
+            tensor(1., grad_fn=<AddBackward0>)
 
         """
         return batched_dot_product(self.vec, self.vec) + self.real**2
