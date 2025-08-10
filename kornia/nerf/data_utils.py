@@ -123,17 +123,28 @@ class RayDataset(Dataset[RayGroup]):
             raise ValueError("The list of input images can only be all paths or tensors")
 
     def _check_dimensions(self, imgs: ImageTensors) -> None:
-        if len(imgs) != self._cameras.batch_size:
+        num_imgs = len(imgs)
+        batch_size = self._cameras.batch_size
+        
+        if num_imgs != batch_size:
             raise ValueError(
-                f"Number of images {len(imgs)} does not match number of cameras {self._cameras.batch_size}"
+                f"Number of images {num_imgs} does not match number of cameras {batch_size}"
             )
-        if not all(img.shape[0] == 3 for img in imgs):
+        
+        if any(img.shape[0] != 3 for img in imgs):
             raise ValueError("Not all input images have 3 channels")
-        for i, (img, height, width) in enumerate(zip(imgs, self._cameras.height, self._cameras.width)):
-            if img.shape[1:] != (height, width):
+        
+        # Dimension check with proper tensor handling
+        heights = self._cameras.height
+        widths = self._cameras.width
+        
+        for i, img in enumerate(imgs):
+            # Compare tensors directly without .item()
+            if img.shape[1] != heights[i] or img.shape[2] != widths[i]:
                 raise ValueError(
-                    f"Image index {i} dimensions {(img.shape[1], img.shape[2])} are inconsistent with equivalent "
-                    f"camera dimensions {(height.item(), width.item())}"
+                    f"Image index {i} dimensions {(img.shape[1], img.shape[2])} "
+                    f"are inconsistent with camera dimensions "
+                    f"{(heights[i].item(), widths[i].item())}"
                 )
 
     @staticmethod
