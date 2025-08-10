@@ -149,9 +149,6 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
     # gauss-newton
     for _ in range(iters):
         th2 = th * th
-        th4 = th2 * th2
-        th6 = th2 * th4
-        th8 = th4 * th4
         inner = k0 + th2 * (k1 + th2 * (k2 + th2 * k3))
         thd = th * (1.0 + th2 * inner)
         d_thd = 1.0 + th2 * (3.0 * k0 + th2 * (5.0 * k1 + th2 * (7.0 * k2 + 9.0 * k3 * th2)))
