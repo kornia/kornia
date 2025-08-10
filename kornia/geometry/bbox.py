@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Optional
+from typing import Optional, List
 
 import torch
 
@@ -553,18 +553,18 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         >>> nms(boxes, scores, iou_threshold=0.8)
         tensor([0, 3, 1])
     """
-    if len(boxes.shape) != 2 and boxes.shape[-1] != 4:
+    if boxes.numel() == 0:
+        return torch.empty((0,), dtype=torch.long, device=boxes.device)
+    if boxes.dim() != 2 or boxes.size(1) != 4:
         raise ValueError(f"boxes expected as Nx4. Got: {boxes.shape}.")
-
-    if len(scores.shape) != 1:
+    if scores.dim() != 1:
         raise ValueError(f"scores expected as N. Got: {scores.shape}.")
-
-    if boxes.shape[0] != scores.shape[0]:
+    if boxes.size(0) != scores.size(0):
         raise ValueError(f"boxes and scores must have same shape. Got: {boxes.shape, scores.shape}.")
 
+    # sort descending
     _, order = scores.sort(descending=True)
-
-    # Coordinates
+    N = boxes.size(0)
     x1 = boxes[:, 0]
     y1 = boxes[:, 1]
     x2 = boxes[:, 2]
@@ -572,25 +572,35 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
     areas = (x2 - x1) * (y2 - y1)
 
-    keep = []
-    while order.numel() > 0:
-        i = order[0]
-        keep.append(i.item())
+    # compute pairwise IoU matrix (N x N) using broadcasting
+    xx1 = torch.maximum(x1.unsqueeze(1), x1.unsqueeze(0))  # (N,N)
+    yy1 = torch.maximum(y1.unsqueeze(1), y1.unsqueeze(0))
+    xx2 = torch.minimum(x2.unsqueeze(1), x2.unsqueeze(0))
+    yy2 = torch.minimum(y2.unsqueeze(1), y2.unsqueeze(0))
 
-        if order.numel() == 1:
-            break
+    w = torch.clamp(xx2 - xx1, min=0.0)
+    h = torch.clamp(yy2 - yy1, min=0.0)
+    inter = w * h
 
-        xx1 = torch.maximum(x1[i], x1[order[1:]])
-        yy1 = torch.maximum(y1[i], y1[order[1:]])
-        xx2 = torch.minimum(x2[i], x2[order[1:]])
-        yy2 = torch.minimum(y2[i], y2[order[1:]])
+    unions = areas.unsqueeze(1) + areas.unsqueeze(0) - inter
+    # avoid dividing by 0
+    unions = torch.where(unions > 0, unions, torch.ones_like(unions))
+    iou_matrix = inter / unions
 
-        w = torch.clamp(xx2 - xx1, min=0)
-        h = torch.clamp(yy2 - yy1, min=0)
-        inter = w * h
-        union = areas[i] + areas[order[1:]] - inter
-        iou = inter / union
+    # clear self-iou
+    iou_matrix.fill_diagonal_(0.0)
 
-        order = order[1:][iou <= iou_threshold]
+    keep: List[int] = []
+    suppressed = torch.zeros((N,), dtype=torch.bool, device=boxes.device)
 
+    # iterate in order of descending score, but suppression is vectorized
+    for idx in order:
+        if suppressed[idx]:
+            continue
+        keep.append(int(idx.item()))
+        # suppress all boxes that have IoU > threshold with the chosen box
+        suppressed |= iou_matrix[idx] > iou_threshold
+
+    # return kept indices as a tensor (in descending-score order)
     return torch.tensor(keep, dtype=torch.long, device=boxes.device)
+
