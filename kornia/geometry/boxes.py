@@ -589,25 +589,62 @@ class Boxes:
                 "Boxes.to_tensor isn't differentiable. Please, create boxes from tensors with `requires_grad=False`."
             )
 
-        if self._is_batched:  # (B, N, 4, 2)
-            mask = torch.zeros(
-                (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
-            )
-        else:  # (N, 4, 2)
-            mask = zeros((self._data.shape[0], height, width), dtype=self.dtype, device=self.device)
+        is_batched = self._is_batched
+        dtype = self.dtype
+        device = self.device
 
-        # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
-        clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
+        # -----------------
+        # CPU Hotpath (loop)
+        # -----------------
+        if device.type != "cuda":
+            if self._is_batched:  # (B, N, 4, 2)
+                mask = torch.zeros(
+                    (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
+                )
+            else:  # (N, 4, 2)
+                mask = torch.zeros((self._data.shape[0], height, width), dtype=self.dtype, device=self.device)
+
+            # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
+            clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
+            clipped_boxes_xyxy[..., ::2].clamp_(0, width)
+            clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
+
+            # Reshape mask to (BxN, H, W) and boxes to (BxN, 4) to iterate over all of them.
+            # Cast boxes coordinates to be integer to use them as indexes. Use round to handle decimal values.
+            for mask_channel, box_xyxy in zip(mask.view(-1, height, width), clipped_boxes_xyxy.view(-1, 4).round().int()):
+                # Mask channel dimensions: (height, width)
+                mask_channel[box_xyxy[1] : box_xyxy[3], box_xyxy[0] : box_xyxy[2]] = 1
+
+            return mask
+
+        # -----------------
+        # GPU Hotpath (vectorized)
+        # -----------------
+        if is_batched:
+            out_shape = (self.shape[0], self.shape[1], height, width)
+        else:
+            out_shape = (self.shape[0], height, width)
+
+        clipped_boxes_xyxy = self.to_tensor("xyxy", as_padded_sequence=True)
         clipped_boxes_xyxy[..., ::2].clamp_(0, width)
         clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
 
-        # Reshape mask to (BxN, H, W) and boxes to (BxN, 4) to iterate over all of them.
-        # Cast boxes coordinates to be integer to use them as indexes. Use round to handle decimal values.
-        for mask_channel, box_xyxy in zip(mask.view(-1, height, width), clipped_boxes_xyxy.view(-1, 4).round().int()):
-            # Mask channel dimensions: (height, width)
-            mask_channel[box_xyxy[1] : box_xyxy[3], box_xyxy[0] : box_xyxy[2]] = 1
+        xyxy = clipped_boxes_xyxy.view(-1, 4).round().long()
 
-        return mask
+        x1, y1, x2, y2 = xyxy[:, 0], xyxy[:, 1], xyxy[:, 2], xyxy[:, 3]
+        x1 = x1.clamp(0, width)
+        x2 = x2.clamp(0, width)
+        y1 = y1.clamp(0, height)
+        y2 = y2.clamp(0, height)
+
+        ys = torch.arange(height, device=device)
+        xs = torch.arange(width, device=device)
+
+        y_mask = (ys[None, :] >= y1[:, None]) & (ys[None, :] < y2[:, None] + 1)
+        x_mask = (xs[None, :] >= x1[:, None]) & (xs[None, :] < x2[:, None] + 1)
+
+        masks = (y_mask.unsqueeze(2) & x_mask.unsqueeze(1)).to(dtype)
+        return masks.view(*out_shape)
 
     def transform_boxes(self, M: torch.Tensor, inplace: bool = False) -> Boxes:
         r"""Apply a transformation matrix to the 2D boxes.
