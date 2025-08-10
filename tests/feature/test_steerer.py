@@ -22,8 +22,8 @@ from kornia.feature.steerers import DiscreteSteerer
 
 from testing.base import BaseTester
 
-class TestDiscreteSteerer(BaseTester):
 
+class TestDiscreteSteerer(BaseTester):
     @pytest.mark.parametrize("num_desc, desc_dim, steerer_power", [(1, 4, 1), (2, 128, 7), (32, 128, 11)])
     def test_shape(self, num_desc, desc_dim, steerer_power, device):
         desc = torch.rand(num_desc, desc_dim, device=device)
@@ -96,4 +96,3 @@ class TestDiscreteSteerer(BaseTester):
         out_cpu = cpu_steerer.steer_descriptions(desc, steerer_power=2)
         out_cuda = cuda_steerer.steer_descriptions(desc.to("cuda"), steerer_power=2).cpu()
         assert torch.allclose(out_cpu, out_cuda, atol=1e-6)
-

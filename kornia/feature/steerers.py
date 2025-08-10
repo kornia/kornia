@@ -15,10 +15,11 @@
 # limitations under the License.
 #
 
+import math
+
 import torch
 
 from kornia.core import Module, Tensor
-import math
 
 
 class DiscreteSteerer(Module):
@@ -80,10 +81,7 @@ class DiscreteSteerer(Module):
         """  # noqa: D205
         descriptor_dim = 256
         if generator_type == "C4":
-            c4_block = torch.tensor([[0.0, 1, 0, 0],
-                                    [0, 0, 1, 0],
-                                    [0, 0, 0, 1],
-                                    [1, 0, 0, 0]])
+            c4_block = torch.tensor([[0.0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 0, 0, 0]])
             generator = torch.block_diag(*([c4_block] * (descriptor_dim // 4)))
             return cls(generator).eval()
 
@@ -104,8 +102,8 @@ class DiscreteSteerer(Module):
                 rot_matrix = torch.tensor(
                     # The matrix exponential of a 2x2 skew-symmetric matrix is a rotation matrix
                     # exp(alpha * [[0, j], [-j, 0]]) -> R(j * alpha)
-                    [[cos_theta, sin_theta],
-                    [-sin_theta, cos_theta]], dtype=torch.float32
+                    [[cos_theta, sin_theta], [-sin_theta, cos_theta]],
+                    dtype=torch.float32,
                 )
                 blocks.extend([rot_matrix] * num_rot_blocks_per_freq)
 
