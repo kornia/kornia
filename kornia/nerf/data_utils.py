@@ -125,19 +125,17 @@ class RayDataset(Dataset[RayGroup]):
     def _check_dimensions(self, imgs: ImageTensors) -> None:
         num_imgs = len(imgs)
         batch_size = self._cameras.batch_size
-        
+
         if num_imgs != batch_size:
-            raise ValueError(
-                f"Number of images {num_imgs} does not match number of cameras {batch_size}"
-            )
-        
+            raise ValueError(f"Number of images {num_imgs} does not match number of cameras {batch_size}")
+
         if any(img.shape[0] != 3 for img in imgs):
             raise ValueError("Not all input images have 3 channels")
-        
+
         # Dimension check with proper tensor handling
         heights = self._cameras.height
         widths = self._cameras.width
-        
+
         for i, img in enumerate(imgs):
             # Compare tensors directly without .item()
             if img.shape[1] != heights[i] or img.shape[2] != widths[i]:
