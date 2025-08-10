@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Optional, List
+from typing import List, Optional
 
 import torch
 
@@ -603,4 +603,3 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
     # return kept indices as a tensor (in descending-score order)
     return torch.tensor(keep, dtype=torch.long, device=boxes.device)
-
