@@ -23,7 +23,7 @@ import torch
 
 import kornia
 
-from testing.base import assert_close  # assuming this is your custom assert_close
+from testing.base import assert_close
 
 
 class TestSaveLoadPointCloud:
