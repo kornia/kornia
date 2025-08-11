@@ -17,6 +17,8 @@
 
 # inspired by: shttps://github.com/farm-ng/sophus-rs/blob/main/src/sensor/kannala_brandt.rs
 
+import torch
+
 import kornia.core as ops
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
@@ -116,80 +118,49 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
     KORNIA_CHECK_SHAPE(distorted_points_in_camera, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "8"])
 
-    x = distorted_points_in_camera[..., 0]
-    y = distorted_points_in_camera[..., 1]
+    iters = 10
+    eps = 1e-8
+    device = distorted_points_in_camera.device
+    out_dtype = distorted_points_in_camera.dtype
 
-    fx, fy = params[..., 0], params[..., 1]
-    cx, cy = params[..., 2], params[..., 3]
+    pts = distorted_points_in_camera.to(device=device, dtype=params.dtype)
+    p = params.to(device=device, dtype=params.dtype)
 
-    k0 = params[..., 4]
-    k1 = params[..., 5]
-    k2 = params[..., 6]
-    k3 = params[..., 7]
+    x = pts[..., 0]
+    y = pts[..., 1]
+
+    fx = p[..., 0]
+    fy = p[..., 1]
+    cx = p[..., 2]
+    cy = p[..., 3]
+    k0 = p[..., 4]
+    k1 = p[..., 5]
+    k2 = p[..., 6]
+    k3 = p[..., 7]
 
     un = (x - cx) / fx
     vn = (y - cy) / fy
-    rth2 = un**2 + vn**2
 
-    # TODO: explore stop condition (won't work with pytorch with batched inputs)
-    # Additionally, with this stop condition we can avoid adding 1e-8 to the denominator
-    # in the return statement of the function.
-
-    # if rth2.abs() < 1e-8:
-    #     return distorted_points_in_camera
-
+    rth2 = un * un + vn * vn
     rth = rth2.sqrt()
 
-    th = rth.sqrt()
-
-    iters = 0
+    th = rth.clamp(min=1e-16).sqrt()
 
     # gauss-newton
-
-    while True:
-        th2 = th**2
-        th4 = th2**2
-        th6 = th2 * th4
-        th8 = th4**2
-
-        thd = th * (1.0 + k0 * th2 + k1 * th4 + k2 * th6 + k3 * th8)
-        d_thd_wtr_th = 1.0 + 3.0 * k0 * th2 + 5.0 * k1 * th4 + 7.0 * k2 * th6 + 9.0 * k3 * th8
-
-        step = (thd - rth) / d_thd_wtr_th
+    for _ in range(iters):
+        th2 = th * th
+        inner = k0 + th2 * (k1 + th2 * (k2 + th2 * k3))
+        thd = th * (1.0 + th2 * inner)
+        d_thd = 1.0 + th2 * (3.0 * k0 + th2 * (5.0 * k1 + th2 * (7.0 * k2 + 9.0 * k3 * th2)))
+        step = (thd - rth) / (d_thd + 1e-12)
         th = th - step
 
-        iters += 1
-
-        # TODO: improve stop condition by masking only the elements that have converged
-        th_abs_mask = th.abs() < 1e-8
-
-        if th_abs_mask.all():
-            break
-
-        if iters >= 20:
-            break
-
     radius_undistorted = th.tan()
+    denom = rth + eps
+    mag = radius_undistorted.abs() / denom
+    undistorted = torch.stack([mag * un, mag * vn], dim=-1)
 
-    undistorted_points = ops.where(
-        radius_undistorted[..., None] < 0.0,
-        ops.stack(
-            [
-                -radius_undistorted * un / (rth + 1e-8),
-                -radius_undistorted * vn / (rth + 1e-8),
-            ],
-            dim=-1,
-        ),
-        ops.stack(
-            [
-                radius_undistorted * un / (rth + 1e-8),
-                radius_undistorted * vn / (rth + 1e-8),
-            ],
-            dim=-1,
-        ),
-    )
-
-    return undistorted_points
+    return undistorted.to(device=device, dtype=out_dtype)
 
 
 def dx_distort_points_kannala_brandt(projected_points_in_camera_z1_plane: Tensor, params: Tensor) -> Tensor:
