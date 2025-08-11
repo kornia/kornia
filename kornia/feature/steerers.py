@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import math
+
 import torch
 
 from kornia.core import Module, Tensor
@@ -79,21 +81,33 @@ class DiscreteSteerer(Module):
         """  # noqa: D205
         descriptor_dim = 256
         if generator_type == "C4":
-            generator = torch.block_diag(
-                *(
-                    torch.tensor([[0.0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 0, 0, 0]])
-                    for _ in range(descriptor_dim // 4)
-                )
-            )
+            c4_block = torch.tensor([[0.0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 0, 0, 0]])
+            generator = torch.block_diag(*([c4_block] * (descriptor_dim // 4)))
             return cls(generator).eval()
+
         elif generator_type == "SO2":
-            lie_generator = torch.block_diag(
-                torch.zeros(
-                    [descriptor_dim - 12 * (descriptor_dim // 14), descriptor_dim - 12 * (descriptor_dim // 14)],
-                ),
-                *(torch.tensor([[0.0, j], [-j, 0]]) for j in range(1, 7) for _ in range(descriptor_dim // 14)),
-            )
-            generator = torch.matrix_exp((2 * 3.14159 / steerer_order) * lie_generator)
+            num_rot_blocks_per_freq = descriptor_dim // 14
+            dim_rot = 12 * num_rot_blocks_per_freq
+            dim_trivial = descriptor_dim - dim_rot
+
+            blocks = []
+            if dim_trivial > 0:
+                blocks.append(torch.eye(dim_trivial))
+
+            angle_step = 2 * math.pi / steerer_order
+            for j in range(1, 7):
+                theta = j * angle_step
+                cos_theta = math.cos(theta)
+                sin_theta = math.sin(theta)
+                rot_matrix = torch.tensor(
+                    # The matrix exponential of a 2x2 skew-symmetric matrix is a rotation matrix
+                    # exp(alpha * [[0, j], [-j, 0]]) -> R(j * alpha)
+                    [[cos_theta, sin_theta], [-sin_theta, cos_theta]],
+                    dtype=torch.float32,
+                )
+                blocks.extend([rot_matrix] * num_rot_blocks_per_freq)
+
+            generator = torch.block_diag(*blocks)
             return cls(generator).eval()
         else:
-            raise ValueError
+            raise ValueError(f"Unknown generator_type: {generator_type}")
