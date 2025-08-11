@@ -20,7 +20,6 @@
 
 from __future__ import annotations
 
-import itertools
 import warnings
 from typing import Any, Optional, Sequence
 
@@ -204,7 +203,6 @@ class Attention(Module):
         indices = inverse.view(H * W, H * W)
         attn_offset_size = unique_keys.numel()
         return indices, attn_offset_size
-
 
     # is this really necessary?
     @torch.no_grad()
