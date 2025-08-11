@@ -18,11 +18,11 @@
 from __future__ import annotations
 
 import warnings
-from typing import Optional
+from typing import List, Optional
 
 import torch
 
-from kornia.core import arange, stack, where, zeros
+from kornia.core import arange, zeros
 
 from .linalg import transform_points
 
@@ -533,12 +533,12 @@ def transform_bbox(
 
 
 def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torch.Tensor:
-    """Perform non-maxima suppression (NMS) on tensor of bounding boxes according to the intersection-over-union (IoU).
+    """Perform non-maxima suppression (NMS) on a tensor of bounding boxes according to the intersection-over-union.
 
     Args:
         boxes: tensor containing the encoded bounding boxes with the shape :math:`(N, (x_1, y_1, x_2, y_2))`.
-        scores: tensor containing the scores associated to each bounding box with shape :math:`(N,)`.
-        iou_threshold: the throshold to discard the overlapping boxes.
+        scores: tensor containing the scores associated with each bounding box with shape :math:`(N,)`.
+        iou_threshold: the threshold to discard the overlapping boxes.
 
     Return:
         A tensor mask with the indices to keep from the input set of boxes and scores.
@@ -552,40 +552,54 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         >>> scores = torch.tensor([0.9, 0.8, 0.7, 0.9])
         >>> nms(boxes, scores, iou_threshold=0.8)
         tensor([0, 3, 1])
-
     """
-    if len(boxes.shape) != 2 and boxes.shape[-1] != 4:
+    if boxes.numel() == 0:
+        return torch.empty((0,), dtype=torch.long, device=boxes.device)
+    if boxes.dim() != 2 or boxes.size(1) != 4:
         raise ValueError(f"boxes expected as Nx4. Got: {boxes.shape}.")
-
-    if len(scores.shape) != 1:
+    if scores.dim() != 1:
         raise ValueError(f"scores expected as N. Got: {scores.shape}.")
+    if boxes.size(0) != scores.size(0):
+        raise ValueError(f"boxes and scores must have same shape. Got: {boxes.shape, scores.shape}.")
 
-    if boxes.shape[0] != scores.shape[0]:
-        raise ValueError(f"boxes and scores mus have same shape. Got: {boxes.shape, scores.shape}.")
+    # sort descending
+    _, order = scores.sort(descending=True)
+    N = boxes.size(0)
+    x1 = boxes[:, 0]
+    y1 = boxes[:, 1]
+    x2 = boxes[:, 2]
+    y2 = boxes[:, 3]
 
-    x1, y1, x2, y2 = boxes.unbind(-1)
     areas = (x2 - x1) * (y2 - y1)
 
-    _, order = scores.sort(descending=True)
+    # compute pairwise IoU matrix (N x N) using broadcasting
+    xx1 = torch.maximum(x1.unsqueeze(1), x1.unsqueeze(0))  # (N,N)
+    yy1 = torch.maximum(y1.unsqueeze(1), y1.unsqueeze(0))
+    xx2 = torch.minimum(x2.unsqueeze(1), x2.unsqueeze(0))
+    yy2 = torch.minimum(y2.unsqueeze(1), y2.unsqueeze(0))
 
-    keep = []
-    while order.shape[0] > 0:
-        i = order[0]
-        keep.append(i)
-        xx1 = torch.max(x1[i], x1[order[1:]])
-        yy1 = torch.max(y1[i], y1[order[1:]])
-        xx2 = torch.min(x2[i], x2[order[1:]])
-        yy2 = torch.min(y2[i], y2[order[1:]])
+    w = torch.clamp(xx2 - xx1, min=0.0)
+    h = torch.clamp(yy2 - yy1, min=0.0)
+    inter = w * h
 
-        w = torch.clamp(xx2 - xx1, min=0.0)
-        h = torch.clamp(yy2 - yy1, min=0.0)
-        inter = w * h
-        ovr = inter / (areas[i] + areas[order[1:]] - inter)
+    unions = areas.unsqueeze(1) + areas.unsqueeze(0) - inter
+    # avoid dividing by 0
+    unions = torch.where(unions > 0, unions, torch.ones_like(unions))
+    iou_matrix = inter / unions
 
-        inds = where(ovr <= iou_threshold)[0]
-        order = order[inds + 1]
+    # clear self-iou
+    iou_matrix.fill_diagonal_(0.0)
 
-    if len(keep) > 0:
-        return stack(keep)
+    keep: List[int] = []
+    suppressed = torch.zeros((N,), dtype=torch.bool, device=boxes.device)
 
-    return torch.tensor(keep)
+    # iterate in order of descending score, but suppression is vectorized
+    for idx in order:
+        if suppressed[idx]:
+            continue
+        keep.append(int(idx.item()))
+        # suppress all boxes that have IoU > threshold with the chosen box
+        suppressed |= iou_matrix[idx] > iou_threshold
+
+    # return kept indices as a tensor (in descending-score order)
+    return torch.tensor(keep, dtype=torch.long, device=boxes.device)
