@@ -16,6 +16,7 @@
 #
 
 from typing import Union
+import torch
 
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor, tensor
@@ -74,7 +75,16 @@ def add_weighted(
     else:
         gamma = tensor(gamma, dtype=src1.dtype, device=src1.device)
 
-    return src1 * alpha + src2 * beta + gamma
+    out = torch.empty_like(src1)
+    # out = src1 * alpha  -> torch.mul(src1, alpha, out=out)
+    torch.mul(src1, alpha, out=out)          
+    # out = out + src2 * beta  -> compute src2*beta into a temporary then add in-place
+    tmp = torch.empty_like(src1)
+    torch.mul(src2, beta, out=tmp)    
+    out.add_(tmp)                            # out += tmp
+    out.add_(gamma)                          # out += gamma (broadcasts)
+    return out
+
 
 
 class AddWeighted(Module):
