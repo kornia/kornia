@@ -57,20 +57,33 @@ def spatial_gradient(input: Tensor, mode: str = "sobel", order: int = 1, normali
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     # allocate kernel
-    kernel = get_spatial_gradient_kernel2d(mode, order, device=input.device, dtype=input.dtype)
-    if normalized:
-        kernel = normalize_kernel2d(kernel)
+    if input.device.type == 'cpu':
+        kernel = get_spatial_gradient_kernel2d(mode, order, device=input.device, dtype=input.dtype)
+        if normalized:
+            kernel = normalize_kernel2d(kernel)
 
-    # prepare kernel
-    b, c, h, w = input.shape
-    tmp_kernel = kernel[:, None, ...]
+        b, c, h, w = input.shape
+        num_grads, kernel_h, kernel_w = kernel.shape
+        kernel = kernel.unsqueeze(1).repeat(c, 1, 1, 1)
+        padding_val = kernel_w // 2
+        padded_input = F.pad(input, (padding_val, padding_val, padding_val, padding_val), mode='replicate')
+        gradients = F.conv2d(padded_input, kernel, padding=0, stride=1, groups=c)
+        
+        return gradients.view(b, c, num_grads, h, w)
+    else:
+        kernel = get_spatial_gradient_kernel2d(mode, order, device=input.device, dtype=input.dtype)
+        if normalized:
+            kernel = normalize_kernel2d(kernel)
 
-    # Pad with "replicate for spatial dims, but with zeros for channel
-    spatial_pad = [kernel.size(1) // 2, kernel.size(1) // 2, kernel.size(2) // 2, kernel.size(2) // 2]
-    out_channels: int = 3 if order == 2 else 2
-    padded_inp: Tensor = pad(input.reshape(b * c, 1, h, w), spatial_pad, "replicate")
-    out = F.conv2d(padded_inp, tmp_kernel, groups=1, padding=0, stride=1)
-    return out.reshape(b, c, out_channels, h, w)
+        b, c, h, w = input.shape
+        tmp_kernel = kernel[:, None, ...]
+        out_channels: int = 2 if order == 1 else 3
+
+        spatial_pad = [kernel.size(2) // 2, kernel.size(2) // 2, kernel.size(1) // 2, kernel.size(1) // 2]
+        padded_inp: Tensor = F.pad(input.reshape(b * c, 1, h, w), spatial_pad, "replicate")
+        out = F.conv2d(padded_inp, tmp_kernel, groups=1, padding=0, stride=1)
+        return out.reshape(b, c, out_channels, h, w)
+
 
 
 def spatial_gradient3d(input: Tensor, mode: str = "diff", order: int = 1) -> Tensor:
