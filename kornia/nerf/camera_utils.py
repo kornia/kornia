@@ -70,7 +70,7 @@ def parse_colmap_output(
                 raise ValueError(f"Unsupported camera model: {model}")
     cameras_params: List[CameraParams] = [CameraParams(line) for line in lines]
     with open(images_path) as f:
-        lines = [l for l in (line.strip() for line in f if not line.startswith("#")) if l.endswith(("jpg", "png"))]
+        lines = [stripped for stripped in (line.strip() for line in f if not line.startswith("#")) if stripped.endswith(("jpg", "png"))]
     num_images = len(lines)
     if num_images == 0:
         raise ValueError("No valid images found in images.txt")
