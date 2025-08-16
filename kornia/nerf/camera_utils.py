@@ -43,87 +43,77 @@ def parse_colmap_output(
     """
     # Parse camera intrinsics
     with open(cameras_path) as f:
-        lines = f.readlines()
-
+        lines = [line.strip() for line in f if not line.startswith("#")]
     class CameraParams:
         def __init__(self, line: str) -> None:
             split_line = line.split(" ")
+            if len(split_line) < 7:
+                raise ValueError(f"Invalid camera line: {line}")
             model = split_line[1]
             if model == "SIMPLE_PINHOLE":
-                self._width = int(split_line[2])
-                self._height = int(split_line[3])
-                self._fx = float(split_line[4])
-                self._fy = self._fx
-                self._cx = int(split_line[5])
-                self._cy = int(split_line[6])
+                self.width = int(split_line[2])
+                self.height = int(split_line[3])
+                self.fx = float(split_line[4])
+                self.fy = self.fx
+                self.cx = float(split_line[5])
+                self.cy = float(split_line[6])
             elif model == "PINHOLE":
-                self._width = int(split_line[2])
-                self._height = int(split_line[3])
-                self._fx = float(split_line[4])
-                self._fy = float(split_line[5])
-                self._cx = int(split_line[6])
-                self._cy = int(split_line[7])
-
-    cameras_params: List[CameraParams] = []
-    for line in lines:
-        if line.startswith("#"):
-            continue
-        camera_params = CameraParams(line)
-        cameras_params.append(camera_params)
-
-    # Parse camera quaternions and translation vectors
+                if len(split_line) < 8:
+                    raise ValueError(f"Invalid PINHOLE camera line: {line}")
+                self.width = int(split_line[2])
+                self.height = int(split_line[3])
+                self.fx = float(split_line[4])
+                self.fy = float(split_line[5])
+                self.cx = float(split_line[6])
+                self.cy = float(split_line[7])
+            else:
+                raise ValueError(f"Unsupported camera model: {model}")
+    cameras_params: List[CameraParams] = [CameraParams(line) for line in lines]
     with open(images_path) as f:
-        lines = f.readlines()
-    intrinsics: List[Tensor] = []
-    extrinsics: List[Tensor] = []
-    heights: List[int] = []
-    widths: List[int] = []
+        lines = [l for l in (line.strip() for line in f if not line.startswith("#")) if l.endswith(("jpg", "png"))]
+    num_images = len(lines)
+    if num_images == 0:
+        raise ValueError("No valid images found in images.txt")
     img_names: List[str] = []
+    camera_inds: List[int] = []
+    quats_list: List[List[float]] = []
+    ts_list: List[List[float]] = []
     for line in lines:
-        if line.startswith("#"):
-            continue
-
-        # Read line with camera quaternion
-        line = line.strip()
-        if line.endswith(("jpg", "png")):
-            split_line = line.split(" ")
-            qw = float(split_line[1])
-            qx = float(split_line[2])
-            qy = float(split_line[3])
-            qz = float(split_line[4])
-            tx = float(split_line[5])
-            ty = float(split_line[6])
-            tz = float(split_line[7])
-            camera_ind = int(split_line[8]) - 1
-            img_name = split_line[9]
-            img_names.append(img_name)
-
-            # Intrinsic
-            camera_params = cameras_params[camera_ind]
-            intrinsic = torch.eye(4, device=device, dtype=dtype)
-            intrinsic[0, 0] = camera_params._fx
-            intrinsic[1, 1] = camera_params._fy
-            intrinsic[0, 2] = camera_params._cx
-            intrinsic[1, 2] = camera_params._cy
-            intrinsics.append(intrinsic)
-
-            heights.append(camera_params._height)
-            widths.append(camera_params._width)
-
-            # Extrinsic
-            q = torch.tensor([qw, qx, qy, qz], device=device)
-            R = quaternion_to_rotation_matrix(q)
-            t = torch.tensor([tx, ty, tz], device=device)
-            extrinsic = torch.eye(4, device=device, dtype=dtype)
-            extrinsic[:3, :3] = R
-            extrinsic[:3, 3] = t
-            extrinsics.append(extrinsic)
-
+        split_line = line.split(" ")
+        if len(split_line) < 10:
+            raise ValueError(f"Invalid image line: {line}")
+        qw, qx, qy, qz = map(float, split_line[1:5])
+        tx, ty, tz = map(float, split_line[5:8])
+        camera_ind = int(split_line[8]) - 1
+        img_name = split_line[9]
+        if camera_ind >= len(cameras_params):
+            raise ValueError(f"Invalid camera index {camera_ind + 1} for image {img_name}")
+        img_names.append(img_name)
+        camera_inds.append(camera_ind)
+        quats_list.append([qw, qx, qy, qz])
+        ts_list.append([tx, ty, tz])
+    quats = torch.tensor(quats_list, device=device, dtype=dtype)
+    ts = torch.tensor(ts_list, device=device, dtype=dtype)
+    Rs = quaternion_to_rotation_matrix(quats)
+    extrinsics = torch.eye(4, device=device, dtype=dtype).unsqueeze(0).repeat(num_images, 1, 1)
+    extrinsics[:, :3, :3] = Rs
+    extrinsics[:, :3, 3] = ts
+    fxs = torch.tensor([cameras_params[i].fx for i in camera_inds], device=device, dtype=dtype)
+    fys = torch.tensor([cameras_params[i].fy for i in camera_inds], device=device, dtype=dtype)
+    cxs = torch.tensor([cameras_params[i].cx for i in camera_inds], device=device, dtype=dtype)
+    cys = torch.tensor([cameras_params[i].cy for i in camera_inds], device=device, dtype=dtype)
+    intrinsics = torch.eye(4, device=device, dtype=dtype).unsqueeze(0).repeat(num_images, 1, 1)
+    intrinsics[:, 0, 0] = fxs
+    intrinsics[:, 1, 1] = fys
+    intrinsics[:, 0, 2] = cxs
+    intrinsics[:, 1, 2] = cys
+    heights = torch.tensor([cameras_params[i].height for i in camera_inds], device=device)
+    widths = torch.tensor([cameras_params[i].width for i in camera_inds], device=device)
     cameras = PinholeCamera(
-        torch.stack(intrinsics),
-        torch.stack(extrinsics),
-        torch.tensor(heights, device=device),
-        torch.tensor(widths, device=device),
+        intrinsics,
+        extrinsics,
+        heights,
+        widths,
     )
     return img_names, cameras
 
