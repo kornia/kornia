@@ -44,6 +44,7 @@ def parse_colmap_output(
     # Parse camera intrinsics
     with open(cameras_path) as f:
         lines = [line.strip() for line in f if not line.startswith("#")]
+
     class CameraParams:
         def __init__(self, line: str) -> None:
             split_line = line.split(" ")
@@ -68,6 +69,7 @@ def parse_colmap_output(
                 self.cy = float(split_line[7])
             else:
                 raise ValueError(f"Unsupported camera model: {model}")
+
     cameras_params: List[CameraParams] = [CameraParams(line) for line in lines]
     with open(images_path) as f:
         lines = [stripped for stripped in (line.strip() for line in f if not line.startswith("#")) if stripped.endswith(("jpg", "png"))]
