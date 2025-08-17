@@ -27,6 +27,7 @@ from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
+from ..utils.helpers import repeat_param_item_nested_list
 from .params import ParamItem
 
 __all__ = ["VideoSequential"]
@@ -147,10 +148,8 @@ class VideoSequential(ImageSequential):
 
     def __repeat_param_across_channels__(self, param: Tensor, frame_num: int) -> Tensor:
         """Repeat parameters across channels.
-
         The input is shaped as (B, ...), while to output (B * same_on_frame, ...), which
         to guarantee that the same transformation would happen for each frame.
-
         (B1, B2, ..., Bn) => (B1, ... B1, B2, ..., B2, ..., Bn, ..., Bn)
                               | ch_size | | ch_size |  ..., | ch_size |
         """
@@ -174,7 +173,6 @@ class VideoSequential(ImageSequential):
             input = input.transpose(1, 2)
         if self.data_format == "BTCHW":
             pass
-
         return input
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
@@ -182,7 +180,6 @@ class VideoSequential(ImageSequential):
         named_modules = self.get_forward_sequence()
         # Got param generation shape to (B, C, H, W). Ignoring T.
         batch_shape = self.__infer_channel_exclusive_batch_shape__(batch_shape, self._temporal_channel)
-
         if not self.same_on_frame:
             # Overwrite param generation shape to (B * T, C, H, W).
             batch_shape = torch.Size([batch_shape[0] * frame_num, *batch_shape[1:]])
@@ -195,11 +192,13 @@ class VideoSequential(ImageSequential):
                     mod_param["src"] = mod_param["src"].repeat(frame_num, 1, 1)
                     mod_param["dst"] = mod_param["dst"].repeat(frame_num, 1, 1)
                 param = ParamItem(name, mod_param)
-            elif isinstance(module, (SequentialBase,)):
-                seq_param = module.forward_parameters(batch_shape)
+            elif isinstance(module, SequentialBase):
+                inner_params = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
-                    raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
-                param = ParamItem(name, seq_param)
+                    inner_params = repeat_param_item_nested_list(
+                        inner_params, frame_num, repeat_fn=self.__repeat_param_across_channels__
+                    )
+                param = ParamItem(name, inner_params)
             elif isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
                 mod_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
