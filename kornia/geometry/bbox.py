@@ -22,7 +22,7 @@ from typing import List, Optional
 
 import torch
 
-from kornia.core import arange, zeros
+from kornia.core import arange
 
 from .linalg import transform_points
 
@@ -228,14 +228,14 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     """
     validate_bbox(boxes)
     # zero padding the surroundings
-    mask = zeros((len(boxes), height + 2, width + 2), dtype=boxes.dtype, device=boxes.device)
-    # push all points one pixel off
-    # in order to zero-out the fully filled rows or columns
-    box_i = (boxes + 1).long()
-    # set all pixels within box to 1
-    for msk, bx in zip(mask, box_i):
-        msk[bx[0, 1] : bx[2, 1] + 1, bx[0, 0] : bx[1, 0] + 1] = 1.0
-    return mask[:, 1:-1, 1:-1]
+    yy = torch.arange(height, device=boxes.device, dtype=boxes.dtype).view(height, 1)
+    xx = torch.arange(width, device=boxes.device, dtype=boxes.dtype).view(1, width)
+    x_min = boxes[:, 0, 0].view(-1, 1, 1)
+    y_min = boxes[:, 0, 1].view(-1, 1, 1)
+    x_max = boxes[:, 2, 0].view(-1, 1, 1)
+    y_max = boxes[:, 2, 1].view(-1, 1, 1)
+    mask = (xx >= x_min) & (xx <= x_max) & (yy >= y_min) & (yy <= y_max)
+    return mask.to(boxes.dtype)
 
 
 def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Tensor:
