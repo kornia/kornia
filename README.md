@@ -101,6 +101,16 @@ Kornia is an open-source project that is developed and maintained by volunteers.
   pip install -e .
   ```
 
+#### For development with UV (Recommended)
+
+For development, Kornia now uses [uv](https://github.com/astral-sh/uv) for fast Python package management and virtual environment creation.
+
+  ```bash
+  ./setup_dev_env.sh
+  ```
+
+This will set up a complete development environment with all dependencies. See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
+
 #### From Github url (latest version)
 
   ```bash
