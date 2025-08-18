@@ -24,6 +24,7 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_COLOR,
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_GRAY,
+    KORNIA_CHECK_IS_IMAGE,
     KORNIA_CHECK_IS_LIST_OF_TENSOR,
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_LAF,
@@ -32,7 +33,6 @@ from kornia.core.check import (
     KORNIA_CHECK_SAME_SHAPE,
     KORNIA_CHECK_SHAPE,
     KORNIA_CHECK_TYPE,
-    KORNIA_CHECK_IS_IMAGE
 )
 
 
@@ -282,6 +282,7 @@ class TestCheckLaf:
 
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_LAF(torch.rand(4, 2, 2), raises=False) is False
+
 
 class TestCheckIsImage:
     def test_valid_float(self):

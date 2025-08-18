@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 from typing import Any, Optional, Sequence, TypeVar, cast
+
 import torch
 from torch import float16, float32, float64
 from typing_extensions import TypeGuard
