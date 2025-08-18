@@ -101,9 +101,22 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+    - name: Show job statuses
+      run: |
+        echo "Job Status Report:"
+        echo "Coverage: ${{ needs.coverage.result }}"
+        echo "Tests-CPU: ${{ needs.tests-cpu.result }}"
+        echo "Tutorials: ${{ needs.tutorials.result }}"
+        echo "Typing: ${{ needs.typing.result }}"
+        echo "Docs: ${{ needs.docs.result }}"
+
+
     - name: check for failures
       if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
-      run: echo job failed && exit 1
+      run: |
+        echo "::error::One or more required jobs failed (see report above)"
+        exit 1
+
 
   tests-nightly:
     if:  contains(github.event.pull_request.labels.*.name, 'nightly')
