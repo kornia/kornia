@@ -24,7 +24,6 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.losses._utils import mask_ignore_pixels
-from kornia.utils.one_hot import one_hot
 
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
@@ -108,11 +107,11 @@ def tversky_loss(
     # denominator = intersection + (alpha + beta) * (total - intersection) + eps
     # instead of multiple ops, do it in one fused step:
     denominator = torch.addcmul(
-        intersection,                             # base
-        total - intersection,                     # tensor1
-        torch.full_like(total, alpha + beta),     # tensor2 (scalar as tensor)
-        value=1.0,                                # (intersection) + 1 * (tensor1*tensor2)
-    ).add_(eps)                                   # in-place add eps
+        intersection,  # base
+        total - intersection,  # tensor1
+        torch.full_like(total, alpha + beta),  # tensor2 (scalar as tensor)
+        value=1.0,  # (intersection) + 1 * (tensor1*tensor2)
+    ).add_(eps)  # in-place add eps
     score = intersection.div(denominator)
 
     return 1.0 - score.mean()

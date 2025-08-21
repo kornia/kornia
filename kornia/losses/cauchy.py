@@ -17,10 +17,10 @@
 
 from __future__ import annotations
 
+import torch
 from torch import Tensor
 
 from kornia.core import Module
-import torch
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
 
 
