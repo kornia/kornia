@@ -113,6 +113,7 @@ class OtsuThreshold(torch.nn.Module):
         Returns:
             Tuple[torch.Tensor, torch.Tensor]: Thresholded tensor, threshold values.
         """
+        # Flatten input and store original shape
         x_flattened, orig_shape = self.transform_input(x)
         nchannel = x_flattened.shape[0]
 
@@ -133,58 +134,47 @@ class OtsuThreshold(torch.nn.Module):
             "Tensor dtype not supported for Otsu thresholding.",
         )
 
-        histograms, bin_edges = OtsuThreshold.__histogram(x_flattened, bins=nbins, diff=slow_and_differentiable)
-        best_thresholds = torch.zeros(nchannel, device=x_flattened.device, dtype=x.dtype)
+        # Compute histogram and bin edges
+        histograms, bin_edges = self.__histogram(x_flattened, bins=nbins, diff=slow_and_differentiable)
 
-        # Iterate over each image/flattened channel in the batch
-        for i in range(nchannel):
-            # Get histogram and bin edges for the current image/channel
-            hist = histograms[i]
-            current_bin_edges = bin_edges
+        # Initialize thresholds
+        best_thresholds = torch.zeros(nchannel, device=x.device, dtype=x.dtype)
 
-            max_inter_class_var = -1.0
-            optimal_thresh_val = 0.0
+        # Vectorized computation of optimal thresholds
+        bin_values = torch.arange(nbins, device=histograms.device, dtype=torch.float32)
+        total_weight = torch.sum(histograms, dim=1)  # Shape: (nchannel,)
+        total_sum = torch.sum(histograms * bin_values, dim=1)  # Shape: (nchannel,)
+        cumsum_weight = torch.cumsum(histograms, dim=1)  # Shape: (nchannel, nbins)
+        cumsum_sum = torch.cumsum(histograms * bin_values, dim=1)  # Shape: (nchannel, nbins)
 
-            sum_bg = 0.0
-            weight_bg = 0.0
+        # Compute weights and sums for background and foreground
+        weight_bg = cumsum_weight[:, :-1]  # Shape: (nchannel, nbins-1)
+        sum_bg = cumsum_sum[:, :-1]  # Shape: (nchannel, nbins-1)
+        weight_fg = total_weight[:, None] - weight_bg  # Shape: (nchannel, nbins-1)
+        sum_fg = total_sum[:, None] - sum_bg  # Shape: (nchannel, nbins-1)
 
-            # Sum of pixels for foreground (initially total sum)
-            sum_fg = torch.sum(hist * torch.arange(nbins, device=x.device).to(hist.dtype))
+        # Compute means, avoiding division by zero
+        mean_bg = torch.where(weight_bg > 0, sum_bg / weight_bg, torch.tensor(0.0, device=histograms.device))
+        mean_fg = torch.where(weight_fg > 0, sum_fg / weight_fg, torch.tensor(0.0, device=histograms.device))
 
-            # Iterate over each possible threshold (each bin)
-            for t in range(nbins):
-                bin_value = (t * hist[t]).item()
+        # Compute inter-class variance, setting invalid cases to -1
+        valid = (weight_bg > 0) & (weight_fg > 0)
+        inter_class_var = torch.where(
+            valid, weight_bg * weight_fg * (mean_bg - mean_fg) ** 2, torch.tensor(-1.0, device=histograms.device)
+        )
 
-                # Update background
-                sum_bg += bin_value
-                weight_bg += hist[t].item()
+        # Find the maximum inter-class variance and corresponding threshold
+        t_max = torch.argmax(inter_class_var, dim=1)  # Shape: (nchannel,)
+        max_var = inter_class_var.gather(1, t_max[:, None]).squeeze(1)  # Shape: (nchannel,)
+        best_thresholds = torch.where(
+            max_var > 0, bin_edges[t_max + 1], torch.tensor(0.0, device=histograms.device)
+        ).to(x.dtype)
 
-                # Update foreground
-                sum_fg -= bin_value
-                weight_fg = 1.0 - weight_bg
+        # Apply thresholding: keep values strictly greater than the threshold
+        thresholded = (x_flattened > best_thresholds[:, None]).to(x.dtype) * x_flattened
+        thresholded = thresholded.reshape(orig_shape)
 
-                # Avoid division by zero
-                if weight_bg == 0 or weight_fg == 0:
-                    continue
-
-                mean_bg = sum_bg / weight_bg
-                mean_fg = sum_fg / weight_fg
-
-                # Calculate inter-class variance
-                inter_class_var = weight_bg * weight_fg * ((mean_bg - mean_fg) ** 2)
-
-                if inter_class_var > max_inter_class_var:
-                    max_inter_class_var = inter_class_var
-                    optimal_thresh_val = current_bin_edges[t + 1].item()
-
-            best_thresholds[i] = optimal_thresh_val
-
-        x_out, _ = self.transform_input(x.clone())
-        # Apply threshold to each flattened image/channel
-        for i in range(nchannel):
-            x_out[i][x_out[i] <= best_thresholds[i]] = 0
-
-        return x_out.reshape(orig_shape), best_thresholds
+        return thresholded, best_thresholds
 
 
 def otsu_threshold(

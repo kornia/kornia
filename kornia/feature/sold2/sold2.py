@@ -21,7 +21,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, concatenate, pad, stack
+from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.feature.sold2.structures import DetectorCfg, LineMatcherCfg
 from kornia.geometry.conversions import normalize_pixel_coordinates
@@ -234,34 +234,23 @@ class WunschLineMatcher(Module):
             line_points: an N x num_samples x 2 Tensor.
             valid_points: a boolean N x num_samples Tensor.
         """
-        KORNIA_CHECK_SHAPE(line_seg, ["N", "2", "2"])
-        num_lines = len(line_seg)
-        line_lengths = torch.norm(line_seg[:, 0] - line_seg[:, 1], dim=1)
+        N, _, _ = line_seg.shape
+        M = self.num_samples
         dev = line_seg.device
-        # Sample the points separated by at least min_dist_pts along each line
-        # The number of samples depends on the length of the line
-        num_samples_lst = torch.clamp(
-            torch.div(line_lengths, self.min_dist_pts, rounding_mode="floor"), 2, self.num_samples
-        ).int()
-        line_points = torch.empty((num_lines, self.num_samples, 2), dtype=torch.float, device=dev)
-        valid_points = torch.empty((num_lines, self.num_samples), dtype=torch.bool, device=dev)
-        for n_samp in range(2, self.num_samples + 1):
-            # Consider all lines where we can fit up to n_samp points
-            cur_mask = num_samples_lst == n_samp
-            cur_line_seg = line_seg[cur_mask]
-            line_points_x = batched_linspace(cur_line_seg[:, 0, 0], cur_line_seg[:, 1, 0], n_samp, dim=-1)
-            line_points_y = batched_linspace(cur_line_seg[:, 0, 1], cur_line_seg[:, 1, 1], n_samp, dim=-1)
-            cur_line_points = stack([line_points_x, line_points_y], -1)
 
-            # Pad
-            cur_line_points = pad(cur_line_points, (0, 0, 0, self.num_samples - n_samp))
-            cur_valid_points = torch.ones(len(cur_line_seg), self.num_samples, dtype=torch.bool, device=dev)
-            cur_valid_points[:, n_samp:] = False
+        lengths = torch.norm(line_seg[:, 0] - line_seg[:, 1], dim=1)
+        num_pts = torch.clamp((lengths / self.min_dist_pts).floor().int(), min=2, max=M)  # (N,)
 
-            line_points[cur_mask] = cur_line_points
-            valid_points[cur_mask] = cur_valid_points
+        orig = line_seg[:, 0].unsqueeze(1)
+        dirs = (line_seg[:, 1] - line_seg[:, 0]).unsqueeze(1)
+        idx = torch.arange(M, device=dev).unsqueeze(0)
+        denom = (num_pts - 1).unsqueeze(1)
+        alpha = idx / denom
+        pts = orig + dirs * alpha.unsqueeze(-1)
+        valid = idx < num_pts.unsqueeze(1)
+        pts = pts.masked_fill(~valid.unsqueeze(-1), 0.0)
 
-        return line_points, valid_points
+        return pts, valid
 
     def filter_and_match_lines(self, scores: Tensor) -> Tensor:
         """Use scores to keep the top k best lines.
@@ -314,21 +303,21 @@ class WunschLineMatcher(Module):
                     of the elements to match.
         """
         KORNIA_CHECK_SHAPE(scores, ["B", "N", "M"])
-        b, n, m = scores.shape
-
         # Recalibrate the scores to get a gap score of 0
         gap = 0.1
-        nw_scores = scores - gap
-        dev = scores.device
-        # Run the dynamic programming algorithm
-        nw_grid = torch.zeros(b, n + 1, m + 1, dtype=torch.float, device=dev)
-        for i in range(n):
-            for j in range(m):
-                nw_grid[:, i + 1, j + 1] = torch.maximum(
-                    torch.maximum(nw_grid[:, i + 1, j], nw_grid[:, i, j + 1]), nw_grid[:, i, j] + nw_scores[:, i, j]
-                )
-
-        return nw_grid[:, -1, -1]
+        B, N, M = scores.shape
+        dp = torch.zeros(B, N + 1, M + 1, device=scores.device)
+        S = scores - gap
+        for k in range(2, N + M + 1):
+            i_min = max(1, k - M)
+            i_max = min(N, k - 1)
+            i = torch.arange(i_min, i_max + 1, device=scores.device)
+            j = k - i
+            up = dp[:, i - 1, j]
+            left = dp[:, i, j - 1]
+            diag = dp[:, i - 1, j - 1] + S[:, i - 1, j - 1]
+            dp[:, i, j] = torch.max(torch.max(up, left), diag)
+        return dp[:, -1, -1]
 
 
 def keypoints_to_grid(keypoints: Tensor, img_size: Tuple[int, int]) -> Tensor:

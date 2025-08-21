@@ -20,7 +20,6 @@
 
 from __future__ import annotations
 
-import itertools
 import warnings
 from typing import Any, Optional, Sequence
 
@@ -192,19 +191,17 @@ class Attention(Module):
 
     @staticmethod
     def build_attention_bias(resolution: tuple[int, int]) -> tuple[Tensor, int]:
-        points = list(itertools.product(range(resolution[0]), range(resolution[1])))
-        attention_offsets: dict[tuple[int, int], int] = {}
-        idxs: list[int] = []
-        for p1 in points:
-            for p2 in points:
-                offset = (abs(p1[0] - p2[0]), abs(p1[1] - p2[1]))
-                if offset not in attention_offsets:
-                    attention_offsets[offset] = len(attention_offsets)
-                idxs.append(attention_offsets[offset])
-
-        N = len(points)
-        indices = torch.LongTensor(idxs).view(N, N)
-        attn_offset_size = len(attention_offsets)
+        H, W = resolution
+        rows = torch.arange(H)
+        cols = torch.arange(W)
+        rr = rows.repeat_interleave(W)
+        cc = cols.repeat(H)
+        dr = (rr[:, None] - rr[None, :]).abs()
+        dc = (cc[:, None] - cc[None, :]).abs()
+        keys = dr * W + dc
+        unique_keys, inverse = torch.unique(keys, return_inverse=True)
+        indices = inverse.view(H * W, H * W)
+        attn_offset_size = unique_keys.numel()
         return indices, attn_offset_size
 
     # is this really necessary?
