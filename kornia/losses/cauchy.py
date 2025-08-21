@@ -20,6 +20,7 @@ from __future__ import annotations
 from torch import Tensor
 
 from kornia.core import Module
+import torch
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
 
 
@@ -72,7 +73,7 @@ def cauchy_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
     )
 
     # compute loss
-    loss = (0.5 * (img1 - img2) ** 2 + 1.0).log()
+    loss = torch.log1p(0.5 * torch.square(img1 - img2))
 
     # perform reduction
     if reduction == "mean":
