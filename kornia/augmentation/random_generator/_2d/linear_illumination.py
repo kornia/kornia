@@ -93,10 +93,10 @@ class LinearIlluminationGenerator(RandomGeneratorBase):
         )
 
         # Precompute 1D ramps
-        ramp_h     = torch.linspace(0, 1, height, device=_device, dtype=_dtype).view(1, 1, height, 1)
+        ramp_h = torch.linspace(0, 1, height, device=_device, dtype=_dtype).view(1, 1, height, 1)
         ramp_h_rev = torch.linspace(1, 0, height, device=_device, dtype=_dtype).view(1, 1, height, 1)
-        ramp_w     = torch.linspace(0, 1, width,  device=_device, dtype=_dtype).view(1, 1, 1, width)
-        ramp_w_rev = torch.linspace(1, 0, width,  device=_device, dtype=_dtype).view(1, 1, 1, width)
+        ramp_w = torch.linspace(0, 1, width, device=_device, dtype=_dtype).view(1, 1, 1, width)
+        ramp_w_rev = torch.linspace(1, 0, width, device=_device, dtype=_dtype).view(1, 1, 1, width)
 
         # Broadcast masks for each direction
         d = directions.to(torch.int64)  # [B,1,1,1]
@@ -186,15 +186,18 @@ class LinearCornerIlluminationGenerator(RandomGeneratorBase):
         y_grad = torch.linspace(0, 1, height, device=_device, dtype=_dtype).unsqueeze(1).expand(height, width)
         x_grad = torch.linspace(0, 1, width, device=_device, dtype=_dtype).unsqueeze(0).expand(height, width)
 
-        base = torch.stack([
-            x_grad + y_grad,        # 0: Bottom right
-            -x_grad + y_grad,       # 1: Bottom left
-            x_grad - y_grad,        # 2: Upper right
-            1 - (x_grad + y_grad),  # 3: Upper left
-        ], dim=0)  # (4, H, W)
+        base = torch.stack(
+            [
+                x_grad + y_grad,  # 0: Bottom right
+                -x_grad + y_grad,  # 1: Bottom left
+                x_grad - y_grad,  # 2: Upper right
+                1 - (x_grad + y_grad),  # 3: Upper left
+            ],
+            dim=0,
+        )  # (4, H, W)
 
         # Expand to (4, C, H, W)
-        base = base.unsqueeze(1).expand(-1, channels, -1, -1)  
+        base = base.unsqueeze(1).expand(-1, channels, -1, -1)
 
         # Index according to directions
         gradient = base[directions.view(-1), :, :, :]  # (B, C, H, W)
