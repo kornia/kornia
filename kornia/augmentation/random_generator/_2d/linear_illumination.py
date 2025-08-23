@@ -77,36 +77,44 @@ class LinearIlluminationGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.gain, self.sign])
 
+        # Random gain and sign
         gain_factor = _adapted_rsampling((batch_size, 1, 1, 1), self.gain_sampler, same_on_batch).to(
             device=_device, dtype=_dtype
         )
         sign = torch.where(
             _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0,
-            torch.tensor(1),
-            torch.tensor(-1),
-        ).to(device=_device, dtype=_dtype)
-
-        directions = _adapted_rsampling((batch_size, 1, 1, 1), self.directions_sampler, same_on_batch).to(
-            device=_device,
-            dtype=torch.int8,
+            torch.tensor(1, device=_device, dtype=_dtype),
+            torch.tensor(-1, device=_device, dtype=_dtype),
         )
 
-        gradient = torch.zeros(batch_shape)
-        for _b in range(batch_size):
-            if directions[_b] == 0:  # Lower
-                gradient[_b] = torch.linspace(0, 1, height).unsqueeze(1).expand(channels, height, width)
-            elif directions[_b] == 1:  # Upper
-                gradient[_b] = torch.linspace(1, 0, height).unsqueeze(1).expand(channels, height, width)
-            elif directions[_b] == 2:  # Left
-                gradient[_b] = torch.linspace(0, 1, width).unsqueeze(0).expand(channels, height, width)
-            elif directions[_b] == 3:  # Right
-                gradient[_b] = torch.linspace(1, 0, width).unsqueeze(0).expand(channels, height, width)
+        # Directions (0=lower,1=upper,2=left,3=right), shape [B,1,1,1]
+        directions = _adapted_rsampling((batch_size, 1, 1, 1), self.directions_sampler, same_on_batch).to(
+            device=_device, dtype=torch.int8
+        )
 
+        # Precompute 1D ramps
+        ramp_h     = torch.linspace(0, 1, height, device=_device, dtype=_dtype).view(1, 1, height, 1)
+        ramp_h_rev = torch.linspace(1, 0, height, device=_device, dtype=_dtype).view(1, 1, height, 1)
+        ramp_w     = torch.linspace(0, 1, width,  device=_device, dtype=_dtype).view(1, 1, 1, width)
+        ramp_w_rev = torch.linspace(1, 0, width,  device=_device, dtype=_dtype).view(1, 1, 1, width)
+
+        # Broadcast masks for each direction
+        d = directions.to(torch.int64)  # [B,1,1,1]
+        m0 = (d == 0).to(_dtype)  # lower
+        m1 = (d == 1).to(_dtype)  # upper
+        m2 = (d == 2).to(_dtype)  # left
+        m3 = (d == 3).to(_dtype)  # right
+
+        # Build [B,1,H,W] gradient in one shot
+        grad_b1 = m0 * ramp_h + m1 * ramp_h_rev + m2 * ramp_w + m3 * ramp_w_rev
+
+        # Expand to [B,C,H,W]
+        gradient = grad_b1.expand(batch_size, channels, height, width)
+
+        # Apply sign and gain
         gradient = sign * gain_factor * gradient
 
-        return {
-            "gradient": gradient.to(device=_device, dtype=_dtype),
-        }
+        return {"gradient": gradient.to(device=_device, dtype=_dtype)}
 
 
 class LinearCornerIlluminationGenerator(RandomGeneratorBase):
@@ -165,27 +173,32 @@ class LinearCornerIlluminationGenerator(RandomGeneratorBase):
         )
         sign = torch.where(
             _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0,
-            torch.tensor(1),
-            torch.tensor(-1),
-        ).to(device=_device, dtype=_dtype)
+            torch.tensor(1, device=_device, dtype=_dtype),
+            torch.tensor(-1, device=_device, dtype=_dtype),
+        )
 
         directions = _adapted_rsampling((batch_size, 1, 1, 1), self.directions_sampler, same_on_batch).to(
             device=_device,
-            dtype=torch.int8,
+            dtype=torch.long,  # int8 → long for gather
         )
 
-        y_grad = torch.linspace(0, 1, height).unsqueeze(1).expand(channels, height, width)
-        x_grad = torch.linspace(0, 1, width).unsqueeze(0).expand(channels, height, width)
-        gradient = torch.zeros(batch_shape)
-        for _b in range(batch_size):
-            if directions[_b] == 0:  # Bottom right
-                gradient[_b] = x_grad + y_grad
-            elif directions[_b] == 1:  # Bottom left
-                gradient[_b] = -x_grad + y_grad
-            elif directions[_b] == 2:  # Upper right
-                gradient[_b] = x_grad - y_grad
-            elif directions[_b] == 3:  # Upper left
-                gradient[_b] = 1 - (x_grad + y_grad)
+        # Compute base gradients
+        y_grad = torch.linspace(0, 1, height, device=_device, dtype=_dtype).unsqueeze(1).expand(height, width)
+        x_grad = torch.linspace(0, 1, width, device=_device, dtype=_dtype).unsqueeze(0).expand(height, width)
+
+        base = torch.stack([
+            x_grad + y_grad,        # 0: Bottom right
+            -x_grad + y_grad,       # 1: Bottom left
+            x_grad - y_grad,        # 2: Upper right
+            1 - (x_grad + y_grad),  # 3: Upper left
+        ], dim=0)  # (4, H, W)
+
+        # Expand to (4, C, H, W)
+        base = base.unsqueeze(1).expand(-1, channels, -1, -1)  
+
+        # Index according to directions
+        gradient = base[directions.view(-1), :, :, :]  # (B, C, H, W)
+
         gradient = sign * gain_factor * normalize_min_max(gradient)
 
         return {
