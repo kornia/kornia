@@ -319,53 +319,61 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
         raise ValueError(f"Input size must be a (*, 3) tensor. Got {axis_angle.shape}")
 
     def _compute_rotation_matrix(axis_angle: Tensor, theta2: Tensor, eps: float = 1e-6) -> Tensor:
-        # We want to be careful to only evaluate the square root if the
-        # norm of the axis_angle vector is greater than zero. Otherwise
-        # we get a division by zero.
-        k_one = 1.0
-        theta = torch.sqrt(theta2)
-        wxyz = axis_angle / (theta + eps)
-        wx, wy, wz = torch.chunk(wxyz, 3, dim=1)
-        cos_theta = cos(theta)
-        sin_theta = sin(theta)
+        theta = torch.sqrt(theta2).squeeze(-1)   
+        theta = torch.sqrt(theta2.clamp(min=1e-12))      #clamping to eo ensure no nan gradients
+        wxyz = axis_angle / (theta.unsqueeze(-1) + eps)        # (B, 3)
+        wx, wy, wz = wxyz.unbind(dim=1)                        # (B,)
 
-        r00 = cos_theta + wx * wx * (k_one - cos_theta)
-        r10 = wz * sin_theta + wx * wy * (k_one - cos_theta)
-        r20 = -wy * sin_theta + wx * wz * (k_one - cos_theta)
-        r01 = wx * wy * (k_one - cos_theta) - wz * sin_theta
-        r11 = cos_theta + wy * wy * (k_one - cos_theta)
-        r21 = wx * sin_theta + wy * wz * (k_one - cos_theta)
-        r02 = wy * sin_theta + wx * wz * (k_one - cos_theta)
-        r12 = -wx * sin_theta + wy * wz * (k_one - cos_theta)
-        r22 = cos_theta + wz * wz * (k_one - cos_theta)
-        rotation_matrix = concatenate([r00, r01, r02, r10, r11, r12, r20, r21, r22], dim=1)
-        return rotation_matrix.view(-1, 3, 3)
+        cos_theta = torch.cos(theta)
+        sin_theta = torch.sin(theta)
+        one_minus_cos = 1.0 - cos_theta
+
+        wxwy = wx * wy
+        wxwz = wx * wz
+        wywz = wy * wz
+
+        r00 = cos_theta + wx * wx * one_minus_cos
+        r01 = wxwy * one_minus_cos - wz * sin_theta
+        r02 = wy * sin_theta + wxwz * one_minus_cos
+
+        r10 = wz * sin_theta + wxwy * one_minus_cos
+        r11 = cos_theta + wy * wy * one_minus_cos
+        r12 = -wx * sin_theta + wywz * one_minus_cos
+
+        r20 = -wy * sin_theta + wxwz * one_minus_cos
+        r21 = wx * sin_theta + wywz * one_minus_cos
+        r22 = cos_theta + wz * wz * one_minus_cos
+
+        rot = torch.stack([
+            torch.stack([r00, r01, r02], dim=-1),
+            torch.stack([r10, r11, r12], dim=-1),
+            torch.stack([r20, r21, r22], dim=-1),
+        ], dim=1)
+
+        return rot
 
     def _compute_rotation_matrix_taylor(axis_angle: Tensor) -> Tensor:
-        rx, ry, rz = torch.chunk(axis_angle, 3, dim=1)
+        rx, ry, rz = axis_angle.unbind(-1)
         k_one = torch.ones_like(rx)
-        rotation_matrix = concatenate([k_one, -rz, ry, rz, k_one, -rx, -ry, rx, k_one], dim=1)
-        return rotation_matrix.view(-1, 3, 3)
 
-    # stolen from ceres/rotation.h
+        rot = torch.stack([
+            k_one, -rz,   ry,
+            rz,    k_one, -rx,
+            -ry,   rx,    k_one,
+        ], dim=-1).view(-1, 3, 3)
 
-    _axis_angle = torch.unsqueeze(axis_angle, dim=1)
-    theta2 = torch.matmul(_axis_angle, _axis_angle.transpose(1, 2))
-    theta2 = torch.squeeze(theta2, dim=1)
+        return rot
+    
+    theta2 = (axis_angle * axis_angle).sum(dim=-1)
 
-    # compute rotation matrices
-    rotation_matrix_normal = _compute_rotation_matrix(axis_angle, theta2)
-    rotation_matrix_taylor = _compute_rotation_matrix_taylor(axis_angle)
+    rot_normal = _compute_rotation_matrix(axis_angle, theta2)   # (N,3,3)
+    rot_taylor = _compute_rotation_matrix_taylor(axis_angle)    # (N,3,3)
 
-    # create mask to handle both cases
-    eps = 1e-6
-    mask = (theta2 > eps).view(-1, 1, 1).to(theta2.device)
-    mask_pos = (mask).type_as(theta2)
-    mask_neg = (~mask).type_as(theta2)
+    mask = (theta2 > 1e-6).view(-1, 1, 1)  # shape (N,1,1)
 
-    # create output pose matrix with masked values
-    rotation_matrix = mask_pos * rotation_matrix_normal + mask_neg * rotation_matrix_taylor
-    return rotation_matrix  # Nx3x3
+    rotation_matrix = torch.where(mask, rot_normal, rot_taylor)
+
+    return rotation_matrix
 
 
 @deprecated(replace_with="axis_angle_to_rotation_matrix", version="0.7.0")

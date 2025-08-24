@@ -21,7 +21,7 @@ from functools import partial
 import numpy as np
 import pytest
 import torch
-
+import math
 import kornia
 from kornia.geometry.conversions import (
     ARKitQTVecs_to_ColmapQTVecs,
@@ -35,6 +35,7 @@ from kornia.geometry.conversions import (
     matrix4x4_to_Rt,
     quaternion_from_euler,
     worldtocam_to_camtoworld_Rt,
+    axis_angle_to_rotation_matrix,
 )
 from kornia.geometry.quaternion import Quaternion
 from kornia.utils._compat import torch_version
@@ -1273,3 +1274,132 @@ def test_vector_to_skew_symmetric_matrix(batch_size, device, dtype):
     assert_close(skew_symmetric_matrix[..., 2, 0], -vector[..., 1])
     assert_close(skew_symmetric_matrix[..., 1, 2], -vector[..., 0])
     assert_close(skew_symmetric_matrix[..., 2, 1], vector[..., 0])
+
+
+class TestAxisAngleToRotationMatrix:
+    @pytest.mark.parametrize("device", ["cpu", "cuda"] if torch.cuda.is_available() else ["cpu"])
+    def test_many_random_small_inputs_no_nan_grad(self, device):
+        """
+        Stress-test: run many small-magnitude random axis-angles and ensure
+        gradients are finite after backward. This is probabilistic but very strong.
+        """
+        torch.manual_seed(0)
+        N = 200
+        batch = 64
+
+        for i in range(N):
+            scale = 10 ** torch.empty(1).uniform_(-12, -6).item()
+            x = (torch.randn(batch, 3, device=device, dtype=torch.float32) * scale).requires_grad_(True)
+
+            R = axis_angle_to_rotation_matrix(x)
+            loss = torch.nn.functional.mse_loss(R, torch.zeros_like(R))
+            loss.backward()
+
+            assert torch.isfinite(x.grad).all(), f"NaN/Inf grad at iteration {i}, scale={scale}"
+            x.grad.zero_()
+
+    def test_sqrt_never_called_with_negative_theta2(self, monkeypatch):
+        """
+        Instrument torch.sqrt: if the code ever calls torch.sqrt with a value
+        that has a minimum < -1e-12, fail the test.
+        """
+        orig_sqrt = torch.sqrt
+        calls = {"min_seen": math.inf}
+
+        def wrapped_sqrt(tensor, *args, **kwargs):
+            try:
+                mn = float(tensor.min().item())
+            except Exception:
+                return orig_sqrt(tensor, *args, **kwargs)
+            calls["min_seen"] = min(calls["min_seen"], mn)
+            if mn < -1e-12:
+                raise AssertionError(f"torch.sqrt called with negative input (min={mn})")
+            return orig_sqrt(tensor, *args, **kwargs)
+
+        monkeypatch.setattr(torch, "sqrt", wrapped_sqrt)
+
+        try:
+            inputs = [
+                torch.zeros(1, 3, dtype=torch.float32, requires_grad=True),
+                torch.full((1, 3), 1e-9, dtype=torch.float32, requires_grad=True),
+                (torch.randn(16, 3, dtype=torch.float32) * 1e-8).requires_grad_(True),
+            ]
+
+            for x in inputs:
+                R = axis_angle_to_rotation_matrix(x)
+                loss = torch.nn.functional.mse_loss(R, torch.zeros_like(R))
+                loss.backward()
+                assert torch.isfinite(x.grad).all()
+        finally:
+            monkeypatch.setattr(torch, "sqrt", orig_sqrt)
+
+        assert calls["min_seen"] >= -1e-12, "Observed very negative sqrt input"
+
+    def test_zero_vector_backward_is_finite(self):
+        """Zero vector should produce finite grads and identity output."""
+        x = torch.zeros(1, 3, dtype=torch.float32, requires_grad=True)
+        R = axis_angle_to_rotation_matrix(x)
+        assert torch.allclose(R, torch.eye(3).unsqueeze(0), atol=1e-5, rtol=1e-5)
+        loss = R.sum()
+        loss.backward()
+        assert torch.isfinite(x.grad).all()
+
+    def test_identity_rotation(self):
+        aa = torch.zeros(1, 3, dtype=torch.float64, requires_grad=True)
+        R = axis_angle_to_rotation_matrix(aa)
+        I = torch.eye(3, dtype=torch.float64).unsqueeze(0)
+        assert torch.allclose(R, I, atol=1e-6)
+
+    def test_90deg_x_axis(self):
+        aa = torch.tensor([[torch.pi / 2, 0., 0.]], dtype=torch.float64)
+        R = axis_angle_to_rotation_matrix(aa).squeeze(0)
+        expected = torch.tensor([
+            [1., 0., 0.],
+            [0., 0., -1.],
+            [0., 1., 0.],
+        ], dtype=torch.float64)
+        assert torch.allclose(R, expected, atol=1e-6)
+
+    def test_180deg_y_axis(self):
+        aa = torch.tensor([[0., torch.pi, 0.]], dtype=torch.float64)
+        R = axis_angle_to_rotation_matrix(aa).squeeze(0)
+        expected = torch.tensor([
+            [-1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., -1.],
+        ], dtype=torch.float64)
+        assert torch.allclose(R, expected, atol=1e-6)
+
+    def test_rotation_matrix_is_orthogonal(self):
+        aa = torch.randn(10, 3, dtype=torch.float64)
+        R = axis_angle_to_rotation_matrix(aa)
+        should_be_I = R @ R.transpose(-1, -2)
+        I = torch.eye(3, dtype=torch.float64).expand_as(should_be_I)
+        assert torch.allclose(should_be_I, I, atol=1e-6)
+
+    def test_determinant_is_one(self):
+        aa = torch.randn(20, 3, dtype=torch.float64)
+        R = axis_angle_to_rotation_matrix(aa)
+        det = torch.det(R)
+        assert torch.allclose(det, torch.ones_like(det), atol=1e-6)
+
+    def test_small_angle_taylor_expansion(self):
+        aa = torch.tensor([[1e-7, 2e-7, -3e-7]], dtype=torch.float64)
+        R = axis_angle_to_rotation_matrix(aa).squeeze(0)
+        rx, ry, rz = aa.squeeze()
+        skew = torch.tensor([
+            [0., -rz, ry],
+            [rz, 0., -rx],
+            [-ry, rx, 0.],
+        ], dtype=torch.float64)
+        approx = torch.eye(3, dtype=torch.float64) + skew
+        assert torch.allclose(R, approx, atol=1e-9)
+
+    def test_batched_input(self):
+        aa = torch.tensor([
+            [0., 0., 0.],
+            [torch.pi / 2, 0., 0.],
+            [0., torch.pi, 0.],
+        ], dtype=torch.float64)
+        R = axis_angle_to_rotation_matrix(aa)
+        assert R.shape == (3, 3, 3)
