@@ -319,8 +319,7 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
         raise ValueError(f"Input size must be a (*, 3) tensor. Got {axis_angle.shape}")
 
     def _compute_rotation_matrix(axis_angle: Tensor, theta2: Tensor, eps: float = 1e-6) -> Tensor:
-        theta = torch.sqrt(theta2).squeeze(-1)
-        theta = torch.sqrt(theta2.clamp(min=1e-12))  # clamping to eo ensure no nan gradients
+        theta = torch.sqrt(theta2.clamp(min=1e-12))  # clamping to ensure no nan gradients
         wxyz = axis_angle / (theta.unsqueeze(-1) + eps)  # (B, 3)
         wx, wy, wz = wxyz.unbind(dim=1)  # (B,)
 
