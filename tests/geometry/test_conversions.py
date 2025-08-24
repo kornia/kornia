@@ -1347,8 +1347,8 @@ class TestAxisAngleToRotationMatrix:
     def test_identity_rotation(self):
         aa = torch.zeros(1, 3, dtype=torch.float64, requires_grad=True)
         R = axis_angle_to_rotation_matrix(aa)
-        I = torch.eye(3, dtype=torch.float64).unsqueeze(0)
-        assert torch.allclose(R, I, atol=1e-6)
+        Id = torch.eye(3, dtype=torch.float64).unsqueeze(0)
+        assert torch.allclose(R, Id, atol=1e-6)
 
     def test_90deg_x_axis(self):
         aa = torch.tensor([[torch.pi / 2, 0., 0.]], dtype=torch.float64)
@@ -1374,8 +1374,8 @@ class TestAxisAngleToRotationMatrix:
         aa = torch.randn(10, 3, dtype=torch.float64)
         R = axis_angle_to_rotation_matrix(aa)
         should_be_I = R @ R.transpose(-1, -2)
-        I = torch.eye(3, dtype=torch.float64).expand_as(should_be_I)
-        assert torch.allclose(should_be_I, I, atol=1e-6)
+        Id = torch.eye(3, dtype=torch.float64).expand_as(should_be_I)
+        assert torch.allclose(should_be_I, Id, atol=1e-6)
 
     def test_determinant_is_one(self):
         aa = torch.randn(20, 3, dtype=torch.float64)
