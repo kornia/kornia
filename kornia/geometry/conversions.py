@@ -319,10 +319,10 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
         raise ValueError(f"Input size must be a (*, 3) tensor. Got {axis_angle.shape}")
 
     def _compute_rotation_matrix(axis_angle: Tensor, theta2: Tensor, eps: float = 1e-6) -> Tensor:
-        theta = torch.sqrt(theta2).squeeze(-1)   
-        theta = torch.sqrt(theta2.clamp(min=1e-12))      #clamping to eo ensure no nan gradients
-        wxyz = axis_angle / (theta.unsqueeze(-1) + eps)        # (B, 3)
-        wx, wy, wz = wxyz.unbind(dim=1)                        # (B,)
+        theta = torch.sqrt(theta2).squeeze(-1)
+        theta = torch.sqrt(theta2.clamp(min=1e-12))  # clamping to eo ensure no nan gradients
+        wxyz = axis_angle / (theta.unsqueeze(-1) + eps)  # (B, 3)
+        wx, wy, wz = wxyz.unbind(dim=1)  # (B,)
 
         cos_theta = torch.cos(theta)
         sin_theta = torch.sin(theta)
@@ -344,11 +344,14 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
         r21 = wx * sin_theta + wywz * one_minus_cos
         r22 = cos_theta + wz * wz * one_minus_cos
 
-        rot = torch.stack([
-            torch.stack([r00, r01, r02], dim=-1),
-            torch.stack([r10, r11, r12], dim=-1),
-            torch.stack([r20, r21, r22], dim=-1),
-        ], dim=1)
+        rot = torch.stack(
+            [
+                torch.stack([r00, r01, r02], dim=-1),
+                torch.stack([r10, r11, r12], dim=-1),
+                torch.stack([r20, r21, r22], dim=-1),
+            ],
+            dim=1,
+        )
 
         return rot
 
@@ -356,18 +359,27 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
         rx, ry, rz = axis_angle.unbind(-1)
         k_one = torch.ones_like(rx)
 
-        rot = torch.stack([
-            k_one, -rz,   ry,
-            rz,    k_one, -rx,
-            -ry,   rx,    k_one,
-        ], dim=-1).view(-1, 3, 3)
+        rot = torch.stack(
+            [
+                k_one,
+                -rz,
+                ry,
+                rz,
+                k_one,
+                -rx,
+                -ry,
+                rx,
+                k_one,
+            ],
+            dim=-1,
+        ).view(-1, 3, 3)
 
         return rot
-    
+
     theta2 = (axis_angle * axis_angle).sum(dim=-1)
 
-    rot_normal = _compute_rotation_matrix(axis_angle, theta2)   # (N,3,3)
-    rot_taylor = _compute_rotation_matrix_taylor(axis_angle)    # (N,3,3)
+    rot_normal = _compute_rotation_matrix(axis_angle, theta2)  # (N,3,3)
+    rot_taylor = _compute_rotation_matrix_taylor(axis_angle)  # (N,3,3)
 
     mask = (theta2 > 1e-6).view(-1, 1, 1)  # shape (N,1,1)
 

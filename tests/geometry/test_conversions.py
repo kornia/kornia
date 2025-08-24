@@ -15,17 +15,19 @@
 # limitations under the License.
 #
 
+import math
 import sys
 from functools import partial
 
 import numpy as np
 import pytest
 import torch
-import math
+
 import kornia
 from kornia.geometry.conversions import (
     ARKitQTVecs_to_ColmapQTVecs,
     Rt_to_matrix4x4,
+    axis_angle_to_rotation_matrix,
     camtoworld_graphics_to_vision_4x4,
     camtoworld_graphics_to_vision_Rt,
     camtoworld_to_worldtocam_Rt,
@@ -35,7 +37,6 @@ from kornia.geometry.conversions import (
     matrix4x4_to_Rt,
     quaternion_from_euler,
     worldtocam_to_camtoworld_Rt,
-    axis_angle_to_rotation_matrix,
 )
 from kornia.geometry.quaternion import Quaternion
 from kornia.utils._compat import torch_version
@@ -1351,23 +1352,29 @@ class TestAxisAngleToRotationMatrix:
         assert torch.allclose(R, I, atol=1e-6)
 
     def test_90deg_x_axis(self):
-        aa = torch.tensor([[torch.pi / 2, 0., 0.]], dtype=torch.float64)
+        aa = torch.tensor([[torch.pi / 2, 0.0, 0.0]], dtype=torch.float64)
         R = axis_angle_to_rotation_matrix(aa).squeeze(0)
-        expected = torch.tensor([
-            [1., 0., 0.],
-            [0., 0., -1.],
-            [0., 1., 0.],
-        ], dtype=torch.float64)
+        expected = torch.tensor(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 0.0, -1.0],
+                [0.0, 1.0, 0.0],
+            ],
+            dtype=torch.float64,
+        )
         assert torch.allclose(R, expected, atol=1e-6)
 
     def test_180deg_y_axis(self):
-        aa = torch.tensor([[0., torch.pi, 0.]], dtype=torch.float64)
+        aa = torch.tensor([[0.0, torch.pi, 0.0]], dtype=torch.float64)
         R = axis_angle_to_rotation_matrix(aa).squeeze(0)
-        expected = torch.tensor([
-            [-1., 0., 0.],
-            [0., 1., 0.],
-            [0., 0., -1.],
-        ], dtype=torch.float64)
+        expected = torch.tensor(
+            [
+                [-1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, -1.0],
+            ],
+            dtype=torch.float64,
+        )
         assert torch.allclose(R, expected, atol=1e-6)
 
     def test_rotation_matrix_is_orthogonal(self):
@@ -1387,19 +1394,25 @@ class TestAxisAngleToRotationMatrix:
         aa = torch.tensor([[1e-7, 2e-7, -3e-7]], dtype=torch.float64)
         R = axis_angle_to_rotation_matrix(aa).squeeze(0)
         rx, ry, rz = aa.squeeze()
-        skew = torch.tensor([
-            [0., -rz, ry],
-            [rz, 0., -rx],
-            [-ry, rx, 0.],
-        ], dtype=torch.float64)
+        skew = torch.tensor(
+            [
+                [0.0, -rz, ry],
+                [rz, 0.0, -rx],
+                [-ry, rx, 0.0],
+            ],
+            dtype=torch.float64,
+        )
         approx = torch.eye(3, dtype=torch.float64) + skew
         assert torch.allclose(R, approx, atol=1e-9)
 
     def test_batched_input(self):
-        aa = torch.tensor([
-            [0., 0., 0.],
-            [torch.pi / 2, 0., 0.],
-            [0., torch.pi, 0.],
-        ], dtype=torch.float64)
+        aa = torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [torch.pi / 2, 0.0, 0.0],
+                [0.0, torch.pi, 0.0],
+            ],
+            dtype=torch.float64,
+        )
         R = axis_angle_to_rotation_matrix(aa)
         assert R.shape == (3, 3, 3)
