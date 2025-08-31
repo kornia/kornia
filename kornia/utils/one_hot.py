@@ -17,7 +17,7 @@
 
 import torch
 
-from kornia.core import Tensor, zeros
+from kornia.core import Tensor
 
 
 def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch.dtype, eps: float = 1e-6) -> Tensor:
