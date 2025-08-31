@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, cast, Tuple
+from typing import Optional, Tuple, cast
 
 import torch
 from torch import Size
