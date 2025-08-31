@@ -57,6 +57,5 @@ def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch
         raise ValueError(f"The number of classes must be bigger than one. Got: {num_classes}")
 
     shape = labels.shape
-    one_hot = zeros((shape[0], num_classes) + shape[1:], device=device, dtype=dtype)
-
-    return one_hot.scatter_(1, labels.unsqueeze(1), 1.0) + eps
+    one_hot = torch.full((shape[0], num_classes) + shape[1:], eps, device=device, dtype=dtype)
+    return one_hot.scatter_(1, labels.unsqueeze(1), 1.0)
