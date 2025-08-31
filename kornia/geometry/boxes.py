@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, cast
+from typing import Optional, cast, Tuple
 
 import torch
 from torch import Size
@@ -622,12 +622,13 @@ class Boxes:
         # -----------------
         # GPU Hotpath (vectorized)
         # -----------------
+        out_shape: Tuple[int, ...]
         if is_batched:
             out_shape = (self.shape[0], self.shape[1], height, width)
         else:
             out_shape = (self.shape[0], height, width)
 
-        clipped_boxes_xyxy = self.to_tensor("xyxy", as_padded_sequence=True)
+        clipped_boxes_xyxy = cast(Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
         clipped_boxes_xyxy[..., ::2].clamp_(0, width)
         clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
 
