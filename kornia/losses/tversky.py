@@ -24,7 +24,6 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.losses._utils import mask_ignore_pixels
-from kornia.utils.one_hot import one_hot
 
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
@@ -91,30 +90,31 @@ def tversky_loss(
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
 
     # compute softmax over the classes axis
-    pred_soft: torch.Tensor = F.softmax(pred, dim=1)
-
+    pred_soft = F.softmax(pred, dim=1)
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
-    # create the labels one hot tensor
-    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
+    p_true = pred_soft.gather(1, target.unsqueeze(1))  # (B,1,H,W)
 
-    # mask ignore pixels
     if target_mask is not None:
-        target_mask.unsqueeze_(1)
-        target_one_hot = target_one_hot * target_mask
-        pred_soft = pred_soft * target_mask
+        m = target_mask.unsqueeze(1).to(dtype=pred.dtype)
+        p_true = p_true * m
+        total = m.sum((1, 2, 3))
+    else:
+        B, _, H, W = pred.shape
+        total = torch.full((B,), H * W, dtype=pred.dtype, device=pred.device)
 
-    # compute the actual dice score
-    dims = (1, 2, 3)
-    intersection = torch.sum(pred_soft * target_one_hot, dims)
-    fps = torch.sum(pred_soft * (-target_one_hot + 1.0), dims)
-    fns = torch.sum((-pred_soft + 1.0) * target_one_hot, dims)
+    intersection = p_true.sum((1, 2, 3))
+    # denominator = intersection + (alpha + beta) * (total - intersection) + eps
+    # instead of multiple ops, do it in one fused step:
+    denominator = torch.addcmul(
+        intersection,  # base
+        total - intersection,  # tensor1
+        torch.full_like(total, alpha + beta),  # tensor2 (scalar as tensor)
+        value=1.0,  # (intersection) + 1 * (tensor1*tensor2)
+    ).add_(eps)  # in-place add eps
+    score = intersection.div(denominator)
 
-    numerator = intersection
-    denominator = intersection + alpha * fps + beta * fns
-    tversky_loss = numerator / (denominator + eps)
-
-    return torch.mean(-tversky_loss + 1.0)
+    return 1.0 - score.mean()
 
 
 class TverskyLoss(nn.Module):

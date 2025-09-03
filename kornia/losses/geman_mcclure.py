@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import torch
 from torch import Tensor
 
 from kornia.core import Module
@@ -72,7 +73,9 @@ def geman_mcclure_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> T
     )
 
     # compute loss
-    loss = 2.0 * (img1 - img2) ** 2 / ((img1 - img2) ** 2 + 4.0)
+    diff = img1 - img2
+    diff2 = torch.square(diff)
+    loss = 2.0 * diff2 / (diff2 + 4.0)
 
     # perform reduction
     if reduction == "mean":
