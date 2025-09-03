@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any, Optional, Sequence, TypeVar, cast
 
+import torch
 from torch import float16, float32, float64
 from typing_extensions import TypeGuard
 
@@ -396,14 +397,17 @@ def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: Optional[str] = None, raises: bool = T
     if not raises and not KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises):
         return False
 
-    min_val, max_val = x.min(), x.max()
-    if x.dtype in [float16, float32, float64]:
-        if min_val < 0.0 or max_val > 1.0:
-            return _handle_invalid_range(msg, raises, min_val, max_val)
+    amin, amax = torch.aminmax(x)
+
+    if x.dtype in (float16, float32, float64):
+        invalid = (amin < 0) | (amax > 1)
     else:
-        max_int_value = 2**bits - 1
-        if min_val < 0 or max_val > max_int_value:
-            return _handle_invalid_range(msg, raises, min_val, max_val)
+        max_int_value = (1 << bits) - 1
+        invalid = (amin < 0) | (amax > max_int_value)
+
+    if invalid.item():
+        return _handle_invalid_range(msg, raises, amin, amax)
+
     return True
 
 
