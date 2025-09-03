@@ -50,7 +50,7 @@ class SOLD2(Module):
         as well as the list of detected line segments (ij coordinates convention).
 
     Example:
-        >>> images = torch.rand(2, 1, 512, 512)
+        >>> images = torch.rand(2, 1, 64, 64)
         >>> sold2 = SOLD2()
         >>> outputs = sold2(images)
         >>> line_seg1 = outputs["line_segments"][0]
