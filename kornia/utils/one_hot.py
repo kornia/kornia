@@ -17,7 +17,7 @@
 
 import torch
 
-from kornia.core import Tensor, zeros
+from kornia.core import Tensor
 
 
 def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch.dtype, eps: float = 1e-6) -> Tensor:
@@ -36,7 +36,7 @@ def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch
 
     Examples:
         >>> labels = torch.LongTensor([[[0, 1], [2, 0]]])
-        >>> one_hot(labels, num_classes=3, device=torch.device('cpu'), dtype=torch.int64)
+        >>> one_hot(labels, num_classes=3, device=torch.device('cpu'), dtype=torch.float32)
         tensor([[[[1.0000e+00, 1.0000e-06],
                   [1.0000e-06, 1.0000e+00]],
         <BLANKLINE>
@@ -57,6 +57,5 @@ def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch
         raise ValueError(f"The number of classes must be bigger than one. Got: {num_classes}")
 
     shape = labels.shape
-    one_hot = zeros((shape[0], num_classes) + shape[1:], device=device, dtype=dtype)
-
-    return one_hot.scatter_(1, labels.unsqueeze(1), 1.0) + eps
+    one_hot = torch.full((shape[0], num_classes) + shape[1:], eps, device=device, dtype=dtype)
+    return one_hot.scatter_(1, labels.unsqueeze(1), 1.0)

@@ -20,6 +20,7 @@ from typing import Any, Callable, List, Optional
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from kornia.core import Tensor
 
@@ -265,7 +266,7 @@ def make_grid(tensor: Tensor, n_row: Optional[int] = None, padding: int = 2) -> 
     padded_W = W + padding
 
     # pad each image on right and bottom with `padding` zeros
-    tensor_padded = torch.pad(tensor, (0, padding, 0, padding))
+    tensor_padded = F.pad(tensor, (0, padding, 0, padding))
 
     total = n_row * n_col
     if total > B:
