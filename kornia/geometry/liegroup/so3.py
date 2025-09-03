@@ -227,21 +227,43 @@ class So3(Module):
                     [0., 0., 1.]], grad_fn=<StackBackward0>)
 
         """
-        w = self.q.w[..., None]
-        x, y, z = self.q.x[..., None], self.q.y[..., None], self.q.z[..., None]
-        q0 = 1 - 2 * y**2 - 2 * z**2
-        q1 = 2 * x * y - 2 * z * w
-        q2 = 2 * x * z + 2 * y * w
-        row0 = concatenate((q0, q1, q2), -1)
-        q0 = 2 * x * y + 2 * z * w
-        q1 = 1 - 2 * x**2 - 2 * z**2
-        q2 = 2 * y * z - 2 * x * w
-        row1 = concatenate((q0, q1, q2), -1)
-        q0 = 2 * x * z - 2 * y * w
-        q1 = 2 * y * z + 2 * x * w
-        q2 = 1 - 2 * x**2 - 2 * y**2
-        row2 = concatenate((q0, q1, q2), -1)
-        return stack((row0, row1, row2), -2)
+        w = self.q.w
+        x = self.q.x
+        y = self.q.y
+        z = self.q.z
+
+        # Precompute squares
+        xx = x * x
+        yy = y * y
+        zz = z * z
+
+        # Precompute doubled products
+        xy = 2 * x * y
+        xz = 2 * x * z
+        yz = 2 * y * z
+        wx = 2 * w * x
+        wy = 2 * w * y
+        wz = 2 * w * z
+
+        # Allocate result tensor
+        R = torch.empty((*w.shape, 3, 3), dtype=w.dtype, device=w.device)
+
+        # Row 0
+        R[..., 0, 0] = 1 - 2 * (yy + zz)
+        R[..., 0, 1] = xy - wz
+        R[..., 0, 2] = xz + wy
+
+        # Row 1
+        R[..., 1, 0] = xy + wz
+        R[..., 1, 1] = 1 - 2 * (xx + zz)
+        R[..., 1, 2] = yz - wx
+
+        # Row 2
+        R[..., 2, 0] = xz - wy
+        R[..., 2, 1] = yz + wx
+        R[..., 2, 2] = 1 - 2 * (xx + yy)
+
+        return R
 
     @classmethod
     def from_matrix(cls, matrix: Tensor) -> So3:
