@@ -24,6 +24,7 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_COLOR,
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_GRAY,
+    KORNIA_CHECK_IS_IMAGE,
     KORNIA_CHECK_IS_LIST_OF_TENSOR,
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_LAF,
@@ -281,3 +282,38 @@ class TestCheckLaf:
 
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_LAF(torch.rand(4, 2, 2), raises=False) is False
+
+
+class TestCheckIsImage:
+    def test_valid_float(self):
+        assert KORNIA_CHECK_IS_IMAGE(torch.rand(3, 4, 4)) is True
+        assert KORNIA_CHECK_IS_IMAGE(torch.rand(2, 3, 4, 4)) is True
+        assert KORNIA_CHECK_IS_IMAGE(torch.rand(1, 1, 4, 4)) is True
+
+    def test_valid_int(self):
+        x = torch.randint(0, 256, (3, 4, 4), dtype=torch.uint8)
+        assert KORNIA_CHECK_IS_IMAGE(x) is True
+        y = torch.randint(0, 256, (2, 3, 4, 4), dtype=torch.uint8)
+        assert KORNIA_CHECK_IS_IMAGE(y) is True
+
+    def test_invalid_float_range(self):
+        with pytest.raises(Exception):
+            KORNIA_CHECK_IS_IMAGE(torch.tensor([[[-0.5, 1.2]]], dtype=torch.float32))
+
+    def test_invalid_int_range(self):
+        bad = torch.tensor([[[300]]], dtype=torch.int32)
+        with pytest.raises(Exception):
+            KORNIA_CHECK_IS_IMAGE(bad)
+
+    def test_invalid_shape(self):
+        x = torch.rand(1, 4, 4, 4)
+        assert KORNIA_CHECK_IS_IMAGE(x) is True
+
+    def test_invalid_range_no_raise(self):
+        bad = torch.tensor([[[-0.1, 2.0]]], dtype=torch.float32)
+        assert KORNIA_CHECK_IS_IMAGE(bad, raises=False) is False
+
+    def test_invalid_shape_no_raise(self):
+        # When raises=False, shape check is actually enforced
+        bad = torch.rand(1, 4, 4, 4)
+        assert KORNIA_CHECK_IS_IMAGE(bad, raises=False) is False
