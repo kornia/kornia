@@ -26,6 +26,7 @@ import kornia
 from kornia.geometry.conversions import (
     ARKitQTVecs_to_ColmapQTVecs,
     Rt_to_matrix4x4,
+    axis_angle_to_rotation_matrix,
     camtoworld_graphics_to_vision_4x4,
     camtoworld_graphics_to_vision_Rt,
     camtoworld_to_worldtocam_Rt,
@@ -1273,3 +1274,49 @@ def test_vector_to_skew_symmetric_matrix(batch_size, device, dtype):
     assert_close(skew_symmetric_matrix[..., 2, 0], -vector[..., 1])
     assert_close(skew_symmetric_matrix[..., 1, 2], -vector[..., 0])
     assert_close(skew_symmetric_matrix[..., 2, 1], vector[..., 0])
+
+
+class TestAxisAngleToRotationMatrix:
+    def test_identity_rotation(self):
+        aa = torch.zeros(1, 3, dtype=torch.float64, requires_grad=True)
+        R = axis_angle_to_rotation_matrix(aa)
+        Id = torch.eye(3, dtype=torch.float64).unsqueeze(0)
+        assert torch.allclose(R, Id, atol=1e-6)
+
+    def test_90deg_x_axis(self):
+        aa = torch.tensor([[torch.pi / 2, 0.0, 0.0]], dtype=torch.float64)
+        R = axis_angle_to_rotation_matrix(aa).squeeze(0)
+        expected = torch.tensor(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, 0.0, -1.0],
+                [0.0, 1.0, 0.0],
+            ],
+            dtype=torch.float64,
+        )
+        assert torch.allclose(R, expected, atol=1e-6)
+
+    def test_180deg_y_axis(self):
+        aa = torch.tensor([[0.0, torch.pi, 0.0]], dtype=torch.float64)
+        R = axis_angle_to_rotation_matrix(aa).squeeze(0)
+        expected = torch.tensor(
+            [
+                [-1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, -1.0],
+            ],
+            dtype=torch.float64,
+        )
+        assert torch.allclose(R, expected, atol=1e-6)
+
+    def test_batched_input(self):
+        aa = torch.tensor(
+            [
+                [0.0, 0.0, 0.0],
+                [torch.pi / 2, 0.0, 0.0],
+                [0.0, torch.pi, 0.0],
+            ],
+            dtype=torch.float64,
+        )
+        R = axis_angle_to_rotation_matrix(aa)
+        assert R.shape == (3, 3, 3)
