@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import math
 import sys
 from functools import partial
 
