@@ -115,7 +115,7 @@ jobs:
           key: ${{ inputs.cache-key }}
           restore-keys: ${{ inputs.cache-restore-keys }}
 
-      - uses: ./.github/actions/tests@v1.13.0
+      - uses: ./.github/actions/tests
         with:
           os: ${{ inputs.os }}
           python-version: ${{ matrix.python-version }}
