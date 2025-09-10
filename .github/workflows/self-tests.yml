@@ -19,6 +19,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - uses: asottile/workflows/.github/actions/fast-checkout@v1.6.0
+      with:
+        path: subdir
     - uses: ./subdir/.github/actions/env/
       with:
         pytorch-version: '1.9.1'
@@ -29,7 +31,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: asottile/workflows/.github/actions/fast-checkout@v1.6.0
-    - uses: ./subdir/.github/actions/coverage/
+      with:
+        path: subdir
+    - uses: ./subdir/.github/workflows/coverage.yml
       with:
         ref: main
 
@@ -37,7 +41,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: asottile/workflows/.github/actions/fast-checkout@v1.6.0
-    - uses: ./subdir/.github/actions/tests/
+      with:
+        path: subdir
+    - uses: ./subdir/.github/workflows/tests.yml
       with:
         ref: main
 
