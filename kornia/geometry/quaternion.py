@@ -22,6 +22,8 @@
 from math import pi
 from typing import Optional, Tuple, Union
 
+import torch
+
 from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import (
@@ -514,3 +516,35 @@ class Quaternion(Module):
 
         """
         return batched_dot_product(self.vec, self.vec) + self.real**2
+    
+def average_quaternions(
+    Q: "Quaternion", w: Optional[torch.Tensor] = None
+) -> "Quaternion":
+    """
+    Compute (weighted) average of multiple quaternions.
+
+    Args:
+        Q (Quaternion): quaternion object containing data of shape (M, 4).
+        w (torch.Tensor, optional): Weights of shape (M,). If None, uniform weights are used.
+        naive (bool, optional): If True, use naive mean averaging instead of eigen decomposition.
+
+    Returns:
+        Quaternion: averaged quaternion (shape (4,)), wrapped back in the Quaternion class.
+    """
+    data = Q.data
+    KORNIA_CHECK_TYPE(Q, Quaternion)
+
+    M = data.shape[0]
+    if w is None:
+        A = (data.T @ data) / M
+    else:
+        w = w.to(data.device, dtype=data.dtype)
+        w = w / w.sum()
+        A = torch.einsum('i,ij,ik->jk', w, data, data)
+
+    eigenvalues, eigenvectors = torch.linalg.eigh(A)
+    q_avg = eigenvectors[:, torch.argmax(eigenvalues)]
+    q_avg = q_avg / q_avg.norm()
+
+    return Quaternion(q_avg.unsqueeze(0))
+

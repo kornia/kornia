@@ -19,6 +19,7 @@ import pytest
 import torch
 
 from kornia.geometry.quaternion import Quaternion
+from kornia.geometry.quaternion import average_quaternions
 
 from testing.base import assert_close
 
@@ -307,3 +308,54 @@ class TestQuaternion:
         euler = torch.stack(euler, -1)
 
         self.assert_close(euler, euler_expected, 1e-4, 1e-4)
+
+def _to_tensor(x: torch.Tensor | Quaternion) -> torch.Tensor:
+    # Unwrap Quaternion/Parameter to a plain Tensor for comparisons
+    if isinstance(x, Quaternion):
+        x = x.data
+    if isinstance(x, torch.nn.Parameter):
+        x = x.data
+    # Accept (1,4) or (4,)
+    if x.ndim == 2 and x.shape[0] == 1:
+        x = x.squeeze(0)
+    return x
+
+def _align_sign(q: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
+    # Flip sign of q so it points roughly in the same direction as ref (handles q and -q ambiguity)
+    if torch.dot(q, ref) < 0:
+        return -q
+    return q
+
+class TestQuaternionAverage:
+    @pytest.mark.parametrize("M", [2, 5, 10])
+    def test_average_identity(self, device, dtype, M):
+        # Batch of identity quaternions
+        Q = Quaternion.identity(M, device=device, dtype=dtype)
+        out = average_quaternions(Q)
+        q = _to_tensor(out)
+
+        expected = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        q = _align_sign(q, expected)
+
+        torch.testing.assert_close(q, expected, rtol=1e-6, atol=1e-6)
+
+    def test_average_two_opposites(self, device, dtype):
+        # q and -q: result should be either q or -q (sign ambiguous), but unit-length
+        q = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0).to(device, dtype)
+        data = torch.stack([_to_tensor(q), _to_tensor(-q)], dim=0)
+        Q = Quaternion(data)
+        out = average_quaternions(Q)
+        avg = _to_tensor(out)
+
+        torch.testing.assert_close(avg.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
+        base = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        assert torch.abs(torch.dot(avg, base)) > 1.0 - 1e-5
+
+    @pytest.mark.parametrize("M", [5, 10])
+    def test_normalized_output(self, device, dtype, M):
+        q = Quaternion.random(M, device=device, dtype=dtype).normalize()
+        out = average_quaternions(q)
+        avg = _to_tensor(out)
+
+        torch.testing.assert_close(avg.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
+
