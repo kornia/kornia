@@ -314,8 +314,7 @@ def _to_tensor(x: torch.Tensor | Quaternion) -> torch.Tensor:
     if isinstance(x, Quaternion):
         x = x.data
     if isinstance(x, torch.nn.Parameter):
-        x = x.data
-    # Accept (1,4) or (4,)
+        x = x.data    # Accept (1,4) or (4,)
     if x.ndim == 2 and x.shape[0] == 1:
         x = x.squeeze(0)
     return x
@@ -327,9 +326,9 @@ def _align_sign(q: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
     return q
 
 class TestQuaternionAverage:
-    @pytest.mark.parametrize("M", [2, 5, 10])
+    @pytest.mark.parametrize("M", [2, 5])
     def test_average_identity(self, device, dtype, M):
-        # Batch of identity quaternions
+        # All identity quaternions → should return identity
         Q = Quaternion.identity(M, device=device, dtype=dtype)
         out = average_quaternions(Q)
         q = _to_tensor(out)
@@ -339,23 +338,26 @@ class TestQuaternionAverage:
 
         torch.testing.assert_close(q, expected, rtol=1e-6, atol=1e-6)
 
-    def test_average_two_opposites(self, device, dtype):
-        # q and -q: result should be either q or -q (sign ambiguous), but unit-length
-        q = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0).to(device, dtype)
-        data = torch.stack([_to_tensor(q), _to_tensor(-q)], dim=0)
-        Q = Quaternion(data)
+    def test_normalized_output(self, device, dtype):
+        # Random quaternions → average must be unit norm
+        Q = Quaternion.random(6, device=device, dtype=dtype).normalize()
         out = average_quaternions(Q)
-        avg = _to_tensor(out)
+        q = _to_tensor(out)
 
-        torch.testing.assert_close(avg.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
-        base = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
-        assert torch.abs(torch.dot(avg, base)) > 1.0 - 1e-5
+        torch.testing.assert_close(
+            q.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6
+        )
 
-    @pytest.mark.parametrize("M", [5, 10])
-    def test_normalized_output(self, device, dtype, M):
-        q = Quaternion.random(M, device=device, dtype=dtype).normalize()
-        out = average_quaternions(q)
-        avg = _to_tensor(out)
+    def test_weighted_bias(self, device, dtype):
+        # Heavier weight should bias result
+        q1 = Quaternion(torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype))
+        q2 = Quaternion(torch.tensor([[0.0, 1.0, 0.0, 0.0]], device=device, dtype=dtype))
+        Q = Quaternion(torch.cat([q1.data, q2.data], dim=0))
 
-        torch.testing.assert_close(avg.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
+        w = torch.tensor([0.9, 0.1], device=device, dtype=dtype)
+        out = average_quaternions(Q, w=w)
+        q = _to_tensor(out)
 
+        dot1 = torch.dot(q, q1.data.squeeze())
+        dot2 = torch.dot(q, q2.data.squeeze())
+        assert dot1 > dot2

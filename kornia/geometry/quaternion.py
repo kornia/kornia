@@ -526,8 +526,6 @@ def average_quaternions(
     Args:
         Q (Quaternion): quaternion object containing data of shape (M, 4).
         w (torch.Tensor, optional): Weights of shape (M,). If None, uniform weights are used.
-        naive (bool, optional): If True, use naive mean averaging instead of eigen decomposition.
-
     Returns:
         Quaternion: averaged quaternion (shape (4,)), wrapped back in the Quaternion class.
     """
