@@ -15,13 +15,14 @@
 # limitations under the License.
 #
 
+from typing import Union
+
 import pytest
 import torch
 
 from kornia.geometry.quaternion import Quaternion, average_quaternions
 
 from testing.base import assert_close
-from typing import Union
 
 
 class TestQuaternion:
@@ -309,6 +310,7 @@ class TestQuaternion:
 
         self.assert_close(euler, euler_expected, 1e-4, 1e-4)
 
+
 def _to_tensor(x: Union[torch.Tensor, Quaternion]) -> torch.Tensor:
     # Unwrap Quaternion/Parameter to a plain Tensor for comparisons
     if isinstance(x, Quaternion):
@@ -382,9 +384,7 @@ class TestQuaternionAverage:
         q = _to_tensor(out)
 
         # Should still be a valid unit quaternion
-        torch.testing.assert_close(
-            q.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6
-        )
+        torch.testing.assert_close(q.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
 
     def test_invalid_weights_raise(self, device, dtype):
         """Mismatched number of weights should raise"""
