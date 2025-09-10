@@ -74,6 +74,7 @@ def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
     idxs = torch.empty(0, 2, device=dm.device, dtype=torch.long)
     return dists, idxs
 
+
 def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
     r"""Find nearest neighbors in desc2 for each vector in desc1.
 
@@ -550,6 +551,3 @@ class GeometryAwareDescriptorMatcher(Module):
         else:
             raise NotImplementedError
         return out
-
-
-_empty_tensors_cache: dict[tuple[torch.device, torch.dtype], tuple[torch.Tensor, torch.Tensor]] = {}
