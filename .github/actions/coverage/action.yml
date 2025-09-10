@@ -36,7 +36,7 @@ runs:
   using: "composite"
   steps:
     - name: Setting environment on ${{ inputs.os }} with python ${{ inputs.python-version }} and pytorch ${{ inputs.pytorch-version }}
-      uses: ./.github/actions/env@v1.13.0
+      uses: ./.github/actions/env
       with:
         python-version: ${{ inputs.python-version }}
         pytorch-version: ${{ inputs.pytorch-version }}
