@@ -310,8 +310,6 @@ class TestQuaternion:
         self.assert_close(euler, euler_expected, 1e-4, 1e-4)
 
 def _to_tensor(x: Union[torch.Tensor, Quaternion]) -> torch.Tensor:
-
-def _to_tensor(x: torch.Tensor | Quaternion) -> torch.Tensor:
     # Unwrap Quaternion/Parameter to a plain Tensor for comparisons
     if isinstance(x, Quaternion):
         x = x.data
