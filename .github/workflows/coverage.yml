@@ -49,7 +49,7 @@ jobs:
           key: ${{ inputs.cache-key }}
           restore-keys: ${{ inputs.cache-restore-keys }}
 
-      - uses: ./.github/actions/coverage@v1.13.0
+      - uses: ./.github/actions/coverage
         with:
           os: ${{ inputs.os }}
           python-version: ${{ inputs.python-version }}
