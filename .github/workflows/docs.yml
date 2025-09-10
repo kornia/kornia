@@ -96,7 +96,7 @@ jobs:
 
     steps:
       - name: Setting environment on ${{ inputs.os }} with python ${{ matrix.python-version }} and pytorch ${{ matrix.pytorch-version }}
-        uses: ./.github/actions/env@v1.13.0
+        uses: ./.github/actions/env
         with:
           python-version: ${{ matrix.python-version }}
           pytorch-version: ${{ matrix.pytorch-version }}
