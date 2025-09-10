@@ -516,16 +516,15 @@ class Quaternion(Module):
 
         """
         return batched_dot_product(self.vec, self.vec) + self.real**2
-    
-def average_quaternions(
-    Q: "Quaternion", w: Optional[torch.Tensor] = None
-) -> "Quaternion":
-    """
-    Compute (weighted) average of multiple quaternions.
+
+
+def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Quaternion":
+    """Compute (weighted) average of multiple quaternions.
 
     Args:
         Q (Quaternion): quaternion object containing data of shape (M, 4).
         w (torch.Tensor, optional): Weights of shape (M,). If None, uniform weights are used.
+
 
     Returns:
         Quaternion: averaged quaternion (shape (4,)), wrapped back in the Quaternion class.

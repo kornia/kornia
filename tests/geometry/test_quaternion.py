@@ -18,8 +18,7 @@
 import pytest
 import torch
 
-from kornia.geometry.quaternion import Quaternion
-from kornia.geometry.quaternion import average_quaternions
+from kornia.geometry.quaternion import Quaternion, average_quaternions
 
 from testing.base import assert_close
 from typing import Union
@@ -311,6 +310,8 @@ class TestQuaternion:
         self.assert_close(euler, euler_expected, 1e-4, 1e-4)
 
 def _to_tensor(x: Union[torch.Tensor, Quaternion]) -> torch.Tensor:
+
+def _to_tensor(x: torch.Tensor | Quaternion) -> torch.Tensor:
     # Unwrap Quaternion/Parameter to a plain Tensor for comparisons
     if isinstance(x, Quaternion):
         x = x.data
@@ -320,11 +321,13 @@ def _to_tensor(x: Union[torch.Tensor, Quaternion]) -> torch.Tensor:
         x = x.squeeze(0)
     return x
 
+
 def _align_sign(q: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
     # Flip sign of q so it points roughly in the same direction as ref
     if torch.dot(q, ref) < 0:
         return -q
     return q
+
 
 class TestQuaternionAverage:
     @pytest.mark.parametrize("M", [1, 2, 5, 10])
@@ -345,9 +348,7 @@ class TestQuaternionAverage:
         out = average_quaternions(Q)
         q = _to_tensor(out)
 
-        torch.testing.assert_close(
-            q.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6
-        )
+        torch.testing.assert_close(q.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
 
     def test_weighted_bias(self, device, dtype):
         """Heavier weights should bias the average toward the corresponding quaternion"""
