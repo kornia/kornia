@@ -1,0 +1,45 @@
+name: pytest
+
+inputs:
+  python-version:
+    required: false
+    type: string
+    default: "3.13"
+  pytorch-version:
+    required: false
+    type: string
+    default: 2.5.1
+  os:
+    required: false
+    type: string
+    default: ubuntu-latest
+  pytorch-dtype:
+    required: false
+    type: string
+    default: float32
+  pytorch-device:
+    required: false
+    type: string
+    default: cpu
+  pytest-extra:
+    required: false
+    type: string
+    default: --timeout=5 -k "not test_dynamo"
+  ref:
+    default: ${{ github.sha }}
+
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setting environment on ${{ inputs.os }} with python ${{ inputs.python-version }} and pytorch ${{ inputs.pytorch-version }}
+      uses: ./.github/actions/env@v1.13.0
+      with:
+        python-version: ${{ inputs.python-version }}
+        pytorch-version: ${{ inputs.pytorch-version }}
+        ref: ${{ inputs.ref }}
+
+    - name: Run CPU tests ${{ inputs.pytorch-dtype }}
+      shell: bash -l {0}
+      run: |
+        pytest -v ./tests/ --device=${{ inputs.pytorch-device }} --dtype=${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }}

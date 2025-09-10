@@ -1,0 +1,83 @@
+name: Setup Kornia dev environment
+
+inputs:
+  python-version:
+    description: "The python version desired."
+    required: true
+    default: "3.13"
+    type: string
+
+  pytorch-version:
+    description: "The pytorch version desired."
+    required: true
+    default: "2.5.1"
+    type: string
+
+  ref:
+    default: ${{ github.sha }}
+
+  fetch-depth:
+    default: 1
+
+  extra-deps:
+    description: "Dependencies to be installed manually before installing kornia."
+    default: ""
+    required: False
+    type: string
+
+runs:
+  using: "composite"
+  steps:
+    - uses: asottile/workflows/.github/actions/fast-checkout@v1.6.0
+      with:
+        repository: kornia/kornia
+        ref: ${{ inputs.ref }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    - name: Setup environment
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install UV
+      shell: bash
+      run: pip install uv
+
+    - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) }}
+      name: Install PyTorch nightly
+      shell: bash
+      run: uv pip install --system numpy --pre torch[dynamo] ${{ inputs.extra-deps }} --force-reinstall --extra-index-url https://download.pytorch.org/whl/nightly/cpu/
+
+    - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) == false}}
+      name: Install pytorch
+      shell: bash
+      run:   |
+             if [ "$RUNNER_OS" == "Linux" ] || [ "$RUNNER_OS" == "Windows" ]; then
+                uv pip install --system torch==${{ inputs.pytorch-version }}+cpu ${{ inputs.extra-deps }} --find-links https://download.pytorch.org/whl/torch
+             else
+                uv pip install --system torch==${{ inputs.pytorch-version }} ${{ inputs.extra-deps }} --find-links https://download.pytorch.org/whl/torch
+             fi
+
+    - if: ${{ contains(fromJson('["1.9.1", "1.10.2", "1.11.0", "1.12.1", "1.13.1", "2.0.1", "2.1.2", "2.2.2"]'), inputs.pytorch-version) }}
+      name: Install numpy for old torchs
+      shell: bash
+      run: uv pip install --system "numpy<2.0.0"
+
+    - if: ${{ contains(fromJson('["1.9.1"]'), inputs.pytorch-version) }}
+      name: Install accelerate for old torchs
+      shell: bash
+      run: uv pip install --system accelerate==0.20.3
+
+    - name: Install Kornia dev
+      shell: bash
+      run: uv pip install --system --editable .[dev,x]
+
+    - name: Check torch version
+      shell: bash
+      run: pip show torch | grep ${{ inputs.pytorch-version }}  || false
+
+    - name: Print dependencies and kornia version
+      shell: bash
+      run: |
+        python -c "import torch;print('Pytorch version: ', torch.__version__)"
+        python -c "import kornia;print('Kornia version: ', kornia.__version__)"
