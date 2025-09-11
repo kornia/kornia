@@ -47,12 +47,11 @@ def sample_keypoints(
 
 def get_grid(B: int, H: int, W: int, device: torch.device) -> torch.Tensor:
     """Get grid of provided layout."""
-    x1_n_ = torch.meshgrid(
-        *[torch.linspace(-1 + 1 / n, 1 - 1 / n, n, device=device) for n in (B, H, W)],
-        indexing="ij",
-    )
-    x1_n = torch.stack((x1_n_[2], x1_n_[1]), dim=-1).reshape(B, H * W, 2)
-    return x1_n
+    xs = (torch.arange(W, device=device) + 0.5) / W * 2 - 1
+    ys = (torch.arange(H, device=device) + 0.5) / H * 2 - 1
+    yy, xx = torch.meshgrid(ys, xs, indexing="ij")
+    base = torch.stack((xx, yy), dim=-1).reshape(1, H * W, 2)
+    return base.expand(B, -1, -1)
 
 
 def dedode_denormalize_pixel_coordinates(flow: torch.Tensor, h: int, w: int) -> torch.Tensor:

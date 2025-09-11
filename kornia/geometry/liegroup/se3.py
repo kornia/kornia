@@ -207,7 +207,7 @@ class Se3(Module):
 
         """
         omega = self.r.log()
-        theta = batched_dot_product(omega, omega).sqrt()
+        theta = batched_dot_product(omega, omega).clamp_min(1e-12).sqrt()
         t = self.t.data
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
