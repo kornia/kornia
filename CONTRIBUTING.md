@@ -67,61 +67,92 @@ repository under your GitHub account.
 
 4. Creating a development environment
 
-    **Using kornia script**
+    **Using kornia script (Recommended)**
 
-    Assuming that you are on ubuntu, with nvidia-drivers installed. In bash, source the ``path.bash.inc`` script.
-    This will install a local conda environment under ``./.dev_env``, which includes Pytorch and some dependencies
-    (no root required).
-
-    ```bash
-    $ source ./path.bash.inc
-    $ pip install -e .[dev]
-    $ python -c "import kornia; print(kornia.__version__)"
-    ```
-
-    To install, or update the conda environment run ``setup_dev_env.sh``
+    Kornia now uses [uv](https://github.com/astral-sh/uv) for fast Python package management and virtual environment creation.
+    The `setup_dev_env.sh` script will automatically install uv (if not already installed), create a virtual environment,
+    and install all development dependencies including PyTorch with the appropriate CUDA version.
 
     ```bash
     $ ./setup_dev_env.sh
     ```
 
+    This script will:
+    - Install uv if it's not already available
+    - Create a virtual environment in the `./venv` directory
+    - Install PyTorch with the appropriate CUDA version (default CUDA 12.1)
+    - Install all development dependencies from `requirements/requirements-dev.txt`
+    - Install documentation dependencies from `requirements/requirements-docs.txt`
 
-    **Manually setup**
-
-    Otherwise, use a virtual environment of your preference. We recommend using
-    [conda](https://docs.conda.io/en/latest/) because it facilitates the Pytorch setup, mainly for those who have a
-    **GPU** available.
-
-    Example of creating and activating a virtualenv under `venv` name:
+    You can customize the Python version, PyTorch version, and CUDA version using environment variables:
     ```bash
-    # Using virtualenv
-    $ virtualenv venv -p <your python version / alias> # e.g python3.10
-    $ ./venv/bin/activate
-
-    # Using conda
-    $ conda create -p venv python=<language version> # e.g 3.10
-    $ conda activate venv/
+    $ PYTHON_VERSION=3.10 PYTORCH_VERSION=2.4.0 CUDA_VERSION=11.8 ./setup_dev_env.sh
     ```
 
-    Setup Pytorch and Kornia:
+    To use CPU-only PyTorch:
     ```bash
-    # Installing pytorch: https://pytorch.org/get-started/locally/
-    # With pip
-    $ pip install torch
-    # With conda
-    $ conda install pytorch cudatoolkit -c pytorch -c nvidia # For GPU env
-    # or
-    $ conda install pytorch cpuonly -c pytorch # For CPU env
+    $ PYTORCH_MODE=cpuonly ./setup_dev_env.sh
+    ```
 
-    # Installing Kornia for development
-    $ pip install -e .[dev]
+    **Using justfile commands (Recommended)**
 
-    # If you want to contribute to the documentation
-    $ pip install -e .[docs]
+    Kornia provides a `justfile` with convenient commands for development tasks. The justfile automatically
+    ensures the virtual environment is set up before running any commands.
+
+    To see all available commands:
+    ```bash
+    $ just
+    ```
+
+    To run tests:
+    ```bash
+    $ just test-cpu        # Run CPU tests
+    $ just test-cuda       # Run CUDA tests
+    $ just test-all        # Run all tests
+    ```
+
+    To run linting and type checking:
+    ```bash
+    $ just lint            # Run code formatting and linting
+    $ just mypy            # Run type checking
+    ```
+
+    **Manually setup with uv**
+
+    If you prefer to set up the environment manually:
+
+    1. Install uv:
+    ```bash
+    # On Linux/macOS
+    $ curl -LsSf https://astral.sh/uv/install.sh | sh
+
+    # Or using pip
+    $ pip install uv
+    ```
+
+    2. Create and activate a virtual environment:
+    ```bash
+    $ uv venv
+    $ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+    ```
+
+    3. Install PyTorch with appropriate CUDA version:
+    ```bash
+    # For CUDA 12.1 (default)
+    $ uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+    # For CPU-only
+    $ uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+    ```
+
+    4. Install Kornia development dependencies:
+    ```bash
+    $ uv pip install -e .[dev,x]
+    $ uv pip install -e .[docs]  # For documentation development
     ```
 
     **Attention**: If *Kornia* was already installed in your virtual environment, remove it with
-    `pip uninstall kornia` before reinstalling it in editable mode with the `-e` flag.
+    `uv pip uninstall kornia` before reinstalling it in editable mode with the `-e` flag.
 
 5. Develop the code on your branch, and before creating the pull request, make sure to ensure the code passes the checks.
 
