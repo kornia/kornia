@@ -51,16 +51,20 @@ def test_get_kron_order(d1, d2):
     out = get_kron_order(d1, d2)
     assert out.shape == (d1 * d2, 2)
 
+
 def test_get_kron_order_values_and_dtype():
     d1, d2 = 2, 3
-    expected_output = torch.tensor([
-        [0, 0],
-        [0, 1],
-        [0, 2],
-        [1, 0],
-        [1, 1],
-        [1, 2],
-    ], dtype=torch.int64)
+    expected_output = torch.tensor(
+        [
+            [0, 0],
+            [0, 1],
+            [0, 2],
+            [1, 0],
+            [1, 1],
+            [1, 2],
+        ],
+        dtype=torch.int64,
+    )
 
     actual_output = get_kron_order(d1, d2)
     assert actual_output.dtype == torch.int64

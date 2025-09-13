@@ -52,11 +52,7 @@ def get_grid_dict(patch_size: int = 32) -> Dict[str, Tensor]:
 
 def get_kron_order(d1: int, d2: int) -> Tensor:
     r"""Get order for doing kronecker product."""
-    grid_d1, grid_d2 = torch.meshgrid(
-        torch.arange(d1),
-        torch.arange(d2),
-        indexing='ij'
-    )
+    grid_d1, grid_d2 = torch.meshgrid(torch.arange(d1), torch.arange(d2), indexing="ij")
     kron_order = torch.stack([grid_d1, grid_d2], dim=2).reshape(-1, 2)
     return kron_order.to(torch.int64)
 
