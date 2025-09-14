@@ -219,7 +219,7 @@ def depth_to_normals(depth: Tensor, camera_matrix: Tensor, normalize_points: boo
     # compute normals
     a, b = gradients[:, :, 0], gradients[:, :, 1]  # Bx3xHxW
 
-    normals: Tensor = torch.cross(a, b, dim=1)  # Bx3xHxW
+    normals: Tensor = torch.linalg.cross(a, b, dim=1)
     return kornia_ops.normalize(normals, dim=1, p=2)
 
 

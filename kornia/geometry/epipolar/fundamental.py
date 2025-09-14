@@ -327,7 +327,7 @@ def get_perpendicular(lines: Tensor, points: Tensor) -> Tensor:
     else:
         raise AssertionError(points.shape)
     infinity_point = lines * torch.tensor([1, 1, 0], dtype=lines.dtype, device=lines.device).view(1, 1, 3)
-    perp: Tensor = points_h.cross(infinity_point, dim=2)
+    perp: Tensor = torch.linalg.cross(points_h, infinity_point, dim=2)
     return perp
 
 
@@ -355,7 +355,10 @@ def get_closest_point_on_epipolar_line(pts1: Tensor, pts2: Tensor, Fm: Tensor) -
         pts2 = convert_points_to_homogeneous(pts2)
     line1in2 = compute_correspond_epilines(pts1, Fm)
     perp = get_perpendicular(line1in2, pts2)
-    points1_in_2 = convert_points_from_homogeneous(line1in2.cross(perp, dim=2))
+    points1_in_2 = convert_points_from_homogeneous(
+        torch.linalg.cross(line1in2, perp, dim=2)
+    )
+
     return points1_in_2
 
 

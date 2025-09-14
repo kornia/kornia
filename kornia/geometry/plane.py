@@ -19,7 +19,7 @@
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h
 
 from typing import Optional
-
+import torch
 from kornia.core import Module, Tensor, stack, where
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.core.tensor_wrapper import unwrap, wrap  # type: ignore[attr-defined]
@@ -103,7 +103,7 @@ class Hyperplane(Module):
         KORNIA_CHECK(p0.shape == p1.shape)
         KORNIA_CHECK(p1.shape == p2.shape)
         v0, v1 = (p2 - p0), (p1 - p0)
-        normal = v0.cross(v1)
+        normal = torch.linalg.cross(v0,v1, dim = -1)
         norm = normal.norm(-1)
 
         # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L108

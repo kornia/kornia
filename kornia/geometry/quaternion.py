@@ -21,6 +21,7 @@
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Quaternion.h
 from math import pi
 from typing import Optional, Tuple, Union
+import torch
 
 from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
 from kornia.core.check import KORNIA_CHECK_TYPE
@@ -145,10 +146,12 @@ class Quaternion(Module):
 
     def __mul__(self, right: "Quaternion") -> "Quaternion":
         KORNIA_CHECK_TYPE(right, Quaternion)
-        # NOTE: borrowed from sophus sympy. Produce less multiplications compared to others.
-        # https://github.com/strasdat/Sophus/blob/785fef35b7d9e0fc67b4964a69124277b7434a44/sympy/sophus/quaternion.py#L19
         new_real = self.real * right.real - batched_dot_product(self.vec, right.vec)
-        new_vec = self.real[..., None] * right.vec + right.real[..., None] * self.vec + self.vec.cross(right.vec)
+        new_vec = (
+            self.real[..., None] * right.vec
+            + right.real[..., None] * self.vec
+            + torch.linalg.cross(self.vec, right.vec, dim=-1)
+        )
         return Quaternion(concatenate((new_real[..., None], new_vec), -1))
 
     def __div__(self, right: Union[Tensor, "Quaternion"]) -> "Quaternion":

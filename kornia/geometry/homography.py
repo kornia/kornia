@@ -128,7 +128,7 @@ def line_segment_transfer_error_one_way(ls1: Tensor, ls2: Tensor, H: Tensor, squ
     ps2, pe2 = torch.chunk(ls2, dim=2, chunks=2)
     ps2_h = convert_points_to_homogeneous(ps2)
     pe2_h = convert_points_to_homogeneous(pe2)
-    ln2 = ps2_h.cross(pe2_h, dim=3)
+    ln2 = torch.linalg.cross(ps2_h, pe2_h, dim=3)
     ps1_in2 = convert_points_to_homogeneous(transform_points(H, ps1))
     pe1_in2 = convert_points_to_homogeneous(transform_points(H, pe1))
     er_st1 = (ln2 @ ps1_in2.transpose(-2, -1)).view(B, N).abs()
@@ -259,10 +259,13 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
     src_perm = points_src_h[:, idx_perm]
     dst_perm = points_dst_h[:, idx_perm]
     left_sign = (
-        torch.cross(src_perm[..., 1:2, :], src_perm[..., 2:3, :]) @ src_perm[..., 0:1, :].permute(0, 1, 3, 2)
+        torch.linalg.cross(src_perm[..., 1:2, :], src_perm[..., 2:3, :], dim=-1)
+        @ src_perm[..., 0:1, :].permute(0, 1, 3, 2)
     ).sign()
+
     right_sign = (
-        torch.cross(dst_perm[..., 1:2, :], dst_perm[..., 2:3, :]) @ dst_perm[..., 0:1, :].permute(0, 1, 3, 2)
+        torch.linalg.cross(dst_perm[..., 1:2, :], dst_perm[..., 2:3, :], dim=-1)
+        @ dst_perm[..., 0:1, :].permute(0, 1, 3, 2)
     ).sign()
     sample_is_valid = (left_sign == right_sign).view(-1, 4).min(dim=1)[0]
     return sample_is_valid
