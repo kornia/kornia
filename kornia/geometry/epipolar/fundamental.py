@@ -355,9 +355,7 @@ def get_closest_point_on_epipolar_line(pts1: Tensor, pts2: Tensor, Fm: Tensor) -
         pts2 = convert_points_to_homogeneous(pts2)
     line1in2 = compute_correspond_epilines(pts1, Fm)
     perp = get_perpendicular(line1in2, pts2)
-    points1_in_2 = convert_points_from_homogeneous(
-        torch.linalg.cross(line1in2, perp, dim=2)
-    )
+    points1_in_2 = convert_points_from_homogeneous(torch.linalg.cross(line1in2, perp, dim=2))
 
     return points1_in_2
 

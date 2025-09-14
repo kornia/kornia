@@ -21,6 +21,7 @@
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Quaternion.h
 from math import pi
 from typing import Optional, Tuple, Union
+
 import torch
 
 from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
