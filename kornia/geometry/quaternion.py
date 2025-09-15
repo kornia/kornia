@@ -73,11 +73,12 @@ class Quaternion(Module):
 
     """
 
-    def __init__(self, data: Tensor) -> None:
+    def __init__(self, data: Tensor, requires_grad: bool = True) -> None:
         """Construct the base class.
 
         Args:
             data: tensor containing the quaternion data with the sape of :math:`(B, 4)`.
+            requires_grad: whether the quaternion should be tracked by autograd.
 
         Example:
             >>> data = torch.rand(2, 4)
@@ -88,13 +89,13 @@ class Quaternion(Module):
         """
         super().__init__()
         # KORNIA_CHECK_SHAPE(data, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
-        self._data = Parameter(data)
+        self._data = Parameter(data, requires_grad=requires_grad)
 
     def __repr__(self) -> str:
         return f"{self.data}"
 
     def __getitem__(self, idx: Union[int, slice]) -> "Quaternion":
-        return Quaternion(self.data[idx])
+        return Quaternion(self.data[idx], requires_grad=self.data.requires_grad)
 
     def __neg__(self) -> "Quaternion":
         """Inverts the sign of the quaternion data.
@@ -105,7 +106,7 @@ class Quaternion(Module):
             tensor([-1., -0., -0., -0.], grad_fn=<NegBackward0>)
 
         """
-        return Quaternion(-self.data)
+        return Quaternion(-self.data, requires_grad=self.data.requires_grad)
 
     def __add__(self, right: "Quaternion") -> "Quaternion":
         """Add a given quaternion.
@@ -123,7 +124,7 @@ class Quaternion(Module):
 
         """
         KORNIA_CHECK_TYPE(right, Quaternion)
-        return Quaternion(self.data + right.data)
+        return Quaternion(self.data + right.data, requires_grad=self.data.requires_grad)
 
     def __sub__(self, right: "Quaternion") -> "Quaternion":
         """Subtract a given quaternion.
@@ -141,7 +142,7 @@ class Quaternion(Module):
 
         """
         KORNIA_CHECK_TYPE(right, Quaternion)
-        return Quaternion(self.data - right.data)
+        return Quaternion(self.data - right.data, requires_grad=self.data.requires_grad)
 
     def __mul__(self, right: "Quaternion") -> "Quaternion":
         KORNIA_CHECK_TYPE(right, Quaternion)
@@ -149,11 +150,11 @@ class Quaternion(Module):
         # https://github.com/strasdat/Sophus/blob/785fef35b7d9e0fc67b4964a69124277b7434a44/sympy/sophus/quaternion.py#L19
         new_real = self.real * right.real - batched_dot_product(self.vec, right.vec)
         new_vec = self.real[..., None] * right.vec + right.real[..., None] * self.vec + self.vec.cross(right.vec)
-        return Quaternion(concatenate((new_real[..., None], new_vec), -1))
+        return Quaternion(concatenate((new_real[..., None], new_vec), -1), requires_grad=self.data.requires_grad)
 
     def __div__(self, right: Union[Tensor, "Quaternion"]) -> "Quaternion":
         if isinstance(right, Tensor):
-            return Quaternion(self.data / right[..., None])
+            return Quaternion(self.data / right[..., None], requires_grad=self.data.requires_grad)
         KORNIA_CHECK_TYPE(right, Quaternion)
         return self * right.inv()
 
@@ -176,7 +177,7 @@ class Quaternion(Module):
         n = where(vec_norm != 0, self.vec / vec_norm, self.vec * 0)
         w = (t * theta).cos()
         xyz = (t * theta).sin() * n
-        return Quaternion(concatenate((w, xyz), -1))
+        return Quaternion(concatenate((w, xyz), -1), requires_grad=self.data.requires_grad)
 
     @property
     def data(self) -> Tensor:
@@ -271,11 +272,12 @@ class Quaternion(Module):
         return quaternion_to_rotation_matrix(self.data)
 
     @classmethod
-    def from_matrix(cls, matrix: Tensor) -> "Quaternion":
+    def from_matrix(cls, matrix: Tensor, requires_grad: bool = True) -> "Quaternion":
         """Create a quaternion from a rotation matrix.
 
         Args:
             matrix: the rotation matrix to convert of shape :math:`(B, 3, 3)`.
+            requires_grad: whether the quaternion should be tracked by autograd.
 
         Example:
             >>> m = torch.eye(3)[None]
@@ -285,16 +287,17 @@ class Quaternion(Module):
             tensor([[1., 0., 0., 0.]], requires_grad=True)
 
         """
-        return cls(rotation_matrix_to_quaternion(matrix))
+        return cls(rotation_matrix_to_quaternion(matrix), requires_grad=requires_grad)
 
     @classmethod
-    def from_euler(cls, roll: Tensor, pitch: Tensor, yaw: Tensor) -> "Quaternion":
+    def from_euler(cls, roll: Tensor, pitch: Tensor, yaw: Tensor, requires_grad: bool = True) -> "Quaternion":
         """Create a quaternion from Euler angles.
 
         Args:
             roll: the roll euler angle.
             pitch: the pitch euler angle.
             yaw: the yaw euler angle.
+            requires_grad: whether the quaternion should be tracked by autograd.
 
         Example:
             >>> roll, pitch, yaw = tensor(0), tensor(1), tensor(0)
@@ -306,7 +309,7 @@ class Quaternion(Module):
         """
         w, x, y, z = quaternion_from_euler(roll=roll, pitch=pitch, yaw=yaw)
         q = stack((w, x, y, z), -1)
-        return cls(q)
+        return cls(q, requires_grad=requires_grad)
 
     def to_euler(self) -> Tuple[Tensor, Tensor, Tensor]:
         """Convert the quaternion to a triple of Euler angles (roll, pitch, yaw).
@@ -325,7 +328,7 @@ class Quaternion(Module):
         return euler_from_quaternion(self.w, self.x, self.y, self.z)
 
     @classmethod
-    def from_axis_angle(cls, axis_angle: Tensor) -> "Quaternion":
+    def from_axis_angle(cls, axis_angle: Tensor, requires_grad: bool = True) -> "Quaternion":
         """Create a quaternion from axis-angle representation.
 
         Args:
@@ -339,7 +342,7 @@ class Quaternion(Module):
             tensor([[0.8776, 0.4794, 0.0000, 0.0000]], requires_grad=True)
 
         """
-        return cls(axis_angle_to_quaternion(axis_angle))
+        return cls(axis_angle_to_quaternion(axis_angle), requires_grad=requires_grad)
 
     def to_axis_angle(self) -> Tensor:
         """Convert the quaternion to an axis-angle representation.
@@ -355,7 +358,7 @@ class Quaternion(Module):
 
     @classmethod
     def identity(
-        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None
+        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None, requires_grad: bool = True
     ) -> "Quaternion":
         """Create a quaternion representing an identity rotation.
 
@@ -363,6 +366,7 @@ class Quaternion(Module):
             batch_size: the batch size of the underlying data.
             device: device to place the result on.
             dtype: dtype of the result.
+            requires_grad: whether the quaternion should be tracked by autograd.
 
         Example:
             >>> q = Quaternion.identity()
@@ -374,10 +378,10 @@ class Quaternion(Module):
         data = tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
             data = data.repeat(batch_size, 1)
-        return cls(data)
+        return cls(data, requires_grad=requires_grad)
 
     @classmethod
-    def from_coeffs(cls, w: float, x: float, y: float, z: float) -> "Quaternion":
+    def from_coeffs(cls, w: float, x: float, y: float, z: float, requires_grad: bool = True) -> "Quaternion":
         """Create a quaternion from the data coefficients.
 
         Args:
@@ -385,6 +389,7 @@ class Quaternion(Module):
             x: a float representing the :math:`q_x` component.
             y: a float representing the :math:`q_y` component.
             z: a float representing the :math:`q_z` component.
+            requires_grad: whether the quaternion should be tracked by autograd.
 
         Example:
             >>> q = Quaternion.from_coeffs(1., 0., 0., 0.)
@@ -393,13 +398,13 @@ class Quaternion(Module):
             tensor([1., 0., 0., 0.], requires_grad=True)
 
         """
-        return cls(tensor([w, x, y, z]))
+        return cls(tensor([w, x, y, z]), requires_grad=requires_grad)
 
     # TODO: update signature
     # def random(cls, shape: Optional[List] = None, device = None, dtype = None) -> 'Quaternion':
     @classmethod
     def random(
-        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None
+        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None, requires_grad: bool = True
     ) -> "Quaternion":
         """Create a random unit quaternion of shape :math:`(B, 4)`.
 
@@ -409,6 +414,7 @@ class Quaternion(Module):
             batch_size: the batch size of the underlying data.
             device: device to place the result on.
             dtype: dtype of the result.
+            requires_grad: whether the quaternion should be tracked by autograd.
 
         Example:
             >>> q = Quaternion.random()
@@ -422,7 +428,7 @@ class Quaternion(Module):
         q2 = (1.0 - r1).sqrt() * ((2 * pi * r2).cos())
         q3 = r1.sqrt() * (2 * pi * r3).sin()
         q4 = r1.sqrt() * (2 * pi * r3).cos()
-        return cls(stack((q1, q2, q3, q4), -1))
+        return cls(stack((q1, q2, q3, q4), -1), requires_grad=requires_grad)
 
     def slerp(self, q1: "Quaternion", t: float) -> "Quaternion":
         """Return a unit quaternion spherically interpolated between quaternions self.q and q1.
@@ -473,7 +479,7 @@ class Quaternion(Module):
             >>> q_norm = q.normalize()
 
         """
-        return Quaternion(normalize_quaternion(self.data))
+        return Quaternion(normalize_quaternion(self.data), requires_grad=self.data.requires_grad)
 
     def conj(self) -> "Quaternion":
         """Compute the conjugate of the quaternion.
@@ -486,7 +492,7 @@ class Quaternion(Module):
             >>> q_conj = q.conj()
 
         """
-        return Quaternion(concatenate((self.real[..., None], -self.vec), -1))
+        return Quaternion(concatenate((self.real[..., None], -self.vec), -1), requires_grad=self.data.requires_grad)
 
     def inv(self) -> "Quaternion":
         """Compute the inverse of the quaternion.

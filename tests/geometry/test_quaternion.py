@@ -307,3 +307,24 @@ class TestQuaternion:
         euler = torch.stack(euler, -1)
 
         self.assert_close(euler, euler_expected, 1e-4, 1e-4)
+
+    def test_requires_grad_false_propagates(self, device, dtype, batch_size):
+        random_coefs = torch.tensor(
+            [
+                [4.5794e-02, -7.0831e-01, 6.7577e-01, 1.9883e-01],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        q = Quaternion(random_coefs, requires_grad=False)
+        assert not q.data.requires_grad
+        q1 = q.normalize()
+        assert not q1.data.requires_grad
+        q2 = Quaternion.random(batch_size=1, device=device, dtype=dtype, requires_grad=False)
+        q3 = q * q2
+        assert not q3.data.requires_grad
+        assert q1.slerp(q2, 0.5).data.requires_grad is False
+        assert q1.inv().data.requires_grad is False
+        assert q1.conj().data.requires_grad is False
+
