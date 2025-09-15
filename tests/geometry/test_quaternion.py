@@ -327,4 +327,3 @@ class TestQuaternion:
         assert q1.slerp(q2, 0.5).data.requires_grad is False
         assert q1.inv().data.requires_grad is False
         assert q1.conj().data.requires_grad is False
-

@@ -358,7 +358,11 @@ class Quaternion(Module):
 
     @classmethod
     def identity(
-        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None, requires_grad: bool = True
+        cls,
+        batch_size: Optional[int] = None,
+        device: Optional[Device] = None,
+        dtype: Dtype = None,
+        requires_grad: bool = True,
     ) -> "Quaternion":
         """Create a quaternion representing an identity rotation.
 
@@ -404,7 +408,11 @@ class Quaternion(Module):
     # def random(cls, shape: Optional[List] = None, device = None, dtype = None) -> 'Quaternion':
     @classmethod
     def random(
-        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None, requires_grad: bool = True
+        cls,
+        batch_size: Optional[int] = None,
+        device: Optional[Device] = None,
+        dtype: Dtype = None,
+        requires_grad: bool = True,
     ) -> "Quaternion":
         """Create a random unit quaternion of shape :math:`(B, 4)`.
 
