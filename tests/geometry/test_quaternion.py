@@ -308,7 +308,7 @@ class TestQuaternion:
 
         self.assert_close(euler, euler_expected, 1e-4, 1e-4)
 
-    def test_requires_grad_false_propagates(self, device, dtype, batch_size):
+    def test_requires_grad_false_propagates(self, device, dtype):
         random_coefs = torch.tensor(
             [
                 [4.5794e-02, -7.0831e-01, 6.7577e-01, 1.9883e-01],
