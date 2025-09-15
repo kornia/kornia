@@ -333,6 +333,7 @@ class Quaternion(Module):
 
         Args:
             axis_angle: rotation vector of shape :math:`(B, 3)`.
+            requires_grad: whether the quaternion should be tracked by autograd.
 
         Example:
             >>> axis_angle = torch.tensor([[1., 0., 0.]])
