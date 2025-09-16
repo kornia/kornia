@@ -1,0 +1,123 @@
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        required: false
+        type: string
+        default: '["3.13"]'
+      pytorch-version:
+        required: false
+        type: string
+        default: '["2.5.1"]'
+      os:
+        required: false
+        type: string
+        default: ubuntu-latest
+      fail-fast:
+        required: false
+        type: boolean
+        default: false
+      ref:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      cache-path:
+        required: false
+        type: string
+      cache-key:
+        required: false
+        type: string
+      cache-restore-keys:
+        required: false
+        type: string
+
+jobs:
+  test-and-build:
+    name: docstests & sphinx-build - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-version) }}
+        pytorch-version: ${{ fromJSON(inputs.pytorch-version) }}
+        exclude:
+          # support to python3.10 only on torch 1.11 or greater
+          - pytorch-version: "1.9.1"
+            python-version: "3.10"
+          - pytorch-version: "1.10.2"
+            python-version: "3.10"
+            # support to python3.11 only on torch 2.0 or greater
+          - pytorch-version: "1.9.1"
+            python-version: "3.11"
+          - pytorch-version: "1.10.2"
+            python-version: "3.11"
+          - pytorch-version: "1.11.0"
+            python-version: "3.11"
+          - pytorch-version: "1.12.1"
+            python-version: "3.11"
+          - pytorch-version: "1.13.1"
+            python-version: "3.11"
+            # support to python3.12 only on torch 2.2 or greater
+          - pytorch-version: "1.9.1"
+            python-version: "3.12"
+          - pytorch-version: "1.10.2"
+            python-version: "3.12"
+          - pytorch-version: "1.11.0"
+            python-version: "3.12"
+          - pytorch-version: "1.12.1"
+            python-version: "3.12"
+          - pytorch-version: "1.13.1"
+            python-version: "3.12"
+          - pytorch-version: "2.0.1"
+            python-version: "3.12"
+          - pytorch-version: "2.1.2"
+            python-version: "3.12"
+            # support to python3.13 only on torch 2.5 or greater
+          - pytorch-version: "1.9.1"
+            python-version: "3.13"
+          - pytorch-version: "1.10.2"
+            python-version: "3.13"
+          - pytorch-version: "1.11.0"
+            python-version: "3.13"
+          - pytorch-version: "1.12.1"
+            python-version: "3.13"
+          - pytorch-version: "1.13.1"
+            python-version: "3.13"
+          - pytorch-version: "2.0.1"
+            python-version: "3.13"
+          - pytorch-version: "2.1.2"
+            python-version: "3.13"
+          - pytorch-version: "2.2.2"
+            python-version: "3.13"
+          - pytorch-version: "2.3.1"
+            python-version: "3.13"
+          - pytorch-version: "2.4.1"
+            python-version: "3.13"
+
+    steps:
+      - name: Setting environment on ${{ inputs.os }} with python ${{ matrix.python-version }} and pytorch ${{ matrix.pytorch-version }}
+        uses: ./.github/actions/env
+        with:
+          python-version: ${{ matrix.python-version }}
+          pytorch-version: ${{ matrix.pytorch-version }}
+          ref: ${{ inputs.ref }}
+
+      - name: Restore cache
+        if: "${{ inputs.cache-path != '' }}"
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ inputs.cache-path }}
+          key: ${{ inputs.cache-key }}
+          restore-keys: ${{ inputs.cache-restore-keys }}
+
+      - name: Run doctest
+        shell: bash -l {0}
+        run: make doctest
+
+      - name: Install docs deps
+        shell: bash -l {0}
+        run: uv pip install --system --editable .[docs]
+
+      - name: Build Documentation
+        shell: bash -l {0}
+        run: make build-docs SPHINXOPTS="-W"

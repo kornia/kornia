@@ -1,0 +1,95 @@
+name: self-test
+
+on:
+  push:
+    branches: [main, test-me-*]
+    tags: "*"
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  env:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: asottile/workflows/.github/actions/fast-checkout@v1.6.0
+        with:
+          path: subdir
+      - uses: ./subdir/.github/actions/env/
+        with:
+          pytorch-version: "1.9.1"
+          python-version: "3.9"
+          ref: main
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: asottile/workflows/.github/actions/fast-checkout@v1.6.0
+        with:
+          path: subdir
+      - uses: ./subdir/.github/actions/coverage/
+        with:
+          ref: main
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: asottile/workflows/.github/actions/fast-checkout@v1.6.0
+        with:
+          path: subdir
+      - uses: ./subdir/.github/actions/tests/
+        with:
+          ref: main
+
+  workflow-tests:
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.10", "3.13"]'
+      pytorch-version: '["2.1.2", "2.5.1"]'
+      pytorch-dtype: "float32"
+      ref: main
+
+  workflow-coverage:
+    uses: ./.github/workflows/coverage.yml
+    with:
+      ref: main
+
+  workflow-mypy:
+    uses: ./.github/workflows/mypy.yml
+    with:
+      ref: main
+
+  workflow-tutorials:
+    uses: ./.github/workflows/tutorials.yml
+    with:
+      ref: main
+
+  workflow-docs:
+    uses: ./.github/workflows/docs.yml
+    with:
+      ref: main
+
+  collector:
+    needs:
+      [
+        coverage,
+        env,
+        tests,
+        workflow-tests,
+        workflow-coverage,
+        workflow-mypy,
+        workflow-tutorials,
+        workflow-docs,
+      ]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: check for failures
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: echo job failed && exit 1

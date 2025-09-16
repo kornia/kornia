@@ -1,0 +1,120 @@
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        required: false
+        type: string
+        default: '["3.12"]'
+      pytorch-version:
+        required: false
+        type: string
+        default: '["2.5.1"]'
+      os:
+        required: false
+        type: string
+        default: ubuntu-latest
+      fail-fast:
+        required: false
+        type: boolean
+        default: false
+      ref:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+
+jobs:
+  run:
+    name: python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+    runs-on: ${{ inputs.os }}
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-version) }}
+        pytorch-version: ${{ fromJSON(inputs.pytorch-version) }}
+        exclude:
+          # support to python3.10 only on torch 1.11 or greater
+          - pytorch-version: "1.9.1"
+            python-version: "3.10"
+          - pytorch-version: "1.10.2"
+            python-version: "3.10"
+            # support to python3.11 only on torch 2.0 or greater
+          - pytorch-version: "1.9.1"
+            python-version: "3.11"
+          - pytorch-version: "1.10.2"
+            python-version: "3.11"
+          - pytorch-version: "1.11.0"
+            python-version: "3.11"
+          - pytorch-version: "1.12.1"
+            python-version: "3.11"
+          - pytorch-version: "1.13.1"
+            python-version: "3.11"
+            # support to python3.12 only on torch 2.2 or greater
+          - pytorch-version: "1.9.1"
+            python-version: "3.12"
+          - pytorch-version: "1.10.2"
+            python-version: "3.12"
+          - pytorch-version: "1.11.0"
+            python-version: "3.12"
+          - pytorch-version: "1.12.1"
+            python-version: "3.12"
+          - pytorch-version: "1.13.1"
+            python-version: "3.12"
+          - pytorch-version: "2.0.1"
+            python-version: "3.12"
+          - pytorch-version: "2.1.2"
+            python-version: "3.12"
+            # support to python3.13 only on torch 2.5 or greater
+          - pytorch-version: "1.9.1"
+            python-version: "3.13"
+          - pytorch-version: "1.10.2"
+            python-version: "3.13"
+          - pytorch-version: "1.11.0"
+            python-version: "3.13"
+          - pytorch-version: "1.12.1"
+            python-version: "3.13"
+          - pytorch-version: "1.13.1"
+            python-version: "3.13"
+          - pytorch-version: "2.0.1"
+            python-version: "3.13"
+          - pytorch-version: "2.1.2"
+            python-version: "3.13"
+          - pytorch-version: "2.2.2"
+            python-version: "3.13"
+          - pytorch-version: "2.3.1"
+            python-version: "3.13"
+          - pytorch-version: "2.4.1"
+            python-version: "3.13"
+
+    steps:
+      - name: Setting environment on ${{ inputs.os }} with python ${{ matrix.python-version }} and pytorch ${{ matrix.pytorch-version }}
+        uses: ./.github/actions/env
+        with:
+          python-version: ${{ matrix.python-version }}
+          pytorch-version: ${{ matrix.pytorch-version }}
+          ref: ${{ inputs.ref }}
+          extra-deps: torchvision==0.20.1+cpu --find-links https://download.pytorch.org/whl/torchvision
+
+      - uses: actions/checkout@v4
+        with:
+          repository: "kornia/tutorials"
+          path: "tutorials-repo/"
+
+      - name: Install dependencies
+        working-directory: ./tutorials-repo/
+        shell: bash -l {0}
+        run: make setup
+
+      - name: Check deps
+        working-directory: ./tutorials-repo/
+        shell: bash -l {0}
+        run: make check-deps
+
+      - name: Generate tutorials
+        working-directory: ./tutorials-repo/
+        shell: bash -l {0}
+        run: make generate
+
+      - name: Run tutorials
+        working-directory: ./tutorials-repo/
+        shell: bash -l {0}
+        run: make execute

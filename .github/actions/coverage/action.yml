@@ -1,0 +1,63 @@
+name: tests-coverage
+
+inputs:
+  python-version:
+    required: false
+    type: string
+    default: "3.13"
+  pytorch-version:
+    required: false
+    type: string
+    default: 2.5.1
+  os:
+    required: false
+    type: string
+    default: ubuntu-latest
+  pytorch-dtype:
+    required: false
+    type: string
+    default: float32
+  pytorch-device:
+    required: false
+    type: string
+    default: cpu
+  pytest-extra:
+    required: false
+    type: string
+    default: --timeout=5 -k "not test_dynamo"
+  coverage-artifact:
+    required: false
+    type: string
+    default: coverage
+  continue-on-error:
+    description: "Whether to continue on error"
+    required: false
+    default: "false"
+  ref:
+    description: "Git reference to checkout"
+    default: ${{ github.sha }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setting environment on ${{ inputs.os }} with python ${{ inputs.python-version }} and pytorch ${{ inputs.pytorch-version }}
+      uses: ./.github/actions/env #@v1.13.0
+      with:
+        python-version: ${{ inputs.python-version }}
+        pytorch-version: ${{ inputs.pytorch-version }}
+        ref: ${{ inputs.ref }}
+
+    - name: Run CPU tests coverage ${{ inputs.pytorch-dtype }}
+      continue-on-error: ${{ inputs.continue-on-error }}
+      shell: bash -l {0}
+      run: |
+        coverage erase
+        coverage run --data-file=${{ inputs.coverage-artifact }} -m pytest -v ./tests/ --device=${{ inputs.pytorch-device }} --dtype=${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }}
+
+    - name: Upload coverage results
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.coverage-artifact }}
+        path: ${{ inputs.coverage-artifact }}
+        if-no-files-found: error
+        retention-days: 1
