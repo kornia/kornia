@@ -19,9 +19,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          path: subdir
-      - uses: ./subdir/.github/actions/env/
+      - uses: ./.github/actions/env/
         with:
           pytorch-version: "1.9.1"
           python-version: "3.9"
@@ -32,9 +30,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          path: subdir
-      - uses: ./subdir/.github/actions/coverage/
+      - uses: ./.github/actions/coverage/
         with:
           ref: main
 
@@ -43,9 +39,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          path: subdir
-      - uses: ./subdir/.github/actions/tests/
+      - uses: ./.github/actions/tests/
         with:
           ref: main
 
