@@ -134,7 +134,8 @@ jobs:
     runs-on: ${{ inputs.os }}
     needs: [slow, dynamo, overall]
     steps:
-      - uses: asottile/workflows/.github/actions/fast-checkout@v1.6.0
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           repository: kornia/kornia
           ref: ${{ inputs.ref }}

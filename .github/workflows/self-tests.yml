@@ -17,7 +17,8 @@ jobs:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: asottile/workflows/.github/actions/fast-checkout@v1.6.0
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           path: subdir
       - uses: ./subdir/.github/actions/env/
@@ -29,7 +30,8 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: asottile/workflows/.github/actions/fast-checkout@v1.6.0
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           path: subdir
       - uses: ./subdir/.github/actions/coverage/
@@ -39,7 +41,8 @@ jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: asottile/workflows/.github/actions/fast-checkout@v1.6.0
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           path: subdir
       - uses: ./subdir/.github/actions/tests/
