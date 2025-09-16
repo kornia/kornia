@@ -107,6 +107,11 @@ jobs:
             python-version: "3.13"
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
       - name: Restore cache
         if: "${{ inputs.cache-path != '' }}"
         uses: actions/cache/restore@v4
