@@ -17,6 +17,9 @@ jobs:
     outputs:
       hash: ${{ steps.hashid.outputs.weights-hash }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - uses: ./.github/actions/env
       - uses: actions/cache@v4
         id: cache-weights
