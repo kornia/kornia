@@ -171,7 +171,7 @@ jobs:
 
       - if: always()
         name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c02684457 # v3
         with:
           file: coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }} # to not depend on build via GH API
