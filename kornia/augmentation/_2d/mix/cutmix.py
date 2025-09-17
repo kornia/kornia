@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
 from typing import Any, Dict, List, Optional, Tuple, Union
+import warnings
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
@@ -53,6 +53,9 @@ class RandomCutMixV2(MixAugmentationBaseV2):
             This flag will not maintain permutation order.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
+        use_correct_lambda: if True, compute lambda according to the CutMix paper
+            (`lam = 1 - area_ratio`). Defaults to False (`lam = area_ratio`) for backward compatibility,
+            but will raise a deprecation warning when False.
 
     Inputs:
         - Input image tensors, shape of :math:`(B, C, H, W)`.
@@ -94,9 +97,20 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         p: float = 1.0,
         keepdim: bool = False,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+        use_correct_lambda: bool = False,
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
         self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=p)
+
+        self.use_correct_lambda = use_correct_lambda
+        if not self.use_correct_lambda:
+            warnings.warn(
+                "RandomCutMixV2 currently uses the old (inconsistent) lambda computation. "
+                "Set `use_correct_lambda=True` to align with the original CutMix paper. "
+                "This default will change in a future release.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
     def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         height, width = params["image_shape"]
@@ -105,7 +119,10 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         for pair, crop in zip(params["mix_pairs"], params["crop_src"]):
             labels_permute = input.index_select(dim=0, index=pair.to(input.device))
             w, h = infer_bbox_shape(crop)
-            lam = w.to(input.dtype) * h.to(input.dtype) / (width * height)  # width_beta * height_beta
+
+            lam_val = w.to(input.dtype) * h.to(input.dtype) / (width * height)
+            lam = 1 - lam_val if self.use_correct_lambda else lam_val
+
             out_labels.append(
                 stack(
                     [
