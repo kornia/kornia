@@ -58,9 +58,14 @@ runs:
       run: uv pip install --system "numpy<2.0.0"
 
     - if: ${{ contains(fromJson('["1.9.1"]'), inputs.pytorch-version) }}
-      name: Install accelerate for old torchs
+      name: Install accelerate for PyTorch 1.9.1
       shell: bash
       run: uv pip install --system accelerate==0.20.3
+
+    - if: ${{ contains(fromJson('["1.10.2", "1.11.0", "1.12.1", "1.13.1", "2.0.1", "2.1.2", "2.2.2"]'), inputs.pytorch-version) }}
+      name: Install accelerate for older PyTorch versions
+      shell: bash
+      run: uv pip install --system accelerate
 
     - name: Install Kornia dev
       shell: bash
