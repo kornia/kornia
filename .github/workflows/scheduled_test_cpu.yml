@@ -17,21 +17,24 @@ jobs:
     outputs:
       hash: ${{ steps.hashid.outputs.weights-hash }}
     steps:
-    - uses: kornia/workflows/.github/actions/env@v1.13.0
-    - uses: actions/cache@v4
-      id: cache-weights
-      with:
-        path: weights/
-        key: model-weights-${{ hashFiles('.github/download-models-weights.py') }}
-        enableCrossOsArchive: true
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Download models weights...
-      if: steps.cache-weights.outputs.cache-hit != 'true'
-      run: python .github/download-models-weights.py -t weights/
+      - uses: ./.github/actions/env
+      - uses: actions/cache@v4
+        id: cache-weights
+        with:
+          path: weights/
+          key: model-weights-${{ hashFiles('.github/download-models-weights.py') }}
+          enableCrossOsArchive: true
 
-    - name: write hashid
-      id: hashid
-      run: echo "weights-hash=${{ hashFiles('.github/download-models-weights.py') }}" >> "$GITHUB_OUTPUT"
+      - name: Download models weights...
+        if: steps.cache-weights.outputs.cache-hit != 'true'
+        run: python .github/download-models-weights.py -t weights/
+
+      - name: write hashid
+        id: hashid
+        run: echo "weights-hash=${{ hashFiles('.github/download-models-weights.py') }}" >> "$GITHUB_OUTPUT"
 
   tests-cpu-ubuntu:
     needs: [pre-tests]
@@ -39,15 +42,15 @@ jobs:
       fail-fast: false
       matrix:
         # os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
-        pytorch-dtype: ['float32', 'float64']
+        pytorch-dtype: ["float32", "float64"]
 
-    uses: kornia/workflows/.github/workflows/tests.yml@v1.13.0
+    uses: ./.github/workflows/tests.yml
     with:
-      os: 'Ubuntu-latest'
+      os: "Ubuntu-latest"
       python-version: '["3.9", "3.10", "3.11", "3.12"]'
       pytorch-version: '["2.0.1", "2.1.2", "2.2.2", "2.3.1", "2.4.0", "2.5.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
-      pytest-extra: '--runslow'
+      pytest-extra: "--runslow"
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
@@ -59,11 +62,11 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        pytorch-dtype: ['float32', 'float64']
+        pytorch-dtype: ["float32", "float64"]
 
-    uses: kornia/workflows/.github/workflows/tests.yml@v1.13.0
+    uses: ./.github/workflows/tests.yml
     with:
-      os: 'Windows-latest'
+      os: "Windows-latest"
       python-version: '["3.12"]'
       pytorch-version: '["2.0.1", "2.5.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
@@ -78,11 +81,11 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        pytorch-dtype: ['float32', 'float64']
+        pytorch-dtype: ["float32", "float64"]
 
-    uses: kornia/workflows/.github/workflows/tests.yml@v1.13.0
+    uses: ./.github/workflows/tests.yml
     with:
-      os: 'MacOS-latest'
+      os: "MacOS-latest"
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
@@ -92,7 +95,7 @@ jobs:
 
   coverage:
     needs: [pre-tests]
-    uses: kornia/workflows/.github/workflows/coverage.yml@v1.13.0
+    uses: ./.github/workflows/coverage.yml
     with:
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
@@ -101,14 +104,14 @@ jobs:
         model-weights-
 
   typing:
-    uses: kornia/workflows/.github/workflows/mypy.yml@v1.13.0
+    uses: ./.github/workflows/mypy.yml
 
   tutorials:
-    uses: kornia/workflows/.github/workflows/tutorials.yml@v1.13.0
+    uses: ./.github/workflows/tutorials.yml
 
   docs:
     needs: [pre-tests]
-    uses: kornia/workflows/.github/workflows/docs.yml@v1.13.0
+    uses: ./.github/workflows/docs.yml
     with:
       python-version: '["3.11"]'
       cache-path: weights/
