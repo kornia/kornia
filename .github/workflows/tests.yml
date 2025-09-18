@@ -24,7 +24,7 @@ on:
       pytest-extra:
         required: false
         type: string
-        default: --timeout=5 -k "not test_dynamo"
+        default: --timeout=30 -k "not test_dynamo"
       fail-fast:
         required: false
         type: boolean

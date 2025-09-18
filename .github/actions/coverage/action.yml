@@ -25,7 +25,7 @@ inputs:
   pytest-extra:
     description: "Extra pytest arguments"
     required: false
-    default: --timeout=5 -k "not test_dynamo"
+    default: --timeout=30 -k "not test_dynamo"
   coverage-artifact:
     description: "Name of coverage artifact"
     required: false

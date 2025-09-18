@@ -66,15 +66,20 @@ runs:
       shell: bash
       run: uv pip install --system --editable .[dev,x]
 
+    - if: ${{ contains(fromJson('["1.9.1", "1.10.2", "1.11.0", "1.12.1", "1.13.1", "2.0.1", "2.1.2", "2.2.2"]'), inputs.pytorch-version) }}
+      name: Downgrade transformers for old PyTorch versions
+      shell: bash
+      run: uv pip install --system "transformers==4.34.1"
+
     - name: Check torch version
       shell: bash
       run: |
         INSTALLED_VERSION=$(python -c "import torch; print(torch.__version__)")
         echo "Installed PyTorch version: $INSTALLED_VERSION"
         echo "Requested PyTorch version: ${{ inputs.pytorch-version }}"
-        # For PyTorch 1.9.1, accelerate may upgrade to a newer version - this is expected
+        # For PyTorch 1.9.1, accelerate may upgrade to a newer version
         if [[ "${{ inputs.pytorch-version }}" == "1.9.1" && "$INSTALLED_VERSION" != "1.9.1" ]]; then
-          echo "✅ PyTorch 1.9.1 was upgraded by accelerate to $INSTALLED_VERSION - this is expected"
+          echo "PyTorch 1.9.1 was upgraded by accelerate to $INSTALLED_VERSION"
         else
           pip show torch | grep ${{ inputs.pytorch-version }} || false
         fi
