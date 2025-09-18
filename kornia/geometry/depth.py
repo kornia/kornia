@@ -24,7 +24,7 @@ from typing import Optional
 import torch
 
 import kornia.core as kornia_ops
-from kornia.core import Module, Tensor, tensor, zeros_like
+from kornia.core import Module, Tensor, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters.sobel import spatial_gradient
 from kornia.utils import create_meshgrid
@@ -369,30 +369,37 @@ class DepthWarper(Module):
             )
         if type(pinhole_src) is not PinholeCamera:
             raise TypeError(f"Argument pinhole_src expected to be of class PinholeCamera. Got {type(pinhole_src)}")
-        pinhole_dst = self._pinhole_dst
-        pinhole_src_extr = pinhole_src.extrinsics
-        # Inline inverse:
-        src_rmat = pinhole_src_extr[..., :3, :3]
-        src_tvec = pinhole_src_extr[..., :3, 3:]
+        # Compute transformation matrix: dst_extrinsics @ inv(src_extrinsics)
+        # Use efficient torch.eye initialization instead of zeros_like
+        batch_shape = pinhole_src.extrinsics.shape[:-2]
+        device = pinhole_src.extrinsics.device
+        dtype = pinhole_src.extrinsics.dtype
+
+        # Create 4x4 identity matrices efficiently
+        inv_extr = torch.eye(4, device=device, dtype=dtype).expand(*batch_shape, 4, 4).contiguous()
+        dst_trans_src = torch.eye(4, device=device, dtype=dtype).expand(*batch_shape, 4, 4).contiguous()
+
+        # Inline inverse transformation
+        src_rmat = pinhole_src.extrinsics[..., :3, :3]
+        src_tvec = pinhole_src.extrinsics[..., :3, 3:]
         inv_rmat = torch.transpose(src_rmat, -1, -2)
         inv_tvec = torch.matmul(-inv_rmat, src_tvec)
-        inv_extr = zeros_like(pinhole_src_extr)
+
+        # Set rotation and translation parts
         inv_extr[..., :3, :3] = inv_rmat
         inv_extr[..., :3, 3:] = inv_tvec
-        inv_extr[..., 3, 3] = 1.0
 
-        # Compose w/ dst extr
-        dst_rmat = pinhole_dst.extrinsics[..., :3, :3]
-        dst_tvec = pinhole_dst.extrinsics[..., :3, 3:]
+        # Compose with dst extrinsics
+        dst_rmat = self._pinhole_dst.extrinsics[..., :3, :3]
+        dst_tvec = self._pinhole_dst.extrinsics[..., :3, 3:]
         composed_rmat = torch.matmul(dst_rmat, inv_rmat)
         composed_tvec = torch.matmul(dst_rmat, inv_tvec) + dst_tvec
-        dst_trans_src = zeros_like(pinhole_dst.extrinsics)
+
         dst_trans_src[..., :3, :3] = composed_rmat
         dst_trans_src[..., :3, 3:] = composed_tvec
-        dst_trans_src[..., 3, 3] = 1.0
 
         # intrinsics (Nx3x3) @ extrinsics (Nx4x4)
-        dst_proj_src = torch.matmul(pinhole_dst.intrinsics, dst_trans_src)
+        dst_proj_src = torch.matmul(self._pinhole_dst.intrinsics, dst_trans_src)
 
         self._pinhole_src = pinhole_src
         self._dst_proj_src = dst_proj_src
