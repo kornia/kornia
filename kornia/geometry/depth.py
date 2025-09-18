@@ -370,7 +370,6 @@ class DepthWarper(Module):
         if type(pinhole_src) is not PinholeCamera:
             raise TypeError(f"Argument pinhole_src expected to be of class PinholeCamera. Got {type(pinhole_src)}")
         # Compute transformation matrix: dst_extrinsics @ inv(src_extrinsics)
-        # Use efficient torch.eye initialization instead of zeros_like
         batch_shape = pinhole_src.extrinsics.shape[:-2]
         device = pinhole_src.extrinsics.device
         dtype = pinhole_src.extrinsics.dtype
