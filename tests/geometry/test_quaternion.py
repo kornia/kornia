@@ -15,10 +15,12 @@
 # limitations under the License.
 #
 
+from typing import Union
+
 import pytest
 import torch
 
-from kornia.geometry.quaternion import Quaternion
+from kornia.geometry.quaternion import Quaternion, average_quaternions
 
 from testing.base import assert_close
 
@@ -307,3 +309,86 @@ class TestQuaternion:
         euler = torch.stack(euler, -1)
 
         self.assert_close(euler, euler_expected, 1e-4, 1e-4)
+
+
+def _to_tensor(x: Union[torch.Tensor, Quaternion]) -> torch.Tensor:
+    # Unwrap Quaternion/Parameter to a plain Tensor for comparisons
+    if isinstance(x, Quaternion):
+        x = x.data
+    if isinstance(x, torch.nn.Parameter):
+        x = x.data
+    if x.ndim == 2 and x.shape[0] == 1:
+        x = x.squeeze(0)
+    return x
+
+
+def _align_sign(q: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
+    # Flip sign of q so it points roughly in the same direction as ref
+    if torch.dot(q, ref) < 0:
+        return -q
+    return q
+
+
+class TestQuaternionAverage:
+    @pytest.mark.parametrize("M", [1, 2, 5, 10])
+    def test_average_identity(self, device, dtype, M):
+        """All identity quaternions → should return identity"""
+        Q = Quaternion.identity(M, device=device, dtype=dtype)
+        out = average_quaternions(Q)
+        q = _to_tensor(out)
+
+        expected = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        q = _align_sign(q, expected)
+
+        torch.testing.assert_close(q, expected, rtol=1e-6, atol=1e-6)
+
+    def test_output_is_normalized(self, device, dtype):
+        """Averaged quaternion should always have unit norm"""
+        Q = Quaternion.random(6, device=device, dtype=dtype).normalize()
+        out = average_quaternions(Q)
+        q = _to_tensor(out)
+
+        torch.testing.assert_close(q.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
+
+    def test_weighted_bias(self, device, dtype):
+        """Heavier weights should bias the average toward the corresponding quaternion"""
+        q1 = Quaternion(torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype))
+        q2 = Quaternion(torch.tensor([[0.0, 1.0, 0.0, 0.0]], device=device, dtype=dtype))
+        Q = Quaternion(torch.cat([q1.data, q2.data], dim=0))
+
+        w = torch.tensor([0.9, 0.1], device=device, dtype=dtype)
+        out = average_quaternions(Q, w=w)
+        q = _to_tensor(out)
+
+        dot1 = torch.dot(q, q1.data.squeeze())
+        dot2 = torch.dot(q, q2.data.squeeze())
+        assert dot1 > dot2  # should align closer to q1
+
+    def test_single_quaternion_returns_itself(self, device, dtype):
+        """Averaging a single quaternion should return it"""
+        q = Quaternion.random(1, device=device, dtype=dtype).normalize()
+        out = average_quaternions(q)
+        out_t = _to_tensor(out)
+        q_t = _to_tensor(q)
+
+        out_t = _align_sign(out_t, q_t)
+        torch.testing.assert_close(out_t, q_t, rtol=1e-6, atol=1e-6)
+
+    def test_opposite_quaternions(self, device, dtype):
+        """Opposite quaternions should average to something consistent (sign ambiguity)"""
+        q1 = Quaternion.identity(1, device=device, dtype=dtype)
+        q2 = Quaternion(-q1.data.clone())
+        Q = Quaternion(torch.cat([q1.data, q2.data], dim=0))
+
+        out = average_quaternions(Q)
+        q = _to_tensor(out)
+
+        # Should still be a valid unit quaternion
+        torch.testing.assert_close(q.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
+
+    def test_invalid_weights_raise(self, device, dtype):
+        """Mismatched number of weights should raise"""
+        Q = Quaternion.random(3, device=device, dtype=dtype)
+        w = torch.tensor([0.5, 0.5], device=device, dtype=dtype)  # wrong length
+        with pytest.raises(ValueError):
+            average_quaternions(Q, w=w)
