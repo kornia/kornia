@@ -42,7 +42,7 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: ubuntu-latest
-      python-version: '["3.10", "3.13"]'
+      python-version: '["3.10", "3.12"]'
       pytorch-version: '["2.1.2", "2.5.1"]'
       pytorch-dtype: "float32"
 
