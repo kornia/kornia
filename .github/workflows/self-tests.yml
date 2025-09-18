@@ -23,7 +23,6 @@ jobs:
         with:
           pytorch-version: "1.9.1"
           python-version: "3.9"
-          ref: main
 
   coverage:
     runs-on: ubuntu-latest
@@ -31,8 +30,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - uses: ./.github/actions/coverage/
-        with:
-          ref: main
 
   tests:
     runs-on: ubuntu-latest
@@ -40,8 +37,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - uses: ./.github/actions/tests/
-        with:
-          ref: main
 
   workflow-tests:
     uses: ./.github/workflows/tests.yml
@@ -50,27 +45,18 @@ jobs:
       python-version: '["3.10", "3.13"]'
       pytorch-version: '["2.1.2", "2.5.1"]'
       pytorch-dtype: "float32"
-      ref: main
 
   workflow-coverage:
     uses: ./.github/workflows/coverage.yml
-    with:
-      ref: main
 
   workflow-mypy:
     uses: ./.github/workflows/mypy.yml
-    with:
-      ref: main
 
   workflow-tutorials:
     uses: ./.github/workflows/tutorials.yml
-    with:
-      ref: main
 
   workflow-docs:
     uses: ./.github/workflows/docs.yml
-    with:
-      ref: main
 
   collector:
     needs:
