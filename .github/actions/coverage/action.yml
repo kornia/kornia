@@ -1,33 +1,34 @@
 name: tests-coverage
+description: "Run CPU tests with coverage collection and artifact upload"
 
 inputs:
   python-version:
+    description: "Python version to use"
     required: false
-    type: string
     default: "3.13"
   pytorch-version:
+    description: "PyTorch version to use"
     required: false
-    type: string
     default: 2.5.1
   os:
+    description: "Operating system to run on"
     required: false
-    type: string
     default: ubuntu-latest
   pytorch-dtype:
+    description: "PyTorch data type for testing"
     required: false
-    type: string
     default: float32
   pytorch-device:
+    description: "PyTorch device for testing"
     required: false
-    type: string
     default: cpu
   pytest-extra:
+    description: "Extra pytest arguments"
     required: false
-    type: string
     default: --timeout=5 -k "not test_dynamo"
   coverage-artifact:
+    description: "Name of coverage artifact"
     required: false
-    type: string
     default: coverage
   continue-on-error:
     description: "Whether to continue on error"

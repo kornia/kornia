@@ -1,29 +1,30 @@
 name: pytest
+description: "Run CPU tests with pytest"
 
 inputs:
   python-version:
+    description: "Python version to use"
     required: false
-    type: string
     default: "3.13"
   pytorch-version:
+    description: "PyTorch version to use"
     required: false
-    type: string
     default: 2.5.1
   os:
+    description: "Operating system to run on"
     required: false
-    type: string
     default: ubuntu-latest
   pytorch-dtype:
+    description: "PyTorch data type for testing"
     required: false
-    type: string
     default: float32
   pytorch-device:
+    description: "PyTorch device for testing"
     required: false
-    type: string
     default: cpu
   pytest-extra:
+    description: "Extra pytest arguments"
     required: false
-    type: string
     default: --timeout=5 -k "not test_dynamo"
   ref:
     description: "Git reference to checkout"

@@ -1,17 +1,16 @@
 name: Setup Kornia dev environment
+description: "Set up Python, PyTorch, and dependencies for Kornia development"
 
 inputs:
   python-version:
     description: "The python version desired."
     required: true
     default: "3.13"
-    type: string
 
   pytorch-version:
     description: "The pytorch version desired."
     required: true
     default: "2.5.1"
-    type: string
 
   ref:
     description: "Git reference to checkout"
