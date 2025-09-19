@@ -21,7 +21,6 @@ from torch import Tensor
 
 import kornia
 from kornia.constants import pi
-from torch.autograd import gradcheck as torch_gradcheck
 
 from testing.base import BaseTester
 
@@ -1184,14 +1183,14 @@ class TestPosterize(BaseTester):
         quantized_inputs = (inputs * 255.0).to(torch.uint8).float() / 255.0
 
         expected_b1 = torch.tensor(
-            [[[[0.0, 0.50196, 0.0], [0.0, 0.0, 0.50196], [0.0, 0.50196, 0.0]]]],
-            device=device, dtype=dtype
+            [[[[0.0, 0.50196, 0.0], [0.0, 0.0, 0.50196], [0.0, 0.50196, 0.0]]]], device=device, dtype=dtype
         )
         self.assert_close(TestPosterize.f(inputs, 1), expected_b1, atol=1e-5, rtol=1e-5)
 
         expected_b2 = torch.tensor(
-             [[[[0.25098, 0.75294, 0.0], [0.0, 0.25098, 0.50196], [0.25098, 0.75294, 0.25098]]]],
-             device=device, dtype=dtype
+            [[[[0.25098, 0.75294, 0.0], [0.0, 0.25098, 0.50196], [0.25098, 0.75294, 0.25098]]]],
+            device=device,
+            dtype=dtype,
         )
         self.assert_close(TestPosterize.f(inputs, 2), expected_b2, atol=1e-5, rtol=1e-5)
 
