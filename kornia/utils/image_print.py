@@ -25,6 +25,7 @@ Taken from https://gist.github.com/klange/1687427
 from typing import Union
 
 import torch
+
 import kornia
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_IS_IMAGE, KORNIA_CHECK_SHAPE
@@ -32,10 +33,9 @@ from kornia.io import ImageLoadType
 
 LEVELS = torch.tensor([0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF], dtype=torch.int16)
 
+
 def rgb2short_torch(rgb: torch.Tensor) -> torch.Tensor:
-    """
-    Optimized version to quantize RGB to the nearest xterm-256 color cube ID.
-    """
+    """Optimized version to quantize RGB to the nearest xterm-256 color cube ID."""
     device = rgb.device
     levels = LEVELS.to(device)
 
@@ -78,13 +78,13 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
 
     image_int = (image_float * 255.0).round().to(torch.int16)
     H, W = image_int.shape[-2:]
-    
+
     flat = image_int.permute(1, 2, 0).contiguous().reshape(-1, 3)
     short_ids = rgb2short_torch(flat).reshape(H, W).cpu()
 
     lines = ["".join([f"\033[48;5;{s.item()}m  " for s in row]) + "\033[0m" for row in short_ids]
     final_string = "\n".join(lines) + "\n"
-    
+
     return final_string
 
 
