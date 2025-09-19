@@ -21,7 +21,6 @@ from torch import Tensor
 
 import kornia
 from kornia.constants import pi
-from torch.autograd import gradcheck as torch_gradcheck
 
 from testing.base import BaseTester
 
@@ -1209,7 +1208,8 @@ class TestPosterize(BaseTester):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64, requires_grad=True)
 
-        func_to_check = lambda x: TestPosterize.f(x, 8)
+        def func_to_check(x):
+            return TestPosterize.f(x, 8)
         assert torch.autograd.gradcheck(func_to_check, (inputs,), raise_exception=True)
 
     @pytest.mark.jit()
@@ -1218,7 +1218,8 @@ class TestPosterize(BaseTester):
         img = torch.rand(2, 1, 3, 3, device=device, dtype=dtype)
         bits_int = 4
 
-        wrapped_op = lambda x: op(x, bits_int)
+        def wrapped_op(x):
+            return op(x, bits_int)
         op_trace = torch.jit.trace(wrapped_op, img)
 
         expected = op(img, bits_int)
