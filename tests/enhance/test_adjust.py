@@ -1210,6 +1210,7 @@ class TestPosterize(BaseTester):
 
         def func_to_check(x):
             return TestPosterize.f(x, 8)
+
         assert torch.autograd.gradcheck(func_to_check, (inputs,), raise_exception=True)
 
     @pytest.mark.jit()
@@ -1220,6 +1221,7 @@ class TestPosterize(BaseTester):
 
         def wrapped_op(x):
             return op(x, bits_int)
+
         op_trace = torch.jit.trace(wrapped_op, img)
 
         expected = op(img, bits_int)

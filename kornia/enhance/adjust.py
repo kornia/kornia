@@ -753,7 +753,6 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
         torch.Size([2, 6, 3, 3])
 
     """
-    
     # 1) Safety checks
     if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
