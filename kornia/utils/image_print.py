@@ -22,7 +22,7 @@ Nice long listing of all 256 colors and their codes.
 Taken from https://gist.github.com/klange/1687427
 """
 
-from typing import Union
+from typing import Tuple, Union
 
 import torch
 import kornia
@@ -32,9 +32,51 @@ from kornia.io import ImageLoadType
 
 LEVELS = torch.tensor([0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF], dtype=torch.int16)
 
-def rgb2short_torch(rgb: torch.Tensor) -> torch.Tensor:
+def rgb2short(rgb: str) -> Tuple[str, str]:
+    """Find the closest xterm-256 approximation to the given RGB value.
+
+    Args:
+        rgb: Hex code representing an RGB value, eg, 'abcdef'.
+
+    Returns:
+        String between 0 and 255, compatible with xterm.
+
+    Example:
+        >>> rgb2short('123456')
+        ('23', '005f5f')
+        >>> rgb2short('ffffff')
+        ('231', 'ffffff')
+        >>> rgb2short('0DADD6')  # vimeo logo
+        ('38', '00afd7')
+
     """
-    Optimized version to quantize RGB to the nearest xterm-256 color cube ID.
+    levels = (0, 95, 135, 175, 215, 255)
+    
+    rgb = rgb.lstrip("#")
+    try:
+        r = int(rgb[0:2], 16)
+        g = int(rgb[2:4], 16)
+        b = int(rgb[4:6], 16)
+    except (ValueError, IndexError):
+        raise ValueError("Invalid hex string format. Must be 6 characters.")
+
+    r_level = min(levels, key=lambda level: abs(r - level))
+    g_level = min(levels, key=lambda level: abs(g - level))
+    b_level = min(levels, key=lambda level: abs(b - level))
+    
+    r_idx = levels.index(r_level)
+    g_idx = levels.index(g_level)
+    b_idx = levels.index(b_level)
+    
+    final_id = 16 + (36 * r_idx) + (6 * g_idx) + b_idx
+    final_hex = f"{r_level:02x}{g_level:02x}{b_level:02x}"
+        
+    return str(final_id), final_hex
+
+
+def _rgb2short_helper(rgb: torch.Tensor) -> torch.Tensor:
+    """Helper function to convert RGB values to xterm-256 color codes in a vectorized manner.
+
     """
     device = rgb.device
     levels = LEVELS.to(device)
@@ -80,7 +122,7 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
     H, W = image_int.shape[-2:]
     
     flat = image_int.permute(1, 2, 0).contiguous().reshape(-1, 3)
-    short_ids = rgb2short_torch(flat).reshape(H, W).cpu()
+    short_ids = _rgb2short_helper(flat).reshape(H, W).cpu()
 
     lines = ["".join([f"\033[48;5;{s.item()}m  " for s in row]) + "\033[0m" for row in short_ids]
     final_string = "\n".join(lines) + "\n"
