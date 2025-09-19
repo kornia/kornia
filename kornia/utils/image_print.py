@@ -33,6 +33,7 @@ from kornia.io import ImageLoadType
 
 LEVELS = torch.tensor([0x00, 0x5F, 0x87, 0xAF, 0xD7, 0xFF], dtype=torch.int16)
 
+
 def rgb2short(rgb: str) -> Tuple[str, str]:
     """Find the closest xterm-256 approximation to the given RGB value.
 
@@ -52,7 +53,7 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
 
     """
     levels = (0, 95, 135, 175, 215, 255)
-    
+
     rgb = rgb.lstrip("#")
     try:
         r = int(rgb[0:2], 16)
@@ -64,21 +65,19 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
     r_level = min(levels, key=lambda level: abs(r - level))
     g_level = min(levels, key=lambda level: abs(g - level))
     b_level = min(levels, key=lambda level: abs(b - level))
-    
+
     r_idx = levels.index(r_level)
     g_idx = levels.index(g_level)
     b_idx = levels.index(b_level)
-    
+
     final_id = 16 + (36 * r_idx) + (6 * g_idx) + b_idx
     final_hex = f"{r_level:02x}{g_level:02x}{b_level:02x}"
-        
+
     return str(final_id), final_hex
 
 
 def _rgb2short_helper(rgb: torch.Tensor) -> torch.Tensor:
-    """Helper function to convert RGB values to xterm-256 color codes in a vectorized manner.
-
-    """
+    """Helper function to convert RGB values to xterm-256 color codes in a vectorized manner."""
     device = rgb.device
     levels = LEVELS.to(device)
 
