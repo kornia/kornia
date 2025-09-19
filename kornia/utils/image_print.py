@@ -59,8 +59,8 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
         r = int(rgb[0:2], 16)
         g = int(rgb[2:4], 16)
         b = int(rgb[4:6], 16)
-    except (ValueError, IndexError):
-        raise ValueError("Invalid hex string format. Must be 6 characters.")
+    except (ValueError, IndexError) as err:
+        raise ValueError("Invalid hex string format. Must be 6 characters.") from err
 
     r_level = min(levels, key=lambda level: abs(r - level))
     g_level = min(levels, key=lambda level: abs(g - level))
