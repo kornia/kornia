@@ -21,6 +21,7 @@ from torch import Tensor
 
 import kornia
 from kornia.constants import pi
+from torch.autograd import gradcheck as torch_gradcheck
 
 from testing.base import BaseTester
 
@@ -1154,49 +1155,84 @@ class TestPosterize(BaseTester):
         inputs = torch.ones(*shape, device=device, dtype=dtype)
         assert TestPosterize.f(inputs, bits).shape == torch.Size(shape)
 
-    # TODO(jian): add better assertions
     def test_exception(self, device, dtype):
         img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
 
         with pytest.raises(TypeError):
-            assert TestPosterize.f([1.0], 0.0)
+            assert TestPosterize.f([1.0], 0)
 
         with pytest.raises(TypeError):
             assert TestPosterize.f(img, 1.0)
 
-    # TODO(jian): add better cases
+        with pytest.raises(ValueError, match=r"Batch mismatch*"):
+            bits = torch.tensor([1, 2, 3], device=device)
+            TestPosterize.f(img, bits)
+
+        with pytest.raises(ValueError, match=r"bits.ndim*"):
+            bits = torch.rand(2, 3, 4, 5, 6, device=device)
+            TestPosterize.f(img, bits)
+
+        with pytest.raises(ValueError, match=r"Shape mismatch*"):
+            bits = torch.rand(2, 4, device=device)
+            TestPosterize.f(img, bits)
+
     @pytest.mark.skipif(kornia.xla_is_available(), reason="issues with xla device")
     def test_value(self, device, dtype):
         torch.manual_seed(0)
-
         inputs = torch.rand(1, 1, 3, 3).to(device=device, dtype=dtype)
 
-        # Output generated is similar (1e-2 due to the uint8 conversions) to the below output:
-        # img = PIL.Image.fromarray((255*inputs[0,0]).byte().numpy())
-        # en = ImageOps.posterize(img, 1)
-        # np.array(en) / 255.
-        expected = torch.tensor(
-            [[[[0.0, 0.50196078, 0.0], [0.0, 0.0, 0.50196078], [0.0, 0.50196078, 0.0]]]], device=device, dtype=dtype
-        )
+        quantized_inputs = (inputs * 255.0).to(torch.uint8).float() / 255.0
 
-        self.assert_close(TestPosterize.f(inputs, 1), expected)
+        expected_b1 = torch.tensor(
+            [[[[0.0, 0.50196, 0.0], [0.0, 0.0, 0.50196], [0.0, 0.50196, 0.0]]]],
+            device=device, dtype=dtype
+        )
+        self.assert_close(TestPosterize.f(inputs, 1), expected_b1, atol=1e-5, rtol=1e-5)
+
+        expected_b2 = torch.tensor(
+             [[[[0.25098, 0.75294, 0.0], [0.0, 0.25098, 0.50196], [0.25098, 0.75294, 0.25098]]]],
+             device=device, dtype=dtype
+        )
+        self.assert_close(TestPosterize.f(inputs, 2), expected_b2, atol=1e-5, rtol=1e-5)
+
         self.assert_close(TestPosterize.f(inputs, 0), torch.zeros_like(inputs))
+
         self.assert_close(TestPosterize.f(inputs, 8), inputs)
 
-    @pytest.mark.skip(reason="IndexError: tuple index out of range")
+        batch_input = torch.cat([inputs, inputs], dim=0)
+        bits_tensor = torch.tensor([1, 8], device=device)
+        expected_batch = torch.cat([expected_b1, quantized_inputs], dim=0)
+        self.assert_close(TestPosterize.f(batch_input, bits_tensor), expected_batch, atol=1e-5, rtol=1e-5)
+
     @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
-        inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
-        self.gradcheck(TestPosterize.f, (inputs, 0))
+        inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64, requires_grad=True)
 
-    # TODO: implement me
-    @pytest.mark.skip(reason="union type input")
+        func_to_check = lambda x: TestPosterize.f(x, 8)
+        assert torch.autograd.gradcheck(func_to_check, (inputs,), raise_exception=True)
+
     @pytest.mark.jit()
-    def test_jit(self, device, dtype):
+    def test_jit_int(self, device, dtype):
         op = TestPosterize.f
-        op_script = torch.jit.script(op)
-        img = torch.rand(2, 1, 3, 3).to(device=device, dtype=dtype)
-        expected = op(img, 8)
-        actual = op_script(img, 8)
+        img = torch.rand(2, 1, 3, 3, device=device, dtype=dtype)
+        bits_int = 4
+
+        wrapped_op = lambda x: op(x, bits_int)
+        op_trace = torch.jit.trace(wrapped_op, img)
+
+        expected = op(img, bits_int)
+        actual = op_trace(img)
+        self.assert_close(actual, expected)
+
+    @pytest.mark.jit()
+    def test_jit_tensor(self, device, dtype):
+        op = TestPosterize.f
+        img = torch.rand(2, 1, 3, 3, device=device, dtype=dtype)
+        bits_tensor = torch.tensor([2, 6], device=device)
+
+        op_trace = torch.jit.trace(op, (img, bits_tensor))
+
+        expected = op(img, bits_tensor)
+        actual = op_trace(img, bits_tensor)
         self.assert_close(actual, expected)

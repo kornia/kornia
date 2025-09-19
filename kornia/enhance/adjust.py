@@ -21,6 +21,7 @@ from math import pi
 from typing import ClassVar, Optional, Union
 
 import torch
+import torch.nn as nn
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
 from kornia.core import ImageModule as Module
@@ -30,10 +31,9 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_TENSOR,
 )
-from kornia.grad_estimator.ste import STEFunction
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
-
+from kornia.grad_estimator.ste import STEFunction
 
 def adjust_saturation_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
     r"""Adjust color saturation of an image.
@@ -732,23 +732,17 @@ def solarize(
 
 
 def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
-    r"""Reduce the number of bits for each color channel.
-
-    .. image:: _static/img/posterize.png
-
-    Non-differentiable function, ``torch.uint8`` involved.
+    """
+    Reduce the number of bits for each color channel with PIL-exact quantization
+    in the forward, and straight-through gradients on the backward.
 
     Args:
-        input: image tensor with shape :math:`(*, C, H, W)` to posterize.
-        bits: number of high bits. Must be in range [0, 8].
-            If int or one element tensor, input will be posterized by this bits.
-            If 1-d tensor, input will be posterized element-wisely, len(bits) == input.shape[-3].
-            If n-d tensor, input will be posterized element-channel-wisely, bits.shape == input.shape[:len(bits.shape)]
+        input: float Tensor in [0,1], shape (..., C, H, W)
+        bits: int or integer Tensor in [0..8]. Scalar, per-batch 1-D, or per-pixel ND.
 
     Returns:
-        Image with reduced color channels with shape :math:`(*, C, H, W)`.
-
-    Example:
+        Tensor same shape/dtype as input.
+        Example:
         >>> x = torch.rand(1, 6, 3, 3)
         >>> out = posterize(x, bits=8)
         >>> torch.testing.assert_close(x, out)
@@ -785,6 +779,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
             out = torch.zeros_like(input)
         elif b == 8:
             out = input.clone()
+            return STEFunction.apply(input.detach(), out, None)
         else:
             shift = torch.tensor(8 - b, device=input.device, dtype=torch.int32)
             out = _mask(input, shift)
@@ -797,10 +792,9 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
     if bits_t.ndim == 1:
         if bits_t.shape[0] != input.shape[0]:
             raise ValueError(f"Batch mismatch: bits.shape={bits_t.shape}, input.shape={input.shape}")
-    elif bits_t.shape != input.shape[: bits_t.ndim]:
-        raise ValueError(
-            f"Shape mismatch: bits.shape={bits_t.shape}, input.shape[:bits.ndim]={input.shape[: bits_t.ndim]}"
-        )
+    else:
+        if bits_t.shape != input.shape[: bits_t.ndim]:
+            raise ValueError(f"Shape mismatch: bits.shape={bits_t.shape}, input.shape[:bits.ndim]={input.shape[:bits_t.ndim]}")
 
     # broadcast trailing dims
     trailing = input.ndim - bits_t.ndim
