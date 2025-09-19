@@ -300,10 +300,8 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
 
     Example:
         >>> input = tensor([[0., 0., 0.]])
-        >>> axis_angle_to_rotation_matrix(input).round()
-        tensor([[[1., 0., 0.],
-                 [0., 1., 0.],
-                 [0., 0., 1.]]])
+        >>> torch.allclose(axis_angle_to_rotation_matrix(input), torch.eye(3).unsqueeze(0))
+        True
 
         >>> input = tensor([[1.5708, 0., 0.]])
         >>> axis_angle_to_rotation_matrix(input)
