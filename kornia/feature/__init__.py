@@ -19,6 +19,7 @@ from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, Patc
 from .dedode import DeDoDe
 from .defmo import DeFMO
 from .disk import DISK, DISKFeatures
+from .efficient_loftr import EfficientLoFTR
 from .hardnet import HardNet, HardNet8
 from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
@@ -105,6 +106,7 @@ __all__ = [
     "DenseSIFTDescriptor",
     "DescriptorMatcher",
     "DescriptorMatcher",
+    "EfficientLoFTR",
     "FilterResponseNorm2d",
     "GFTTAffNetHardNet",
     "GFTTAffNetHardNet",
