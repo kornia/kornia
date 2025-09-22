@@ -132,8 +132,8 @@ class Attention(Module):
 
         if self.flash:
             # m = rearrange(m, 'n nhead L d -> n L nhead d', nhead=self.nhead, d=self.dim)
-            n0, _, _, _ = m.shape
-            m = m.reshape(n0, -1, self.nhead, self.dim)
+            # n0, nhead, L, d = m.shape
+            m = m.permute(0, 2, 1, 3)
 
         if q_mask is not None:
             m = pad_feature(m, mask_h0, mask_w0, q_mask)

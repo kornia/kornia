@@ -37,7 +37,7 @@ class AG_RoPE_EncoderLayer(Module):
         no_flash: bool = False,
         rope: int = False,
         npe: Optional[List[int]] = None,
-        fp32: int = False,
+        fp32: bool = False,
     ) -> None:
         super().__init__()
 

@@ -213,7 +213,6 @@ class EfficientLoFTR(Module):
         feat_c0, feat_c1 = (feat / feat.shape[-1] ** 0.5 for feat in [feat_c0, feat_c1])
 
         # 4. fine-level refinement
-        print(feat_c0.shape, feat_c1.shape)
         feat_f0_unfold, feat_f1_unfold = self.fine_preprocess(feat_c0, feat_c1, _data)
 
         # detect NaN during mixed precision training
@@ -224,14 +223,13 @@ class EfficientLoFTR(Module):
         del feat_c0, feat_c1, mask_c0, mask_c1
 
         # 5. match fine-level
-        print(feat_f0_unfold.shape, feat_f1_unfold.shape)  # ([291, 64, 64]) torch.Size([291, 64, 100])
         self.fine_matching(feat_f0_unfold, feat_f1_unfold, _data)
 
         rename_keys: dict[str, str] = {
             "mkpts0_f": "keypoints0",
             "mkpts1_f": "keypoints1",
-            "conf_matrix_f": "confidence",
-            "b_ids": "batch_indexes",
+            "mconf": "confidence",
+            "m_bids": "batch_indexes",
         }
         out: dict[str, Tensor] = {}
         for k, v in rename_keys.items():

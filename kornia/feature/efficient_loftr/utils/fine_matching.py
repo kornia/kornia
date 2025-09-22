@@ -87,7 +87,7 @@ class FineMatching(Module):
         # for fine-level supervision
         if self.training or self.validate:
             data.update({"sim_matrix_ff": conf_matrix_ff})
-        data.update({"conf_matrix_f": softmax_matrix_f})
+            data.update({"conf_matrix_f": softmax_matrix_f})
 
         # compute pixel-level absolute kpt coords
         self.get_fine_ds_match(softmax_matrix_f, data)

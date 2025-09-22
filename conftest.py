@@ -327,6 +327,7 @@ def add_doctest_deps(doctest_namespace):
 sha: str = "cb8f42bf28b9f347df6afba5558738f62a11f28a"
 sha2: str = "f7d8da661701424babb64850e03c5e8faec7ea62"
 sha3: str = "8b98f44abbe92b7a84631ed06613b08fee7dae14"
+sha4: str = "85bf178d7baeea2863e941b4badd9f1899ef3657"
 
 
 @pytest.fixture(scope="session")
@@ -339,5 +340,6 @@ def data(request):
         "lightglue_idxs": f"https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true",
         "disk_outdoor": f"https://github.com/kornia/data_test/blob/{sha3}/knchurch_disk.pt?raw=true",
         "dexined": "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
+        "eloftr_outdoor": f"https://github.com/AbhiKhoyani/kornia_data_test/blob/{sha4}/eloftr_outdoor_full_fp32_data.pt?raw=true"
     }
     return torch.hub.load_state_dict_from_url(url[request.param], map_location=torch.device("cpu"))
