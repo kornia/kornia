@@ -205,7 +205,7 @@ def spvs_fine(data: Dict[str, Any], config: Dict[str, Any]) -> None:
         # grid_pt0_f = rearrange(grid_pt0_f, 'n h w c -> n c h w')
         grid_pt0_f = grid_pt0_f.permute(0, 3, 1, 2)
         # 1. unfold(crop) all local windows
-        if config['LOFTR']["ALIGN_CORNER"] is False:  # even windows
+        if config["LOFTR"]["ALIGN_CORNER"] is False:  # even windows
             if W == 8:
                 grid_pt0_f_unfold = F.unfold(grid_pt0_f, kernel_size=(W, W), stride=W, padding=0)
             else:

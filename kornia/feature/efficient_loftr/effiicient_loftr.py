@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional, Mapping
+from typing import Any, Mapping, Optional
 
 import torch
 

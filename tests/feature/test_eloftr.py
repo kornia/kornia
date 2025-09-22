@@ -18,9 +18,7 @@
 import pytest
 import torch
 
-import kornia as K
 from kornia.feature import EfficientLoFTR
-from kornia.geometry import resize
 
 from testing.base import BaseTester
 from testing.casts import dict_to
@@ -39,11 +37,11 @@ class TestELoFTR(BaseTester):
         data_dev = dict_to(data, device, dtype)
         with torch.no_grad():
             out = eloftr(data_dev)
-        
+
         self.assert_close(data_dev["keypoints0"].shape, out["keypoints0"].shape, rtol=1, atol=1)
         self.assert_close(data_dev["keypoints1"].shape, out["keypoints1"].shape, rtol=1, atol=1)
 
-        # below assertation fails as different device/percesion generate difference confidence score 
+        # below assertation fails as different device/percesion generate difference confidence score
         # so matching output shape only
         # self.assert_close(data_dev["keypoints0"], out["keypoints0"])
         # self.assert_close(data_dev["keypoints1"], out["keypoints1"])

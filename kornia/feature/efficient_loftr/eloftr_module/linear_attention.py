@@ -84,7 +84,12 @@ class Attention(Module):
         self.fp32 = fp32
 
     def attention(
-        self, query: Tensor, key: Tensor, value: Tensor, q_mask: Optional[Tensor] = None, kv_mask: Optional[Tensor] = None
+        self,
+        query: Tensor,
+        key: Tensor,
+        value: Tensor,
+        q_mask: Optional[Tensor] = None,
+        kv_mask: Optional[Tensor] = None,
     ) -> Tensor:
         # assert q_mask is None and kv_mask is None, "Not support generalized attention mask yet."
         if q_mask is not None:
@@ -109,7 +114,12 @@ class Attention(Module):
         return out
 
     def _forward(
-        self, query: Tensor, key: Tensor, value: Tensor, q_mask: Optional[Tensor] = None, kv_mask: Optional[Tensor] = None
+        self,
+        query: Tensor,
+        key: Tensor,
+        value: Tensor,
+        q_mask: Optional[Tensor] = None,
+        kv_mask: Optional[Tensor] = None,
     ) -> Tensor:
         if q_mask is not None and kv_mask is not None:
             query, key, value, mask_h0, mask_w0 = crop_feature(query, key, value, q_mask, kv_mask)
@@ -141,7 +151,12 @@ class Attention(Module):
         return m
 
     def forward(
-        self, query: Tensor, key: Tensor, value: Tensor, q_mask: Optional[Tensor] = None, kv_mask: Optional[Tensor] = None
+        self,
+        query: Tensor,
+        key: Tensor,
+        value: Tensor,
+        q_mask: Optional[Tensor] = None,
+        kv_mask: Optional[Tensor] = None,
     ) -> Tensor:
         """Multi-head scaled dot-product attention, a.k.a full attention.
 
