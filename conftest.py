@@ -340,6 +340,6 @@ def data(request):
         "lightglue_idxs": f"https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true",
         "disk_outdoor": f"https://github.com/kornia/data_test/blob/{sha3}/knchurch_disk.pt?raw=true",
         "dexined": "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
-        "eloftr_outdoor": f"https://github.com/AbhiKhoyani/kornia_data_test/blob/{sha4}/eloftr_outdoor_full_fp32_data.pt?raw=true"
+        "eloftr_outdoor": f"https://github.com/AbhiKhoyani/kornia_data_test/blob/{sha4}/eloftr_outdoor_full_fp32_data.pt?raw=true",
     }
     return torch.hub.load_state_dict_from_url(url[request.param], map_location=torch.device("cpu"))
