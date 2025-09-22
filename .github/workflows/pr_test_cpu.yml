@@ -13,37 +13,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-
   pre-tests:
     runs-on: ubuntu-latest
     outputs:
       hash: ${{ steps.hashid.outputs.weights-hash }}
     steps:
-    - uses: kornia/workflows/.github/actions/env@v1.13.0
-    - uses: actions/cache@v4
-      id: cache-weights
-      with:
-        path: weights/
-        key: model-weights-${{ hashFiles('.github/download-models-weights.py') }}
-        enableCrossOsArchive: true
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Download models weights...
-      if: steps.cache-weights.outputs.cache-hit != 'true'
-      run: python .github/download-models-weights.py -t weights/
+      - uses: ./.github/actions/env
+      - uses: actions/cache@v4
+        id: cache-weights
+        with:
+          path: weights/
+          key: model-weights-${{ hashFiles('.github/download-models-weights.py') }}
+          enableCrossOsArchive: true
 
-    - name: write hashid
-      id: hashid
-      run: echo "weights-hash=${{ hashFiles('.github/download-models-weights.py') }}" >> "$GITHUB_OUTPUT"
+      - name: Download models weights...
+        if: steps.cache-weights.outputs.cache-hit != 'true'
+        run: python .github/download-models-weights.py -t weights/
+
+      - name: write hashid
+        id: hashid
+        run: echo "weights-hash=${{ hashFiles('.github/download-models-weights.py') }}" >> "$GITHUB_OUTPUT"
 
   tests-cpu:
     needs: [pre-tests]
     strategy:
       fail-fast: true
       matrix:
-        os: ['Ubuntu-latest', 'Windows-latest']
-        pytorch-dtype: ['float32', 'float64']
+        os: ["Ubuntu-latest", "Windows-latest"]
+        pytorch-dtype: ["float32", "float64"]
 
-    uses: kornia/workflows/.github/workflows/tests.yml@v1.13.0
+    uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
       python-version: '["3.9", "3.12"]'
@@ -57,21 +59,20 @@ jobs:
 
   tests-cpu-macos:
     needs: [pre-tests]
-    uses: kornia/workflows/.github/workflows/tests.yml@v1.13.0
+    uses: ./.github/workflows/tests.yml
     with:
-      os: 'MacOS-latest'
+      os: "MacOS-latest"
       python-version: '["3.9", "3.12"]'
-      pytorch-dtype: 'float32'
+      pytorch-dtype: "float32"
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
-
   coverage:
     needs: [pre-tests]
-    uses: kornia/workflows/.github/workflows/coverage.yml@v1.13.0
+    uses: ./.github/workflows/coverage.yml
     with:
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
@@ -80,14 +81,14 @@ jobs:
         model-weights-
 
   typing:
-    uses: kornia/workflows/.github/workflows/mypy.yml@v1.13.0
+    uses: ./.github/workflows/mypy.yml
 
   tutorials:
-    uses: kornia/workflows/.github/workflows/tutorials.yml@v1.13.0
+    uses: ./.github/workflows/tutorials.yml
 
   docs:
     needs: [pre-tests]
-    uses: kornia/workflows/.github/workflows/docs.yml@v1.13.0
+    uses: ./.github/workflows/docs.yml
     with:
       python-version: '["3.11"]'
       cache-path: weights/
@@ -101,22 +102,22 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-    - name: check for failures
-      if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
-      run: echo job failed && exit 1
+      - name: check for failures
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: echo job failed && exit 1
 
   tests-nightly:
-    if:  contains(github.event.pull_request.labels.*.name, 'nightly')
+    if: contains(github.event.pull_request.labels.*.name, 'nightly')
     needs: [pre-tests]
     name: ${{ matrix.os }} - torch-nightly, ${{ matrix.pytorch-dtype }}
 
     strategy:
       fail-fast: false
       matrix:
-        os: ['Ubuntu-latest', 'Windows-latest'] #, 'MacOS-latest'] add it when https://github.com/pytorch/pytorch/pull/89262 be merged
-        pytorch-dtype: ['float32', 'float64']
+        os: ["Ubuntu-latest", "Windows-latest"] #, 'MacOS-latest'] add it when https://github.com/pytorch/pytorch/pull/89262 be merged
+        pytorch-dtype: ["float32", "float64"]
 
-    uses: kornia/workflows/.github/workflows/tests.yml@v1.13.0
+    uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
       pytorch-version: '["nightly"]'

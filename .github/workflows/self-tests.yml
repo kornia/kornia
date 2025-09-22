@@ -1,0 +1,78 @@
+name: self-test
+
+on:
+  push:
+    branches: [main, test-me-*]
+    tags: "*"
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  env:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - uses: ./.github/actions/env/
+        with:
+          pytorch-version: "1.9.1"
+          python-version: "3.9"
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - uses: ./.github/actions/coverage/
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - uses: ./.github/actions/tests/
+
+  workflow-tests:
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.10", "3.12"]'
+      pytorch-version: '["2.1.2", "2.5.1"]'
+      pytorch-dtype: "float32"
+
+  workflow-coverage:
+    uses: ./.github/workflows/coverage.yml
+
+  workflow-mypy:
+    uses: ./.github/workflows/mypy.yml
+
+  workflow-tutorials:
+    uses: ./.github/workflows/tutorials.yml
+
+  workflow-docs:
+    uses: ./.github/workflows/docs.yml
+
+  collector:
+    needs:
+      [
+        coverage,
+        env,
+        tests,
+        workflow-tests,
+        workflow-coverage,
+        workflow-mypy,
+        workflow-tutorials,
+        workflow-docs,
+      ]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: check for failures
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: echo job failed && exit 1
