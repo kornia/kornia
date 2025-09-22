@@ -28,6 +28,8 @@ def build_backbone(config: Any) -> RepVGG_8_1_align:
         if config["align_corner"] is False:
             if config["resolution"] == (8, 1):
                 return RepVGG_8_1_align(config["backbone"])
+            else:
+                raise ValueError(f"Efficient LOFTR.RESOLUTION {config['resolution']} not supported.")
         else:
             raise ValueError(f"Efficient LOFTR.ALIGN_CORNER {config['align_corner']} not supported.")
     else:

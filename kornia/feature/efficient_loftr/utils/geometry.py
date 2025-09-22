@@ -23,7 +23,7 @@ from kornia.core import Tensor
 
 
 @torch.no_grad()
-def warp_kpts(kpts0: Tensor, depth0: Tensor, depth1: Tensor, T_0to1: Tensor, K0: Tensor, K1: Tensor) -> Tuple[Tensor]:
+def warp_kpts(kpts0: Tensor, depth0: Tensor, depth1: Tensor, T_0to1: Tensor, K0: Tensor, K1: Tensor) -> Tuple[Tensor, Tensor]:
     """Warp kpts0 from I0 to I1 with depth, K and Rt.
 
     Also check covisibility and depth consistency.

@@ -24,7 +24,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -167,7 +167,7 @@ class RepVGGBlock(nn.Module):
         ).sum()  # Normalize for an L2 coefficient comparable to regular L2.
         return l2_loss_eq_kernel + l2_loss_circle
 
-    def get_equivalent_kernel_bias(self) -> Tensor:
+    def get_equivalent_kernel_bias(self) -> Tuple[Tensor, Tensor]:
         """This func derives the equivalent kernel and bias in a DIFFERENTIABLE way.
 
         You can get the equivalent kernel and bias at any time and do whatever you want,
@@ -179,13 +179,13 @@ class RepVGGBlock(nn.Module):
         kernelid, biasid = self._fuse_bn_tensor(self.rbr_identity)
         return kernel3x3 + self._pad_1x1_to_3x3_tensor(kernel1x1) + kernelid, bias3x3 + bias1x1 + biasid
 
-    def _pad_1x1_to_3x3_tensor(self, kernel1x1) -> Tensor:
+    def _pad_1x1_to_3x3_tensor(self, kernel1x1: Optional[Tensor]) -> Union[Tensor, int]:
         if kernel1x1 is None:
             return 0
         else:
             return torch.nn.functional.pad(kernel1x1, [1, 1, 1, 1])
 
-    def _fuse_bn_tensor(self, branch: nn.Module) -> List[Tensor]:
+    def _fuse_bn_tensor(self, branch: Optional[nn.Module]) -> Tuple[Union[Tensor, int], Union[Tensor, int]]:
         if branch is None:
             return 0, 0
         if isinstance(branch, nn.Sequential):
@@ -214,7 +214,7 @@ class RepVGGBlock(nn.Module):
         t = (gamma / std).reshape(-1, 1, 1, 1)
         return kernel * t, beta - running_mean * gamma / std
 
-    def switch_to_deploy(self):
+    def switch_to_deploy(self) -> None:
         if hasattr(self, "rbr_reparam"):
             return
         kernel, bias = self.get_equivalent_kernel_bias()
@@ -242,10 +242,10 @@ class RepVGGBlock(nn.Module):
 class RepVGG(nn.Module):
     def __init__(
         self,
-        num_blocks: int,
+        num_blocks: List[int],
         num_classes: int = 1000,
-        width_multiplier: Optional[List[int]] = None,
-        override_groups_map: Optional[Dict[str]] = None,
+        width_multiplier: List[float] = [],
+        override_groups_map: Optional[Dict[int, int]] = None,
         deploy: bool = False,
         use_se: bool = False,
         use_checkpoint: bool = False,
@@ -275,7 +275,7 @@ class RepVGG(nn.Module):
         self.stage2 = self._make_stage(int(128 * width_multiplier[1]), num_blocks[1], stride=2)
         self.stage3 = self._make_stage(int(256 * width_multiplier[2]), num_blocks[2], stride=2)
 
-    def _make_stage(self, planes: int, num_blocks: int, stride: int) -> Tensor:
+    def _make_stage(self, planes: int, num_blocks: int, stride: int) -> nn.ModuleList:
         strides = [stride] + [1] * (num_blocks - 1)
         blocks = []
         for _stride in strides:
@@ -327,7 +327,7 @@ def create_RepVGG(deploy: bool = False, use_checkpoint: bool = False) -> RepVGG:
     )
 
 
-def repvgg_model_convert(model: torch.nn.Module, save_path: Optional[str] = None, do_copy: bool = True):
+def repvgg_model_convert(model: torch.nn.Module, save_path: Optional[str] = None, do_copy: bool = True) -> nn.Module:
     """Use this for converting a RepVGG model or a bigger model with RepVGG as its component.
 
     Use like this

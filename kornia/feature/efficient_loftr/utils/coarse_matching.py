@@ -127,13 +127,13 @@ class CoarseMatching(Module):
         if self.fp16matmul:
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1) / self.temperature
             del feat_c0, feat_c1
-            if mask_c0 is not None:
+            if mask_c0 is not None and mask_c1 is not None:
                 sim_matrix = sim_matrix.masked_fill(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -1e4)
         else:
             with torch.autocast(enabled=False, device_type="cuda"):
                 sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1) / self.temperature
                 del feat_c0, feat_c1
-                if mask_c0 is not None:
+                if mask_c0 is not None and mask_c1 is not None:
                     sim_matrix = sim_matrix.float().masked_fill(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
         if not self.skip_softmax:
             sim_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)

@@ -26,10 +26,10 @@ from kornia.utils.grid import create_meshgrid
 from .geometry import warp_kpts
 
 
-def static_vars(**kwargs):
+def static_vars(**kwargs: Dict[str, Any]) -> function:
     """Helper function."""
 
-    def decorate(func):
+    def decorate(func: function) -> function:
         for k, v in kwargs.items():
             setattr(func, k, v)
         return func
@@ -99,7 +99,7 @@ def spvs_coarse(data: Dict[str, Any], config: Dict[str, Any]) -> None:
     # (larger overlap area between warped patches and grid patch with higher weight)
     # (overlap area range from [0, 1] rather than [0.25, 1] as the penalty of warped kpts fall on
     # midpoint of two grid kpts)
-    if config.LOFTR.LOSS.COARSE_OVERLAP_WEIGHT:
+    if config["LOFTR"]["LOSS"]["COARSE_OVERLAP_WEIGHT"]:
         w_pt0_c_error = (1.0 - 2 * torch.abs(w_pt0_c - w_pt0_c_round)).prod(-1)
     w_pt0_c_round = w_pt0_c_round[:, :, :].long()
     nearest_index1 = w_pt0_c_round[..., 0] + w_pt0_c_round[..., 1] * w1
@@ -127,7 +127,7 @@ def spvs_coarse(data: Dict[str, Any], config: Dict[str, Any]) -> None:
     data.update({"conf_matrix_gt": conf_matrix_gt})
 
     # use overlap area as loss weight
-    if config.LOFTR.LOSS.COARSE_OVERLAP_WEIGHT:
+    if config["LOFTR"]["LOSS"]["COARSE_OVERLAP_WEIGHT"]:
         conf_matrix_error_gt = w_pt0_c_error[b_ids, i_ids]  # weight range: [0.0, 1.0]
         data.update({"conf_matrix_error_gt": conf_matrix_error_gt})
 
@@ -180,7 +180,7 @@ def spvs_fine(data: Dict[str, Any], config: Dict[str, Any]) -> None:
     N, _, H0, W0 = data["image0"].shape
     _, _, H1, W1 = data["image1"].shape
     hf0, wf0, _, _ = data["hw0_f"][0], data["hw0_f"][1], data["hw1_f"][0], data["hw1_f"][1]  # h, w of fine feature
-    if not config.LOFTR.ALIGN_CORNER:
+    if not config["LOFTR"]["ALIGN_CORNER"]:
         raise ValueError("Only support training with align_corner=False for now.")
 
     # 2. get coarse prediction
@@ -194,7 +194,7 @@ def spvs_fine(data: Dict[str, Any], config: Dict[str, Any]) -> None:
         conf_matrix_f_gt = torch.zeros(m, WW, WW, device=device)
 
         data.update({"conf_matrix_f_gt": conf_matrix_f_gt})
-        if config.LOFTR.LOSS.FINE_OVERLAP_WEIGHT:
+        if config["LOFTR"]["LOSS"]["FINE_OVERLAP_WEIGHT"]:
             conf_matrix_f_error_gt = torch.zeros(1, device=device)
             data.update({"conf_matrix_f_error_gt": conf_matrix_f_error_gt})
 
@@ -205,7 +205,7 @@ def spvs_fine(data: Dict[str, Any], config: Dict[str, Any]) -> None:
         # grid_pt0_f = rearrange(grid_pt0_f, 'n h w c -> n c h w')
         grid_pt0_f = grid_pt0_f.permute(0, 3, 1, 2)
         # 1. unfold(crop) all local windows
-        if config.LOFTR.ALIGN_CORNER is False:  # even windows
+        if config['LOFTR']["ALIGN_CORNER"] is False:  # even windows
             if W == 8:
                 grid_pt0_f_unfold = F.unfold(grid_pt0_f, kernel_size=(W, W), stride=W, padding=0)
             else:
@@ -244,7 +244,7 @@ def spvs_fine(data: Dict[str, Any], config: Dict[str, Any]) -> None:
         del b_ids, i_ids, j_ids
         delta_w_pt0_f = delta_w_pt0_i / scalei1[:, None, :] + W // 2 - 0.5
         delta_w_pt0_f_round = delta_w_pt0_f[:, :, :].round()
-        if config.LOFTR.LOSS.FINE_OVERLAP_WEIGHT:
+        if config["LOFTR"]["LOSS"]["FINE_OVERLAP_WEIGHT"]:
             # calculate the overlap area between warped patch and grid patch as the loss weight.
             w_pt0_f_error = (1.0 - 2 * torch.abs(delta_w_pt0_f - delta_w_pt0_f_round)).prod(-1)  # [0, 1]
         delta_w_pt0_f_round = delta_w_pt0_f_round.long()
@@ -290,7 +290,7 @@ def spvs_fine(data: Dict[str, Any], config: Dict[str, Any]) -> None:
         conf_matrix_f_gt = torch.zeros(m, WW, WW, device=device, dtype=torch.bool)
         conf_matrix_f_gt[m_ids, i_ids, j_ids] = 1
         data.update({"conf_matrix_f_gt": conf_matrix_f_gt})
-        if config.LOFTR.LOSS.FINE_OVERLAP_WEIGHT:
+        if config["LOFTR"]["LOSS"]["FINE_OVERLAP_WEIGHT"]:
             # calculate the overlap area between warped pixel and grid pixel as the loss weight.
             w_pt0_f_error = w_pt0_f_error[m_ids, i_ids]
             data.update({"conf_matrix_f_error_gt": w_pt0_f_error})

@@ -79,7 +79,7 @@ class FinePreprocess(Module):
         x1 = F.interpolate(x1, scale_factor=2.0, mode="bilinear", align_corners=False)
         return x1
 
-    def forward(self, feat_c0: Tensor, feat_c1: Tensor, data: Dict[str, Any]) -> Tuple[Tensor]:
+    def forward(self, feat_c0: Tensor, feat_c1: Tensor, data: Dict[str, Any]) -> Tuple[Tensor, Tensor]:
         W = self.W
         stride = data["hw0_f"][0] // data["hw0_c"][0]
 

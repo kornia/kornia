@@ -78,7 +78,7 @@ class AG_RoPE_EncoderLayer(Module):
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
 
-    def forward(self, x: Tensor, source: Tensor, x_mask: Tensor = None, source_mask: Tensor = None) -> Tensor:
+    def forward(self, x: Tensor, source: Tensor, x_mask: Optional[Tensor] = None, source_mask: Optional[Tensor] = None) -> Tensor:
         """Positional encoding forwrd loop.
 
         Args:
@@ -95,7 +95,7 @@ class AG_RoPE_EncoderLayer(Module):
             self.norm1(self.aggregate(x).permute(0, 2, 3, 1)),
             self.norm1(self.max_pool(source).permute(0, 2, 3, 1)),
         )  # [N, H, W, C]
-        if x_mask is not None:
+        if x_mask is not None and source_mask is not None:
             x_mask, source_mask = (self.max_pool(x.float()).bool() for x in [x_mask, source_mask])
         query, key, value = self.q_proj(query), self.k_proj(source), self.v_proj(source)
 
@@ -171,8 +171,8 @@ class LocalFeatureTransformer(Module):
                 nn.init.xavier_uniform_(p)
 
     def forward(
-        self, feat0: Tensor, feat1: Tensor, mask0: Tensor = None, mask1: Tensor = None, data: Any = None
-    ) -> Tuple[Tensor]:
+        self, feat0: Tensor, feat1: Tensor, mask0: Optional[Tensor] = None, mask1: Optional[Tensor] = None, data: Any = None
+    ) -> Tuple[Tensor, Tensor]:
         """Forward run.
 
         Args:

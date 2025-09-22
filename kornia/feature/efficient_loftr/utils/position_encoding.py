@@ -28,8 +28,8 @@ class RoPEPositionEncodingSine(Module):
 
     def __init__(
         self,
-        d_model: Tensor,
-        max_shape: Tuple[int] = (256, 256),
+        d_model: int,
+        max_shape: Tuple[int, int] = (256, 256),
         npe: Optional[List[int]] = None,
         ropefp16: bool = True,
     ) -> None:

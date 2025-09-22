@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Optional, Mapping
 
 import torch
 
@@ -64,7 +64,7 @@ default_cfg = {
 }
 
 
-def reparameter(matcher):
+def reparameter(matcher: Module) -> Module:
     """Helper function."""
     module = matcher.backbone.layer0
     if hasattr(module, "switch_to_deploy"):
@@ -139,7 +139,7 @@ class EfficientLoFTR(Module):
 
         """
         # 1. Local Feature CNN
-        _data: dict[str, Tensor | int | torch.Size] = {
+        _data: dict[str, Any] = {
             "bs": data["image0"].size(0),
             "hw0_i": data["image0"].shape[2:],
             "hw1_i": data["image1"].shape[2:],
@@ -240,7 +240,7 @@ class EfficientLoFTR(Module):
                 raise TypeError(f"Expected Tensor for item `{k}`. Gotcha {type(_d)}")
         return out
 
-    def load_state_dict(self, state_dict: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
+    def load_state_dict(self, state_dict: Mapping[str, Any], *args: Any, **kwargs: Any) -> Any:
         for k in list(state_dict.keys()):
             if k.startswith("matcher."):
                 state_dict[k.replace("matcher.", "", 1)] = state_dict.pop(k)

@@ -20,7 +20,7 @@
 Modified from: https://github.com/idiap/fast-transformers/blob/master/fast_transformers/attention/linear_attention.py
 """
 
-from typing import Tuple
+from typing import List, Optional
 
 import torch
 import torch.nn.functional as F
@@ -34,7 +34,7 @@ else:
     FLASH_AVAILABLE = False
 
 
-def crop_feature(query: Tensor, key: Tensor, value: Tensor, x_mask: Tensor, source_mask: Tensor) -> Tuple[Tensor]:
+def crop_feature(query: Tensor, key: Tensor, value: Tensor, x_mask: Tensor, source_mask: Tensor) -> List[Tensor]:
     """Cropping features."""
     mask_h0, mask_w0, mask_h1, mask_w1 = (
         x_mask[0].sum(-2)[0],
@@ -84,7 +84,7 @@ class Attention(Module):
         self.fp32 = fp32
 
     def attention(
-        self, query: Tensor, key: Tensor, value: Tensor, q_mask: Tensor = None, kv_mask: Tensor = None
+        self, query: Tensor, key: Tensor, value: Tensor, q_mask: Optional[Tensor] = None, kv_mask: Optional[Tensor] = None
     ) -> Tensor:
         # assert q_mask is None and kv_mask is None, "Not support generalized attention mask yet."
         if q_mask is not None:
@@ -109,9 +109,9 @@ class Attention(Module):
         return out
 
     def _forward(
-        self, query: Tensor, key: Tensor, value: Tensor, q_mask: Tensor = None, kv_mask: Tensor = None
+        self, query: Tensor, key: Tensor, value: Tensor, q_mask: Optional[Tensor] = None, kv_mask: Optional[Tensor] = None
     ) -> Tensor:
-        if q_mask is not None:
+        if q_mask is not None and kv_mask is not None:
             query, key, value, mask_h0, mask_w0 = crop_feature(query, key, value, q_mask, kv_mask)
 
         if self.flash:
@@ -141,7 +141,7 @@ class Attention(Module):
         return m
 
     def forward(
-        self, query: Tensor, key: Tensor, value: Tensor, q_mask: Tensor = None, kv_mask: Tensor = None
+        self, query: Tensor, key: Tensor, value: Tensor, q_mask: Optional[Tensor] = None, kv_mask: Optional[Tensor] = None
     ) -> Tensor:
         """Multi-head scaled dot-product attention, a.k.a full attention.
 
