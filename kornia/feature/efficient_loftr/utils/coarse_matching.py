@@ -15,67 +15,15 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 import torch
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor
+from kornia.feature.loftr.utils.coarse_matching import compute_max_candidates, mask_border, mask_border_with_padding
 
 INF = 1e9
-
-
-def mask_border(m: Tensor, b: int, v: Union[Tensor, float, bool]) -> None:
-    """Mask borders with value.
-
-    Args:
-        m (torch.Tensor): [N, H0, W0, H1, W1]
-        b (int) : boarder
-        v (m.dtype) : mask value
-    """
-    if b <= 0:
-        return
-
-    m[:, :b] = v
-    m[:, :, :b] = v
-    m[:, :, :, :b] = v
-    m[:, :, :, :, :b] = v
-    m[:, -b:] = v
-    m[:, :, -b:] = v
-    m[:, :, :, -b:] = v
-    m[:, :, :, :, -b:] = v
-
-
-def mask_border_with_padding(m: Tensor, bd: int, v: Union[Tensor, float, bool], p_m0: Tensor, p_m1: Tensor) -> None:
-    """Apply masking to a padded boarder."""
-    if bd <= 0:
-        return
-
-    m[:, :bd] = v
-    m[:, :, :bd] = v
-    m[:, :, :, :bd] = v
-    m[:, :, :, :, :bd] = v
-
-    h0s, w0s = p_m0.sum(1).max(-1)[0].int(), p_m0.sum(-1).max(-1)[0].int()
-    h1s, w1s = p_m1.sum(1).max(-1)[0].int(), p_m1.sum(-1).max(-1)[0].int()
-    for b_idx, (h0, w0, h1, w1) in enumerate(zip(h0s, w0s, h1s, w1s)):
-        m[b_idx, h0 - bd :] = v
-        m[b_idx, :, w0 - bd :] = v
-        m[b_idx, :, :, h1 - bd :] = v
-        m[b_idx, :, :, :, w1 - bd :] = v
-
-
-def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:
-    """Compute the max candidates of all pairs within a batch.
-
-    Args:
-        p_m0 : padded masks
-        p_m1 : padded masks
-    """
-    h0s, w0s = p_m0.sum(1).max(-1)[0], p_m0.sum(-1).max(-1)[0]
-    h1s, w1s = p_m1.sum(1).max(-1)[0], p_m1.sum(-1).max(-1)[0]
-    max_cand = torch.sum(torch.min(torch.stack([h0s * w0s, h1s * w1s], -1), -1)[0])
-    return max_cand
 
 
 class CoarseMatching(Module):
@@ -119,8 +67,6 @@ class CoarseMatching(Module):
                 'mconf' : [M]}
             NOTE: M' != M during training.
         """
-        # N, L, S, C = feat_c0.size(0), feat_c0.size(1), feat_c1.size(1), feat_c0.size(2)
-
         # normalize
         feat_c0, feat_c1 = (feat / feat.shape[-1] ** 0.5 for feat in [feat_c0, feat_c1])
 

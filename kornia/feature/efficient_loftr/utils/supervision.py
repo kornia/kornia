@@ -15,21 +15,20 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 import torch
 import torch.nn.functional as F
 
 from kornia.core import Tensor
+from kornia.feature.loftr.utils.geometry import warp_kpts
 from kornia.utils.grid import create_meshgrid
 
-from .geometry import warp_kpts
 
-
-def static_vars(**kwargs: Dict[str, Any]) -> function:
+def static_vars(**kwargs: Dict[str, Any]) -> Callable:
     """Helper function."""
 
-    def decorate(func: function) -> function:
+    def decorate(func: Callable) -> Callable:
         for k, v in kwargs.items():
             setattr(func, k, v)
         return func
@@ -108,7 +107,7 @@ def spvs_coarse(data: Dict[str, Any], config: Dict[str, Any]) -> None:
     nearest_index0 = w_pt1_c_round[..., 0] + w_pt1_c_round[..., 1] * w0
 
     # corner case: out of boundary
-    def out_bound_mask(pt, w, h):
+    def out_bound_mask(pt: Tensor, w: Tensor, h: Tensor):
         return (pt[..., 0] < 0) + (pt[..., 0] >= w) + (pt[..., 1] < 0) + (pt[..., 1] >= h)
 
     nearest_index1[out_bound_mask(w_pt0_c_round, w1, h1)] = 0
