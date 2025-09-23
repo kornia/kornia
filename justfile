@@ -82,13 +82,21 @@ lint: _ensure-venv
 mypy: _ensure-venv
     ./venv/bin/mypy
 
-# Run doctests
+# Run doctests (local dev)
 doctest: _ensure-venv
     ./venv/bin/pytest -v --doctest-modules kornia/
 
-# Build documentation
+# CI doctests (no venv, uses system/uv environment)
+ci-doctest:
+    pytest -v --doctest-modules kornia/
+
+# Build documentation (local dev)
 build-docs: _ensure-venv
-    cd docs && make clean html
+    sphinx-build -W -b html docs/source docs/build/html
+
+# CI docs build (no venv)
+ci-build-docs:
+    sphinx-build -W -b html docs/source docs/build/html
 
 # Install package in development mode
 install-dev: _ensure-venv

@@ -37,6 +37,19 @@ runs:
       shell: bash
       run: pip install uv
 
+    - name: Install just
+      shell: bash
+      run: |
+        if [[ "$RUNNER_OS" == "Linux" ]]; then
+          sudo apt-get update && sudo apt-get install -y just
+        elif [[ "$RUNNER_OS" == "macOS" ]]; then
+          brew update || true
+          brew install just || true
+        else
+          echo "Windows runner: installing just via chocolatey if available"
+          choco install just -y || echo "choco not available; skipping just install"
+        fi
+
     - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) }}
       name: Install PyTorch nightly
       shell: bash
