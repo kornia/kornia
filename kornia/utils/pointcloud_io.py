@@ -28,42 +28,40 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         pointcloud: tensor containing the pointcloud to save.
           The tensor must be in the shape of :math:`(*, 3)` where the last
           component is assumed to be a 3d point coordinate :math:`(X, Y, Z)`.
-
     """
-    if not isinstance(filename, str) and filename[-3:] == ".ply":
-        raise TypeError(f"Input filename must be a string in with the .ply  extension. Got {filename}")
+    if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
+        raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
 
     if not torch.is_tensor(pointcloud):
         raise TypeError(f"Input pointcloud type is not a torch.Tensor. Got {type(pointcloud)}")
 
-    if not len(pointcloud.shape) >= 2 and pointcloud.shape[-1] == 3:
-        raise TypeError(f"Input pointcloud must be in the following shape HxWx3. Got {pointcloud.shape}.")
+    if pointcloud.ndim < 2 or pointcloud.shape[-1] != 3:
+        raise TypeError(f"Input pointcloud must have shape (..., 3). Got {tuple(pointcloud.shape)}")
 
-    # flatten the input pointcloud in a vector to iterate points
-    xyz_vec: torch.Tensor = pointcloud.reshape(-1, 3)
+    # Flatten points
+    xyz = pointcloud.reshape(-1, 3)
 
-    with open(filename, "w") as f:
-        data_str: str = ""
-        num_points: int = xyz_vec.shape[0]
-        for idx in range(num_points):
-            xyz = xyz_vec[idx]
-            if not bool(torch.isfinite(xyz).any()):
-                num_points -= 1
-                continue
-            x: float = float(xyz[0])
-            y: float = float(xyz[1])
-            z: float = float(xyz[2])
-            data_str += f"{x} {y} {z}\n"
+    valid_mask = torch.isfinite(xyz).any(dim=1)
+    valid_points = xyz[valid_mask]
+    valid_count = valid_points.shape[0]
 
+    with open(filename, "w", encoding="utf-8") as f:
+        # Write PLY header
         f.write("ply\n")
         f.write("format ascii 1.0\n")
         f.write("comment arraiy generated\n")
-        f.write(f"element vertex {num_points}\n")
+        f.write(f"element vertex {valid_count}\n")
         f.write("property double x\n")
         f.write("property double y\n")
         f.write("property double z\n")
         f.write("end_header\n")
-        f.write(data_str)
+
+        if valid_count > 0:
+            # Move to CPU, convert to float64 for matching 'double' in header
+            arr = valid_points.detach().cpu().to(torch.float64)
+            # Write each row as space-separated floats
+            for x, y, z in arr.tolist():
+                f.write(f"{x:.9g} {y:.9g} {z:.9g}\n")
 
 
 def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
@@ -71,32 +69,34 @@ def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
 
     Args:
         filename: the path to the pointcloud.
-        header_size: the size of the ply file header that will
-          be skipped during loading.
+        header_size: the number of header lines to skip.
 
     Return:
-        tensor containing the loaded point with shape :math:`(*, 3)` where
+        tensor containing the loaded points with shape :math:`(*, 3)` where
         :math:`*` represents the number of points.
-
     """
-    if not isinstance(filename, str) and filename[-3:] == ".ply":
-        raise TypeError(f"Input filename must be a string in with the .ply  extension. Got {filename}")
+    if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
+        raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
     if not os.path.isfile(filename):
         raise ValueError("Input filename is not an existing file.")
     if not (isinstance(header_size, int) and header_size > 0):
         raise TypeError(f"Input header_size must be a positive integer. Got {header_size}.")
-    # open the file and populate tensor
-    with open(filename) as f:
-        points = []
 
-        # skip header
-        lines = f.readlines()[header_size:]
+    # Read all file bytes
+    with open(filename, "rb") as f:
+        # Skip header lines
+        for _ in range(header_size):
+            f.readline()
+        raw_data = f.read()
 
-        # iterate over the points
-        for line in lines:
-            x_str, y_str, z_str = line.split()
-            points.append((torch.tensor(float(x_str)), torch.tensor(float(y_str)), torch.tensor(float(z_str))))
+    # Decode once and split (faster than line-by-line parsing in Python)
+    text = raw_data.decode("utf-8", errors="ignore")
+    parts = text.split()
 
-        # create tensor from list
-        pointcloud: torch.Tensor = torch.tensor(points)
-        return pointcloud
+    # We only take the first 3 columns per point
+    if len(parts) % 3 != 0:
+        raise ValueError(f"Expected 3 columns per point, got a total of {len(parts)} values.")
+
+    # Convert directly to a float32 tensor in one go
+    tensor = torch.tensor(list(map(float, parts[: (len(parts) // 3) * 3])), dtype=torch.float32).view(-1, 3)
+    return tensor

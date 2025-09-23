@@ -67,9 +67,15 @@ class _DissolvingWraper_HF:
 
     @torch.no_grad()
     def decode_tensor_to_latent(self, latents: Tensor) -> Tensor:
-        latents = 1 / 0.18215 * latents.detach()
-        image = self.model.vae.decode(latents)["sample"]
-        image = (image / 2 + 0.5).clamp(0, 1)
+        # Perform in-place detach to reduce memory usage and copies
+        latents = latents.detach()
+        latents = latents * (1.0 / 0.18215)  # Fused division as multiplication (faster)
+        # Reduce attribute lookups by localizing frequently used attributes
+        vae_decode = self.model.vae.decode
+        image = vae_decode(latents)["sample"]
+        # Use in-place arithmetic/clamp for throughput
+        image = image.div_(2).add_(0.5)
+        image.clamp_(0, 1)
         return image
 
     @torch.no_grad()

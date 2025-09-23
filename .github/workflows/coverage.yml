@@ -1,0 +1,179 @@
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        required: false
+        type: string
+        default: "3.11"
+      pytorch-version:
+        required: false
+        type: string
+        default: "2.5.1"
+      pytorch-device:
+        required: false
+        type: string
+        default: "cpu"
+      os:
+        required: false
+        type: string
+        default: ubuntu-latest
+      ref:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      cache-path:
+        required: false
+        type: string
+      cache-key:
+        required: false
+        type: string
+      cache-restore-keys:
+        required: false
+        type: string
+
+jobs:
+  slow:
+    # Only run tests with slow marker which aren't dynamo tests
+    runs-on: ${{ inputs.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        pytorch-dtype: ["float32", "float64"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Restore cache
+        if: "${{ inputs.cache-path != '' }}"
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ inputs.cache-path }}
+          key: ${{ inputs.cache-key }}
+          restore-keys: ${{ inputs.cache-restore-keys }}
+
+      - uses: ./.github/actions/coverage
+        with:
+          os: ${{ inputs.os }}
+          python-version: ${{ inputs.python-version }}
+          pytorch-version: ${{ inputs.pytorch-version }}
+          pytorch-dtype: ${{ matrix.pytorch-dtype }}
+          pytorch-device: ${{ inputs.pytorch-device }}
+          pytest-extra: '--runslow -k "slow and not test_dynamo"'
+          coverage-artifact: coverage-slow-${{ matrix.pytorch-dtype }}
+          ref: ${{ inputs.ref }}
+
+  dynamo:
+    # Run all dynamo (torch.compile) related tests
+    runs-on: ${{ inputs.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        pytorch-dtype: ["float32"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Restore cache
+        if: "${{ inputs.cache-path != '' }}"
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ inputs.cache-path }}
+          key: ${{ inputs.cache-key }}
+          restore-keys: ${{ inputs.cache-restore-keys }}
+
+      - uses: ./.github/actions/coverage
+        with:
+          os: ${{ inputs.os }}
+          python-version: ${{ inputs.python-version }}
+          pytorch-version: ${{ inputs.pytorch-version }}
+          pytorch-dtype: ${{ matrix.pytorch-dtype }}
+          pytorch-device: ${{ inputs.pytorch-device }}
+          pytest-extra: '--runslow -k "test_dynamo"'
+          coverage-artifact: coverage-dynamo-${{ matrix.pytorch-dtype }}
+          ref: ${{ inputs.ref }}
+
+  overall:
+    # Run all tests which didn't have a slow marker or are dynamo tests
+    runs-on: ${{ inputs.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        pytorch-dtype: ["float32", "float64"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Restore cache
+        if: "${{ inputs.cache-path != '' }}"
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ inputs.cache-path }}
+          key: ${{ inputs.cache-key }}
+          restore-keys: ${{ inputs.cache-restore-keys }}
+
+      - uses: ./.github/actions/coverage
+        with:
+          os: ${{ inputs.os }}
+          python-version: ${{ inputs.python-version }}
+          pytorch-version: ${{ inputs.pytorch-version }}
+          pytorch-dtype: ${{ matrix.pytorch-dtype }}
+          pytorch-device: ${{ inputs.pytorch-device }}
+          coverage-artifact: coverage-overall-${{ matrix.pytorch-dtype }}
+          ref: ${{ inputs.ref }}
+
+  report:
+    runs-on: ${{ inputs.os }}
+    needs: [slow, dynamo, overall]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          repository: kornia/kornia
+          ref: ${{ inputs.ref }}
+
+      - name: Download coverage reports
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Setup python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install UV
+        shell: bash
+        run: pip install uv
+
+      - name: Install dev dependencies
+        shell: bash
+        run: uv pip install --system -r ./requirements/requirements-dev.txt
+
+      - name: Run coverage
+        run: |
+          coverage combine --keep \
+            $GITHUB_WORKSPACE/coverage-dynamo-float32 \
+            $GITHUB_WORKSPACE/coverage-slow-float32 \
+            $GITHUB_WORKSPACE/coverage-slow-float64 \
+            $GITHUB_WORKSPACE/coverage-overall-float32 \
+            $GITHUB_WORKSPACE/coverage-overall-float64
+          coverage xml -o coverage.xml # Generate the xml
+          coverage report --show-missing --skip-covered
+
+      - if: always()
+        name: Upload coverage
+        uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c02684457 # v3
+        with:
+          file: coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }} # to not depend on build via GH API
+          flags: cpu,${{ inputs.os }}_py-${{ inputs.python-version }}_pt-${{ inputs.pytorch-version }}_float32,float64
+          name: cpu-coverage

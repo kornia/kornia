@@ -69,7 +69,7 @@ class TestHardNet8(BaseTester):
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
-        patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
+        patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float32)
         hardnet = HardNet8().to(patches.device, patches.dtype)
         self.gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4)
 

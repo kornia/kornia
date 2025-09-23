@@ -30,8 +30,24 @@ from kornia.geometry.conversions import pi
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> Tensor:
     """Return neigh2channels conv kernel."""
     numel: int = kd * ky * kx
-    weight = eye(numel)
-    return weight.view(numel, kd, ky, kx)
+
+    # Fast-path: use static _eye_cache if available for small numel
+    # (to avoid repeated allocations for common kernel sizes)
+    # The cache size is limited for memory efficiency.
+    # NOTE: If memory is a concern and large kd/ky/kx are rare, adjust _MAX_CACHED.
+    _MAX_CACHED = 4096
+    if numel <= _MAX_CACHED:
+        if not hasattr(_get_reshape_kernel, "_eye_cache"):
+            _get_reshape_kernel._eye_cache = {}  # type: ignore[attr-defined]
+        cache = _get_reshape_kernel._eye_cache  # type: ignore[attr-defined]
+        res = cache.get(numel)
+        if res is None:
+            res = eye(numel)
+            cache[numel] = res
+        return res.view(numel, kd, ky, kx)
+    else:
+        # fallback to normal allocation for big kernels
+        return eye(numel).view(numel, kd, ky, kx)
 
 
 def get_sift_pooling_kernel(ksize: int = 25) -> Tensor:
@@ -258,8 +274,11 @@ class DenseSIFTDescriptor(Module):
         self.rootsift = rootsift
         self.stride = stride
         self.pad = padding
+
+        # Only allocate pooling kernels once during construction
         nw = get_sift_pooling_kernel(ksize=self.spatial_bin_size).float()
-        self.bin_pooling_kernel = nn.Conv2d(
+        self.register_buffer("_bin_pooling_kernel_weight", nw.reshape(1, 1, nw.size(0), nw.size(1)))
+        bin_pooling_kernel = nn.Conv2d(
             1,
             1,
             kernel_size=(nw.size(0), nw.size(1)),
@@ -267,8 +286,12 @@ class DenseSIFTDescriptor(Module):
             bias=False,
             padding=(nw.size(0) // 2, nw.size(1) // 2),
         )
-        self.bin_pooling_kernel.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))
-        self.PoolingConv = nn.Conv2d(
+        bin_pooling_kernel.weight.data.copy_(self._bin_pooling_kernel_weight)
+        self.bin_pooling_kernel = bin_pooling_kernel
+
+        Pw = _get_reshape_kernel(num_ang_bins, num_spatial_bins, num_spatial_bins).float()
+        self.register_buffer("_poolingconv_weight", Pw)
+        PoolingConv = nn.Conv2d(
             num_ang_bins,
             num_ang_bins * num_spatial_bins**2,
             kernel_size=(num_spatial_bins, num_spatial_bins),
@@ -276,12 +299,15 @@ class DenseSIFTDescriptor(Module):
             bias=False,
             padding=(self.pad, self.pad),
         )
-        self.PoolingConv.weight.data.copy_(
-            _get_reshape_kernel(num_ang_bins, num_spatial_bins, num_spatial_bins).float()
-        )
+        PoolingConv.weight.data.copy_(self._poolingconv_weight)
+        self.PoolingConv = PoolingConv
+
+        # Cache pooling kernel tensor for fast return in get_pooling_kernel
+        self._pooling_kernel = self._bin_pooling_kernel_weight.detach()
 
     def get_pooling_kernel(self) -> Tensor:
-        return self.bin_pooling_kernel.weight.detach()
+        # Return the cached detached pooling kernel directly for optimal speed
+        return self._pooling_kernel
 
     def forward(self, input: Tensor) -> Tensor:
         KORNIA_CHECK_SHAPE(input, ["B", "1", "H", "W"])

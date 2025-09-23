@@ -22,6 +22,8 @@
 from math import pi
 from typing import Optional, Tuple, Union
 
+import torch
+
 from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import (
@@ -145,10 +147,12 @@ class Quaternion(Module):
 
     def __mul__(self, right: "Quaternion") -> "Quaternion":
         KORNIA_CHECK_TYPE(right, Quaternion)
-        # NOTE: borrowed from sophus sympy. Produce less multiplications compared to others.
-        # https://github.com/strasdat/Sophus/blob/785fef35b7d9e0fc67b4964a69124277b7434a44/sympy/sophus/quaternion.py#L19
         new_real = self.real * right.real - batched_dot_product(self.vec, right.vec)
-        new_vec = self.real[..., None] * right.vec + right.real[..., None] * self.vec + self.vec.cross(right.vec)
+        new_vec = (
+            self.real[..., None] * right.vec
+            + right.real[..., None] * self.vec
+            + torch.linalg.cross(self.vec, right.vec, dim=-1)
+        )
         return Quaternion(concatenate((new_real[..., None], new_vec), -1))
 
     def __div__(self, right: Union[Tensor, "Quaternion"]) -> "Quaternion":
@@ -444,23 +448,104 @@ class Quaternion(Module):
         q1 = q1.normalize()
         return q0 * (q0.inv() * q1) ** t
 
-    # TODO: add docs
     def norm(self, keepdim: bool = False) -> Tensor:
+        """Compute the norm (magnitude) of the quaternion.
+
+        Args:
+            keepdim: whether to retain the last dimension.
+
+        Returns:
+            The norm of the quaternion(s) as a tensor.
+
+        Example:
+            >>> q = Quaternion.identity()
+            >>> q.norm()
+            tensor(1., grad_fn=<LinalgVectorNormBackward0>)
+
+        """
         # p==2, dim|axis==-1, keepdim
         return self.data.norm(2, -1, keepdim)
 
-    # TODO: add docs
     def normalize(self) -> "Quaternion":
+        """Return a normalized (unit) quaternion.
+
+        Returns:
+            The normalized quaternion.
+
+        Example:
+            >>> q = Quaternion(tensor([2., 1., 0., 0.]))
+            >>> q_norm = q.normalize()
+
+        """
         return Quaternion(normalize_quaternion(self.data))
 
-    # TODO: add docs
     def conj(self) -> "Quaternion":
+        """Compute the conjugate of the quaternion.
+
+        Returns:
+            The conjugate quaternion, with the vector part negated.
+
+        Example:
+            >>> q = Quaternion(tensor([1., 2., 3., 4.]))
+            >>> q_conj = q.conj()
+
+        """
         return Quaternion(concatenate((self.real[..., None], -self.vec), -1))
 
-    # TODO: add docs
     def inv(self) -> "Quaternion":
+        """Compute the inverse of the quaternion.
+
+        Returns:
+            The inverse quaternion.
+
+        Example:
+            >>> q = Quaternion.identity()
+            >>> q_inv = q.inv()
+
+        """
         return self.conj() / self.squared_norm()
 
-    # TODO: add docs
     def squared_norm(self) -> Tensor:
+        """Compute the squared norm (magnitude) of the quaternion.
+
+        Returns:
+            The squared norm of the quaternion(s) as a tensor.
+
+        Example:
+            >>> q = Quaternion.identity()
+            >>> q.squared_norm()
+            tensor(1., grad_fn=<AddBackward0>)
+
+        """
         return batched_dot_product(self.vec, self.vec) + self.real**2
+
+
+def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Quaternion":
+    """Compute (weighted) average of multiple quaternions.
+
+    Args:
+        Q (Quaternion): quaternion object containing data of shape (M, 4).
+        w (torch.Tensor, optional): Weights of shape (M,). If None, uniform weights are used.
+
+
+    Returns:
+        Quaternion: averaged quaternion (shape (4,)), wrapped back in the Quaternion class.
+    """
+    data = Q.data
+    KORNIA_CHECK_TYPE(Q, Quaternion)
+
+    M = data.shape[0]
+    if w is None:
+        A = (data.T @ data) / M
+    else:
+        w = w.to(data.device, dtype=data.dtype)
+        if w.numel() != M:
+            raise ValueError(f"weights length {w.numel()} must match number of quaternions {M}")
+        w = w / w.sum()
+        A = data.T @ torch.diag(w) @ data
+
+    eigenvalues, eigenvectors = torch.linalg.eigh(A)
+    q_avg = eigenvectors[:, torch.argmax(eigenvalues)]
+    q_avg = q_avg / q_avg.norm()
+
+    return Quaternion(q_avg.unsqueeze(0))

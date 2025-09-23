@@ -309,8 +309,9 @@ def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps
     shape = x.shape
     B, C = shape[0], shape[1]
 
-    x_min: Tensor = x.view(B, C, -1).min(-1)[0].view(B, C, 1)
-    x_max: Tensor = x.view(B, C, -1).max(-1)[0].view(B, C, 1)
+    x_reshaped = x.view(B, C, -1)
+    x_min = x_reshaped.min(-1, keepdim=True)[0]  # Shape: (B, C, 1)
+    x_max = x_reshaped.max(-1, keepdim=True)[0]  # Shape: (B, C, 1)
 
-    x_out: Tensor = (max_val - min_val) * (x.view(B, C, -1) - x_min) / (x_max - x_min + eps) + min_val
+    x_out = (max_val - min_val) * (x_reshaped - x_min) / (x_max - x_min + eps) + min_val
     return x_out.view(shape)

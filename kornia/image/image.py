@@ -23,6 +23,7 @@ from typing import Any
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
+import kornia.color
 from kornia.core import Device, Dtype, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
@@ -186,10 +187,90 @@ class Image:
         self._data = self.data.float()
         return self
 
-    # TODO implement this
-    def to_color_space(self, color_space: ColorSpace) -> Image:
-        """Convert the image to a different color space."""
-        raise NotImplementedError
+    def to_gray(self) -> Image:
+        """Converts the image to grayscale."""
+        src = self._pixel_format.color_space
+        data = self._data
+
+        if src == ColorSpace.GRAY:
+            return self
+
+        is_channels_last = self._layout.channels_order == ChannelsOrder.CHANNELS_LAST
+        if is_channels_last:
+            data = data.permute(0, 3, 1, 2) if data.ndim == 4 else data.permute(2, 0, 1)
+
+        # Perform the color space conversion
+        if src == ColorSpace.RGB:
+            out = kornia.color.rgb_to_grayscale(data)
+        elif src == ColorSpace.BGR:
+            out = kornia.color.bgr_to_grayscale(data)
+        else:
+            raise ValueError(f"Unsupported source color space for to_gray(): {src}")
+
+        if is_channels_last:
+            if out.ndim == 4:
+                out = out.permute(0, 2, 3, 1)
+            elif out.ndim == 3:
+                out = out.permute(1, 2, 0)
+            else:
+                raise ValueError(f"Unexpected shape after grayscale conversion: {out.shape}")
+
+        new_pf = PixelFormat(color_space=ColorSpace.GRAY, bit_depth=self._pixel_format.bit_depth)
+        new_layout = ImageLayout(self._layout.image_size, channels=1, channels_order=self._layout.channels_order)
+        return Image(out, new_pf, new_layout)
+
+    def to_rgb(self) -> Image:
+        """Converts the image to RGB."""
+        src = self._pixel_format.color_space
+        data = self._data
+
+        if src == ColorSpace.RGB:
+            return self
+
+        is_channels_last = self._layout.channels_order == ChannelsOrder.CHANNELS_LAST
+        if is_channels_last:
+            data = data.permute(0, 3, 1, 2) if data.ndim == 4 else data.permute(2, 0, 1)
+
+        if src == ColorSpace.GRAY:
+            out = kornia.color.grayscale_to_rgb(data)
+        elif src == ColorSpace.BGR:
+            out = data[:, [2, 1, 0], ...] if data.ndim == 4 else data[[2, 1, 0], ...]
+        else:
+            raise ValueError(f"Unsupported source color space for to_rgb(): {src}")
+
+        if is_channels_last:
+            out = out.permute(0, 2, 3, 1) if out.ndim == 4 else out.permute(1, 2, 0)
+
+        new_pf = PixelFormat(color_space=ColorSpace.RGB, bit_depth=self._pixel_format.bit_depth)
+        new_layout = ImageLayout(self._layout.image_size, channels=3, channels_order=self._layout.channels_order)
+        return Image(out, new_pf, new_layout)
+
+    def to_bgr(self) -> Image:
+        """Converts the image to BGR."""
+        src = self._pixel_format.color_space
+        data = self._data
+
+        if src == ColorSpace.BGR:
+            return self
+
+        is_channels_last = self._layout.channels_order == ChannelsOrder.CHANNELS_LAST
+        if is_channels_last:
+            data = data.permute(0, 3, 1, 2) if data.ndim == 4 else data.permute(2, 0, 1)
+
+        if src == ColorSpace.GRAY:
+            rgb_data = kornia.color.grayscale_to_rgb(data)
+            out = rgb_data[:, [2, 1, 0], ...] if rgb_data.ndim == 4 else rgb_data[[2, 1, 0], ...]
+        elif src == ColorSpace.RGB:
+            out = data[:, [2, 1, 0], ...] if data.ndim == 4 else data[[2, 1, 0], ...]
+        else:
+            raise ValueError(f"Unsupported source color space for to_bgr(): {src}")
+
+        if is_channels_last:
+            out = out.permute(0, 2, 3, 1) if out.ndim == 4 else out.permute(1, 2, 0)
+
+        new_pf = PixelFormat(color_space=ColorSpace.BGR, bit_depth=self._pixel_format.bit_depth)
+        new_layout = ImageLayout(self._layout.image_size, channels=3, channels_order=self._layout.channels_order)
+        return Image(out, new_pf, new_layout)
 
     @classmethod
     def from_numpy(

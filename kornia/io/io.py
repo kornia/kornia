@@ -202,7 +202,8 @@ def write_image(path_file: str | Path, image: Tensor, quality: int = 80) -> None
     KORNIA_CHECK(image.dim() >= 2, f"Invalid image shape: {image.shape}. Must be at least 2D.")
 
     img_np = tensor_to_image(image, keepdim=True, force_contiguous=True)  # HxWxC
-
+    if img_np.ndim == 2:
+        img_np = img_np[..., None]  # ensures channel dimension
     if image.dtype == torch.uint8:
         _write_uint8_image(path_file, img_np, quality)
     elif image.dtype == torch.uint16:
