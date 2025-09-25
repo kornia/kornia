@@ -92,7 +92,7 @@ ci-doctest:
 
 # Build documentation (local dev)
 build-docs: _ensure-venv
-    sphinx-build -W -b html docs/source docs/build/html
+    cd docs && make clean html
 
 # CI docs build (no venv)
 ci-build-docs:
