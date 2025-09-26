@@ -19,7 +19,7 @@ _ensure-venv:
         echo "🔧 Setting up virtual environment..."
         ./setup_dev_env.sh
     else
-        echo "✅ Virtual environment found!"
+        echo "Virtual environment found!"
     fi
 
 # Run all tests with coverage
@@ -128,11 +128,11 @@ activate:
 venv-status:
     #!/usr/bin/env bash
     if [[ -n "$VIRTUAL_ENV" ]]; then
-        echo "✅ Virtual environment active: $VIRTUAL_ENV"
+        echo "Virtual environment active: $VIRTUAL_ENV"
         echo "Python: $(which python)"
         echo "Pip: $(which pip)"
     else
-        echo "❌ No virtual environment active"
+        echo "No virtual environment active"
         echo "Run: source venv/bin/activate"
     fi
 

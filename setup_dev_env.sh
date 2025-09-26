@@ -25,9 +25,9 @@ cuda_version=${CUDA_VERSION:-"12.1"}
 
 # check if virtual environment already exists
 if [ -d "$sdk_dir/venv" ]; then
-    echo "✅ Virtual environment found, activating..."
+    echo "Virtual environment found, activating..."
     source $sdk_dir/venv/bin/activate
-    echo "🐍 Virtual environment activated: $VIRTUAL_ENV"
+    echo "Virtual environment activated: $VIRTUAL_ENV"
     echo "Python: $(which python)"
     echo "To install/update dependencies, delete the venv directory and run this script again."
     exit 0

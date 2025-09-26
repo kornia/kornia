@@ -28,4 +28,3 @@ docs/source/_static/scripts/*
 *.onnx
 venv/
 weights/
-kornia_config/
