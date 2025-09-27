@@ -238,7 +238,7 @@ def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
         out_nz = torch.where(x_nz < 0.0, -out_nz, out_nz)
 
     out = torch.zeros_like(x)
-    out[~is_zero] = out_nz
+    out[~is_zero_mask] = out_nz
     return out
 
 
