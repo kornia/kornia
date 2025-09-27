@@ -117,7 +117,7 @@ jobs:
 
       - name: Run doctest
         shell: bash -l {0}
-        run: make doctest
+        run: just ci-doctest
 
       - name: Install docs deps
         shell: bash -l {0}
@@ -125,4 +125,4 @@ jobs:
 
       - name: Build Documentation
         shell: bash -l {0}
-        run: make build-docs SPHINXOPTS="-W"
+        run: just ci-build-docs
