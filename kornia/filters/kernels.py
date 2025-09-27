@@ -205,11 +205,11 @@ def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
     """Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
     KORNIA_CHECK(n >= 2, "n must be greater than 1.99")
 
-    is_zero = x == 0.0
-    if is_zero.all():
-        return torch.zeros_like(x)
+    is_zero_mask = torch.isclose(x, torch.tensor(0.0, device=x.device, dtype=x.dtype))
+    if is_zero_mask.all():
+        return x
 
-    x_nz = x[~is_zero]
+    x_nz = x[~is_zero_mask]
 
     batch_size = x_nz.shape[0]
     tox = 2.0 / x_nz.abs()
