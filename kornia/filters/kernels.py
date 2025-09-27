@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import math
-from math import sqrt
 from typing import Any, Optional, Union
 
 import torch
@@ -206,7 +205,7 @@ def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
     """Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
     KORNIA_CHECK(n >= 2, "n must be greater than 1.99")
 
-    is_zero = (x == 0.0)
+    is_zero = x == 0.0
     if is_zero.all():
         return torch.zeros_like(x)
 
@@ -217,7 +216,7 @@ def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
 
     ans = torch.zeros(batch_size, device=x.device, dtype=x.dtype)
     bip = torch.zeros(batch_size, device=x.device, dtype=x.dtype)
-    bi  = torch.ones(batch_size, device=x.device, dtype=x.dtype)
+    bi = torch.ones(batch_size, device=x.device, dtype=x.dtype)
 
     m = int(2 * (n + int(math.sqrt(40.0 * n))))
     for j in range(m, 0, -1):
@@ -228,7 +227,7 @@ def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
         if scale_mask.any():
             factor = torch.where(scale_mask, 1e-10, 1.0)
             ans *= factor
-            bi  *= factor
+            bi *= factor
             bip *= factor
 
         if j == n:
