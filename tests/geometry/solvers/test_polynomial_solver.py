@@ -85,8 +85,8 @@ class TestCubicSolver:
         coeffs = torch.rand(1, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(solver.solve_cubic, (coeffs), raise_exception=True, fast_mode=True)
 
-class TestMultiplyDegOnePoly:
 
+class TestMultiplyDegOnePoly:
     def test_smoke(self, device, dtype):
         a = torch.rand(1, 4, device=device, dtype=dtype)
         b = torch.rand(1, 4, device=device, dtype=dtype)
@@ -142,8 +142,8 @@ class TestMultiplyDegOnePoly:
         # Compare result with expected values
         assert_close(result, expected, rtol=1e-4, atol=1e-4)
 
-class TestMultiplyDegTwoOnePoly:
 
+class TestMultiplyDegTwoOnePoly:
     def test_smoke(self, device, dtype):
         a = torch.rand(1, 10, device=device, dtype=dtype)
         b = torch.rand(1, 4, device=device, dtype=dtype)
@@ -195,8 +195,8 @@ class TestMultiplyDegTwoOnePoly:
         result = solver.multiply_deg_two_one_poly(a, b)
         assert_close(result, expected, rtol=1e-4, atol=1e-4)
 
-class TestDeterminantToPolynomial:
 
+class TestDeterminantToPolynomial:
     def test_smoke(self, device, dtype):
         A = torch.rand(1, 3, 13, device=device, dtype=dtype)
         poly = solver.determinant_to_polynomial(A)
