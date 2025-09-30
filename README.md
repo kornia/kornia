@@ -21,6 +21,7 @@ English | [简体中文](README_zh-CN.md)
 [![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/HfnywwpBnD)
 [![Twitter](https://img.shields.io/twitter/follow/kornia_foss?style=social)](https://twitter.com/kornia_foss)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENCE)
+[![Gurubase](https://img.shields.io/badge/Gurubase-Ask%20Kornia%20Guru-006BFF)](https://gurubase.io/g/kornia)
 
 </p>
 </div>
