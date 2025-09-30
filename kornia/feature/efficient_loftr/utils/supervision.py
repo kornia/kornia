@@ -25,10 +25,10 @@ from kornia.feature.loftr.utils.geometry import warp_kpts
 from kornia.utils.grid import create_meshgrid
 
 
-def static_vars(**kwargs: Dict[str, Any]) -> Callable:
+def static_vars(**kwargs: Dict[str, Any]) -> Callable[..., Any]:
     """Helper function."""
 
-    def decorate(func: Callable) -> Callable:
+    def decorate(func: Callable[..., Any]) -> Callable[..., Any]:
         for k, v in kwargs.items():
             setattr(func, k, v)
         return func
@@ -107,7 +107,7 @@ def spvs_coarse(data: Dict[str, Any], config: Dict[str, Any]) -> None:
     nearest_index0 = w_pt1_c_round[..., 0] + w_pt1_c_round[..., 1] * w0
 
     # corner case: out of boundary
-    def out_bound_mask(pt: Tensor, w: Tensor, h: Tensor):
+    def out_bound_mask(pt: Tensor, w: Tensor, h: Tensor) -> Tensor:
         return (pt[..., 0] < 0) + (pt[..., 0] >= w) + (pt[..., 1] < 0) + (pt[..., 1] >= h)
 
     nearest_index1[out_bound_mask(w_pt0_c_round, w1, h1)] = 0
@@ -154,7 +154,7 @@ def compute_supervision_coarse(data: Dict[str, Any], config: Dict[str, Any]) -> 
         raise ValueError(f"Unknown data source: {data_source}")
 
 
-@static_vars(counter=0)
+@static_vars(counter={"value": 0})
 @torch.no_grad()
 def spvs_fine(data: Dict[str, Any], config: Dict[str, Any]) -> None:
     """Fine-level supervision.

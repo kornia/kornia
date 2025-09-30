@@ -45,13 +45,13 @@ def crop_feature(query: Tensor, key: Tensor, value: Tensor, x_mask: Tensor, sour
     query = query[:, :mask_h0, :mask_w0, :]
     key = key[:, :mask_h1, :mask_w1, :]
     value = value[:, :mask_h1, :mask_w1, :]
-    return query, key, value, mask_h0, mask_w0
+    return [query, key, value, mask_h0, mask_w0]
 
 
 def pad_feature(m: Tensor, mask_h0: Tensor, mask_w0: Tensor, x_mask: Tensor) -> Tensor:
     """Padding features."""
     bs, L, H, D = m.size()
-    m = m.view(bs, mask_h0, mask_w0, H, D)
+    m = m.view(bs, mask_h0.item(), mask_w0.item(), H, D)
     if mask_h0 != x_mask.size(-2):
         m = torch.cat(
             [
@@ -97,12 +97,12 @@ class Attention(Module):
         if kv_mask is not None:
             raise AssertionError(kv_mask)
         if self.flash and not self.fp32:
-            args = [x.contiguous() for x in [query, key, value]]
+            query, key, value = [x.contiguous() for x in [query, key, value]]
             with sdp_kernel(enable_math=False, enable_flash=True, enable_mem_efficient=False):
-                out = F.scaled_dot_product_attention(*args)
+                out = F.scaled_dot_product_attention(query, key, value)
         elif self.flash:
-            args = [x.contiguous() for x in [query, key, value]]
-            out = F.scaled_dot_product_attention(*args)
+            query, key, value = [x.contiguous() for x in [query, key, value]]
+            out = F.scaled_dot_product_attention(query, key, value)
         else:
             QK = torch.einsum("nlhd,nshd->nlsh", query, key)
 

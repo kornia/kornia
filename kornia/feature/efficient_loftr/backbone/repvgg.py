@@ -167,7 +167,7 @@ class RepVGGBlock(nn.Module):
         ).sum()  # Normalize for an L2 coefficient comparable to regular L2.
         return l2_loss_eq_kernel + l2_loss_circle
 
-    def get_equivalent_kernel_bias(self) -> Tuple[Tensor, Tensor]:
+    def get_equivalent_kernel_bias(self) -> Tuple[Union[Tensor, int], Union[Tensor, int]]:
         """This func derives the equivalent kernel and bias in a DIFFERENTIABLE way.
 
         You can get the equivalent kernel and bias at any time and do whatever you want,

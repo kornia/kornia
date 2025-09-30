@@ -225,27 +225,27 @@ class LocalFeatureTransformer(Module):
 
         if feature_cropped:
             # padding feature
-            bs, c, mask_h0, mask_w0 = feat0.size()
-            if mask_h0 != mask_H0:
+            bs, c, mask_h0_, mask_w0_ = feat0.size()
+            if mask_h0_ != mask_H0:
                 feat0 = torch.cat(
-                    [feat0, torch.zeros(bs, c, mask_H0 - mask_h0, mask_W0, device=feat0.device, dtype=feat0.dtype)],
+                    [feat0, torch.zeros(bs, c, mask_H0 - mask_h0_, mask_W0, device=feat0.device, dtype=feat0.dtype)],
                     dim=-2,
                 )
-            elif mask_w0 != mask_W0:
+            elif mask_w0_ != mask_W0:
                 feat0 = torch.cat(
-                    [feat0, torch.zeros(bs, c, mask_H0, mask_W0 - mask_w0, device=feat0.device, dtype=feat0.dtype)],
+                    [feat0, torch.zeros(bs, c, mask_H0, mask_W0 - mask_w0_, device=feat0.device, dtype=feat0.dtype)],
                     dim=-1,
                 )
 
-            bs, c, mask_h1, mask_w1 = feat1.size()
-            if mask_h1 != mask_H1:
+            bs, c, mask_h1_, mask_w1_ = feat1.size()
+            if mask_h1_ != mask_H1:
                 feat1 = torch.cat(
-                    [feat1, torch.zeros(bs, c, mask_H1 - mask_h1, mask_W1, device=feat1.device, dtype=feat1.dtype)],
+                    [feat1, torch.zeros(bs, c, mask_H1 - mask_h1_, mask_W1, device=feat1.device, dtype=feat1.dtype)],
                     dim=-2,
                 )
-            elif mask_w1 != mask_W1:
+            elif mask_w1_ != mask_W1:
                 feat1 = torch.cat(
-                    [feat1, torch.zeros(bs, c, mask_H1, mask_W1 - mask_w1, device=feat1.device, dtype=feat1.dtype)],
+                    [feat1, torch.zeros(bs, c, mask_H1, mask_W1 - mask_w1_, device=feat1.device, dtype=feat1.dtype)],
                     dim=-1,
                 )
 
