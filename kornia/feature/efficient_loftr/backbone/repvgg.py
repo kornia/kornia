@@ -244,14 +244,14 @@ class RepVGG(nn.Module):
         self,
         num_blocks: List[int],
         num_classes: int = 1000,
-        width_multiplier: List[float] = [],
+        width_multiplier: Optional[List[float]] = None,
         override_groups_map: Optional[Dict[int, int]] = None,
         deploy: bool = False,
         use_se: bool = False,
         use_checkpoint: bool = False,
     ) -> None:
         super().__init__()
-        if len(width_multiplier) != 4:
+        if width_multiplier is None and len(width_multiplier) != 4:
             raise AssertionError(width_multiplier)
         self.deploy = deploy
         self.override_groups_map = override_groups_map or {}

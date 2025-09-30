@@ -22,16 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core import Module, Tensor
-
-
-def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
-    """1x1 convolution without padding."""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, padding=0, bias=False)
-
-
-def conv3x3(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
-    """3x3 convolution with padding."""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
+from kornia.feature.loftr.backbone.resnet_fpn import conv1x1, conv3x3
 
 
 class FinePreprocess(Module):
@@ -105,24 +96,6 @@ class FinePreprocess(Module):
             x1 = self.inter_fpn(feat_c, x2, x1, stride)
             feat_f0, feat_f1 = torch.chunk(x1, 2, dim=0)
 
-            # 2. unfold(crop) all local windows
-            feat_f0 = F.unfold(feat_f0, kernel_size=(W, W), stride=stride, padding=0)
-            # feat_f0 = rearrange(feat_f0, 'n (c ww) l -> n l ww c', ww=W**2)
-            n0, cww0, l0 = feat_f0.shape
-            c0 = cww0 // W**2
-            feat_f0 = feat_f0.reshape(n0, c0, -1, l0).permute(0, 3, 2, 1)
-
-            feat_f1 = F.unfold(feat_f1, kernel_size=(W + 2, W + 2), stride=stride, padding=1)
-            # feat_f1 = rearrange(feat_f1, 'n (c ww) l -> n l ww c', ww=(W+2)**2)
-            n1, cww1, l1 = feat_f1.shape
-            c1 = cww1 // (W + 2) ** 2
-            feat_f1 = feat_f1.reshape(n1, c1, -1, l1).permute(0, 3, 2, 1)
-
-            # 3. select only the predicted matches
-            feat_f0 = feat_f0[data["b_ids"], data["i_ids"]]  # [n, ww, cf]
-            feat_f1 = feat_f1[data["b_ids"], data["j_ids"]]
-            return feat_f0, feat_f1
-
         else:  # handle different input shapes
             # feat_c0 = rearrange(feat_c0, 'b (h w) c -> b c h w', h=data['hw0_c'][0])  # 1/8 feat
             b0, hw0, c0 = feat_c0.shape
@@ -141,21 +114,21 @@ class FinePreprocess(Module):
             # 1. fine feature extraction
             feat_f0, feat_f1 = self.inter_fpn(feat_c0, x2_0, x1_0, stride), self.inter_fpn(feat_c1, x2_1, x1_1, stride)
 
-            # 2. unfold(crop) all local windows
-            feat_f0 = F.unfold(feat_f0, kernel_size=(W, W), stride=stride, padding=0)
-            # feat_f0 = rearrange(feat_f0, 'n (c ww) l -> n l ww c', ww=W**2)
-            n0, cww0, l0 = feat_f0.shape
-            c0 = cww0 // W**2
-            feat_f0 = feat_f0.reshape(n0, c0, -1, l0).permute(0, 3, 2, 1)
+        # 2. unfold(crop) all local windows
+        feat_f0 = F.unfold(feat_f0, kernel_size=(W, W), stride=stride, padding=0)
+        # feat_f0 = rearrange(feat_f0, 'n (c ww) l -> n l ww c', ww=W**2)
+        n0, cww0, l0 = feat_f0.shape
+        c0 = cww0 // W**2
+        feat_f0 = feat_f0.reshape(n0, c0, -1, l0).permute(0, 3, 2, 1)
 
-            feat_f1 = F.unfold(feat_f1, kernel_size=(W + 2, W + 2), stride=stride, padding=1)
-            # feat_f1 = rearrange(feat_f1, 'n (c ww) l -> n l ww c', ww=(W+2)**2)
-            n1, cww1, l1 = feat_f1.shape
-            c1 = cww1 // (W + 2) ** 2
-            feat_f1 = feat_f1.reshape(n1, c1, -1, l1).permute(0, 3, 2, 1)
+        feat_f1 = F.unfold(feat_f1, kernel_size=(W + 2, W + 2), stride=stride, padding=1)
+        # feat_f1 = rearrange(feat_f1, 'n (c ww) l -> n l ww c', ww=(W+2)**2)
+        n1, cww1, l1 = feat_f1.shape
+        c1 = cww1 // (W + 2) ** 2
+        feat_f1 = feat_f1.reshape(n1, c1, -1, l1).permute(0, 3, 2, 1)
 
-            # 3. select only the predicted matches
-            feat_f0 = feat_f0[data["b_ids"], data["i_ids"]]  # [n, ww, cf]
-            feat_f1 = feat_f1[data["b_ids"], data["j_ids"]]
+        # 3. select only the predicted matches
+        feat_f0 = feat_f0[data["b_ids"], data["i_ids"]]  # [n, ww, cf]
+        feat_f1 = feat_f1[data["b_ids"], data["j_ids"]]
 
-            return feat_f0, feat_f1
+        return feat_f0, feat_f1

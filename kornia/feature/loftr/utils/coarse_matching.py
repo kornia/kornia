@@ -80,97 +80,14 @@ def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:
     return max_cand
 
 
-class CoarseMatching(Module):
-    def __init__(self, config: Dict[str, Any]) -> None:
+class BaseCoarseMatching(Module):
+    """Base class for Coarse matching.
+
+    To calculate coarse match as it's same for both in LoFTR as well as ELoFTR.
+    """
+
+    def __init__(self):
         super().__init__()
-        self.config = config
-        # general config
-        self.thr = config["thr"]
-        self.border_rm = config["border_rm"]
-        # -- # for training fine-level LoFTR
-        self.train_coarse_percent = config["train_coarse_percent"]
-        self.train_pad_num_gt_min = config["train_pad_num_gt_min"]
-
-        # we provide 2 options for differentiable matching
-        self.match_type = config["match_type"]
-        if self.match_type == "dual_softmax":
-            self.temperature = config["dsmax_temperature"]
-        elif self.match_type == "sinkhorn":
-            try:
-                from .superglue import log_optimal_transport
-            except ImportError:
-                raise ImportError("download superglue.py first!") from None
-            self.log_optimal_transport = log_optimal_transport
-            self.bin_score = nn.Parameter(torch.tensor(config["skh_init_bin_score"], requires_grad=True))
-            self.skh_iters = config["skh_iters"]
-            self.skh_prefilter = config["skh_prefilter"]
-        else:
-            raise NotImplementedError
-
-    def forward(
-        self,
-        feat_c0: Tensor,
-        feat_c1: Tensor,
-        data: Dict[str, Tensor],
-        mask_c0: Optional[Tensor] = None,
-        mask_c1: Optional[Tensor] = None,
-    ) -> None:
-        """Run forward.
-
-        Args:
-            feat_c0 (torch.Tensor): [N, L, C]
-            feat_c1 (torch.Tensor): [N, S, C]
-            data (dict)
-            mask_c0 (torch.Tensor): [N, L] (optional)
-            mask_c1 (torch.Tensor): [N, S] (optional)
-        Update:
-            data (dict): {
-                'b_ids' (torch.Tensor): [M'],
-                'i_ids' (torch.Tensor): [M'],
-                'j_ids' (torch.Tensor): [M'],
-                'gt_mask' (torch.Tensor): [M'],
-                'mkpts0_c' (torch.Tensor): [M, 2],
-                'mkpts1_c' (torch.Tensor): [M, 2],
-                'mconf' (torch.Tensor): [M]}
-            NOTE: M' != M during training.
-
-        """
-        _, L, S, _ = feat_c0.size(0), feat_c0.size(1), feat_c1.size(1), feat_c0.size(2)
-
-        # normalize
-        feat_c0, feat_c1 = (feat / feat.shape[-1] ** 0.5 for feat in [feat_c0, feat_c1])
-
-        if self.match_type == "dual_softmax":
-            sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1) / self.temperature
-            if mask_c0 is not None and mask_c1 is not None:
-                sim_matrix.masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
-            conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
-
-        elif self.match_type == "sinkhorn":
-            # sinkhorn, dustbin included
-            sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1)
-            if mask_c0 is not None and mask_c1 is not None:
-                sim_matrix[:, :L, :S].masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
-
-            # build uniform prior & use sinkhorn
-            log_assign_matrix = self.log_optimal_transport(sim_matrix, self.bin_score, self.skh_iters)
-            assign_matrix = log_assign_matrix.exp()
-            conf_matrix = assign_matrix[:, :-1, :-1]
-
-            # filter prediction with dustbin score (only in evaluation mode)
-            if not self.training and self.skh_prefilter:
-                filter0 = (assign_matrix.max(dim=2)[1] == S)[:, :-1]  # [N, L]
-                filter1 = (assign_matrix.max(dim=1)[1] == L)[:, :-1]  # [N, S]
-                conf_matrix[filter0[..., None].repeat(1, 1, S)] = 0
-                conf_matrix[filter1[:, None].repeat(1, L, 1)] = 0
-
-            if self.config["sparse_spvs"]:
-                data.update({"conf_matrix_with_bin": assign_matrix.clone()})
-
-        data.update({"conf_matrix": conf_matrix})
-
-        # predict coarse matches from conf_matrix
-        data.update(**self.get_coarse_match(conf_matrix, data))
 
     @torch.no_grad()
     def get_coarse_match(self, conf_matrix: Tensor, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
@@ -292,3 +209,96 @@ class CoarseMatching(Module):
         )
 
         return coarse_matches
+
+
+class CoarseMatching(BaseCoarseMatching):
+    def __init__(self, config: Dict[str, Any]) -> None:
+        super().__init__()
+        self.config = config
+        # general config
+        self.thr = config["thr"]
+        self.border_rm = config["border_rm"]
+        # -- # for training fine-level LoFTR
+        self.train_coarse_percent = config["train_coarse_percent"]
+        self.train_pad_num_gt_min = config["train_pad_num_gt_min"]
+
+        # we provide 2 options for differentiable matching
+        self.match_type = config["match_type"]
+        if self.match_type == "dual_softmax":
+            self.temperature = config["dsmax_temperature"]
+        elif self.match_type == "sinkhorn":
+            try:
+                from .superglue import log_optimal_transport
+            except ImportError:
+                raise ImportError("download superglue.py first!") from None
+            self.log_optimal_transport = log_optimal_transport
+            self.bin_score = nn.Parameter(torch.tensor(config["skh_init_bin_score"], requires_grad=True))
+            self.skh_iters = config["skh_iters"]
+            self.skh_prefilter = config["skh_prefilter"]
+        else:
+            raise NotImplementedError
+
+    def forward(
+        self,
+        feat_c0: Tensor,
+        feat_c1: Tensor,
+        data: Dict[str, Tensor],
+        mask_c0: Optional[Tensor] = None,
+        mask_c1: Optional[Tensor] = None,
+    ) -> None:
+        """Run forward.
+
+        Args:
+            feat_c0 (torch.Tensor): [N, L, C]
+            feat_c1 (torch.Tensor): [N, S, C]
+            data (dict)
+            mask_c0 (torch.Tensor): [N, L] (optional)
+            mask_c1 (torch.Tensor): [N, S] (optional)
+        Update:
+            data (dict): {
+                'b_ids' (torch.Tensor): [M'],
+                'i_ids' (torch.Tensor): [M'],
+                'j_ids' (torch.Tensor): [M'],
+                'gt_mask' (torch.Tensor): [M'],
+                'mkpts0_c' (torch.Tensor): [M, 2],
+                'mkpts1_c' (torch.Tensor): [M, 2],
+                'mconf' (torch.Tensor): [M]}
+            NOTE: M' != M during training.
+
+        """
+        _, L, S, _ = feat_c0.size(0), feat_c0.size(1), feat_c1.size(1), feat_c0.size(2)
+
+        # normalize
+        feat_c0, feat_c1 = (feat / feat.shape[-1] ** 0.5 for feat in [feat_c0, feat_c1])
+
+        if self.match_type == "dual_softmax":
+            sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1) / self.temperature
+            if mask_c0 is not None and mask_c1 is not None:
+                sim_matrix.masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
+            conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
+
+        elif self.match_type == "sinkhorn":
+            # sinkhorn, dustbin included
+            sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1)
+            if mask_c0 is not None and mask_c1 is not None:
+                sim_matrix[:, :L, :S].masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
+
+            # build uniform prior & use sinkhorn
+            log_assign_matrix = self.log_optimal_transport(sim_matrix, self.bin_score, self.skh_iters)
+            assign_matrix = log_assign_matrix.exp()
+            conf_matrix = assign_matrix[:, :-1, :-1]
+
+            # filter prediction with dustbin score (only in evaluation mode)
+            if not self.training and self.skh_prefilter:
+                filter0 = (assign_matrix.max(dim=2)[1] == S)[:, :-1]  # [N, L]
+                filter1 = (assign_matrix.max(dim=1)[1] == L)[:, :-1]  # [N, S]
+                conf_matrix[filter0[..., None].repeat(1, 1, S)] = 0
+                conf_matrix[filter1[:, None].repeat(1, L, 1)] = 0
+
+            if self.config["sparse_spvs"]:
+                data.update({"conf_matrix_with_bin": assign_matrix.clone()})
+
+        data.update({"conf_matrix": conf_matrix})
+
+        # predict coarse matches from conf_matrix
+        data.update(**self.get_coarse_match(conf_matrix, data))
