@@ -69,6 +69,7 @@ def dice_loss(
             Reduction applied in multi-class scenario:
             - ``'micro'`` [default]: Calculate the loss across all classes.
             - ``'macro'``: Calculate the loss for each class separately and average the metrics across classes.
+            - ``'none'``: Return the loss for each sample without averaging.
         eps: Scalar to enforce numerical stabiliy.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
         ignore_index: labels with this value are ignored in the loss computation.
@@ -95,7 +96,7 @@ def dice_loss(
     if not pred.device == target.device:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
     num_of_classes = pred.shape[1]
-    possible_average = {"micro", "macro"}
+    possible_average = {"micro", "macro", "none"}
     KORNIA_CHECK(average in possible_average, f"The `average` has to be one of {possible_average}. Got: {average}")
 
     # compute softmax over the classes axis
@@ -143,10 +144,11 @@ def dice_loss(
     dice_loss = -dice_score + 1.0
 
     # reduce the loss across samples (and classes in case of `macro` averaging)
-    if average == "macro":
+    if average in ["macro", "none"]:
         dice_loss = (dice_loss * weight).sum(-1) / weight.sum()
 
-    dice_loss = torch.mean(dice_loss)
+    if average != "none":
+        dice_loss = torch.mean(dice_loss)
 
     return dice_loss
 
@@ -178,6 +180,7 @@ class DiceLoss(nn.Module):
             Reduction applied in multi-class scenario:
             - ``'micro'`` [default]: Calculate the loss across all classes.
             - ``'macro'``: Calculate the loss for each class separately and average the metrics across classes.
+            - ``'none'``: Return the loss for each sample without averaging.
         eps: Scalar to enforce numerical stabiliy.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
         ignore_index: labels with this value are ignored in the loss computation.
