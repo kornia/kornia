@@ -33,7 +33,7 @@ class TestELoFTR(BaseTester):
     @pytest.mark.slow
     @pytest.mark.parametrize("data", ["eloftr_outdoor"], indirect=True)
     def test_pretrained_outdoor(self, device, dtype, data):
-        eloftr = EfficientLoFTR().to(device).eval()
+        eloftr = EfficientLoFTR().to(device, dtype).eval()
         data_dev = dict_to(data, device, dtype)
         with torch.no_grad():
             out = eloftr(data_dev)
@@ -41,7 +41,7 @@ class TestELoFTR(BaseTester):
         self.assert_close(data_dev["keypoints0"].shape, out["keypoints0"].shape, rtol=1, atol=1)
         self.assert_close(data_dev["keypoints1"].shape, out["keypoints1"].shape, rtol=1, atol=1)
 
-        # below assertation fails as different device/percesion generate difference confidence score
+        # below assertion fails as different device/percesion generate difference confidence score
         # so matching output shape only
         # self.assert_close(data_dev["keypoints0"], out["keypoints0"])
         # self.assert_close(data_dev["keypoints1"], out["keypoints1"])

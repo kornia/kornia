@@ -251,7 +251,7 @@ def spvs_fine(data: Dict[str, Any], config: Dict[str, Any]) -> None:
         nearest_index1 = delta_w_pt0_f_round[..., 0] + delta_w_pt0_f_round[..., 1] * W  # [m, WW]
 
         # corner case: out of fine windows
-        def out_bound_mask(pt, w, h):
+        def out_bound_mask(pt: Tensor, w: Tensor, h: Tensor) -> Tensor:
             return (pt[..., 0] < 0) + (pt[..., 0] >= w) + (pt[..., 1] < 0) + (pt[..., 1] >= h)
 
         ob_mask = out_bound_mask(delta_w_pt0_f_round, W, W)

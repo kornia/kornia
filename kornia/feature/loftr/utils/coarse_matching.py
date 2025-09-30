@@ -86,7 +86,7 @@ class BaseCoarseMatching(Module):
     To calculate coarse match as it's same for both in LoFTR as well as ELoFTR.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
     @torch.no_grad()

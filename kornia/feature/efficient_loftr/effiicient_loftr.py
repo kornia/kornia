@@ -94,7 +94,7 @@ class EfficientLoFTR(Module):
         Dictionary with image correspondences and confidence scores.
 
     Example:
-        >>> img1 = torch.rand(1, 1, 320, 200)
+        >>> img1 = torch.rand(1, 1, 128, 128)
         >>> img2 = torch.rand(1, 1, 128, 128)
         >>> input = {"image0": img1, "image1": img2}
         >>> eloftr = EfficientLoFTR()

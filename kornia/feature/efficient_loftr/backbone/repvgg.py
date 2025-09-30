@@ -251,7 +251,7 @@ class RepVGG(nn.Module):
         use_checkpoint: bool = False,
     ) -> None:
         super().__init__()
-        if width_multiplier is None and len(width_multiplier) != 4:
+        if width_multiplier is None or len(width_multiplier) != 4:
             raise AssertionError(width_multiplier)
         self.deploy = deploy
         self.override_groups_map = override_groups_map or {}
