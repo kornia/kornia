@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 import math
-from math import sqrt
 from typing import Any, Optional, Union
 
 import torch
@@ -206,39 +205,40 @@ def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
     """Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py."""
     KORNIA_CHECK(n >= 2, "n must be greater than 1.99")
 
-    if (x == 0.0).all():
+    is_zero_mask = torch.isclose(x, torch.tensor(0.0, device=x.device, dtype=x.dtype))
+    if is_zero_mask.all():
         return x
 
-    batch_size = x.shape[0]
+    x_nz = x[~is_zero_mask]
 
-    tox = 2.0 / x.abs()
-    ans = zeros(batch_size, 1, device=x.device, dtype=x.dtype)
-    bip = zeros(batch_size, 1, device=x.device, dtype=x.dtype)
-    bi = torch.ones(batch_size, 1, device=x.device, dtype=x.dtype)
+    batch_size = x_nz.shape[0]
+    tox = 2.0 / x_nz.abs()
 
-    m = int(2 * (n + int(sqrt(40.0 * n))))
+    ans = torch.zeros(batch_size, device=x.device, dtype=x.dtype)
+    bip = torch.zeros(batch_size, device=x.device, dtype=x.dtype)
+    bi = torch.ones(batch_size, device=x.device, dtype=x.dtype)
+
+    m = int(2 * (n + int(math.sqrt(40.0 * n))))
     for j in range(m, 0, -1):
-        bim = bip + float(j) * tox * bi
-        bip = bi
-        bi = bim
-        idx = bi.abs() > 1.0e10
+        bim = torch.addcmul(bip, tox, bi, value=j)
+        bip, bi = bi, bim
 
-        if idx.any():
-            ans[idx] = ans[idx] * 1.0e-10
-            bi[idx] = bi[idx] * 1.0e-10
-            bip[idx] = bip[idx] * 1.0e-10
+        scale_mask = bi.abs() > 1.0e10
+        if scale_mask.any():
+            factor = torch.where(scale_mask, 1e-10, 1.0)
+            ans *= factor
+            bi *= factor
+            bip *= factor
 
         if j == n:
             ans = bip
 
-    out = ans * _modified_bessel_0(x) / bi
-
+    out_nz = ans * _modified_bessel_0(x_nz) / bi
     if (n % 2) == 1:
-        out = where(x < 0.0, -out, out)
+        out_nz = torch.where(x_nz < 0.0, -out_nz, out_nz)
 
-    # TODO: skip the previous computation for x == 0, instead of forcing here
-    out = where(x == 0.0, x, out)
-
+    out = torch.zeros_like(x)
+    out[~is_zero_mask] = out_nz
     return out
 
 
