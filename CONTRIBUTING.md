@@ -154,6 +154,36 @@ repository under your GitHub account.
     **Attention**: If *Kornia* was already installed in your virtual environment, remove it with
     `uv pip uninstall kornia` before reinstalling it in editable mode with the `-e` flag.
 
+    **Dependency Management with uv.lock**
+
+    Kornia uses a `uv.lock` file for reproducible dependency management. This ensures all developers get exactly
+    the same versions of dependencies:
+
+    - **Adding dependencies**: Add new dependencies to the appropriate section in `pyproject.toml`:
+      - Main dependencies: `dependencies = [...]`
+      - Dev dependencies: `optional-dependencies.dev = [...]`
+      - Docs dependencies: `optional-dependencies.docs = [...]`
+      - Extra dependencies: `optional-dependencies.x = [...]`
+
+    - **Updating the lock file**: After adding dependencies, regenerate the lock file:
+      ```bash
+      $ just lock-update
+      # or: uv lock --upgrade
+      ```
+
+    - **Installing from lock file**: The setup script automatically uses the lock file when available:
+      ```bash
+      $ just sync  # Install dependencies from lock file
+      # or: uv sync --frozen
+      ```
+
+    - **Updating specific packages**:
+      ```bash
+      $ uv lock --upgrade-package <package-name>
+      ```
+
+    Always commit both your `pyproject.toml` changes AND the updated `uv.lock` file together.
+
 5. Develop the code on your branch, and before creating the pull request, make sure to ensure the code passes the checks.
 
     As you develop your code, you should also create test cases for your code. As well as, In addition to ensuring that

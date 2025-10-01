@@ -64,6 +64,15 @@ runs:
       shell: bash
       run: uv pip install --system --editable .[dev,x]
 
+    - name: Verify lock file is up to date
+      shell: bash
+      run: |
+        if [ -f "uv.lock" ]; then
+          echo "Checking if uv.lock is up to date..."
+          uv lock --check
+        else
+          echo "No uv.lock found, skipping lock file verification"
+        fi
     - name: Handle compatibility for older PyTorch versions
       shell: bash
       run: |
