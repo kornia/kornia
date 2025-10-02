@@ -62,7 +62,16 @@ runs:
 
     - name: Install Kornia dev
       shell: bash
-      run: uv pip install --system --editable .[dev,x]
+      run: |
+        # For Linux/Windows runners, CPU-only PyTorch is installed (no GPU dependencies needed)
+        # For macOS runners, standard PyTorch is used (can include GPU dependencies)
+        if [ "$RUNNER_OS" == "Linux" ] || [ "$RUNNER_OS" == "Windows" ]; then
+          echo "Installing for CPU-only (Linux/Windows runners)..."
+          uv pip install --system --editable .[dev]
+        else
+          echo "Installing with GPU dependencies (macOS runner)..."
+          uv pip install --system --editable .[dev,x]
+        fi
 
     - name: Verify lock file is up to date
       shell: bash
