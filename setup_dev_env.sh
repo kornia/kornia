@@ -63,7 +63,13 @@ fi
 
 # install project dependencies with dev and x extras
 echo "Installing development dependencies..."
-uv pip install -e .[dev,x]
+if [ -f "uv.lock" ]; then
+    echo "Using uv.lock for reproducible dependency installation..."
+    uv sync --frozen
+else
+    echo "No uv.lock found, installing from requirements files..."
+    uv pip install -e .[dev,x]
+fi
 
 # install docs dependencies
 echo "Installing documentation dependencies..."

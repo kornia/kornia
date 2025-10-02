@@ -1,3 +1,0 @@
-kornia_rs>=0.1.9
-packaging
-torch>=2.0.0

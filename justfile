@@ -102,6 +102,14 @@ ci-build-docs:
 install-dev: _ensure-venv
     ./venv/bin/uv pip install -e .
 
+# Update dependencies and regenerate lock file
+lock-update:
+    uv lock --upgrade
+
+# Install dependencies from lock file (reproducible)
+sync: _ensure-venv
+    if [ -f "uv.lock" ]; then uv sync --frozen; else uv pip install -e .[dev,x]; fi
+
 # Run benchmarks
 benchmark *args: _ensure-venv
     ./venv/bin/pytest {{benchmark_source}} --benchmark-warmup=on --benchmark-warmup-iterations=100 --benchmark-calibration-precision=10 --benchmark-group-by=func --optimizer={{benchmark_backends}} {{benchmark_opts}} {{args}}
