@@ -1,2 +1,0 @@
-accelerate
-onnxruntime-gpu>=1.16; sys_platform != 'darwin'

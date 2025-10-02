@@ -81,8 +81,8 @@ repository under your GitHub account.
     - Install uv if it's not already available
     - Create a virtual environment in the `./venv` directory
     - Install PyTorch with the appropriate CUDA version (default CUDA 12.1)
-    - Install all development dependencies from `requirements/requirements-dev.txt`
-    - Install documentation dependencies from `requirements/requirements-docs.txt`
+    - Install all development dependencies using uv dependency groups
+    - Install documentation dependencies using uv dependency groups
 
     You can customize the Python version, PyTorch version, and CUDA version using environment variables:
     ```bash
