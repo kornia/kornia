@@ -225,22 +225,22 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
 
 
 T_deg1 = torch.zeros(16, 10)
-T_deg1[0 * 4 + 0, 0] = 1
-T_deg1[0 * 4 + 1, 1] = 1
-T_deg1[1 * 4 + 0, 1] = 1
-T_deg1[0 * 4 + 2, 2] = 1
-T_deg1[2 * 4 + 0, 2] = 1
-T_deg1[0 * 4 + 3, 3] = 1
-T_deg1[3 * 4 + 0, 3] = 1
-T_deg1[1 * 4 + 1, 4] = 1
-T_deg1[1 * 4 + 2, 5] = 1
-T_deg1[2 * 4 + 1, 5] = 1
-T_deg1[1 * 4 + 3, 6] = 1
-T_deg1[3 * 4 + 1, 6] = 1
-T_deg1[2 * 4 + 2, 7] = 1
-T_deg1[2 * 4 + 3, 8] = 1
-T_deg1[3 * 4 + 2, 8] = 1
-T_deg1[3 * 4 + 3, 9] = 1
+T_deg1[0, 0] = 1   # x * x → x^2
+T_deg1[1, 1] = 1   # x * y
+T_deg1[4, 1] = 1   # y * x
+T_deg1[2, 2] = 1   # x * z
+T_deg1[8, 2] = 1   # z * x
+T_deg1[3, 3] = 1   # x * 1
+T_deg1[12, 3] = 1  # 1 * x
+T_deg1[5, 4] = 1   # y * y
+T_deg1[6, 5] = 1   # y * z
+T_deg1[9, 5] = 1   # z * y
+T_deg1[7, 6] = 1   # y * 1
+T_deg1[13, 6] = 1  # 1 * y
+T_deg1[10, 7] = 1  # z * z
+T_deg1[11, 8] = 1  # z * 1
+T_deg1[14, 8] = 1  # 1 * z
+T_deg1[15, 9] = 1  # 1 * 1
 
 
 def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor, T_matrix: torch.Tensor = T_deg1) -> torch.Tensor:
@@ -254,8 +254,8 @@ def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor, T_matrix: torch.Tens
         degree 2 poly with the order :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
 
     """
-    if T_matrix.device != a.device:
-        T_matrix = T_matrix.to(a.device)
+    if T_matrix.device != a.device or T_matrix.dtype != a.dtype:
+        T_matrix = T_matrix.to(device=a.device, dtype=a.dtype)
     return (a.unsqueeze(2) * b.unsqueeze(1)).flatten(start_dim=-2) @ T_matrix
 
 
@@ -264,46 +264,46 @@ def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor, T_matrix: torch.Tens
 # include/estimators/solver_essential_matrix_five_point_nister.h#L156
 
 T_deg2 = torch.zeros(40, 20)
-T_deg2[0 * 4 + 0, 0] = 1
-T_deg2[4 * 4 + 1, 1] = 1
-T_deg2[0 * 4 + 1, 2] = 1
-T_deg2[1 * 4 + 0, 2] = 1
-T_deg2[1 * 4 + 1, 3] = 1
-T_deg2[4 * 4 + 0, 3] = 1
-T_deg2[0 * 4 + 2, 4] = 1
-T_deg2[2 * 4 + 0, 4] = 1
-T_deg2[0 * 4 + 3, 5] = 1
-T_deg2[3 * 4 + 0, 5] = 1
-T_deg2[4 * 4 + 2, 6] = 1
-T_deg2[5 * 4 + 1, 6] = 1
-T_deg2[4 * 4 + 3, 7] = 1
-T_deg2[6 * 4 + 1, 7] = 1
-T_deg2[1 * 4 + 2, 8] = 1
-T_deg2[2 * 4 + 1, 8] = 1
-T_deg2[5 * 4 + 0, 8] = 1
-T_deg2[1 * 4 + 3, 9] = 1
-T_deg2[3 * 4 + 1, 9] = 1
-T_deg2[6 * 4 + 0, 9] = 1
-T_deg2[2 * 4 + 2, 10] = 1
-T_deg2[7 * 4 + 0, 10] = 1
-T_deg2[2 * 4 + 3, 11] = 1
-T_deg2[3 * 4 + 2, 11] = 1
-T_deg2[8 * 4 + 0, 11] = 1
-T_deg2[3 * 4 + 3, 12] = 1
-T_deg2[9 * 4 + 0, 12] = 1
-T_deg2[5 * 4 + 2, 13] = 1
-T_deg2[7 * 4 + 1, 13] = 1
-T_deg2[5 * 4 + 3, 14] = 1
-T_deg2[6 * 4 + 2, 14] = 1
-T_deg2[8 * 4 + 1, 14] = 1
-T_deg2[6 * 4 + 3, 15] = 1
-T_deg2[9 * 4 + 1, 15] = 1
-T_deg2[7 * 4 + 2, 16] = 1
-T_deg2[7 * 4 + 3, 17] = 1
-T_deg2[8 * 4 + 2, 17] = 1
-T_deg2[8 * 4 + 3, 18] = 1
-T_deg2[9 * 4 + 2, 18] = 1
-T_deg2[9 * 4 + 3, 19] = 1
+T_deg2[0, 0] = 1      # (0*4+0)
+T_deg2[17, 1] = 1     # (4*4+1)
+T_deg2[1, 2] = 1      # (0*4+1)
+T_deg2[4, 2] = 1      # (1*4+0)
+T_deg2[5, 3] = 1      # (1*4+1)
+T_deg2[16, 3] = 1     # (4*4+0)
+T_deg2[2, 4] = 1      # (0*4+2)
+T_deg2[8, 4] = 1      # (2*4+0)
+T_deg2[3, 5] = 1      # (0*4+3)
+T_deg2[12, 5] = 1     # (3*4+0)
+T_deg2[18, 6] = 1     # (4*4+2)
+T_deg2[21, 6] = 1     # (5*4+1)
+T_deg2[19, 7] = 1     # (4*4+3)
+T_deg2[25, 7] = 1     # (6*4+1)
+T_deg2[6, 8] = 1      # (1*4+2)
+T_deg2[9, 8] = 1      # (2*4+1)
+T_deg2[20, 8] = 1     # (5*4+0)
+T_deg2[7, 9] = 1      # (1*4+3)
+T_deg2[13, 9] = 1     # (3*4+1)
+T_deg2[24, 9] = 1     # (6*4+0)
+T_deg2[10, 10] = 1    # (2*4+2)
+T_deg2[28, 10] = 1    # (7*4+0)
+T_deg2[11, 11] = 1    # (2*4+3)
+T_deg2[14, 11] = 1    # (3*4+2)
+T_deg2[32, 11] = 1    # (8*4+0)
+T_deg2[15, 12] = 1    # (3*4+3)
+T_deg2[36, 12] = 1    # (9*4+0)
+T_deg2[22, 13] = 1    # (5*4+2)
+T_deg2[29, 13] = 1    # (7*4+1)
+T_deg2[23, 14] = 1    # (5*4+3)
+T_deg2[26, 14] = 1    # (6*4+2)
+T_deg2[33, 14] = 1    # (8*4+1)
+T_deg2[27, 15] = 1    # (6*4+3)
+T_deg2[37, 15] = 1    # (9*4+1)
+T_deg2[30, 16] = 1    # (7*4+2)
+T_deg2[31, 17] = 1    # (7*4+3)
+T_deg2[34, 17] = 1    # (8*4+2)
+T_deg2[35, 18] = 1    # (8*4+3)
+T_deg2[38, 18] = 1    # (9*4+2)
+T_deg2[39, 19] = 1    # (9*4+3)
 
 
 def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor, T_matrix: torch.Tensor = T_deg2) -> torch.Tensor:
@@ -319,8 +319,8 @@ def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor, T_matrix: torch.
         x*y*z, x*y, x*z^2, x*z, x, y*z^2, y*z, y, z^3, z^2, z, 1)`.
 
     """
-    if T_matrix.device != a.device:
-        T_matrix = T_matrix.to(a.device)
+    if T_matrix.device != a.device or T_matrix.dtype != a.dtype:
+        T_matrix = T_matrix.to(device=a.device, dtype=a.dtype)
     product_basis = a.unsqueeze(2) * b.unsqueeze(1)
     product_vector = product_basis.flatten(start_dim=-2)
     return product_vector @ T_matrix
