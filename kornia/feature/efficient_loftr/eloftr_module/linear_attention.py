@@ -51,7 +51,7 @@ def crop_feature(query: Tensor, key: Tensor, value: Tensor, x_mask: Tensor, sour
 def pad_feature(m: Tensor, mask_h0: Tensor, mask_w0: Tensor, x_mask: Tensor) -> Tensor:
     """Padding features."""
     bs, L, H, D = m.size()
-    m = m.view(bs, mask_h0.item(), mask_w0.item(), H, D)
+    m = m.view(bs, int(mask_h0.item()), int(mask_w0.item()), H, D)
     if mask_h0 != x_mask.size(-2):
         m = torch.cat(
             [
@@ -171,7 +171,7 @@ class Attention(Module):
             queried_values: (N, L, H, D)
         """
         bs = query.size(0)
-        if bs == 1 or q_mask is None:
+        if bs == 1 or q_mask is None or kv_mask is None:
             m = self._forward(query, key, value, q_mask=q_mask, kv_mask=kv_mask)
         else:  # for faster training with padding mask while batch size > 1
             m_list = []

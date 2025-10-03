@@ -179,7 +179,7 @@ class RepVGGBlock(nn.Module):
         kernelid, biasid = self._fuse_bn_tensor(self.rbr_identity)
         return kernel3x3 + self._pad_1x1_to_3x3_tensor(kernel1x1) + kernelid, bias3x3 + bias1x1 + biasid
 
-    def _pad_1x1_to_3x3_tensor(self, kernel1x1: Optional[Tensor]) -> Union[Tensor, int]:
+    def _pad_1x1_to_3x3_tensor(self, kernel1x1: Optional[Union[Tensor, int]]) -> Union[Tensor, int]:
         if kernel1x1 is None:
             return 0
         else:
@@ -229,7 +229,8 @@ class RepVGGBlock(nn.Module):
             bias=True,
         )
         self.rbr_reparam.weight.data = kernel
-        self.rbr_reparam.bias.data = bias
+        if self.rbr_reparam.bias is not None:
+            self.rbr_reparam.bias.data = bias
         self.__delattr__("rbr_dense")
         self.__delattr__("rbr_1x1")
         if hasattr(self, "rbr_identity"):
