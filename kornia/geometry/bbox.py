@@ -374,6 +374,7 @@ def bbox_generator(
     flat_bboxes = torch.stack([x_s, y_s, x_e, y_s, x_e, y_e, x_s, y_e], dim=1)
     return flat_bboxes.view(-1, 4, 2)
 
+
 def bbox_generator3d(
     x_start: torch.Tensor,
     y_start: torch.Tensor,
@@ -449,10 +450,35 @@ def bbox_generator3d(
     y_e = y_s + height.view(-1)
     z_e = z_s + depth.view(-1)
 
-    flat_bboxes = torch.stack([
-        x_s, y_s, z_s, x_e, y_s, z_s, x_e, y_e, z_s, x_s, y_e, z_s, # Front face
-        x_s, y_s, z_e, x_e, y_s, z_e, x_e, y_e, z_e, x_s, y_e, z_e, # Back face
-    ], dim=1)
+    flat_bboxes = torch.stack(
+        [
+            x_s,
+            y_s,
+            z_s,
+            x_e,
+            y_s,
+            z_s,
+            x_e,
+            y_e,
+            z_s,
+            x_s,
+            y_e,
+            z_s,  # Front face
+            x_s,
+            y_s,
+            z_e,
+            x_e,
+            y_s,
+            z_e,
+            x_e,
+            y_e,
+            z_e,
+            x_s,
+            y_e,
+            z_e,  # Back face
+        ],
+        dim=1,
+    )
 
     return flat_bboxes.view(-1, 8, 3)
 
