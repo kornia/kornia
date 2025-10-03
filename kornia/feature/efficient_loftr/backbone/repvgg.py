@@ -167,7 +167,7 @@ class RepVGGBlock(nn.Module):
         ).sum()  # Normalize for an L2 coefficient comparable to regular L2.
         return l2_loss_eq_kernel + l2_loss_circle
 
-    def get_equivalent_kernel_bias(self) -> Tuple[Union[Tensor, int], Union[Tensor, int]]:
+    def get_equivalent_kernel_bias(self) -> Tuple[Tensor, Tensor]:
         """This func derives the equivalent kernel and bias in a DIFFERENTIABLE way.
 
         You can get the equivalent kernel and bias at any time and do whatever you want,
@@ -179,15 +179,15 @@ class RepVGGBlock(nn.Module):
         kernelid, biasid = self._fuse_bn_tensor(self.rbr_identity)
         return kernel3x3 + self._pad_1x1_to_3x3_tensor(kernel1x1) + kernelid, bias3x3 + bias1x1 + biasid
 
-    def _pad_1x1_to_3x3_tensor(self, kernel1x1: Optional[Union[Tensor, int]]) -> Union[Tensor, int]:
+    def _pad_1x1_to_3x3_tensor(self, kernel1x1: Optional[Tensor]) -> Tensor:
         if kernel1x1 is None:
-            return 0
+            return torch.Tensor([0])
         else:
             return torch.nn.functional.pad(kernel1x1, [1, 1, 1, 1])
 
-    def _fuse_bn_tensor(self, branch: Optional[nn.Module]) -> Tuple[Union[Tensor, int], Union[Tensor, int]]:
+    def _fuse_bn_tensor(self, branch: Optional[nn.Module]) -> Tuple[Tensor, Tensor]:
         if branch is None:
-            return 0, 0
+            return torch.Tensor([0]), torch.Tensor([0])
         if isinstance(branch, nn.Sequential):
             kernel = branch.conv.weight
             running_mean = branch.bn.running_mean
