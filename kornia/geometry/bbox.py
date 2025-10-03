@@ -367,19 +367,12 @@ def bbox_generator(
             f"`width`({width.device}), `height`({height.device})."
         )
 
-    bbox = torch.tensor([[[0, 0], [0, 0], [0, 0], [0, 0]]], device=x_start.device, dtype=x_start.dtype).repeat(
-        1 if x_start.dim() == 0 else len(x_start), 1, 1
-    )
-
-    bbox[:, :, 0] += x_start.view(-1, 1)
-    bbox[:, :, 1] += y_start.view(-1, 1)
-    bbox[:, 1, 0] += width - 1
-    bbox[:, 2, 0] += width - 1
-    bbox[:, 2, 1] += height - 1
-    bbox[:, 3, 1] += height - 1
-
-    return bbox
-
+    x_s = x_start.view(-1)
+    y_s = y_start.view(-1)
+    x_e = x_s + width.view(-1) - 1
+    y_e = y_s + height.view(-1) - 1
+    flat_bboxes = torch.stack([x_s, y_s, x_e, y_s, x_e, y_e, x_s, y_e], dim=1)
+    return flat_bboxes.view(-1, 4, 2)
 
 def bbox_generator3d(
     x_start: torch.Tensor,
@@ -451,25 +444,17 @@ def bbox_generator3d(
             f"`width`({width.device}), `height`({height.device}) and `depth`({depth.device})."
         )
 
-    # front
-    bbox = torch.tensor(
-        [[[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]], device=x_start.device, dtype=x_start.dtype
-    ).repeat(len(x_start), 1, 1)
+    x_s, y_s, z_s = x_start.view(-1), y_start.view(-1), z_start.view(-1)
+    x_e = x_s + width.view(-1)
+    y_e = y_s + height.view(-1)
+    z_e = z_s + depth.view(-1)
 
-    bbox[:, :, 0] += x_start.view(-1, 1)
-    bbox[:, :, 1] += y_start.view(-1, 1)
-    bbox[:, :, 2] += z_start.view(-1, 1)
-    bbox[:, 1, 0] += width
-    bbox[:, 2, 0] += width
-    bbox[:, 2, 1] += height
-    bbox[:, 3, 1] += height
+    flat_bboxes = torch.stack([
+        x_s, y_s, z_s, x_e, y_s, z_s, x_e, y_e, z_s, x_s, y_e, z_s, # Front face
+        x_s, y_s, z_e, x_e, y_s, z_e, x_e, y_e, z_e, x_s, y_e, z_e, # Back face
+    ], dim=1)
 
-    # back
-    bbox_back = bbox.clone()
-    bbox_back[:, :, -1] += depth.unsqueeze(dim=1).repeat(1, 4)
-    bbox = torch.cat([bbox, bbox_back], dim=1)
-
-    return bbox
+    return flat_bboxes.view(-1, 8, 3)
 
 
 def transform_bbox(
