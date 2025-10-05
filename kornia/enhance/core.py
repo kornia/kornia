@@ -16,6 +16,7 @@
 #
 
 from typing import Union
+import torch
 
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor, tensor
@@ -74,8 +75,8 @@ def add_weighted(
     else:
         gamma = tensor(gamma, dtype=src1.dtype, device=src1.device)
 
-    return src1 * alpha + src2 * beta + gamma
-
+    out = torch.addcmul(gamma, src2, beta)
+    return torch.addcmul(out, src1, alpha)
 
 class AddWeighted(Module):
     r"""Calculate the weighted sum of two Tensors.
