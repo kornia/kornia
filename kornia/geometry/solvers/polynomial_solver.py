@@ -254,7 +254,7 @@ def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         degree 2 poly with the order :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
 
     """
-    global T_deg1 # noqa: PLW0603
+    global T_deg1  # noqa: PLW0603
     if T_deg1.device != a.device or T_deg1.dtype != a.dtype:
         T_deg1 = T_deg1.to(device=a.device, dtype=a.dtype)
     return (a.unsqueeze(2) * b.unsqueeze(1)).flatten(start_dim=-2) @ T_deg1
@@ -320,7 +320,7 @@ def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         x*y*z, x*y, x*z^2, x*z, x, y*z^2, y*z, y, z^3, z^2, z, 1)`.
 
     """
-    global T_deg2 # noqa: PLW0603
+    global T_deg2  # noqa: PLW0603
     if T_deg2.device != a.device or T_deg2.dtype != a.dtype:
         T_deg2 = T_deg2.to(device=a.device, dtype=a.dtype)
     product_basis = a.unsqueeze(2) * b.unsqueeze(1)
@@ -1806,7 +1806,7 @@ def determinant_to_polynomial(
 
     """
     B, device, dtype = A.shape[0], A.device, A.dtype
-    global multiplication_indices, signs, coefficient_map # noqa: PLW0603
+    global multiplication_indices, signs, coefficient_map  # noqa: PLW0603
 
     multiplication_indices = multiplication_indices.to(device)
     signs = signs.to(device, dtype)
