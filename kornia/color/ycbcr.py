@@ -55,14 +55,18 @@ def rgb_to_ycbcr(image: Tensor) -> Tensor:
     delta = 0.5
     shift = torch.tensor([0.0, delta, delta], device=image.device, dtype=image.dtype).view(1, 3, 1, 1)
 
-    ycbcr_to_rgb_matrix = torch.tensor([
-        [1.0, 0.0,     1.403],
-        [1.0, -0.344, -0.714],
-        [1.0, 1.773,   0.0],
-    ], device=image.device, dtype=image.dtype)
+    ycbcr_to_rgb_matrix = torch.tensor(
+        [
+            [1.0, 0.0, 1.403],
+            [1.0, -0.344, -0.714],
+            [1.0, 1.773, 0.0],
+        ],
+        device=image.device,
+        dtype=image.dtype,
+    )
 
     shifted_image = image - shift
-    rgb_image = torch.einsum('ij, ...jhw -> ...ihw', ycbcr_to_rgb_matrix, shifted_image)
+    rgb_image = torch.einsum("ij, ...jhw -> ...ihw", ycbcr_to_rgb_matrix, shifted_image)
 
     return rgb_image.clamp(0, 1)
 

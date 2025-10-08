@@ -55,13 +55,18 @@ def rgb_to_yuv(image: Tensor) -> Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    rgb_to_yuv_matrix = torch.tensor([
-        [0.299, 0.587, 0.114],
-        [-0.147, -0.289, 0.436],
-        [0.615, -0.515, -0.100],
-    ], device=image.device, dtype=image.dtype)
+    rgb_to_yuv_matrix = torch.tensor(
+        [
+            [0.299, 0.587, 0.114],
+            [-0.147, -0.289, 0.436],
+            [0.615, -0.515, -0.100],
+        ],
+        device=image.device,
+        dtype=image.dtype,
+    )
 
-    return torch.einsum('ij, ...jhw -> ...ihw', rgb_to_yuv_matrix, image)
+    return torch.einsum("ij, ...jhw -> ...ihw", rgb_to_yuv_matrix, image)
+
 
 def rgb_to_yuv420(image: Tensor) -> tuple[Tensor, Tensor]:
     r"""Convert an RGB image to YUV 420 (subsampled).
@@ -169,14 +174,18 @@ def yuv_to_rgb(image: Tensor) -> Tensor:
 
     if image.dim() < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
-    
-    yuv_to_rgb_matrix = torch.tensor([
-        [1.0, 0.0,    1.14],
-        [1.0, -0.396, -0.581],
-        [1.0, 2.029,  0.0],
-    ], device=image.device, dtype=image.dtype)
 
-    return torch.einsum('ij, ...jhw -> ...ihw', yuv_to_rgb_matrix, image)
+    yuv_to_rgb_matrix = torch.tensor(
+        [
+            [1.0, 0.0, 1.14],
+            [1.0, -0.396, -0.581],
+            [1.0, 2.029, 0.0],
+        ],
+        device=image.device,
+        dtype=image.dtype,
+    )
+
+    return torch.einsum("ij, ...jhw -> ...ihw", yuv_to_rgb_matrix, image)
 
 
 def yuv420_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
