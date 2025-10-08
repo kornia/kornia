@@ -25,11 +25,6 @@ from kornia.core import ImageModule as Module
 from kornia.core import Tensor
 
 
-def _rgb_to_y(r: Tensor, g: Tensor, b: Tensor) -> Tensor:
-    y: Tensor = 0.299 * r + 0.587 * g + 0.114 * b
-    return y
-
-
 def rgb_to_ycbcr(image: Tensor) -> Tensor:
     r"""Convert an RGB image to YCbCr.
 
@@ -52,20 +47,22 @@ def rgb_to_ycbcr(image: Tensor) -> Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    delta = 0.5
-    shift = torch.tensor([0.0, delta, delta], device=image.device, dtype=image.dtype).view(1, 3, 1, 1)
+    input_shape = image.shape
+    h, w = image.shape[-2:]
+    image = image.reshape(-1, 3, h, w)
 
-    ycbcr_to_rgb_matrix = torch.tensor([
-        [1.0, 0.0,     1.403],
-        [1.0, -0.344, -0.714],
-        [1.0, 1.773,   0.0],
-    ], device=image.device, dtype=image.dtype)
+    y_weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
+    y = torch.einsum('c,...chw->...hw', y_weights, image).unsqueeze(-3)
 
-    shifted_image = image - shift
-    rgb_image = torch.einsum('ij, ...jhw -> ...ihw', ycbcr_to_rgb_matrix, shifted_image)
+    r_slice = image[..., 0:1, :, :]
+    b_slice = image[..., 2:3, :, :]
+    delta = torch.tensor(0.5, device=image.device, dtype=image.dtype)
+    cb_weight = torch.tensor(0.564, device=image.device, dtype=image.dtype)
+    cr_weight = torch.tensor(0.713, device=image.device, dtype=image.dtype)
 
-    return rgb_image.clamp(0, 1)
-
+    cb = torch.addcmul(delta, b_slice - y, cb_weight)
+    cr = torch.addcmul(delta, r_slice - y, cr_weight)
+    return torch.cat([y, cb, cr], dim=-3).reshape(input_shape)
 
 def rgb_to_y(image: Tensor) -> Tensor:
     r"""Convert an RGB image to Y.
@@ -91,7 +88,7 @@ def rgb_to_y(image: Tensor) -> Tensor:
     g: Tensor = image[..., 1:2, :, :]
     b: Tensor = image[..., 2:3, :, :]
 
-    y: Tensor = _rgb_to_y(r, g, b)
+    y: Tensor = 0.299 * r + 0.587 * g + 0.114 * b
     return y
 
 
@@ -117,18 +114,22 @@ def ycbcr_to_rgb(image: Tensor) -> Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    y: Tensor = image[..., 0, :, :]
-    cb: Tensor = image[..., 1, :, :]
-    cr: Tensor = image[..., 2, :, :]
+    input_shape = image.shape
+    h, w = image.shape[-2:]
+    image = image.reshape(-1, 3, h, w)
 
-    delta: float = 0.5
-    cb_shifted: Tensor = cb - delta
-    cr_shifted: Tensor = cr - delta
+    ycbcr_to_rgb_matrix = torch.tensor([
+        [1.0, 0.0,     1.403],
+        [1.0, -0.344, -0.714],
+        [1.0, 1.773,   0.0],
+    ], device=image.device, dtype=image.dtype)
 
-    r: Tensor = y + 1.403 * cr_shifted
-    g: Tensor = y - 0.714 * cr_shifted - 0.344 * cb_shifted
-    b: Tensor = y + 1.773 * cb_shifted
-    return torch.stack([r, g, b], -3).clamp(0, 1)
+    delta = 0.5
+    shift = torch.tensor([0.0, delta, delta], device=image.device, dtype=image.dtype).view(1, 3, 1, 1)
+
+    shifted_image = image - shift
+    rgb_image = torch.einsum('ij, ...jhw -> ...ihw', ycbcr_to_rgb_matrix, shifted_image)
+    return rgb_image.clamp(0, 1).reshape(input_shape)
 
 
 class RgbToYcbcr(Module):

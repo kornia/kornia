@@ -57,8 +57,7 @@ def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Te
         max_values = sepia_out.amax(dim=(-2, -1), keepdim=True)
         sepia_out = sepia_out / (max_values + eps)
 
-    return sepia_out
-
+    return sepia_out.contiguous()
 
 class Sepia(Module):
     r"""Module that apply the sepia filter to tensors.
