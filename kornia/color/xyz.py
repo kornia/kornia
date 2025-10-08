@@ -46,19 +46,14 @@ def rgb_to_xyz(image: Tensor) -> Tensor:
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    
+    xyz_from_rgb = torch.tensor([
+        [0.412453, 0.357580, 0.180423],
+        [0.212671, 0.715160, 0.072169],
+        [0.019334, 0.119193, 0.950227],
+    ], device=image.device, dtype=image.dtype)
 
-    r: Tensor = image[..., 0, :, :]
-    g: Tensor = image[..., 1, :, :]
-    b: Tensor = image[..., 2, :, :]
-
-    x: Tensor = 0.412453 * r + 0.357580 * g + 0.180423 * b
-    y: Tensor = 0.212671 * r + 0.715160 * g + 0.072169 * b
-    z: Tensor = 0.019334 * r + 0.119193 * g + 0.950227 * b
-
-    out: Tensor = torch.stack([x, y, z], -3)
-
-    return out
-
+    return torch.einsum('ij, ...jhw -> ...ihw', xyz_from_rgb, image)
 
 def xyz_to_rgb(image: Tensor) -> Tensor:
     r"""Convert a XYZ image to RGB.
@@ -80,17 +75,13 @@ def xyz_to_rgb(image: Tensor) -> Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    x: Tensor = image[..., 0, :, :]
-    y: Tensor = image[..., 1, :, :]
-    z: Tensor = image[..., 2, :, :]
+    rgb_from_xyz = torch.tensor([
+        [ 3.2404813432005266, -1.5371515162713185, -0.4985363261688878],
+        [-0.9692549499965682,  1.8759900014898907,  0.0415559265582928],
+        [ 0.0556466391351772, -0.2040413383665112,  1.0573110696453443]
+    ], device=image.device, dtype=image.dtype)
 
-    r: Tensor = 3.2404813432005266 * x + -1.5371515162713185 * y + -0.4985363261688878 * z
-    g: Tensor = -0.9692549499965682 * x + 1.8759900014898907 * y + 0.0415559265582928 * z
-    b: Tensor = 0.0556466391351772 * x + -0.2040413383665112 * y + 1.0573110696453443 * z
-
-    out: Tensor = torch.stack([r, g, b], dim=-3)
-
-    return out
+    return torch.einsum('ij, ...jhw -> ...ihw', rgb_from_xyz, image)
 
 
 class RgbToXyz(Module):
