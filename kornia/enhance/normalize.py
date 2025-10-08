@@ -264,7 +264,7 @@ def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, flo
     else:
         while len(mean.shape) < data.dim():
             mean = mean.unsqueeze(-1)
-            
+
     if std.dim() == 1:
         std = std.view(1, -1, *([1] * (data.dim() - 2)))
     else:
@@ -272,6 +272,7 @@ def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, flo
             std = std.unsqueeze(-1)
 
     return torch.addcmul(mean, data, std)
+
 
 def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6) -> Tensor:
     r"""Normalise an image/video tensor by MinMax and re-scales the value between a range.
@@ -312,15 +313,15 @@ def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps
 
     if len(x.shape) < 3:
         raise ValueError(f"Input shape must be at least a 3d tensor. Got: {x.shape}.")
-    
+
     B, C = x.shape[:2]
     x_flat = x.view(B, C, -1)
 
-    #TODO replace with aminmax when gradient is supported
+    # TODO replace with aminmax when gradient is supported
     x_min = x_flat.min(-1, keepdim=True)[0]
     x_max = x_flat.max(-1, keepdim=True)[0]
 
     scale = (max_val - min_val) / (x_max - x_min + eps)
     bias = min_val - x_min * scale
-    x_flat = torch.addcmul(bias, x_flat, scale)    
+    x_flat = torch.addcmul(bias, x_flat, scale)
     return x_flat.view_as(x)
