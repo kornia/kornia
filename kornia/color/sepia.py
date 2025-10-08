@@ -57,6 +57,7 @@ def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Te
 
     return sepia_out.contiguous()
 
+
 class Sepia(Module):
     r"""Module that apply the sepia filter to tensors.
 

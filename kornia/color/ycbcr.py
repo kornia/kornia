@@ -52,7 +52,7 @@ def rgb_to_ycbcr(image: Tensor) -> Tensor:
     image = image.reshape(-1, 3, h, w)
 
     y_weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
-    y = torch.einsum('c,...chw->...hw', y_weights, image).unsqueeze(-3)
+    y = torch.einsum("c,...chw->...hw", y_weights, image).unsqueeze(-3)
 
     r_slice = image[..., 0:1, :, :]
     b_slice = image[..., 2:3, :, :]
@@ -63,6 +63,7 @@ def rgb_to_ycbcr(image: Tensor) -> Tensor:
     cb = torch.addcmul(delta, b_slice - y, cb_weight)
     cr = torch.addcmul(delta, r_slice - y, cr_weight)
     return torch.cat([y, cb, cr], dim=-3).reshape(input_shape)
+
 
 def rgb_to_y(image: Tensor) -> Tensor:
     r"""Convert an RGB image to Y.
@@ -118,17 +119,21 @@ def ycbcr_to_rgb(image: Tensor) -> Tensor:
     h, w = image.shape[-2:]
     image = image.reshape(-1, 3, h, w)
 
-    ycbcr_to_rgb_matrix = torch.tensor([
-        [1.0, 0.0,     1.403],
-        [1.0, -0.344, -0.714],
-        [1.0, 1.773,   0.0],
-    ], device=image.device, dtype=image.dtype)
+    ycbcr_to_rgb_matrix = torch.tensor(
+        [
+            [1.0, 0.0, 1.403],
+            [1.0, -0.344, -0.714],
+            [1.0, 1.773, 0.0],
+        ],
+        device=image.device,
+        dtype=image.dtype,
+    )
 
     delta = 0.5
     shift = torch.tensor([0.0, delta, delta], device=image.device, dtype=image.dtype).view(1, 3, 1, 1)
 
     shifted_image = image - shift
-    rgb_image = torch.einsum('ij, ...jhw -> ...ihw', ycbcr_to_rgb_matrix, shifted_image)
+    rgb_image = torch.einsum("ij, ...jhw -> ...ihw", ycbcr_to_rgb_matrix, shifted_image)
     return rgb_image.clamp(0, 1).reshape(input_shape)
 
 
