@@ -45,13 +45,11 @@ def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Te
     """
     if len(input.shape) < 3 or input.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
-    sepia_matrix = torch.tensor([
-        [0.393, 0.769, 0.189],
-        [0.349, 0.686, 0.168],
-        [0.272, 0.534, 0.131]
-    ], device=input.device, dtype=input.dtype)
+    sepia_matrix = torch.tensor(
+        [[0.393, 0.769, 0.189], [0.349, 0.686, 0.168], [0.272, 0.534, 0.131]], device=input.device, dtype=input.dtype
+    )
 
-    sepia_out = torch.einsum('ij, ...jhw -> ...ihw', sepia_matrix, input)
+    sepia_out = torch.einsum("ij, ...jhw -> ...ihw", sepia_matrix, input)
 
     if rescale:
         max_values = sepia_out.amax(dim=(-2, -1), keepdim=True)

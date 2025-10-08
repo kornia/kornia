@@ -106,7 +106,6 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Ten
     return out.unsqueeze(-3)
 
 
-
 def bgr_to_grayscale(image: Tensor) -> Tensor:
     r"""Convert a BGR image to grayscale.
 
