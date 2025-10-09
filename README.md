@@ -103,13 +103,13 @@ Kornia is an open-source project that is developed and maintained by volunteers.
 
 #### For development with UV (Recommended)
 
-For development, Kornia now uses [uv](https://github.com/astral-sh/uv) for fast Python package management and virtual environment creation.
+For development, Kornia uses [uv](https://github.com/astral-sh/uv) for fast Python package management and virtual environment creation. The project includes a `uv.lock` file for reproducible dependency management.
 
   ```bash
   ./setup_dev_env.sh
   ```
 
-This will set up a complete development environment with all dependencies. See [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
+This will set up a complete development environment with all dependencies using the lock file for reproducibility. For more details on dependency management and lock file usage, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 #### From Github url (latest version)
 

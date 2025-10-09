@@ -28,3 +28,6 @@ docs/source/_static/scripts/*
 *.onnx
 venv/
 weights/
+
+# uv
+.uv_cache/

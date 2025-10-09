@@ -156,7 +156,14 @@ jobs:
 
       - name: Install dev dependencies
         shell: bash
-        run: uv pip install --system -r ./requirements/requirements-dev.txt
+        run: |
+          if [ -f "uv.lock" ]; then
+            uv sync --group dev --frozen
+            source .venv/bin/activate
+            echo "$PWD/.venv/bin" >> $GITHUB_PATH
+          else
+            uv pip install --system coverage pytest pytest-cov
+          fi
 
       - name: Run coverage
         run: |
