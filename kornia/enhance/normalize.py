@@ -306,12 +306,14 @@ def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps
     if len(x.shape) < 3:
         raise ValueError(f"Input shape must be at least a 3d tensor. Got: {x.shape}.")
 
-    shape = x.shape
-    B, C = shape[0], shape[1]
+    B, C = x.shape[:2]
+    x_flat = x.view(B, C, -1)
 
-    x_reshaped = x.view(B, C, -1)
-    x_min = x_reshaped.min(-1, keepdim=True)[0]  # Shape: (B, C, 1)
-    x_max = x_reshaped.max(-1, keepdim=True)[0]  # Shape: (B, C, 1)
+    # TODO replace with aminmax when gradient is supported
+    x_min = x_flat.min(-1, keepdim=True)[0]
+    x_max = x_flat.max(-1, keepdim=True)[0]
 
-    x_out = (max_val - min_val) * (x_reshaped - x_min) / (x_max - x_min + eps) + min_val
-    return x_out.view(shape)
+    scale = (max_val - min_val) / (x_max - x_min + eps)
+    bias = min_val - x_min * scale
+    x_flat = torch.addcmul(bias, x_flat, scale)
+    return x_flat.view_as(x)
