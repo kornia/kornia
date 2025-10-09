@@ -166,8 +166,19 @@ def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
     if not trans_01.dim() == trans_02.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_02.dim()}")
 
-    # Compute the relative transformation: T_1^2 = (T_0^1)^{-1} * T_0^2
-    return compose_transformations(inverse_transformation(trans_01), trans_02)
+    rmat_01 = trans_01[..., :3, :3]
+    tvec_01 = trans_01[..., :3, 3:4]
+    rmat_02 = trans_02[..., :3, :3]
+    tvec_02 = trans_02[..., :3, 3:4]
+    rmat_10 = rmat_01.transpose(-1, -2)
+    rmat_12 = torch.matmul(rmat_10, rmat_02)
+    tvec_12 = torch.matmul(rmat_10, tvec_02 - tvec_01)
+    trans_12 = torch.zeros_like(trans_01)
+    trans_12[..., :3, :3] = rmat_12
+    trans_12[..., :3, 3:4] = tvec_12
+    trans_12[..., 3, 3] = 1.0
+
+    return trans_12
 
 
 def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
