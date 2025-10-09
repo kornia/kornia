@@ -273,6 +273,7 @@ def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, flo
 
     return torch.addcmul(mean, data, std)
 
+
 def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6) -> Tensor:
     r"""Normalise an image/video tensor by MinMax and re-scales the value between a range.
 
