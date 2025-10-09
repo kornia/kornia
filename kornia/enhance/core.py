@@ -17,6 +17,8 @@
 
 from typing import Union
 
+import torch
+
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
@@ -74,7 +76,8 @@ def add_weighted(
     else:
         gamma = tensor(gamma, dtype=src1.dtype, device=src1.device)
 
-    return src1 * alpha + src2 * beta + gamma
+    out = torch.addcmul(gamma, src2, beta)
+    return torch.addcmul(out, src1, alpha)
 
 
 class AddWeighted(Module):
