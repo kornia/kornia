@@ -180,6 +180,7 @@ def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
 
     return trans_12
 
+
 def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
     r"""Apply transformations to a set of points.
 
