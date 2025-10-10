@@ -258,18 +258,13 @@ def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, flo
         mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
         std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
 
-    if mean.dim() == 1:
-        mean = mean.view(1, -1, *([1] * (data.dim() - 2)))
-    # If the tensor is >1D (e.g., (B, C)), reshape to (B, C, 1, ...)
-    else:
-        while len(mean.shape) < data.dim():
-            mean = mean.unsqueeze(-1)
+    def _match_dims(x: Tensor, ref: Tensor) -> Tensor:
+        if x.dim() < ref.dim():
+            x = x.view(*x.shape, *([1] * (ref.dim() - x.dim())))
+        return x
 
-    if std.dim() == 1:
-        std = std.view(1, -1, *([1] * (data.dim() - 2)))
-    else:
-        while len(std.shape) < data.dim():
-            std = std.unsqueeze(-1)
+    mean = _match_dims(mean, data)
+    std = _match_dims(std, data)
 
     return torch.addcmul(mean, data, std)
 
