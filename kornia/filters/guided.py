@@ -32,14 +32,15 @@ def _preprocess_fast_guided_blur(
     guidance: Tensor, input: Tensor, kernel_size: tuple[int, int] | int, subsample: int = 1
 ) -> tuple[Tensor, Tensor, tuple[int, int]]:
     ky, kx = _unpack_2d_ks(kernel_size)
+
     if subsample > 1:
         s = 1 / subsample
         guidance_sub = interpolate(guidance, scale_factor=s, mode="nearest")
         input_sub = guidance_sub if input is guidance else interpolate(input, scale_factor=s, mode="nearest")
         ky, kx = ((k - 1) // subsample + 1 for k in (ky, kx))
     else:
-        guidance_sub = guidance
-        input_sub = input
+        guidance_sub, input_sub = guidance, input
+
     return guidance_sub, input_sub, (ky, kx)
 
 
