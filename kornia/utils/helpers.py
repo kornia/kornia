@@ -282,8 +282,8 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     """
     if not torch_version_ge(1, 10):
         # For older PyTorch versions, use determinant check to avoid JIT issues
-        dtype = torch.float64 if not is_mps_tensor_safe(A) else torch.float32
-        A_cast = A.to(dtype)
+        solve_dtype = torch.float64 if not is_mps_tensor_safe(A) else torch.float32
+        A_cast = A.to(solve_dtype)
         det = torch.linalg.det(A_cast)
         is_singular = torch.abs(det) < 1e-10
 
@@ -291,7 +291,7 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
             # If singular, return zeros
             sol = torch.zeros_like(B)
         else:
-            sol = torch.linalg.solve(A_cast, B.to(dtype))
+            sol = torch.linalg.solve(A_cast, B.to(solve_dtype))
             sol = sol.to(B.dtype)
         warnings.warn("PyTorch version < 1.10, solve validness mask maybe not correct", RuntimeWarning, stacklevel=1)
         return sol, sol, torch.ones(len(A), dtype=torch.bool, device=A.device)
