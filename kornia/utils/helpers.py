@@ -30,11 +30,6 @@ from torch.linalg import inv_ex
 from kornia.core import Tensor
 from kornia.utils._compat import torch_version_ge
 
-# Pre-compute version checks at module import time for JIT compatibility
-_TORCH_VERSION_1_10_OR_HIGHER = torch_version_ge(1, 10)
-_TORCH_VERSION_1_11_OR_HIGHER = torch_version_ge(1, 11)
-_TORCH_VERSION_1_13_OR_HIGHER = torch_version_ge(1, 13)
-
 
 def xla_is_available() -> bool:
     """Return whether `torch_xla` is available in the system."""
@@ -216,7 +211,7 @@ def _torch_svd_cast(input: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         dtype = torch.float32
 
     out1, out2, out3H = torch.linalg.svd(input.to(dtype))
-    if _TORCH_VERSION_1_11_OR_HIGHER:
+    if torch_version_ge(1, 11):
         out3 = out3H.mH
     else:
         out3 = out3H.transpose(-1, -2)
@@ -238,7 +233,10 @@ def _torch_linalg_svdvals(input: Tensor) -> Tensor:
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    if _TORCH_VERSION_1_10_OR_HIGHER:
+    if TYPE_CHECKING:
+        # TODO: remove this branch when kornia relies on torch >= 1.10
+        out: Tensor
+    elif torch_version_ge(1, 10):
         out = torch.linalg.svdvals(input.to(dtype))
     else:
         # TODO: remove this branch when kornia relies on torch >= 1.10
@@ -258,20 +256,7 @@ def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
     else:
         dtype = torch.float64
 
-    # Check for singular matrices using determinant to avoid LinAlgError in JIT
-    A_cast = A.to(dtype)
-    det = torch.linalg.det(A_cast)
-    is_singular = torch.abs(det) < 1e-10
-
-    # Use safe_solve_with_mask for singular matrices, regular solve otherwise
-    if is_singular.any():
-        sol, _, valid_mask = safe_solve_with_mask(B, A)
-        out = sol.clone()
-        if not valid_mask.all():
-            out[~valid_mask] = 0.0
-        out = out.to(dtype)
-    else:
-        out = torch.linalg.solve(A_cast, B.to(dtype))
+    out = torch.linalg.solve(A.to(dtype), B.to(dtype))
 
     # cast back to the input dtype
     return out.to(A.dtype)
@@ -282,21 +267,10 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
 
     Avoids crashing because of singular matrix input and outputs the mask of valid solution.
     """
-    if not _TORCH_VERSION_1_10_OR_HIGHER:
-        # For older PyTorch versions, use determinant check to avoid JIT issues
-        solve_dtype = torch.float64 if not is_mps_tensor_safe(A) else torch.float32
-        A_cast = A.to(solve_dtype)
-        det = torch.linalg.det(A_cast)
-        is_singular = torch.abs(det) < 1e-10
-
-        if is_singular.any():
-            # If singular, return zeros
-            sol = torch.zeros_like(B)
-        else:
-            sol = torch.linalg.solve(A_cast, B.to(solve_dtype))
-            sol = sol.to(B.dtype)
+    if not torch_version_ge(1, 10):
+        sol = _torch_solve_cast(A, B)
+        warnings.warn("PyTorch version < 1.10, solve validness mask maybe not correct", RuntimeWarning, stacklevel=1)
         return sol, sol, torch.ones(len(A), dtype=torch.bool, device=A.device)
-
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
     if not isinstance(B, Tensor):
         raise AssertionError(f"B must be Tensor. Got: {type(B)}.")
@@ -304,19 +278,27 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    if _TORCH_VERSION_1_13_OR_HIGHER:
+    if TYPE_CHECKING:
+        # TODO: remove this branch when kornia relies on torch >= 1.13
+        A_LU: Tensor
+        pivots: Tensor
+        info: Tensor
+    elif torch_version_ge(1, 13):
         A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
     else:
         # TODO: remove this branch when kornia relies on torch >= 1.13
         A_LU, pivots, info = torch.lu(A.to(dtype), True, get_infos=True)
 
-    valid_mask = info == 0
+    valid_mask: Tensor = info == 0
     n_dim_B = len(B.shape)
     n_dim_A = len(A.shape)
     if n_dim_A - n_dim_B == 1:
         B = B.unsqueeze(-1)
 
-    if _TORCH_VERSION_1_13_OR_HIGHER:
+    if TYPE_CHECKING:
+        # TODO: remove this branch when kornia relies on torch >= 1.13
+        X: Tensor
+    elif torch_version_ge(1, 13):
         X = torch.linalg.lu_solve(A_LU, pivots, B.to(dtype))
     else:
         # TODO: remove this branch when kornia relies on torch >= 1.13
