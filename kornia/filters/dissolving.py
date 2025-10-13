@@ -129,6 +129,9 @@ class StableDiffusionDissolving(ImageModule):
         StableDiffusionPipeline = diffusers.StableDiffusionPipeline
         DDIMScheduler = diffusers.DDIMScheduler
 
+        # Filter out arguments that are not supported by all component models
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k != "offload_state_dict"}
+
         # Load the scheduler and model pipeline from diffusers library
         scheduler = DDIMScheduler(  # type:ignore
             beta_start=0.00085,
@@ -138,11 +141,6 @@ class StableDiffusionDissolving(ImageModule):
             set_alpha_to_one=False,
             steps_offset=1,
         )
-
-        # Filter out unsupported arguments to avoid CLIPTextModel initialization errors
-        filtered_kwargs = kwargs.copy()
-        # Remove offload_state_dict if it exists, as it's not supported in older transformers versions
-        filtered_kwargs.pop("offload_state_dict", None)
 
         if version == "1.4":
             self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
