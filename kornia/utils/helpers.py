@@ -302,12 +302,7 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    if TYPE_CHECKING:
-        # TODO: remove this branch when kornia relies on torch >= 1.13
-        A_LU: Tensor
-        pivots: Tensor
-        info: Tensor
-    elif torch_version_ge(1, 13):
+    if torch_version_ge(1, 13):
         A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
     else:
         # TODO: remove this branch when kornia relies on torch >= 1.13
@@ -319,10 +314,7 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     if n_dim_A - n_dim_B == 1:
         B = B.unsqueeze(-1)
 
-    if TYPE_CHECKING:
-        # TODO: remove this branch when kornia relies on torch >= 1.13
-        X: Tensor
-    elif torch_version_ge(1, 13):
+    if torch_version_ge(1, 13):
         X = torch.linalg.lu_solve(A_LU, pivots, B.to(dtype))
     else:
         # TODO: remove this branch when kornia relies on torch >= 1.13
