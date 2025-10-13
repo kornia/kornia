@@ -139,17 +139,22 @@ class StableDiffusionDissolving(ImageModule):
             steps_offset=1,
         )
 
+        # Filter out unsupported arguments to avoid CLIPTextModel initialization errors
+        filtered_kwargs = kwargs.copy()
+        # Remove offload_state_dict if it exists, as it's not supported in older transformers versions
+        filtered_kwargs.pop("offload_state_dict", None)
+
         if version == "1.4":
             self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
-                "CompVis/stable-diffusion-v1-4", scheduler=scheduler, **kwargs
+                "CompVis/stable-diffusion-v1-4", scheduler=scheduler, **filtered_kwargs
             )
         elif version == "1.5":
             self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
-                "runwayml/stable-diffusion-v1-5", scheduler=scheduler, **kwargs
+                "runwayml/stable-diffusion-v1-5", scheduler=scheduler, **filtered_kwargs
             )
         elif version == "2.1":
             self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
-                "stabilityai/stable-diffusion-2-1", scheduler=scheduler, **kwargs
+                "stabilityai/stable-diffusion-2-1", scheduler=scheduler, **filtered_kwargs
             )
         else:
             raise NotImplementedError
