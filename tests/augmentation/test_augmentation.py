@@ -3527,6 +3527,44 @@ class TestRandomCrop(BaseTester):
 
         self.assert_close(out, op2(img, op1._params))
 
+    def test_scaling_without_padding(self, device, dtype):
+        torch.manual_seed(0)
+        inp = torch.arange(16.0, device=device, dtype=dtype).reshape(1, 1, 4, 4)
+        rc = RandomCrop(
+            size=(8, 8),
+            pad_if_needed=False,
+            align_corners=True,
+            p=1.0,
+            cropping_mode="resample",
+        )
+
+        out = rc(inp)
+        assert out.shape[-2:] == (8, 8)
+
+        transform = rc.transform_matrix
+        expected_scale = torch.tensor(2.0, device=device, dtype=dtype)
+        self.assert_close(transform[0, 0, 0], expected_scale)
+        self.assert_close(transform[0, 1, 1], expected_scale)
+
+    def test_scaling_with_padding(self, device, dtype):
+        torch.manual_seed(0)
+        inp = torch.arange(16.0, device=device, dtype=dtype).reshape(1, 1, 4, 4)
+        rc = RandomCrop(
+            size=(8, 8),
+            pad_if_needed=True,
+            align_corners=True,
+            p=1.0,
+            cropping_mode="resample",
+        )
+
+        out = rc(inp)
+        assert out.shape[-2:] == (8, 8)
+
+        transform = rc.transform_matrix
+        expected_scale = torch.tensor(1.0, device=device, dtype=dtype)
+        self.assert_close(transform[0, 0, 0], expected_scale)
+        self.assert_close(transform[0, 1, 1], expected_scale)
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
