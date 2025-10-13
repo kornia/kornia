@@ -139,6 +139,9 @@ class StableDiffusionDissolving(ImageModule):
             steps_offset=1,
         )
 
+        # Filter out arguments that are not supported by all component models
+        kwargs.pop("offload_state_dict", None)
+
         if version == "1.4":
             self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
                 "CompVis/stable-diffusion-v1-4", scheduler=scheduler, **kwargs
