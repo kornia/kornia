@@ -169,7 +169,6 @@ class RandomCrop(GeometricAugmentationBase2D):
             if not flags.get("pad_if_needed", False):
                 h, w = input.shape[-2:]
                 h_out, w_out = flags["size"]
-
                 if h_out > h or w_out > w:
                     transform[:, 0, 0] *= w_out / w
                     transform[:, 1, 1] *= h_out / h
