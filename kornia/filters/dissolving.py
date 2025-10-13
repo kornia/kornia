@@ -129,9 +129,6 @@ class StableDiffusionDissolving(ImageModule):
         StableDiffusionPipeline = diffusers.StableDiffusionPipeline
         DDIMScheduler = diffusers.DDIMScheduler
 
-        # Filter out arguments that are not supported by all component models
-        filtered_kwargs = {k: v for k, v in kwargs.items() if k != "offload_state_dict"}
-
         # Load the scheduler and model pipeline from diffusers library
         scheduler = DDIMScheduler(  # type:ignore
             beta_start=0.00085,
@@ -144,15 +141,15 @@ class StableDiffusionDissolving(ImageModule):
 
         if version == "1.4":
             self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
-                "CompVis/stable-diffusion-v1-4", scheduler=scheduler, **filtered_kwargs
+                "CompVis/stable-diffusion-v1-4", scheduler=scheduler, **kwargs
             )
         elif version == "1.5":
             self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
-                "runwayml/stable-diffusion-v1-5", scheduler=scheduler, **filtered_kwargs
+                "runwayml/stable-diffusion-v1-5", scheduler=scheduler, **kwargs
             )
         elif version == "2.1":
             self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
-                "stabilityai/stable-diffusion-2-1", scheduler=scheduler, **filtered_kwargs
+                "stabilityai/stable-diffusion-2-1", scheduler=scheduler, **kwargs
             )
         else:
             raise NotImplementedError
