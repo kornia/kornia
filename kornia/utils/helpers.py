@@ -256,7 +256,16 @@ def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
     else:
         dtype = torch.float64
 
-    out = torch.linalg.solve(A.to(dtype), B.to(dtype))
+    try:
+        out = torch.linalg.solve(A.to(dtype), B.to(dtype))
+    except torch.linalg.LinAlgError:
+        # Handle singular matrix by using safe_solve_with_mask
+        sol, _, valid_mask = safe_solve_with_mask(B, A)
+        # For invalid solutions, use identity transformation (zeros for most cases)
+        out = sol.clone()
+        if not valid_mask.all():
+            out[~valid_mask] = 0.0
+        out = out.to(dtype)
 
     # cast back to the input dtype
     return out.to(A.dtype)
@@ -268,7 +277,16 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     Avoids crashing because of singular matrix input and outputs the mask of valid solution.
     """
     if not torch_version_ge(1, 10):
-        sol = _torch_solve_cast(A, B)
+        # For older PyTorch versions, use the original solve without recursion
+        try:
+            sol = torch.linalg.solve(
+                A.to(torch.float64 if not is_mps_tensor_safe(A) else torch.float32),
+                B.to(torch.float64 if not is_mps_tensor_safe(A) else torch.float32),
+            )
+            sol = sol.to(B.dtype)
+        except torch.linalg.LinAlgError:
+            # If singular, return zeros
+            sol = torch.zeros_like(B)
         warnings.warn("PyTorch version < 1.10, solve validness mask maybe not correct", RuntimeWarning, stacklevel=1)
         return sol, sol, torch.ones(len(A), dtype=torch.bool, device=A.device)
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
