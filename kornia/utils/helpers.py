@@ -281,16 +281,18 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     Avoids crashing because of singular matrix input and outputs the mask of valid solution.
     """
     if not torch_version_ge(1, 10):
-        # For older PyTorch versions, use the original solve without recursion
-        try:
-            sol = torch.linalg.solve(
-                A.to(torch.float64 if not is_mps_tensor_safe(A) else torch.float32),
-                B.to(torch.float64 if not is_mps_tensor_safe(A) else torch.float32),
-            )
-            sol = sol.to(B.dtype)
-        except torch.linalg.LinAlgError:
+        # For older PyTorch versions, use determinant check to avoid JIT issues
+        dtype = torch.float64 if not is_mps_tensor_safe(A) else torch.float32
+        A_cast = A.to(dtype)
+        det = torch.linalg.det(A_cast)
+        is_singular = torch.abs(det) < 1e-10
+
+        if is_singular.any():
             # If singular, return zeros
             sol = torch.zeros_like(B)
+        else:
+            sol = torch.linalg.solve(A_cast, B.to(dtype))
+            sol = sol.to(B.dtype)
         warnings.warn("PyTorch version < 1.10, solve validness mask maybe not correct", RuntimeWarning, stacklevel=1)
         return sol, sol, torch.ones(len(A), dtype=torch.bool, device=A.device)
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
