@@ -30,6 +30,11 @@ from torch.linalg import inv_ex
 from kornia.core import Tensor
 from kornia.utils._compat import torch_version_ge
 
+# Pre-compute version checks at module import time for JIT compatibility
+_TORCH_VERSION_1_10_OR_HIGHER = torch_version_ge(1, 10)
+_TORCH_VERSION_1_11_OR_HIGHER = torch_version_ge(1, 11)
+_TORCH_VERSION_1_13_OR_HIGHER = torch_version_ge(1, 13)
+
 
 def xla_is_available() -> bool:
     """Return whether `torch_xla` is available in the system."""
@@ -211,7 +216,7 @@ def _torch_svd_cast(input: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         dtype = torch.float32
 
     out1, out2, out3H = torch.linalg.svd(input.to(dtype))
-    if torch_version_ge(1, 11):
+    if _TORCH_VERSION_1_11_OR_HIGHER:
         out3 = out3H.mH
     else:
         out3 = out3H.transpose(-1, -2)
@@ -233,10 +238,7 @@ def _torch_linalg_svdvals(input: Tensor) -> Tensor:
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    if TYPE_CHECKING:
-        # TODO: remove this branch when kornia relies on torch >= 1.10
-        out: Tensor
-    elif torch_version_ge(1, 10):
+    if _TORCH_VERSION_1_10_OR_HIGHER:
         out = torch.linalg.svdvals(input.to(dtype))
     else:
         # TODO: remove this branch when kornia relies on torch >= 1.10
@@ -280,7 +282,7 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
 
     Avoids crashing because of singular matrix input and outputs the mask of valid solution.
     """
-    if not torch_version_ge(1, 10):
+    if not _TORCH_VERSION_1_10_OR_HIGHER:
         # For older PyTorch versions, use determinant check to avoid JIT issues
         solve_dtype = torch.float64 if not is_mps_tensor_safe(A) else torch.float32
         A_cast = A.to(solve_dtype)
@@ -293,8 +295,8 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         else:
             sol = torch.linalg.solve(A_cast, B.to(solve_dtype))
             sol = sol.to(B.dtype)
-        warnings.warn("PyTorch version < 1.10, solve validness mask maybe not correct", RuntimeWarning, stacklevel=1)
         return sol, sol, torch.ones(len(A), dtype=torch.bool, device=A.device)
+
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
     if not isinstance(B, Tensor):
         raise AssertionError(f"B must be Tensor. Got: {type(B)}.")
@@ -302,19 +304,19 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    if torch_version_ge(1, 13):
+    if _TORCH_VERSION_1_13_OR_HIGHER:
         A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
     else:
         # TODO: remove this branch when kornia relies on torch >= 1.13
         A_LU, pivots, info = torch.lu(A.to(dtype), True, get_infos=True)
 
-    valid_mask: Tensor = info == 0
+    valid_mask = info == 0
     n_dim_B = len(B.shape)
     n_dim_A = len(A.shape)
     if n_dim_A - n_dim_B == 1:
         B = B.unsqueeze(-1)
 
-    if torch_version_ge(1, 13):
+    if _TORCH_VERSION_1_13_OR_HIGHER:
         X = torch.linalg.lu_solve(A_LU, pivots, B.to(dtype))
     else:
         # TODO: remove this branch when kornia relies on torch >= 1.13

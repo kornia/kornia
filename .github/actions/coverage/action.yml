@@ -49,7 +49,7 @@ runs:
         ref: ${{ inputs.ref }}
 
     - name: Run CPU tests coverage ${{ inputs.pytorch-dtype }}
-      continue-on-error: ${{ inputs.continue-on-error }}
+      continue-on-error: ${{ inputs.continue-on-error == 'true' }}
       shell: bash -l {0}
       run: |
         coverage erase
