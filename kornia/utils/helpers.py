@@ -256,16 +256,20 @@ def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
     else:
         dtype = torch.float64
 
-    try:
-        out = torch.linalg.solve(A.to(dtype), B.to(dtype))
-    except torch.linalg.LinAlgError:
-        # Handle singular matrix by using safe_solve_with_mask
+    # Check for singular matrices using determinant to avoid LinAlgError in JIT
+    A_cast = A.to(dtype)
+    det = torch.linalg.det(A_cast)
+    is_singular = torch.abs(det) < 1e-10
+
+    # Use safe_solve_with_mask for singular matrices, regular solve otherwise
+    if is_singular.any():
         sol, _, valid_mask = safe_solve_with_mask(B, A)
-        # For invalid solutions, use identity transformation (zeros for most cases)
         out = sol.clone()
         if not valid_mask.all():
             out[~valid_mask] = 0.0
         out = out.to(dtype)
+    else:
+        out = torch.linalg.solve(A_cast, B.to(dtype))
 
     # cast back to the input dtype
     return out.to(A.dtype)
