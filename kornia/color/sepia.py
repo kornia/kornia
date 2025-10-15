@@ -52,8 +52,8 @@ def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Te
     sepia_out = torch.einsum("ij, ...jhw -> ...ihw", sepia_matrix, input)
 
     if rescale:
-       max_values = sepia_out.amax(dim=(-2, -1), keepdim=True)
-       sepia_out = sepia_out / (max_values + eps)
+        max_values = sepia_out.amax(dim=(-2, -1), keepdim=True)
+        sepia_out = sepia_out / (max_values + eps)
     return sepia_out.contiguous()
 
 
