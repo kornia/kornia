@@ -98,12 +98,13 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Ten
         rgb_weights = rgb_weights.to(image)
 
     # unpack the color image channels with RGB order
-    r: Tensor = image[..., 0:1, :, :]
-    g: Tensor = image[..., 1:2, :, :]
-    b: Tensor = image[..., 2:3, :, :]
+    r, g, b = image.unbind(dim=-3)
 
     w_r, w_g, w_b = rgb_weights.unbind()
-    return w_r * r + w_g * g + w_b * b
+    out = w_r * r
+    out = torch.addcmul(out, w_g, g)
+    out = torch.addcmul(out, w_b, b)
+    return out.unsqueeze(-3)
 
 
 def bgr_to_grayscale(image: Tensor) -> Tensor:
