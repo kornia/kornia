@@ -59,6 +59,7 @@ def rgb_to_xyz(image: Tensor) -> Tensor:
 
     return torch.einsum("ij, ...jhw -> ...ihw", xyz_from_rgb, image)
 
+
 def xyz_to_rgb(image: Tensor) -> Tensor:
     r"""Convert a XYZ image to RGB.
 
