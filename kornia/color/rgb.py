@@ -17,12 +17,12 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, Union, cast, Optional
+from typing import ClassVar, Optional, Union, cast
 
 import torch
 
 from kornia.core import ImageModule as Module
-from kornia.core import Tensor, normalize, as_tensor
+from kornia.core import Tensor, as_tensor, normalize
 from kornia.core.check import KORNIA_CHECK_IS_COLOR
 
 
@@ -146,7 +146,7 @@ def bgr_to_rgba(image: Tensor, alpha_val: Union[float, Tensor]) -> Tensor:
     return rgb_to_rgba(x_rgb, alpha_val)
 
 
-def rgba_to_rgb(image: Tensor,background_color: Optional[Tensor] = None) -> Tensor:
+def rgba_to_rgb(image: Tensor, background_color: Optional[Tensor] = None) -> Tensor:
     r"""Convert an image from RGBA to RGB using alpha compositing.
 
     The function composites the input RGBA image over a background color. If no
@@ -178,26 +178,22 @@ def rgba_to_rgb(image: Tensor,background_color: Optional[Tensor] = None) -> Tens
     image_rgb = image[..., :3, :, :]
     alpha = image[..., 3:4, :, :]
 
-
     if background_color is None:
         background_rgb = torch.ones_like(image_rgb)
+    elif isinstance(background_color, (tuple, list)):
+        if len(background_color) != 3:
+            raise ValueError("background_color as a list/tuple must have 3 elements (R, G, B).")
+        background_rgb = as_tensor(background_color, device=image.device, dtype=image.dtype).view(1, 3, 1, 1)
+
+    elif isinstance(background_color, torch.Tensor):
+        if background_color.shape[-3] != 3:
+            raise ValueError(
+                f"background_color tensor must have 3 channels in dimension -3. Got shape {background_color.shape}"
+            )
+        background_rgb = background_color
+
     else:
-        if isinstance(background_color, (tuple, list)):
-
-            if len(background_color) != 3:
-                raise ValueError("background_color as a list/tuple must have 3 elements (R, G, B).")
-            background_rgb = as_tensor(background_color, device=image.device, dtype=image.dtype).view(1, 3, 1, 1)
-        
-        elif isinstance(background_color, torch.Tensor):
-
-            if background_color.shape[-3] != 3:
-                raise ValueError(
-                    f"background_color tensor must have 3 channels in dimension -3. Got shape {background_color.shape}"
-                )
-            background_rgb = background_color
-
-        else:
-            raise TypeError(f"Unsupported type for background_color: {type(background_color)}")
+        raise TypeError(f"Unsupported type for background_color: {type(background_color)}")
 
     blended_rgb = image_rgb * alpha + background_rgb * (1.0 - alpha)
 
