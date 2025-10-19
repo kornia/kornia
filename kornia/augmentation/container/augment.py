@@ -517,7 +517,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             in_data_keys: Optional[List[DataKey]]
             if len(inputs) == 1 and isinstance(inputs[0], dict):
-                original_keys, in_data_keys, inputs, invalid_data = self._preproc_dict_data(inputs[0])
+                original_keys, in_data_keys, inputs, _invalid_data = self._preproc_dict_data(inputs[0])
             else:
                 in_data_keys = kwargs.get("data_keys", self.data_keys)
             data_keys = self.transform_op.preproc_datakeys(in_data_keys)

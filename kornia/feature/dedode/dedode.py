@@ -104,7 +104,7 @@ class DeDoDe(Module):
         """
         if apply_imagenet_normalization:
             images = self.normalizer(images)
-        B, C, H, W = images.shape
+        _B, _C, H, W = images.shape
         h, w = images.shape[2:]
         if pad_if_not_divisible:
             pd_h = 14 - h % 14 if h % 14 > 0 else 0
@@ -142,7 +142,7 @@ class DeDoDe(Module):
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
         self.train(False)
-        B, C, H, W = images.shape
+        B, _C, H, W = images.shape
         if pad_if_not_divisible:
             h, w = images.shape[2:]
             pd_h = 14 - h % 14 if h % 14 > 0 else 0
@@ -184,7 +184,7 @@ class DeDoDe(Module):
 
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
-        B, C, H, W = images.shape
+        _B, _C, H, W = images.shape
         if keypoints is not None:
             KORNIA_CHECK_SHAPE(keypoints, ["B", "N", "2"])
         if apply_imagenet_normalization:

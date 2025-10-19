@@ -55,7 +55,7 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     max_rgb, argmax_rgb = image.max(-3)
-    min_rgb, argmin_rgb = image.min(-3)
+    min_rgb, _argmin_rgb = image.min(-3)
     deltac = max_rgb - min_rgb
 
     v = max_rgb

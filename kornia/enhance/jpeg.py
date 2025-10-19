@@ -108,7 +108,7 @@ def _unpatchify_8x8(input: Tensor, H: int, W: int) -> Tensor:
 
     """
     # Get input shape
-    B, N = input.shape[:2]
+    B, _N = input.shape[:2]
     # Unpatch to [B, H, W]
     output: Tensor = input.view(B, H // 8, W // 8, 8, 8).permute(0, 1, 3, 2, 4).reshape(B, H, W)
     return output
