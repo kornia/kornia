@@ -619,7 +619,7 @@ class TestRandomTransplantation(BaseTester):
         with pytest.raises(Exception, match="excluded_labels must be a 1-dimensional"):
             RandomTransplantation(p=1.0, excluded_labels=torch.tensor([[0, 1]], device=device, dtype=dtype))
 
-        with pytest.raises(Exception, match="Length of keys.*does not match number of inputs"):
+        with pytest.raises(Exception, match=r"Length of keys.*does not match number of inputs"):
             f = RandomTransplantation(p=1.0)
             f(image, mask, data_keys=["input", "mask", "mask"])
 

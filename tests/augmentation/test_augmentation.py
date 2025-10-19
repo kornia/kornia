@@ -4035,13 +4035,13 @@ class TestRandomSaltAndPepperNoise(BaseTester):
             RandomSaltAndPepperNoise(salt_vs_pepper=[0.4, 0.6])
         with pytest.raises(
             ValueError,
-            match="The length of salt_vs_pepper must be greater than 0 \
+            match=r"The length of salt_vs_pepper must be greater than 0 \
                         and less than or equal to 2, and it should be a tuple.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.1, 0.2, 0.3))
         with pytest.raises(
             Exception,
-            match="False not true.\nSalt_vs_pepper values must be between 0 and 1. \
+            match=r"False not true.\nSalt_vs_pepper values must be between 0 and 1. \
                         Recommended value 0.5.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.4, 3))
@@ -4049,13 +4049,13 @@ class TestRandomSaltAndPepperNoise(BaseTester):
             RandomSaltAndPepperNoise(amount=[0.01, 0.06])
         with pytest.raises(
             ValueError,
-            match="The length of amount must be greater than 0 \
+            match=r"The length of amount must be greater than 0 \
                         and less than or equal to 2, and it should be a tuple.",
         ):
             RandomSaltAndPepperNoise(amount=())
         with pytest.raises(
             Exception,
-            match="False not true.\namount of noise values must be between 0 and 1. \
+            match=r"False not true.\namount of noise values must be between 0 and 1. \
                         Recommended values less than 0.2.",
         ):
             RandomSaltAndPepperNoise(amount=(0.05, 3))
@@ -4132,17 +4132,17 @@ class TestRandomGaussianIllumination(BaseTester):
 
         with pytest.raises(
             Exception,
-            match="gain values must be between 0 and 1. Recommended values less than 0.2.",
+            match=r"gain values must be between 0 and 1. Recommended values less than 0.2.",
         ):
             RandomGaussianIllumination(gain=(0.01, 2))
 
-        with pytest.raises(Exception, match="sigma of gaussian value must be between 0 and 1."):
+        with pytest.raises(Exception, match=r"sigma of gaussian value must be between 0 and 1."):
             RandomGaussianIllumination(sigma=(0.01, 2))
 
-        with pytest.raises(Exception, match="center of gaussian value must be between 0 and 1."):
+        with pytest.raises(Exception, match=r"center of gaussian value must be between 0 and 1."):
             RandomGaussianIllumination(center=(0.01, 2))
 
-        with pytest.raises(Exception, match="sign of gaussian value must be between -1 and 1."):
+        with pytest.raises(Exception, match=r"sign of gaussian value must be between -1 and 1."):
             RandomGaussianIllumination(sign=(0.01, 2))
 
     @pytest.mark.parametrize("channel_shape, batch_shape", [(1, 1), (3, 2), (5, 3)])
@@ -4212,11 +4212,11 @@ class TestRandomLinearIllumination(BaseTester):
 
         with pytest.raises(
             Exception,
-            match="gain values must be between 0 and 1. Recommended values less than 0.2.",
+            match=r"gain values must be between 0 and 1. Recommended values less than 0.2.",
         ):
             RandomLinearIllumination(gain=(0.01, 2))
 
-        with pytest.raises(Exception, match="sign of linear value must be between -1 and 1."):
+        with pytest.raises(Exception, match=r"sign of linear value must be between -1 and 1."):
             RandomLinearIllumination(sign=(0.01, 2))
 
     @pytest.mark.parametrize("channel_shape, batch_shape", [(1, 1), (3, 2), (5, 3)])
@@ -4278,11 +4278,11 @@ class TestRandomLinearCornerIllumination(BaseTester):
 
         with pytest.raises(
             Exception,
-            match="gain values must be between 0 and 1. Recommended values less than 0.2.",
+            match=r"gain values must be between 0 and 1. Recommended values less than 0.2.",
         ):
             RandomLinearCornerIllumination(gain=(0.01, 2))
 
-        with pytest.raises(Exception, match="sign of linear value must be between -1 and 1."):
+        with pytest.raises(Exception, match=r"sign of linear value must be between -1 and 1."):
             RandomLinearCornerIllumination(sign=(0.01, 2))
 
     @pytest.mark.parametrize("channel_shape, batch_shape", [(1, 1), (3, 2), (5, 3)])
@@ -4339,7 +4339,7 @@ class TestRandomChannelDropout(BaseTester):
         input_tensor = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
         with pytest.raises(
             Exception,
-            match="Invalid value in `num_drop_channels`. Cannot be greater than the number of channels of `input`.",
+            match=r"Invalid value in `num_drop_channels`. Cannot be greater than the number of channels of `input`.",
         ):
             RandomChannelDropout(num_drop_channels=num_drop_channels, p=1.0)(input_tensor)
 
