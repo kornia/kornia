@@ -396,9 +396,10 @@ class TestAdalam(BaseTester):
         adalam_config = {"device": device}
         with torch.no_grad():
             _dists, _idxs = match_adalam(
-                data_dev["descs1"], data_dev["descs2"][:1], data_dev["lafs1"], data_dev["lafs2"][:, :1]
-            )
-            _dists, _idxs = match_adalam(
+                data_dev["descs1"][:4],
+                data_dev["descs2"][:4],
+                data_dev["lafs1"][:, :4],
+                data_dev["lafs2"][:, :4],
                 config=adalam_config,
             )
 
