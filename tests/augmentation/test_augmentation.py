@@ -4035,28 +4035,28 @@ class TestRandomSaltAndPepperNoise(BaseTester):
             RandomSaltAndPepperNoise(salt_vs_pepper=[0.4, 0.6])
         with pytest.raises(
             ValueError,
-            match=r"The length of salt_vs_pepper must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple.",
+            match=r"The length of salt_vs_pepper must be greater than 0\s+and less than or equal to 2, "
+            r"and it should be a tuple\.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.1, 0.2, 0.3))
         with pytest.raises(
             Exception,
-            match=r"False not true.\nSalt_vs_pepper values must be between 0 and 1. \
-                        Recommended value 0.5.",
+            match=r"False not true\.\s*Salt_vs_pepper values must be between 0 and 1\.\s+"
+            r"Recommended value 0\.5\.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.4, 3))
         with pytest.raises(ValueError, match="amount must be a tuple or a float"):
             RandomSaltAndPepperNoise(amount=[0.01, 0.06])
         with pytest.raises(
             ValueError,
-            match=r"The length of amount must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple.",
+            match=r"The length of amount must be greater than 0\s+and less than or equal to 2, "
+            r"and it should be a tuple\.",
         ):
             RandomSaltAndPepperNoise(amount=())
         with pytest.raises(
             Exception,
-            match=r"False not true.\namount of noise values must be between 0 and 1. \
-                        Recommended values less than 0.2.",
+            match=r"False not true\.\s*amount of noise values must be between 0 and 1\.\s+"
+            r"Recommended values less than 0\.2\.",
         ):
             RandomSaltAndPepperNoise(amount=(0.05, 3))
 
