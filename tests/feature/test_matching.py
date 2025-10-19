@@ -399,7 +399,7 @@ class TestAdalam(BaseTester):
                 data_dev["descs1"], data_dev["descs2"][:1], data_dev["lafs1"], data_dev["lafs2"][:, :1]
             )
             _dists, _idxs = match_adalam(
-                config=adalam_config,
+                data_dev["descs1"], data_dev["descs2"], data_dev["lafs1"], data_dev["lafs2"], config=adalam_config
             )
 
     @pytest.mark.slow
