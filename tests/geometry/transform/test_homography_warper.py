@@ -267,7 +267,7 @@ class TestHomographyWarper(BaseTester):
         patch_src = torch.rand(batch_shape, device=device, dtype=dtype)
 
         # create base homography
-        batch_size, _, height, width = patch_src.shape
+        _batch_size, _, height, width = patch_src.shape
         dst_homo_src = eye_like(eye_size, patch_src)
 
         # instantiate warper

@@ -27,7 +27,7 @@ class TestOtsuThreshold(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         op = OtsuThreshold()
-        thresh_result, thresh_value = op(img, nbins=4)
+        thresh_result, _thresh_value = op(img, nbins=4)
         assert thresh_result.shape == img.shape
 
     @pytest.mark.parametrize("input_shape", [(3, 3), (1, 3, 3), (1, 1, 3, 3), (2, 1, 1, 3, 3)])
@@ -41,8 +41,8 @@ class TestOtsuThreshold(BaseTester):
     def test_otsu_threshold_consistency(self, device, dtype):
         torch.manual_seed(0)
         img = torch.rand(1, 4, 6, 1, device=device, dtype=dtype)
-        out_func_tensor, out_func_value = otsu_threshold(img, nbins=3, return_mask=False)
-        out_class_tensor, out_class_value = OtsuThreshold()(img, nbins=3)
+        out_func_tensor, _out_func_value = otsu_threshold(img, nbins=3, return_mask=False)
+        out_class_tensor, _out_class_value = OtsuThreshold()(img, nbins=3)
         assert_close(out_func_tensor, out_class_tensor)
 
     def test_invalid_dim(self, device, dtype):
@@ -61,8 +61,8 @@ class TestOtsuThreshold(BaseTester):
         input = differentiable_input.clone().detach().requires_grad_(False)
 
         op = OtsuThreshold()
-        diff_thresh_result, diff_thresh_value = op(input, slow_and_differentiable=True)
-        thresh_result, thresh_value = op(input)
+        diff_thresh_result, _diff_thresh_value = op(input, slow_and_differentiable=True)
+        thresh_result, _thresh_value = op(input)
         self.assert_close(diff_thresh_result, thresh_result)
 
     def test_threshold_result(self, device, dtype):
@@ -75,7 +75,7 @@ class TestOtsuThreshold(BaseTester):
         )
 
         op = OtsuThreshold()
-        thresh_result, thresh_value = op(input)
+        thresh_result, _thresh_value = op(input)
         self.assert_close(thresh_result, expected)
 
     def test_gradual_threshold(self, device, dtype):
@@ -84,7 +84,7 @@ class TestOtsuThreshold(BaseTester):
         expected = torch.tensor([[0, 0, 0], [0, 50, 60], [70, 80, 90]], device=device, dtype=dtype)
 
         op = OtsuThreshold()
-        thresh_result, thresh_value = op(input)
+        thresh_result, _thresh_value = op(input)
         self.assert_close(thresh_result, expected)
 
     def test_uniform_result(self, device, dtype):
@@ -97,7 +97,7 @@ class TestOtsuThreshold(BaseTester):
         )
 
         op = OtsuThreshold()
-        thresh_result, thresh_value = op(input)
+        thresh_result, _thresh_value = op(input)
         self.assert_close(thresh_result, expected)
 
 
@@ -106,12 +106,12 @@ def test_mask(device, dtype):
 
     expected = torch.tensor([[0, 0, 0], [0, 1, 1], [1, 1, 1]], device=device, dtype=torch.bool)
 
-    thresh_result, thresh_value = otsu_threshold(input, return_mask=True)
+    thresh_result, _thresh_value = otsu_threshold(input, return_mask=True)
     assert_close(thresh_result, expected)
 
 
 @pytest.mark.parametrize("shape", [(1, 3, 5, 5), (2, 1, 10, 10)])
 def test_otsu_threshold_basic(shape, device, dtype):
     img = torch.rand(shape, device=device, dtype=dtype)
-    thresh_result, thresh_value = otsu_threshold(img)
+    thresh_result, _thresh_value = otsu_threshold(img)
     assert thresh_result.shape == img.shape

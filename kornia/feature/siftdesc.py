@@ -312,7 +312,7 @@ class DenseSIFTDescriptor(Module):
     def forward(self, input: Tensor) -> Tensor:
         KORNIA_CHECK_SHAPE(input, ["B", "1", "H", "W"])
 
-        B, CH, W, H = input.size()
+        _B, _CH, _W, _H = input.size()
         self.bin_pooling_kernel = self.bin_pooling_kernel.to(input.dtype).to(input.device)
         self.PoolingConv = self.PoolingConv.to(input.dtype).to(input.device)
         grads = spatial_gradient(input, "diff")

@@ -286,7 +286,7 @@ def match_fginn(
     candidates_xy = xy2[idxs_in_2]
     kdist = torch.norm(candidates_xy - candidates_xy[0:1], p=2, dim=2)
     fginn_vals = vals_cand[:, 1:] + (kdist[:, 1:] < spatial_th).to(dtype) * BIG_NUMBER
-    fginn_vals_best, fginn_idxs_best = fginn_vals.min(dim=1)
+    fginn_vals_best, _fginn_idxs_best = fginn_vals.min(dim=1)
 
     # orig_idxs = idxs_in_2.gather(1, fginn_idxs_best.unsqueeze(1))[0]
     # if you need to know fginn indexes - uncomment
