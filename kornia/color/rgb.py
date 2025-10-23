@@ -154,7 +154,7 @@ def rgba_to_rgb(image: Tensor, background: Union[float, Tensor] = 1.0) -> Tensor
 
     Args:
         image: RGBA Image to be converted to RGB of shape :math:`(*,4,H,W)`.
-        background: Background color for alpha blending. Can be a float (grayscale) 
+        background: Background color for alpha blending. Can be a float (grayscale)
           or a tensor of shape :math:`(*,3,H,W)` or :math:`(3,)`. Default is 1.0 (white).
 
     Returns:
@@ -189,7 +189,7 @@ def rgba_to_rgb(image: Tensor, background: Union[float, Tensor] = 1.0) -> Tensor
         # tensor background
         if not isinstance(background, Tensor):
             raise TypeError(f"background type must be float or Tensor. Got {type(background)}")
-        
+
         # handle different background tensor shapes
         if background.numel() == 1:
             # single value tensor
@@ -225,7 +225,7 @@ def rgba_to_bgr(image: Tensor, background: Union[float, Tensor] = 1.0) -> Tensor
 
     Args:
         image: RGBA Image to be converted to BGR of shape :math:`(*,4,H,W)`.
-        background: Background color for alpha blending. Can be a float (grayscale) 
+        background: Background color for alpha blending. Can be a float (grayscale)
           or a tensor of shape :math:`(*,3,H,W)` or :math:`(3,)`. Default is 1.0 (white).
 
     Returns:
@@ -510,7 +510,7 @@ class RgbaToRgb(Module):
     Converts RGBA image to RGB by alpha blending with a background color.
 
     Args:
-        background: Background color for alpha blending. Can be a float (grayscale) 
+        background: Background color for alpha blending. Can be a float (grayscale)
           or a tensor of shape :math:`(3,)`. Default is 1.0 (white).
 
     Returns:
@@ -547,7 +547,7 @@ class RgbaToBgr(Module):
     Converts RGBA image to BGR by alpha blending with a background color.
 
     Args:
-        background: Background color for alpha blending. Can be a float (grayscale) 
+        background: Background color for alpha blending. Can be a float (grayscale)
           or a tensor of shape :math:`(3,)`. Default is 1.0 (white).
 
     Returns:
