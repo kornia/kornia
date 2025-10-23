@@ -146,11 +146,16 @@ def bgr_to_rgba(image: Tensor, alpha_val: Union[float, Tensor]) -> Tensor:
     return rgb_to_rgba(x_rgb, alpha_val)
 
 
-def rgba_to_rgb(image: Tensor) -> Tensor:
+def rgba_to_rgb(image: Tensor, background: Union[float, Tensor] = 1.0) -> Tensor:
     r"""Convert an image from RGBA to RGB.
+
+    Converts RGBA image to RGB by alpha blending with a background color.
+    The formula used is: rgb_new = alpha * rgb_foreground + (1 - alpha) * rgb_background
 
     Args:
         image: RGBA Image to be converted to RGB of shape :math:`(*,4,H,W)`.
+        background: Background color for alpha blending. Can be a float (grayscale) 
+          or a tensor of shape :math:`(*,3,H,W)` or :math:`(3,)`. Default is 1.0 (white).
 
     Returns:
         RGB version of the image with shape :math:`(*,3,H,W)`.
@@ -158,6 +163,11 @@ def rgba_to_rgb(image: Tensor) -> Tensor:
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
         >>> output = rgba_to_rgb(input) # 2x3x4x5
+        >>> # With custom background color
+        >>> output = rgba_to_rgb(input, 0.5) # gray background
+        >>> # With tensor background
+        >>> bg = torch.tensor([1.0, 0.0, 0.0]).view(3, 1, 1)  # red background
+        >>> output = rgba_to_rgb(input, bg)
 
     """
     if not isinstance(image, Tensor):
@@ -169,27 +179,63 @@ def rgba_to_rgb(image: Tensor) -> Tensor:
     # unpack channels
     r, g, b, a = torch.chunk(image, image.shape[-3], dim=-3)
 
-    # compute new channels
-    a_one = torch.tensor(1.0) - a
-    r_new: Tensor = a_one * r + a * r
-    g_new: Tensor = a_one * g + a * g
-    b_new: Tensor = a_one * b + a * b
+    # prepare background
+    if isinstance(background, (int, float)):
+        # scalar background - same for all channels
+        bg_r = torch.full_like(r, float(background))
+        bg_g = torch.full_like(g, float(background))
+        bg_b = torch.full_like(b, float(background))
+    else:
+        # tensor background
+        if not isinstance(background, Tensor):
+            raise TypeError(f"background type must be float or Tensor. Got {type(background)}")
+        
+        # handle different background tensor shapes
+        if background.numel() == 1:
+            # single value tensor
+            bg_val = background.item()
+            bg_r = torch.full_like(r, bg_val)
+            bg_g = torch.full_like(g, bg_val)
+            bg_b = torch.full_like(b, bg_val)
+        elif background.shape[-3:] == (3,) or (len(background.shape) >= 3 and background.shape[-3] == 3):
+            # 3-channel background
+            if len(background.shape) == 1:
+                # shape (3,) - expand to match image dimensions
+                background = background.view(3, 1, 1)
+            bg_r, bg_g, bg_b = torch.chunk(background, 3, dim=-3)
+            # broadcast to match foreground shape if needed
+            bg_r = bg_r.expand_as(r)
+            bg_g = bg_g.expand_as(g)
+            bg_b = bg_b.expand_as(b)
+        else:
+            raise ValueError(f"background tensor must have 1 or 3 channels. Got shape {background.shape}")
+
+    # proper alpha blending: alpha * foreground + (1 - alpha) * background
+    r_new: Tensor = a * r + (1 - a) * bg_r
+    g_new: Tensor = a * g + (1 - a) * bg_g
+    b_new: Tensor = a * b + (1 - a) * bg_b
 
     return torch.cat([r_new, g_new, b_new], dim=-3)
 
 
-def rgba_to_bgr(image: Tensor) -> Tensor:
+def rgba_to_bgr(image: Tensor, background: Union[float, Tensor] = 1.0) -> Tensor:
     r"""Convert an image from RGBA to BGR.
+
+    Converts RGBA image to BGR by alpha blending with a background color.
 
     Args:
         image: RGBA Image to be converted to BGR of shape :math:`(*,4,H,W)`.
+        background: Background color for alpha blending. Can be a float (grayscale) 
+          or a tensor of shape :math:`(*,3,H,W)` or :math:`(3,)`. Default is 1.0 (white).
 
     Returns:
-        RGB version of the image with shape :math:`(*,3,H,W)`.
+        BGR version of the image with shape :math:`(*,3,H,W)`.
 
     Example:
         >>> input = torch.rand(2, 4, 4, 5)
         >>> output = rgba_to_bgr(input) # 2x3x4x5
+        >>> # With custom background
+        >>> output = rgba_to_bgr(input, 0.5) # gray background
 
     """
     if not isinstance(image, Tensor):
@@ -199,7 +245,7 @@ def rgba_to_bgr(image: Tensor) -> Tensor:
         raise ValueError(f"Input size must have a shape of (*, 4, H, W).Got {image.shape}")
 
     # convert to RGB first, then to BGR
-    x_rgb: Tensor = rgba_to_rgb(image)
+    x_rgb: Tensor = rgba_to_rgb(image, background)
     return rgb_to_bgr(x_rgb)
 
 
@@ -461,7 +507,11 @@ class BgrToRgba(Module):
 class RgbaToRgb(Module):
     r"""Convert an image from RGBA to RGB.
 
-    Remove an alpha channel from RGB image.
+    Converts RGBA image to RGB by alpha blending with a background color.
+
+    Args:
+        background: Background color for alpha blending. Can be a float (grayscale) 
+          or a tensor of shape :math:`(3,)`. Default is 1.0 (white).
 
     Returns:
         RGB version of the image.
@@ -474,20 +524,31 @@ class RgbaToRgb(Module):
         >>> input = torch.rand(2, 4, 4, 5)
         >>> rgba = RgbaToRgb()
         >>> output = rgba(input)  # 2x3x4x5
+        >>> # With custom background
+        >>> rgba_gray = RgbaToRgb(0.5)
+        >>> output = rgba_gray(input)  # gray background
 
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 4, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
+    def __init__(self, background: Union[float, Tensor] = 1.0) -> None:
+        super().__init__()
+        self.background = background
+
     def forward(self, image: Tensor) -> Tensor:
-        return rgba_to_rgb(image)
+        return rgba_to_rgb(image, self.background)
 
 
 class RgbaToBgr(Module):
     r"""Convert an image from RGBA to BGR.
 
-    Remove an alpha channel from BGR image.
+    Converts RGBA image to BGR by alpha blending with a background color.
+
+    Args:
+        background: Background color for alpha blending. Can be a float (grayscale) 
+          or a tensor of shape :math:`(3,)`. Default is 1.0 (white).
 
     Returns:
         BGR version of the image.
@@ -500,14 +561,21 @@ class RgbaToBgr(Module):
         >>> input = torch.rand(2, 4, 4, 5)
         >>> rgba = RgbaToBgr()
         >>> output = rgba(input)  # 2x3x4x5
+        >>> # With custom background
+        >>> rgba_gray = RgbaToBgr(0.5)
+        >>> output = rgba_gray(input)  # gray background
 
     """
 
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 4, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
+    def __init__(self, background: Union[float, Tensor] = 1.0) -> None:
+        super().__init__()
+        self.background = background
+
     def forward(self, image: Tensor) -> Tensor:
-        return rgba_to_bgr(image)
+        return rgba_to_bgr(image, self.background)
 
 
 class RgbToLinearRgb(Module):
