@@ -183,39 +183,57 @@ class VideoSequential(ImageSequential):
         # Got param generation shape to (B, C, H, W). Ignoring T.
         batch_shape = self.__infer_channel_exclusive_batch_shape__(batch_shape, self._temporal_channel)
 
-        if not self.same_on_frame:
-            # Overwrite param generation shape to (B * T, C, H, W).
-            batch_shape = torch.Size([batch_shape[0] * frame_num, *batch_shape[1:]])
-
         params = []
         for name, module in named_modules:
-            if isinstance(module, K.RandomCrop):
-                mod_param = module.forward_parameters(batch_shape)
-                if self.same_on_frame:
-                    mod_param["src"] = mod_param["src"].repeat(frame_num, 1, 1)
-                    mod_param["dst"] = mod_param["dst"].repeat(frame_num, 1, 1)
+            if isinstance(module, (K.RandomCrop, _AugmentationBase, K.MixAugmentationBaseV2)):
+                is_same_on_batch = getattr(module, "same_on_batch", False)
+
+                if self.same_on_frame and is_same_on_batch:
+                    mod_shape = torch.Size([1, *batch_shape[1:]])
+                elif self.same_on_frame:
+                    mod_shape = batch_shape
+                elif is_same_on_batch:
+                    mod_shape = torch.Size([frame_num, *batch_shape[1:]])
+                else:
+                    mod_shape = torch.Size([batch_shape[0] * frame_num, *batch_shape[1:]])
+
+                mod_param = module.forward_parameters(mod_shape)
+
+                if isinstance(mod_param, dict):
+                    for k, v in mod_param.items():
+                        # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
+                        if k == "order" and isinstance(module, (K.ColorJiggle, K.ColorJitter)):
+                            continue
+                        if k == "forward_input_shape":
+                            mod_param.update({k: v})
+                            continue
+
+                        # Parameter broadcasting on the basis of same_on_frame and same_on_batch
+                        if self.same_on_frame and is_same_on_batch:
+                            repeats = batch_shape[0] * frame_num
+                            if v.numel() > 0:
+                                mod_param[k] = v.repeat(repeats, *([1] * (v.ndim - 1)))
+                        elif self.same_on_frame:
+                            mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
+                        elif is_same_on_batch:
+                            repeats = batch_shape[0]
+                            if v.numel() > 0:
+                                mod_param[k] = v.repeat(repeats, *([1] * (v.ndim - 1)))
+
                 param = ParamItem(name, mod_param)
+
             elif isinstance(module, (SequentialBase,)):
                 seq_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
                 param = ParamItem(name, seq_param)
-            elif isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
-                mod_param = module.forward_parameters(batch_shape)
-                if self.same_on_frame:
-                    for k, v in mod_param.items():
-                        # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
-                        if k == "order" and (isinstance(module, (K.ColorJiggle, K.ColorJitter))):
-                            continue
-                        if k == "forward_input_shape":
-                            mod_param.update({k: v})
-                            continue
-                        mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
-                param = ParamItem(name, mod_param)
+
             else:
                 param = ParamItem(name, None)
+
             batch_shape = _get_new_batch_shape(param, batch_shape)
             params.append(param)
+
         return params
 
     def transform_inputs(
