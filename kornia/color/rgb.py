@@ -183,7 +183,7 @@ def rgba_to_rgb(image: Tensor, background_color: Optional[Tensor] = None) -> Ten
     elif isinstance(background_color, (tuple, list)):
         if len(background_color) != 3:
             raise ValueError("background_color as a list/tuple must have 3 elements (R, G, B).")
-        background_rgb = as_tensor(background_color, device=image.device, dtype=image.dtype).view(1, 3, 1, 1)
+        background_rgb = as_tensor(background_color, device=image.device, dtype=image.dtype).view(-1, 3, 1, 1)
 
     elif isinstance(background_color, Tensor):
         if background_color.shape[-3] != 3:
