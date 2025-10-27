@@ -11,6 +11,53 @@ authors = [
   { name = "Edgar Riba", email = "edgar@kornia.org" },
 ]
 requires-python = ">=3.9"
+dependencies = [
+    "kornia_rs>=0.1.9",
+    "packaging",
+    "torch>=2.0.0",
+]
+optional-dependencies.dev = [
+    "accelerate",
+    "coverage",
+    "diffusers",
+    "ivy>=1.0.0.0",
+    "mypy",
+    "numpy<3",
+    "onnx",
+    "onnxruntime",
+    "pillow",
+    "pre-commit>=2",
+    "pytest==8.3.5",
+    "pytest-cov",
+    "pytest-timeout",
+    "requests",
+    "setuptools>=61.2",
+    "transformers",
+    "types-requests",
+]
+optional-dependencies.x = [
+    "accelerate",
+    "onnxruntime-gpu>=1.16; sys_platform != 'darwin'",
+]
+optional-dependencies.docs = [
+    "furo",
+    "ivy>=1.0.0.0",
+    "kornia_moons",
+    "matplotlib",
+    "onnx",
+    "onnxruntime",
+    "opencv-python",
+    "PyYAML>=5.1",
+    "sphinx",
+    "sphinx-autodoc-defaultargs",
+    "sphinx-autodoc-typehints",
+    "sphinx-copybutton>=0.3",
+    "sphinx-design",
+    "sphinx-notfound-page",
+    "sphinxcontrib-bibtex",
+    "sphinxcontrib-gtagjs",
+    "sphinxcontrib-youtube",
+]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
@@ -31,7 +78,7 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Image Processing",
   "Topic :: Software Development :: Libraries",
 ]
-dynamic = ["dependencies", "optional-dependencies", "readme", "version"]
+dynamic = ["readme", "version"]
 
 [project.urls]
 "Bug Tracker" = "https://github.com/kornia/kornia/issues"
@@ -47,14 +94,8 @@ license-files = ["LICENSE"]
 include-package-data = false
 
 [tool.setuptools.dynamic]
-dependencies = { file = ["requirements/requirements.txt"] }
 version = { attr = "kornia.__version__" }
 readme = { file = ["README.md"], content-type = "text/markdown" }
-
-[tool.setuptools.dynamic.optional-dependencies]
-dev = { file = "requirements/requirements-dev.txt" }
-docs = { file = ["requirements/requirements-docs.txt"] }
-x = { file = ["requirements/requirements-x.txt"] }
 
 [tool.setuptools.packages.find]
 exclude = ["docs*", "test*", "examples*"]
@@ -279,3 +320,58 @@ tests-root = "tests"
 test-framework = "pytest"
 ignore-paths = []
 formatter-cmds = ["disabled"]
+
+[tool.uv.sources]
+# Pin PyTorch to specific versions for reproducibility
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[dependency-groups]
+# Development dependencies for uv lock file generation
+dev = [
+    "accelerate",
+    "coverage",
+    "diffusers",
+    "ivy>=1.0.0.0",
+    "mypy",
+    "numpy<3",
+    "onnx",
+    "onnxruntime",
+    "pillow",
+    "pre-commit>=2",
+    "pytest==8.3.5",
+    "pytest-cov",
+    "pytest-timeout",
+    "requests",
+    "setuptools>=61.2",
+    "transformers",
+    "types-requests",
+]
+x = [
+    "accelerate",
+    "onnxruntime-gpu>=1.16; sys_platform != 'darwin'",
+]
+docs = [
+    "furo",
+    "ivy>=1.0.0.0",
+    "kornia_moons",
+    "matplotlib",
+    "onnx",
+    "onnxruntime",
+    "opencv-python",
+    "PyYAML>=5.1",
+    "sphinx",
+    "sphinx-autodoc-defaultargs",
+    "sphinx-autodoc-typehints",
+    "sphinx-copybutton>=0.3",
+    "sphinx-design",
+    "sphinx-notfound-page",
+    "sphinxcontrib-bibtex",
+    "sphinxcontrib-gtagjs",
+    "sphinxcontrib-youtube",
+]
