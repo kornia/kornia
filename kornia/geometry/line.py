@@ -255,7 +255,7 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLi
     KORNIA_CHECK_IS_TENSOR(points, "points must be a tensor")
     KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])
 
-    B, N, D = points.shape
+    _B, _N, D = points.shape
 
     # Fast path: use OLS for unweighted 2D case
     if D == 2:

@@ -380,10 +380,10 @@ class TestAdalam(BaseTester):
         # This is not unit test, but that is quite good integration test
         data_dev = dict_to(data, device, dtype)
         with torch.no_grad():
-            dists, idxs = match_adalam(
+            _dists, _idxs = match_adalam(
                 data_dev["descs1"], data_dev["descs2"][:1], data_dev["lafs1"], data_dev["lafs2"][:, :1]
             )
-            dists, idxs = match_adalam(
+            _dists, _idxs = match_adalam(
                 data_dev["descs1"][:1], data_dev["descs2"], data_dev["lafs1"][:, :1], data_dev["lafs2"]
             )
 
@@ -395,12 +395,11 @@ class TestAdalam(BaseTester):
         data_dev = dict_to(data, device, dtype)
         adalam_config = {"device": device}
         with torch.no_grad():
-            dists, idxs = match_adalam(
-                data_dev["descs1"][:4],
-                data_dev["descs2"][:4],
-                data_dev["lafs1"][:, :4],
-                data_dev["lafs2"][:, :4],
-                config=adalam_config,
+            _dists, _idxs = match_adalam(
+                data_dev["descs1"], data_dev["descs2"][:1], data_dev["lafs1"], data_dev["lafs2"][:, :1]
+            )
+            _dists, _idxs = match_adalam(
+                data_dev["descs1"], data_dev["descs2"], data_dev["lafs1"], data_dev["lafs2"], config=adalam_config
             )
 
     @pytest.mark.slow
@@ -410,13 +409,13 @@ class TestAdalam(BaseTester):
         # This is not unit test, but that is quite good integration test
         data_dev = dict_to(data, device, dtype)
         with torch.no_grad():
-            dists, idxs = match_adalam(
+            _dists, _idxs = match_adalam(
                 data_dev["descs1"],
                 torch.empty(0, 128, device=device, dtype=dtype),
                 data_dev["lafs1"],
                 torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
             )
-            dists, idxs = match_adalam(
+            _dists, _idxs = match_adalam(
                 torch.empty(0, 128, device=device, dtype=dtype),
                 data_dev["descs2"],
                 torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
@@ -430,7 +429,7 @@ class TestAdalam(BaseTester):
         # This is not unit test, but that is quite good integration test
         data_dev = dict_to(data, device, dtype)
         with torch.no_grad():
-            dists, idxs = match_adalam(
+            _dists, _idxs = match_adalam(
                 data_dev["descs1"][:4], data_dev["descs2"][:4], data_dev["lafs1"][:, :4], data_dev["lafs2"][:, :4]
             )
 
@@ -441,7 +440,7 @@ class TestAdalam(BaseTester):
         # This is not unit test, but that is quite good integration test
         data_dev = dict_to(data, device, dtype)
         with torch.no_grad():
-            dists, idxs = match_adalam(
+            _dists, _idxs = match_adalam(
                 data_dev["descs1"][:100],
                 data_dev["descs2"][:100],
                 data_dev["lafs1"][:, :100],
@@ -494,8 +493,8 @@ class TestLightGlueDISK(BaseTester):
         data_dev = dict_to(data, device, dtype)
         lg = LightGlueMatcher("disk").to(device, dtype).eval()
         with torch.no_grad():
-            dists, idxs = lg(data_dev["descs1"], data_dev["descs2"][:1], data_dev["lafs1"], data_dev["lafs2"][:, :1])
-            dists, idxs = lg(data_dev["descs1"][:1], data_dev["descs2"], data_dev["lafs1"][:, :1], data_dev["lafs2"])
+            _dists, _idxs = lg(data_dev["descs1"], data_dev["descs2"][:1], data_dev["lafs1"], data_dev["lafs2"][:, :1])
+            _dists, _idxs = lg(data_dev["descs1"][:1], data_dev["descs2"], data_dev["lafs1"][:, :1], data_dev["lafs2"])
 
     @pytest.mark.slow
     @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)
@@ -505,13 +504,13 @@ class TestLightGlueDISK(BaseTester):
         data_dev = dict_to(data, device, dtype)
         lg = LightGlueMatcher("disk").to(device, dtype).eval()
         with torch.no_grad():
-            dists, idxs = lg(
+            _dists, _idxs = lg(
                 data_dev["descs1"],
                 torch.empty(0, 256, device=device, dtype=dtype),
                 data_dev["lafs1"],
                 torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
             )
-            dists, idxs = lg(
+            _dists, _idxs = lg(
                 torch.empty(0, 256, device=device, dtype=dtype),
                 data_dev["descs2"],
                 torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
@@ -539,7 +538,7 @@ class TestMatchSteererGlobal(BaseTester):
             steerer=steerer, steerer_order=3, steer_mode="global", match_mode=matching_mode
         )
 
-        dists, idxs, num_rot = matcher(
+        dists, idxs, _num_rot = matcher(
             desc1,
             desc2,
             subset_size=max(1, min(num_desc1 // 2, num_desc2 // 2)) if fast else None,
@@ -581,7 +580,7 @@ class TestMatchSteererLocal(BaseTester):
 
         matcher = DescriptorMatcherWithSteerer(steerer=steerer, steerer_order=3, steer_mode="local", match_mode="mnn")
 
-        dists, idxs, num_rot = matcher(desc1, desc2)
+        dists, idxs, _num_rot = matcher(desc1, desc2)
         assert dists.shape[1] == 1
         assert idxs.shape == (dists.shape[0], 2)
         assert dists.shape[0] == num_desc1

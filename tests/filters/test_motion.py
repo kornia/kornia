@@ -38,7 +38,7 @@ class TestMotionBlur(BaseTester):
     @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
     def test_smoke(self, shape, kernel_size, angle, direction, mode, params_as_tensor, device, dtype):
-        B, C, H, W = shape
+        B, _C, _H, _W = shape
         data = torch.rand(shape, device=device, dtype=dtype)
 
         if params_as_tensor is True:
@@ -127,7 +127,7 @@ class TestMotionBlur3D(BaseTester):
     @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
     def test_smoke(self, shape, kernel_size, angle, direction, mode, params_as_tensor, device, dtype):
-        B, C, D, H, W = shape
+        B, _C, _D, _H, _W = shape
         data = torch.rand(shape, device=device, dtype=dtype)
 
         if params_as_tensor is True:

@@ -349,7 +349,7 @@ class RTDETRHead(Module):
         # prepare denoising training
         denoising_class, denoising_bbox_unact, attn_mask = None, None, None
 
-        target, init_ref_points_unact, enc_topk_bboxes, enc_topk_logits = self._get_decoder_input(
+        target, init_ref_points_unact, _enc_topk_bboxes, _enc_topk_logits = self._get_decoder_input(
             memory, spatial_shapes, denoising_class, denoising_bbox_unact
         )
 

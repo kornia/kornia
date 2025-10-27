@@ -234,7 +234,7 @@ class WunschLineMatcher(Module):
             line_points: an N x num_samples x 2 Tensor.
             valid_points: a boolean N x num_samples Tensor.
         """
-        N, _, _ = line_seg.shape
+        _N, _, _ = line_seg.shape
         M = self.num_samples
         dev = line_seg.device
 

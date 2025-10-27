@@ -70,7 +70,7 @@ class FrozenDINOv2(Module):
         self.dinov2_vitl14 = [dinov2_vitl14]  # ugly hack to not show parameters to DDP
 
     def forward(self, x: Tensor):  # type: ignore[no-untyped-def]
-        B, C, H, W = x.shape
+        B, _C, H, W = x.shape
         if self.dinov2_vitl14[0].device != x.device:
             self.dinov2_vitl14[0] = self.dinov2_vitl14[0].to(x.device).to(self.amp_dtype)
         with torch.inference_mode():
