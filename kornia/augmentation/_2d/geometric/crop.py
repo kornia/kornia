@@ -165,13 +165,24 @@ class RandomCrop(GeometricAugmentationBase2D):
             dst = params["dst"].to(input)
             transform: Tensor = get_perspective_transform(src, dst)
 
-            # Fast scaling correction when output exceeds input and padding disabled
-            if not flags.get("pad_if_needed", False):
-                h, w = input.shape[-2:]
-                h_out, w_out = flags["size"]
-                if h_out > h or w_out > w:
-                    transform[:, 0, 0] *= w_out / w
-                    transform[:, 1, 1] *= h_out / h
+            # Handle coordinate transformation when padding is applied
+            # The transformation matrix should map from original image coordinates
+            # to final output coordinates, accounting for any padding that occurs
+            if "padding_size" in params:
+                padding = params["padding_size"][0]  # [left, right, top, bottom]
+                if len(padding) >= 4:
+                    # Account for padding offset in the transformation
+                    # When image is padded, original coordinates need to be shifted
+                    pad_left, pad_right, pad_top, pad_bottom = padding[0], padding[1], padding[2], padding[3]
+                    
+                    # Create padding offset transformation
+                    # This shifts coordinates by the padding amount
+                    padding_transform = torch.eye(3, device=transform.device, dtype=transform.dtype).unsqueeze(0).expand_as(transform)
+                    padding_transform[:, 0, 2] = pad_left.float()   # x offset
+                    padding_transform[:, 1, 2] = pad_top.float()    # y offset
+                    
+                    # Compose transformations: first apply padding offset, then crop transform
+                    transform = torch.bmm(transform, padding_transform)
 
             return transform
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
