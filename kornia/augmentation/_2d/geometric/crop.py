@@ -174,13 +174,15 @@ class RandomCrop(GeometricAugmentationBase2D):
                     # Account for padding offset in the transformation
                     # When image is padded, original coordinates need to be shifted
                     pad_left, pad_right, pad_top, pad_bottom = padding[0], padding[1], padding[2], padding[3]
-                    
+
                     # Create padding offset transformation
                     # This shifts coordinates by the padding amount
-                    padding_transform = torch.eye(3, device=transform.device, dtype=transform.dtype).unsqueeze(0).expand_as(transform)
-                    padding_transform[:, 0, 2] = pad_left.float()   # x offset
-                    padding_transform[:, 1, 2] = pad_top.float()    # y offset
-                    
+                    padding_transform = (
+                        torch.eye(3, device=transform.device, dtype=transform.dtype).unsqueeze(0).expand_as(transform)
+                    )
+                    padding_transform[:, 0, 2] = pad_left.float()  # x offset
+                    padding_transform[:, 1, 2] = pad_top.float()  # y offset
+
                     # Compose transformations: first apply padding offset, then crop transform
                     transform = torch.bmm(transform, padding_transform)
 
