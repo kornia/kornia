@@ -40,7 +40,7 @@ class Z1Projection:
         """
         xy = points.data[..., :2]
         z = points.z
-        uv = (xy.mT @ z.diag().inverse()).mT if len(z.shape) else xy.mT * 1 / z
+        uv = (xy.mT @ z.diag().inverse()).mT if len(z.shape) else xy / z
         return Vector2(uv)
 
     def unproject(self, points: Vector2, depth: Tensor | float) -> Vector3:
