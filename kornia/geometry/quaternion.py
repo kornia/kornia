@@ -167,11 +167,12 @@ class Quaternion(Module):
             >>> q2 = Quaternion(tensor([2., 0., 1., 1.]))
             >>> q3 = q1 + q2
             >>> q3.data
-            tensor([3., 0., 1., 1.], grad_fn=<AddBackward0>)
+            Parameter containing:
+            tensor([3., 0., 1., 1.], requires_grad=True)
 
         """
         if isinstance(right, Quaternion):
-            return Quaternion(self.data + right.data, wrap_in_parameter=False)
+            return Quaternion(self.data + right.data)
         else:
             right_quat = self._to_scalar_quaternion(right)
             return Quaternion(self.data + right_quat.data, wrap_in_parameter=False)
@@ -187,11 +188,12 @@ class Quaternion(Module):
             >>> q2 = Quaternion.identity()
             >>> q3 = q1 - q2
             >>> q3.data
-            tensor([1., 0., 1., 1.], grad_fn=<SubBackward0>)
+            Parameter containing:
+            tensor([1., 0., 1., 1.], requires_grad=True)
 
         """
         if isinstance(right, Quaternion):
-            return Quaternion(self.data - right.data, wrap_in_parameter=False)
+            return Quaternion(self.data - right.data)
         else:
             right_quat = self._to_scalar_quaternion(right)
             return Quaternion(self.data - right_quat.data, wrap_in_parameter=False)
@@ -205,18 +207,30 @@ class Quaternion(Module):
                 + right.real[..., None] * self.vec
                 + torch.linalg.cross(self.vec, right.vec, dim=-1)
             )
-            return Quaternion(concatenate((new_real[..., None], new_vec), -1), wrap_in_parameter=False)
+            return Quaternion(concatenate((new_real[..., None], new_vec), -1))
 
         # If right is a scalar/tensor, convert to scalar quaternion and multiply
         else:
             right_quat = self._to_scalar_quaternion(right)
-            return self * right_quat
+            new_real = self.real * right_quat.real - batched_dot_product(self.vec, right_quat.vec)
+            new_vec = (
+                self.real[..., None] * right_quat.vec
+                + right_quat.real[..., None] * self.vec
+                + torch.linalg.cross(self.vec, right_quat.vec, dim=-1)
+            )
+            return Quaternion(concatenate((new_real[..., None], new_vec), -1), wrap_in_parameter=False)
 
     def __rmul__(self, left: Union[Tensor, float]) -> "Quaternion":
         """Right multiplication (left * self) where left is a scalar or tensor."""
-        # Convert left to scalar quaternion and multiply
+        # For scalar multiplication, preserve gradient flow
         left_quat = self._to_scalar_quaternion(left)
-        return left_quat * self
+        new_real = left_quat.real * self.real - batched_dot_product(left_quat.vec, self.vec)
+        new_vec = (
+            left_quat.real[..., None] * self.vec
+            + self.real[..., None] * left_quat.vec
+            + torch.linalg.cross(left_quat.vec, self.vec, dim=-1)
+        )
+        return Quaternion(concatenate((new_real[..., None], new_vec), -1), wrap_in_parameter=False)
 
     def __div__(self, right: Union[Tensor, "Quaternion", float]) -> "Quaternion":
         if isinstance(right, Quaternion):
