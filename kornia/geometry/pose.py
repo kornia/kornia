@@ -46,8 +46,7 @@ class NamedPose:
     Example:
         >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
         >>> b_from_a
-        NamedPose(dst_from_src=rotation: Parameter containing:
-        tensor([1., 0., 0., 0.], requires_grad=True)
+        NamedPose(dst_from_src=rotation: tensor([1., 0., 0., 0.])
         translation: x: 0.0
         y: 0.0
         z: 0.0,
@@ -87,8 +86,7 @@ class NamedPose:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> c_from_b = NamedPose(Se3.identity(), frame_src="frame_b", frame_dst="frame_c")
             >>> c_from_b * b_from_a
-            NamedPose(dst_from_src=rotation: Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
+            NamedPose(dst_from_src=rotation: tensor([1., 0., 0., 0.])
             translation: x: 0.0
             y: 0.0
             z: 0.0,
@@ -153,10 +151,8 @@ class NamedPose:
             >>> b_from_a_trans = torch.tensor([1., 2., 3.])
             >>> b_from_a = NamedPose.from_rt(b_from_a_rot, b_from_a_trans, frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a
-            NamedPose(dst_from_src=rotation: Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
-            translation: Parameter containing:
-            tensor([1., 2., 3.], requires_grad=True),
+            NamedPose(dst_from_src=rotation: tensor([1., 0., 0., 0.])
+            translation: tensor([1., 2., 3.]),
             frame_src: frame_a -> frame_dst: frame_b)
 
         """
@@ -196,10 +192,8 @@ class NamedPose:
             >>> b_from_a_matrix = Se3.identity().matrix()
             >>> b_from_a = NamedPose.from_matrix(b_from_a_matrix, frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a
-            NamedPose(dst_from_src=rotation: Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
-            translation: Parameter containing:
-            tensor([0., 0., 0.], requires_grad=True),
+            NamedPose(dst_from_src=rotation: tensor([1., 0., 0., 0.])
+            translation: tensor([0., 0., 0.]),
             frame_src: frame_a -> frame_dst: frame_b)
 
         """
@@ -220,8 +214,7 @@ class NamedPose:
         Example:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a.inverse()
-            NamedPose(dst_from_src=rotation: Parameter containing:
-            tensor([1., -0., -0., -0.], requires_grad=True)
+            NamedPose(dst_from_src=rotation: tensor([1., -0., -0., -0.])
             translation: x: 0.0
             y: 0.0
             z: 0.0,
@@ -242,7 +235,7 @@ class NamedPose:
         Example:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a.transform_points(torch.tensor([1., 2., 3.]))
-            tensor([1., 2., 3.], grad_fn=<AddBackward0>)
+            tensor([1., 2., 3.])
 
         """
         return self._dst_from_src * points_in_src
