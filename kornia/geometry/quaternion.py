@@ -60,18 +60,17 @@ class Quaternion(Module):
     Example:
         >>> q = Quaternion.identity(batch_size=4)
         >>> q.data
-        Parameter containing:
         tensor([[1., 0., 0., 0.],
                 [1., 0., 0., 0.],
                 [1., 0., 0., 0.],
-                [1., 0., 0., 0.]], requires_grad=True)
+                [1., 0., 0., 0.]])
         >>> q.real
-        tensor([1., 1., 1., 1.], grad_fn=<SelectBackward0>)
+        tensor([1., 1., 1., 1.])
         >>> q.vec
         tensor([[0., 0., 0.],
                 [0., 0., 0.],
                 [0., 0., 0.],
-                [0., 0., 0.]], grad_fn=<SliceBackward0>)
+                [0., 0., 0.]])
 
     """
 
@@ -150,7 +149,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.identity()
             >>> -q.data
-            tensor([-1., -0., -0., -0.], grad_fn=<NegBackward0>)
+            tensor([-1., -0., -0., -0.])
 
         """
         return Quaternion(-self.data)
@@ -186,8 +185,7 @@ class Quaternion(Module):
             >>> q2 = Quaternion.identity()
             >>> q3 = q1 - q2
             >>> q3.data
-            Parameter containing:
-            tensor([1., 0., 1., 1.], requires_grad=True)
+            tensor([1., 0., 1., 1.])
 
         """
         if isinstance(right, Quaternion):
@@ -369,7 +367,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.identity()
             >>> q.polar_angle
-            tensor(0., grad_fn=<AcosBackward0>)
+            tensor(0.)
 
         """
         return (self.scalar / self.norm()).acos()
@@ -383,7 +381,7 @@ class Quaternion(Module):
             >>> m
             tensor([[1., 0., 0.],
                     [0., 1., 0.],
-                    [0., 0., 1.]], grad_fn=<ViewBackward0>)
+                    [0., 0., 1.]])
 
         """
         return quaternion_to_rotation_matrix(self.data)
@@ -399,8 +397,7 @@ class Quaternion(Module):
             >>> m = torch.eye(3)[None]
             >>> q = Quaternion.from_matrix(m)
             >>> q.data
-            Parameter containing:
-            tensor([[1., 0., 0., 0.]], requires_grad=True)
+            tensor([[1., 0., 0., 0.]])
 
         """
         return cls(rotation_matrix_to_quaternion(matrix))
@@ -418,8 +415,7 @@ class Quaternion(Module):
             >>> roll, pitch, yaw = tensor(0), tensor(1), tensor(0)
             >>> q = Quaternion.from_euler(roll, pitch, yaw)
             >>> q.data
-            Parameter containing:
-            tensor([0.8776, 0.0000, 0.4794, 0.0000], requires_grad=True)
+            tensor([0.8776, 0.0000, 0.4794, 0.0000])
 
         """
         w, x, y, z = quaternion_from_euler(roll=roll, pitch=pitch, yaw=yaw)
@@ -433,11 +429,11 @@ class Quaternion(Module):
             >>> q = Quaternion(tensor([2., 0., 1., 1.]))
             >>> roll, pitch, yaw = q.to_euler()
             >>> roll
-            tensor(2.0344, grad_fn=<Atan2Backward0>)
+            tensor(2.0344)
             >>> pitch
-            tensor(1.5708, grad_fn=<AsinBackward0>)
+            tensor(1.5708)
             >>> yaw
-            tensor(2.2143, grad_fn=<Atan2Backward0>)
+            tensor(2.2143)
 
         """
         return euler_from_quaternion(self.w, self.x, self.y, self.z)
@@ -453,8 +449,7 @@ class Quaternion(Module):
             >>> axis_angle = torch.tensor([[1., 0., 0.]])
             >>> q = Quaternion.from_axis_angle(axis_angle)
             >>> q.data
-            Parameter containing:
-            tensor([[0.8776, 0.4794, 0.0000, 0.0000]], requires_grad=True)
+            tensor([[0.8776, 0.4794, 0.0000, 0.0000]])
 
         """
         return cls(axis_angle_to_quaternion(axis_angle))
@@ -466,7 +461,7 @@ class Quaternion(Module):
             >>> q = Quaternion.identity()
             >>> axis_angle = q.to_axis_angle()
             >>> axis_angle
-            tensor([0., 0., 0.], grad_fn=<AsStridedBackward0>)
+            tensor([0., 0., 0.])
 
         """
         return quaternion_to_axis_angle(self.data)
@@ -485,8 +480,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.identity()
             >>> q.data
-            Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
+            tensor([1., 0., 0., 0.])
 
         """
         data = tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
@@ -507,8 +501,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.from_coeffs(1., 0., 0., 0.)
             >>> q.data
-            Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
+            tensor([1., 0., 0., 0.])
 
         """
         return cls(tensor([w, x, y, z]))
@@ -574,7 +567,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.identity()
             >>> q.norm()
-            tensor(1., grad_fn=<LinalgVectorNormBackward0>)
+            tensor(1.)
 
         """
         # p==2, dim|axis==-1, keepdim
@@ -628,7 +621,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.identity()
             >>> q.squared_norm()
-            tensor(1., grad_fn=<AddBackward0>)
+            tensor(1.)
 
         """
         return batched_dot_product(self.vec, self.vec) + self.real**2
