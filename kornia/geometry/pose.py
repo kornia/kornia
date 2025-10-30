@@ -152,7 +152,8 @@ class NamedPose:
             >>> b_from_a = NamedPose.from_rt(b_from_a_rot, b_from_a_trans, frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a
             NamedPose(dst_from_src=rotation: tensor([1., 0., 0., 0.])
-            translation: tensor([1., 2., 3.]),
+            translation: Parameter containing:
+            tensor([1., 2., 3.], requires_grad=True),
             frame_src: frame_a -> frame_dst: frame_b)
 
         """
@@ -193,7 +194,8 @@ class NamedPose:
             >>> b_from_a = NamedPose.from_matrix(b_from_a_matrix, frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a
             NamedPose(dst_from_src=rotation: tensor([1., 0., 0., 0.])
-            translation: tensor([0., 0., 0.]),
+            translation: Parameter containing:
+            tensor([0., 0., 0.], requires_grad=True),
             frame_src: frame_a -> frame_dst: frame_b)
 
         """
