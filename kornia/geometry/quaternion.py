@@ -75,6 +75,8 @@ class Quaternion(Module):
 
     """
 
+    _data: Union[Tensor, Parameter]
+
     def __init__(self, data: Tensor, wrap_in_parameter: bool = True) -> None:
         """Construct the base class.
 
@@ -165,8 +167,7 @@ class Quaternion(Module):
             >>> q2 = Quaternion(tensor([2., 0., 1., 1.]))
             >>> q3 = q1 + q2
             >>> q3.data
-            Parameter containing:
-            tensor([3., 0., 1., 1.], requires_grad=True)
+            tensor([3., 0., 1., 1.], grad_fn=<AddBackward0>)
 
         """
         if isinstance(right, Quaternion):
@@ -186,8 +187,7 @@ class Quaternion(Module):
             >>> q2 = Quaternion.identity()
             >>> q3 = q1 - q2
             >>> q3.data
-            Parameter containing:
-            tensor([1., 0., 1., 1.], requires_grad=True)
+            tensor([1., 0., 1., 1.], grad_fn=<SubBackward0>)
 
         """
         if isinstance(right, Quaternion):
