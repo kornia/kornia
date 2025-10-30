@@ -97,6 +97,18 @@ class Quaternion(Module):
         # KORNIA_CHECK_SHAPE(data, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
         self._data = data
 
+    def to(self, *args, **kwargs) -> "Quaternion":
+        """Move and/or cast the quaternion data.
+
+        Args:
+            *args: Arguments to pass to tensor.to()
+            **kwargs: Keyword arguments to pass to tensor.to()
+
+        Returns:
+            A new Quaternion with converted data.
+        """
+        return Quaternion(self._data.to(*args, **kwargs))
+
     def _to_scalar_quaternion(self, value: Union[Tensor, float]) -> "Quaternion":
         """Convert a scalar, tensor, or numeric value to a scalar quaternion.
 
