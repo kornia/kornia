@@ -77,27 +77,26 @@ class Quaternion(Module):
 
     _data: Union[Tensor, Parameter]
 
-    def __init__(self, data: Tensor, wrap_in_parameter: bool = True) -> None:
-        """Construct the base class.
+    def __init__(self, data: Union[Tensor, Parameter]) -> None:
+        """Construct a quaternion from tensor or parameter data.
 
         Args:
-            data: tensor containing the quaternion data with the sape of :math:`(B, 4)`.
-            wrap_in_parameter: whether to wrap the data in a Parameter. Set to False for
-                intermediate computations to preserve gradient flow.
+            data: tensor or parameter containing the quaternion data with the shape of :math:`(B, 4)`.
 
         Example:
-            >>> data = torch.rand(2, 4)
-            >>> q = Quaternion(data)
-            >>> q.shape
-            (2, 4)
+            >>> # Create with tensor (no gradients tracked by default)
+            >>> data = torch.tensor([1., 0., 0., 0.])
+            >>> q1 = Quaternion(data)
+            >>> # Create with parameter (gradients tracked)
+            >>> param_data = torch.nn.Parameter(torch.tensor([1., 0., 0., 0.]))
+            >>> q2 = Quaternion(param_data)
 
         """
         super().__init__()
+        if not isinstance(data, (Tensor, Parameter)):
+            raise TypeError(f"Expected Tensor or Parameter, got {type(data)}")
         # KORNIA_CHECK_SHAPE(data, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
-        if wrap_in_parameter:
-            self._data = Parameter(data)
-        else:
-            self._data = data
+        self._data = data
 
     def _to_scalar_quaternion(self, value: Union[Tensor, float]) -> "Quaternion":
         """Convert a scalar, tensor, or numeric value to a scalar quaternion.
@@ -137,13 +136,13 @@ class Quaternion(Module):
         # Stack real and imaginary parts: [real, 0, 0, 0]
         scalar_quat_data = torch.cat([expanded_value.unsqueeze(-1), zeros], dim=-1)
 
-        return Quaternion(scalar_quat_data, wrap_in_parameter=False)
+        return Quaternion(scalar_quat_data)
 
     def __repr__(self) -> str:
         return f"{self.data}"
 
     def __getitem__(self, idx: Union[int, slice]) -> "Quaternion":
-        return Quaternion(self.data[idx], wrap_in_parameter=False)
+        return Quaternion(self.data[idx])
 
     def __neg__(self) -> "Quaternion":
         """Inverts the sign of the quaternion data.
@@ -154,7 +153,7 @@ class Quaternion(Module):
             tensor([-1., -0., -0., -0.], grad_fn=<NegBackward0>)
 
         """
-        return Quaternion(-self.data, wrap_in_parameter=False)
+        return Quaternion(-self.data)
 
     def __add__(self, right: Union["Quaternion", Tensor, float]) -> "Quaternion":
         """Add a given quaternion, scalar, or tensor.
@@ -167,15 +166,14 @@ class Quaternion(Module):
             >>> q2 = Quaternion(tensor([2., 0., 1., 1.]))
             >>> q3 = q1 + q2
             >>> q3.data
-            Parameter containing:
-            tensor([3., 0., 1., 1.], requires_grad=True)
+            tensor([3., 0., 1., 1.])
 
         """
         if isinstance(right, Quaternion):
             return Quaternion(self.data + right.data)
         else:
             right_quat = self._to_scalar_quaternion(right)
-            return Quaternion(self.data + right_quat.data, wrap_in_parameter=False)
+            return Quaternion(self.data + right_quat.data)
 
     def __sub__(self, right: Union["Quaternion", Tensor, float]) -> "Quaternion":
         """Subtract a given quaternion, scalar, or tensor.
@@ -196,7 +194,11 @@ class Quaternion(Module):
             return Quaternion(self.data - right.data)
         else:
             right_quat = self._to_scalar_quaternion(right)
-            return Quaternion(self.data - right_quat.data, wrap_in_parameter=False)
+            # For scalar operations, ensure we return a tensor to preserve gradients
+            result_data = self.data - right_quat.data
+            if isinstance(result_data, Parameter):
+                result_data = result_data.data  # Convert to tensor to preserve gradients
+            return Quaternion(result_data)
 
     def __mul__(self, right: Union["Quaternion", Tensor, float]) -> "Quaternion":
         # If right is a Quaternion, do quaternion multiplication
@@ -218,11 +220,10 @@ class Quaternion(Module):
                 + right_quat.real[..., None] * self.vec
                 + torch.linalg.cross(self.vec, right_quat.vec, dim=-1)
             )
-            return Quaternion(concatenate((new_real[..., None], new_vec), -1), wrap_in_parameter=False)
+            return Quaternion(concatenate((new_real[..., None], new_vec), -1))
 
     def __rmul__(self, left: Union[Tensor, float]) -> "Quaternion":
         """Right multiplication (left * self) where left is a scalar or tensor."""
-        # For scalar multiplication, preserve gradient flow
         left_quat = self._to_scalar_quaternion(left)
         new_real = left_quat.real * self.real - batched_dot_product(left_quat.vec, self.vec)
         new_vec = (
@@ -230,7 +231,7 @@ class Quaternion(Module):
             + self.real[..., None] * left_quat.vec
             + torch.linalg.cross(left_quat.vec, self.vec, dim=-1)
         )
-        return Quaternion(concatenate((new_real[..., None], new_vec), -1), wrap_in_parameter=False)
+        return Quaternion(concatenate((new_real[..., None], new_vec), -1))
 
     def __div__(self, right: Union[Tensor, "Quaternion", float]) -> "Quaternion":
         if isinstance(right, Quaternion):
@@ -249,7 +250,11 @@ class Quaternion(Module):
                 # Broadcast the tensor to match the quaternion dimensions
                 divisor = right_tensor.unsqueeze(-1).expand_as(self.data)
 
-            return Quaternion(self.data / divisor, wrap_in_parameter=False)
+            # For scalar operations, ensure we return a tensor to preserve gradients
+            result_data = self.data / divisor
+            if isinstance(result_data, Parameter):
+                result_data = result_data.data  # Convert to tensor to preserve gradients
+            return Quaternion(result_data)
 
     def __truediv__(self, right: Union[Tensor, "Quaternion", float]) -> "Quaternion":
         return self.__div__(right)
