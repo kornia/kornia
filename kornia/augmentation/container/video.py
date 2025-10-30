@@ -157,6 +157,20 @@ class VideoSequential(ImageSequential):
         repeated = param[:, None, ...].repeat(1, frame_num, *([1] * len(param.shape[1:])))
         return repeated.reshape(-1, *list(param.shape[1:]))
 
+    def __broadcast_param__(
+        self, v: Tensor, batch_shape: torch.Size, frame_num: int, same_on_frame: bool, same_on_batch: bool
+    ) -> Tensor:
+        if not v.numel():
+            return v
+
+        if same_on_frame and same_on_batch:
+            return v.repeat(batch_shape[0] * frame_num, *([1] * (v.ndim - 1)))
+        elif same_on_frame:
+            return self.__repeat_param_across_channels__(v, frame_num)
+        elif same_on_batch:
+            return v.unsqueeze(1).repeat(1, batch_shape[0], *([1] * (v.ndim - 1))).reshape(-1, *v.shape[1:])
+        return v
+
     def _input_shape_convert_in(self, input: Tensor, frame_num: int) -> Tensor:
         # Convert any shape to (B, T, C, H, W)
         if self.data_format == "BCTHW":
@@ -207,18 +221,9 @@ class VideoSequential(ImageSequential):
                         if k == "forward_input_shape":
                             mod_param.update({k: v})
                             continue
-
-                        # Parameter broadcasting on the basis of same_on_frame and same_on_batch
-                        if self.same_on_frame and is_same_on_batch:
-                            repeats = batch_shape[0] * frame_num
-                            if v.numel() > 0:
-                                mod_param[k] = v.repeat(repeats, *([1] * (v.ndim - 1)))
-                        elif self.same_on_frame:
-                            mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
-                        elif is_same_on_batch:
-                            repeats = batch_shape[0]
-                            if v.numel() > 0:
-                                mod_param[k] = v.repeat(repeats, *([1] * (v.ndim - 1)))
+                        mod_param[k] = self.__broadcast_param__(
+                            v, batch_shape, frame_num, self.same_on_frame, is_same_on_batch
+                        )
 
                 param = ParamItem(name, mod_param)
 
