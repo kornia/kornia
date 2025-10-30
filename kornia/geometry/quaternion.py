@@ -20,7 +20,7 @@
 # https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Quaternion.h
 from math import pi
-from typing import Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 import torch
 
@@ -97,7 +97,7 @@ class Quaternion(Module):
         # KORNIA_CHECK_SHAPE(data, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
         self._data = data
 
-    def to(self, *args, **kwargs) -> "Quaternion":
+    def to(self, *args: Any, **kwargs: Any) -> "Quaternion":
         """Move and/or cast the quaternion data.
 
         Args:
