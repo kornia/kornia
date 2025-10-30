@@ -386,6 +386,29 @@ class TestQuaternionAverage:
         # Should still be a valid unit quaternion
         torch.testing.assert_close(q.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
 
+    def test_quaternion_scalar_multiplication(self, device, dtype):
+        """Test that quaternion scalar multiplication works correctly (Issue #3101)."""
+        # Create a quaternion with random data
+        test1 = torch.randn((2, 2, 4), device=device, dtype=dtype)
+
+        # This should not raise a TypeError
+        q = Quaternion(test1)
+        result = q * q * 5
+
+        # Verify the result is a valid quaternion
+        assert isinstance(result, Quaternion)
+        assert result.shape == (2, 2, 4)
+
+        # Test reverse scalar multiplication
+        result2 = 5 * q
+        assert isinstance(result2, Quaternion)
+        assert result2.shape == (2, 2, 4)
+
+        # Test gradient preservation if tensor requires gradients
+        if test1.requires_grad:
+            assert result.data.grad_fn is not None
+            assert result2.data.grad_fn is not None
+
     def test_invalid_weights_raise(self, device, dtype):
         """Mismatched number of weights should raise"""
         Q = Quaternion.random(3, device=device, dtype=dtype)
