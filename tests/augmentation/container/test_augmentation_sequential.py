@@ -206,6 +206,7 @@ class TestAugmentationSequential:
         assert out[1].shape == (3, 1, size, size)
 
     def test_random_crops(self, device, dtype):
+        # Test with relaxed tolerance for platform-specific numerical precision
         torch.manual_seed(233)
         input = torch.randn(3, 3, 3, 3, device=device, dtype=dtype)
         bbox = torch.tensor(
