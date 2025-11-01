@@ -30,6 +30,7 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_TENSOR,
 )
+from kornia.grad_estimator.ste import STEFunction
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
@@ -730,23 +731,16 @@ def solarize(
     return _solarize(input, thresholds)
 
 
-@perform_keep_shape_image
 def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
-    r"""Reduce the number of bits for each color channel.
-
-    .. image:: _static/img/posterize.png
-
-    Non-differentiable function, ``torch.uint8`` involved.
+    """Reduce the number of bits for each color channel with PIL-exact quantization
+    in the forward, and straight-through gradients on the backward.
 
     Args:
-        input: image tensor with shape :math:`(*, C, H, W)` to posterize.
-        bits: number of high bits. Must be in range [0, 8].
-            If int or one element tensor, input will be posterized by this bits.
-            If 1-d tensor, input will be posterized element-wisely, len(bits) == input.shape[-3].
-            If n-d tensor, input will be posterized element-channel-wisely, bits.shape == input.shape[:len(bits.shape)]
+        input: float Tensor in [0,1], shape (..., C, H, W)
+        bits: int or integer Tensor in [0..8]. Scalar, per-batch 1-D, or per-pixel ND.
 
     Returns:
-        Image with reduced color channels with shape :math:`(*, C, H, W)`.
+        Tensor same shape/dtype as input.
 
     Example:
         >>> x = torch.rand(1, 6, 3, 3)
@@ -759,64 +753,58 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
         torch.Size([2, 6, 3, 3])
 
     """
+    # 1) Safety checks
     if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
-
     if not isinstance(bits, (int, Tensor)):
-        raise TypeError(f"bits type is not an int or Tensor. Got {type(bits)}")
+        raise TypeError(f"bits type is not int or Tensor. Got {type(bits)}")
 
+    # 2) Normalize bits to int32 Tensor on input.device
     if isinstance(bits, int):
-        bits = torch.as_tensor(bits)
+        bits_t = torch.tensor(bits, device=input.device, dtype=torch.int32)
+    else:
+        bits_t = bits.to(device=input.device, dtype=torch.int32)
 
-    # TODO: find a better way to check boundaries on tensors
-    # if not torch.all((bits >= 0) * (bits <= 8)) and bits.dtype == torch.int:
-    #     raise ValueError(f"bits must be integers within range [0, 8]. Got {bits}.")
+    # 3) Helper: exact uint8 mask
+    def _mask(x: Tensor, shift: Tensor) -> Tensor:
+        xb = (x.clamp(0.0, 1.0) * 255.0).to(torch.uint8)
+        m = ((0xFF << shift) & 0xFF).to(device=xb.device, dtype=torch.uint8)
+        yb = xb & m
+        return yb.to(x.dtype).mul_(1.0 / 255.0)
 
-    # TODO: Make a differentiable version
-    # Current version:
-    # Ref: https://github.com/open-mmlab/mmcv/pull/132/files#diff-309c9320c7f71bedffe89a70ccff7f3bR19
-    # Ref: https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L222
-    # Potential approach: implementing kornia.LUT with floating points
-    # https://github.com/albumentations-team/albumentations/blob/master/albumentations/augmentations/functional.py#L472
-    def _left_shift(input: Tensor, shift: Tensor) -> Tensor:
-        return ((input * 255).to(torch.uint8) * (2**shift)).to(input.dtype) / 255.0
+    # 4) Scalar-bits fast path
+    if bits_t.numel() == 1:
+        b = int(bits_t.item())
+        if b == 0:
+            out = torch.zeros_like(input)
+        elif b == 8:
+            out = input.clone()
+            return STEFunction.apply(input.detach(), out, None)
+        else:
+            shift = torch.tensor(8 - b, device=input.device, dtype=torch.int32)
+            out = _mask(input, shift)
+        return STEFunction.apply(input, out, None)
 
-    def _right_shift(input: Tensor, shift: Tensor) -> Tensor:
-        return (input * 255).to(torch.uint8) / (2**shift).to(input.dtype) / 255.0
+    # 5) Multi-bits: shape check and broadcast
+    if bits_t.ndim > input.ndim:
+        raise ValueError(f"bits.ndim ({bits_t.ndim}) > input.ndim ({input.ndim})")
 
-    def _posterize_one(input: Tensor, bits: Tensor) -> Tensor:
-        # Single bits value condition
-        if bits == 0:
-            return torch.zeros_like(input)
-        if bits == 8:
-            return input.clone()
-        bits = 8 - bits
-        return _left_shift(_right_shift(input, bits), bits)
-
-    if len(bits.shape) == 0 or (len(bits.shape) == 1 and len(bits) == 1):
-        return _posterize_one(input, bits)
-
-    res = []
-    if len(bits.shape) == 1:
-        if bits.shape[0] != input.shape[0]:
-            raise AssertionError(
-                f"Batch size must be equal between bits and input. Got {bits.shape[0]}, {input.shape[0]}."
-            )
-
-        for i in range(input.shape[0]):
-            res.append(_posterize_one(input[i], bits[i]))
-        return torch.stack(res, dim=0)
-
-    if bits.shape != input.shape[: len(bits.shape)]:
-        raise AssertionError(
-            "Batch and channel must be equal between bits and input. "
-            f"Got {bits.shape}, {input.shape[: len(bits.shape)]}."
+    if bits_t.ndim == 1:
+        if bits_t.shape[0] != input.shape[0]:
+            raise ValueError(f"Batch mismatch: bits.shape={bits_t.shape}, input.shape={input.shape}")
+    elif bits_t.shape != input.shape[: bits_t.ndim]:
+        raise ValueError(
+            f"Shape mismatch: bits.shape={bits_t.shape}, input.shape[:bits.ndim]={input.shape[: bits_t.ndim]}"
         )
-    _input = input.view(-1, *input.shape[len(bits.shape) :])
-    _bits = bits.flatten()
-    for i in range(input.shape[0]):
-        res.append(_posterize_one(_input[i], _bits[i]))
-    return torch.stack(res, dim=0).reshape(*input.shape)
+
+    # broadcast trailing dims
+    trailing = input.ndim - bits_t.ndim
+    if trailing:
+        bits_t = bits_t.view(*bits_t.shape, *([1] * trailing))
+
+    shift = (8 - bits_t).to(dtype=torch.int32, device=input.device)
+    out = _mask(input, shift)
+    return STEFunction.apply(input, out, None)
 
 
 @perform_keep_shape_image
