@@ -44,8 +44,7 @@ class So3(Module):
         >>> q = Quaternion.identity()
         >>> s = So3(q)
         >>> s.q
-        Parameter containing:
-        tensor([1., 0., 0., 0.], requires_grad=True)
+        tensor([1., 0., 0., 0.])
 
     """
 
@@ -61,9 +60,8 @@ class So3(Module):
             >>> data = torch.ones((2, 4))
             >>> q = Quaternion(data)
             >>> So3(q)
-            Parameter containing:
             tensor([[1., 1., 1., 1.],
-                    [1., 1., 1., 1.]], requires_grad=True)
+                    [1., 1., 1., 1.]])
 
         """
         super().__init__()
@@ -119,9 +117,8 @@ class So3(Module):
             >>> v = torch.zeros((2, 3))
             >>> s = So3.exp(v)
             >>> s
-            Parameter containing:
             tensor([[1., 0., 0., 0.],
-                    [1., 0., 0., 0.]], requires_grad=True)
+                    [1., 0., 0., 0.]])
 
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
@@ -145,7 +142,7 @@ class So3(Module):
             >>> q = Quaternion(data)
             >>> So3(q).log()
             tensor([[0., 0., 0.],
-                    [0., 0., 0.]], grad_fn=<WhereBackward0>)
+                    [0., 0., 0.]])
 
         """
         theta = batched_dot_product(self.q.vec, self.q.vec).sqrt()
@@ -224,7 +221,7 @@ class So3(Module):
             >>> m
             tensor([[1., 0., 0.],
                     [0., 1., 0.],
-                    [0., 0., 1.]], grad_fn=<StackBackward0>)
+                    [0., 0., 1.]])
 
         """
         w = self.q.w[..., None]
@@ -254,8 +251,7 @@ class So3(Module):
             >>> m = torch.eye(3)
             >>> s = So3.from_matrix(m)
             >>> s
-            Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
+            tensor([1., 0., 0., 0.])
 
         """
         return cls(Quaternion.from_matrix(matrix))
@@ -271,8 +267,7 @@ class So3(Module):
             >>> q = torch.tensor([1., 0., 0., 0.])
             >>> s = So3.from_wxyz(q)
             >>> s
-            Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
+            tensor([1., 0., 0., 0.])
 
         """
         # KORNIA_CHECK_SHAPE(wxyz, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
@@ -292,14 +287,12 @@ class So3(Module):
         Example:
             >>> s = So3.identity()
             >>> s
-            Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
+            tensor([1., 0., 0., 0.])
 
             >>> s = So3.identity(batch_size=2)
             >>> s
-            Parameter containing:
             tensor([[1., 0., 0., 0.],
-                    [1., 0., 0., 0.]], requires_grad=True)
+                    [1., 0., 0., 0.]])
 
         """
         return cls(Quaternion.identity(batch_size, device, dtype))
@@ -310,8 +303,7 @@ class So3(Module):
         Example:
             >>> s = So3.identity()
             >>> s.inverse()
-            Parameter containing:
-            tensor([1., -0., -0., -0.], requires_grad=True)
+            tensor([1., -0., -0., -0.])
 
         """
         return So3(self.q.conj())
@@ -375,7 +367,7 @@ class So3(Module):
             >>> s.adjoint()
             tensor([[1., 0., 0.],
                     [0., 1., 0.],
-                    [0., 0., 1.]], grad_fn=<StackBackward0>)
+                    [0., 0., 1.]])
 
         """
         return self.matrix()

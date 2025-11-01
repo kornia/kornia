@@ -12,10 +12,12 @@ RUN DEBIAN_FRONTEND=noninteractive apt update && \
 WORKDIR /tmp/kornia-lib/
 COPY kornia/ kornia/
 COPY pyproject.toml ./
-COPY requirements/ requirements/
+COPY uv.lock ./
 
-RUN pip install -r requirements/requirements-benchmarks.txt --no-cache-dir
-RUN pip install .[dev,x] --no-cache-dir
+# Install uv and use it for dependency management
+RUN pip install uv --no-cache-dir
+RUN uv sync --group dev --group x --frozen || pip install .[dev,x] --no-cache-dir
+RUN pip install -e . --no-cache-dir
 
 # Setup benchmarks
 WORKDIR /kornia-benchmarks/

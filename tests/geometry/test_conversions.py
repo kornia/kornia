@@ -737,13 +737,12 @@ class TestConvertPointsFromHomogeneous(BaseTester):
         # evaluate function gradient
         self.gradcheck(kornia.geometry.conversions.convert_points_from_homogeneous, (points_h,))
 
-    @pytest.mark.skip("RuntimeError: Jacobian mismatch for output 0 with respect to input 0,")
     def test_gradcheck_zvec_zeros(self, device):
         # generate input data
         points_h = torch.tensor([[1.0, 2.0, 0.0], [0.0, 1.0, 0.1], [2.0, 1.0, 0.1]], device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        self.gradcheck(kornia.geometry.conversions.convert_points_from_homogeneous, (points_h,))
+        self.gradcheck(kornia.geometry.conversions.convert_points_from_homogeneous, (points_h,), eps=1e-8)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         points_h = torch.zeros(1, 2, 3, device=device, dtype=dtype)
