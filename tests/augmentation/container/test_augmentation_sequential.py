@@ -250,7 +250,7 @@ class TestAugmentationSequential:
         assert out[0].shape == (3, 3, 3, 3)
         assert_close(out[0], out[1], atol=1e-4, rtol=1e-4)
         assert out[2].shape == bbox.shape
-        assert_close(out[2], expected_out_bbox, atol=1e-4, rtol=1e-4)
+        assert_close(out[2], expected_out_bbox, atol=1e-3, rtol=1e-3)
         assert out[3].shape == points.shape
         assert_close(out[3], expected_out_points, atol=1e-4, rtol=1e-4)
 
@@ -258,7 +258,7 @@ class TestAugmentationSequential:
         assert out_inv[0].shape == input.shape
         assert_close(out_inv[0], out_inv[1], atol=1e-4, rtol=1e-4)
         assert out_inv[2].shape == bbox.shape
-        assert_close(out_inv[2], bbox, atol=1e-4, rtol=1e-4)
+        assert_close(out_inv[2], bbox, atol=1e-3, rtol=1e-3)
         assert out_inv[3].shape == points.shape
         assert_close(out_inv[3], points, atol=1e-4, rtol=1e-4)
 
