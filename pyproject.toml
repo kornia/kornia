@@ -32,7 +32,7 @@ optional-dependencies.dev = [
     "pytest-timeout",
     "requests",
     "setuptools>=61.2",
-    "transformers",
+    "transformers<4.57",
     "types-requests",
 ]
 optional-dependencies.x = [
@@ -349,7 +349,7 @@ dev = [
     "pytest-timeout",
     "requests",
     "setuptools>=61.2",
-    "transformers",
+    "transformers<4.57",
     "types-requests",
 ]
 x = [
