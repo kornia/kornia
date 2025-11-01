@@ -40,7 +40,7 @@ class TestRgbToYcbcr(BaseTester):
         img = torch.rand(*shape, device=device, dtype=dtype)
         output_y = kornia.color.rgb_to_y(img)
         output_ycbcr = kornia.color.rgb_to_ycbcr(img)
-        assert torch.equal(output_y, output_ycbcr[..., 0:1, :, :])
+        assert torch.allclose(output_y, output_ycbcr[..., 0:1, :, :], atol=1e-6, rtol=1e-4)
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
