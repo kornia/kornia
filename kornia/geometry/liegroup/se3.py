@@ -53,8 +53,7 @@ class Se3(Module):
         >>> q = Quaternion.identity()
         >>> s = Se3(q, torch.ones(3))
         >>> s.r
-        Parameter containing:
-        tensor([1., 0., 0., 0.], requires_grad=True)
+        tensor([1., 0., 0., 0.])
         >>> s.t
         Parameter containing:
         tensor([1., 1., 1.], requires_grad=True)
@@ -75,8 +74,7 @@ class Se3(Module):
             >>> q = Quaternion.identity(batch_size=1)
             >>> s = Se3(q, torch.ones((1, 3)))
             >>> s.r
-            Parameter containing:
-            tensor([[1., 0., 0., 0.]], requires_grad=True)
+            tensor([[1., 0., 0., 0.]])
             >>> s.t
             Parameter containing:
             tensor([[1., 1., 1.]], requires_grad=True)
@@ -174,8 +172,7 @@ class Se3(Module):
             >>> v = torch.zeros((1, 6))
             >>> s = Se3.exp(v)
             >>> s.r
-            Parameter containing:
-            tensor([[1., 0., 0., 0.]], requires_grad=True)
+            tensor([[1., 0., 0., 0.]])
             >>> s.t
             Parameter containing:
             tensor([[0., 0., 0.]], requires_grad=True)
@@ -203,7 +200,7 @@ class Se3(Module):
             >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity()
             >>> Se3(q, torch.zeros(3)).log()
-            tensor([0., 0., 0., 0., 0., 0.], grad_fn=<CatBackward0>)
+            tensor([0., 0., 0., 0., 0., 0.])
 
         """
         omega = self.r.log()
@@ -278,8 +275,7 @@ class Se3(Module):
         Example:
             >>> s = Se3.identity()
             >>> s.r
-            Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
+            tensor([1., 0., 0., 0.])
             >>> s.t
             x: 0.0
             y: 0.0
@@ -301,7 +297,7 @@ class Se3(Module):
             tensor([[1., 0., 0., 1.],
                     [0., 1., 0., 1.],
                     [0., 0., 1., 1.],
-                    [0., 0., 0., 1.]], grad_fn=<CopySlices>)
+                    [0., 0., 0., 1.]])
 
         """
         rt = concatenate((self.r.matrix(), self.t.data[..., None]), -1)
@@ -319,8 +315,7 @@ class Se3(Module):
         Example:
             >>> s = Se3.from_matrix(torch.eye(4))
             >>> s.r
-            Parameter containing:
-            tensor([1., 0., 0., 0.], requires_grad=True)
+            tensor([1., 0., 0., 0.])
             >>> s.t
             Parameter containing:
             tensor([0., 0., 0.], requires_grad=True)
@@ -342,8 +337,7 @@ class Se3(Module):
             >>> qxyz = torch.tensor([1., 2., 3., 0., 0., 0., 1.])
             >>> s = Se3.from_qxyz(qxyz)
             >>> s.r
-            Parameter containing:
-            tensor([1., 2., 3., 0.], requires_grad=True)
+            tensor([1., 2., 3., 0.])
             >>> s.t
             x: 0.0
             y: 0.0
@@ -361,8 +355,7 @@ class Se3(Module):
             >>> s = Se3(So3.identity(), torch.ones(3))
             >>> s_inv = s.inverse()
             >>> s_inv.r
-            Parameter containing:
-            tensor([1., -0., -0., -0.], requires_grad=True)
+            tensor([1., -0., -0., -0.])
             >>> s_inv.t
             Parameter containing:
             tensor([-1., -1., -1.], requires_grad=True)
@@ -493,7 +486,7 @@ class Se3(Module):
                     [0., 0., 1., 0., 0., 0.],
                     [0., 0., 0., 1., 0., 0.],
                     [0., 0., 0., 0., 1., 0.],
-                    [0., 0., 0., 0., 0., 1.]], grad_fn=<CatBackward0>)
+                    [0., 0., 0., 0., 0., 1.]])
 
         """
         R = self.so3.matrix()

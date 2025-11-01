@@ -19,6 +19,7 @@ from typing import Union
 
 import pytest
 import torch
+from torch.nn import Parameter
 
 from kornia.geometry.quaternion import Quaternion, average_quaternions
 
@@ -163,6 +164,26 @@ class TestQuaternion:
         self.assert_close((q**0.5) * (q**0.5), q)
         self.assert_close((q1**1), q1)
         self.assert_close((q1**2), q1)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_quaternion_scalar_multiplication(self, device, dtype, batch_size):
+        """Test scalar multiplication for issue #3101."""
+        # Create a quaternion with parameters to test gradient flow
+        q_data = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype, requires_grad=True)
+        q = Quaternion(Parameter(q_data))
+
+        # This should not raise a TypeError
+        result = q * q * 5
+
+        # Verify the result has proper gradient tracking
+        assert result.data.requires_grad
+
+        # Backward pass should work
+        loss = result.data.sum()
+        loss.backward()
+
+        # The quaternion's parameter should have gradients
+        assert q.data.grad is not None
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
