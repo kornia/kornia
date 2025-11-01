@@ -208,6 +208,12 @@ class TestFindHomographyDLT(BaseTester):
         assert H_withweights.shape == (B, 3, 3)
         self.assert_close(H_noweights, H_withweights, rtol=1e-3, atol=1e-4)
 
+    def test_scaled_fixed_points(self, device, dtype):
+        points1 = torch.tensor([[[0.0, 0.0], [0.0, 1.0], [1.0, 0.0], [1.0, 1.0]]], device=device, dtype=dtype)
+        points2 = points1 * 100
+        H = find_homography_dlt(points1, points2, None, "lu")
+        assert not torch.isnan(H).any()
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points_svd(self, batch_size, device, dtype):
         # generate input data
