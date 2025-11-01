@@ -17,12 +17,12 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, Union, cast
+from typing import ClassVar, Optional, Union, cast
 
 import torch
 
 from kornia.core import ImageModule as Module
-from kornia.core import Tensor, normalize
+from kornia.core import Tensor, as_tensor, normalize
 from kornia.core.check import KORNIA_CHECK_IS_COLOR
 
 
@@ -146,19 +146,27 @@ def bgr_to_rgba(image: Tensor, alpha_val: Union[float, Tensor]) -> Tensor:
     return rgb_to_rgba(x_rgb, alpha_val)
 
 
-def rgba_to_rgb(image: Tensor) -> Tensor:
-    r"""Convert an image from RGBA to RGB.
+def rgba_to_rgb(image: Tensor, background_color: Optional[Tensor] = None) -> Tensor:
+    r"""Convert an image from RGBA to RGB using alpha compositing.
+
+    The function composites the input RGBA image over a background color. If no
+    background color is provided, it defaults to a white background.
 
     Args:
-        image: RGBA Image to be converted to RGB of shape :math:`(*,4,H,W)`.
+        image: The RGBA image to be converted, with shape :math:`(*,4,H,W)`.
+        background_color: An optional background color. It can be a *tuple or list* of 3 floats,
+            a tensor of shape :math:`(*,3,H,W)` for a per-pixel background, or a broadcastable
+            tensor (e.g., :math:`(*,3,1,1)`). If None, a white background is used.
 
     Returns:
-        RGB version of the image with shape :math:`(*,3,H,W)`.
+        The converted RGB image with shape :math:`(*,3,H,W)`.
 
     Example:
-        >>> input = torch.rand(2, 4, 4, 5)
-        >>> output = rgba_to_rgb(input) # 2x3x4x5
-
+        >>> rgba_image = torch.rand(2, 4, 32, 32)
+        >>> # Test with default white background
+        >>> rgb_image_default = rgba_to_rgb(rgba_image) # 2x3x32x32
+        >>> # Test with a custom background color
+        >>> rgb_image_custom = rgba_to_rgb(rgba_image, background_color=(0.0, 0.0, 1.0)) # 2x3x32x32
     """
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
@@ -167,15 +175,29 @@ def rgba_to_rgb(image: Tensor) -> Tensor:
         raise ValueError(f"Input size must have a shape of (*, 4, H, W).Got {image.shape}")
 
     # unpack channels
-    r, g, b, a = torch.chunk(image, image.shape[-3], dim=-3)
+    image_rgb = image[..., :3, :, :]
+    alpha = image[..., 3:4, :, :]
 
-    # compute new channels
-    a_one = torch.tensor(1.0) - a
-    r_new: Tensor = a_one * r + a * r
-    g_new: Tensor = a_one * g + a * g
-    b_new: Tensor = a_one * b + a * b
+    if background_color is None:
+        background_rgb = torch.ones_like(image_rgb)
+    elif isinstance(background_color, (tuple, list)):
+        if len(background_color) != 3:
+            raise ValueError("background_color as a list/tuple must have 3 elements (R, G, B).")
+        background_rgb = as_tensor(background_color, device=image.device, dtype=image.dtype).view(-1, 3, 1, 1)
 
-    return torch.cat([r_new, g_new, b_new], dim=-3)
+    elif isinstance(background_color, Tensor):
+        if background_color.shape[-3] != 3:
+            raise ValueError(
+                f"background_color tensor must have 3 channels in dimension -3. Got shape {background_color.shape}"
+            )
+        background_rgb = background_color
+
+    else:
+        raise TypeError(f"Unsupported type for background_color: {type(background_color)}")
+
+    blended_rgb = image_rgb * alpha + background_rgb * (1.0 - alpha)
+
+    return blended_rgb
 
 
 def rgba_to_bgr(image: Tensor) -> Tensor:
