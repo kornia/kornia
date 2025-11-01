@@ -157,6 +157,20 @@ class VideoSequential(ImageSequential):
         repeated = param[:, None, ...].repeat(1, frame_num, *([1] * len(param.shape[1:])))
         return repeated.reshape(-1, *list(param.shape[1:]))
 
+    def __broadcast_param__(
+        self, v: Tensor, batch_shape: torch.Size, frame_num: int, same_on_frame: bool, same_on_batch: bool
+    ) -> Tensor:
+        if not v.numel():
+            return v
+
+        if same_on_frame and same_on_batch:
+            return v.repeat(batch_shape[0] * frame_num, *([1] * (v.ndim - 1)))
+        elif same_on_frame:
+            return self.__repeat_param_across_channels__(v, frame_num)
+        elif same_on_batch:
+            return v.unsqueeze(1).repeat(1, batch_shape[0], *([1] * (v.ndim - 1))).reshape(-1, *v.shape[1:])
+        return v
+
     def _input_shape_convert_in(self, input: Tensor, frame_num: int) -> Tensor:
         # Convert any shape to (B, T, C, H, W)
         if self.data_format == "BCTHW":
@@ -183,39 +197,48 @@ class VideoSequential(ImageSequential):
         # Got param generation shape to (B, C, H, W). Ignoring T.
         batch_shape = self.__infer_channel_exclusive_batch_shape__(batch_shape, self._temporal_channel)
 
-        if not self.same_on_frame:
-            # Overwrite param generation shape to (B * T, C, H, W).
-            batch_shape = torch.Size([batch_shape[0] * frame_num, *batch_shape[1:]])
-
         params = []
         for name, module in named_modules:
-            if isinstance(module, K.RandomCrop):
-                mod_param = module.forward_parameters(batch_shape)
-                if self.same_on_frame:
-                    mod_param["src"] = mod_param["src"].repeat(frame_num, 1, 1)
-                    mod_param["dst"] = mod_param["dst"].repeat(frame_num, 1, 1)
+            if isinstance(module, (K.RandomCrop, _AugmentationBase, K.MixAugmentationBaseV2)):
+                is_same_on_batch = getattr(module, "same_on_batch", False)
+
+                if self.same_on_frame and is_same_on_batch:
+                    mod_shape = torch.Size([1, *batch_shape[1:]])
+                elif self.same_on_frame:
+                    mod_shape = batch_shape
+                elif is_same_on_batch:
+                    mod_shape = torch.Size([frame_num, *batch_shape[1:]])
+                else:
+                    mod_shape = torch.Size([batch_shape[0] * frame_num, *batch_shape[1:]])
+
+                mod_param = module.forward_parameters(mod_shape)
+
+                if isinstance(mod_param, dict):
+                    for k, v in mod_param.items():
+                        # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
+                        if k == "order" and isinstance(module, (K.ColorJiggle, K.ColorJitter)):
+                            continue
+                        if k == "forward_input_shape":
+                            mod_param.update({k: v})
+                            continue
+                        mod_param[k] = self.__broadcast_param__(
+                            v, batch_shape, frame_num, self.same_on_frame, is_same_on_batch
+                        )
+
                 param = ParamItem(name, mod_param)
+
             elif isinstance(module, (SequentialBase,)):
                 seq_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
                 param = ParamItem(name, seq_param)
-            elif isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
-                mod_param = module.forward_parameters(batch_shape)
-                if self.same_on_frame:
-                    for k, v in mod_param.items():
-                        # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
-                        if k == "order" and (isinstance(module, (K.ColorJiggle, K.ColorJitter))):
-                            continue
-                        if k == "forward_input_shape":
-                            mod_param.update({k: v})
-                            continue
-                        mod_param.update({k: self.__repeat_param_across_channels__(v, frame_num)})
-                param = ParamItem(name, mod_param)
+
             else:
                 param = ParamItem(name, None)
+
             batch_shape = _get_new_batch_shape(param, batch_shape)
             params.append(param)
+
         return params
 
     def transform_inputs(

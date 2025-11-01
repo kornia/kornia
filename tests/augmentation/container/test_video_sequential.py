@@ -166,3 +166,49 @@ class TestVideoSequential:
             output = aug(imgs)
 
         assert output.dtype == dtype, "Output image dtype should match the input dtype"
+
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
+    @pytest.mark.parametrize(
+        "same_on_frame,same_on_batch",
+        [
+            (True, True),
+            (True, False),
+            (False, True),
+            (False, False),
+        ],
+    )
+    def test_all_frame_and_batch(self, data_format, same_on_frame, same_on_batch, device, dtype):
+        aug = K.VideoSequential(
+            K.RandomCrop(size=(4, 4), p=1.0, same_on_batch=same_on_batch),
+            data_format=data_format,
+            same_on_frame=same_on_frame,
+        )
+
+        if data_format == "BCTHW":
+            if same_on_frame:
+                start = torch.randn(1, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
+                x = start.repeat(2, 1, 1, 1, 1)
+            else:
+                start = torch.randn(1, 3, 4, 5, 6, device=device, dtype=dtype)
+                x = start.repeat(2, 1, 1, 1, 1)
+        elif same_on_frame:
+            start = torch.randn(1, 1, 3, 5, 6, device=device, dtype=dtype).repeat(1, 4, 1, 1, 1)
+            x = start.repeat(2, 1, 1, 1, 1)
+        else:
+            start = torch.randn(1, 4, 3, 5, 6, device=device, dtype=dtype)
+            x = start.repeat(2, 1, 1, 1, 1)
+
+        torch.manual_seed(0)
+        y = aug(x)
+
+        if data_format == "BCTHW":
+            same_frame = torch.allclose(y[:, :, 0], y[:, :, 1])
+            same_batch = torch.allclose(y[0, :, 0], y[1, :, 0])
+        else:
+            same_frame = torch.allclose(y[:, 0], y[:, 1])
+            same_batch = torch.allclose(y[0, 0], y[1, 0])
+
+        assert same_frame == same_on_frame
+        assert same_batch == same_on_batch
+
+        reproducibility_test(x, aug)
