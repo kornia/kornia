@@ -48,26 +48,36 @@ def _sampson_epipolar_distance_cpu_impl_(
     if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
-    # Extract coords; support 2D (w=1) and 3D homogeneous
     # Extract coordinates; support 2D (assume w=1) and 3D homogeneous
     x = pts1[..., :, 0]
     y = pts1[..., :, 1]
     u = pts2[..., :, 0]
     v = pts2[..., :, 1]
     # homogeneous weights with correct dtype/shape
-    w1 = pts1[..., :, 2] if pts1.shape[-1] == 3 else ones_like(x)
-    w2 = pts2[..., :, 2] if pts2.shape[-1] == 3 else ones_like(u)
+    w1 = pts1[..., :, 2] if pts1.shape[-1] == 3 else None
+    w2 = pts2[..., :, 2] if pts2.shape[-1] == 3 else None
 
-    # Grab F entries and add a length-1 axis to broadcast across N
-    f00 = Fm[..., 0, 0][..., None]
-    f01 = Fm[..., 0, 1][..., None]
-    f02 = Fm[..., 0, 2][..., None]
-    f10 = Fm[..., 1, 0][..., None]
-    f11 = Fm[..., 1, 1][..., None]
-    f12 = Fm[..., 1, 2][..., None]
-    f20 = Fm[..., 2, 0][..., None]
-    f21 = Fm[..., 2, 1][..., None]
-    f22 = Fm[..., 2, 2][..., None]
+    if w1 is None:
+        w1 = ones_like(x)
+    if w2 is None:
+        w2 = ones_like(u)
+
+    # Grab F entries using unbind and add a length-1 axis to broadcast across N
+    f = Fm.unbind(-2)
+    f0, f1, f2 = f
+    f00, f01, f02 = f0.unbind(-1)
+    f10, f11, f12 = f1.unbind(-1)
+    f20, f21, f22 = f2.unbind(-1)
+
+    f00 = f00[..., None]
+    f01 = f01[..., None]
+    f02 = f02[..., None]
+    f10 = f10[..., None]
+    f11 = f11[..., None]
+    f12 = f12[..., None]
+    f20 = f20[..., None]
+    f21 = f21[..., None]
+    f22 = f22[..., None]
 
     # Fx = F @ [x,y,w1]
     Fx0 = f00 * x + f01 * y + f02 * w1
@@ -80,9 +90,19 @@ def _sampson_epipolar_distance_cpu_impl_(
     Ft1 = f01 * u + f11 * v + f21 * w2  # (F^T x')_1
 
     # Numerator: (x'^T F x)^2 = (u*Fx0 + v*Fx1 + w2*Fx2)^2
-    num = (u * Fx0 + v * Fx1 + w2 * Fx2) ** 2
+    num = (u * Fx0 + v * Fx1 + w2 * Fx2)
+    num = num * num  # fused pow prevents temporary allocation
+
     # Denominator: ||(F x)_{1:2}||^2 + ||(F^T x')_{1:2}||^2
-    den = Fx0 * Fx0 + Fx1 * Fx1 + Ft0 * Ft0 + Ft1 * Ft1 + eps
+    # Avoid temporary allocations by reusing and fusing operations
+    Fx0_sq = Fx0 * Fx0
+    Fx1_sq = Fx1 * Fx1
+    Ft0_sq = Ft0 * Ft0
+    Ft1_sq = Ft1 * Ft1
+
+    den = Fx0_sq + Fx1_sq + Ft0_sq + Ft1_sq
+    den = den + eps  # add eps after summing
+
     out: Tensor = num / den
     if squared:
         return out
