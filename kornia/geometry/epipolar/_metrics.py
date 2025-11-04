@@ -127,8 +127,11 @@ def _sampson_epipolar_distance_cuda_impl_(
     # numerator = (x'^T F x) ** 2
     numerator: Tensor = (pts2 * line1_in_2).sum(dim=-1).pow(2)
 
-    # denominator = (((Fx)_1**2) + (Fx)_2**2)) +  (((F^Tx')_1**2) + (F^Tx')_2**2))
-    denominator: Tensor = line1_in_2[..., :2].norm(2, dim=-1).pow(2) + line2_in_1[..., :2].norm(2, dim=-1).pow(2)
+    # denominator: avoid .norm(2, ...).pow(2), use .square().sum(...) directly for perf
+    denom1 = line1_in_2[..., :2].square().sum(dim=-1)
+    denom2 = line2_in_1[..., :2].square().sum(dim=-1)
+    denominator: Tensor = denom1 + denom2
+
     out: Tensor = numerator / denominator
     if squared:
         return out
