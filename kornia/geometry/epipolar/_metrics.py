@@ -57,9 +57,15 @@ def _sampson_epipolar_distance_manual_impl_(pts1: Tensor, pts2: Tensor, Fm: Tens
     w2 = pts2[..., :, 2] if pts2.shape[-1] == 3 else ones_like(u)
 
     # Grab F entries and add a length-1 axis to broadcast across N
-    f00 = Fm[..., 0, 0][..., None]; f01 = Fm[..., 0, 1][..., None]; f02 = Fm[..., 0, 2][..., None]
-    f10 = Fm[..., 1, 0][..., None]; f11 = Fm[..., 1, 1][..., None]; f12 = Fm[..., 1, 2][..., None]
-    f20 = Fm[..., 2, 0][..., None]; f21 = Fm[..., 2, 1][..., None]; f22 = Fm[..., 2, 2][..., None]
+    f00 = Fm[..., 0, 0][..., None]
+    f01 = Fm[..., 0, 1][..., None]
+    f02 = Fm[..., 0, 2][..., None]
+    f10 = Fm[..., 1, 0][..., None]
+    f11 = Fm[..., 1, 1][..., None]
+    f12 = Fm[..., 1, 2][..., None]
+    f20 = Fm[..., 2, 0][..., None]
+    f21 = Fm[..., 2, 1][..., None]
+    f22 = Fm[..., 2, 2][..., None]
 
     # Fx = F @ [x,y,w1]
     Fx0 = f00 * x + f01 * y + f02 * w1
