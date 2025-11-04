@@ -90,7 +90,7 @@ def _sampson_epipolar_distance_cpu_impl_(
     Ft1 = f01 * u + f11 * v + f21 * w2  # (F^T x')_1
 
     # Numerator: (x'^T F x)^2 = (u*Fx0 + v*Fx1 + w2*Fx2)^2
-    num = (u * Fx0 + v * Fx1 + w2 * Fx2)
+    num = u * Fx0 + v * Fx1 + w2 * Fx2
     num = num * num  # fused pow prevents temporary allocation
 
     # Denominator: ||(F x)_{1:2}||^2 + ||(F^T x')_{1:2}||^2
