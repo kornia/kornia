@@ -17,16 +17,14 @@
 
 """Module including useful metrics for Structure from Motion."""
 
-from torch import Tensor
+from torch import Tensor, ones_like
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import point_line_distance
 
 
-def sampson_epipolar_distance(
-    pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8
-) -> Tensor:
+def _sampson_epipolar_distance_cpu_impl_(pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
     """Return Sampson distance for correspondences given the fundamental matrix.
 
     Args:
@@ -48,6 +46,56 @@ def sampson_epipolar_distance(
     if (len(Fm.shape) < 3) or not Fm.shape[-2:] == (3, 3):
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
+    # Extract coords; support 2D (w=1) and 3D homogeneous
+    # Extract coordinates; support 2D (assume w=1) and 3D homogeneous
+    x = pts1[..., :, 0]
+    y = pts1[..., :, 1]
+    u = pts2[..., :, 0]
+    v = pts2[..., :, 1]
+    # homogeneous weights with correct dtype/shape
+    w1 = pts1[..., :, 2] if pts1.shape[-1] == 3 else ones_like(x)
+    w2 = pts2[..., :, 2] if pts2.shape[-1] == 3 else ones_like(u)
+
+    # Grab F entries and add a length-1 axis to broadcast across N
+    f00 = Fm[..., 0, 0][..., None]; f01 = Fm[..., 0, 1][..., None]; f02 = Fm[..., 0, 2][..., None]
+    f10 = Fm[..., 1, 0][..., None]; f11 = Fm[..., 1, 1][..., None]; f12 = Fm[..., 1, 2][..., None]
+    f20 = Fm[..., 2, 0][..., None]; f21 = Fm[..., 2, 1][..., None]; f22 = Fm[..., 2, 2][..., None]
+
+    # Fx = F @ [x,y,w1]
+    Fx0 = f00 * x + f01 * y + f02 * w1
+    Fx1 = f10 * x + f11 * y + f12 * w1
+    Fx2 = f20 * x + f21 * y + f22 * w1
+
+    # (F^T x')_{1:2} for x' = [u,v,w2]
+    # (first two coordinates only)
+    Ft0 = f00 * u + f10 * v + f20 * w2  # (F^T x')_0
+    Ft1 = f01 * u + f11 * v + f21 * w2  # (F^T x')_1
+
+    # Numerator: (x'^T F x)^2 = (u*Fx0 + v*Fx1 + w2*Fx2)^2
+    num = (u * Fx0 + v * Fx1 + w2 * Fx2) ** 2
+    # Denominator: ||(F x)_{1:2}||^2 + ||(F^T x')_{1:2}||^2
+    den = Fx0 * Fx0 + Fx1 * Fx1 + Ft0 * Ft0 + Ft1 * Ft1 + eps
+    out: Tensor = num / den
+    if squared:
+        return out
+    return (out + eps).sqrt()
+
+def _sampson_epipolar_distance_cuda_impl_(pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
+    """Return Sampson distance for correspondences given the fundamental matrix.
+
+    Args:
+        pts1: correspondences from the left images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
+              converted automatically.
+        pts2: correspondences from the right images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
+              converted automatically.
+        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
+        squared: if True (default), the squared distance is returned.
+        eps: Small constant for safe sqrt.
+
+    Returns:
+        the computed Sampson distance with shape :math:`(*, N)`.
+
+    """
     if pts1.shape[-1] == 2:
         pts1 = convert_points_to_homogeneous(pts1)
 
@@ -74,6 +122,29 @@ def sampson_epipolar_distance(
     if squared:
         return out
     return (out + eps).sqrt()
+
+
+def sampson_epipolar_distance(
+    pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8
+) -> Tensor:
+    """Return Sampson distance for correspondences given the fundamental matrix.
+
+    Args:
+        pts1: correspondences from the left images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
+              converted automatically.
+        pts2: correspondences from the right images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
+              converted automatically.
+        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
+        squared: if True (default), the squared distance is returned.
+        eps: Small constant for safe sqrt.
+
+    Returns:
+        the computed Sampson distance with shape :math:`(*, N)`.
+
+    """
+    if Fm.device.type == "cuda":
+        return _sampson_epipolar_distance_cuda_impl_(pts1, pts2, Fm, squared, eps)
+    return _sampson_epipolar_distance_cpu_impl_(pts1, pts2, Fm, squared, eps)
 
 
 def symmetrical_epipolar_distance(
