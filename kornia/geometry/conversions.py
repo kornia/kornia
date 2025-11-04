@@ -23,8 +23,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.core import (Tensor, concatenate, cos, pad, sin, stack, tensor,
-                         where, zeros_like)
+from kornia.core import Tensor, concatenate, cos, pad, sin, stack, tensor, where, zeros_like
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import deprecated
 from kornia.utils.helpers import _torch_inverse_cast
@@ -207,7 +206,6 @@ def convert_points_from_homogeneous(points: Tensor, eps: float = 1e-8) -> Tensor
 
 def convert_points_to_homogeneous(points: Tensor) -> Tensor:
     """Convert points from Euclidean to homogeneous space.
-
 
     Args:
         points: the points to be transformed with shape :math:`(*, N, D)`.
