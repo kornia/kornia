@@ -21,7 +21,7 @@ import torch
 
 from kornia.core import Tensor, pad
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+from kornia.geometry.conversions import convert_points_from_homogeneous
 
 __all__ = [
     "batched_dot_product",
@@ -210,9 +210,9 @@ def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
         raise ValueError(f"Last input dimensions must differ by one unit Got{trans_01} and {points_1}")
 
-    points_1_h = pad(points_1, (0, 1), value=1.0)                 # (B, N, D_in+1)
-    trans_t = trans_01.transpose(-2, -1)                          # (B or 1, D_in+1, D_out+1)
-    points_0 = convert_points_from_homogeneous(torch.matmul(points_1_h, trans_t))  
+    points_1_h = pad(points_1, (0, 1), value=1.0)  # (B, N, D_in+1)
+    trans_t = trans_01.transpose(-2, -1)  # (B or 1, D_in+1, D_out+1)
+    points_0 = convert_points_from_homogeneous(torch.matmul(points_1_h, trans_t))
     return points_0
 
 

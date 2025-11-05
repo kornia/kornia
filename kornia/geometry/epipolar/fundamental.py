@@ -17,9 +17,11 @@
 
 """Module containing the functionalities for computing the Fundamental Matrix."""
 
-from typing import Literal, Optional, Tuple
-import torch
 import math
+from typing import Literal, Optional, Tuple
+
+import torch
+
 from kornia.core import Tensor, concatenate, ones_like, where, zeros
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
@@ -55,17 +57,17 @@ def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]
     device, dtype = points.device, points.dtype
 
     # Center at mean
-    x_mean = points.mean(dim=1, keepdim=True)          # (B,1,2)
-    centered = points - x_mean                         # (B,N,2)
+    x_mean = points.mean(dim=1, keepdim=True)  # (B,1,2)
+    centered = points - x_mean  # (B,N,2)
 
     # Mean Euclidean distance to origin (radius)
-    mean_radius = centered.norm(dim=-1).mean(dim=-1)   # (B,)
+    mean_radius = centered.norm(dim=-1).mean(dim=-1)  # (B,)
 
     # Scale so that mean radius becomes sqrt(2)
-    scale = (math.sqrt(2.0)) / (mean_radius + eps)     # (B,)
+    scale = (math.sqrt(2.0)) / (mean_radius + eps)  # (B,)
 
     # Apply similarity transform in-place-ish (broadcast scale)
-    points_norm = centered * scale.view(B, 1, 1)       # (B,N,2)
+    points_norm = centered * scale.view(B, 1, 1)  # (B,N,2)
 
     # Build transform matrix:
     # T = [[s, 0, -s*mx],
@@ -195,6 +197,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     )
     return normalize_transformation(fmatrix)
 
+
 def run_8point(
     points1: Tensor,
     points2: Tensor,
@@ -233,9 +236,7 @@ def run_8point(
 
     # Design matrix rows A_i = [x2*x1, x2*y1, x2, y2*x1, y2*y1, y2, x1, y1, 1]
     # Shape: A ∈ (B, N, 9)
-    A = torch.cat([x2 * x1, x2 * y1, x2,
-                   y2 * x1, y2 * y1, y2,
-                   x1, y1, ones], dim=-1).squeeze(-2)
+    A = torch.cat([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], dim=-1).squeeze(-2)
 
     B, N, _ = A.shape
     device, dtype = A.device, A.dtype
@@ -247,7 +248,7 @@ def run_8point(
             M = A.transpose(-2, -1).contiguous() @ A
         else:
             # Accumulate via einsum (saves bandwidth for huge N)
-            M = torch.einsum('bni,bnj->bij', A, A)
+            M = torch.einsum("bni,bnj->bij", A, A)
     else:
         w = weights.clamp_min(0)
         if N < small_n_threshold:
@@ -256,12 +257,12 @@ def run_8point(
             M = Aw.transpose(-2, -1).contiguous() @ Aw
         else:
             # Weighted einsum
-            M = torch.einsum('bni,bnj,bn->bij', A, A, w)
+            M = torch.einsum("bni,bnj,bn->bij", A, A, w)
 
     # Smallest-eigenvector of M is the DLT solution (nullspace of A)
     # eigh is ideal here since M is symmetric PSD
-    evals, evecs = torch.linalg.eigh(M)           # ascending order
-    h = evecs[..., 0]                              # (B,9), eigenvector for smallest λ
+    evals, evecs = torch.linalg.eigh(M)  # ascending order
+    h = evecs[..., 0]  # (B,9), eigenvector for smallest λ
     F_hat = h.view(B, 3, 3)
 
     # Enforce rank-2 with a 3x3 SVD
