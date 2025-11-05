@@ -30,8 +30,9 @@ from kornia.filters.sobel import spatial_gradient
 from kornia.utils import create_meshgrid
 
 from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
-from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
-from .linalg import convert_points_to_homogeneous, transform_points
+from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics, convert_points_to_homogeneous
+from .linalg import transform_points
+
 
 """Module containing operators to work on RGB-Depth images."""
 
