@@ -32,8 +32,7 @@ def _eps_like(x: Tensor, val: float = 1e-12) -> Tensor:
 
 def _cbrt(x: Tensor) -> Tensor:
     # branchless, handles x=0, keeps sign
-    ax = x.abs()
-    return x.sign() * ax.pow(1.0 / 3.0)
+    return x.abs().pow_(1.0 / 3.0).mul_(x.sign())
 
 
 def solve_quadratic(coeffs: Tensor) -> Tensor:
