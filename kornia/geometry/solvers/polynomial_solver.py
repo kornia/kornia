@@ -25,194 +25,132 @@ from kornia.core import Tensor, cos, ones_like, stack, zeros, zeros_like
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
-# Reference : https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/polynom_solver.cpp
+# Optional: make these small epsilons configurable
+_EPS = 1e-12
+
+# keep eps on-tensor to avoid dtype upcasts & recompiles
+def _eps_like(x: Tensor, val: float = 1e-12) -> Tensor:
+    return torch.as_tensor(val, dtype=x.dtype, device=x.device)
+
+def _cbrt(x: Tensor) -> Tensor:
+    # branchless, handles x=0, keeps sign
+    ax = x.abs()
+    return x.sign() * ax.pow(1.0 / 3.0)
+
 def solve_quadratic(coeffs: Tensor) -> Tensor:
-    r"""Solve given quadratic equation.
+    a, b, c = coeffs.unbind(dim=-1)
+    B = coeffs.shape[0]
+    out = zeros((B, 2), device=coeffs.device, dtype=coeffs.dtype)
 
-    The function takes the coefficients of quadratic equation and returns the real roots.
+    eps = _eps_like(a)
 
-    .. math:: coeffs[0]x^2 + coeffs[1]x + coeffs[2] = 0
+    a0 = a.abs() <= eps
+    b0 = b.abs() <= eps
 
-    Args:
-        coeffs : The coefficients of quadratic equation :`(B, 3)`
+    # linear (a≈0 & b≠0): x = -c/b in slot 0
+    lin = a0 & (~b0)
+    x_lin = -c / torch.where(b0, ones_like(b), b)  # safe denom
+    out[:, 0] = torch.where(lin, x_lin, out[:, 0])
 
-    Returns:
-        A tensor of shape `(B, 2)` containing the real roots to the quadratic equation.
+    # quadratic path (a≠0) — compute for all, then mask in
+    aq = torch.where(a0, ones_like(a), a)  # safe denom
+    delta = b.mul(b).add(-4.0 * aq * c)
+    sqrt_delta = torch.sqrt(torch.clamp_min(delta, 0.0))
+    inv_2a = 0.5 / aq
 
-    Example:
-        >>> coeffs = torch.tensor([[1., 4., 4.]])
-        >>> roots = solve_quadratic(coeffs)
+    # stable r1 using sign trick; handle b==0 without branching
+    sign_b = torch.where(b == 0, torch.ones_like(b), b.sign())
+    r1 = (-b - sign_b * sqrt_delta) * inv_2a
+    denom = aq * r1
+    r2 = torch.where(denom.abs() > eps, c / denom, r1)  # Vieta or tie to r1
 
-    .. note::
-       In cases where a quadratic polynomial has only one real root, the output will be in the format
-       [real_root, 0]. And for the complex roots should be represented as 0. This is done to maintain
-       a consistent output shape for all cases.
+    real = delta >= 0
+    write = (~a0) & real
+    out[:, 0] = torch.where(write, r1, out[:, 0])
+    out[:, 1] = torch.where(write, r2, out[:, 1])
 
-    """
-    KORNIA_CHECK_SHAPE(coeffs, ["B", "3"])
-
-    # Coefficients of quadratic equation
-    a = coeffs[:, 0]  # coefficient of x^2
-    b = coeffs[:, 1]  # coefficient of x
-    c = coeffs[:, 2]  # constant term
-
-    # Calculate discriminant
-    delta = b * b - 4 * a * c
-
-    # Create masks for negative and zero discriminant
-    mask_negative = delta < 0
-    mask_zero = delta == 0
-
-    # Calculate 1/(2*a) for efficient computation
-    inv_2a = 0.5 / a
-
-    # Initialize solutions tensor
-    solutions = zeros((coeffs.shape[0], 2), device=coeffs.device, dtype=coeffs.dtype)
-
-    # Handle cases with zero discriminant
-    if torch.any(mask_zero):
-        solutions[mask_zero, 0] = -b[mask_zero] * inv_2a[mask_zero]
-        solutions[mask_zero, 1] = solutions[mask_zero, 0]
-
-    # Negative discriminant cases are automatically handled since solutions is initialized with zeros.
-
-    sqrt_delta = torch.sqrt(delta)
-
-    # Handle cases with non-negative discriminant
-    mask = torch.bitwise_and(~mask_negative, ~mask_zero)
-    if torch.any(mask):
-        solutions[mask, 0] = (-b[mask] + sqrt_delta[mask]) * inv_2a[mask]
-        solutions[mask, 1] = (-b[mask] - sqrt_delta[mask]) * inv_2a[mask]
-
-    return solutions
-
+    return out
 
 def solve_cubic(coeffs: Tensor) -> Tensor:
-    r"""Solve given cubic equation.
-
-    The function takes the coefficients of cubic equation and returns
-    the real roots.
-
-    .. math:: coeffs[0]x^3 + coeffs[1]x^2 + coeffs[2]x + coeffs[3] = 0
-
-    Args:
-        coeffs : The coefficients cubic equation : `(B, 4)`
-
-    Returns:
-        A tensor of shape `(B, 3)` containing the real roots to the cubic equation.
-
-    Example:
-        >>> coeffs = torch.tensor([[32., 3., -11., -6.]])
-        >>> roots = solve_cubic(coeffs)
-
-    .. note::
-       In cases where a cubic polynomial has only one or two real roots, the output for the non-real
-       roots should be represented as 0. Thus, the output for a single real root should be in the
-       format [real_root, 0, 0], and for two real roots, it should be [real_root_1, real_root_2, 0].
-
+    r"""Batched real roots for ax^3 + bx^2 + cx + d = 0.
+    Returns (B, 3) with non-real roots as 0; multiplicities kept.
     """
-    KORNIA_CHECK_SHAPE(coeffs, ["B", "4"])
+    a, b, c, d = coeffs.unbind(dim=-1)
+    B = coeffs.shape[0]
+    out = zeros((B, 3), device=coeffs.device, dtype=coeffs.dtype)
+    eps = _eps_like(a)
 
-    _PI = torch.tensor(math.pi, device=coeffs.device, dtype=coeffs.dtype)
+    # quadratic/linear fallback where a≈0
+    a0 = a.abs() <= eps
+    if a0.any():  # tiny sync;
+        qroots = solve_quadratic(stack([b[a0], c[a0], d[a0]], dim=-1))
+        out[a0, :2] = qroots
 
-    # Coefficients of cubic equation
-    a = coeffs[:, 0]  # coefficient of x^3
-    b = coeffs[:, 1]  # coefficient of x^2
-    c = coeffs[:, 2]  # coefficient of x
-    d = coeffs[:, 3]  # constant term
+    cmask = ~a0
+    if not cmask.any():
+        return out
 
-    solutions = zeros((len(coeffs), 3), device=a.device, dtype=a.dtype)
+    # compact cubic slice
+    a_c = a[cmask]; b_c = b[cmask]; c_c = c[cmask]; d_c = d[cmask]
+    inv_a = 1.0 / a_c
+    bb = b_c * inv_a
+    cc = c_c * inv_a
+    dd = d_c * inv_a
 
-    mask_a_zero = a == 0
-    mask_b_zero = b == 0
-    mask_c_zero = c == 0
+    # depressed cubic: y^3 + p y + q = 0 with x = y - b/(3a)
+    bb2 = bb * bb
+    p = (3.0 * cc - bb2) / 3.0
+    q = (2.0 * bb * bb2 - 9.0 * bb * cc + 27.0 * dd) / 27.0
 
-    # Zero order cases are automatically handled since solutions is initialized with zeros.
-    # No need for explicit handling of mask_zero_order as solutions already contains zeros by default.
+    half_q = 0.5 * q
+    third_p = (1.0 / 3.0) * p
+    disc = half_q * half_q + third_p * third_p * third_p
+    shift = bb / 3.0
 
-    mask_first_order = mask_a_zero & mask_b_zero & ~mask_c_zero
-    mask_second_order = mask_a_zero & ~mask_b_zero & ~mask_c_zero
+    # masks on cubic slice
+    pos = disc > eps
+    zro = disc.abs() <= eps
+    neg = disc < -eps
 
-    if torch.any(mask_second_order):
-        solutions[mask_second_order, 0:2] = solve_quadratic(coeffs[mask_second_order, 1:])
+    # ----- Compute *all* candidate roots once (guarded), then select -----
 
-    if torch.any(mask_first_order):
-        solutions[mask_first_order, 0] = torch.tensor(1.0, device=a.device, dtype=a.dtype)
+    # Case: one real (disc > 0)
+    sp = torch.sqrt(torch.clamp_min(disc, 0.0))
+    y0_one = _cbrt(-half_q + sp) + _cbrt(-half_q - sp)
+    x0_one = y0_one - shift
+    x1_one = zeros_like(x0_one)
+    x2_one = zeros_like(x0_one)
 
-    # Normalized form x^3 + a2 * x^2 + a1 * x + a0 = 0
-    inv_a = 1.0 / a[~mask_a_zero]
-    b_a = inv_a * b[~mask_a_zero]
-    b_a2 = b_a * b_a
+    # Case: multiple roots (|disc| ~ 0)
+    ya = _cbrt(-half_q)
+    x0_zero = 2.0 * ya - shift
+    x1_zero = -ya - shift
+    x2_zero = x1_zero
 
-    c_a = inv_a * c[~mask_a_zero]
-    d_a = inv_a * d[~mask_a_zero]
+    # Case: three distinct reals (disc < 0) — trig solution
+    third_p_neg = torch.clamp(-third_p, min=0.0)  # ensure non-neg for sqrt
+    r = 2.0 * torch.sqrt(third_p_neg)
+    denom = torch.sqrt(third_p_neg * third_p_neg * third_p_neg + eps)
+    cos_arg = torch.clamp((-half_q) / denom, -1.0, 1.0)
+    theta = torch.acos(cos_arg)
 
-    # Solve the cubic equation
-    Q = (3 * c_a - b_a2) / 9
-    R = (9 * b_a * c_a - 27 * d_a - 2 * b_a * b_a2) / 54
-    Q3 = Q * Q * Q
-    D = Q3 + R * R
-    b_a_3 = (1.0 / 3.0) * b_a
+    t1 = theta / 3.0
+    t2 = (theta + 2.0 * torch.pi) / 3.0
+    t3 = (theta + 4.0 * torch.pi) / 3.0
 
-    a_Q_zero = ones_like(a)
-    a_R_zero = ones_like(a)
-    a_D_zero = ones_like(a)
+    x0_neg = r * torch.cos(t1) - shift
+    x1_neg = r * torch.cos(t2) - shift
+    x2_neg = r * torch.cos(t3) - shift
 
-    a_Q_zero[~mask_a_zero] = Q
-    a_R_zero[~mask_a_zero] = R
-    a_D_zero[~mask_a_zero] = D
+    # Select per mask (branchless)
+    x0 = torch.where(pos, x0_one, torch.where(zro, x0_zero, x0_neg))
+    x1 = torch.where(pos, x1_one, torch.where(zro, x1_zero, x1_neg))
+    x2 = torch.where(pos, x2_one, torch.where(zro, x2_zero, x2_neg))
 
-    # Q == 0
-    mask_Q_zero = (Q == 0) & (R != 0)
-    mask_Q_zero_solutions = (a_Q_zero == 0) & (a_R_zero != 0)
-
-    if torch.any(mask_Q_zero):
-        x0_Q_zero = torch.pow(2 * R[mask_Q_zero], 1 / 3) - b_a_3[mask_Q_zero]
-        solutions[mask_Q_zero_solutions, 0] = x0_Q_zero
-
-    mask_QR_zero = (Q == 0) & (R == 0)
-    mask_QR_zero_solutions = (a_Q_zero == 0) & (a_R_zero == 0)
-
-    if torch.any(mask_QR_zero):
-        solutions[mask_QR_zero_solutions] = stack(
-            [-b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero]], dim=1
-        )
-
-    # D <= 0
-    mask_D_zero = (D <= 0) & (Q != 0)
-    mask_D_zero_solutions = (a_D_zero <= 0) & (a_Q_zero != 0)
-
-    if torch.any(mask_D_zero):
-        theta_D_zero = torch.acos(R[mask_D_zero] / torch.sqrt(-Q3[mask_D_zero]))
-        sqrt_Q_D_zero = torch.sqrt(-Q[mask_D_zero])
-        x0_D_zero = 2 * sqrt_Q_D_zero * cos(theta_D_zero / 3.0) - b_a_3[mask_D_zero]
-        x1_D_zero = 2 * sqrt_Q_D_zero * cos((theta_D_zero + 2 * _PI) / 3.0) - b_a_3[mask_D_zero]
-        x2_D_zero = 2 * sqrt_Q_D_zero * cos((theta_D_zero + 4 * _PI) / 3.0) - b_a_3[mask_D_zero]
-        solutions[mask_D_zero_solutions] = stack([x0_D_zero, x1_D_zero, x2_D_zero], dim=1)
-
-    a_D_positive = zeros_like(a)
-    a_D_positive[~mask_a_zero] = D
-    # D > 0
-    mask_D_positive_solution = (a_D_positive > 0) & (a_Q_zero != 0)
-    mask_D_positive = (D > 0) & (Q != 0)
-    if torch.any(mask_D_positive):
-        AD = zeros_like(R)
-        BD = zeros_like(R)
-        R_abs = torch.abs(R)
-        mask_R_positive = R_abs > 1e-16
-        if torch.any(mask_R_positive):
-            AD[mask_R_positive] = torch.pow(R_abs[mask_R_positive] + torch.sqrt(D[mask_R_positive]), 1 / 3)
-            mask_R_positive_ = R < 0
-
-            if torch.any(mask_R_positive_):
-                AD[mask_R_positive_] = -AD[mask_R_positive_]
-
-            BD[mask_R_positive] = -Q[mask_R_positive] / AD[mask_R_positive]
-        x0_D_positive = AD[mask_D_positive] + BD[mask_D_positive] - b_a_3[mask_D_positive]
-        solutions[mask_D_positive_solution, 0] = x0_D_positive
-
-    return solutions
-
+    # write back once
+    out_c = torch.stack([x0, x1, x2], dim=-1)
+    out[cmask] = out_c
+    return out
 
 # def solve_quartic(coeffs: Tensor) -> Tensor:
 #    TODO: Quartic equation solver

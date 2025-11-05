@@ -16,7 +16,6 @@
 #
 
 """Module containing RANSAC modules."""
-
 import math
 from functools import partial
 from typing import Callable, Optional, Tuple
@@ -31,7 +30,7 @@ from kornia.geometry import (
     find_homography_dlt_iterated,
     find_homography_lines_dlt,
     find_homography_lines_dlt_iterated,
-    symmetrical_epipolar_distance,
+    sampson_epipolar_distance,
 )
 from kornia.geometry.homography import (
     line_segment_transfer_error_one_way,
@@ -102,12 +101,12 @@ class RANSAC(Module):
             self.polisher_solver = find_homography_lines_dlt_iterated
             self.minimal_sample_size = 4
         elif model_type == "fundamental":
-            self.error_fn = symmetrical_epipolar_distance
+            self.error_fn = sampson_epipolar_distance
             self.minimal_solver = find_fundamental
             self.minimal_sample_size = 8
             self.polisher_solver = find_fundamental
         elif model_type == "fundamental_7pt":
-            self.error_fn = symmetrical_epipolar_distance
+            self.error_fn = sampson_epipolar_distance
             self.minimal_solver = partial(find_fundamental, method="7POINT")
             self.minimal_sample_size = 7
             self.polisher_solver = find_fundamental
@@ -129,10 +128,12 @@ class RANSAC(Module):
             Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
 
         """
-        if device is None:
-            device = torch.device("cpu")
-        rand = torch.rand(batch_size, pop_size, device=device)
-        _, out = rand.topk(k=sample_size, dim=1)
+        #with profiler.record_function("SAMPLE"):
+        if True:#with profiler.record_function("SAMPLE"):
+            if device is None:
+                device = torch.device("cpu")
+            rand = torch.rand(batch_size, pop_size, device=device)
+            _, out = rand.topk(k=sample_size, dim=1)
         return out
 
     @staticmethod
