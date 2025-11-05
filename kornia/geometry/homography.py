@@ -268,30 +268,32 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
         points2: A set of points in the second image with a tensor shape :math:`(B, 4, 2)`.
 
     Returns:
-        Mask with the minimal sample is good for homography estimation:math:`(B, 3, 3)`.
+        Mask with the minimal sample is good for homography estimation :math:`(B)`.
 
     """
     if points1.shape != points2.shape:
         raise AssertionError(points1.shape)
-    KORNIA_CHECK_SHAPE(points1, ["B", "4", "2"])
-    KORNIA_CHECK_SHAPE(points2, ["B", "4", "2"])
-    device = points1.device
-    idx_perm = torch.tensor([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]], dtype=torch.long, device=device)
-    points_src_h = convert_points_to_homogeneous(points1)
-    points_dst_h = convert_points_to_homogeneous(points2)
+    # Triples to test: (0,1,2), (0,1,3), (0,2,3), (1,2,3)
+    I = torch.tensor([0, 0, 0, 1], device=points1.device)
+    J = torch.tensor([1, 1, 2, 2], device=points1.device)
+    K = torch.tensor([2, 3, 3, 3], device=points1.device)
 
-    src_perm = points_src_h[:, idx_perm]
-    dst_perm = points_dst_h[:, idx_perm]
-    left_sign = (
-        torch.linalg.cross(src_perm[..., 1:2, :], src_perm[..., 2:3, :], dim=-1)
-        @ src_perm[..., 0:1, :].permute(0, 1, 3, 2)
-    ).sign()
+    # Gather the triples for both sets: shape (B, 4, 2)
+    p1_i, p1_j, p1_k = points1[:, I], points1[:, J], points1[:, K]
+    p2_i, p2_j, p2_k = points2[:, I], points2[:, J], points2[:, K]
 
-    right_sign = (
-        torch.linalg.cross(dst_perm[..., 1:2, :], dst_perm[..., 2:3, :], dim=-1)
-        @ dst_perm[..., 0:1, :].permute(0, 1, 3, 2)
-    ).sign()
-    sample_is_valid = (left_sign == right_sign).view(-1, 4).min(dim=1)[0]
+    # 2D orientation (signed area) for each triple:
+    # orient(a,b,c) = cross2d(b-a, c-a) = (bx-ax)*(cy-ay) - (by-ay)*(cx-ax)
+    def _orient(a: Tensor, b: Tensor, c: Tensor) -> Tensor:
+        ab = b - a
+        ac = c - a
+        return ab[..., 0] * ac[..., 1] - ab[..., 1] * ac[..., 0]  # shape (B, 4)
+
+    left_sign  = torch.sign(_orient(p1_i, p1_j, p1_k))
+    right_sign = torch.sign(_orient(p2_i, p2_j, p2_k))
+
+    # Valid if all four orientation signs match across views
+    sample_is_valid = (left_sign == right_sign).all(dim=1)
     return sample_is_valid
 
 
