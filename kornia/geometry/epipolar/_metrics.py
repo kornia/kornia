@@ -24,7 +24,9 @@ from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import point_line_distance
 
 
-def _sampson_epipolar_distance_manual_impl_(pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
+def _sampson_epipolar_distance_manual_impl_(
+    pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8
+) -> Tensor:
     """Return Sampson distance for correspondences given the fundamental matrix.
 
     Args:
@@ -86,7 +88,10 @@ def _sampson_epipolar_distance_manual_impl_(pts1: Tensor, pts2: Tensor, Fm: Tens
         return out
     return (out + eps).sqrt()
 
-def _sampson_epipolar_distance_matmul_impl_(pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
+
+def _sampson_epipolar_distance_matmul_impl_(
+    pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8
+) -> Tensor:
     """Return Sampson distance for correspondences given the fundamental matrix.
 
     Args:
@@ -159,7 +164,6 @@ def _symmetrical_epipolar_distance_manual_impl_(
     pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8
 ) -> Tensor:
     """Return symmetric epipolar distance for correspondences given the fundamental matrix (CPU-optimized)."""
-
     if not isinstance(Fm, Tensor):
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
 
@@ -177,9 +181,15 @@ def _symmetrical_epipolar_distance_manual_impl_(
     w2 = pts2[..., :, 2] if pts2.shape[-1] == 3 else ones_like(u)
 
     # Grab F entries and add a length-1 axis to broadcast across N
-    f00 = Fm[..., 0, 0][..., None]; f01 = Fm[..., 0, 1][..., None]; f02 = Fm[..., 0, 2][..., None]
-    f10 = Fm[..., 1, 0][..., None]; f11 = Fm[..., 1, 1][..., None]; f12 = Fm[..., 1, 2][..., None]
-    f20 = Fm[..., 2, 0][..., None]; f21 = Fm[..., 2, 1][..., None]; f22 = Fm[..., 2, 2][..., None]
+    f00 = Fm[..., 0, 0][..., None]
+    f01 = Fm[..., 0, 1][..., None]
+    f02 = Fm[..., 0, 2][..., None]
+    f10 = Fm[..., 1, 0][..., None]
+    f11 = Fm[..., 1, 1][..., None]
+    f12 = Fm[..., 1, 2][..., None]
+    f20 = Fm[..., 2, 0][..., None]
+    f21 = Fm[..., 2, 1][..., None]
+    f22 = Fm[..., 2, 2][..., None]
 
     # Fx = F @ [x, y, w1]^T  (compute components explicitly)
     Fx0 = f00 * x + f01 * y + f02 * w1
@@ -218,8 +228,9 @@ def _symmetrical_epipolar_distance_matmul_impl_(
 
     numerator: Tensor = (pts2 * line1_in_2).sum(dim=-1).pow(2)
 
-    denominator_inv: Tensor = 1.0 / (line1_in_2[..., :2].norm(2, dim=-1).pow(2) + eps) + \
-                              1.0 / (line2_in_1[..., :2].norm(2, dim=-1).pow(2) + eps)
+    denominator_inv: Tensor = 1.0 / (line1_in_2[..., :2].norm(2, dim=-1).pow(2) + eps) + 1.0 / (
+        line2_in_1[..., :2].norm(2, dim=-1).pow(2) + eps
+    )
     out: Tensor = numerator * denominator_inv
     if squared:
         return out
