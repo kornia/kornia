@@ -52,23 +52,31 @@ def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool =
 
     if pts1.shape[-1] == 3:
         x1y1 = convert_points_from_homogeneous(pts1)
-        x1 = x1y1[..., 0]; y1 = x1y1[..., 1]
+        x1 = x1y1[..., 0]
+        y1 = x1y1[..., 1]
     else:
         x1 = pts1[..., :, 0]
         y1 = pts1[..., :, 1]
 
     if pts2.shape[-1] == 3:
         u2v2 = convert_points_from_homogeneous(pts2)
-        u2 = u2v2[..., 0]; v2 = u2v2[..., 1]
+        u2 = u2v2[..., 0]
+        v2 = u2v2[..., 1]
     else:
         u2 = pts2[..., :, 0]
         v2 = pts2[..., :, 1]
 
     # ---- Grab H entries and broadcast across N ----
-    h00 = H[..., 0, 0][..., None]; h01 = H[..., 0, 1][..., None]; h02 = H[..., 0, 2][..., None]
-    h10 = H[..., 1, 0][..., None]; h11 = H[..., 1, 1][..., None]; h12 = H[..., 1, 2][..., None]
-    h20 = H[..., 2, 0][..., None]; h21 = H[..., 2, 1][..., None]; h22 = H[..., 2, 2][..., None]
-    
+    h00 = H[..., 0, 0][..., None]
+    h01 = H[..., 0, 1][..., None]
+    h02 = H[..., 0, 2][..., None]
+    h10 = H[..., 1, 0][..., None]
+    h11 = H[..., 1, 1][..., None]
+    h12 = H[..., 1, 2][..., None]
+    h20 = H[..., 2, 0][..., None]
+    h21 = H[..., 2, 1][..., None]
+    h22 = H[..., 2, 2][..., None]
+
     # From Hartley and Zisserman, Error in one image (4.6)
     # dist = \sum_{i} ( d(x', Hx)**2)
     # ---- Apply homography to pts1 (Euclidean) and dehomogenize ----
@@ -85,8 +93,6 @@ def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool =
     if squared:
         return err2
     return (err2 + eps).sqrt()
-
-
 
 
 def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
