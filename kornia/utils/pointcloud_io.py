@@ -47,16 +47,18 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
 
     with open(filename, "w", encoding="utf-8") as f:
         # Write PLY header
-        f.writelines([
-            "ply\n",
-            "format ascii 1.0\n", 
-            "comment arraiy generated\n",
-            f"element vertex {valid_count}\n",
-            "property double x\n",
-            "property double y\n",
-            "property double z\n",
-            "end_header\n"
-        ])
+        f.writelines(
+            [
+                "ply\n",
+                "format ascii 1.0\n",
+                "comment arraiy generated\n",
+                f"element vertex {valid_count}\n",
+                "property double x\n",
+                "property double y\n",
+                "property double z\n",
+                "end_header\n",
+            ]
+        )
 
         if valid_count > 0:
             # Move to CPU, convert to float64 for matching 'double' in header
