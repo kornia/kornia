@@ -116,20 +116,18 @@ def _sampson_epipolar_distance_matmul_impl_(
     # From Hartley and Zisserman, Sampson error (11.9)
     # sam =  (x'^T F x) ** 2 / (  (((Fx)_1**2) + (Fx)_2**2)) +  (((F^Tx')_1**2) + (F^Tx')_2**2)) )
 
-    # line1_in_2 = (F @ pts1.transpose(dim0=-2, dim1=-1)).transpose(dim0=-2, dim1=-1)
-    # line2_in_1 = (F.transpose(dim0=-2, dim1=-1) @ pts2.transpose(dim0=-2, dim1=-1)).transpose(dim0=-2, dim1=-1)
-
     # Instead we can just transpose F once and switch the order of multiplication
-    F_t: Tensor = Fm.transpose(dim0=-2, dim1=-1)
-    line1_in_2: Tensor = pts1 @ F_t
-    line2_in_1: Tensor = pts2 @ Fm
+    F_t = Fm.transpose(dim0=-2, dim1=-1)
+    line1_in_2 = pts1 @ F_t
+    line2_in_1 = pts2 @ Fm
 
     # numerator = (x'^T F x) ** 2
-    numerator: Tensor = (pts2 * line1_in_2).sum(dim=-1).pow(2)
+    numerator = (pts2 * line1_in_2).sum(dim=-1).square()
 
     # denominator = (((Fx)_1**2) + (Fx)_2**2)) +  (((F^Tx')_1**2) + (F^Tx')_2**2))
-    denominator: Tensor = line1_in_2[..., :2].norm(2, dim=-1).pow(2) + line2_in_1[..., :2].norm(2, dim=-1).pow(2)
-    out: Tensor = numerator / denominator
+    # Use .square().sum(-1) for squared norm for more efficiency
+    denominator = line1_in_2[..., :2].square().sum(dim=-1) + line2_in_1[..., :2].square().sum(dim=-1)
+    out = numerator / denominator
     if squared:
         return out
     return (out + eps).sqrt()
