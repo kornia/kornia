@@ -16,6 +16,7 @@
 #
 
 """Module containing RANSAC modules."""
+
 import math
 from functools import partial
 from typing import Callable, Optional, Tuple
@@ -128,8 +129,8 @@ class RANSAC(Module):
             Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
 
         """
-        #with profiler.record_function("SAMPLE"):
-        if True:#with profiler.record_function("SAMPLE"):
+        # with profiler.record_function("SAMPLE"):
+        if True:  # with profiler.record_function("SAMPLE"):
             if device is None:
                 device = torch.device("cpu")
             rand = torch.rand(batch_size, pop_size, device=device)

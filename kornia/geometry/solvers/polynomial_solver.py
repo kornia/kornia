@@ -17,25 +17,24 @@
 
 """Module containing the functionalities for computing the real roots of polynomial equation."""
 
-import math
-
 import torch
 
-from kornia.core import Tensor, cos, ones_like, stack, zeros, zeros_like
-from kornia.core.check import KORNIA_CHECK_SHAPE
-
+from kornia.core import Tensor, ones_like, stack, zeros, zeros_like
 
 # Optional: make these small epsilons configurable
 _EPS = 1e-12
+
 
 # keep eps on-tensor to avoid dtype upcasts & recompiles
 def _eps_like(x: Tensor, val: float = 1e-12) -> Tensor:
     return torch.as_tensor(val, dtype=x.dtype, device=x.device)
 
+
 def _cbrt(x: Tensor) -> Tensor:
     # branchless, handles x=0, keeps sign
     ax = x.abs()
     return x.sign() * ax.pow(1.0 / 3.0)
+
 
 def solve_quadratic(coeffs: Tensor) -> Tensor:
     a, b, c = coeffs.unbind(dim=-1)
@@ -71,6 +70,7 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
 
     return out
 
+
 def solve_cubic(coeffs: Tensor) -> Tensor:
     r"""Batched real roots for ax^3 + bx^2 + cx + d = 0.
     Returns (B, 3) with non-real roots as 0; multiplicities kept.
@@ -91,7 +91,10 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
         return out
 
     # compact cubic slice
-    a_c = a[cmask]; b_c = b[cmask]; c_c = c[cmask]; d_c = d[cmask]
+    a_c = a[cmask]
+    b_c = b[cmask]
+    c_c = c[cmask]
+    d_c = d[cmask]
     inv_a = 1.0 / a_c
     bb = b_c * inv_a
     cc = c_c * inv_a
@@ -151,6 +154,7 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     out_c = torch.stack([x0, x1, x2], dim=-1)
     out[cmask] = out_c
     return out
+
 
 # def solve_quartic(coeffs: Tensor) -> Tensor:
 #    TODO: Quartic equation solver
