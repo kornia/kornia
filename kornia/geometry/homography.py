@@ -295,7 +295,7 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
         ac = c - a
         return ab[..., 0] * ac[..., 1] - ab[..., 1] * ac[..., 0]  # shape (B, 4)
 
-    left_sign  = torch.sign(_orient(p1_i, p1_j, p1_k))
+    left_sign = torch.sign(_orient(p1_i, p1_j, p1_k))
     right_sign = torch.sign(_orient(p2_i, p2_j, p2_k))
 
     # Valid if all four orientation signs match across views
