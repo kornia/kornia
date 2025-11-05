@@ -50,19 +50,43 @@ def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool =
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
 
-    if pts1.size(-1) == 3:
-        pts1 = convert_points_from_homogeneous(pts1)
+    if pts1.shape[-1] == 3:
+        x1y1 = convert_points_from_homogeneous(pts1)
+        x1 = x1y1[..., 0]; y1 = x1y1[..., 1]
+    else:
+        x1 = pts1[..., :, 0]
+        y1 = pts1[..., :, 1]
 
-    if pts2.size(-1) == 3:
-        pts2 = convert_points_from_homogeneous(pts2)
+    if pts2.shape[-1] == 3:
+        u2v2 = convert_points_from_homogeneous(pts2)
+        u2 = u2v2[..., 0]; v2 = u2v2[..., 1]
+    else:
+        u2 = pts2[..., :, 0]
+        v2 = pts2[..., :, 1]
 
+    # ---- Grab H entries and broadcast across N ----
+    h00 = H[..., 0, 0][..., None]; h01 = H[..., 0, 1][..., None]; h02 = H[..., 0, 2][..., None]
+    h10 = H[..., 1, 0][..., None]; h11 = H[..., 1, 1][..., None]; h12 = H[..., 1, 2][..., None]
+    h20 = H[..., 2, 0][..., None]; h21 = H[..., 2, 1][..., None]; h22 = H[..., 2, 2][..., None]
+    
     # From Hartley and Zisserman, Error in one image (4.6)
     # dist = \sum_{i} ( d(x', Hx)**2)
-    pts1_in_2: Tensor = transform_points(H, pts1)
-    error_squared: Tensor = (pts1_in_2 - pts2).pow(2).sum(dim=-1)
+    # ---- Apply homography to pts1 (Euclidean) and dehomogenize ----
+    # [x'; y'; w']^T = H @ [x1, y1, 1]^T
+    x_num = h00 * x1 + h01 * y1 + h02
+    y_num = h10 * x1 + h11 * y1 + h12
+    w_den = h20 * x1 + h21 * y1 + h22
+
+    u1in2 = x_num / (w_den + eps)
+    v1in2 = y_num / (w_den + eps)
+
+    # ---- Squared transfer error in image 2 ----
+    err2 = (u1in2 - u2).pow(2) + (v1in2 - v2).pow(2)
     if squared:
-        return error_squared
-    return (error_squared + eps).sqrt()
+        return err2
+    return (err2 + eps).sqrt()
+
+
 
 
 def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
