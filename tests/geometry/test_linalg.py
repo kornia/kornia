@@ -31,30 +31,26 @@ class TestTransformPoints(BaseTester):
     @pytest.mark.parametrize("num_points", [2, 3, 5])
     @pytest.mark.parametrize("num_dims", [2, 3])
     def test_transform_points(self, batch_size, num_points, num_dims, device, dtype):
-        # generate input data
+        # generate input data: (B, N, D)
         eye_size = num_dims + 1
         points_src = torch.rand(batch_size, num_points, num_dims, device=device, dtype=dtype)
 
-        dst_homo_src = create_random_homography(points_src, eye_size)
-        dst_homo_src = dst_homo_src.to(device)
+        dst_homo_src = create_random_homography(points_src, eye_size).to(device)
 
         # transform the points from dst to ref
         points_dst = kgl.transform_points(dst_homo_src, points_src)
 
-        # transform the points from ref to dst
+        # transform back
         src_homo_dst = torch.inverse(dst_homo_src)
         points_dst_to_src = kgl.transform_points(src_homo_dst, points_dst)
 
-        # projected should be equal as initial
         self.assert_close(points_src, points_dst_to_src, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
-        # generate input data
         batch_size, num_points, num_dims = 2, 3, 2
         eye_size = num_dims + 1
         points_src = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64)
         dst_homo_src = create_random_homography(points_src, eye_size)
-        # evaluate function gradient
         self.gradcheck(kornia.geometry.transform_points, (dst_homo_src, points_src))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
@@ -65,6 +61,44 @@ class TestTransformPoints(BaseTester):
         actual = op_script(transform, points)
         expected = op(transform, points)
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+
+    # ----- New tests for broadcast & extra leading dims -----
+
+    @pytest.mark.parametrize("num_dims", [2, 3])
+    def test_single_transform_broadcasts(self, num_dims, device, dtype):
+        # points: (M, B, N, D), transform: (D+1, D+1) -> broadcast to (M, B)
+        M, B, N, D = 3, 2, 7, num_dims
+        eye_size = D + 1
+        points = torch.rand(M, B, N, D, device=device, dtype=dtype)
+
+        # A single transform (no batch dims)
+        trans = torch.eye(eye_size, device=device, dtype=dtype)
+
+        out = kgl.transform_points(trans, points)
+
+        # Inverse should recover original
+        inv = torch.inverse(trans)
+        rec = kgl.transform_points(inv, out)
+        self.assert_close(points, rec, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("num_dims", [2, 3])
+    def test_extra_leading_dims_full_batch(self, num_dims, device, dtype):
+        # points: (M, B, N, D), transform: (M, B, D+1, D+1)
+        M, B, N, D = 4, 3, 5, num_dims
+        eye_size = D + 1
+        points = torch.rand(M, B, N, D, device=device, dtype=dtype)
+
+        # Build a random homography per (M, B)
+        # Reuse helper on a flattened view, then reshape back
+        flat = points.reshape(M * B, N, D)
+        H_flat = create_random_homography(flat, eye_size).to(device).to(dtype)
+        H = H_flat.reshape(M, B, eye_size, eye_size)
+
+        out = kgl.transform_points(H, points)
+
+        inv = torch.inverse(H)
+        rec = kgl.transform_points(inv, out)
+        self.assert_close(points, rec, atol=1e-4, rtol=1e-4)
 
 
 class TestComposeTransforms(BaseTester):

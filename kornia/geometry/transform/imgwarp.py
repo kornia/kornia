@@ -141,7 +141,7 @@ def warp_perspective(
         .to(src.dtype)
         .expand(B, h_out, w_out, 2)
     )
-    grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
+    grid = transform_points(src_norm_trans_dst_norm[:, None], grid)
 
     if padding_mode == "fill":
         return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
