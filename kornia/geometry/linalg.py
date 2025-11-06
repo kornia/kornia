@@ -246,8 +246,7 @@ def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
         _ = torch.broadcast_shapes(pts_batch, trn_batch)
     except RuntimeError as e:
         raise ValueError(
-            f"Leading batch dims of `trans_01` {trn_batch} are not broadcastable "
-            f"to those of `points_1` {pts_batch}."
+            f"Leading batch dims of `trans_01` {trn_batch} are not broadcastable to those of `points_1` {pts_batch}."
         ) from e
 
     # to homogeneous: (..., N, D+1)
