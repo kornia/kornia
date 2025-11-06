@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import functools
 from typing import Optional
 
 import torch
@@ -27,7 +28,6 @@ from kornia.core import Tensor, concatenate, cos, pad, sin, stack, tensor, where
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import deprecated
 from kornia.utils.helpers import _torch_inverse_cast
-import functools
 
 __all__ = [
     "ARKitQTVecs_to_ColmapQTVecs",
@@ -1044,7 +1044,6 @@ def normalize_homography(
 ) -> Tensor:
     """Normalize a given homography in pixels to [-1, 1].
 
-
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
           normalized. :math:`(B, 3, 3)`
@@ -1076,7 +1075,6 @@ def normalize_homography(
     # .to() generally becomes a no-op if device and dtype match
     src_norm_trans_src_pix = src_norm_trans_src_pix.to(dst_pix_trans_src_pix)
     dst_norm_trans_dst_pix = dst_norm_trans_dst_pix.to(dst_pix_trans_src_pix)
-
 
     src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
 
@@ -1614,6 +1612,7 @@ def _make_cache_key(height: int, width: int, device, dtype) -> tuple:
     dtype_str = str(dtype) if dtype is not None else str(torch.float32)
     return (height, width, dev_str, dtype_str)
 
+
 @functools.lru_cache(maxsize=64)
 def _cached_normal_transform_pixel(height: int, width: int, device_str: str, dtype_str: str):
     # Parse device/dtype
@@ -1621,4 +1620,5 @@ def _cached_normal_transform_pixel(height: int, width: int, device_str: str, dty
     dtype = getattr(torch, dtype_str) if hasattr(torch, dtype_str) else eval(dtype_str)
     # Import below is safe, matches runtime logic of normal_transform_pixel
     from kornia.geometry.conversions import normal_transform_pixel
+
     return normal_transform_pixel(height, width, device=device, dtype=dtype)
