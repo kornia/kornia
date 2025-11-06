@@ -27,6 +27,7 @@ from kornia.core import Tensor, concatenate, cos, pad, sin, stack, tensor, where
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import deprecated
 from kornia.utils.helpers import _torch_inverse_cast
+import functools
 
 __all__ = [
     "ARKitQTVecs_to_ColmapQTVecs",
@@ -1041,7 +1042,8 @@ def angle_to_rotation_matrix(angle: Tensor) -> Tensor:
 def normalize_homography(
     dst_pix_trans_src_pix: Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
 ) -> Tensor:
-    r"""Normalize a given homography in pixels to [-1, 1].
+    """Normalize a given homography in pixels to [-1, 1].
+
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
@@ -1063,11 +1065,20 @@ def normalize_homography(
     src_h, src_w = dsize_src
     dst_h, dst_w = dsize_dst
 
-    # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+    # Memoized lookup only on size/device/dtype
+    dev = dst_pix_trans_src_pix.device
+    dtype = dst_pix_trans_src_pix.dtype
+    dev_str = str(dev)
+    dtype_str = str(dtype).replace("torch.", "") if str(dtype).startswith("torch.") else str(dtype)
+    src_norm_trans_src_pix: Tensor = _cached_normal_transform_pixel(src_h, src_w, dev_str, dtype_str)
+    dst_norm_trans_dst_pix: Tensor = _cached_normal_transform_pixel(dst_h, dst_w, dev_str, dtype_str)
+
+    # .to() generally becomes a no-op if device and dtype match
+    src_norm_trans_src_pix = src_norm_trans_src_pix.to(dst_pix_trans_src_pix)
+    dst_norm_trans_dst_pix = dst_norm_trans_dst_pix.to(dst_pix_trans_src_pix)
+
 
     src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
-    dst_norm_trans_dst_pix: Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
 
     # compute chain transformations
     dst_norm_trans_src_norm: Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
@@ -1594,3 +1605,20 @@ def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
         [stack([zeros, -v3, v2], dim=-1), stack([v3, zeros, -v1], dim=-1), stack([-v2, v1, zeros], dim=-1)], dim=-2
     )
     return skew_symmetric_matrix
+
+
+# Only used internally for LRU cache
+def _make_cache_key(height: int, width: int, device, dtype) -> tuple:
+    # device as string, dtype as string (these are hashable)
+    dev_str = str(device) if device is not None else "cpu"
+    dtype_str = str(dtype) if dtype is not None else str(torch.float32)
+    return (height, width, dev_str, dtype_str)
+
+@functools.lru_cache(maxsize=64)
+def _cached_normal_transform_pixel(height: int, width: int, device_str: str, dtype_str: str):
+    # Parse device/dtype
+    device = torch.device(device_str)
+    dtype = getattr(torch, dtype_str) if hasattr(torch, dtype_str) else eval(dtype_str)
+    # Import below is safe, matches runtime logic of normal_transform_pixel
+    from kornia.geometry.conversions import normal_transform_pixel
+    return normal_transform_pixel(height, width, device=device, dtype=dtype)
