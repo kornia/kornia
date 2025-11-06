@@ -23,8 +23,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.core import (Tensor, concatenate, cos, pad, sin, stack, tensor,
-                         where, zeros_like)
+from kornia.core import Tensor, concatenate, cos, pad, sin, stack, tensor, where, zeros_like
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import deprecated
 from kornia.utils.helpers import _torch_inverse_cast
@@ -225,11 +224,7 @@ def convert_points_to_homogeneous(points: Tensor) -> Tensor:
     if len(points.shape) < 2:
         raise ValueError(f"Input must be at least a 2D tensor. Got {points.shape}")
 
-    ones = torch.ones(
-        points.shape[:-1] + (1,),
-        dtype=points.dtype,
-        device=points.device
-    )
+    ones = torch.ones(points.shape[:-1] + (1,), dtype=points.dtype, device=points.device)
     return torch.cat([points, ones], dim=-1)
 
 
