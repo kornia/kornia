@@ -26,16 +26,11 @@ _EPS = 1e-12
 
 
 # keep eps on-tensor to avoid dtype upcasts & recompiles
+@torch.jit.script
 def _eps_like(x: Tensor, val: float = 1e-12) -> Tensor:
     return torch.as_tensor(val, dtype=x.dtype, device=x.device)
 
-
-def _cbrt(x: Tensor) -> Tensor:
-    # branchless, handles x=0, keeps sign
-    ax = x.abs()
-    return x.sign() * ax.pow(1.0 / 3.0)
-
-
+@torch.jit.script
 def solve_quadratic(coeffs: Tensor) -> Tensor:
     a, b, c = coeffs.unbind(dim=-1)
     B = coeffs.shape[0]
@@ -70,70 +65,57 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
 
     return out
 
+@torch.jit.script
+def _cbrt(x: torch.Tensor) -> torch.Tensor:
+    return torch.sign(x) * torch.abs(x).pow(1.0 / 3.0)
 
-def solve_cubic(coeffs: Tensor) -> Tensor:
-    r"""Batched real roots for ax^3 + bx^2 + cx + d = 0.
-    Returns (B, 3) with non-real roots as 0; multiplicities kept.
-    """
+
+@torch.jit.script
+def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
+    # coeffs: (..., 4) = [a,b,c,d]
     a, b, c, d = coeffs.unbind(dim=-1)
-    B = coeffs.shape[0]
-    out = zeros((B, 3), device=coeffs.device, dtype=coeffs.dtype)
     eps = _eps_like(a)
 
-    # quadratic/linear fallback where a≈0
-    a0 = a.abs() <= eps
-    if a0.any():  # tiny sync;
-        qroots = solve_quadratic(stack([b[a0], c[a0], d[a0]], dim=-1))
-        out[a0, :2] = qroots
+    # Identify “cubic” rows but avoid control flow; make a_safe to keep math finite
+    is_cubic = torch.abs(a) > eps
+    a_safe = torch.where(is_cubic, a, torch.ones_like(a))
 
-    cmask = ~a0
-    if not cmask.any():
-        return out
+    # ---- Depressed cubic invariants (vectorized over all rows) ----
+    inv_a = 1.0 / a_safe
+    bb = b * inv_a
+    cc = c * inv_a
+    dd = d * inv_a
 
-    # compact cubic slice
-    a_c = a[cmask]
-    b_c = b[cmask]
-    c_c = c[cmask]
-    d_c = d[cmask]
-    inv_a = 1.0 / a_c
-    bb = b_c * inv_a
-    cc = c_c * inv_a
-    dd = d_c * inv_a
-
-    # depressed cubic: y^3 + p y + q = 0 with x = y - b/(3a)
     bb2 = bb * bb
     p = (3.0 * cc - bb2) / 3.0
     q = (2.0 * bb * bb2 - 9.0 * bb * cc + 27.0 * dd) / 27.0
 
     half_q = 0.5 * q
-    third_p = (1.0 / 3.0) * p
+    third_p = p / 3.0
     disc = half_q * half_q + third_p * third_p * third_p
     shift = bb / 3.0
 
-    # masks on cubic slice
-    pos = disc > eps
-    zro = disc.abs() <= eps
-    neg = disc < -eps
+    pos = disc > eps        # one real, two complex
+    zro = disc.abs() <= eps # multiple real roots
+    neg = disc < -eps       # three distinct real roots
 
-    # ----- Compute *all* candidate roots once (guarded), then select -----
-
-    # Case: one real (disc > 0)
+    # ----- One-real-root branch (Δ>0) -----
     sp = torch.sqrt(torch.clamp_min(disc, 0.0))
-    y0_one = _cbrt(-half_q + sp) + _cbrt(-half_q - sp)
-    x0_one = y0_one - shift
+    y_one = _cbrt(-half_q + sp) + _cbrt(-half_q - sp)
+    x0_one = y_one - shift
     x1_one = zeros_like(x0_one)
     x2_one = zeros_like(x0_one)
 
-    # Case: multiple roots (|disc| ~ 0)
+    # ----- Multiple roots (|Δ|≈0) -----
     ya = _cbrt(-half_q)
     x0_zero = 2.0 * ya - shift
     x1_zero = -ya - shift
     x2_zero = x1_zero
 
-    # Case: three distinct reals (disc < 0) — trig solution
-    third_p_neg = torch.clamp(-third_p, min=0.0)  # ensure non-neg for sqrt
-    r = 2.0 * torch.sqrt(third_p_neg)
-    denom = torch.sqrt(third_p_neg * third_p_neg * third_p_neg + eps)
+    # ----- Three real roots (Δ<0) -----
+    tp_neg = torch.clamp(-third_p, min=0.0)
+    r = 2.0 * torch.sqrt(tp_neg)
+    denom = torch.sqrt(tp_neg * tp_neg * tp_neg + eps)
     cos_arg = torch.clamp((-half_q) / denom, -1.0, 1.0)
     theta = torch.acos(cos_arg)
 
@@ -145,16 +127,35 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     x1_neg = r * torch.cos(t2) - shift
     x2_neg = r * torch.cos(t3) - shift
 
-    # Select per mask (branchless)
+    # ----- Select per discriminant (no control flow) -----
     x0 = torch.where(pos, x0_one, torch.where(zro, x0_zero, x0_neg))
     x1 = torch.where(pos, x1_one, torch.where(zro, x1_zero, x1_neg))
     x2 = torch.where(pos, x2_one, torch.where(zro, x2_zero, x2_neg))
 
-    # write back once
-    out_c = torch.stack([x0, x1, x2], dim=-1)
-    out[cmask] = out_c
-    return out
+    roots_cubic = torch.stack([x0, x1, x2], dim=-1)
 
+    # ----- Quadratic/linear fallback for a≈0 (compute everywhere, then blend) -----
+    # Solve b x^2 + c x + d = 0; return (r1, r2, 0). Handle linear (|b|≈0) too.
+    is_quad = (~is_cubic) & (torch.abs(b) > eps)
+    is_lin  = (~is_cubic) & (~is_quad)
+
+    disc2 = c * c - 4.0 * b * d
+    sqrt_disc2 = torch.sqrt(torch.clamp_min(disc2, 0.0))
+    two_b = 2.0 * b + eps  # avoid div-by-zero when fused
+
+    r1q = torch.where(disc2 >= 0, (-c + sqrt_disc2) / two_b, torch.zeros_like(c))
+    r2q = torch.where(disc2 >= 0, (-c - sqrt_disc2) / two_b, torch.zeros_like(c))
+    roots_quad = torch.stack([r1q, r2q, torch.zeros_like(r1q)], dim=-1)
+
+    # Linear ax + b = 0 (here: c x + d = 0)
+    r_lin = torch.where(torch.abs(c) > eps, -d / (c + eps), torch.zeros_like(d))
+    roots_lin = torch.stack([r_lin, torch.zeros_like(r_lin), torch.zeros_like(r_lin)], dim=-1)
+
+    roots_deg = torch.where(is_quad.unsqueeze(-1), roots_quad, roots_lin)
+
+    # Blend cubic vs degenerate without in-place or mask indexing
+    roots = torch.where(is_cubic.unsqueeze(-1), roots_cubic, roots_deg)
+    return roots
 
 # def solve_quartic(coeffs: Tensor) -> Tensor:
 #    TODO: Quartic equation solver

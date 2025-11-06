@@ -211,10 +211,7 @@ def _torch_svd_cast(input: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         dtype = torch.float32
 
     out1, out2, out3H = torch.linalg.svd(input.to(dtype))
-    if torch_version_ge(1, 11):
-        out3 = out3H.mH
-    else:
-        out3 = out3H.transpose(-1, -2)
+    out3 = out3H.mH
     return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
 
 

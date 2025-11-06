@@ -17,6 +17,7 @@
 
 """Module including useful metrics for Structure from Motion."""
 
+import torch
 from torch import Tensor, ones_like
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
@@ -134,7 +135,7 @@ def _sampson_epipolar_distance_matmul_impl_(
         return out
     return (out + eps).sqrt()
 
-
+@torch.jit.script
 def sampson_epipolar_distance(
     pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8
 ) -> Tensor:

@@ -61,7 +61,7 @@ def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]
     centered = points - x_mean  # (B,N,2)
 
     # Mean Euclidean distance to origin (radius)
-    mean_radius = centered.norm(dim=-1).mean(dim=-1)  # (B,)
+    mean_radius = centered.norm(dim=-1, p=2).mean(dim=-1)  # (B,)
 
     # Scale so that mean radius becomes sqrt(2)
     scale = (math.sqrt(2.0)) / (mean_radius + eps)  # (B,)
@@ -103,8 +103,37 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
     return where(norm_val.abs() > eps, M / (norm_val + eps), M)
 
 
+def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
+    """
+    A: (..., 7, 9)
+    Returns N: (..., 9, 2) where columns span the right nullspace of A
+    """
+    AT = A.transpose(-2, -1)                     # (..., 9, 7)
+    G = AT @ A                                   # (..., 9, 9) SPD
+    evals, evecs = torch.linalg.eigh(G)          # ascending eigenvalues
+    N = evecs[..., :, :2]                        # eigenvectors for 2 smallest evals
+    return N  # orthonormal columns
+
+
+def _F1F2_from_nullspace(N: torch.Tensor):
+    """
+    N: (..., 9, 2)
+    Returns F1, F2: (..., 3, 3)
+    """
+    F1 = N[..., 0].view(-1, 3, 3)
+    F2 = N[..., 1].view(-1, 3, 3)
+    return F1, F2
+
+def _normalize_F(F: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    """
+    Frobenius-normalize each 3x3 (keeps cubic coefficients well-scaled).
+    """
+    nrm = F.norm(dim=(-2, -1),p=1, keepdim=True).clamp_min(eps)
+    return F / nrm
+
 # Reference: Adapted from the 'run_7point' function in opencv
 # https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp
+@torch.jit.script
 def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     r"""Compute the fundamental matrix using the 7-point algorithm.
 
@@ -134,13 +163,13 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
 
     # X * Fmat = 0 is singular (7 equations for 9 variables)
     # solving for nullspace of X to get two F
-    ####### unstable failing gradcheck
-    # _, _, v = torch.linalg.svd(X)
-    _, _, v = _torch_svd_cast(X)
-
+    # Slower original SVD route
+    #_, _, v = _torch_svd_cast(X)
     # last two singular vector as a basic of the space
-    f1 = v[..., 7].view(-1, 3, 3)
-    f2 = v[..., 8].view(-1, 3, 3)
+    #f1 = v[..., 7].view(-1, 3, 3)
+    #f2 = v[..., 8].view(-1, 3, 3)
+    f1, f2 = _F1F2_from_nullspace(_nullspace_via_eigh(X))
+    f1, f2 = _normalize_F(f1), _normalize_F(f2)
 
     # lambda*f1 + mu*f2 is an arbitrary fundamental matrix
     # f ~ lambda*f1 + (1 - lambda)*f2
@@ -148,8 +177,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     # form a cubic equation
     # finding the coefficients of cubic polynomial (coeffs)
 
-    coeffs = zeros((batch_size, 4), device=v.device, dtype=v.dtype)
-
+    coeffs = zeros((batch_size, 4), device=f1.device, dtype=f1.dtype)
     f1_det = torch.linalg.det(f1)
     f2_det = torch.linalg.det(f2)
     coeffs[:, 0] = f1_det
@@ -161,8 +189,9 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     # roots = torch.tensor(np.roots(coeffs.numpy()))
     roots = solve_cubic(coeffs)
 
-    fmatrix = zeros((batch_size, 3, 3, 3), device=v.device, dtype=v.dtype)
-    valid_root_mask = (torch.count_nonzero(roots, dim=1) < 3) | (torch.count_nonzero(roots, dim=1) > 1)
+    fmatrix = zeros((batch_size, 3, 3, 3), device=f1.device, dtype=f1.dtype)
+    cnz  = torch.count_nonzero(roots, dim=1)
+    valid_root_mask = (cnz < 3) | (cnz > 1)
 
     _lambda = roots
     _mu = torch.ones_like(_lambda)
@@ -170,8 +199,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     _s = f1[valid_root_mask, 2, 2].unsqueeze(dim=1) * roots[valid_root_mask] + f2[valid_root_mask, 2, 2].unsqueeze(
         dim=1
     )
-    # _s_non_zero_mask = torch.abs(_s ) > 1e-16
-    _s_non_zero_mask = ~torch.isclose(_s, torch.tensor(0.0, device=v.device, dtype=v.dtype))
+    _s_non_zero_mask = ~torch.isclose(_s, torch.tensor(0.0, device=f1.device, dtype=f1.dtype))
 
     _mu[_s_non_zero_mask] = 1.0 / _s[_s_non_zero_mask]
     _lambda[_s_non_zero_mask] = _lambda[_s_non_zero_mask] * _mu[_s_non_zero_mask]
@@ -197,14 +225,11 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     )
     return normalize_transformation(fmatrix)
 
-
+@torch.jit.script
 def run_8point(
     points1: Tensor,
     points2: Tensor,
-    weights: Optional[Tensor] = None,
-    *,
-    small_n_threshold: int = 512,
-    eps: float = 1e-12,
+    weights: Optional[Tensor] = None
 ) -> Tensor:
     r"""Compute the fundamental matrix using (weighted) 8-point DLT, optimized.
 
@@ -216,6 +241,7 @@ def run_8point(
     Returns:
         (B, 3, 3) fundamental matrices
     """
+    small_n_threshold: int = 512
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "N", "2"])
     KORNIA_CHECK_SAME_SHAPE(points1, points2)
@@ -259,22 +285,17 @@ def run_8point(
             # Weighted einsum
             M = torch.einsum("bni,bnj,bn->bij", A, A, w)
 
-    # Smallest-eigenvector of M is the DLT solution (nullspace of A)
-    # eigh is ideal here since M is symmetric PSD
     evals, evecs = torch.linalg.eigh(M)  # ascending order
     h = evecs[..., 0]  # (B,9), eigenvector for smallest λ
     F_hat = h.view(B, 3, 3)
 
     # Enforce rank-2 with a 3x3 SVD
-    U, S, Vh = torch.linalg.svd(F_hat, full_matrices=False)
+    U, S, V = _torch_svd_cast(F_hat)
     S_new = torch.zeros_like(S)
     S_new[..., :-1] = S[..., :-1]
-    F_rank2 = U @ torch.diag_embed(S_new) @ Vh
-
-    # Denormalize: F = T2^T * F_rank2 * T1
+    F_rank2 = U @ torch.diag_embed(S_new) @ V.mH
     F = T2.transpose(-2, -1) @ (F_rank2 @ T1)
 
-    # Normalize (e.g., scale so ||F|| is well-behaved / consistent with your helper)
     return normalize_transformation(F)
 
 

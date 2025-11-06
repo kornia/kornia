@@ -64,6 +64,8 @@ class RANSAC(Module):
         max_iter: int = 10,
         confidence: float = 0.99,
         max_lo_iters: int = 5,
+        score_type: str = "ransac",
+        prosac_sampling: bool = False,
     ) -> None:
         """Initialize the RANSAC estimator.
 
@@ -79,6 +81,8 @@ class RANSAC(Module):
         """
         super().__init__()
         self.supported_models = ["homography", "fundamental", "fundamental_7pt", "homography_from_linesegments"]
+        self.supported_scores = ["msac", "ransac"]
+        self.score_type = score_type
         self.inl_th = inl_th
         self.max_iter = max_iter
         self.batch_size = batch_size
@@ -86,6 +90,7 @@ class RANSAC(Module):
         self.confidence = confidence
         self.max_lo_iters = max_lo_iters
         self.model_type = model_type
+        self.prosac_sampling = prosac_sampling
 
         self.error_fn: Callable[..., Tensor]
         self.minimal_solver: Callable[..., Tensor]
@@ -113,8 +118,9 @@ class RANSAC(Module):
             self.polisher_solver = find_fundamental
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
+    
 
-    def sample(self, sample_size: int, pop_size: int, batch_size: int, device: Optional[Device] = None) -> Tensor:
+    def sample(self, sample_size: int, pop_size: int, batch_size: int, iteration: int, device: Optional[Device] = None) -> Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches.
 
         Yields the benefit of the parallel processing, esp. on GPU.
@@ -129,12 +135,10 @@ class RANSAC(Module):
             Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
 
         """
-        # with profiler.record_function("SAMPLE"):
-        if True:  # with profiler.record_function("SAMPLE"):
-            if device is None:
-                device = torch.device("cpu")
-            rand = torch.rand(batch_size, pop_size, device=device)
-            _, out = rand.topk(k=sample_size, dim=1)
+        if device is None:
+            device = torch.device("cpu")
+        rand = torch.rand(batch_size, pop_size, device=device)
+        _, out = rand.topk(k=sample_size, dim=1)
         return out
 
     @staticmethod
@@ -156,6 +160,7 @@ class RANSAC(Module):
             return 1.0
         if n_inl == num_tc:
             return 1.0
+        
         return math.log(1.0 - conf) / min(-eps, math.log(max(eps, 1.0 - math.pow(n_inl / num_tc, sample_size))))
 
     def estimate_model_from_minsample(self, kp1: Tensor, kp2: Tensor) -> Tensor:
@@ -198,13 +203,21 @@ class RANSAC(Module):
             errors = self.error_fn(kp1.expand(batch_size, -1, 2, 2), kp2.expand(batch_size, -1, 2, 2), models)
         else:
             errors = self.error_fn(kp1.expand(batch_size, -1, 2), kp2.expand(batch_size, -1, 2), models)
-        inl = errors <= inl_th
-        models_score = inl.to(kp1).sum(dim=1)
-        best_model_idx = models_score.argmax()
-        best_model_score = models_score[best_model_idx].item()
+        inl_mask = errors <= inl_th
+        #score_ransac = inl_mask.to(kp1).sum(dim=1)
+        score_ransac = inl_mask.sum(dim=1)
+        if self.score_type == "msac":
+            score = errors.shape[1] - errors.clamp(min=0.0, max=inl_th).sum(dim=1)
+        elif self.score_type == "ransac":
+            score = score_ransac
+        else:
+            raise ValueError(f"Unsupported score type: {self.score_type}")
+        best_model_idx = score.argmax()
+        best_model_score = score[best_model_idx].item()
+        num_inliers = score_ransac[best_model_idx].item()
         model_best = models[best_model_idx].clone()
-        inliers_best = inl[best_model_idx]
-        return model_best, inliers_best, best_model_score
+        inliers_best = inl_mask[best_model_idx]
+        return model_best, inliers_best, best_model_score, num_inliers
 
     def remove_bad_samples(self, kp1: Tensor, kp2: Tensor) -> Tuple[Tensor, Tensor]:
         """Remove degenerate samples based on model-specific constraints.
@@ -311,7 +324,7 @@ class RANSAC(Module):
         inliers_best_total: Tensor = zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
         for i in range(self.max_iter):
             # Sample minimal samples in batch to estimate models
-            idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, kp1.device)
+            idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, i,  kp1.device)
             kp1_sampled = kp1[idxs]
             kp2_sampled = kp2[idxs]
 
@@ -324,17 +337,16 @@ class RANSAC(Module):
             if (models is None) or (len(models) == 0):
                 continue
             # Score the models and select the best one
-            model, inliers, model_score = self.verify(kp1, kp2, models, self.inl_th)
+            model, inliers, model_score, num_inliers = self.verify(kp1, kp2, models, self.inl_th)
             # Store far-the-best model and (optionally) do a local optimization
-            if model_score > best_score_total:
+            if (model_score > best_score_total) and num_inliers > self.minimal_sample_size+2:
                 # Local optimization
                 for _ in range(self.max_lo_iters):
                     model_lo = self.polish_model(kp1, kp2, inliers)
                     if (model_lo is None) or (len(model_lo) == 0):
                         continue
-                    _, inliers_lo, score_lo = self.verify(kp1, kp2, model_lo, self.inl_th)
-                    # print (f"Orig score = {best_model_score}, LO score = {score_lo} TC={num_tc}")
-                    if score_lo > model_score:
+                    _, inliers_lo, score_lo, num_inliers_lo = self.verify(kp1, kp2, model_lo, self.inl_th)
+                    if (score_lo > model_score) and (num_inliers_lo > self.minimal_sample_size+2):
                         model = model_lo.clone()[0]
                         inliers = inliers_lo.clone()
                         model_score = score_lo
