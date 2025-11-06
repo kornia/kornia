@@ -125,7 +125,7 @@ def _F1F2_from_nullspace(N: torch.Tensor):
 
 def _normalize_F(F: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     """Frobenius-normalize each 3x3 (keeps cubic coefficients well-scaled)."""
-    nrm = F.norm(dim=(-2, -1), p=1, keepdim=True).clamp_min(eps)
+    nrm = F.abs().sum(dim=(-2, -1), keepdim=True).clamp_min(eps)
     return F / nrm
 
 
