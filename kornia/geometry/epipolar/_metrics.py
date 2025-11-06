@@ -228,9 +228,11 @@ def _symmetrical_epipolar_distance_matmul_impl_(
 
     numerator: Tensor = (pts2 * line1_in_2).sum(dim=-1).pow(2)
 
-    denominator_inv: Tensor = 1.0 / (line1_in_2[..., :2].norm(2, dim=-1).pow(2) + eps) + 1.0 / (
-        line2_in_1[..., :2].norm(2, dim=-1).pow(2) + eps
-    )
+    # Compute squared L2 norms in the denominator efficiently
+    line1_norm_sq = line1_in_2[..., :2].pow(2).sum(dim=-1)
+    line2_norm_sq = line2_in_1[..., :2].pow(2).sum(dim=-1)
+
+    denominator_inv: Tensor = 1.0 / (line1_norm_sq + eps) + 1.0 / (line2_norm_sq + eps)
     out: Tensor = numerator * denominator_inv
     if squared:
         return out
