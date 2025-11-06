@@ -107,7 +107,7 @@ def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
     """A: (..., 7, 9)
     Returns N: (..., 9, 2) where columns span the right nullspace of A
     """
-    AT = A.transpose(-2, -1)  # (..., 9, 7)
+    AT = A.transpose(-2, -1).contiguous()  # (..., 9, 7)
     G = AT @ A  # (..., 9, 9) SPD
     evals, evecs = torch.linalg.eigh(G)  # ascending eigenvalues
     N = evecs[..., :, :2]  # eigenvectors for 2 smallest evals
