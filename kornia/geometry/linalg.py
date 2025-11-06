@@ -21,7 +21,7 @@ import torch
 
 from kornia.core import Tensor, pad
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.geometry.conversions import convert_points_from_homogeneous
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
 __all__ = [
     "batched_dot_product",
@@ -182,82 +182,52 @@ def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
 
 
 def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
-    r"""Apply homogeneous transformations to a set of points.
-
-    This function supports arbitrary leading batch dimensions and uses
-    broadcasted ``matmul`` for speed.
+    r"""Apply transformations to a set of points.
 
     Args:
-        trans_01: Transformation matrices of shape :math:`(*, D+1, D+1)`.
-                  The leading batch shape must be broadcastable to the
-                  leading batch shape of ``points_1``.
-        points_1: Points of shape :math:`(*, N, D)`.
+        trans_01: tensor for transformations of shape
+          :math:`(B, D+1, D+1)`.
+        points_1: tensor of points of shape :math:`(B, N, D)`.
 
     Returns:
-        Transformed points of shape :math:`(*, N, D)`.
-
-    Broadcasting rules:
-        Any number of leading batch dimensions is allowed. The leading batch
-        shape of ``trans_01`` must be broadcastable to that of ``points_1``.
-        Typical special cases that work:
-            - ``trans_01`` has shape :math:`(1, D+1, D+1)` (single transform
-              broadcast across all batches),
-            - ``trans_01`` has no batch dims :math:`(D+1, D+1)`,
-            - fully batched :math:`(M, B, D+1, D+1)` with points
-              :math:`(M, B, N, D)`.
+        a tensor of N-dimensional points.
 
     Shape:
-        - Input:  ``points_1`` :math:`(*, N, D)`, ``trans_01`` :math:`(*, D+1, D+1)`
-        - Output: :math:`(*, N, D)`
+        - Output: :math:`(B, N, D)`
 
     Examples:
-        >>> # classic BxNxD
-        >>> points_1 = torch.rand(2, 4, 3)          # (B=2, N=4, D=3)
-        >>> trans_01 = torch.eye(4).expand(2, -1, -1)  # (B=2, 4, 4)
-        >>> points_0 = transform_points(trans_01, points_1)
+        >>> points_1 = torch.rand(2, 4, 3)  # BxNx3
+        >>> trans_01 = torch.eye(4).view(1, 4, 4)  # Bx4x4
+        >>> points_0 = transform_points(trans_01, points_1)  # BxNx3
 
-        >>> # extra leading dims: MxBxNxD with a single transform
-        >>> M, B, N, D = 3, 2, 5, 2
-        >>> points_1 = torch.rand(M, B, N, D)
-        >>> trans_01 = torch.eye(D+1)               # ()x(D+1)x(D+1), broadcasts
-        >>> points_0 = transform_points(trans_01, points_1)
-
-        >>> # extra leading dims with fully batched transforms
-        >>> trans_01 = torch.eye(D+1).expand(M, B, D+1, D+1)
-        >>> points_0 = transform_points(trans_01, points_1)
     """
     KORNIA_CHECK_IS_TENSOR(trans_01)
     KORNIA_CHECK_IS_TENSOR(points_1)
-
-    if points_1.ndim < 3:
-        raise ValueError(f"`points_1` must be at least 3D (*, N, D). Got shape {points_1.shape}.")
-
-    D = points_1.shape[-1]
-    if trans_01.shape[-2:] != (D + 1, D + 1):
+    if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
         raise ValueError(
-            f"Last two dims of `trans_01` must be (D+1, D+1) with D={D}. "
-            f"Got {trans_01.shape[-2:]} for shape {trans_01.shape}."
+            f"Input batch size must be the same for both tensors or 1. Got {trans_01.shape} and {points_1.shape}"
         )
+    if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
+        raise ValueError(f"Last input dimensions must differ by one unit Got{trans_01} and {points_1}")
 
-    # Validate broadcastability of leading batch dims
-    pts_batch = points_1.shape[:-2]
-    trn_batch = trans_01.shape[:-2]
-    try:
-        _ = torch.broadcast_shapes(pts_batch, trn_batch)
-    except RuntimeError as e:
-        raise ValueError(
-            f"Leading batch dims of `trans_01` {trn_batch} are not broadcastable "
-            f"to those of `points_1` {pts_batch}."
-        ) from e
-
-    # to homogeneous: (..., N, D+1)
-    points_1_h = pad(points_1, (0, 1), value=1.0)
-
-    # transform: (..., N, D+1) @ (..., D+1, D+1) -> (..., N, D+1)
-    points_0_h = torch.matmul(points_1_h, trans_01.transpose(-2, -1))
-
-    # back to Euclidean: (..., N, D)
-    points_0 = convert_points_from_homogeneous(points_0_h)
+    # We reshape to BxNxD in case we get more dimensions, e.g., MxBxNxD
+    shape_inp = list(points_1.shape)
+    points_1 = points_1.reshape(-1, points_1.shape[-2], points_1.shape[-1])
+    trans_01 = trans_01.reshape(-1, trans_01.shape[-2], trans_01.shape[-1])
+    # We expand trans_01 to match the dimensions needed for bmm. repeats input division is cast
+    # to integer so onnx doesn't record the value as a tensor and get a device mismatch
+    trans_01 = torch.repeat_interleave(trans_01, repeats=int(points_1.shape[0] // trans_01.shape[0]), dim=0)
+    # to homogeneous
+    points_1_h = convert_points_to_homogeneous(points_1)  # BxNxD+1
+    # transform coordinates
+    points_0_h = torch.bmm(points_1_h, trans_01.permute(0, 2, 1))
+    points_0_h = torch.squeeze(points_0_h, dim=-1)
+    # to euclidean
+    points_0 = convert_points_from_homogeneous(points_0_h)  # BxNxD
+    # reshape to the input shape
+    shape_inp[-2] = points_0.shape[-2]
+    shape_inp[-1] = points_0.shape[-1]
+    points_0 = points_0.reshape(shape_inp)
     return points_0
 
 

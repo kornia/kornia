@@ -65,23 +65,6 @@ class TestTransformPoints(BaseTester):
     # ----- New tests for broadcast & extra leading dims -----
 
     @pytest.mark.parametrize("num_dims", [2, 3])
-    def test_single_transform_broadcasts(self, num_dims, device, dtype):
-        # points: (M, B, N, D), transform: (D+1, D+1) -> broadcast to (M, B)
-        M, B, N, D = 3, 2, 7, num_dims
-        eye_size = D + 1
-        points = torch.rand(M, B, N, D, device=device, dtype=dtype)
-
-        # A single transform (no batch dims)
-        trans = torch.eye(eye_size, device=device, dtype=dtype)
-
-        out = kgl.transform_points(trans, points)
-
-        # Inverse should recover original
-        inv = torch.inverse(trans)
-        rec = kgl.transform_points(inv, out)
-        self.assert_close(points, rec, atol=1e-4, rtol=1e-4)
-
-    @pytest.mark.parametrize("num_dims", [2, 3])
     def test_extra_leading_dims_full_batch(self, num_dims, device, dtype):
         # points: (M, B, N, D), transform: (M, B, D+1, D+1)
         M, B, N, D = 4, 3, 5, num_dims
