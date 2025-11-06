@@ -253,9 +253,9 @@ class TestFindFundamental(BaseTester):
         F_mat = epi.find_fundamental(points1, points2, method="7POINT")
         # We need this voodoo, because the order of the solutions is not guaranteed by the algorithm.
         ordering = []
-        print (f'{Fm_expected.shape=}')
+        print(f"{Fm_expected.shape=}")
         for expected in Fm_expected[0]:
-            min_diff = float('inf')
+            min_diff = float("inf")
             for i, estimated in enumerate(F_mat[0]):
                 diff = (expected - estimated).abs().sum()
                 if diff < min_diff:

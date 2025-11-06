@@ -118,9 +118,10 @@ class RANSAC(Module):
             self.polisher_solver = find_fundamental
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
-    
 
-    def sample(self, sample_size: int, pop_size: int, batch_size: int, iteration: int, device: Optional[Device] = None) -> Tensor:
+    def sample(
+        self, sample_size: int, pop_size: int, batch_size: int, iteration: int, device: Optional[Device] = None
+    ) -> Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches.
 
         Yields the benefit of the parallel processing, esp. on GPU.
@@ -160,7 +161,7 @@ class RANSAC(Module):
             return 1.0
         if n_inl == num_tc:
             return 1.0
-        
+
         return math.log(1.0 - conf) / min(-eps, math.log(max(eps, 1.0 - math.pow(n_inl / num_tc, sample_size))))
 
     def estimate_model_from_minsample(self, kp1: Tensor, kp2: Tensor) -> Tensor:
@@ -204,7 +205,7 @@ class RANSAC(Module):
         else:
             errors = self.error_fn(kp1.expand(batch_size, -1, 2), kp2.expand(batch_size, -1, 2), models)
         inl_mask = errors <= inl_th
-        #score_ransac = inl_mask.to(kp1).sum(dim=1)
+        # score_ransac = inl_mask.to(kp1).sum(dim=1)
         score_ransac = inl_mask.sum(dim=1)
         if self.score_type == "msac":
             score = errors.shape[1] - errors.clamp(min=0.0, max=inl_th).sum(dim=1)
@@ -324,7 +325,7 @@ class RANSAC(Module):
         inliers_best_total: Tensor = zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
         for i in range(self.max_iter):
             # Sample minimal samples in batch to estimate models
-            idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, i,  kp1.device)
+            idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, i, kp1.device)
             kp1_sampled = kp1[idxs]
             kp2_sampled = kp2[idxs]
 
@@ -339,14 +340,14 @@ class RANSAC(Module):
             # Score the models and select the best one
             model, inliers, model_score, num_inliers = self.verify(kp1, kp2, models, self.inl_th)
             # Store far-the-best model and (optionally) do a local optimization
-            if (model_score > best_score_total) and num_inliers > self.minimal_sample_size+2:
+            if (model_score > best_score_total) and num_inliers > self.minimal_sample_size + 2:
                 # Local optimization
                 for _ in range(self.max_lo_iters):
                     model_lo = self.polish_model(kp1, kp2, inliers)
                     if (model_lo is None) or (len(model_lo) == 0):
                         continue
                     _, inliers_lo, score_lo, num_inliers_lo = self.verify(kp1, kp2, model_lo, self.inl_th)
-                    if (score_lo > model_score) and (num_inliers_lo > self.minimal_sample_size+2):
+                    if (score_lo > model_score) and (num_inliers_lo > self.minimal_sample_size + 2):
                         model = model_lo.clone()[0]
                         inliers = inliers_lo.clone()
                         model_score = score_lo

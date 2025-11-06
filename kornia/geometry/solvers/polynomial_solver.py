@@ -19,7 +19,7 @@
 
 import torch
 
-from kornia.core import Tensor, ones_like, stack, zeros, zeros_like
+from kornia.core import Tensor, ones_like, zeros, zeros_like
 
 # Optional: make these small epsilons configurable
 _EPS = 1e-12
@@ -29,6 +29,7 @@ _EPS = 1e-12
 @torch.jit.script
 def _eps_like(x: Tensor, val: float = 1e-12) -> Tensor:
     return torch.as_tensor(val, dtype=x.dtype, device=x.device)
+
 
 @torch.jit.script
 def solve_quadratic(coeffs: Tensor) -> Tensor:
@@ -65,6 +66,7 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
 
     return out
 
+
 @torch.jit.script
 def _cbrt(x: torch.Tensor) -> torch.Tensor:
     return torch.sign(x) * torch.abs(x).pow(1.0 / 3.0)
@@ -95,9 +97,9 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     disc = half_q * half_q + third_p * third_p * third_p
     shift = bb / 3.0
 
-    pos = disc > eps        # one real, two complex
-    zro = disc.abs() <= eps # multiple real roots
-    neg = disc < -eps       # three distinct real roots
+    pos = disc > eps  # one real, two complex
+    zro = disc.abs() <= eps  # multiple real roots
+    neg = disc < -eps  # three distinct real roots
 
     # ----- One-real-root branch (Δ>0) -----
     sp = torch.sqrt(torch.clamp_min(disc, 0.0))
@@ -137,7 +139,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     # ----- Quadratic/linear fallback for a≈0 (compute everywhere, then blend) -----
     # Solve b x^2 + c x + d = 0; return (r1, r2, 0). Handle linear (|b|≈0) too.
     is_quad = (~is_cubic) & (torch.abs(b) > eps)
-    is_lin  = (~is_cubic) & (~is_quad)
+    is_lin = (~is_cubic) & (~is_quad)
 
     disc2 = c * c - 4.0 * b * d
     sqrt_disc2 = torch.sqrt(torch.clamp_min(disc2, 0.0))
@@ -156,6 +158,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     # Blend cubic vs degenerate without in-place or mask indexing
     roots = torch.where(is_cubic.unsqueeze(-1), roots_cubic, roots_deg)
     return roots
+
 
 # def solve_quartic(coeffs: Tensor) -> Tensor:
 #    TODO: Quartic equation solver
