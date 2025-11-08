@@ -566,21 +566,45 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
     x1, y1, x2, y2 = boxes.unbind(-1)
     areas = (x2 - x1) * (y2 - y1)
 
-    _, order = scores.sort(descending=True)
+    # Use torch.argsort directly to avoid sorting values, just get order indices (small runtime improvement)
+    order = torch.argsort(scores, descending=True)
+
+    num = order.shape[0]
 
     keep = []
-    while order.shape[0] > 0:
+
+    # Pre-extract tensor slices to avoid repeated index slicing computations
+    # For large N, gathering can be more efficient than advanced slicing on CUDA
+    while order.numel() > 0:
         i = order[0]
         keep.append(i)
-        xx1 = torch.max(x1[i], x1[order[1:]])
-        yy1 = torch.max(y1[i], y1[order[1:]])
-        xx2 = torch.min(x2[i], x2[order[1:]])
-        yy2 = torch.min(y2[i], y2[order[1:]])
+
+        # If there is only one box left, break early
+        if order.shape[0] == 1:
+            break
+
+        # Select next candidates
+        order_rest = order[1:]
+
+        # Gather values using .index_select (marginally faster for large tensors), avoids creating new views
+        xx1 = torch.maximum(x1[i], x1.index_select(0, order_rest))
+        yy1 = torch.maximum(y1[i], y1.index_select(0, order_rest))
+        xx2 = torch.minimum(x2[i], x2.index_select(0, order_rest))
+        yy2 = torch.minimum(y2[i], y2.index_select(0, order_rest))
+
 
         w = torch.clamp(xx2 - xx1, min=0.0)
         h = torch.clamp(yy2 - yy1, min=0.0)
         inter = w * h
-        ovr = inter / (areas[i] + areas[order[1:]] - inter)
+
+        area_i = areas[i]
+        area_rest = areas.index_select(0, order_rest)
+        # Use in-place arithmetic where safe to improve performance for large candidate sets
+        union = area_i + area_rest
+        union -= inter
+
+        ovr = inter / union
+
 
         inds = where(ovr <= iou_threshold)[0]
         order = order[inds + 1]
@@ -588,4 +612,5 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
     if len(keep) > 0:
         return stack(keep)
 
-    return torch.tensor(keep)
+    # Return empty tensor of same dtype/device as scores for compatibility
+    return torch.tensor(keep, dtype=scores.dtype, device=scores.device)
