@@ -328,3 +328,53 @@ class TestNormalizeMinMax(BaseTester):
     def test_gradcheck(self, device):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.enhance.normalize_min_max, (x,))
+
+    def test_3d_tensor(self, device, dtype):
+        # Test with 3D tensor (C, H, W) - the main bug fix
+        x = torch.tensor([[[0.0, 1.0, 3.0], [-1.0, 4.0, 3.0], [9.0, 5.0, 2.0]]], device=device, dtype=dtype)
+
+        # Expected: normalized to [-1, 1] range
+        expected = torch.tensor(
+            [[[-0.8, -0.6, -0.2], [-1.0, 0.0, -0.2], [1.0, 0.2, -0.4]]], device=device, dtype=dtype
+        )
+
+        actual = kornia.enhance.normalize_min_max(x, min_val=-1.0, max_val=1.0)
+
+        # Verify shape is preserved
+        assert actual.shape == x.shape
+        self.assert_close(actual, expected, low_tolerance=True)
+
+    def test_3d_tensor_multiple_channels(self, device, dtype):
+        # Test with 3D tensor with multiple channels (C, H, W)
+        x = torch.rand(3, 4, 5, device=device, dtype=dtype)
+        out = kornia.enhance.normalize_min_max(x, min_val=0.0, max_val=1.0)
+
+        # Verify shape is preserved
+        assert out.shape == x.shape
+
+        # Verify per-channel normalization
+        for c in range(x.shape[0]):
+            channel_out = out[c]
+            self.assert_close(channel_out.min(), torch.tensor(0.0, device=device, dtype=dtype), low_tolerance=True)
+            self.assert_close(channel_out.max(), torch.tensor(1.0, device=device, dtype=dtype), low_tolerance=True)
+
+    def test_2d_tensor(self, device, dtype):
+        # Test with 2D tensor (H, W)
+        x = torch.tensor([[0.0, 5.0], [10.0, 15.0]], device=device, dtype=dtype)
+        out = kornia.enhance.normalize_min_max(x, min_val=0.0, max_val=1.0)
+
+        # Verify shape is preserved
+        assert out.shape == x.shape
+
+        # Verify normalization
+        expected = torch.tensor([[0.0, 1.0 / 3.0], [2.0 / 3.0, 1.0]], device=device, dtype=dtype)
+        self.assert_close(out, expected, low_tolerance=True)
+
+    @pytest.mark.parametrize("input_shape", [(3, 4, 5), (1, 32, 32), (4, 8, 8)])
+    def test_3d_shapes(self, device, dtype, input_shape):
+        # Test various 3D tensor shapes
+        x = torch.rand(input_shape, device=device, dtype=dtype)
+        out = kornia.enhance.normalize_min_max(x, min_val=-1.0, max_val=1.0)
+
+        # Verify shape is preserved
+        assert out.shape == input_shape
