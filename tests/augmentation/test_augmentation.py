@@ -4585,11 +4585,20 @@ class TestRandomElasticTransform(BaseTester):
                 assert labels_transformed[to_apply].ne(labels[to_apply]).any()
 
 
-class TestRandomThinPlateSpline:
+class TestRandomThinPlateSpline(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomThinPlateSpline(p=1.0)
         assert img.shape == aug(img).shape
+
+    def test_same_on_batch(self, device, dtype):
+        f = RandomThinPlateSpline(p=1.0, same_on_batch=True, scale=0.2)
+        input = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
+        res = f(input)
+        # When same_on_batch is True, the transformation parameters should be identical
+        # for all batch elements
+        assert torch.allclose(f._params["dst"][0], f._params["dst"][1])
+        assert torch.allclose(f._params["src"][0], f._params["src"][1])
 
 
 class TestRandomBoxBlur:
