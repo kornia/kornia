@@ -334,9 +334,7 @@ class TestNormalizeMinMax(BaseTester):
         x = torch.tensor([[[0.0, 1.0, 3.0], [-1.0, 4.0, 3.0], [9.0, 5.0, 2.0]]], device=device, dtype=dtype)
 
         # Expected: normalized to [-1, 1] range
-        expected = torch.tensor(
-            [[[-0.8, -0.6, -0.2], [-1.0, 0.0, -0.2], [1.0, 0.2, -0.4]]], device=device, dtype=dtype
-        )
+        expected = torch.tensor([[[-0.8, -0.6, -0.2], [-1.0, 0.0, -0.2], [1.0, 0.2, -0.4]]], device=device, dtype=dtype)
 
         actual = kornia.enhance.normalize_min_max(x, min_val=-1.0, max_val=1.0)
 
