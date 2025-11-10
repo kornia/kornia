@@ -4594,7 +4594,7 @@ class TestRandomThinPlateSpline(BaseTester):
     def test_same_on_batch(self, device, dtype):
         f = RandomThinPlateSpline(p=1.0, same_on_batch=True, scale=0.2)
         input = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
-        output = f(input)
+        f(input)
         # When same_on_batch is True, the transformation parameters should be identical
         # for all batch elements
         self.assert_close(f._params["dst"][0], f._params["dst"][1])
