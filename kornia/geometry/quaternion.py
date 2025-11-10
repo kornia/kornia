@@ -99,7 +99,7 @@ class Quaternion(Module):
         if not isinstance(data, (Tensor, Parameter)):
             raise TypeError(f"Expected Tensor or Parameter, got {type(data)}")
         # KORNIA_CHECK_SHAPE(data, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
-        if requires_grad is not None and isinstance(data, Tensor):
+        if requires_grad is not None and not isinstance(data, Parameter):
             data = data.requires_grad_(requires_grad)
         self._data = data
 
@@ -496,7 +496,7 @@ class Quaternion(Module):
         batch_size: Optional[int] = None,
         device: Optional[Device] = None,
         dtype: Dtype = None,
-        requires_grad: bool = False,
+        requires_grad: Optional[bool] = None,
     ) -> "Quaternion":
         """Create a quaternion representing an identity rotation.
 
@@ -504,7 +504,8 @@ class Quaternion(Module):
             batch_size: the batch size of the underlying data.
             device: device to place the result on.
             dtype: dtype of the result.
-            requires_grad: If True, the quaternion will track gradients.
+            requires_grad: If specified, sets the requires_grad flag on the quaternion.
+                If None, defaults to False (no gradient tracking).
 
         Example:
             >>> q = Quaternion.identity()
@@ -518,7 +519,7 @@ class Quaternion(Module):
         return cls(data, requires_grad=requires_grad)
 
     @classmethod
-    def from_coeffs(cls, w: float, x: float, y: float, z: float, requires_grad: bool = False) -> "Quaternion":
+    def from_coeffs(cls, w: float, x: float, y: float, z: float, requires_grad: Optional[bool] = None) -> "Quaternion":
         """Create a quaternion from the data coefficients.
 
         Args:
@@ -526,7 +527,8 @@ class Quaternion(Module):
             x: a float representing the :math:`q_x` component.
             y: a float representing the :math:`q_y` component.
             z: a float representing the :math:`q_z` component.
-            requires_grad: If True, the quaternion will track gradients.
+            requires_grad: If specified, sets the requires_grad flag on the quaternion.
+                If None, defaults to False (no gradient tracking).
 
         Example:
             >>> q = Quaternion.from_coeffs(1., 0., 0., 0.)
@@ -544,7 +546,7 @@ class Quaternion(Module):
         batch_size: Optional[int] = None,
         device: Optional[Device] = None,
         dtype: Dtype = None,
-        requires_grad: bool = False,
+        requires_grad: Optional[bool] = None,
     ) -> "Quaternion":
         """Create a random unit quaternion of shape :math:`(B, 4)`.
 
@@ -554,7 +556,8 @@ class Quaternion(Module):
             batch_size: the batch size of the underlying data.
             device: device to place the result on.
             dtype: dtype of the result.
-            requires_grad: If True, the quaternion will track gradients.
+            requires_grad: If specified, sets the requires_grad flag on the quaternion.
+                If None, defaults to False (no gradient tracking).
 
         Example:
             >>> q = Quaternion.random()
