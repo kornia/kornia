@@ -170,41 +170,38 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         return random_apply
 
     def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, Module]], bool]:
-        """Get a forward sequence when random apply is in need.
+    """Get a forward sequence when random apply is in need."""
+    if isinstance(self.random_apply, tuple):
+        num_samples = int(torch.randint(*self.random_apply, (1,)).item())
+    else:
+        raise TypeError(f"random apply should be a tuple. Gotcha {type(self.random_apply)}")
 
-        Args:
-            with_mix: if to require a mix augmentation for the sequence.
+    multinomial_weights = self.random_apply_weights.clone()
+    mix_indices = self.get_mix_augmentation_indices(self.named_children())
+    multinomial_weights[mix_indices] = 0
 
-        Note:
-            Mix augmentations (e.g. RandomMixUp) will be only applied once even in a random forward.
-
-        """
-        if isinstance(self.random_apply, tuple):
-            num_samples = int(torch.randint(*self.random_apply, (1,)).item())
-        else:
-            raise TypeError(f"random apply should be a tuple. Gotcha {type(self.random_apply)}")
-
-        multinomial_weights = self.random_apply_weights.clone()
-        # Mix augmentation can only be applied once per forward
-        mix_indices = self.get_mix_augmentation_indices(self.named_children())
-        # kick out the mix augmentations
-        multinomial_weights[mix_indices] = 0
-        indices = torch.multinomial(
-            multinomial_weights,
-            num_samples,
-            # enable replacement if non-mix augmentation is less than required
-            replacement=num_samples > multinomial_weights.sum().item(),
-        )
-
-        mix_added = False
-        if with_mix and len(mix_indices) != 0:
-            # Make the selection fair.
-            if (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item():
-                indices[-1] = torch.multinomial((~multinomial_weights.bool()).float(), 1)
-                indices = indices[torch.randperm(len(indices))]
-                mix_added = True
-
+    # ✅ Fix: handle case when all weights are zero (e.g. only MixUp/CutMix)
+    if multinomial_weights.sum().item() == 0:
+        # just pick one of the mix augmentations
+        mix_added = True
+        indices = torch.tensor(mix_indices, dtype=torch.long)
         return self.get_children_by_indices(indices), mix_added
+
+    indices = torch.multinomial(
+        multinomial_weights,
+        num_samples,
+        replacement=num_samples > multinomial_weights.sum().item(),
+    )
+
+    mix_added = False
+    if with_mix and len(mix_indices) != 0:
+        if (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item():
+            indices[-1] = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+            indices = indices[torch.randperm(len(indices))]
+            mix_added = True
+
+    return self.get_children_by_indices(indices), mix_added
+
 
     def get_mix_augmentation_indices(self, named_modules: Iterator[Tuple[str, Module]]) -> List[int]:
         """Get all the mix augmentations since they are label-involved.
