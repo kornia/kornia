@@ -16,48 +16,6 @@ dependencies = [
     "packaging",
     "torch>=2.0.0",
 ]
-optional-dependencies.dev = [
-    "accelerate",
-    "coverage",
-    "diffusers",
-    "ivy>=1.0.0.0",
-    "mypy",
-    "numpy<3",
-    "onnx",
-    "onnxruntime",
-    "pillow",
-    "pre-commit>=2",
-    "pytest==8.3.5",
-    "pytest-cov",
-    "pytest-timeout",
-    "requests",
-    "setuptools>=61.2",
-    "transformers<4.57",
-    "types-requests",
-]
-optional-dependencies.x = [
-    "accelerate",
-    "onnxruntime-gpu>=1.16; sys_platform != 'darwin'",
-]
-optional-dependencies.docs = [
-    "furo",
-    "ivy>=1.0.0.0",
-    "kornia_moons",
-    "matplotlib",
-    "onnx",
-    "onnxruntime",
-    "opencv-python",
-    "PyYAML>=5.1",
-    "sphinx",
-    "sphinx-autodoc-defaultargs",
-    "sphinx-autodoc-typehints",
-    "sphinx-copybutton>=0.3",
-    "sphinx-design",
-    "sphinx-notfound-page",
-    "sphinxcontrib-bibtex",
-    "sphinxcontrib-gtagjs",
-    "sphinxcontrib-youtube",
-]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
@@ -116,80 +74,15 @@ skip-magic-trailing-comma = false
 
 [tool.ruff.lint]
 select = [
-  "AIR",   # Airflow
-  "ASYNC", # flake8-async
-  "B",    # flake8-bugbear
-  "BLE",   # flake8-blind-except
-  "C4",    # flake8-comprehensions
-  "C90",   # McCabe cyclomatic complexity
-  # "CPY",    # Copyright-related rules
-  "DTZ",  # flake8-datetimez
-  "E",    # pycodestyle
-  "F",    # Pyflakes
-  "FLY",  # flynt
-  "I",    # isort
-  "ICN",  # flake8-import-conventions
-  "INT",  # flake8-gettext
-  "NPY",  # NumPy-specific rules
-  "PL",   # Pylint
-  "PYI",  # flake8-pyi
-  "RSE",  # flake8-raise
-  "RUF",  # Ruff-specific rules
-  "S",    # flake8-bandit
-  "SLOT", # flake8-slots
-  "T10",  # flake8-debugger
-  "TID",  # flake8-tidy-imports
-  "UP",   # pyupgrade
-  "W",    # pycodestyle
-  "YTT",  # flake8-2020
-  # "A",    # flake8-builtins
-  # "ANN",  # flake8-annotations
-  # "ARG",  # flake8-unused-arguments
-  # "COM",  # flake8-commas
-  "D",    # pydocstyle
-  # "DJ",   # flake8-django
-  # "EM",   # flake8-errmsg
-  # "ERA",  # eradicate
-  # "EXE",  # flake8-executable
-  # "FA",   # flake8-future-annotations
-  # "FBT",  # flake8-boolean-trap
-  # "FIX",  # flake8-fixme
-  # "G",    # flake8-logging-format
-  # "INP",  # flake8-no-pep420
-  # "ISC",  # flake8-implicit-str-concat
-  # "N",    # pep8-naming
-  # "PD",   # pandas-vet
-  # "PERF", # Perflint
-  # "PGH",  # pygrep-hooks
-  # "PIE",  # flake8-pie
-  # "PT",   # flake8-pytest-style
-  # "PTH",  # flake8-use-pathlib
-  # "Q",    # flake8-quotes
-  # "RET",  # flake8-return
-  # "SIM",  # flake8-simplify
-  # "SLF",  # flake8-self
-  # "T20",  # flake8-print
-  # "TCH",  # flake8-type-checking
-  # "TD",   # flake8-todos
-  # "TRY",  # tryceratops
+  "AIR", "ASYNC", "B", "BLE", "C4", "C90", "DTZ", "E", "F", "FLY", "I", "ICN",
+  "INT", "NPY", "PL", "PYI", "RSE", "RUF", "S", "SLOT", "T10", "TID", "UP", "W", "YTT",
+  "D"
 ]
 ignore = [
-  "PLR0915", # Allow condition check in list comprehension
-  "PLC0415", # `import` should be at the top-level of a file
-  "PLW2901", # Allow overwritten values on loops
-  "PLW1641", # Object does not implement `__hash__` method
-  "UP007",   # Prefer Optional[], Union[] over | due to torch jit scripting
-  "UP006",   # Prefer List[], over list due to torch jit scripting
-  "UP035",   # Ignore deprecated typing because of jit scripting
-  "UP045",   # Use `X | None` for type annotations
-  "RUF005",  # Consider `(*points_in_cam_canonical.shape[:-1], 1)` instead of concatenation. Note: breaks JIT.
-  'D100',    # Allow Undocumented public module
-  'D101',    # TODO: Undocumented public class
-  'D102',    # TODO: Undocumented public method
-  'D104',    # TODO: Undocumented public package
-  'D105',    # Allow Undocumented magic method
-  'D107',    # TODO: Undocumented public init
- ]
+  "PLR0915", "PLC0415", "PLW2901", "PLW1641",
+  "UP007", "UP006", "UP035", "UP045", "RUF005",
+  "D100", "D101", "D102", "D104", "D105", "D107"
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -204,49 +97,20 @@ max-complexity = 20
 
 [tool.ruff.lint.pylint]
 allow-magic-value-types = ["bytes", "float", "int", "str"]
-max-args = 30                                              # Recommended: 5
-max-branches = 21                                          # Recommended: 12
-max-returns = 13                                           # Recommended: 6
-max-statements = 64                                        # Recommended: 50
+max-args = 30
+max-branches = 21
+max-returns = 13
+max-statements = 64
 
 [tool.ruff.lint.per-file-ignores]
-"*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
-"benchmarks/*" = [
-  "BLE",
-  "RUF005",
-  "RUF012",
-  "S101",
-  "S311",
-  "D",
-] # allow assert, random, ignore BLE, mutable class attr
-"docs/*" = [
-  "PLR0912",
-  "PLR0915",
-  "S101",
-  "D",
-] # allow assert, ignore max branches and statements
-"docs/generate_examples.py" = ["C901"] # Allow too complex function
-"kornia/__init__.py" = ["I001"] # Allow unsorted imports
-"kornia/feature/dedode/*" = [
-  "C408",
-  "F401",
-  "F841",
-  "FLY002",
-  "PLR1714",
-] # allow DINOv2 things
-"testing/*" = [
-  "S101", # allow assert
-  "D", # Don't enforce documentation rules
-]
-"tests/*" = [
-  "BLE",
-  "RUF005",
-  "RUF012",
-  "S101",
-  "S311",
-  "B017", # Check for Exception since KORNIA_CHECK raises it
-  "D", # Don't enforce documentation rules
-] # allow assert, random, ignore BLE, mutable class attr
+"*/__init__.py" = ["F401", "F403"]
+"benchmarks/*" = ["BLE", "RUF005", "RUF012", "S101", "S311", "D"]
+"docs/*" = ["PLR0912", "PLR0915", "S101", "D"]
+"docs/generate_examples.py" = ["C901"]
+"kornia/__init__.py" = ["I001"]
+"kornia/feature/dedode/*" = ["C408", "F401", "F841", "FLY002", "PLR1714"]
+"testing/*" = ["S101", "D"]
+"tests/*" = ["BLE", "RUF005", "RUF012", "S101", "S311", "B017", "D"]
 
 [tool.pytest.ini_options]
 addopts = "--color=yes"
@@ -267,32 +131,20 @@ show_missing = true
 skip_covered = true
 fail_under = 84
 exclude_lines = [
-  # Based into the covdefaults plugin config
-  # a more strict default pragma
   '\# pragma: no cover\b',
-
-  # allow defensive code
   '^\s*raise AssertionError\b',
   '^\s*raise NotImplementedError\b',
   '^\s*return NotImplemented\b',
   '^\s*raise$',
-
-  # typing-related code
   '^\s*if (False|TYPE_CHECKING):',
   ': \.\.\.(\s*#.*)?$',
   '^ +\.\.\.$',
-
-  # ----------------------------
   "def __repr__",
   "if __name__ == .__main__.:",
   "if 0:",
   "if self.debug:",
 ]
-
-partial_branches = [
-  # a more strict default pragma
-  '\# pragma: no cover\b',
-]
+partial_branches = ['\# pragma: no cover\b']
 
 [tool.mypy]
 check_untyped_defs = true
@@ -322,7 +174,6 @@ ignore-paths = []
 formatter-cmds = ["disabled"]
 
 [tool.uv.sources]
-# Pin PyTorch to specific versions for reproducibility
 torch = { index = "pytorch" }
 torchvision = { index = "pytorch" }
 
@@ -332,7 +183,6 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [dependency-groups]
-# Development dependencies for uv lock file generation
 dev = [
     "accelerate",
     "coverage",
