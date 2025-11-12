@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation.utils import _adapted_rsampling
 from kornia.constants import SamplePadding
 from kornia.core import Tensor, tensor
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
@@ -75,7 +76,8 @@ class RandomThinPlateSpline(AugmentationBase2D):
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         B, _, _, _ = shape
         src = tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).expand(B, 5, 2)  # Bx5x2
-        dst = src + self.dist.rsample(src.shape)
+        noise = _adapted_rsampling((B, 5, 2), self.dist, self.same_on_batch)
+        dst = src + noise
         return {"src": src, "dst": dst}
 
     def apply_transform(
