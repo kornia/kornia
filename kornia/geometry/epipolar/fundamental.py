@@ -104,10 +104,11 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
 
 
 def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
-    """
-    Compute the nullspace of a matrix A using the eigh method.
+    """Compute the nullspace of a matrix A using the eigh method.
+
     Args:
         A: (..., 7, 9)
+
     Returns:
         N: (..., 9, 2) where columns span the right nullspace of A
     """
@@ -119,8 +120,8 @@ def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
 
 
 def _F1F2_from_nullspace(N: torch.Tensor):
-    """
-    Compute the F1 and F2 matrices from the nullspace of a matrix A.
+    """Compute the F1 and F2 matrices from the nullspace of a matrix A.
+
     Args:
         N: (..., 9, 2) where columns span the right nullspace of A
     Returns:
@@ -133,15 +134,16 @@ def _F1F2_from_nullspace(N: torch.Tensor):
 
 
 def _normalize_F(F: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
-    """
-    Frobenius-normalize each 3x3 (keeps cubic coefficients well-scaled).
+    """Frobenius-normalize each 3x3 (keeps cubic coefficients well-scaled).
+
     Args:
         F: (..., 3, 3)
         eps: small value to avoid unstabilities.
+
     Returns:
         F: (..., 3, 3)
     """
-    nrm = F.norm(dim=(-2, -1),p=1, keepdim=True).clamp_min(eps)
+    nrm = F.norm(dim=(-2, -1), p=1, keepdim=True).clamp_min(eps)
     return F / nrm
 
 
@@ -242,10 +244,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
 
 @torch.jit.script
 def run_8point(
-    points1: Tensor,
-    points2: Tensor,
-    weights: Optional[Tensor] = None,
-    use_einsum_at_more_than_points: int = 512
+    points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None, use_einsum_at_more_than_points: int = 512
 ) -> Tensor:
     r"""Compute the fundamental matrix using (weighted) 8-point DLT, optimized.
 
