@@ -142,7 +142,7 @@ class RANSAC(Module):
         return out
 
     @staticmethod
-    def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> float:
+    def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> int:
         """Update max_iter to stop iterations earlier https://en.wikipedia.org/wiki/Random_sample_consensus.
 
         Args:
@@ -157,11 +157,22 @@ class RANSAC(Module):
         """
         eps = 1e-9
         if num_tc <= sample_size:
-            return 1.0
+            return 1
         if n_inl == num_tc:
-            return 1.0
+            return 1
+        if n_inl <= sample_size:
+            return 1
+        if conf >= 1.0:
+            return 1
+        if conf <= 0.0:
+            return 1
+        # Proper RANSAC formula for sampling without replacement
+        # P(all samples are inliers) = (n_inl/num_tc) * ((n_inl-1)/(num_tc-1)) * ... * ((n_inl-sample_size+1)/(num_tc-sample_size+1))
+        prob_inlier = 1.0
+        for i in range(sample_size):
+            prob_inlier *= (n_inl - i) / (num_tc - i)
         
-        return math.log(1.0 - conf) / min(-eps, math.log(max(eps, 1.0 - math.pow(n_inl / num_tc, sample_size))))
+        return int(math.log(1.0 - conf) / min(-eps, math.log(max(eps, 1.0 - prob_inlier))))
 
     def estimate_model_from_minsample(self, kp1: Tensor, kp2: Tensor) -> Tensor:
         """Estimate models from minimal samples.
@@ -204,7 +215,6 @@ class RANSAC(Module):
         else:
             errors = self.error_fn(kp1.expand(batch_size, -1, 2), kp2.expand(batch_size, -1, 2), models)
         inl_mask = errors <= inl_th
-        #score_ransac = inl_mask.to(kp1).sum(dim=1)
         score_ransac = inl_mask.sum(dim=1)
         if self.score_type == "msac":
             score = errors.shape[1] - errors.clamp(min=0.0, max=inl_th).sum(dim=1)
@@ -358,10 +368,8 @@ class RANSAC(Module):
                 best_score_total = model_score
 
                 # Should we already stop?
-                new_max_iter = int(
-                    self.max_samples_by_conf(int(best_score_total), num_tc, self.minimal_sample_size, self.confidence)
-                )
-                # print (f"New max_iter = {new_max_iter}")
+                new_max_iter = self.max_samples_by_conf(int(best_score_total), num_tc, self.minimal_sample_size, self.confidence)
+                
                 # Stop estimation, if the model is very good
                 if (i + 1) * self.batch_size >= new_max_iter:
                     break

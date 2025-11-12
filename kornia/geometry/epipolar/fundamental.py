@@ -105,8 +105,11 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
 
 def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
     """
-    A: (..., 7, 9)
-    Returns N: (..., 9, 2) where columns span the right nullspace of A
+    Compute the nullspace of a matrix A using the eigh method.
+    Args:
+        A: (..., 7, 9)
+    Returns:
+        N: (..., 9, 2) where columns span the right nullspace of A
     """
     AT = A.transpose(-2, -1)                     # (..., 9, 7)
     G = AT @ A                                   # (..., 9, 9) SPD
@@ -117,8 +120,12 @@ def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
 
 def _F1F2_from_nullspace(N: torch.Tensor):
     """
-    N: (..., 9, 2)
-    Returns F1, F2: (..., 3, 3)
+    Compute the F1 and F2 matrices from the nullspace of a matrix A.
+    Args:
+        N: (..., 9, 2) where columns span the right nullspace of A
+    Returns:
+        F1: (..., 3, 3)
+        F2: (..., 3, 3)
     """
     F1 = N[..., 0].view(-1, 3, 3)
     F2 = N[..., 1].view(-1, 3, 3)
@@ -127,6 +134,11 @@ def _F1F2_from_nullspace(N: torch.Tensor):
 def _normalize_F(F: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     """
     Frobenius-normalize each 3x3 (keeps cubic coefficients well-scaled).
+    Args:
+        F: (..., 3, 3)
+        eps: small value to avoid unstabilities.
+    Returns:
+        F: (..., 3, 3)
     """
     nrm = F.norm(dim=(-2, -1),p=1, keepdim=True).clamp_min(eps)
     return F / nrm
@@ -229,7 +241,8 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
 def run_8point(
     points1: Tensor,
     points2: Tensor,
-    weights: Optional[Tensor] = None
+    weights: Optional[Tensor] = None,
+    use_einsum_at_more_than_points: int = 512
 ) -> Tensor:
     r"""Compute the fundamental matrix using (weighted) 8-point DLT, optimized.
 
@@ -269,7 +282,7 @@ def run_8point(
 
     # Build normal matrix M = A^T W A  (B,9,9) without forming NxN diagonals.
     if weights is None:
-        if N < small_n_threshold:
+        if N < use_einsum_at_more_than_points:
             # Use GEMM on tall A: (B,9,N) @ (B,N,9)
             M = A.transpose(-2, -1).contiguous() @ A
         else:
@@ -277,7 +290,7 @@ def run_8point(
             M = torch.einsum("bni,bnj->bij", A, A)
     else:
         w = weights.clamp_min(0)
-        if N < small_n_threshold:
+        if N < use_einsum_at_more_than_points:
             # Row-scale by sqrt(w) then GEMM
             Aw = A * w.unsqueeze(-1).sqrt()
             M = Aw.transpose(-2, -1).contiguous() @ Aw
@@ -451,7 +464,6 @@ def fundamental_from_projections(P1: Tensor, P2: Tensor) -> Tensor:
 
     Returns:
          The fundamental matrix with shape :math:`(*, 3, 3)`.
-
     """
     KORNIA_CHECK_SHAPE(P1, ["*", "3", "4"])
     KORNIA_CHECK_SHAPE(P2, ["*", "3", "4"])

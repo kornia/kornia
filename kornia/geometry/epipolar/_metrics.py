@@ -50,7 +50,6 @@ def _sampson_epipolar_distance_manual_impl_(
         raise ValueError(f"Fm must be a (*, 3, 3) tensor. Got {Fm.shape}")
 
     # Extract coords; support 2D (w=1) and 3D homogeneous
-    # Extract coordinates; support 2D (assume w=1) and 3D homogeneous
     x = pts1[..., :, 0]
     y = pts1[..., :, 1]
     u = pts2[..., :, 0]
@@ -137,7 +136,8 @@ def _sampson_epipolar_distance_matmul_impl_(
 
 @torch.jit.script
 def sampson_epipolar_distance(
-    pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8
+    pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8,
+    use_matmul_at_less_than_points: int = 10000
 ) -> Tensor:
     """Return Sampson distance for correspondences given the fundamental matrix.
 
@@ -149,6 +149,7 @@ def sampson_epipolar_distance(
         Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
         squared: if True (default), the squared distance is returned.
         eps: Small constant for safe sqrt.
+        use_matmul_at_less_than_points: If the number of points is less than this value, use the matmul implementation.
 
     Returns:
         the computed Sampson distance with shape :math:`(*, N)`.
@@ -156,7 +157,7 @@ def sampson_epipolar_distance(
     """
     if Fm.device.type == "cuda":
         num_points = pts1.shape[-2]
-        if num_points < 10000:
+        if num_points < use_matmul_at_less_than_points:
             return _sampson_epipolar_distance_matmul_impl_(pts1, pts2, Fm, squared, eps)
     return _sampson_epipolar_distance_manual_impl_(pts1, pts2, Fm, squared, eps)
 
