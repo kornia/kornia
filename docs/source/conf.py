@@ -25,6 +25,15 @@ from datetime import datetime, timezone
 # To add an evnironment variable
 builtins.__sphinx_build__ = True
 
+# Workaround for sphinx_autodoc_typehints compatibility with PyTorch
+# The extension tries to access torch.jit.annotations.compiler_flag which doesn't exist in newer PyTorch versions
+try:
+    import torch.jit.annotations
+    if not hasattr(torch.jit.annotations, 'compiler_flag'):
+        torch.jit.annotations.compiler_flag = lambda x: x
+except (ImportError, AttributeError):
+    pass
+
 # readthedocs generated the whole documentation in an isolated environment
 # by cloning the git repo. Thus, any on-the-fly operation will not effect
 # on the resulting documentation. We therefore need to import and run the
@@ -74,6 +83,12 @@ extensions = [
 # substitutes the default values
 docstring_default_arg_substitution = "Default: "
 autodoc_preserve_defaults = True
+
+# sphinx_autodoc_typehints configuration
+typehints_fully_qualified = False
+always_document_param_types = True
+typehints_document_rtype = True
+typehints_defaults = "comma"
 
 bibtex_bibfiles = ["references.bib"]
 napoleon_use_ivar = True
