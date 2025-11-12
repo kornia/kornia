@@ -180,16 +180,16 @@ def find_homography_dlt(
     A = torch.cat((ax, ay), dim=-1).reshape(ax.shape[0], -1, ax.shape[-1])
 
     if weights is None:
-        # All points are equally important
-        A = A.transpose(-2, -1) @ A
+        Aw = A
     else:
         # We should use provided weights
         if not (len(weights.shape) == 2 and weights.shape == points1.shape[:2]):
             raise AssertionError(weights.shape)
-        w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
-        A = (A.transpose(-2, -1) * w_full) @ A
+        w_full = weights.repeat_interleave(2, dim=1)
+        Aw = torch.einsum("...ij,...i->...ij", A, w_full)
 
     if solver == "svd":
+        A = A.transpose(-2, -1) @ Aw
         try:
             _, _, V = _torch_svd_cast(A)
         except RuntimeError:
@@ -197,8 +197,14 @@ def find_homography_dlt(
             return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
         H = V[..., -1].view(-1, 3, 3)
     elif solver == "lu":
-        B = torch.ones(A.shape[0], A.shape[1], device=device, dtype=dtype)
+        if points1.shape[1] > 4:
+            A = A.transpose(-2, -1) @ Aw
+            B = torch.ones(A.shape[0], A.shape[1], device=device, dtype=dtype)
+        else:
+            B = -Aw[..., -1]
+            A = Aw[..., :-1]
         sol, _, _ = safe_solve_with_mask(B, A)
+        sol = torch.nn.functional.pad(sol, (0, 0, 0, 1), value=1) if sol.shape[1] == 8 else sol
         H = sol.reshape(-1, 3, 3)
     else:
         raise NotImplementedError

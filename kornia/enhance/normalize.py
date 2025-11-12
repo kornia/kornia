@@ -23,6 +23,7 @@ import torch
 
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor
+from kornia.utils.image import perform_keep_shape_image
 
 __all__ = ["Denormalize", "Normalize", "denormalize", "normalize", "normalize_min_max"]
 
@@ -258,14 +259,23 @@ def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, flo
         mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
         std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
 
-    mean = mean[..., None]
-    std = std[..., None]
+    if mean.dim() == 1:
+        mean = mean.view(1, -1, *([1] * (data.dim() - 2)))
+    # If the tensor is >1D (e.g., (B, C)), reshape to (B, C, 1, ...)
+    else:
+        while len(mean.shape) < data.dim():
+            mean = mean.unsqueeze(-1)
 
-    out: Tensor = (data.view(shape[0], shape[1], -1) * std) + mean
+    if std.dim() == 1:
+        std = std.view(1, -1, *([1] * (data.dim() - 2)))
+    else:
+        while len(std.shape) < data.dim():
+            std = std.unsqueeze(-1)
 
-    return out.view(shape)
+    return torch.addcmul(mean, data, std)
 
 
+@perform_keep_shape_image
 def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6) -> Tensor:
     r"""Normalise an image/video tensor by MinMax and re-scales the value between a range.
 
@@ -277,13 +287,13 @@ def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps
     where :math:`a` is :math:`\text{min_val}` and :math:`b` is :math:`\text{max_val}`.
 
     Args:
-        x: The image tensor to be normalised with shape :math:`(B, C, *)`.
+        x: The image tensor to be normalised with shape :math:`(*, C, H, W)`.
         min_val: The minimum value for the new range.
         max_val: The maximum value for the new range.
         eps: Float number to avoid zero division.
 
     Returns:
-        The normalised image tensor with same shape as input :math:`(B, C, *)`.
+        The normalised image tensor with same shape as input :math:`(*, C, H, W)`.
 
     Example:
         >>> x = torch.rand(1, 5, 3, 3)
@@ -301,10 +311,7 @@ def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps
         raise TypeError(f"'min_val' should be a float. Got: {type(min_val)}.")
 
     if not isinstance(max_val, float):
-        raise TypeError(f"'b' should be a float. Got: {type(max_val)}.")
-
-    if len(x.shape) < 3:
-        raise ValueError(f"Input shape must be at least a 3d tensor. Got: {x.shape}.")
+        raise TypeError(f"'max_val' should be a float. Got: {type(max_val)}.")
 
     shape = x.shape
     B, C = shape[0], shape[1]
