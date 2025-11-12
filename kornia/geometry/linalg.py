@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import torch
 
-from kornia.core import Tensor, pad
+from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 

@@ -254,7 +254,7 @@ class TestFindFundamental(BaseTester):
         # We need this voodoo, because the order of the solutions is not guaranteed by the algorithm.
         ordering = []
         for expected in Fm_expected[0]:
-            min_diff = float('inf')
+            min_diff = float("inf")
             for i, estimated in enumerate(F_mat[0]):
                 diff = (expected - estimated).abs().sum()
                 if diff < min_diff:

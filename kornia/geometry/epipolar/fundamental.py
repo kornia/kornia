@@ -111,10 +111,10 @@ def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
     Returns:
         N: (..., 9, 2) where columns span the right nullspace of A
     """
-    AT = A.transpose(-2, -1)                     # (..., 9, 7)
-    G = AT @ A                                   # (..., 9, 9) SPD
-    evals, evecs = torch.linalg.eigh(G)          # ascending eigenvalues
-    N = evecs[..., :, :2]                        # eigenvectors for 2 smallest evals
+    AT = A.transpose(-2, -1)  # (..., 9, 7)
+    G = AT @ A  # (..., 9, 9) SPD
+    evals, evecs = torch.linalg.eigh(G)  # ascending eigenvalues
+    N = evecs[..., :, :2]  # eigenvectors for 2 smallest evals
     return N  # orthonormal columns
 
 
@@ -131,6 +131,7 @@ def _F1F2_from_nullspace(N: torch.Tensor):
     F2 = N[..., 1].view(-1, 3, 3)
     return F1, F2
 
+
 def _normalize_F(F: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     """
     Frobenius-normalize each 3x3 (keeps cubic coefficients well-scaled).
@@ -142,6 +143,7 @@ def _normalize_F(F: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     """
     nrm = F.norm(dim=(-2, -1),p=1, keepdim=True).clamp_min(eps)
     return F / nrm
+
 
 # Reference: Adapted from the 'run_7point' function in opencv
 # https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp
@@ -176,10 +178,10 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     # X * Fmat = 0 is singular (7 equations for 9 variables)
     # solving for nullspace of X to get two F
     # Slower original SVD route
-    #_, _, v = _torch_svd_cast(X)
+    # _, _, v = _torch_svd_cast(X)
     # last two singular vector as a basic of the space
-    #f1 = v[..., 7].view(-1, 3, 3)
-    #f2 = v[..., 8].view(-1, 3, 3)
+    # f1 = v[..., 7].view(-1, 3, 3)
+    # f2 = v[..., 8].view(-1, 3, 3)
     f1, f2 = _F1F2_from_nullspace(_nullspace_via_eigh(X))
     f1, f2 = _normalize_F(f1), _normalize_F(f2)
 
@@ -202,7 +204,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     roots = solve_cubic(coeffs)
 
     fmatrix = zeros((batch_size, 3, 3, 3), device=f1.device, dtype=f1.dtype)
-    cnz  = torch.count_nonzero(roots, dim=1)
+    cnz = torch.count_nonzero(roots, dim=1)
     valid_root_mask = (cnz < 3) | (cnz > 1)
 
     _lambda = roots
@@ -236,6 +238,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
         trans2_exp.transpose(-2, -1), torch.matmul(fmatrix[valid_root_mask], trans1_exp)
     )
     return normalize_transformation(fmatrix)
+
 
 @torch.jit.script
 def run_8point(
