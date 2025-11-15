@@ -155,7 +155,7 @@ class TestIoImage:
     @pytest.mark.parametrize("channels", [1, 3])
     def test_write_image_uint8_formats_channels(self, device, tmp_path, ext, channels):
         """Test writing uint8 images in different formats with different channel counts.
-        
+
         Note: 4-channel (RGBA) images are not fully supported by the backend for writing.
         """
         height, width = 4, 5
