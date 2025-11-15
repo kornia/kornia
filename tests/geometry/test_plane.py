@@ -76,7 +76,7 @@ class TestHyperplane(BaseTester):
         torch.save(plane, file_path)
         assert file_path.is_file()
 
-        loaded_plane = torch.load(file_path)
+        loaded_plane = torch.load(file_path, weights_only=False)
         self.assert_close(plane.normal.unwrap(), loaded_plane.normal.unwrap())
 
     # TODO: implement `Vector2`

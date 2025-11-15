@@ -98,3 +98,51 @@ class TestImage:
         data = np.ones((4, 5, 3), dtype=np.uint8)
         img = Image.from_numpy(data, color_space=ColorSpace.RGB, channels_order=ChannelsOrder.CHANNELS_LAST)
         img.write(tmp_path / "image.jpg")
+
+
+def make_image(data: torch.Tensor, cs: ColorSpace, order: ChannelsOrder) -> Image:
+    if order not in [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST]:
+        pytest.skip(f"Skipping unsupported channels_order: {order}")
+    if order == ChannelsOrder.CHANNELS_FIRST:
+        C, H, W = data.shape
+    else:
+        H, W, C = data.shape
+    pf = PixelFormat(color_space=cs, bit_depth=data.element_size() * 8)
+    layout = ImageLayout(image_size=ImageSize(H, W), channels=C, channels_order=order)
+    return Image(data.clone(), pf, layout)
+
+
+@pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
+def test_color_space_conversions(order):
+    rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
+    bgr_val = rgb_val.flip(0)
+
+    if order == ChannelsOrder.CHANNELS_FIRST:
+        rgb_data = rgb_val.view(3, 1, 1)
+        bgr_data = bgr_val.view(3, 1, 1)
+    else:
+        rgb_data = rgb_val.view(1, 1, 3)
+        bgr_data = bgr_val.view(1, 1, 3)
+
+    # Create images
+    img_rgb = make_image(rgb_data, ColorSpace.RGB, order)
+    img_bgr = make_image(bgr_data, ColorSpace.BGR, order)
+
+    # 1) RGB -> Gray -> RGB
+    gray = img_rgb.to_gray()
+    lum = 0.299 * rgb_val[0] + 0.587 * rgb_val[1] + 0.114 * rgb_val[2]
+    assert pytest.approx(gray.data.squeeze().item(), rel=1e-3) == lum
+    rgb_back = gray.to_rgb().data.squeeze()
+    expected = torch.tensor([lum, lum, lum])
+    assert torch.allclose(rgb_back, expected)
+
+    # 2) BGR -> Gray -> BGR
+    gray2 = img_bgr.to_gray()
+    assert pytest.approx(gray2.data.squeeze().item(), rel=1e-3) == lum
+    bgr_back = gray2.to_bgr().data.squeeze()
+    expected_bgr = expected.flip(0)
+    assert torch.allclose(bgr_back, expected_bgr)
+
+    # 3) RGB <-> BGR swap
+    assert torch.allclose(img_rgb.to_bgr().data.squeeze(), bgr_val)
+    assert torch.allclose(img_bgr.to_rgb().data.squeeze(), rgb_val)

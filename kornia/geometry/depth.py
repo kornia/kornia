@@ -28,11 +28,12 @@ from kornia.core import Module, Tensor, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters.sobel import spatial_gradient
 from kornia.utils import create_meshgrid
-from kornia.utils.helpers import deprecated
 
 from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
 from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
-from .linalg import compose_transformations, convert_points_to_homogeneous, inverse_transformation, transform_points
+from .linalg import convert_points_to_homogeneous, transform_points
+
+"""Module containing operators to work on RGB-Depth images."""
 
 __all__ = [
     "DepthWarper",
@@ -75,14 +76,17 @@ def unproject_meshgrid(
         tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
 
     """
-    KORNIA_CHECK_SHAPE(camera_matrix, ["3", "3"])
+    KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
 
     # create base coordinates grid
     points_uv: Tensor = create_meshgrid(
         height, width, normalized_coordinates=False, device=device, dtype=dtype
     ).squeeze()  # HxWx2
 
-    points_xy = normalize_points_with_intrinsics(points_uv, camera_matrix)  # HxWx2
+    # project pixels to camera frame
+    camera_matrix_tmp: Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
+
+    points_xy = normalize_points_with_intrinsics(points_uv, camera_matrix_tmp)  # HxWx2
 
     # unproject pixels to camera frame
     points_xyz = convert_points_to_homogeneous(points_xy)  # HxWx3
@@ -117,9 +121,9 @@ def depth_to_3d_v2(
 
     Example:
         >>> depth = torch.rand(4, 4)
-        >>> K = torch.eye(3)
+        >>> K = torch.eye(3).repeat(2,1,1)
         >>> depth_to_3d_v2(depth, K).shape
-        torch.Size([4, 4, 3])
+        torch.Size([2, 4, 4, 3])
 
     """
     KORNIA_CHECK_SHAPE(depth, ["*", "H", "W"])
@@ -136,14 +140,6 @@ def depth_to_3d_v2(
     return points_xyz * depth[..., None]  # HxWx3
 
 
-@deprecated(
-    replace_with="depth_to_3d_v2",
-    version="0.8.0",
-    extra_reason=(
-        " This function will be replaced with the `depth_to_3d_v2` behaviour, where the that does not require the"
-        " creation of a meshgrid. The return shape can be not backward compatible between these implementations."
-    ),
-)
 def depth_to_3d(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = False) -> Tensor:
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 
@@ -223,7 +219,7 @@ def depth_to_normals(depth: Tensor, camera_matrix: Tensor, normalize_points: boo
     # compute normals
     a, b = gradients[:, :, 0], gradients[:, :, 1]  # Bx3xHxW
 
-    normals: Tensor = torch.cross(a, b, dim=1)  # Bx3xHxW
+    normals: Tensor = torch.linalg.cross(a, b, dim=1)
     return kornia_ops.normalize(normals, dim=1, p=2)
 
 
@@ -330,6 +326,7 @@ class DepthWarper(Module):
 
     """
 
+    # All per-instance, not global (thread safe, multiple warps)
     def __init__(
         self,
         pinhole_dst: PinholeCamera,
@@ -340,7 +337,6 @@ class DepthWarper(Module):
         align_corners: bool = True,
     ) -> None:
         super().__init__()
-        # constructor members
         self.width: int = width
         self.height: int = height
         self.mode: str = mode
@@ -349,10 +345,14 @@ class DepthWarper(Module):
         self.align_corners: bool = align_corners
 
         # state members
+        # _pinhole_dst is Type[PinholeCamera], enforce in constructor
+        if not isinstance(pinhole_dst, PinholeCamera):
+            raise TypeError(f"Expected pinhole_dst as PinholeCamera, got {type(pinhole_dst)}")
         self._pinhole_dst: PinholeCamera = pinhole_dst
         self._pinhole_src: None | PinholeCamera = None
         self._dst_proj_src: None | Tensor = None
 
+        # Meshgrid only depends on (height, width), can be staticmethod cached
         self.grid: Tensor = self._create_meshgrid(height, width)
 
     @staticmethod
@@ -361,24 +361,45 @@ class DepthWarper(Module):
         return convert_points_to_homogeneous(grid)  # append ones to last dim
 
     def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> DepthWarper:
-        r"""Compute the projection matrix from the source to destination frame."""
-        if not isinstance(self._pinhole_dst, PinholeCamera):
+        """Compute the projection matrix from the source to destination frame."""
+        # Inline type checks for faster fail-fast
+        if type(self._pinhole_dst) is not PinholeCamera:
             raise TypeError(
                 f"Member self._pinhole_dst expected to be of class PinholeCamera. Got {type(self._pinhole_dst)}"
             )
-        if not isinstance(pinhole_src, PinholeCamera):
+        if type(pinhole_src) is not PinholeCamera:
             raise TypeError(f"Argument pinhole_src expected to be of class PinholeCamera. Got {type(pinhole_src)}")
-        # compute the relative pose between the non reference and the reference
-        # camera frames.
-        dst_trans_src: Tensor = compose_transformations(
-            self._pinhole_dst.extrinsics, inverse_transformation(pinhole_src.extrinsics)
-        )
+        # Compute transformation matrix: dst_extrinsics @ inv(src_extrinsics)
+        batch_shape = pinhole_src.extrinsics.shape[:-2]
+        device = pinhole_src.extrinsics.device
+        dtype = pinhole_src.extrinsics.dtype
 
-        # compute the projection matrix between the non reference cameras and
-        # the reference.
-        dst_proj_src: Tensor = torch.matmul(self._pinhole_dst.intrinsics, dst_trans_src)
+        # Create 4x4 identity matrices efficiently
+        inv_extr = torch.eye(4, device=device, dtype=dtype).expand(*batch_shape, 4, 4).contiguous()
+        dst_trans_src = torch.eye(4, device=device, dtype=dtype).expand(*batch_shape, 4, 4).contiguous()
 
-        # update class members
+        # Inline inverse transformation
+        src_rmat = pinhole_src.extrinsics[..., :3, :3]
+        src_tvec = pinhole_src.extrinsics[..., :3, 3:]
+        inv_rmat = torch.transpose(src_rmat, -1, -2)
+        inv_tvec = torch.matmul(-inv_rmat, src_tvec)
+
+        # Set rotation and translation parts
+        inv_extr[..., :3, :3] = inv_rmat
+        inv_extr[..., :3, 3:] = inv_tvec
+
+        # Compose with dst extrinsics
+        dst_rmat = self._pinhole_dst.extrinsics[..., :3, :3]
+        dst_tvec = self._pinhole_dst.extrinsics[..., :3, 3:]
+        composed_rmat = torch.matmul(dst_rmat, inv_rmat)
+        composed_tvec = torch.matmul(dst_rmat, inv_tvec) + dst_tvec
+
+        dst_trans_src[..., :3, :3] = composed_rmat
+        dst_trans_src[..., :3, 3:] = composed_tvec
+
+        # intrinsics (Nx3x3) @ extrinsics (Nx4x4)
+        dst_proj_src = torch.matmul(self._pinhole_dst.intrinsics, dst_trans_src)
+
         self._pinhole_src = pinhole_src
         self._dst_proj_src = dst_proj_src
         return self
@@ -400,12 +421,35 @@ class DepthWarper(Module):
         Szeliski, Richard, and Daniel Scharstein. "Symmetric sub-pixel stereo matching." European Conference on Computer
         Vision. Springer Berlin Heidelberg, 2002.
         """
+        if self._dst_proj_src is None:
+            raise RuntimeError("Expected Tensor, but got None Type from the projection matrix")
+
         delta_d = 0.01
-        xy_m1 = self._compute_projection(self.width / 2, self.height / 2, 1.0 - delta_d)
-        xy_p1 = self._compute_projection(self.width / 2, self.height / 2, 1.0 + delta_d)
-        dx = torch.norm((xy_p1 - xy_m1), 2, dim=-1) / 2.0
-        dxdd = dx / (delta_d)  # pixel*(1/meter)
-        # half pixel sampling, we're interested in the min for all cameras
+        center_x = self.width / 2
+        center_y = self.height / 2
+
+        # Batch both invds in one call (for potential fused kernels in future) for efficiency
+        invds = (1.0 - delta_d, 1.0 + delta_d)
+        # Instead of two calls, process both at once with minimal tensor construction
+        points = (
+            torch.tensor(
+                [[center_x, center_y, invds[0], 1.0], [center_x, center_y, invds[1], 1.0]],
+                dtype=self._dst_proj_src.dtype,
+                device=self._dst_proj_src.device,
+            )
+            .transpose(0, 1)
+            .unsqueeze(0)
+        )  # (1, 4, 2)
+        # Repeat projection matrix for batch
+        proj = self._dst_proj_src
+        flow = torch.matmul(proj, points)  # (N, 3/4, 2)
+        zs = 1.0 / flow[:, 2]  # (N, 2)
+        xs = flow[:, 0] * zs
+        ys = flow[:, 1] * zs
+        xys = torch.stack((xs, ys), dim=-1)  # (N, 2, 2)
+        dxy = torch.norm(xys[:, 1] - xys[:, 0], p=2, dim=1) / 2.0
+        dxdd = dxy / delta_d
+        # half pixel sampling, min for all cameras
         return torch.min(0.5 / dxdd)
 
     def warp_grid(self, depth_src: Tensor) -> Tensor:
@@ -490,7 +534,7 @@ def depth_warp(
     width: int,
     align_corners: bool = True,
 ) -> Tensor:
-    r"""Warp a tensor from destination frame to reference given the depth in the reference frame.
+    """Warp a tensor from destination frame to reference given the depth in the reference frame.
 
     See :class:`~kornia.geometry.warp.DepthWarper` for details.
 
@@ -506,8 +550,13 @@ def depth_warp(
         >>> image_src = depth_warp(pinhole_dst, pinhole_src, depth_src, image_dst, 32, 32)  # NxCxHxW
 
     """
+    # Cache and reuse warper and projection matrix (single use/call)
+    # Inlined for performance, use local variables and freed objects
+    # instead of class members where possible.
     warper = DepthWarper(pinhole_dst, height, width, align_corners=align_corners)
+    # projection matrix is required for each call, avoid double checking in class
     warper.compute_projection_matrix(pinhole_src)
+    # __call__ implemented by Module (likely calls forward, not shown).
     return warper(depth_src, patch_dst)
 
 

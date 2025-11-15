@@ -49,7 +49,7 @@ class SOLD2_detector(Module):
         The raw junction and line heatmaps, as well as the list of detected line segments (ij coordinates convention).
 
     Example:
-        >>> img = torch.rand(1, 1, 512, 512)
+        >>> img = torch.rand(1, 1, 128, 128)
         >>> sold2_detector = SOLD2_detector(pretrained=False)
         >>> line_segments = sold2_detector(img)["line_segments"]
 

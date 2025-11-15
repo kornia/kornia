@@ -161,7 +161,18 @@ class RandomCrop(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
-            transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
+            src = params["src"].to(input)
+            dst = params["dst"].to(input)
+            transform: Tensor = get_perspective_transform(src, dst)
+
+            # Fast scaling correction when output exceeds input and padding disabled
+            if not flags.get("pad_if_needed", False):
+                h, w = input.shape[-2:]
+                h_out, w_out = flags["size"]
+                if h_out > h or w_out > w:
+                    transform[:, 0, 0] *= w_out / w
+                    transform[:, 1, 1] *= h_out / h
+
             return transform
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 

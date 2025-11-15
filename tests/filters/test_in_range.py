@@ -78,17 +78,17 @@ class TestInRange(BaseTester):
 
     def test_exception(self, device, dtype):
         input_tensor = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
-        with pytest.raises(Exception, match="Invalid `lower` and `upper` format. Should be tuple or Tensor."):
+        with pytest.raises(Exception, match=r"Invalid `lower` and `upper` format. Should be tuple or Tensor."):
             InRange(lower=3, upper=3)(input_tensor)
 
-        with pytest.raises(Exception, match="Invalid `lower` and `upper` format. Should be tuple or Tensor."):
+        with pytest.raises(Exception, match=r"Invalid `lower` and `upper` format. Should be tuple or Tensor."):
             InRange(lower=[0.2, 0.2], upper=[0.2, 0.2])(input_tensor)
 
-        with pytest.raises(Exception, match="Invalid `lower` and `upper` format. Should be tuple or Tensor."):
+        with pytest.raises(Exception, match=r"Invalid `lower` and `upper` format. Should be tuple or Tensor."):
             InRange(lower=(0.2), upper=(0.2))(input_tensor)
 
         with pytest.raises(
-            ValueError, match="Shape of `lower`, `upper` and `input` image channels must have same shape."
+            ValueError, match=r"Shape of `lower`, `upper` and `input` image channels must have same shape."
         ):
             InRange(lower=(0.2,), upper=(0.2,))(input_tensor)
 
@@ -102,7 +102,7 @@ class TestInRange(BaseTester):
             upper = torch.tensor([0.6, 0.6, 0.6])
             InRange(lower=lower, upper=upper)(input_tensor)
 
-        with pytest.raises(Exception, match="Invalid `return_mask` format. Should be boolean."):
+        with pytest.raises(Exception, match=r"Invalid `return_mask` format. Should be boolean."):
             lower = torch.tensor([0.2, 0.2, 0.2])
             upper = torch.tensor([0.6, 0.6, 0.6])
             InRange(lower=lower, upper=upper, return_mask=2)(input_tensor)

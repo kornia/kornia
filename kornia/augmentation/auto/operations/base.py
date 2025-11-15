@@ -21,6 +21,7 @@ import torch
 from torch import nn
 from torch.autograd import Function
 from torch.distributions import Bernoulli, RelaxedBernoulli
+from typing_extensions import Self
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.core import Module, Tensor
@@ -129,12 +130,12 @@ class OperationBase(Module):
         else:
             self.op._p_gen = Bernoulli(self.probability)
 
-    def train(self: T, mode: bool = True) -> T:
+    def train(self, mode: bool = True) -> Self:
         self._update_probability_gen(relaxation=mode)
 
         return super().train(mode=mode)
 
-    def eval(self: T) -> T:
+    def eval(self) -> Self:
         return self.train(False)
 
     def forward_parameters(self, batch_shape: torch.Size, mag: Optional[Tensor] = None) -> Dict[str, Tensor]:

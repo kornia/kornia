@@ -667,7 +667,7 @@ def main():
 
     kah = K.feature.KeyNetAffNetHardNet(512).eval()
     with torch.no_grad():
-        lafs, resps, descs = kah(K.color.rgb_to_grayscale(img_outdoor))
+        lafs, _resps, _descs = kah(K.color.rgb_to_grayscale(img_outdoor))
         fig1, ax = visualize_LAF(img_outdoor, lafs, color="lime", return_fig_ax=True, draw_ori=False)
         ax.set_title("KeyNetAffNet 512 LAFs")
         cur_fname = str(OUTPUT_PATH / "keynet_affnet.jpg")
@@ -676,7 +676,7 @@ def main():
 
     keynet = K.feature.KeyNetDetector(True, 512).eval()
     with torch.no_grad():
-        lafs, resps = keynet(K.color.rgb_to_grayscale(img_outdoor))
+        lafs, _resps = keynet(K.color.rgb_to_grayscale(img_outdoor))
         xy = K.feature.get_laf_center(lafs).detach().cpu().numpy().reshape(-1, 2)
         cur_fname = str(OUTPUT_PATH / "keynet.jpg")
         plt.figure()

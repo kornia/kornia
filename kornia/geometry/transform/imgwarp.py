@@ -1329,7 +1329,7 @@ def _transform_warp_impl3d(
     """Compute the transform in normalized coordinates and perform the warping."""
     dst_norm_trans_src_norm: Tensor = normalize_homography3d(dst_pix_trans_src_pix, dsize_src, dsize_dst)
 
-    src_norm_trans_dst_norm = torch.inverse(dst_norm_trans_src_norm)
+    src_norm_trans_dst_norm = torch.linalg.inv(dst_norm_trans_src_norm)
     return homography_warp3d(src, src_norm_trans_dst_norm, dsize_dst, grid_mode, padding_mode, align_corners, True)
 
 

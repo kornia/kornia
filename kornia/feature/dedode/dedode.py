@@ -104,14 +104,14 @@ class DeDoDe(Module):
         """
         if apply_imagenet_normalization:
             images = self.normalizer(images)
-        B, C, H, W = images.shape
+        _B, _C, H, W = images.shape
+        h, w = images.shape[2:]
         if pad_if_not_divisible:
-            h, w = images.shape[2:]
             pd_h = 14 - h % 14 if h % 14 > 0 else 0
             pd_w = 14 - w % 14 if w % 14 > 0 else 0
             images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
         keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
-        descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False)
+        descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
         return dedode_denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
 
     @torch.inference_mode()
@@ -142,6 +142,7 @@ class DeDoDe(Module):
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
         self.train(False)
+        B, _C, H, W = images.shape
         if pad_if_not_divisible:
             h, w = images.shape[2:]
             pd_h = 14 - h % 14 if h % 14 > 0 else 0
@@ -149,8 +150,9 @@ class DeDoDe(Module):
             images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
         if apply_imagenet_normalization:
             images = self.normalizer(images)
-        B, C, H, W = images.shape
         logits = self.detector.forward(images)
+        # Remove the padding, if any
+        logits = logits[..., :H, :W]
         if crop_h is not None and crop_w is not None:
             logits = logits[..., :crop_h, :crop_w]
             H, W = crop_h, crop_w
@@ -160,7 +162,12 @@ class DeDoDe(Module):
 
     @torch.inference_mode()
     def describe(
-        self, images: Tensor, keypoints: Optional[Tensor] = None, apply_imagenet_normalization: bool = True
+        self,
+        images: Tensor,
+        keypoints: Optional[Tensor] = None,
+        apply_imagenet_normalization: bool = True,
+        crop_h: Optional[int] = None,
+        crop_w: Optional[int] = None,
     ) -> Tensor:
         """Describe keypoints in the input images. If keypoints are not provided, returns the dense descriptors.
 
@@ -168,6 +175,8 @@ class DeDoDe(Module):
             images: A tensor of shape :math:`(B, 3, H, W)` containing the input images.
             keypoints: An optional tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
+            crop_h: The height of the crop to be used for description. If None, the full image is used.
+            crop_w: The width of the crop to be used for description. If None, the full image is used.
 
         Returns:
             descriptions: A tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints.
@@ -175,13 +184,17 @@ class DeDoDe(Module):
 
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
-        B, C, H, W = images.shape
+        _B, _C, H, W = images.shape
         if keypoints is not None:
             KORNIA_CHECK_SHAPE(keypoints, ["B", "N", "2"])
         if apply_imagenet_normalization:
             images = self.normalizer(images)
         self.train(False)
         descriptions = self.descriptor.forward(images)
+        if crop_h is not None and crop_w is not None:
+            descriptions = descriptions[..., :crop_h, :crop_w]
+            H, W = crop_h, crop_w
+
         if keypoints is not None:
             described_keypoints = F.grid_sample(
                 descriptions.float(), keypoints[:, None], mode="bilinear", align_corners=False

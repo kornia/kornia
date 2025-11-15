@@ -17,6 +17,7 @@ English | [简体中文](README_zh-CN.md)
 
 [![PyPI version](https://badge.fury.io/py/kornia.svg)](https://pypi.org/project/kornia)
 [![Downloads](https://static.pepy.tech/badge/kornia)](https://pepy.tech/project/kornia)
+[![star](https://gitcode.com/kornia/kornia/star/badge.svg)](https://gitcode.com/kornia/kornia)
 [![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/HfnywwpBnD)
 [![Twitter](https://img.shields.io/twitter/follow/kornia_foss?style=social)](https://twitter.com/kornia_foss)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENCE)
@@ -99,6 +100,16 @@ Kornia is an open-source project that is developed and maintained by volunteers.
   ```bash
   pip install -e .
   ```
+
+#### For development with UV (Recommended)
+
+For development, Kornia uses [uv](https://github.com/astral-sh/uv) for fast Python package management and virtual environment creation. The project includes a `uv.lock` file for reproducible dependency management.
+
+  ```bash
+  ./setup_dev_env.sh
+  ```
+
+This will set up a complete development environment with all dependencies using the lock file for reproducibility. For more details on dependency management and lock file usage, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 #### From Github url (latest version)
 

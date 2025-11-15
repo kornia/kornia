@@ -306,7 +306,7 @@ def dog_response_single(input: Tensor, sigma1: float = 1.0, sigma2: float = 1.6)
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     ks1 = _get_kernel_size(sigma1)
-    ks2 = _get_kernel_size(sigma1)
+    ks2 = _get_kernel_size(sigma2)
     g1 = gaussian_blur2d(input, (ks1, ks1), (sigma1, sigma1))
     g2 = gaussian_blur2d(input, (ks2, ks2), (sigma2, sigma2))
     return g2 - g1
