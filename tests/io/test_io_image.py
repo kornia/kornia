@@ -165,21 +165,18 @@ class TestIoImage:
         write_image(file_path, img_th)
 
         assert file_path.is_file()
-        # For 1-channel images, loading back may fail due to backend limitations
-        # So we only verify loading for 3-channel images
-        if channels == 3:
-            img_load = load_image(file_path, ImageLoadType.UNCHANGED)
-            # JPEG always loads as 3 channels, PNG/TIFF preserve channel count
-            if ext == "jpg":
-                assert img_load.shape[0] in [1, 3]  # JPEG may convert to RGB
-            else:
-                assert img_load.shape[0] == channels
-            assert img_load.dtype == torch.uint8
+        img_load = load_image(file_path, ImageLoadType.UNCHANGED)
+        # JPEG always loads as 3 channels, PNG/TIFF preserve channel count
+        if ext == "jpg":
+            assert img_load.shape[0] in [1, 3]  # JPEG may convert to RGB
+        else:
+            assert img_load.shape[0] == channels
+        assert img_load.dtype == torch.uint8
 
     def test_write_image_uint8_2d(self, device, tmp_path):
         """Test writing 2D grayscale image (H, W)."""
         height, width = 4, 5
-        img_th: Tensor = (torch.rand(height, width, device=device) * 255).to(torch.uint8)
+        img_th: Tensor = create_random_img8_torch(height, width, 1, device).squeeze(0)
 
         file_path = tmp_path / "image.jpg"
         write_image(file_path, img_th)
@@ -200,8 +197,11 @@ class TestIoImage:
         write_image(file_path, img_th)
 
         assert file_path.is_file()
-        # Note: Loading back uint16 images may fail due to backend limitations
-        # We verify the file was written successfully, which is the main functionality
+        # TODO: Add ticket to kornia-rs to fix loading back uint16 images
+        # Need to fix kornia-rs - test will fail until backend supports uint16 loading
+        img_load = load_image(file_path, ImageLoadType.UNCHANGED)
+        assert img_load.shape == img_th.shape
+        assert img_load.dtype == torch.uint16
 
     @pytest.mark.parametrize("ext", ["tiff"])
     def test_write_image_float32(self, device, tmp_path, ext):
@@ -213,8 +213,11 @@ class TestIoImage:
         write_image(file_path, img_th)
 
         assert file_path.is_file()
-        # Note: Loading back float32 images may fail due to backend limitations
-        # We verify the file was written successfully, which is the main functionality
+        # TODO: Add ticket to kornia-rs to fix loading back float32 images
+        # Need to fix kornia-rs - test will fail until backend supports float32 loading
+        img_load = load_image(file_path, ImageLoadType.UNCHANGED)
+        assert img_load.shape == img_th.shape
+        assert img_load.dtype == torch.float32
 
     @pytest.mark.parametrize("quality", [None, 50, 80, 95])
     def test_write_image_jpeg_quality(self, device, tmp_path, quality):
@@ -251,7 +254,7 @@ class TestIoImage:
         img_th: Tensor = create_random_img8_torch(height, width, 3, device)
 
         file_path = tmp_path / "image.bmp"
-        with pytest.raises(Exception):  # KORNIA_CHECK raises an exception
+        with pytest.raises(Exception, match="Invalid file extension.*only .jpg, .jpeg, .png and .tiff are supported"):
             write_image(file_path, img_th)
 
     def test_write_image_invalid_shape(self, device, tmp_path):
@@ -260,7 +263,7 @@ class TestIoImage:
         img_th: Tensor = torch.randint(0, 256, (10,), device=device, dtype=torch.uint8)
 
         file_path = tmp_path / "image.jpg"
-        with pytest.raises(Exception):  # KORNIA_CHECK raises an exception
+        with pytest.raises(Exception, match="Invalid image shape.*Must be at least 2D"):
             write_image(file_path, img_th)
 
     def test_write_image_invalid_dtype(self, device, tmp_path):
@@ -270,7 +273,7 @@ class TestIoImage:
         img_th: Tensor = torch.rand(3, height, width, device=device, dtype=torch.float64)
 
         file_path = tmp_path / "image.jpg"
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match=r"Unsupported image dtype: torch\.float64"):
             write_image(file_path, img_th)
 
     def test_write_image_uint16_jpeg_unsupported(self, device, tmp_path):
@@ -279,8 +282,7 @@ class TestIoImage:
         img_th: Tensor = create_random_img16_torch(height, width, 3, device)
 
         file_path = tmp_path / "image.jpg"
-        # JPEG only supports uint8
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match=r"Unsupported file extension: \.jpg for uint16 image"):
             write_image(file_path, img_th)
 
     def test_write_image_float32_jpeg_unsupported(self, device, tmp_path):
@@ -289,8 +291,7 @@ class TestIoImage:
         img_th: Tensor = create_random_img32_torch(height, width, 3, device)
 
         file_path = tmp_path / "image.jpg"
-        # JPEG only supports uint8
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match=r"Unsupported file extension: \.jpg for float32 image"):
             write_image(file_path, img_th)
 
     def test_write_image_float32_png_unsupported(self, device, tmp_path):
@@ -299,6 +300,5 @@ class TestIoImage:
         img_th: Tensor = create_random_img32_torch(height, width, 3, device)
 
         file_path = tmp_path / "image.png"
-        # PNG only supports uint8 and uint16
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(NotImplementedError, match=r"Unsupported file extension: \.png for float32 image"):
             write_image(file_path, img_th)
