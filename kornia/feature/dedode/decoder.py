@@ -106,7 +106,7 @@ class ConvRefiner(nn.Module):
         return nn.Sequential(conv1, norm, relu, conv2)
 
     def forward(self, feats: Tensor) -> Tensor:
-        b, c, hs, ws = feats.shape
+        _b, _c, _hs, _ws = feats.shape
         with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
             x0 = self.block1(feats)
             x = self.hidden_blocks(x0)

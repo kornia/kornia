@@ -147,7 +147,7 @@ def ransac(
     # minimal fit for sampled_x @ A^T = sampled_y
     affinities_fit = torch.transpose(batch_2x2_inv(sampled_x, check_dets=True) @ sampled_y, -1, -2)
     if not refit:
-        eigenvals, eigenvecs = batch_2x2_ellipse(affinities_fit)
+        eigenvals, _eigenvecs = batch_2x2_ellipse(affinities_fit)
         bad_ones = (eigenvals[..., 1] < 1 / DET_THR**2) | (eigenvals[..., 0] > DET_THR**2)
         affinities_fit[bad_ones] = torch.eye(2, device=dv)
     y_pred = (affinities_fit[:, ransidx] @ xsamples.unsqueeze(-1)).squeeze(-1)
@@ -185,7 +185,7 @@ def ransac(
     )
 
     # Filter out degenerate affinities with large scale changes
-    eigenvals, eigenvecs = batch_2x2_ellipse(refit_affinity)
+    eigenvals, _eigenvecs = batch_2x2_ellipse(refit_affinity)
     bad_ones = (eigenvals[..., 1] < 1 / DET_THR**2) | (eigenvals[..., 0] > DET_THR**2)
     refit_affinity[bad_ones] = torch.eye(2, device=dv, dtype=refit_affinity.dtype)
     y_pred = (refit_affinity[ransidx] @ xsamples.unsqueeze(-1)).squeeze(-1)

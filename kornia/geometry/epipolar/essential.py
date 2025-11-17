@@ -240,7 +240,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
         .unsqueeze(-1)
     )
 
-    xzs = torch.matmul(torch.inverse(Bs[:, :, 0:2, 0:2]), bs[:, :, 0:2])
+    xzs = torch.matmul(torch.linalg.inv(Bs[:, :, 0:2, 0:2]), bs[:, :, 0:2])
 
     mask = (abs(Bs[:, 2].unsqueeze(1) @ xzs - bs[:, 2].unsqueeze(1)) > 1e-3).flatten()
 
@@ -369,7 +369,11 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
     scale_factor = torch.sqrt(0.5 * torch.diagonal(E_mat @ E_mat.transpose(-1, -2), dim1=-1, dim2=-2).sum(-1))
 
     # B, 3, 3
-    cross_products = torch.stack([torch.cross(e1, e2), torch.cross(e2, e3), torch.cross(e3, e1)], dim=1)
+    cross_products = torch.stack(
+        [torch.linalg.cross(e1, e2, dim=-1), torch.linalg.cross(e2, e3, dim=-1), torch.linalg.cross(e3, e1, dim=-1)],
+        dim=1,
+    )
+
     # B, 3, 1
     norms = torch.norm(cross_products, dim=-1, keepdim=True)
 

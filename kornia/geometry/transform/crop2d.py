@@ -15,18 +15,26 @@
 # limitations under the License.
 #
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 
-from kornia.core import Tensor, as_tensor, pad, tensor
+from kornia.constants import Resample
+from kornia.core import Module, Tensor, as_tensor, pad, tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import infer_bbox_shape, validate_bbox
 
 from .affwarp import resize
 from .imgwarp import get_perspective_transform, warp_affine
 
-__all__ = ["center_crop", "crop_and_resize", "crop_by_boxes", "crop_by_indices", "crop_by_transform_mat"]
+__all__ = [
+    "CenterCrop2D",
+    "center_crop",
+    "crop_and_resize",
+    "crop_by_boxes",
+    "crop_by_indices",
+    "crop_by_transform_mat",
+]
 
 
 def crop_and_resize(
@@ -378,3 +386,89 @@ def crop_by_indices(
         else:
             out[i] = _out
     return out
+
+
+class CenterCrop2D(Module):
+    """Center crop the input tensor.
+
+    Args:
+        size: Size (h, w) in pixels of the resized region or just one side.
+        align_corners: interpolation flag.
+        resample: Resampling mode.
+        cropping_mode: Cropping mode, "resample" or "slice".
+
+    Note:
+        For JIT, the cropping mode must be "resample".
+    """
+
+    def __init__(
+        self,
+        size: Union[int, Tuple[int, int]],
+        align_corners: bool = True,
+        resample: Union[str, int, Resample] = Resample.BILINEAR.name,
+        cropping_mode: str = "slice",
+    ) -> None:
+        super().__init__()
+        if isinstance(size, tuple):
+            self.size = (size[0], size[1])
+        elif isinstance(size, int):
+            self.size = (size, size)
+        else:
+            raise Exception(f"Invalid size type. Expected (int, tuple(int, int). Got: {type(size)}.")
+
+        dst_h, dst_w = self.size
+        points_dst = torch.tensor([[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]], dtype=torch.long)
+        self.register_buffer("points_src", points_dst.clone())
+        self.register_buffer("points_dst", points_dst)
+
+        self.flags = {
+            "resample": Resample.get(resample),
+            "cropping_mode": cropping_mode,
+            "align_corners": align_corners,
+            "size": self.size,
+            "padding_mode": "zeros",
+        }
+
+    def forward(self, input: Tensor) -> Tensor:
+        batch_size = input.shape[0]
+
+        dst_h, dst_w = self.size
+        src_h, src_w = input.shape[-2:]
+
+        dst_h_half, dst_w_half = dst_h / 2, dst_w / 2
+        src_h_half, src_w_half = src_h / 2, src_w / 2
+
+        start_x, start_y = int(src_w_half - dst_w_half), int(src_h_half - dst_h_half)
+        end_x, end_y = start_x + dst_w - 1, start_y + dst_h - 1
+
+        # [y, x] origin
+        # top-left, top-right, bottom-right, bottom-left
+        self.points_src[0, 0, 0] = start_x
+        self.points_src[0, 0, 1] = start_y
+        self.points_src[0, 1, 0] = end_x
+        self.points_src[0, 1, 1] = start_y
+        self.points_src[0, 2, 0] = end_x
+        self.points_src[0, 2, 1] = end_y
+        self.points_src[0, 3, 0] = start_x
+        self.points_src[0, 3, 1] = end_y
+
+        if self.flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
+            transform = get_perspective_transform(
+                self.points_src.expand(batch_size, -1, -1).to(input),
+                self.points_dst.expand(batch_size, -1, -1).to(input),
+            )
+            transform = transform.expand(batch_size, -1, -1)
+
+            return crop_by_transform_mat(
+                input,
+                transform[:, :2, :],
+                self.size,
+                self.flags["resample"].name.lower(),  # type:ignore
+                "zeros",
+                self.flags["align_corners"],  # type:ignore
+            )
+
+        if self.flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
+            return crop_by_indices(input, self.points_src.expand(batch_size, -1, -1).to(input), self.flags["size"])  # type:ignore
+
+        raise NotImplementedError(f"Not supported type: {self.flags['cropping_mode']}.")

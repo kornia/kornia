@@ -115,7 +115,7 @@ def compute_padding(
         right_padding = ceil(horizontal_padding / 2)
     # the new implementation with unfolding requires symmetric padding
     padding = int(top_padding), int(bottom_padding), int(left_padding), int(right_padding)
-    return cast(FullPadType, padding)
+    return padding
 
 
 class ExtractTensorPatches(Module):
@@ -381,7 +381,6 @@ def combine_tensor_patches(
 
     if unpadding:
         unpadding = create_padding_tuple(unpadding)
-        unpadding = cast(FullPadType, unpadding)
 
     ones = torch.ones(
         patches.shape[0],

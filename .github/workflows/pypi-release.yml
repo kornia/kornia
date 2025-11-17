@@ -6,10 +6,11 @@ on:  # Trigger the workflow on push or pull request, but only for the master bra
     branches: [main]
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   build-sdist:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@master
     - uses: actions/setup-python@v2
@@ -29,7 +30,7 @@ jobs:
         path: dist
 
   upload-packages:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs: build-sdist
     steps:
     - uses: actions/checkout@v2
@@ -41,15 +42,13 @@ jobs:
 
     - name: Upload to release
       uses: AButler/upload-release-assets@v2.0
-      if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
       with:
         files: 'dist/*'
         repo-token: ${{ secrets.GITHUB_TOKEN }}
 
   publish-pypi:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs: build-sdist
-    if: startsWith(github.event.ref, 'refs/tags') || github.event_name == 'release'
     steps:
     - uses: actions/checkout@master
     - uses: actions/setup-python@v2

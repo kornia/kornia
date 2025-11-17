@@ -131,7 +131,7 @@ def drop_add_residual_stochastic_depth(
 ) -> Tensor:
     """Add residual connection."""
     # 1) extract subset using permutation
-    b, n, d = x.shape
+    b, _n, _d = x.shape
     sample_subset_size = max(int(b * (1 - sample_drop_ratio)), 1)
     brange = (torch.randperm(b, device=x.device))[:sample_subset_size]
     x_subset = x[brange]
@@ -151,7 +151,7 @@ def drop_add_residual_stochastic_depth(
 
 def get_branges_scales(x, sample_drop_ratio=0.0):
     """Add bernoulli sampled range and scale."""
-    b, n, d = x.shape
+    b, _n, _d = x.shape
     sample_subset_size = max(int(b * (1 - sample_drop_ratio)), 1)
     brange = (torch.randperm(b, device=x.device))[:sample_subset_size]
     residual_scale_factor = b / sample_subset_size

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any, Optional, Sequence, TypeVar, cast
 
+import torch
 from torch import float16, float32, float64
 from typing_extensions import TypeGuard
 
@@ -361,7 +362,7 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None, raises: 
 
     Example:
         >>> img = torch.rand(2, 3, 4, 4)
-        >>> KORNIA_CHECK_IS_COLOR_OR_GRAY(img, "Image is not color orgrayscale")
+        >>> KORNIA_CHECK_IS_COLOR_OR_GRAY(img, "Image is not color or grayscale")
         True
 
     """
@@ -392,23 +393,21 @@ def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: Optional[str] = None, raises: bool = T
         True
 
     """
-    res = KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises=raises)
-
-    if not raises and not res:
+    # Combine the color or gray check with the range check
+    if not raises and not KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises):
         return False
 
-    err_msg = f"Invalid image value range. Expect [0, 1] but got [{x.min()}, {x.max()}]."
-    if msg is not None:
-        err_msg += f"\n{msg}"
+    amin, amax = torch.aminmax(x)
 
-    if x.dtype in [float16, float32, float64] and (x.min() < 0.0 or x.max() > 1.0):
-        if raises:
-            raise ValueError(err_msg)
-        return False
-    elif x.min() < 0 or x.max() > 2**bits - 1:
-        if raises:
-            raise ValueError(err_msg)
-        return False
+    if x.dtype in (float16, float32, float64):
+        invalid = (amin < 0) | (amax > 1)
+    else:
+        max_int_value = (1 << bits) - 1
+        invalid = (amin < 0) | (amax > max_int_value)
+
+    if invalid.item():
+        return _handle_invalid_range(msg, raises, amin, amax)
+
     return True
 
 
@@ -459,3 +458,13 @@ def KORNIA_CHECK_LAF(laf: Tensor, raises: bool = True) -> bool:
 
     """
     return KORNIA_CHECK_SHAPE(laf, ["B", "N", "2", "3"], raises)
+
+
+def _handle_invalid_range(msg: Optional[str], raises: bool, min_val: float | Tensor, max_val: float | Tensor) -> bool:
+    """Helper function to handle invalid range cases."""
+    err_msg = f"Invalid image value range. Expect [0, 1] but got [{min_val}, {max_val}]."
+    if msg is not None:
+        err_msg += f"\n{msg}"
+    if raises:
+        raise ValueError(err_msg)
+    return False

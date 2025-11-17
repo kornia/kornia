@@ -65,6 +65,18 @@ class RANSAC(Module):
         confidence: float = 0.99,
         max_lo_iters: int = 5,
     ) -> None:
+        """Initialize the RANSAC estimator.
+
+        Args:
+            model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
+                "homography_from_linesegments".
+            inl_th: threshold for the correspondence to be an inlier.
+            batch_size: number of generated samples at once.
+            max_iter: maximum batches to generate. Actual number of models to try is ``batch_size * max_iter``.
+            confidence: desired confidence of the result, used for the early stopping.
+            max_lo_iters: number of local optimization (polishing) iterations.
+
+        """
         super().__init__()
         self.supported_models = ["homography", "fundamental", "fundamental_7pt", "homography_from_linesegments"]
         self.inl_th = inl_th
@@ -106,6 +118,16 @@ class RANSAC(Module):
         """Minimal sampler, but unlike traditional RANSAC we sample in batches.
 
         Yields the benefit of the parallel processing, esp. on GPU.
+
+        Args:
+            sample_size: number of samples to draw from the population.
+            pop_size: size of the population to sample from.
+            batch_size: number of sample sets to generate.
+            device: device to place the samples on.
+
+        Returns:
+            Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
+
         """
         if device is None:
             device = torch.device("cpu")
@@ -115,7 +137,18 @@ class RANSAC(Module):
 
     @staticmethod
     def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> float:
-        """Update max_iter to stop iterations earlier https://en.wikipedia.org/wiki/Random_sample_consensus."""
+        """Update max_iter to stop iterations earlier https://en.wikipedia.org/wiki/Random_sample_consensus.
+
+        Args:
+            n_inl: number of inliers.
+            num_tc: total number of correspondences.
+            sample_size: size of minimal sample.
+            conf: desired confidence level.
+
+        Returns:
+            Maximum number of samples needed to achieve the desired confidence.
+
+        """
         eps = 1e-9
         if num_tc <= sample_size:
             return 1.0
@@ -124,11 +157,36 @@ class RANSAC(Module):
         return math.log(1.0 - conf) / min(-eps, math.log(max(eps, 1.0 - math.pow(n_inl / num_tc, sample_size))))
 
     def estimate_model_from_minsample(self, kp1: Tensor, kp2: Tensor) -> Tensor:
+        """Estimate models from minimal samples.
+
+        Args:
+            kp1: source keypoints with shape :math:`(batch_size, sample_size, 2)`.
+            kp2: target keypoints with shape :math:`(batch_size, sample_size, 2)`.
+
+        Returns:
+            Estimated models tensor.
+
+        """
         batch_size, sample_size = kp1.shape[:2]
         H = self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
         return H
 
     def verify(self, kp1: Tensor, kp2: Tensor, models: Tensor, inl_th: float) -> Tuple[Tensor, Tensor, float]:
+        """Verify models by computing inliers and selecting the best model.
+
+        Args:
+            kp1: source keypoints.
+            kp2: target keypoints.
+            models: candidate models to verify.
+            inl_th: inlier threshold.
+
+        Returns:
+            Tuple containing:
+                - Best model
+                - Inlier mask for the best model
+                - Score of the best model
+
+        """
         if len(kp1.shape) == 2:
             kp1 = kp1[None]
         if len(kp2.shape) == 2:
@@ -147,6 +205,16 @@ class RANSAC(Module):
         return model_best, inliers_best, best_model_score
 
     def remove_bad_samples(self, kp1: Tensor, kp2: Tensor) -> Tuple[Tensor, Tensor]:
+        """Remove degenerate samples based on model-specific constraints.
+
+        Args:
+            kp1: source keypoints.
+            kp2: target keypoints.
+
+        Returns:
+            Tuple of filtered keypoints (kp1, kp2).
+
+        """
         # ToDo: add (model-specific) verification of the samples,
         # E.g. constraints on not to be a degenerate sample
         if self.model_type == "homography":
@@ -155,6 +223,15 @@ class RANSAC(Module):
         return kp1, kp2
 
     def remove_bad_models(self, models: Tensor) -> Tensor:
+        """Remove degenerate models based on simple heuristics.
+
+        Args:
+            models: candidate models to filter.
+
+        Returns:
+            Filtered models tensor.
+
+        """
         # ToDo: add more and better degenerate model rejection
         # For now it is simple and hardcoded
         main_diagonal = torch.diagonal(models, dim1=1, dim2=2)
@@ -162,6 +239,17 @@ class RANSAC(Module):
         return models[mask]
 
     def polish_model(self, kp1: Tensor, kp2: Tensor, inliers: Tensor) -> Tensor:
+        """Polish the model using inliers through local optimization.
+
+        Args:
+            kp1: source keypoints.
+            kp2: target keypoints.
+            inliers: boolean mask indicating inlier correspondences.
+
+        Returns:
+            Polished model tensor.
+
+        """
         # TODO: Replace this with MAGSAC++ polisher
         kp1_inl = kp1[inliers][None]
         kp2_inl = kp2[inliers][None]
@@ -172,6 +260,17 @@ class RANSAC(Module):
         return model
 
     def validate_inputs(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> None:
+        """Validate input tensors for shape and size requirements.
+
+        Args:
+            kp1: source keypoints.
+            kp2: target keypoints.
+            weights: optional correspondence weights (not used currently).
+
+        Raises:
+            ValueError: if input shapes are invalid or insufficient correspondences.
+
+        """
         if self.model_type in ["homography", "fundamental"]:
             KORNIA_CHECK_SHAPE(kp1, ["N", "2"])
             KORNIA_CHECK_SHAPE(kp2, ["N", "2"])
