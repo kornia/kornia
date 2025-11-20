@@ -183,7 +183,7 @@ class RANSAC(Module):
         prob_inlier = 1.0
         for i in range(sample_size):
             prob_inlier *= (n_inl - i) / (num_tc - i)
-        
+
         return int(math.log(1.0 - conf) / min(-eps, math.log(max(eps, 1.0 - prob_inlier))))
 
     def estimate_model_from_minsample(self, kp1: Tensor, kp2: Tensor) -> Tensor:
@@ -381,8 +381,10 @@ class RANSAC(Module):
                 best_score_total = model_score
 
                 # Should we already stop?
-                new_max_iter = self.max_samples_by_conf(int(best_score_total), num_tc, self.minimal_sample_size, self.confidence)
-                
+                new_max_iter = self.max_samples_by_conf(
+                    int(best_score_total), num_tc, self.minimal_sample_size, self.confidence
+                )
+
                 # Stop estimation, if the model is very good
                 if (i + 1) * self.batch_size >= new_max_iter:
                     break

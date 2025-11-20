@@ -29,7 +29,8 @@ builtins.__sphinx_build__ = True
 # The extension tries to access torch.jit.annotations.compiler_flag which doesn't exist in newer PyTorch versions
 try:
     import torch.jit.annotations
-    if not hasattr(torch.jit.annotations, 'compiler_flag'):
+
+    if not hasattr(torch.jit.annotations, "compiler_flag"):
         torch.jit.annotations.compiler_flag = lambda x: x
 except (ImportError, AttributeError):
     pass

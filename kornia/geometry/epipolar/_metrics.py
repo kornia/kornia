@@ -137,8 +137,12 @@ def _sampson_epipolar_distance_matmul_impl_(
 
 @torch.jit.script
 def sampson_epipolar_distance(
-    pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8,
-    use_matmul_at_less_than_points: int = 10000
+    pts1: Tensor,
+    pts2: Tensor,
+    Fm: Tensor,
+    squared: bool = True,
+    eps: float = 1e-8,
+    use_matmul_at_less_than_points: int = 10000,
 ) -> Tensor:
     """Return Sampson distance for correspondences given the fundamental matrix.
 
