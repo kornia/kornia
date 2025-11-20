@@ -73,7 +73,7 @@ class RANSAC(Module):
         Args:
             model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
                 "homography_from_linesegments".
-            inl_th: threshold for the correspondence to be an inlier.
+            inl_th: threshold for the correspondence to be an inlier. Internally is squared.
             batch_size: number of generated samples at once.
             max_iter: maximum batches to generate. Actual number of models to try is ``batch_size * max_iter``.
             confidence: desired confidence of the result, used for the early stopping.
@@ -269,10 +269,8 @@ class RANSAC(Module):
             Filtered models tensor.
 
         """
-        # ToDo: add more and better degenerate model rejection
-        # For now it is simple and hardcoded
-        main_diagonal = torch.diagonal(models, dim1=-1, dim2=-2)
-        mask = main_diagonal.abs().min(dim=1)[0] > 1e-4
+        # Filter out NaN or Inf models
+        mask = torch.isfinite(models).all(dim=-1).all(dim=-1)
         return models[mask]
 
     def polish_model(self, kp1: Tensor, kp2: Tensor, inliers: Tensor) -> Tensor:
@@ -360,7 +358,7 @@ class RANSAC(Module):
             if (models is None) or (len(models) == 0):
                 continue
             # Score the models and select the best one
-            model, inliers, model_score, num_inliers = self.verify(kp1, kp2, models, self.inl_th)
+            model, inliers, model_score, num_inliers = self.verify(kp1, kp2, models, self.inl_th**2)
             # Store far-the-best model and (optionally) do a local optimization
             if (model_score > best_score_total) and num_inliers >= self.polisher_sample_size:
                 # Local optimization
@@ -368,7 +366,7 @@ class RANSAC(Module):
                     model_lo = self.polish_model(kp1, kp2, inliers)
                     if (model_lo is None) or (len(model_lo) == 0):
                         continue
-                    _, inliers_lo, score_lo, num_inliers_lo = self.verify(kp1, kp2, model_lo, self.inl_th)
+                    _, inliers_lo, score_lo, num_inliers_lo = self.verify(kp1, kp2, model_lo, self.inl_th**2)
                     if (score_lo > model_score) and (num_inliers_lo >= self.polisher_sample_size):
                         model = model_lo.clone()[0]
                         inliers = inliers_lo.clone()
