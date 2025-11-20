@@ -27,6 +27,7 @@ from kornia.core import Device, Module, Tensor, zeros
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry import (
     find_fundamental,
+    find_essential,
     find_homography_dlt,
     find_homography_dlt_iterated,
     find_homography_lines_dlt,
@@ -80,7 +81,7 @@ class RANSAC(Module):
 
         """
         super().__init__()
-        self.supported_models = ["homography", "fundamental", "fundamental_7pt", "homography_from_linesegments"]
+        self.supported_models = ["homography", "fundamental", "fundamental_7pt", "homography_from_linesegments", "essential"]
         self.supported_scores = ["msac", "ransac"]
         self.score_type = score_type
         self.inl_th = inl_th
@@ -101,21 +102,31 @@ class RANSAC(Module):
             self.minimal_solver = find_homography_dlt
             self.polisher_solver = find_homography_dlt_iterated
             self.minimal_sample_size = 4
+            self.polisher_sample_size = 4
         elif model_type == "homography_from_linesegments":
             self.error_fn = line_segment_transfer_error_one_way
             self.minimal_solver = find_homography_lines_dlt
             self.polisher_solver = find_homography_lines_dlt_iterated
             self.minimal_sample_size = 4
+            self.polisher_sample_size = 4
         elif model_type == "fundamental":
             self.error_fn = sampson_epipolar_distance
             self.minimal_solver = find_fundamental
             self.minimal_sample_size = 8
             self.polisher_solver = find_fundamental
+            self.polisher_sample_size = 8
         elif model_type == "fundamental_7pt":
             self.error_fn = sampson_epipolar_distance
             self.minimal_solver = partial(find_fundamental, method="7POINT")
             self.minimal_sample_size = 7
             self.polisher_solver = find_fundamental
+            self.polisher_sample_size = 8
+        elif model_type == "essential":
+            self.error_fn = sampson_epipolar_distance
+            self.minimal_solver = find_essential
+            self.minimal_sample_size = 5
+            self.polisher_solver = find_fundamental
+            self.polisher_sample_size = 8
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
 
@@ -260,7 +271,7 @@ class RANSAC(Module):
         """
         # ToDo: add more and better degenerate model rejection
         # For now it is simple and hardcoded
-        main_diagonal = torch.diagonal(models, dim1=1, dim2=2)
+        main_diagonal = torch.diagonal(models, dim1=-1, dim2=-2)
         mask = main_diagonal.abs().min(dim=1)[0] > 1e-4
         return models[mask]
 
@@ -338,26 +349,27 @@ class RANSAC(Module):
             idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, i, kp1.device)
             kp1_sampled = kp1[idxs]
             kp2_sampled = kp2[idxs]
-
             kp1_sampled, kp2_sampled = self.remove_bad_samples(kp1_sampled, kp2_sampled)
             if len(kp1_sampled) == 0:
                 continue
             # Estimate models
             models = self.estimate_model_from_minsample(kp1_sampled, kp2_sampled)
+            if self.model_type in ["essential", "fundamental_7pt"]:
+                models = models.reshape(-1, 3, 3)
             models = self.remove_bad_models(models)
             if (models is None) or (len(models) == 0):
                 continue
             # Score the models and select the best one
             model, inliers, model_score, num_inliers = self.verify(kp1, kp2, models, self.inl_th)
             # Store far-the-best model and (optionally) do a local optimization
-            if (model_score > best_score_total) and num_inliers > self.minimal_sample_size + 2:
+            if (model_score > best_score_total) and num_inliers >= self.polisher_sample_size:
                 # Local optimization
                 for _ in range(self.max_lo_iters):
                     model_lo = self.polish_model(kp1, kp2, inliers)
                     if (model_lo is None) or (len(model_lo) == 0):
                         continue
                     _, inliers_lo, score_lo, num_inliers_lo = self.verify(kp1, kp2, model_lo, self.inl_th)
-                    if (score_lo > model_score) and (num_inliers_lo > self.minimal_sample_size + 2):
+                    if (score_lo > model_score) and (num_inliers_lo >= self.polisher_sample_size):
                         model = model_lo.clone()[0]
                         inliers = inliers_lo.clone()
                         model_score = score_lo
