@@ -143,7 +143,9 @@ def _normalize_F(F: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     Returns:
         F: (..., 3, 3)
     """
-    nrm = F.norm(dim=(-2, -1), p=1, keepdim=True).clamp_min(eps)
+    # Use .abs().sum() directly instead of .norm(p=1)
+    # Reduce memory footprint by doing the operation in-place (where safe)
+    nrm = F.abs().sum(dim=(-2, -1), keepdim=True).clamp_min_(eps)
     return F / nrm
 
 
