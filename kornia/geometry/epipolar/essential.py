@@ -106,7 +106,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     original_dtype = X.dtype
     # Perform calculations in float64 for stability
     X = X.to(dtype=torch.float64)
-    
+
     _, _, V = _torch_svd_cast(X)  # torch.svd
 
     null_ = V[:, :, -4:]  # the last four rows
@@ -207,7 +207,9 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
 
     roots_eig = torch.linalg.eigvals(C)
     roots = torch.real(roots_eig)
-    is_real = torch.abs(torch.imag(roots_eig)) < 1e-10 # OpenCV uses 1e-10 via fabs(xy1(2)) < 1e-10 or just wi[i] == 0 check, let's be a bit more generous but strict enough
+    is_real = (
+        torch.abs(torch.imag(roots_eig)) < 1e-10
+    )  # OpenCV uses 1e-10 via fabs(xy1(2)) < 1e-10 or just wi[i] == 0 check, let's be a bit more generous but strict enough
 
     roots_unsqu = roots.unsqueeze(1)
 
