@@ -52,10 +52,10 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     Args:
         points1: A set of carlibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
-        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        weights: Not used, kept for compatibility.
 
     Returns:
-        the computed essential matrix with shape :math:`(B, 3, 3)`.
+        the computed essential matrix with shape :math:`(B, 10, 3, 3)`.
 
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
@@ -74,13 +74,6 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     # [x * x', x * y', x, y * x', y * y', y, x', y', 1]
     # BxNx9
     X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones], dim=-1)
-
-    # apply the weights to the linear system
-    if weights is None:
-        X = X.transpose(-2, -1) @ X
-    else:
-        w_diag = torch.diag_embed(weights)
-        X = X.transpose(-2, -1) @ w_diag @ X
 
     # use Nister's 5PC to solve essential matrix
     E_Nister = null_to_Nister_solution(X, batch_size)
@@ -110,6 +103,10 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     # compute eigenvectors and retrieve the one with the smallest eigenvalue, using SVD
     # turn off the grad check due to the unstable gradients from SVD.
     # several close to zero values of eigenvalues.
+    original_dtype = X.dtype
+    # Perform calculations in float64 for stability
+    X = X.to(dtype=torch.float64)
+    
     _, _, V = _torch_svd_cast(X)  # torch.svd
 
     null_ = V[:, :, -4:]  # the last four rows
@@ -208,7 +205,9 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     cs_de = torch.where(cs_de == 0, torch.tensor(1e-8, dtype=cs_de.dtype), cs_de)
     C[:, -1, :] = -cs[:, :-1] / cs_de
 
-    roots = torch.real(torch.linalg.eigvals(C))
+    roots_eig = torch.linalg.eigvals(C)
+    roots = torch.real(roots_eig)
+    is_real = torch.abs(torch.imag(roots_eig)) < 1e-10 # OpenCV uses 1e-10 via fabs(xy1(2)) < 1e-10 or just wi[i] == 0 check, let's be a bit more generous but strict enough
 
     roots_unsqu = roots.unsqueeze(1)
 
@@ -271,11 +270,13 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
 
     Es = Es.view(batch_size_filtered, -1, 3, 3).transpose(-1, -2)
 
+    Es[~is_real] = float("nan")
+
     # make sure the returned batch size equals to that of inputs
     E_return = torch.eye(3, dtype=Es.dtype, device=Es.device)[None].expand(batch_size, 10, -1, -1).clone()
     E_return[singular_filter] = Es
 
-    return E_return
+    return E_return.to(dtype=original_dtype)
 
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
