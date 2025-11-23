@@ -169,6 +169,9 @@ class RANSAC(Module):
         """
         batch_size, sample_size = kp1.shape[:2]
         H = self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
+        if len(H.shape) == 4:
+            # if the minimal solver returns multiple solutions per sample, we flatten the batch and solution dimensions
+            H = H.reshape(-1, 3, 3)
         return H
 
     def verify(self, kp1: Tensor, kp2: Tensor, models: Tensor, inl_th: float) -> Tuple[Tensor, Tensor, float]:

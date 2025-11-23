@@ -37,7 +37,6 @@ class TestRANSACHomography(BaseTester):
         H, _ = ransac(points1, points2)
         assert H.shape == (3, 3)
 
-    @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     def test_dirty_points(self, device, dtype):
         # generate input data
         torch.random.manual_seed(0)
@@ -76,7 +75,6 @@ class TestRANSACHomography(BaseTester):
         self.assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=1e-2, atol=1.0)
 
     @pytest.mark.slow
-    @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_dirty(self, device, dtype, data):
         # generate input data
@@ -117,7 +115,6 @@ class TestRANSACHomographyLineSegments(BaseTester):
         H, _ = ransac(points1, points2)
         assert H.shape == (3, 3)
 
-    @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     def test_dirty_points(self, device, dtype):
         # generate input data
         torch.random.manual_seed(0)
@@ -165,7 +162,6 @@ class TestRANSACFundamental(BaseTester):
         assert Fm.shape == (3, 3)
 
     @pytest.mark.slow
-    @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_clean_8pt(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -182,7 +178,6 @@ class TestRANSACFundamental(BaseTester):
         assert gross_errors.sum().item() == 0
 
     @pytest.mark.slow
-    @pytest.mark.xfail(reason="might fail, because out F-RANSAC is not yet 7pt")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_clean_7pt(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -211,7 +206,7 @@ class TestRANSACFundamental(BaseTester):
         kp1 = data_dev["loftr_indoor_tentatives0"]
         kp2 = data_dev["loftr_indoor_tentatives1"]
 
-        ransac = RANSAC("fundamental", inl_th=1.0, max_iter=20, max_lo_iters=10).to(device=device, dtype=dtype)
+        ransac = RANSAC("fundamental", inl_th=1.0, max_iter=500, max_lo_iters=20).to(device=device, dtype=dtype)
         # compute transform from source to target
         fundamental_matrix, _ = ransac(kp1, kp2)
         gross_errors = (
@@ -220,7 +215,7 @@ class TestRANSACFundamental(BaseTester):
         assert gross_errors.sum().item() < 2
 
     @pytest.mark.slow
-    @pytest.mark.xfail(reason="might fail, because this F-RANSAC is not 7pt")
+    @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_dirty_7pt(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -232,7 +227,7 @@ class TestRANSACFundamental(BaseTester):
         kp1 = data_dev["loftr_indoor_tentatives0"]
         kp2 = data_dev["loftr_indoor_tentatives1"]
 
-        ransac = RANSAC("fundamental_7pt", inl_th=1.0, max_iter=20, max_lo_iters=10).to(device=device, dtype=dtype)
+        ransac = RANSAC("fundamental_7pt", inl_th=1.0, max_iter=100, max_lo_iters=10).to(device=device, dtype=dtype)
         # compute transform from source to target
         fundamental_matrix, _ = ransac(kp1, kp2)
         gross_errors = (
