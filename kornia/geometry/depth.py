@@ -171,8 +171,12 @@ def depth_to_3d(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = F
 
     # create base coordinates grid
     _, _, height, width = depth.shape
-    points_2d: Tensor = create_meshgrid(height, width, normalized_coordinates=False)  # 1xHxWx2
-    points_2d = points_2d.to(depth.device).to(depth.dtype)
+    points_2d: Tensor = create_meshgrid(
+        height,
+        width,
+        normalized_coordinates=False,
+        device=depth.device,
+        dtype=depth.dtype)  # 1xHxWx2
 
     # depth should come in Bx1xHxW
     points_depth: Tensor = depth.permute(0, 2, 3, 1)  # 1xHxWx1
