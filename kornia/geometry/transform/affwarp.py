@@ -774,9 +774,9 @@ class Affine(Module):
             must have a shape of (B), where B is the batch size.
         translation: Amount of pixels for translation in x- and y-direction. The tensor must
             have a shape of (B, 2), where B is the batch size and the last dimension contains dx and dy.
-        scale_factor: Factor for scaling. The tensor must have a shape of (B), where B is the
-            batch size.
-        shear: Angles in degrees for shearing in x- and y-direction around the center. The
+        scale_factor: Factor for scaling. The tensor must have a shape of (B,2), where B is the
+            batch size and the last dimension contains scale factors for x and y direction.
+        shear: Factor for shearing in x- and y-direction around the center. The
             tensor must have a shape of (B, 2), where B is the batch size and the last dimension contains sx and sy.
         center: Transformation center in pixels. The tensor must have a shape of (B, 2), where
             B is the batch size and the last dimension contains cx and cy. Defaults to the center of image to be
