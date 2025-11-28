@@ -46,21 +46,15 @@ def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Te
     if len(input.shape) < 3 or input.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
 
-    r = input[..., 0, :, :]
-    g = input[..., 1, :, :]
-    b = input[..., 2, :, :]
-
-    r_out = 0.393 * r + 0.769 * g + 0.189 * b
-    g_out = 0.349 * r + 0.686 * g + 0.168 * b
-    b_out = 0.272 * r + 0.534 * g + 0.131 * b
-
-    sepia_out = torch.stack([r_out, g_out, b_out], dim=-3)
+    sepia_matrix = torch.tensor(
+        [[0.393, 0.769, 0.189], [0.349, 0.686, 0.168], [0.272, 0.534, 0.131]], device=input.device, dtype=input.dtype
+    )
+    sepia_out = torch.einsum("ij, ...jhw -> ...ihw", sepia_matrix, input)
 
     if rescale:
-        max_values = sepia_out.amax(dim=-1).amax(dim=-1)
-        sepia_out = sepia_out / (max_values[..., None, None] + eps)
-
-    return sepia_out
+        max_values = sepia_out.amax(dim=(-2, -1), keepdim=True)
+        sepia_out = sepia_out / (max_values + eps)
+    return sepia_out.contiguous()
 
 
 class Sepia(Module):
