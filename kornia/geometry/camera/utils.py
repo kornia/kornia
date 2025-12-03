@@ -28,13 +28,13 @@ from kornia.geometry.camera import PinholeCamera
 
 def create_camera_dimensions(device, dtype, n_cams1: int = 3, n_cams2: int = 2):
     """Create camera dimensions for ray sampling.
-    
+
     Args:
         device: Device for tensors
         dtype: Data type for tensors
         n_cams1: Number of cameras in first group (default: 3)
         n_cams2: Number of cameras in second group (default: 2)
-        
+
     Returns:
         Tuple of (heights, widths, num_img_rays) tensors
     """
@@ -107,13 +107,13 @@ def create_extrinsics_with_rotation(alphas, betas, gammas, txs, tys, tzs, device
 
 def create_pinhole_camera(height, width, device: Device, dtype: torch.dtype) -> PinholeCamera:
     """Create a single PinholeCamera with default parameters.
-    
+
     Args:
         height: Camera image height
         width: Camera image width
         device: Device for tensors
         dtype: Data type for tensors
-        
+
     Returns:
         PinholeCamera: A PinholeCamera instance
     """
@@ -143,11 +143,11 @@ def create_pinhole_camera(height, width, device: Device, dtype: torch.dtype) -> 
 
 def create_four_cameras(device, dtype) -> PinholeCamera:
     """Create four PinholeCameras with predefined parameters.
-    
+
     Args:
         device: Device for tensors
         dtype: Data type for tensors
-        
+
     Returns:
         PinholeCamera: A PinholeCamera instance with 4 cameras in batch
     """

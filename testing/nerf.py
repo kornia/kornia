@@ -19,13 +19,7 @@ from __future__ import annotations
 
 # Shim imports for backward compatibility - implementations moved to kornia.geometry.camera.utils
 from kornia.geometry.camera.utils import (
-    create_camera_dimensions,
-    create_extrinsics_with_rotation,
-    create_four_cameras,
-    create_intrinsics,
     create_pinhole_camera,
-    create_random_images_for_cameras,
-    create_red_images_for_cameras,
 )
 
 # Deprecated alias for backward compatibility - use create_pinhole_camera instead
