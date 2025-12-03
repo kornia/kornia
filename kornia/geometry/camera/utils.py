@@ -26,7 +26,9 @@ from kornia.core import Device
 from kornia.geometry.camera import PinholeCamera
 
 
-def create_camera_dimensions(device, dtype, n_cams1: int = 3, n_cams2: int = 2):
+def create_camera_dimensions(
+    device: Device, dtype: torch.dtype, n_cams1: int = 3, n_cams2: int = 2
+) -> tuple[Tensor, Tensor, Tensor]:
     """Create camera dimensions for ray sampling.
 
     Args:
@@ -59,7 +61,14 @@ def create_camera_dimensions(device, dtype, n_cams1: int = 3, n_cams2: int = 2):
     return heights, widths, num_img_rays
 
 
-def create_intrinsics(fxs, fys, cxs, cys, device, dtype):
+def create_intrinsics(
+    fxs: list[float | int],
+    fys: list[float | int],
+    cxs: Tensor | list[float | int],
+    cys: Tensor | list[float | int],
+    device: Device,
+    dtype: torch.dtype,
+) -> Tensor:
     """Create intrinsic camera matrices from focal lengths and principal points.
 
     Args:
@@ -73,8 +82,11 @@ def create_intrinsics(fxs, fys, cxs, cys, device, dtype):
     Returns:
         Stacked intrinsic matrices of shape (N, 4, 4)
     """
-    intrinsics_batch = []
-    for fx, fy, cx, cy in zip(fxs, fys, cxs, cys):
+    intrinsics_batch: list[Tensor] = []
+    # Convert cxs and cys to lists if they are tensors
+    cxs_list = cxs.tolist() if isinstance(cxs, Tensor) else cxs
+    cys_list = cys.tolist() if isinstance(cys, Tensor) else cys
+    for fx, fy, cx, cy in zip(fxs, fys, cxs_list, cys_list):
         intrinsics = torch.eye(4, device=device, dtype=dtype)
         intrinsics[0, 0] = fx
         intrinsics[1, 1] = fy
@@ -84,7 +96,16 @@ def create_intrinsics(fxs, fys, cxs, cys, device, dtype):
     return torch.stack(intrinsics_batch)
 
 
-def create_extrinsics_with_rotation(alphas, betas, gammas, txs, tys, tzs, device, dtype):
+def create_extrinsics_with_rotation(
+    alphas: list[float],
+    betas: list[float],
+    gammas: list[float],
+    txs: list[float],
+    tys: list[float],
+    tzs: list[float],
+    device: Device,
+    dtype: torch.dtype,
+) -> Tensor:
     """Create extrinsic camera matrices with rotation and translation.
 
     Args:
@@ -100,7 +121,7 @@ def create_extrinsics_with_rotation(alphas, betas, gammas, txs, tys, tzs, device
     Returns:
         Stacked extrinsic matrices of shape (N, 4, 4)
     """
-    extrinsics_batch = []
+    extrinsics_batch: list[Tensor] = []
     for alpha, beta, gamma, tx, ty, tz in zip(alphas, betas, gammas, txs, tys, tzs):
         Rx = torch.eye(3, device=device, dtype=dtype)
         Rx[1, 1] = math.cos(alpha)
@@ -133,7 +154,9 @@ def create_extrinsics_with_rotation(alphas, betas, gammas, txs, tys, tzs, device
     return torch.stack(extrinsics_batch)
 
 
-def create_pinhole_camera(height, width, device: Device, dtype: torch.dtype) -> PinholeCamera:
+def create_pinhole_camera(
+    height: int | float, width: int | float, device: Device, dtype: torch.dtype
+) -> PinholeCamera:
     """Create a single PinholeCamera with default parameters.
 
     Args:
@@ -169,7 +192,7 @@ def create_pinhole_camera(height, width, device: Device, dtype: torch.dtype) -> 
     )
 
 
-def create_four_cameras(device, dtype) -> PinholeCamera:
+def create_four_cameras(device: Device, dtype: torch.dtype) -> PinholeCamera:
     """Create four PinholeCameras with predefined parameters.
 
     Args:
