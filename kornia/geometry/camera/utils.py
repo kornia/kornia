@@ -154,9 +154,7 @@ def create_extrinsics_with_rotation(
     return torch.stack(extrinsics_batch)
 
 
-def create_pinhole_camera(
-    height: int | float, width: int | float, device: Device, dtype: torch.dtype
-) -> PinholeCamera:
+def create_pinhole_camera(height: float, width: float, device: Device, dtype: torch.dtype) -> PinholeCamera:
     """Create a single PinholeCamera with default parameters.
 
     Args:
