@@ -350,7 +350,7 @@ dev = [
     "requests",
     "setuptools>=61.2",
     "transformers<4.57",
-    "huggingface-hub<1.0",
+    "huggingface-hub<2.0",
     "types-requests",
 ]
 x = [
