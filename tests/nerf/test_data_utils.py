@@ -18,9 +18,9 @@
 from __future__ import annotations
 
 from kornia.nerf.data_utils import RayDataset, instantiate_ray_dataloader
+from kornia.geometry.camera.utils import create_four_cameras, create_random_images_for_cameras
 
 from testing.base import assert_close
-from testing.nerf import create_four_cameras, create_random_images_for_cameras
 
 
 class TestDataset:

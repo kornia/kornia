@@ -23,13 +23,14 @@ from kornia.geometry.camera import PinholeCamera
 from kornia.nerf.nerf_model import NerfModelRenderer
 from kornia.nerf.nerf_solver import NerfSolver
 
-from testing.base import assert_close
-from testing.nerf import (
+from kornia.geometry.camera.utils import (
     create_four_cameras,
-    create_one_camera,
+    create_pinhole_camera,
     create_random_images_for_cameras,
     create_red_images_for_cameras,
 )
+
+from testing.base import assert_close
 
 
 class TestNerfSolver:
@@ -53,7 +54,7 @@ class TestNerfSolver:
 
     def test_only_red_uniform_sampling(self, device, dtype):
         torch.manual_seed(1)  # For reproducibility of random processes
-        camera: PinholeCamera = create_one_camera(5, 9, device, dtype)
+        camera: PinholeCamera = create_pinhole_camera(5, 9, device, dtype)
         img: list[Tensor] = create_red_images_for_cameras(camera, device)
 
         # train the model
@@ -68,7 +69,7 @@ class TestNerfSolver:
         assert_close(img_rendered.to(device, dtype), img[0].to(device, dtype) / 255.0)
 
     def test_single_ray(self, device, dtype):
-        camera: PinholeCamera = create_one_camera(5, 9, device, dtype)
+        camera: PinholeCamera = create_pinhole_camera(5, 9, device, dtype)
         img: list[Tensor] = create_red_images_for_cameras(camera, device)
 
         nerf_obj = NerfSolver(device=device, dtype=dtype)
@@ -78,7 +79,7 @@ class TestNerfSolver:
     def test_only_red(self, device, dtype):
         torch.manual_seed(0)  # For reproducibility of random processes
 
-        camera: PinholeCamera = create_one_camera(5, 9, device, dtype)
+        camera: PinholeCamera = create_pinhole_camera(5, 9, device, dtype)
         img: list[Tensor] = create_red_images_for_cameras(camera, device)
 
         # train the model
