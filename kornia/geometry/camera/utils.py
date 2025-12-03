@@ -60,6 +60,19 @@ def create_camera_dimensions(device, dtype, n_cams1: int = 3, n_cams2: int = 2):
 
 
 def create_intrinsics(fxs, fys, cxs, cys, device, dtype):
+    """Create intrinsic camera matrices from focal lengths and principal points.
+
+    Args:
+        fxs: Focal length in x direction
+        fys: Focal length in y direction
+        cxs: Principal point x coordinate
+        cys: Principal point y coordinate
+        device: Device for tensors
+        dtype: Data type for tensors
+
+    Returns:
+        Stacked intrinsic matrices of shape (N, 4, 4)
+    """
     intrinsics_batch = []
     for fx, fy, cx, cy in zip(fxs, fys, cxs, cys):
         intrinsics = torch.eye(4, device=device, dtype=dtype)
@@ -72,6 +85,21 @@ def create_intrinsics(fxs, fys, cxs, cys, device, dtype):
 
 
 def create_extrinsics_with_rotation(alphas, betas, gammas, txs, tys, tzs, device, dtype):
+    """Create extrinsic camera matrices with rotation and translation.
+
+    Args:
+        alphas: Rotation angles around x-axis
+        betas: Rotation angles around y-axis
+        gammas: Rotation angles around z-axis
+        txs: Translation in x direction
+        tys: Translation in y direction
+        tzs: Translation in z direction
+        device: Device for tensors
+        dtype: Data type for tensors
+
+    Returns:
+        Stacked extrinsic matrices of shape (N, 4, 4)
+    """
     extrinsics_batch = []
     for alpha, beta, gamma, tx, ty, tz in zip(alphas, betas, gammas, txs, tys, tzs):
         Rx = torch.eye(3, device=device, dtype=dtype)
