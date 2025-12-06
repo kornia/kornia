@@ -223,7 +223,6 @@ def convert_points_to_homogeneous(points: Tensor) -> Tensor:
         raise TypeError(f"Input type is not a Tensor. Got {type(points)}")
     if len(points.shape) < 2:
         raise ValueError(f"Input must be at least a 2D tensor. Got {points.shape}")
-
     return pad(points, [0, 1], "constant", 1.0)
 
 
