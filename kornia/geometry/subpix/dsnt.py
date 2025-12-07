@@ -117,6 +117,7 @@ def spatial_expectation2d(input: Tensor, normalized_coordinates: bool = True) ->
 
     return output.view(batch_size, channels, 2)  # BxNx2
 
+
 def render_gaussian2d(mean: Tensor, std: Tensor, size: tuple[int, int], normalized_coordinates: bool = True) -> Tensor:
     r"""Render the PDF of a 2D Gaussian distribution.
 
@@ -161,7 +162,7 @@ def render_gaussian2d(mean: Tensor, std: Tensor, size: tuple[int, int], normaliz
     dist_y_sq = (ys - mu_y) ** 2
 
     # ks <- -1 / (2 \sigma^2)
-    k_x = -0.5 * torch.reciprocal(sigma_x**2) 
+    k_x = -0.5 * torch.reciprocal(sigma_x**2)
     k_y = -0.5 * torch.reciprocal(sigma_y**2)
 
     # Assemble the 2D Gaussian.
