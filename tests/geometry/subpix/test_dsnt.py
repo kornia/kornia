@@ -26,39 +26,48 @@ from testing.base import assert_close
 class TestRenderGaussian2d:
     @pytest.fixture()
     def gaussian(self, device, dtype):
-        return torch.tensor(
-            [
-                [0.002969, 0.013306, 0.021938, 0.013306, 0.002969],
-                [0.013306, 0.059634, 0.098320, 0.059634, 0.013306],
-                [0.021938, 0.098320, 0.162103, 0.098320, 0.021938],
-                [0.013306, 0.059634, 0.098320, 0.059634, 0.013306],
-                [0.002969, 0.013306, 0.021938, 0.013306, 0.002969],
-            ],
-            dtype=dtype,
-            device=device,
-        )
-
-    def test_pixel_coordinates(self, gaussian, device, dtype):
-        mean = torch.tensor([2.0, 2.0], dtype=dtype, device=device)
-        std = torch.tensor([1.0, 1.0], dtype=dtype, device=device)
-        actual = kornia.geometry.subpix.render_gaussian2d(mean, std, (5, 5), False)
-        assert_close(actual, gaussian, rtol=0, atol=1e-4)
+        # For a standard gaussian on 5 points [-1, -0.5, 0, 0.5, 1] with std=0.25
+        # The equation is exp( -x^2 / (2 * std^2) ) -> exp( -x^2 * 8 )
+        # x=0   -> exp(0)  = 1.0
+        # x=0.5 -> exp(-2) ≈ 0.135335
+        # x=1.0 -> exp(-8) ≈ 0.000335
+        
+        vec = torch.tensor([0.00033546, 0.13533528, 1.00000000, 0.13533528, 0.00033546], 
+                           device=device, dtype=dtype)
+        
+        # Create 2D from 1D (Outer Product)
+        grid = vec.unsqueeze(1) * vec.unsqueeze(0)
+        
+        # Normalize sum to 1
+        return grid / grid.sum()
 
     def test_normalized_coordinates(self, gaussian, device, dtype):
         mean = torch.tensor([0.0, 0.0], dtype=dtype, device=device)
         std = torch.tensor([0.25, 0.25], dtype=dtype, device=device)
-        actual = kornia.geometry.subpix.render_gaussian2d(mean, std, (5, 5), True)
-        assert_close(actual, gaussian, rtol=0, atol=1e-4)
+        
+        actual = kornia.geometry.subpix.render_gaussian2d(mean.view(1,2), std.view(1,2), (5, 5), True)
+        
+        assert_close(actual[0], gaussian, rtol=1e-5, atol=1e-5)
+
+    def test_pixel_coordinates(self, gaussian, device, dtype):
+        mean = torch.tensor([2.0, 2.0], dtype=dtype, device=device)
+        std = torch.tensor([0.5, 0.5], dtype=dtype, device=device) 
+        
+        actual = kornia.geometry.subpix.render_gaussian2d(mean.view(1,2), std.view(1,2), (5, 5), False)
+        
+        assert_close(actual[0], gaussian, rtol=1e-5, atol=1e-5)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         mean = torch.tensor([0.0, 0.0], dtype=dtype, device=device)
         std = torch.tensor([0.25, 0.25], dtype=dtype, device=device)
-
+        
         op = kornia.geometry.subpix.render_gaussian2d
         op_optimized = torch_optimizer(op)
 
-        assert_close(op(mean, std, (5, 5), True), op_optimized(mean, std, (5, 5), True))
+        res_orig = op(mean.view(1,2), std.view(1,2), (5, 5), True)
+        res_opt = op_optimized(mean.view(1,2), std.view(1,2), (5, 5), True)
 
+        assert_close(res_orig, res_opt)
 
 class TestSpatialSoftmax2d:
     @pytest.fixture(params=[torch.ones(1, 1, 5, 7), torch.randn(2, 3, 16, 16)])

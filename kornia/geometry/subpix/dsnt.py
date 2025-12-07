@@ -117,11 +117,6 @@ def spatial_expectation2d(input: Tensor, normalized_coordinates: bool = True) ->
 
     return output.view(batch_size, channels, 2)  # BxNx2
 
-
-def _safe_zero_division(numerator: Tensor, denominator: Tensor, eps: float = 1e-32) -> Tensor:
-    return numerator / torch.clamp(denominator, min=eps)
-
-
 def render_gaussian2d(mean: Tensor, std: Tensor, size: tuple[int, int], normalized_coordinates: bool = True) -> Tensor:
     r"""Render the PDF of a 2D Gaussian distribution.
 
@@ -141,32 +136,40 @@ def render_gaussian2d(mean: Tensor, std: Tensor, size: tuple[int, int], normaliz
         raise TypeError("Expected inputs to have the same dtype and device")
 
     height, width = size
+    dtype = mean.dtype
+    device = mean.device
 
-    # Create coordinates grid.
-    grid = create_meshgrid(height, width, normalized_coordinates, mean.device)
-    grid = grid.to(mean.dtype)
-    pos_x = grid[..., 0].view(height, width)
-    pos_y = grid[..., 1].view(height, width)
+    # Create coordinates vectors.
+    if normalized_coordinates:
+        xs = torch.linspace(-1, 1, width, device=device, dtype=dtype)
+        ys = torch.linspace(-1, 1, height, device=device, dtype=dtype)
+    else:
+        xs = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
+        ys = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
+
+    mu_x = mean[..., 0].unsqueeze(-1)
+    mu_y = mean[..., 1].unsqueeze(-1)
+    sigma_x = std[..., 0].unsqueeze(-1)
+    sigma_y = std[..., 1].unsqueeze(-1)
 
     # Gaussian PDF = exp(-(x - \mu)^2 / (2 \sigma^2))
     #              = exp(dists * ks),
     #                where dists = (x - \mu)^2 and ks = -1 / (2 \sigma^2)
 
     # dists <- (x - \mu)^2
-    dist_x = (pos_x - mean[..., 0, None, None]) ** 2
-    dist_y = (pos_y - mean[..., 1, None, None]) ** 2
+    dist_x_sq = (xs - mu_x) ** 2
+    dist_y_sq = (ys - mu_y) ** 2
 
     # ks <- -1 / (2 \sigma^2)
-    k_x = -0.5 * torch.reciprocal(std[..., 0, None, None])
-    k_y = -0.5 * torch.reciprocal(std[..., 1, None, None])
+    k_x = -0.5 * torch.reciprocal(sigma_x**2) 
+    k_y = -0.5 * torch.reciprocal(sigma_y**2)
 
     # Assemble the 2D Gaussian.
-    exps_x = torch.exp(dist_x * k_x)
-    exps_y = torch.exp(dist_y * k_y)
-    gauss = exps_x * exps_y
+    gauss_x = torch.exp(dist_x_sq * k_x)
+    gauss_y = torch.exp(dist_y_sq * k_y)
 
     # Rescale so that values sum to one.
-    val_sum = gauss.sum(-2, keepdim=True).sum(-1, keepdim=True)
-    gauss = _safe_zero_division(gauss, val_sum)
+    gauss_x = gauss_x / (gauss_x.sum(dim=-1, keepdim=True) + 1e-8)
+    gauss_y = gauss_y / (gauss_y.sum(dim=-1, keepdim=True) + 1e-8)
 
-    return gauss
+    return gauss_y.unsqueeze(-1) * gauss_x.unsqueeze(-2)
