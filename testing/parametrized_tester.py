@@ -35,13 +35,11 @@ Example:
 
 from __future__ import annotations
 
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Optional
 
 import torch
 
 from kornia.core import Dtype, Tensor
-
-from .base import BaseTester
 
 
 def parametrized_test(
@@ -131,21 +129,19 @@ def parametrized_test(
 
                     if isinstance(output, Tensor):
                         actual_shape = output.shape
-                        assert (
-                            actual_shape == expected_shape
-                        ), f"Test case {i}: Expected shape {expected_shape}, got {actual_shape}"
+                        assert actual_shape == expected_shape, (
+                            f"Test case {i}: Expected shape {expected_shape}, got {actual_shape}"
+                        )
                     elif isinstance(output, (tuple, list)):
                         for j, out in enumerate(output):
                             if isinstance(out, Tensor):
                                 actual_shape = out.shape
                                 expected = (
-                                    expected_shape[j]
-                                    if isinstance(expected_shape, (tuple, list))
-                                    else expected_shape
+                                    expected_shape[j] if isinstance(expected_shape, (tuple, list)) else expected_shape
                                 )
-                                assert (
-                                    actual_shape == expected
-                                ), f"Test case {i}, output {j}: Expected shape {expected}, got {actual_shape}"
+                                assert actual_shape == expected, (
+                                    f"Test case {i}, output {j}: Expected shape {expected}, got {actual_shape}"
+                                )
 
             cls.test_cardinality = test_cardinality
 

@@ -24,7 +24,7 @@ test_gradcheck methods parametrized across devices and dtypes.
 
 import torch
 
-from kornia.core import Dtype, tensor
+from kornia.core import tensor
 from kornia.utils.misc import differentiable_clipping, differentiable_polynomial_floor
 
 from testing.base import BaseTester
@@ -32,14 +32,10 @@ from testing.parametrized_tester import parametrized_test
 
 
 @parametrized_test(
-    smoke_inputs=lambda device, dtype: (
-        tensor([1.0, 6.0, 10.0, 12.0], device=device, dtype=dtype),
-    ),
+    smoke_inputs=lambda device, dtype: (tensor([1.0, 6.0, 10.0, 12.0], device=device, dtype=dtype),),
     cardinality_tests=[
         {
-            "inputs": lambda device, dtype: (
-                tensor([1.0, 6.0, 10.0, 12.0], device=device, dtype=dtype),
-            ),
+            "inputs": lambda device, dtype: (tensor([1.0, 6.0, 10.0, 12.0], device=device, dtype=dtype),),
             "expected_shape": torch.Size([4]),
         }
     ],
@@ -63,14 +59,10 @@ class TestDifferentiableClippingAutomated(BaseTester):
 
 
 @parametrized_test(
-    smoke_inputs=lambda device, dtype: (
-        tensor([1.5, 3.1, 5.9, 6.6], device=device, dtype=dtype),
-    ),
+    smoke_inputs=lambda device, dtype: (tensor([1.5, 3.1, 5.9, 6.6], device=device, dtype=dtype),),
     cardinality_tests=[
         {
-            "inputs": lambda device, dtype: (
-                tensor([1.5, 3.1, 5.9, 6.6], device=device, dtype=dtype),
-            ),
+            "inputs": lambda device, dtype: (tensor([1.5, 3.1, 5.9, 6.6], device=device, dtype=dtype),),
             "expected_shape": torch.Size([4]),
         }
     ],
