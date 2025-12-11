@@ -170,9 +170,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             raise AssertionError(f"Expect a tuple of (int, int). Got {random_apply}.")
         return random_apply
 
-    def get_random_forward_sequence(
-        self, with_mix: bool = True
-    ) -> Tuple[Iterator[Tuple[str, Module]], bool]:
+    def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, Module]], bool]:
         """Get a forward sequence when random apply is in need.
 
         Args:
@@ -181,7 +179,6 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         Note:
             Mix augmentations (e.g. RandomMixUp) will be applied only once even in a random forward.
         """
-
         # Determine samples to draw
         if isinstance(self.random_apply, tuple):
             num_samples = int(torch.randint(*self.random_apply, (1,)).item())
@@ -222,10 +219,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
     def get_mix_augmentation_indices(self, named_modules: Iterator[Tuple[str, Module]]) -> List[int]:
         """Get all the mix augmentations since they are label-involved."""
-        return [
-            idx for idx, (_, child) in enumerate(named_modules)
-            if isinstance(child, K.MixAugmentationBaseV2)
-        ]
+        return [idx for idx, (_, child) in enumerate(named_modules) if isinstance(child, K.MixAugmentationBaseV2)]
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
         if params is None:
@@ -314,7 +308,6 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 res_mat = mat if res_mat is None else mat @ res_mat
 
         return res_mat
-
 
     # TODO: Make this as a class property to avoid running every time.
     def is_intensity_only(self, strict: bool = True) -> bool:
