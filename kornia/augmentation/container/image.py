@@ -185,20 +185,30 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             raise TypeError(f"random apply should be a tuple. Gotcha {type(self.random_apply)}")
 
         multinomial_weights = self.random_apply_weights.clone()
-        # Mix augmentation can only be applied once per forward
         mix_indices = self.get_mix_augmentation_indices(self.named_children())
-        # kick out the mix augmentations
         multinomial_weights[mix_indices] = 0
+
+        if multinomial_weights.sum().item() <= 0:
+            if len(mix_indices) == 0:
+                return iter([]), False
+            mix_weights = torch.zeros_like(self.random_apply_weights)
+            mix_weights[mix_indices] = self.random_apply_weights[mix_indices]
+            num_mix_samples = min(num_samples, len(mix_indices))
+            indices = torch.multinomial(
+                mix_weights,
+                num_mix_samples,
+                replacement=num_mix_samples > len(mix_indices),
+            )
+            return self.get_children_by_indices(indices), True
+
         indices = torch.multinomial(
             multinomial_weights,
             num_samples,
-            # enable replacement if non-mix augmentation is less than required
             replacement=num_samples > multinomial_weights.sum().item(),
         )
 
         mix_added = False
         if with_mix and len(mix_indices) != 0:
-            # Make the selection fair.
             if (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item():
                 indices[-1] = torch.multinomial((~multinomial_weights.bool()).float(), 1)
                 indices = indices[torch.randperm(len(indices))]
@@ -238,7 +248,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, Tensor], List[ParamItem]]
         for name, module in named_modules:
-            if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2, ImageSequentialBase)):
+            if isinstance(
+                module,
+                (_AugmentationBase, K.MixAugmentationBaseV2, ImageSequentialBase),
+            ):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:
@@ -302,7 +315,10 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 else:
                     maybe_param_data = cast(Optional[List[ParamItem]], param.data)
                     _mat = module.get_transformation_matrix(
-                        input, maybe_param_data, recompute=recompute, extra_args=extra_args
+                        input,
+                        maybe_param_data,
+                        recompute=recompute,
+                        extra_args=extra_args,
                     )
                     mat = module.identity_matrix(input) if _mat is None else _mat
                 res_mat = mat if res_mat is None else mat @ res_mat
