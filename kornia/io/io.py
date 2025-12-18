@@ -22,7 +22,9 @@ from pathlib import Path
 from typing import Any
 
 import kornia_rs
+import numpy as np
 import torch
+from PIL import Image
 
 import kornia
 from kornia.core import Device, Tensor
@@ -52,20 +54,27 @@ def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
 
     Return:
         Image tensor with shape :math:`(3,H,W)`.
-
     """
-    # read image and return as `np.ndarray` with shape HxWxC
-    if path_file.suffix.lower() in [".jpg", ".jpeg"]:
-        img = kornia_rs.read_image_jpegturbo(str(path_file))
-    else:
-        img = kornia_rs.read_image_any(str(path_file))
+    try:
+        if path_file.suffix.lower() in [".jpg", ".jpeg"]:
+            img = kornia_rs.read_image_jpegturbo(str(path_file))
+        else:
+            img = kornia_rs.read_image_any(str(path_file))
+    except (FileExistsError, RuntimeError):
+        # Fallback to Pillow for corrupted or unsupported formats
+        # kornia_rs may not support RGBA or paletted images properly
+        pil = Image.open(str(path_file))
+        if pil.mode == "L":
+            img = np.array(pil)
+        else:
+            pil_rgb = pil.convert("RGB")
+            img = np.array(pil_rgb)
 
     # convert the image to tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)
 
     # move the tensor to the desired device,
     dev = device if isinstance(device, torch.device) or device is None else torch.device(device)
-
     return img_t.to(device=dev)
 
 
