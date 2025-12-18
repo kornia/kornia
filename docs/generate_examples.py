@@ -382,7 +382,7 @@ def main():
 
     # korna.color.colormap
     colormaps_list = {"AUTUMN": (256,)}
-    bar_img_gray = torch.range(0, 255).repeat(1, 40, 1)  # 1x1x40x256
+    bar_img_gray = torch.arange(0, 256).repeat(1, 40, 1)  # 1x1x40x256
     bar_img = K.color.grayscale_to_rgb(bar_img_gray)
     # ITERATE OVER THE COLORMAPS
     for colormap_name, args in colormaps_list.items():
