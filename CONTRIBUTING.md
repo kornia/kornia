@@ -7,10 +7,8 @@ Everyone is welcome to get involved with the project. There are different ways t
 1. Ask/Answer questions:
     - Where can you ask questions?
       1. using the GitHub discussion at Kornia repo: [GH Discussions](https://github.com/kornia/kornia/discussions)
-      2. Our Slack workspace to keep in touch with our core contributors and the community:
-         [Join Here](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA)
-      3. using the `#kornia` tag in [PyTorch Discuss](https://discuss.pytorch.org)
-      4. using Discord Link [Join Discord](https://discord.gg/HfnywwpBnD)
+      2. using the `#kornia` tag in [PyTorch Discuss](https://discuss.pytorch.org)
+      3. using Discord Link [Join Discord](https://discord.gg/HfnywwpBnD)
     - Please, don't use GitHub issues for Q&A.
     - In case you are a developer and want to learn more about the PyTorch ecosystem, we suggest you join the PyTorch
       slack. You can apply using this form: [https://bit.ly/ptslack](https://bit.ly/ptslack)
