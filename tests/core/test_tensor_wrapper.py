@@ -43,7 +43,7 @@ class TestTensorWrapper(BaseTester):
         torch.save(tensor, file_path)
         file_path.is_file()
 
-        loaded_tensor: TensorWrapper = torch.load(file_path)
+        loaded_tensor: TensorWrapper = torch.load(file_path, weights_only=False)
         assert isinstance(loaded_tensor, TensorWrapper)
 
         self.assert_close(loaded_tensor.unwrap(), tensor.unwrap())
