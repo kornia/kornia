@@ -63,6 +63,7 @@ scenarios. Understanding when to use each prevents common pitfalls in vision
 pipelines.
 
 **Use ``AugmentationSequential`` when:**
+
 - The task requires synchronized transformations across multiple related tensors
   (images, masks, bounding boxes, keypoints).
 - Spatial correspondence must be maintained between inputs and targets, as in
@@ -71,6 +72,7 @@ pipelines.
   parameter sampling across all targets.
 
 **Use ``ImageSequential`` when:**
+
 - The pipeline only processes image tensors without auxiliary spatial targets.
 - The workflow combines augmentation modules with general image processing
   operations (gaussian blur, edge detection, color transforms).
