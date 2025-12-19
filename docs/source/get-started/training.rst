@@ -16,7 +16,7 @@ supported deep learning algorithms within the library.
 
 
 .. important::
-	In order to use our Training API you must: ``pip install kornia[x]``
+	In order to use our Training API you must have ``accelerate`` installed.
 
 Why a Training API ?
 --------------------

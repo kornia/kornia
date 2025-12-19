@@ -16,7 +16,7 @@ COPY uv.lock ./
 
 # Install uv and use it for dependency management
 RUN pip install uv --no-cache-dir
-RUN uv sync --group dev --group x --frozen || pip install .[dev,x] --no-cache-dir
+RUN uv sync --group dev --group x --frozen
 RUN pip install -e . --no-cache-dir
 
 # Setup benchmarks

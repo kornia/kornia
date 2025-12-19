@@ -108,7 +108,7 @@ lock-update:
 
 # Install dependencies from lock file (reproducible)
 sync: _ensure-venv
-    if [ -f "uv.lock" ]; then uv sync --frozen; else uv pip install -e .[dev,x]; fi
+    if [ -f "uv.lock" ]; then uv sync --frozen; else uv sync --group dev --group x; fi
 
 # Run benchmarks
 benchmark *args: _ensure-venv

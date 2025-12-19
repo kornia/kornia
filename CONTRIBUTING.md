@@ -146,8 +146,8 @@ repository under your GitHub account.
 
     4. Install Kornia development dependencies:
     ```bash
-    $ uv pip install -e .[dev,x]
-    $ uv pip install -e .[docs]  # For documentation development
+    $ uv sync --group dev --group x
+    $ uv sync --group docs  # For documentation development
     ```
 
     **Attention**: If *Kornia* was already installed in your virtual environment, remove it with
@@ -160,9 +160,9 @@ repository under your GitHub account.
 
     - **Adding dependencies**: Add new dependencies to the appropriate section in `pyproject.toml`:
       - Main dependencies: `dependencies = [...]`
-      - Dev dependencies: `optional-dependencies.dev = [...]`
-      - Docs dependencies: `optional-dependencies.docs = [...]`
-      - Extra dependencies: `optional-dependencies.x = [...]`
+      - Dev dependencies: `dependency-groups.dev = [...]`
+      - Docs dependencies: `dependency-groups.docs = [...]`
+      - Extra dependencies: `dependency-groups.x = [...]`
 
     - **Updating the lock file**: After adding dependencies, regenerate the lock file:
       ```bash

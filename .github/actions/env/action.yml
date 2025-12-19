@@ -67,10 +67,12 @@ runs:
         # For macOS runners, standard PyTorch is used (can include GPU dependencies)
         if [ "$RUNNER_OS" == "Linux" ] || [ "$RUNNER_OS" == "Windows" ]; then
           echo "Installing for CPU-only (Linux/Windows runners)..."
-          uv pip install --system --editable .[dev]
+          uv export --group dev --format requirements-txt --no-hashes > dev-requirements.txt
+          uv pip install --system --editable . -r dev-requirements.txt
         else
           echo "Installing with GPU dependencies (macOS runner)..."
-          uv pip install --system --editable .[dev,x]
+          uv export --group dev --group x --format requirements-txt --no-hashes > dev-x-requirements.txt
+          uv pip install --system --editable . -r dev-x-requirements.txt
         fi
 
     - name: Verify lock file is up to date

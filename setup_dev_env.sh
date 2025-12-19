@@ -65,15 +65,11 @@ fi
 echo "Installing development dependencies..."
 if [ -f "uv.lock" ]; then
     echo "Using uv.lock for reproducible dependency installation..."
-    uv sync --frozen
+    uv sync --frozen --group dev --group x --group docs
 else
-    echo "No uv.lock found, installing from requirements files..."
-    uv pip install -e .[dev,x]
+    echo "No uv.lock found, installing from pyproject.toml..."
+    uv sync --group dev --group x --group docs
 fi
-
-# install docs dependencies
-echo "Installing documentation dependencies..."
-uv pip install -e .[docs]
 
 echo "Development environment setup complete!"
 echo "To activate the environment, run: source $sdk_dir/venv/bin/activate"

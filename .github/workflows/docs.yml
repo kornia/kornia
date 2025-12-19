@@ -121,7 +121,9 @@ jobs:
 
       - name: Install docs deps
         shell: bash -l {0}
-        run: uv pip install --system --editable .[docs]
+        run: |
+          uv export --group docs --format requirements-txt --no-hashes > docs-requirements.txt
+          uv pip install --system --editable . -r docs-requirements.txt
 
       - name: Build Documentation
         shell: bash -l {0}
