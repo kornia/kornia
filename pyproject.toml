@@ -10,11 +10,12 @@ license = { text = "Apache-2.0" }
 authors = [
   { name = "Edgar Riba", email = "edgar@kornia.org" },
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "kornia_rs>=0.1.9",
     "packaging",
     "torch>=2.0.0",
+    "torch-kde>=0.1.5",
 ]
 optional-dependencies.dev = [
     "accelerate",
