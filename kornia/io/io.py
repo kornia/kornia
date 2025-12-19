@@ -46,7 +46,7 @@ class ImageLoadType(Enum):
 def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
     """Read an image file and decode using the Kornia Rust backend.
 
-    The decoded image is returned as numpy array with shape HxWxC.
+    Falls back to Pillow when kornia_rs cannot handle the image format.
 
     Args:
         path_file: Path to a valid image file.
@@ -55,7 +55,7 @@ def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
     Return:
         Image tensor with shape :math:`(3,H,W)`.
     """
-    # read image and return as `np.ndarray` with shape HxWxC
+    # Try reading with kornia_rs first, fallback to Pillow if needed
     try:
         if path_file.suffix.lower() in [".jpg", ".jpeg"]:
             img = kornia_rs.read_image_jpegturbo(str(path_file))
