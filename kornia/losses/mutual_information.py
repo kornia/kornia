@@ -57,3 +57,5 @@ def mutual_information(img_0:torch.Tensor, img_1:torch.Tensor, mask:torch.Tensor
     terms = bin_vals_joint * logs
     return terms.sum()
 
+def mutual_information_loss(img_0:torch.Tensor, img_1:torch.Tensor, mask:torch.Tensor, n_bins:int =10) -> torch.Tensor:
+    return -mutual_information(img_0,img_1,mask,n_bins)
