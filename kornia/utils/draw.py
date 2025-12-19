@@ -54,7 +54,7 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
 
 
 def _draw_pixel(image: torch.Tensor, x: int, y: int, color: torch.Tensor) -> None:
-    r"""Draws a pixel into an image.
+    r"""Draw a pixel into an image.
 
     Args:
         image: the input image to where to draw the lines with shape :math`(C,H,W)`.
