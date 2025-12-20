@@ -15,6 +15,12 @@
 # limitations under the License.
 #
 
+"""
+Kornia Geometry Lie Group — Lie group operations for Kornia.
+
+This subpackage provides SE2, SE3, SO2, and related Lie group classes and utilities.
+"""
+
 from .se2 import Se2
 from .se3 import Se3
 from .so2 import So2

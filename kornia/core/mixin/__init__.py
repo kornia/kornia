@@ -15,5 +15,11 @@
 # limitations under the License.
 #
 
+"""
+Kornia Core Mixin — Mixins for image modules and ONNX export in Kornia.
+
+This subpackage provides mixin classes for extending core functionality.
+"""
+
 from .image_module import ImageModuleMixIn
 from .onnx import ONNXExportMixin, ONNXMixin, ONNXRuntimeMixin

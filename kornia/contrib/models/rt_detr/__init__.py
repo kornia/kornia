@@ -15,5 +15,11 @@
 # limitations under the License.
 #
 
+"""
+Kornia Contrib RT-DETR — Real-time DEtection TRansformer models for Kornia.
+
+This subpackage provides RT-DETR model classes, configs, and post-processors.
+"""
+
 from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig, RTDETRModelType
 from kornia.contrib.models.rt_detr.post_processor import DETRPostProcessor

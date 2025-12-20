@@ -15,4 +15,10 @@
 # limitations under the License.
 #
 
+"""
+Kornia TrivialAugment — TrivialAugment policy implementations for Kornia augmentation.
+
+This subpackage provides the TrivialAugment class and related utilities.
+"""
+
 from .trivial_augment import TrivialAugment

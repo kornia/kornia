@@ -15,5 +15,11 @@
 # limitations under the License.
 #
 
+"""
+Kornia Feature LoFTR Module — LoFTR module components for Kornia.
+
+This subpackage provides fine preprocessing and transformer modules for LoFTR.
+"""
+
 from .fine_preprocess import FinePreprocess
 from .transformer import LocalFeatureTransformer

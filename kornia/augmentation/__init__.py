@@ -15,6 +15,12 @@
 # limitations under the License.
 #
 
+"""
+Kornia Augmentation — Differentiable image, video, and 3D data augmentation for PyTorch.
+
+This subpackage provides a wide range of augmentation modules for computer vision tasks.
+"""
+
 # Lazy loading auto module
 from kornia.augmentation import auto, container
 from kornia.augmentation._2d import (

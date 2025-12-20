@@ -15,6 +15,12 @@
 # limitations under the License.
 #
 
+"""
+Kornia Feature DeDoDe — DeDoDe feature detector for Kornia.
+
+This subpackage provides the DeDoDe keypoint detector and related utilities.
+"""
+
 from .dedode import DeDoDe
 
 __all__ = ["DeDoDe"]
