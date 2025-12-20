@@ -127,7 +127,7 @@ def KORNIA_CHECK(condition: bool, msg: Optional[str] = None, raises: bool = True
 
 
 def KORNIA_UNWRAP(maybe_obj: object, typ: Any) -> Any:
-    """Unwraps an optional contained value that may or not be present.
+    """Unwrap an optional contained value that may or not be present.
 
     Args:
         maybe_obj: the object to unwrap.
@@ -461,7 +461,7 @@ def KORNIA_CHECK_LAF(laf: Tensor, raises: bool = True) -> bool:
 
 
 def _handle_invalid_range(msg: Optional[str], raises: bool, min_val: float | Tensor, max_val: float | Tensor) -> bool:
-    """Helper function to handle invalid range cases."""
+    """Handle invalid range cases."""
     err_msg = f"Invalid image value range. Expect [0, 1] but got [{min_val}, {max_val}]."
     if msg is not None:
         err_msg += f"\n{msg}"
