@@ -1,61 +1,84 @@
-from torchkde import KernelDensity
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-
-def mutual_information(img_0:torch.Tensor, img_1:torch.Tensor, mask:torch.Tensor, n_bins:int =10)-> torch.Tensor:
-    """Mutual information for two single channel images based on gaussian KDE.
-
-    Parameters
-    ----------
-    img_0 : torch.Tensor
-        _description_
-    img_1 : torch.Tensor
-        _description_
-    mask : torch.Tensor
-        _description_
-    n_bins : int, optional
-        _description_, by default 10
-
-    Returns
-    -------
-    torch.Tensor
-        scalar tensor representing the mutual information between the two images
+def parzen_window_kernel(x: torch.Tensor, win_width: float = 1.0) -> torch.Tensor:
     """
-    if img_0.shape != img_1.shape:
-        raise ValueError(f"The two input images should have the same shape, received {img_0.shape=} and {img_1.shape=}")
-    data_0 = img_0[mask] # flattening here
-    data_1 = img_1[mask]
+    Implementation of the 2nd-order polynomial kernel (Xu et al., 2008).
+    Range: [-1, 1]. Returns 0 outside this range.
+    
+    Ref: "Parzen-Window Based Normalized Mutual Information for Medical Image Registration", Eq. 22.
+    """
+    x = torch.abs(x) / win_width
+    
+    kernel_val = torch.zeros_like(x)
 
-    max_0 = img_0.max().detach()
-    min_0 = img_0.min().detach()
-    max_1 = img_1.max().detach()
-    min_1 = img_1.min().detach()
+    mask1 = (x < 0.5)
+    kernel_val[mask1] = -1.8 * (x[mask1] ** 2) - 0.1 * x[mask1] + 1.0
+    mask2 = (x >= 0.5) & (x <= 1.0)
+    kernel_val[mask2] = 1.8 * (x[mask2] ** 2) - 3.7 * x[mask2] + 1.9
+    
+    return kernel_val
 
-    step_0 = (max_0 - min_0) / n_bins
-    step_1 = (max_1 - min_1) / n_bins
-    if step_0 == 0 or step_1 == 0:
-        raise ValueError("One of your images contains no information: it has a constant grayscale value.")
-    # to allow a uniform treatement in each axis for 2dim kde, we rescale data_1.
-    factor = step_0 / step_1
-    data_1 = data_1.unsqueeze(-1).float() * factor
-    data_0 = data_0.unsqueeze(-1).float()
-    joint = torch.cat([data_0, data_1], axis=-1)
-    kde_joint = KernelDensity(bandwidth=step_0 / 2, kernel="gaussian")
+def compute_joint_histogram(
+    img_1: torch.Tensor, 
+    img_2: torch.Tensor, 
+    num_bins: int = 64,
+    sigma: float = 1.0
+) -> torch.Tensor:
+    """
+    Computes the differentiable Joint Histogram using Parzen Window estimation.
+    Input shapes: (B, C, H, W) or (N,)
+    Output shape: (num_bins, num_bins)
+    """
+    i1_flat = img_1.reshape(-1)
+    i2_flat = img_2.reshape(-1)
+    
+    min_val = min(i1_flat.min(), i2_flat.min()).detach()
+    max_val = max(i1_flat.max(), i2_flat.max()).detach()
+    
+    # Add a small epsilon to max to ensure coverage
+    bin_centers = torch.linspace(min_val, max_val, num_bins, device=img_1.device)
+    bin_width = (max_val - min_val) / (num_bins - 1)
+    
+    d1 = i1_flat.unsqueeze(1) - bin_centers.unsqueeze(0)
+    d2 = i2_flat.unsqueeze(1) - bin_centers.unsqueeze(0)
+    
+    window_size = bin_width * sigma
+    
+    w1 = parzen_window_kernel(d1, win_width=window_size)
+    w2 = parzen_window_kernel(d2, win_width=window_size)
+    
+    H_joint = torch.einsum('ni,nj->ij', w1, w2)
+    
+    P_joint = H_joint / (H_joint.sum() + 1e-6)
+    P_joint = H_joint / (H_joint.sum() + 1e-6)
+    
+    return P_joint
 
-    kde_joint.fit(joint)
-    mesh_0 = torch.arange(min_0 + step_0 / 2, max_0, step_0)
-    mesh_1 = torch.arange(min_0 * factor + step_0 / 2, max_0 * factor, step_0)
-    mesh_joint = torch.cartesian_prod(mesh_0, mesh_1)
-
-    # log of probabilities
-    bin_vals_joint = torch.exp(kde_joint.score_samples(mesh_joint)).reshape((mesh_0.shape[0], mesh_1.shape[0]))
-    support_mask = (bin_vals_joint > 0).detach()
-    bin_vals_0 = torch.sum(bin_vals_joint, axis=1, keepdim=True).expand(*(support_mask.shape))[support_mask]
-    bin_vals_1 = torch.sum(bin_vals_joint, axis=0, keepdim=True).expand(*(support_mask.shape))[support_mask]
-    bin_vals_joint = bin_vals_joint[support_mask]
-    logs = torch.log(bin_vals_joint / bin_vals_0 / bin_vals_1)
-    terms = bin_vals_joint * logs
-    return terms.sum()
-
-def mutual_information_loss(img_0:torch.Tensor, img_1:torch.Tensor, mask:torch.Tensor, n_bins:int =10) -> torch.Tensor:
-    return -mutual_information(img_0,img_1,mask,n_bins)
+def mutual_information_loss(
+    input: torch.Tensor, 
+    target: torch.Tensor, 
+    num_bins: int = 64,
+    sigma: float = 2.0
+) -> torch.Tensor:
+    """
+    Calculates the Negative Normalized Mutual Information Loss.
+    loss = - (H(X) + H(Y)) / H(X,Y)
+    """
+    if input.shape != target.shape:
+        raise ValueError(f"Shape mismatch: {input.shape} != {target.shape}")
+        
+    P_xy = compute_joint_histogram(input, target, num_bins, sigma)
+    
+    P_x = P_xy.sum(dim=1)
+    P_y = P_xy.sum(dim=0)
+    
+    eps = 1e-8
+    H_x = -torch.sum(P_x * torch.log(P_x + eps))
+    H_y = -torch.sum(P_y * torch.log(P_y + eps))
+    H_xy = -torch.sum(P_xy * torch.log(P_xy + eps))
+    
+    nmi = (H_x + H_y) / (H_xy + eps)
+    
+    return -nmi
