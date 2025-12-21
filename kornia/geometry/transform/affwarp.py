@@ -166,7 +166,7 @@ def affine(
 
     """
     # warping needs data in the shape of BCHW
-    is_unbatched: bool = tensor.ndimension() == 3
+    is_unbatched: bool = tensor.dim() == 3
     if is_unbatched:
         tensor = torch.unsqueeze(tensor, dim=0)
 
@@ -220,7 +220,7 @@ def affine3d(
 
     """
     # warping needs data in the shape of BCDHW
-    is_unbatched: bool = tensor.ndimension() == 4
+    is_unbatched: bool = tensor.dim() == 4
     if is_unbatched:
         tensor = torch.unsqueeze(tensor, dim=0)
 
