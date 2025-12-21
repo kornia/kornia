@@ -714,7 +714,7 @@ class TestAffine2d(BaseTester):
         )
         matrix_kornia = matrix_kornia.inverse()[0, :2].detach().cpu()
         self.assert_close(matrix_kornia, matrix_expected, atol=1e-4, rtol=1e-4)
-        
+
     def test_broadcasting_issue_3176(self, device, dtype):
         # Issue 3176: RandomRotation with multi-channel masks caused crash
         # Scenario: Tensor is (B=1, C, H, W) but Matrix is (B=8, 2, 3)
