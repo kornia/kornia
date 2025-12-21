@@ -14,6 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+"""Policy-based augmentation methods.
+
+This submodule supports 2D and 3D image and video data, including geometric,
+intersity, and color transformations.
+"""
 
 from .autoaugment import AutoAugment
 from .base import PolicyAugmentBase

@@ -14,6 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+"""The augmentation module contains 2D and 3D data augmentation techniques for images and videos.
+
+The module provides a set of differentiable augmentations that can be integrated into a training pipeline,
+supporting both CPU and GPU.
+"""
 
 # Lazy loading auto module
 from kornia.augmentation import auto, container

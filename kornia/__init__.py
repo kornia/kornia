@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia is a Computer Vision library.
+
+It provides differentiable image processing and geometric vision algorithms for PyTorch.
+"""
+
 # NOTE: kornia filters and geometry must go first since are the core of the library
 # and by changing the import order you might get into a circular dependencies issue.
 from . import filters
