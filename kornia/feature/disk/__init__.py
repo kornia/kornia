@@ -15,5 +15,10 @@
 # limitations under the License.
 #
 
+"""Kornia Feature DISK — DISK feature detector and descriptor for Kornia.
+
+This subpackage provides the DISK keypoint detector and feature structures.
+"""
+
 from .disk import DISK
 from .structs import DISKFeatures

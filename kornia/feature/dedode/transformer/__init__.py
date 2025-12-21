@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Feature DeDoDe Transformer — Transformer backbones for DeDoDe feature detector.
+
+This subpackage provides transformer models for DeDoDe feature extraction.
+"""
+
 from .dinov2 import vit_large
 
 __all__ = [

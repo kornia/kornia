@@ -15,5 +15,10 @@
 # limitations under the License.
 #
 
+"""Segmentation models submodule for Kornia.
+
+This package provides model architectures and utilities for image segmentation tasks.
+"""
+
 from .base import *
 from .segmentation_models import *

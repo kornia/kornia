@@ -15,6 +15,12 @@
 # limitations under the License.
 #
 
+"""Image submodule for Kornia.
+
+This package provides image data structures and utilities, including image layout, size, pixel format,
+and channel order definitions.
+"""
+
 from .base import ChannelsOrder, ImageLayout, ImageSize, PixelFormat
 from .image import Image
 

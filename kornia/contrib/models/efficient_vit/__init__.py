@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Contrib EfficientViT — Efficient Vision Transformer models for Kornia.
+
+This subpackage provides EfficientViT model classes and configurations.
+"""
+
 from .model import EfficientViT, EfficientViTConfig
 
 __all__ = ["EfficientViT", "EfficientViTConfig"]

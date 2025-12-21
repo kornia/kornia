@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Experimental submodule (x) for Kornia.
+
+This package provides experimental features, trainers, callbacks, and utilities for advanced workflows.
+"""
+
 from .callbacks import EarlyStopping, ModelCheckpoint
 from .trainer import Trainer
 from .trainers import ImageClassifierTrainer, ObjectDetectionTrainer, SemanticSegmentationTrainer
