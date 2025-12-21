@@ -14,3 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
+"""Kornia Contrib RT-DETR Architecture — Model architecture components for RT-DETR.
+
+This subpackage provides building blocks for RT-DETR model architectures.
+"""

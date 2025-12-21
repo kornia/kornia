@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Super-resolution models submodule for Kornia.
+
+This package provides model architectures and utilities for image super-resolution tasks.
+"""
+
 from .base import *
 from .rrdbnet import *
 from .small_sr import *

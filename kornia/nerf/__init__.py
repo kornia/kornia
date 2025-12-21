@@ -14,3 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
+"""Neural Radiance Fields (NeRF) submodule for Kornia.
+
+This package provides utilities and models for NeRF-based 3D scene representation and rendering.
+"""

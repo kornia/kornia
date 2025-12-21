@@ -188,7 +188,7 @@ class Image:
         return self
 
     def to_gray(self) -> Image:
-        """Converts the image to grayscale."""
+        """Convert the image to grayscale."""
         src = self._pixel_format.color_space
         data = self._data
 
@@ -220,7 +220,7 @@ class Image:
         return Image(out, new_pf, new_layout)
 
     def to_rgb(self) -> Image:
-        """Converts the image to RGB."""
+        """Convert the image to RGB."""
         src = self._pixel_format.color_space
         data = self._data
 
@@ -246,7 +246,7 @@ class Image:
         return Image(out, new_pf, new_layout)
 
     def to_bgr(self) -> Image:
-        """Converts the image to BGR."""
+        """Convert the image to BGR."""
         src = self._pixel_format.color_space
         data = self._data
 

@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Utils submodule for Kornia.
+
+This package provides utility functions and helpers for image processing, device management, data conversion, and more.
+"""
+
 from ._compat import torch_meshgrid
 from .download import CachedDownloader
 from .draw import draw_convex_polygon, draw_line, draw_point2d, draw_rectangle

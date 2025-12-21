@@ -15,5 +15,10 @@
 # limitations under the License.
 #
 
+"""Depth estimation models submodule for Kornia.
+
+This package provides model architectures and utilities for monocular depth estimation tasks.
+"""
+
 from .base import *
 from .depth_anything import *

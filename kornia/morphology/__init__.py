@@ -15,4 +15,9 @@
 # limitations under the License.
 #
 
+"""Morphology submodule for Kornia.
+
+This package provides morphological operations for image processing tasks.
+"""
+
 from .morphology import *

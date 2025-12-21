@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Geometry — Geometric vision operations for Kornia.
+
+This subpackage provides modules for transformations, camera models, and geometry processing.
+"""
+
 from .bbox import *
 from .calibration import *
 from .camera import *

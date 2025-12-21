@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Geometry Subpix — Subpixel operations for Kornia.
+
+This subpackage provides subpixel localization and softmax utilities for geometry tasks.
+"""
+
 from __future__ import annotations
 
 from .dsnt import render_gaussian2d, spatial_expectation2d, spatial_softmax2d

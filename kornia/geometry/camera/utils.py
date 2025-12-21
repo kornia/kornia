@@ -226,7 +226,7 @@ def create_four_cameras(device: Device, dtype: torch.dtype) -> PinholeCamera:
 
 
 def create_random_images_for_cameras(cameras: PinholeCamera) -> list[Tensor]:
-    """Creates random images for a given set of cameras."""
+    """Create random images for a given set of cameras."""
     torch.manual_seed(112)
     imgs: list[Tensor] = []
     for height, width in zip(cameras.height.tolist(), cameras.width.tolist()):
@@ -236,7 +236,7 @@ def create_random_images_for_cameras(cameras: PinholeCamera) -> list[Tensor]:
 
 
 def create_red_images_for_cameras(cameras: PinholeCamera, device: Device) -> list[Tensor]:
-    """Creates red images for a given set of cameras."""
+    """Create red images for a given set of cameras."""
     imgs: list[Tensor] = []
     for height, width in zip(cameras.height.tolist(), cameras.width.tolist()):
         image_data = torch.zeros(3, int(height), int(width), dtype=torch.uint8)  # (C, H, W)

@@ -15,5 +15,10 @@
 # limitations under the License.
 #
 
+"""Kornia Feature LightGlue ONNX Utils — Utilities for ONNX-based LightGlue matcher.
+
+This subpackage provides helper functions for LightGlue ONNX models.
+"""
+
 from .download import download_onnx_from_url
 from .keypoints import normalize_keypoints

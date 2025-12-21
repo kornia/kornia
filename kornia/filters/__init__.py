@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Filters — Image filtering operations for Kornia.
+
+This subpackage provides modules for blurring, sharpening, and other image filters.
+"""
+
 from __future__ import annotations
 
 from .bilateral import BilateralBlur, JointBilateralBlur, bilateral_blur, joint_bilateral_blur

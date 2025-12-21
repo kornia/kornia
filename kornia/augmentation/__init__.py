@@ -20,6 +20,11 @@ The module provides a set of differentiable augmentations that can be integrated
 supporting both CPU and GPU.
 """
 
+"""Kornia Augmentation — Differentiable image, video, and 3D data augmentation for PyTorch.
+
+This subpackage provides a wide range of augmentation modules for computer vision tasks.
+"""
+
 # Lazy loading auto module
 from kornia.augmentation import auto, container
 from kornia.augmentation._2d import (
