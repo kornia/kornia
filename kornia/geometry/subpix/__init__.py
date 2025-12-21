@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Geometry Subpix — Subpixel operations for Kornia.
+"""Kornia Geometry Subpix — Subpixel operations for Kornia.
 
 This subpackage provides subpixel localization and softmax utilities for geometry tasks.
 """

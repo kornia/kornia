@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Contrib SAM — Segment Anything Model (SAM) integration for Kornia.
+"""Kornia Contrib SAM — Segment Anything Model (SAM) integration for Kornia.
 
 This subpackage provides SAM model classes and configuration for segmentation tasks.
 """

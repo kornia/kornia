@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia — Differentiable computer vision and image processing for PyTorch.
+"""Kornia — Differentiable computer vision and image processing for PyTorch.
 
 This package exposes core modules (filters, geometry, etc.) and provides
 convenience imports at the top level.

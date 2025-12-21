@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Geometry Solvers — Polynomial and geometric solvers for Kornia.
+"""Kornia Geometry Solvers — Polynomial and geometric solvers for Kornia.
 
 This subpackage provides polynomial solvers and related utilities for geometry tasks.
 """

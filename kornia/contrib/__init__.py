@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Contrib — Experimental and contributed modules for Kornia.
+"""Kornia Contrib — Experimental and contributed modules for Kornia.
 
 This subpackage provides community-contributed and experimental features.
 """

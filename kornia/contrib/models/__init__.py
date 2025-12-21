@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Contrib Models — Experimental and contributed model structures for Kornia.
+"""Kornia Contrib Models — Experimental and contributed model structures for Kornia.
 
 This subpackage provides contributed model classes and result structures.
 """

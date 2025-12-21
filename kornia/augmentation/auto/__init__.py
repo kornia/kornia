@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Augmentation Auto — Automated augmentation policies for computer vision.
+"""Kornia Augmentation Auto — Automated augmentation policies for computer vision.
 
 This subpackage provides AutoAugment and related policy-based augmentation utilities.
 """

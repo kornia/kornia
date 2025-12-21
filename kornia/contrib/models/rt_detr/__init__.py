@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Contrib RT-DETR — Real-time DEtection TRansformer models for Kornia.
+"""Kornia Contrib RT-DETR — Real-time DEtection TRansformer models for Kornia.
 
 This subpackage provides RT-DETR model classes, configs, and post-processors.
 """

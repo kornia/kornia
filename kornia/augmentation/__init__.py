@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Augmentation — Differentiable image, video, and 3D data augmentation for PyTorch.
+"""Kornia Augmentation — Differentiable image, video, and 3D data augmentation for PyTorch.
 
 This subpackage provides a wide range of augmentation modules for computer vision tasks.
 """

@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Geometry Calibration — Camera calibration utilities for Kornia.
+"""Kornia Geometry Calibration — Camera calibration utilities for Kornia.
 
 This subpackage provides functions for camera calibration, distortion, and undistortion.
 """

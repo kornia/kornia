@@ -15,6 +15,12 @@
 # limitations under the License.
 #
 
+"""Models submodule for Kornia.
+
+This package provides model architectures and utilities for tasks such as depth estimation,
+detection, segmentation, super-resolution, and tracking.
+"""
+
 from . import (
     depth_estimation,
     detection,

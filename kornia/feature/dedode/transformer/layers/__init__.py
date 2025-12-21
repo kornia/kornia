@@ -15,6 +15,12 @@
 # limitations under the License.
 #
 
+"""Layers submodule for Kornia DeDoDe transformer.
+
+This package provides transformer layer components such as attention, blocks, MLPs, patch embedding,
+and SwiGLU FFN for DeDoDe feature extraction.
+"""
+
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 #

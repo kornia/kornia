@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Feature — Feature detection, description, and matching for Kornia.
+"""Kornia Feature — Feature detection, description, and matching for Kornia.
 
 This subpackage provides modules for keypoint detection, descriptors, and feature matching.
 """

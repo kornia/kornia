@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Contrib EfficientViT — Efficient Vision Transformer models for Kornia.
+"""Kornia Contrib EfficientViT — Efficient Vision Transformer models for Kornia.
 
 This subpackage provides EfficientViT model classes and configurations.
 """

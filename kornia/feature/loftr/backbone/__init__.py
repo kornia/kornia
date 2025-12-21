@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Feature LoFTR Backbone — Backbone modules for LoFTR feature matcher.
+"""Kornia Feature LoFTR Backbone — Backbone modules for LoFTR feature matcher.
 
 This subpackage provides backbone architectures for LoFTR feature extraction.
 """

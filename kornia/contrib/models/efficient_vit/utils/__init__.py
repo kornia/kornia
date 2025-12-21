@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Contrib EfficientViT Utils — Utility functions for EfficientViT models.
+"""Kornia Contrib EfficientViT Utils — Utility functions for EfficientViT models.
 
 This subpackage provides helper functions and utilities for EfficientViT implementations.
 """

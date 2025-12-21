@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Enhance — Image enhancement operations for Kornia.
+"""Kornia Enhance — Image enhancement operations for Kornia.
 
 This subpackage provides modules for brightness, contrast, and other image enhancements.
 """

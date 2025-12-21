@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Feature LoFTR Module — LoFTR module components for Kornia.
+"""Kornia Feature LoFTR Module — LoFTR module components for Kornia.
 
 This subpackage provides fine preprocessing and transformer modules for LoFTR.
 """

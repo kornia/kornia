@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Augmentation Container — Sequential and dispatcher augmentation utilities.
+"""Kornia Augmentation Container — Sequential and dispatcher augmentation utilities.
 
 This subpackage provides augmentation containers and dispatchers for flexible pipelines.
 """

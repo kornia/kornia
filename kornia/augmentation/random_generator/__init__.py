@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Augmentation Random Generator — Random parameter generators for augmentations.
+"""Kornia Augmentation Random Generator — Random parameter generators for augmentations.
 
 This subpackage provides random generators for 2D and 3D augmentation modules.
 """

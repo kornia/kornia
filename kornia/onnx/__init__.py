@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""ONNX submodule for Kornia.
+
+This package provides utilities and modules for ONNX export and integration.
+"""
+
 from .module import *
 from .sequential import *
 from .utils import *

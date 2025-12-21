@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Feature LoFTR Utils — Utilities for LoFTR feature matcher.
+"""Kornia Feature LoFTR Utils — Utilities for LoFTR feature matcher.
 
 This subpackage provides helper functions for LoFTR modules.
 """

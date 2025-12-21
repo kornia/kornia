@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Feature DeDoDe — DeDoDe feature detector for Kornia.
+"""Kornia Feature DeDoDe — DeDoDe feature detector for Kornia.
 
 This subpackage provides the DeDoDe keypoint detector and related utilities.
 """

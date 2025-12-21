@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Color — Color space conversions and color-related utilities for PyTorch.
+"""Kornia Color — Color space conversions and color-related utilities for PyTorch.
 
 This subpackage provides modules for color transformations, colormaps, and conversions.
 """

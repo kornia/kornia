@@ -15,6 +15,12 @@
 # limitations under the License.
 #
 
+"""Losses submodule for Kornia.
+
+This package provides a collection of loss functions for computer vision tasks, including SSIM,
+PSNR, Dice, Focal, Lovasz, and more.
+"""
+
 from __future__ import annotations
 
 from .cauchy import CauchyLoss, cauchy_loss

@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Augmentation Presets — Predefined augmentation pipelines and configurations.
+"""Kornia Augmentation Presets — Predefined augmentation pipelines and configurations.
 
 This subpackage provides ready-to-use augmentation presets for common tasks.
 """

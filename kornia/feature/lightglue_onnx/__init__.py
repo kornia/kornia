@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Feature LightGlue ONNX — ONNX-based LightGlue feature matcher for Kornia.
+"""Kornia Feature LightGlue ONNX — ONNX-based LightGlue feature matcher for Kornia.
 
 This subpackage provides the OnnxLightGlue matcher and related utilities.
 """

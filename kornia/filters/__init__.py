@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Filters — Image filtering operations for Kornia.
+"""Kornia Filters — Image filtering operations for Kornia.
 
 This subpackage provides modules for blurring, sharpening, and other image filters.
 """

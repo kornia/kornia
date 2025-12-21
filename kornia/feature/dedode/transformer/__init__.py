@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Feature DeDoDe Transformer — Transformer backbones for DeDoDe feature detector.
+"""Kornia Feature DeDoDe Transformer — Transformer backbones for DeDoDe feature detector.
 
 This subpackage provides transformer models for DeDoDe feature extraction.
 """

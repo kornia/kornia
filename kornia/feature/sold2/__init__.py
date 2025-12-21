@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Feature SOLD2 — SOLD2 line segment detector for Kornia.
+"""Kornia Feature SOLD2 — SOLD2 line segment detector for Kornia.
 
 This subpackage provides the SOLD2 detector and related utilities.
 """

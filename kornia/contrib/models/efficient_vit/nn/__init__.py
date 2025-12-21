@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Contrib EfficientViT NN — Neural network layers for EfficientViT models.
+"""Kornia Contrib EfficientViT NN — Neural network layers for EfficientViT models.
 
 This subpackage provides neural network building blocks for EfficientViT.
 """

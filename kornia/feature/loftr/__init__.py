@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Feature LoFTR — LoFTR feature matcher for Kornia.
+"""Kornia Feature LoFTR — LoFTR feature matcher for Kornia.
 
 This subpackage provides the LoFTR (Detector-Free Local Feature Matching) implementation.
 """

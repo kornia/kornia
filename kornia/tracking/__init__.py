@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Tracking submodule for Kornia.
+
+This package provides tracking algorithms and utilities, including planar homography tracking.
+"""
+
 from .planar_tracker import HomographyTracker
 
 __all__ = ["HomographyTracker"]

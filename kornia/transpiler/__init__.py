@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Transpiler submodule for Kornia.
+
+This package provides utilities to transpile Kornia operations to other frameworks such as JAX, NumPy, and TensorFlow.
+"""
+
 from .transpiler import to_jax, to_numpy, to_tensorflow
 
 __all__ = ["to_jax", "to_numpy", "to_tensorflow"]

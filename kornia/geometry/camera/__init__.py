@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Geometry Camera — Camera models and camera-related utilities for Kornia.
+"""Kornia Geometry Camera — Camera models and camera-related utilities for Kornia.
 
 This subpackage provides camera models, distortion, and projection functions.
 """

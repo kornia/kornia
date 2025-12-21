@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Grad Estimator — Gradient estimation utilities for Kornia.
+"""Kornia Grad Estimator — Gradient estimation utilities for Kornia.
 
 This subpackage provides straight-through estimators and related functions.
 """

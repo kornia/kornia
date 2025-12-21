@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Augmentation Utils — Helper functions and utilities for augmentations.
+"""Kornia Augmentation Utils — Helper functions and utilities for augmentations.
 
 This subpackage provides internal helpers and utility functions for augmentation modules.
 """

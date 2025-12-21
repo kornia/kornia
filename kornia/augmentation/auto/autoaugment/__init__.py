@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia AutoAugment — AutoAugment policy implementations for Kornia augmentation.
+"""Kornia AutoAugment — AutoAugment policy implementations for Kornia augmentation.
 
 This subpackage provides the AutoAugment class and related utilities.
 """

@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia Contrib SAM Architecture — Model architecture components for SAM.
+"""Kornia Contrib SAM Architecture — Model architecture components for SAM.
 
 This subpackage provides building blocks for the Segment Anything Model (SAM).
 """

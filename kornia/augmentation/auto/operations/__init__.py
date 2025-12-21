@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-Kornia AutoAugment Operations — Building blocks for policy-based augmentation.
+"""Kornia AutoAugment Operations — Building blocks for policy-based augmentation.
 
 This subpackage provides operation classes and utilities for AutoAugment policies.
 """
