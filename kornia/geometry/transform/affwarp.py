@@ -173,7 +173,9 @@ def affine(
     # we enforce broadcasting since by default grid_sample it does not
     # give support for that
     if tensor.shape[0] == 1 and matrix.shape[0] != 1:
-        tensor = tensor.expand(matrix.shape[0], *tensor.shape[1:])
+        target_shape = list(tensor.shape)
+        target_shape[0] = matrix.shape[0]
+        tensor = tensor.expand(target_shape)
 
     matrix = matrix.expand(tensor.shape[0], -1, -1)
 
