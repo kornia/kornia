@@ -73,11 +73,11 @@ class TestCubicSolver:
             (torch.tensor([[2.0, 3.0, -11.0, -6.0]]), torch.tensor([[2.0, -3.0, -0.5]])),
             (torch.tensor([[1.0, 0.0, 4.0, 4.0]]), torch.tensor([[-0.847, 0.0, 0.0]])),
             (torch.tensor([[2.0, -6.0, 6.0, -2.0]]), torch.tensor([[1.0, 1.0, 1.0]])),
-            (torch.tensor([[0.0, 0.0, 3.0, -1.0]]), torch.tensor([[1.0, 0.0, 0.0]])),  # handle first order
+            (torch.tensor([[0.0, 0.0, 1.0, -1.0]]), torch.tensor([[1.0, 0.0, 0.0]])),  # handle first order
             (torch.tensor([[0.0, 1.0, -5.0, 6.0]]), torch.tensor([[3.0, 2.0, 0.0]])),  # handle second order
         ],
     )
-    def test_solve_quadratic(self, coeffs, expected_solutions, device, dtype):
+    def test_solve_quadratic_in_cubic(self, coeffs, expected_solutions, device, dtype):
         roots = solver.solve_cubic(coeffs)
         assert_close(roots[0], expected_solutions[0], rtol=1e-3, atol=1e-3)
 
