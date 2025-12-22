@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+"""Utilities for drawing on images."""
 
 from typing import List, Optional, Tuple, Union
 
