@@ -715,6 +715,21 @@ class TestAffine2d(BaseTester):
         matrix_kornia = matrix_kornia.inverse()[0, :2].detach().cpu()
         self.assert_close(matrix_kornia, matrix_expected, atol=1e-4, rtol=1e-4)
 
+    def test_broadcasting_issue_3176(self, device, dtype):
+        # Issue 3176: RandomRotation with multi-channel masks caused crash
+        # Scenario: Tensor is (B=1, C, H, W) but Matrix is (B=8, 2, 3)
+        # This implies applying N different transformations to a single image
+        B_mat, B_ten = 8, 1
+        C, H, W = 3, 64, 64
+
+        input_tensor = torch.rand(B_ten, C, H, W, device=device, dtype=dtype)
+
+        matrix = torch.rand(B_mat, 2, 3, device=device, dtype=dtype)
+
+        output = kornia.geometry.transform.affine(input_tensor, matrix, mode="bilinear")
+
+        assert output.shape == (B_mat, C, H, W)
+
 
 class TestGetAffineMatrix(BaseTester):
     def test_smoke(self, device, dtype):
