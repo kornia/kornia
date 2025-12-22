@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 """Utilities for downloading and loading sample images."""
+
 import logging
 import os
 from typing import Any, List, Optional, Tuple, Union
