@@ -102,15 +102,21 @@ class RandomAffine(GeometricAugmentationBase2D):
         same_on_batch: bool = False,
         align_corners: bool = False,
         padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
+        fill_value: Optional[Union[float, int, Tensor]] = None,  # Updated type hint
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator: rg.AffineGenerator = rg.AffineGenerator(degrees, translate, scale, shear)
+        
+        if fill_value is not None and not isinstance(fill_value, Tensor):
+             fill_value = as_tensor(fill_value)
+
         self.flags = {
             "resample": Resample.get(resample),
             "padding_mode": SamplePadding.get(padding_mode),
             "align_corners": align_corners,
+            "fill_value": fill_value,
         }
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
@@ -137,6 +143,7 @@ class RandomAffine(GeometricAugmentationBase2D):
             flags["resample"].name.lower(),
             align_corners=flags["align_corners"],
             padding_mode=flags["padding_mode"].name.lower(),
+            fill_value=flags["fill_value"],  # <--- PASS IT DOWN
         )
 
     def inverse_transform(
