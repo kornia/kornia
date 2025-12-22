@@ -37,6 +37,12 @@ def parzen_window_kernel(x: torch.Tensor, win_width: float = 1.0) -> torch.Tenso
     return kernel_val
 
 
+def _normalize_signal(data: torch.Tensor, num_bins: int):
+    min_val, _ = data.min(axis=-1)
+    max_val, _ = data.max(axis=-1)
+    return (data - min_val.unsqueeze(-1)) / (max_val - min_val).unsqueeze(-1) * num_bins
+
+
 def compute_joint_histogram(
     img_1: torch.Tensor, img_2: torch.Tensor, num_bins: int = 64, sigma: float = 1.0
 ) -> torch.Tensor:
