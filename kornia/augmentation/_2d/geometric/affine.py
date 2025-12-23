@@ -50,7 +50,9 @@ class RandomAffine(GeometricAugmentationBase2D):
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
-        padding_mode: padding mode from "zeros" (0), "border" (1) or "reflection" (2).
+        padding_mode: padding mode from "zeros" (0), "border" (1), "reflection" (2) or "fill" (3).
+        fill_value: the value to be filled in the padding area when padding_mode="fill".
+            Can be a float, int, or a tensor of shape (C) or (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         p: probability of applying the transformation.
