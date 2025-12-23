@@ -59,7 +59,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
     def __init__(
         self,
         step_range: Tuple[float, float] = (100, 500),
-        version: str = "2.1",
+        version: str = "xl",
         p: float = 0.5,
         keepdim: bool = False,
         **kwargs: Any,

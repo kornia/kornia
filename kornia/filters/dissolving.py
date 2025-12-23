@@ -124,7 +124,7 @@ class StableDiffusionDissolving(ImageModule):
 
     """
 
-    def __init__(self, version: str = "2.1", **kwargs: Any):
+    def __init__(self, version: str = "xl", **kwargs: Any):
         super().__init__()
         StableDiffusionPipeline = diffusers.StableDiffusionPipeline
         DDIMScheduler = diffusers.DDIMScheduler
