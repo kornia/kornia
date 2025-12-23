@@ -77,6 +77,17 @@ def compute_joint_histogram(
     return joint_density
 
 
+def _joint_density_to_entropies(joint_density):
+    P_xy = joint_density
+    P_x = P_xy.sum(dim=-2)
+    P_y = P_xy.sum(dim=-1)
+
+    H_x = -torch.sum(P_x * torch.log(P_x))
+    H_y = -torch.sum(P_y * torch.log(P_y))
+    H_xy = -torch.sum(P_xy * torch.log(P_xy))
+    return H_x, H_y, H_xy
+
+
 def normalized_mutual_information_loss(
     input: torch.Tensor,
     target: torch.Tensor,
@@ -91,18 +102,17 @@ def normalized_mutual_information_loss(
     if input.shape != target.shape:
         raise ValueError(f"Shape mismatch: {input.shape} != {target.shape}")
 
-    P_xy = compute_joint_histogram(
-        input, target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
-    )
-
-    P_x = P_xy.sum(dim=-2)
-    P_y = P_xy.sum(dim=-1)
-
+    # warrant numerical stability
     eps = 1e-8
-    H_x = -torch.sum(P_x * torch.log(P_x + eps))
-    H_y = -torch.sum(P_y * torch.log(P_y + eps))
-    H_xy = -torch.sum(P_xy * torch.log(P_xy + eps))
+    P_xy = (
+        compute_joint_histogram(
+            input, target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
+        )
+        + eps
+    )
+    P_xy /= P_xy.sum(dim=(-1, -2))
 
+    H_x, H_y, H_xy = _joint_density_to_entropies(P_xy)
     nmi = (H_x + H_y) / (H_xy + eps)
 
     return -nmi
@@ -115,29 +125,23 @@ def mutual_information_loss(
     num_bins: int = 64,
     window_radius: float = 2.0,
 ) -> torch.Tensor:
-    """Calculates the Negative Normalized Mutual Information Loss.
+    """Calculates the Negative Mutual Information Loss.
 
-    loss = - (H(X) + H(Y)) / H(X,Y)
+    loss = - (H(X) + H(Y) - H(X,Y))
     """
     if input.shape != target.shape:
         raise ValueError(f"Shape mismatch: {input.shape} != {target.shape}")
 
-    P_xy = compute_joint_histogram(
-        input,
-        target,
-        kernel_function=kernel_function,
-        num_bins=num_bins,
-        window_radius=window_radius,
-    )
-
-    P_x = P_xy.sum(dim=-2)
-    P_y = P_xy.sum(dim=-1)
-
+    # warrant numerical stability
     eps = 1e-8
-    H_x = -torch.sum(P_x * torch.log(P_x + eps))
-    H_y = -torch.sum(P_y * torch.log(P_y + eps))
-    H_xy = -torch.sum(P_xy * torch.log(P_xy + eps))
-
+    P_xy = (
+        compute_joint_histogram(
+            input, target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
+        )
+        + eps
+    )
+    P_xy /= P_xy.sum(dim=(-1, -2))
+    H_x, H_y, H_xy = _joint_density_to_entropies(P_xy)
     mi = H_x + H_y - H_xy
 
     return -mi
