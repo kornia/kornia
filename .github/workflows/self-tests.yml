@@ -37,6 +37,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - uses: ./.github/actions/tests/
+        with:
+          huggingface-token: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
 
   workflow-tests:
     uses: ./.github/workflows/tests.yml

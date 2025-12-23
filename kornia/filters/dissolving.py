@@ -105,7 +105,7 @@ class StableDiffusionDissolving(ImageModule):
 
     Based on :cite:`shi2024dissolving`, the dissolving transformation is essentially applying one-step
     reverse diffusion. Our implementation currently supports HuggingFace implementations of SD 1.4, 1.5
-    and 2.1. SD 1.X tends to remove more details than SD2.1.
+    and SD-XL (replacing the discontinued SD 2.1). SD 1.X tends to remove more details than SD-XL.
 
     .. list-table:: Title
         :widths: 32 32 32
@@ -113,13 +113,13 @@ class StableDiffusionDissolving(ImageModule):
 
         * - SD 1.4
           - SD 1.5
-          - SD 2.1
+          - SD-XL
         * - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
           - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
           - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-2.1.png
 
     Args:
-        version: the version of the stable diffusion model.
+        version: the version of the stable diffusion model. Options: "1.4", "1.5", "xl".
         **kwargs: additional arguments for `.from_pretrained`.
 
     """
@@ -150,9 +150,9 @@ class StableDiffusionDissolving(ImageModule):
             self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
                 "runwayml/stable-diffusion-v1-5", scheduler=scheduler, **kwargs
             )
-        elif version == "2.1":
+        elif version == "xl":
             self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
-                "stabilityai/stable-diffusion-2-1", scheduler=scheduler, **kwargs
+                "stabilityai/stable-diffusion-xl-base-1.0", scheduler=scheduler, **kwargs
             )
         else:
             raise NotImplementedError
