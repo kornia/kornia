@@ -81,13 +81,13 @@ def _joint_density_to_entropies(joint_density):
     P_xy = joint_density
     P_x = P_xy.sum(dim=-2)
     P_y = P_xy.sum(dim=-1)
-
-    terms_xy = torch.where(P_xy > 0, P_xy * torch.log(1 / P_xy), 0)
+    eps = torch.finfo(P_xy.dtype).eps
+    terms_xy = torch.where(P_xy > eps, P_xy * torch.log(1 / P_xy), 0)
     H_xy = torch.sum(terms_xy, dim=(-1, -2))
 
-    terms_x = torch.where(P_x > 0, P_x * torch.log(1 / P_x), 0)
+    terms_x = torch.where(P_x > eps, P_x * torch.log(1 / P_x), 0)
     H_x = torch.sum(terms_x, dim=-1)
-    terms_y = torch.where(P_y > 0, P_y * torch.log(1 / P_y), 0)
+    terms_y = torch.where(P_y > eps, P_y * torch.log(1 / P_y), 0)
     H_y = torch.sum(terms_y, dim=-1)
 
     return H_x, H_y, H_xy
