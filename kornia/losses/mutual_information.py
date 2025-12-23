@@ -98,7 +98,7 @@ def normalized_mutual_information_loss(
     target: torch.Tensor,
     kernel_function=parzen_window_kernel,
     num_bins: int = 64,
-    window_radius: float = 2.0,
+    window_radius: float = 1.0,
 ) -> torch.Tensor:
     """Calculates the Negative Normalized Mutual Information Loss.
 
@@ -126,7 +126,7 @@ def mutual_information_loss(
     target: torch.Tensor,
     kernel_function=parzen_window_kernel,
     num_bins: int = 64,
-    window_radius: float = 2.0,
+    window_radius: float = 1.0,
 ) -> torch.Tensor:
     """Calculates the Negative Mutual Information Loss.
 
