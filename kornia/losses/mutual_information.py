@@ -1,61 +1,151 @@
-from torchkde import KernelDensity
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 import torch
 
 
-def mutual_information(img_0:torch.Tensor, img_1:torch.Tensor, mask:torch.Tensor, n_bins:int =10)-> torch.Tensor:
-    """Mutual information for two single channel images based on gaussian KDE.
+def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
+    """Implementation of the 2nd-order polynomial kernel (Xu et al., 2008).
 
-    Parameters
-    ----------
-    img_0 : torch.Tensor
-        _description_
-    img_1 : torch.Tensor
-        _description_
-    mask : torch.Tensor
-        _description_
-    n_bins : int, optional
-        _description_, by default 10
+    Range: [-1, 1]. Returns 0 outside this range.
 
-    Returns
-    -------
-    torch.Tensor
-        scalar tensor representing the mutual information between the two images
+    Ref: "Parzen-Window Based Normalized Mutual Information for Medical Image Registration", Eq. 22.
     """
-    if img_0.shape != img_1.shape:
-        raise ValueError(f"The two input images should have the same shape, received {img_0.shape=} and {img_1.shape=}")
-    data_0 = img_0[mask] # flattening here
-    data_1 = img_1[mask]
+    x = torch.abs(x) / window_radius
 
-    max_0 = img_0.max().detach()
-    min_0 = img_0.min().detach()
-    max_1 = img_1.max().detach()
-    min_1 = img_1.min().detach()
+    kernel_val = torch.zeros_like(x)
 
-    step_0 = (max_0 - min_0) / n_bins
-    step_1 = (max_1 - min_1) / n_bins
-    if step_0 == 0 or step_1 == 0:
-        raise ValueError("One of your images contains no information: it has a constant grayscale value.")
-    # to allow a uniform treatement in each axis for 2dim kde, we rescale data_1.
-    factor = step_0 / step_1
-    data_1 = data_1.unsqueeze(-1).float() * factor
-    data_0 = data_0.unsqueeze(-1).float()
-    joint = torch.cat([data_0, data_1], axis=-1)
-    kde_joint = KernelDensity(bandwidth=step_0 / 2, kernel="gaussian")
+    mask1 = x < 0.5
+    kernel_val[mask1] = -1.8 * (x[mask1] ** 2) - 0.1 * x[mask1] + 1.0
+    mask2 = (x >= 0.5) & (x <= 1.0)
+    kernel_val[mask2] = 1.8 * (x[mask2] ** 2) - 3.7 * x[mask2] + 1.9
 
-    kde_joint.fit(joint)
-    mesh_0 = torch.arange(min_0 + step_0 / 2, max_0, step_0)
-    mesh_1 = torch.arange(min_0 * factor + step_0 / 2, max_0 * factor, step_0)
-    mesh_joint = torch.cartesian_prod(mesh_0, mesh_1)
+    return kernel_val
 
-    # log of probabilities
-    bin_vals_joint = torch.exp(kde_joint.score_samples(mesh_joint)).reshape((mesh_0.shape[0], mesh_1.shape[0]))
-    support_mask = (bin_vals_joint > 0).detach()
-    bin_vals_0 = torch.sum(bin_vals_joint, axis=1, keepdim=True).expand(*(support_mask.shape))[support_mask]
-    bin_vals_1 = torch.sum(bin_vals_joint, axis=0, keepdim=True).expand(*(support_mask.shape))[support_mask]
-    bin_vals_joint = bin_vals_joint[support_mask]
-    logs = torch.log(bin_vals_joint / bin_vals_0 / bin_vals_1)
-    terms = bin_vals_joint * logs
-    return terms.sum()
 
-def mutual_information_loss(img_0:torch.Tensor, img_1:torch.Tensor, mask:torch.Tensor, n_bins:int =10) -> torch.Tensor:
-    return -mutual_information(img_0,img_1,mask,n_bins)
+def _normalize_signal(data: torch.Tensor, num_bins: int):
+    min_val, _ = data.min(axis=-1)
+    max_val, _ = data.max(axis=-1)
+    return (data - min_val.unsqueeze(-1)) / (max_val - min_val).unsqueeze(-1) * num_bins
+
+
+def compute_joint_histogram(
+    img_1: torch.Tensor,
+    img_2: torch.Tensor,
+    kernel_function=xu_kernel,
+    num_bins: int = 64,
+    window_radius: float = 2,
+) -> torch.Tensor:
+    """Computes the differentiable Joint Histogram using Parzen Window estimation.
+
+    Input shapes: (B,N) or (N,)
+    Output shape: (num_bins, num_bins)
+    """
+    img_1 = _normalize_signal(img_1, num_bins=num_bins)
+    img_2 = _normalize_signal(img_2, num_bins=num_bins)
+
+    bin_centers = torch.arange(num_bins, device=img_1.device)
+
+    diff_1 = bin_centers.unsqueeze(-1) - img_1.unsqueeze(-2)
+    diff_2 = bin_centers.unsqueeze(-1) - img_2.unsqueeze(-2)
+
+    vals_1 = kernel_function(diff_1, window_radius=window_radius)
+    vals_2 = kernel_function(diff_2, window_radius=window_radius)
+
+    # density_1 = vals_1.sum(axis=-2)
+    # density_1 /= density_1.sum()
+    # density_2 = vals_2.sum(axis=-2)
+    # density_2 /= density_2.sum()
+
+    joint_histogram = torch.einsum("...in,...jn->...ij", vals_1, vals_2)
+    joint_density = joint_histogram / (joint_histogram.sum(dim=(-1, -2)))
+
+    return joint_density
+
+
+def _joint_density_to_entropies(joint_density):
+    P_xy = joint_density
+    eps = torch.finfo(P_xy.dtype).eps
+    # clamp for numerical stability
+    P_xy = P_xy.clamp(eps)
+    # divide by sum to get a density
+    P_xy /= P_xy.sum(dim=(-1, -2))
+
+    P_x = P_xy.sum(dim=-2)
+    P_y = P_xy.sum(dim=-1)
+    eps = torch.finfo(P_xy.dtype).eps
+    H_xy = torch.sum(-P_xy * torch.log(P_xy), dim=(-1, -2))
+    H_x = torch.sum(-P_x * torch.log(P_x), dim=-1)
+    H_y = torch.sum(-P_y * torch.log(P_y), dim=-1)
+
+    return H_x, H_y, H_xy
+
+
+def normalized_mutual_information_loss(
+    input: torch.Tensor,
+    target: torch.Tensor,
+    kernel_function=xu_kernel,
+    num_bins: int = 64,
+    window_radius: float = 1.0,
+) -> torch.Tensor:
+    """Calculates the Negative Normalized Mutual Information Loss.
+
+    loss = - (H(X) + H(Y)) / H(X,Y)
+    """
+    if input.shape != target.shape:
+        raise ValueError(f"Shape mismatch: {input.shape} != {target.shape}")
+
+    P_xy = compute_joint_histogram(
+        input,
+        target,
+        kernel_function=kernel_function,
+        num_bins=num_bins,
+        window_radius=window_radius,
+    )
+
+    H_x, H_y, H_xy = _joint_density_to_entropies(P_xy)
+    nmi = (H_x + H_y) / H_xy
+
+    return -nmi
+
+
+def mutual_information_loss(
+    input: torch.Tensor,
+    target: torch.Tensor,
+    kernel_function=xu_kernel,
+    num_bins: int = 64,
+    window_radius: float = 1.0,
+) -> torch.Tensor:
+    """Calculates the Negative Mutual Information Loss.
+
+    loss = - (H(X) + H(Y) - H(X,Y))
+    """
+    if input.shape != target.shape:
+        raise ValueError(f"Shape mismatch: {input.shape} != {target.shape}")
+
+    P_xy = compute_joint_histogram(
+        input,
+        target,
+        kernel_function=kernel_function,
+        num_bins=num_bins,
+        window_radius=window_radius,
+    )
+
+    H_x, H_y, H_xy = _joint_density_to_entropies(P_xy)
+    mi = H_x + H_y - H_xy
+
+    return -mi

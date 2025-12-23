@@ -15,7 +15,6 @@ dependencies = [
     "kornia_rs>=0.1.9",
     "packaging",
     "torch>=2.0.0",
-    "torch-kde>=0.1.5",
 ]
 optional-dependencies.dev = [
     "accelerate",
@@ -353,6 +352,7 @@ dev = [
     "transformers<4.57",
     "huggingface-hub<1.0",
     "types-requests",
+    "ipykernel>=7.1.0",
 ]
 x = [
     "accelerate",
