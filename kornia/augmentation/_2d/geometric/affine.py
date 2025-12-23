@@ -110,9 +110,9 @@ class RandomAffine(GeometricAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator: rg.AffineGenerator = rg.AffineGenerator(degrees, translate, scale, shear)
-        
+
         if fill_value is not None and not isinstance(fill_value, Tensor):
-             fill_value = as_tensor(fill_value)
+            fill_value = as_tensor(fill_value)
 
         self.flags = {
             "resample": Resample.get(resample),
