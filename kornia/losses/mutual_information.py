@@ -18,7 +18,7 @@
 import torch
 
 
-def parzen_window_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
+def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     """Implementation of the 2nd-order polynomial kernel (Xu et al., 2008).
 
     Range: [-1, 1]. Returns 0 outside this range.
@@ -46,7 +46,7 @@ def _normalize_signal(data: torch.Tensor, num_bins: int):
 def compute_joint_histogram(
     img_1: torch.Tensor,
     img_2: torch.Tensor,
-    kernel_function=parzen_window_kernel,
+    kernel_function=xu_kernel,
     num_bins: int = 64,
     window_radius: float = 2,
 ) -> torch.Tensor:
@@ -79,16 +79,18 @@ def compute_joint_histogram(
 
 def _joint_density_to_entropies(joint_density):
     P_xy = joint_density
+    eps = torch.finfo(P_xy.dtype).eps
+    # clamp for numerical stability
+    P_xy = P_xy.clamp(eps)
+    # divide by sum to get a density
+    P_xy /= P_xy.sum(dim=(-1, -2))
+
     P_x = P_xy.sum(dim=-2)
     P_y = P_xy.sum(dim=-1)
     eps = torch.finfo(P_xy.dtype).eps
-    terms_xy = torch.where(P_xy > eps, P_xy * torch.log(1 / P_xy), 0)
-    H_xy = torch.sum(terms_xy, dim=(-1, -2))
-
-    terms_x = torch.where(P_x > eps, P_x * torch.log(1 / P_x), 0)
-    H_x = torch.sum(terms_x, dim=-1)
-    terms_y = torch.where(P_y > eps, P_y * torch.log(1 / P_y), 0)
-    H_y = torch.sum(terms_y, dim=-1)
+    H_xy = torch.sum(-P_xy * torch.log(P_xy), dim=(-1, -2))
+    H_x = torch.sum(-P_x * torch.log(P_x), dim=-1)
+    H_y = torch.sum(-P_y * torch.log(P_y), dim=-1)
 
     return H_x, H_y, H_xy
 
@@ -96,7 +98,7 @@ def _joint_density_to_entropies(joint_density):
 def normalized_mutual_information_loss(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function=parzen_window_kernel,
+    kernel_function=xu_kernel,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
@@ -124,7 +126,7 @@ def normalized_mutual_information_loss(
 def mutual_information_loss(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function=parzen_window_kernel,
+    kernel_function=xu_kernel,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
