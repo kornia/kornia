@@ -18,14 +18,14 @@
 import torch
 
 
-def parzen_window_kernel(x: torch.Tensor, win_width: float = 1.0) -> torch.Tensor:
+def parzen_window_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     """Implementation of the 2nd-order polynomial kernel (Xu et al., 2008).
 
     Range: [-1, 1]. Returns 0 outside this range.
 
     Ref: "Parzen-Window Based Normalized Mutual Information for Medical Image Registration", Eq. 22.
     """
-    x = torch.abs(x) / win_width
+    x = torch.abs(x) / window_radius
 
     kernel_val = torch.zeros_like(x)
 
@@ -44,41 +44,45 @@ def _normalize_signal(data: torch.Tensor, num_bins: int):
 
 
 def compute_joint_histogram(
-    img_1: torch.Tensor, img_2: torch.Tensor, num_bins: int = 64, sigma: float = 1.0
+    img_1: torch.Tensor,
+    img_2: torch.Tensor,
+    kernel_function=parzen_window_kernel,
+    num_bins: int = 64,
+    window_radius: float = 2,
 ) -> torch.Tensor:
     """Computes the differentiable Joint Histogram using Parzen Window estimation.
 
-    Input shapes: (B, C, H, W) or (N,)
+    Input shapes: (B,N) or (N,)
     Output shape: (num_bins, num_bins)
     """
-    i1_flat = img_1.reshape(-1)
-    i2_flat = img_2.reshape(-1)
+    img_1 = _normalize_signal(img_1, num_bins=num_bins)
+    img_2 = _normalize_signal(img_2, num_bins=num_bins)
 
-    min_val = min(i1_flat.min(), i2_flat.min()).detach()
-    max_val = max(i1_flat.max(), i2_flat.max()).detach()
+    bin_centers = torch.arange(num_bins, device=img_1.device)
 
-    # Add a small epsilon to max to ensure coverage
-    bin_centers = torch.linspace(min_val, max_val, num_bins, device=img_1.device)
-    bin_width = (max_val - min_val) / (num_bins - 1)
+    diff_1 = bin_centers.unsqueeze(-1) - img_1.unsqueeze(-2)
+    diff_2 = bin_centers.unsqueeze(-1) - img_2.unsqueeze(-2)
 
-    d1 = i1_flat.unsqueeze(1) - bin_centers.unsqueeze(0)
-    d2 = i2_flat.unsqueeze(1) - bin_centers.unsqueeze(0)
+    vals_1 = kernel_function(diff_1, window_radius=window_radius)
+    vals_2 = kernel_function(diff_2, window_radius=window_radius)
 
-    window_size = bin_width * sigma
+    # density_1 = vals_1.sum(axis=-2)
+    # density_1 /= density_1.sum()
+    # density_2 = vals_2.sum(axis=-2)
+    # density_2 /= density_2.sum()
 
-    w1 = parzen_window_kernel(d1, win_width=window_size)
-    w2 = parzen_window_kernel(d2, win_width=window_size)
+    joint_histogram = torch.einsum("...ni,...nj->...ij", vals_1, vals_2)
+    joint_density = joint_histogram / (joint_histogram.sum(dim=(-1, -2)))
 
-    H_joint = torch.einsum("ni,nj->ij", w1, w2)
-
-    P_joint = H_joint / (H_joint.sum() + 1e-6)
-    P_joint = H_joint / (H_joint.sum() + 1e-6)
-
-    return P_joint
+    return joint_density
 
 
-def mutual_information_loss(
-    input: torch.Tensor, target: torch.Tensor, num_bins: int = 64, sigma: float = 2.0
+def normalized_mutual_information_loss(
+    input: torch.Tensor,
+    target: torch.Tensor,
+    kernel_function=parzen_window_kernel,
+    num_bins: int = 64,
+    window_radius: float = 2.0,
 ) -> torch.Tensor:
     """Calculates the Negative Normalized Mutual Information Loss.
 
@@ -87,10 +91,12 @@ def mutual_information_loss(
     if input.shape != target.shape:
         raise ValueError(f"Shape mismatch: {input.shape} != {target.shape}")
 
-    P_xy = compute_joint_histogram(input, target, num_bins, sigma)
+    P_xy = compute_joint_histogram(
+        input, target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
+    )
 
-    P_x = P_xy.sum(dim=1)
-    P_y = P_xy.sum(dim=0)
+    P_x = P_xy.sum(dim=-2)
+    P_y = P_xy.sum(dim=-1)
 
     eps = 1e-8
     H_x = -torch.sum(P_x * torch.log(P_x + eps))
