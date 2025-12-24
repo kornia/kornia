@@ -225,7 +225,7 @@ class StableDiffusionDissolving(ImageModule):
 
     """
 
-    def __init__(self, version: str = "xl", **kwargs: Any):
+    def __init__(self, version: str = "1.5", **kwargs: Any):
         super().__init__()
         DDIMScheduler = diffusers.DDIMScheduler
 

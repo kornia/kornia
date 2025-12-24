@@ -36,7 +36,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
 
         * - SD 1.4
           - SD 1.5
-          - SD 2.1
+          - SD xl
         * - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
           - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
           - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-2.1.png
@@ -59,7 +59,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
     def __init__(
         self,
         step_range: Tuple[float, float] = (100, 500),
-        version: str = "xl",
+        version: str = "1.5",
         p: float = 0.5,
         keepdim: bool = False,
         **kwargs: Any,
