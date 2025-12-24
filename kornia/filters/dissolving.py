@@ -109,7 +109,9 @@ class _DissolvingWraper_HF:
             negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
 
             self.context = torch.cat([negative_prompt_embeds, prompt_embeds])
-            self.pooled_embeddings = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds])
+            # Type narrowing: these are guaranteed to be set in the loops above when is_sdxl=True
+            if pooled_prompt_embeds is not None and negative_pooled_prompt_embeds is not None:
+                self.pooled_embeddings = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds])
 
             # Create time_ids for models that require additional conditioning
             # Format: (original_size, crops_coords_top_left, target_size)
@@ -167,21 +169,23 @@ class _DissolvingWraper_HF:
 
         if self.is_sdxl:
             # Pass additional conditioning to models that require it
-            _, pooled_embeds = self.pooled_embeddings.chunk(2)
-            _, add_time_ids = self.add_time_ids.chunk(2)
+            # Type narrowing: these are guaranteed to be set when is_sdxl=True
+            if self.pooled_embeddings is not None and self.add_time_ids is not None:
+                _, pooled_embeds = self.pooled_embeddings.chunk(2)
+                _, add_time_ids = self.add_time_ids.chunk(2)
 
-            # Expand embeddings to match batch size if needed
-            batch_size = latent.size(0)
-            if pooled_embeds.size(0) != batch_size:
-                pooled_embeds = pooled_embeds.expand(batch_size, -1)
-            if add_time_ids.size(0) != batch_size:
-                add_time_ids = add_time_ids.expand(batch_size, -1)
+                # Expand embeddings to match batch size if needed
+                batch_size = latent.size(0)
+                if pooled_embeds.size(0) != batch_size:
+                    pooled_embeds = pooled_embeds.expand(batch_size, -1)
+                if add_time_ids.size(0) != batch_size:
+                    add_time_ids = add_time_ids.expand(batch_size, -1)
 
-            added_cond_kwargs = {
-                "text_embeds": pooled_embeds,
-                "time_ids": add_time_ids,
-            }
-            noise_pred = self.model.unet(latent, t, cond_embeddings, added_cond_kwargs=added_cond_kwargs).sample
+                added_cond_kwargs = {
+                    "text_embeds": pooled_embeds,
+                    "time_ids": add_time_ids,
+                }
+                noise_pred = self.model.unet(latent, t, cond_embeddings, added_cond_kwargs=added_cond_kwargs).sample
         else:
             noise_pred = self.model.unet(latent, t, cond_embeddings).sample
 
