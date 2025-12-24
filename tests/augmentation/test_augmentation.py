@@ -5248,12 +5248,12 @@ class TestRandomDissolving(BaseTester):
 
     def test_batch_proc(self, device, dtype):
         images = torch.rand(4, 3, 16, 16)
-        aug = RandomDissolving(p=1.0, version="2.1", cache_dir="weights/")
+        aug = RandomDissolving(p=1.0, version="1.5", cache_dir="weights/")
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
     def test_single_proc(self, device, dtype):
         images = torch.rand(3, 16, 16)
-        aug = RandomDissolving(p=1.0, keepdim=True, version="2.1", cache_dir="weights/")
+        aug = RandomDissolving(p=1.0, keepdim=True, version="1.5", cache_dir="weights/")
         images_aug = aug(images)
         assert images_aug.shape == images.shape

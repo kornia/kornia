@@ -33,7 +33,7 @@ WEIGHTS_CACHE_DIR = "weights/"
 class TestStableDiffusionDissolving:
     @pytest.fixture(scope="class")
     def sdm_2_1(self):
-        return StableDiffusionDissolving(version="2.1", cache_dir=WEIGHTS_CACHE_DIR)
+        return StableDiffusionDissolving(version="1.5", cache_dir=WEIGHTS_CACHE_DIR)
 
     @pytest.fixture(scope="class")
     def dummy_image(self):

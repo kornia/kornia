@@ -29,6 +29,10 @@ inputs:
   ref:
     description: "Git reference to checkout"
     default: ${{ github.sha }}
+  huggingface-token:
+    description: "HuggingFace Hub API token for model downloads"
+    required: false
+    default: ""
 
 
 runs:
@@ -43,5 +47,7 @@ runs:
 
     - name: Run CPU tests ${{ inputs.pytorch-dtype }}
       shell: bash -l {0}
+      env:
+        HF_TOKEN: ${{ inputs.huggingface-token }}
       run: |
         pytest -v ./tests/ --device=${{ inputs.pytorch-device }} --dtype=${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }}
