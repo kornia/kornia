@@ -730,6 +730,24 @@ class TestAffine2d(BaseTester):
 
         assert output.shape == (B_mat, C, H, W)
 
+    def test_warp_affine_fill_value(self, device, dtype):
+        # Feature: Support padding_mode="fill" with custom fill_value
+        # Scenario: 1-channel mask, fill with 1.0
+        B, C, H, W = 1, 1, 10, 10
+        src = torch.zeros(B, C, H, W, device=device, dtype=dtype)
+
+        M = torch.eye(2, 3, device=device, dtype=dtype).unsqueeze(0)
+        M[..., 0, 2] = 5.0
+
+        # Fill with 1.0
+        fill_val = torch.tensor([1.0], device=device, dtype=dtype)
+
+        out = kornia.geometry.transform.warp_affine(src, M, (H, W), padding_mode="fill", fill_value=fill_val)
+
+        assert out[0, 0, 0, 0] == 1.0
+
+        assert out[0, 0, 0, 9] == 0.0
+
 
 class TestGetAffineMatrix(BaseTester):
     def test_smoke(self, device, dtype):

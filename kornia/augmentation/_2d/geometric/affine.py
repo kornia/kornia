@@ -50,7 +50,9 @@ class RandomAffine(GeometricAugmentationBase2D):
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
-        padding_mode: padding mode from "zeros" (0), "border" (1) or "reflection" (2).
+        padding_mode: padding mode from "zeros" (0), "border" (1), "reflection" (2) or "fill" (3).
+        fill_value: the value to be filled in the padding area when padding_mode="fill".
+            Can be a float, int, or a tensor of shape (C) or (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         p: probability of applying the transformation.
@@ -102,15 +104,21 @@ class RandomAffine(GeometricAugmentationBase2D):
         same_on_batch: bool = False,
         align_corners: bool = False,
         padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
+        fill_value: Optional[Union[float, int, Tensor]] = None,  # Updated type hint
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator: rg.AffineGenerator = rg.AffineGenerator(degrees, translate, scale, shear)
+
+        if fill_value is not None and not isinstance(fill_value, Tensor):
+            fill_value = as_tensor(fill_value)
+
         self.flags = {
             "resample": Resample.get(resample),
             "padding_mode": SamplePadding.get(padding_mode),
             "align_corners": align_corners,
+            "fill_value": fill_value,
         }
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
@@ -137,6 +145,7 @@ class RandomAffine(GeometricAugmentationBase2D):
             flags["resample"].name.lower(),
             align_corners=flags["align_corners"],
             padding_mode=flags["padding_mode"].name.lower(),
+            fill_value=flags["fill_value"],  # <--- PASS IT DOWN
         )
 
     def inverse_transform(

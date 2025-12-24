@@ -88,6 +88,7 @@ class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):
     ZEROS = 0
     BORDER = 1
     REFLECTION = 2
+    FILL = 3
 
     @classmethod
     def get(cls, value: TKEnum["SamplePadding"]) -> "SamplePadding":
