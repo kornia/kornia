@@ -23,7 +23,7 @@ import torch
 
 models = {
     "sold2_wireframe": ("torchhub", "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"),
-    "stabilityai/stable-diffusion-2-1": ("diffusers", "StableDiffusionPipeline"),
+    "runwayml/stable-diffusion-v1-5": ("diffusers", "StableDiffusionPipeline"),
 }
 
 
