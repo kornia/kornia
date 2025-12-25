@@ -44,6 +44,7 @@ from . import (
     onnx,
     tracking,
     utils,
+    vlm,
     x,
 )
 
