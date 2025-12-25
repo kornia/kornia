@@ -24,7 +24,7 @@ test_gradcheck methods parametrized across devices and dtypes.
 
 import torch
 
-from kornia.core import Dtype, tensor
+from kornia.core import tensor
 from kornia.utils.misc import differentiable_clipping, differentiable_polynomial_floor
 
 from testing.base import BaseTester
@@ -32,20 +32,14 @@ from testing.parametrized_tester import parametrized_test
 
 
 @parametrized_test(
-    smoke_inputs=lambda device, dtype: (
-        tensor([1.0, 6.0, 10.0, 12.0], device=device, dtype=dtype),
-    ),
+    smoke_inputs=lambda device, dtype: (tensor([1.0, 6.0, 10.0, 12.0], device=device, dtype=dtype),),
     cardinality_tests=[
         {
-            "inputs": lambda device, dtype: (
-                tensor([1.0, 6.0, 10.0, 12.0], device=device, dtype=dtype),
-            ),
+            "inputs": lambda device, dtype: (tensor([1.0, 6.0, 10.0, 12.0], device=device, dtype=dtype),),
             "expected_shape": torch.Size([4]),
         }
     ],
-    gradcheck_inputs=lambda device: (
-        tensor([1.0, 6.0, 11.0, 12.0], device=device, dtype=torch.float64, requires_grad=True),
-    ),
+    gradcheck_inputs=lambda device: (tensor([1.0, 6.0, 11.0, 12.0], device=device, dtype=torch.float64),),
 )
 class TestDifferentiableClippingAutomated(BaseTester):
     """Demonstration of automated tests for differentiable_clipping function.
@@ -58,25 +52,20 @@ class TestDifferentiableClippingAutomated(BaseTester):
     All tests are parametrized across devices and dtypes automatically.
     """
 
-    def __init__(self):
+    def setup_method(self) -> None:
+        """Set up test fixtures."""
         self.func = lambda x: differentiable_clipping(x, min_val=5.0, max_val=10.0)
 
 
 @parametrized_test(
-    smoke_inputs=lambda device, dtype: (
-        tensor([1.5, 3.1, 5.9, 6.6], device=device, dtype=dtype),
-    ),
+    smoke_inputs=lambda device, dtype: (tensor([1.5, 3.1, 5.9, 6.6], device=device, dtype=dtype),),
     cardinality_tests=[
         {
-            "inputs": lambda device, dtype: (
-                tensor([1.5, 3.1, 5.9, 6.6], device=device, dtype=dtype),
-            ),
+            "inputs": lambda device, dtype: (tensor([1.5, 3.1, 5.9, 6.6], device=device, dtype=dtype),),
             "expected_shape": torch.Size([4]),
         }
     ],
-    gradcheck_inputs=lambda device: (
-        tensor([1.5, 3.1, 5.9, 6.6], device=device, dtype=torch.float64, requires_grad=True),
-    ),
+    gradcheck_inputs=lambda device: (tensor([1.5, 3.1, 5.9, 6.6], device=device, dtype=torch.float64),),
 )
 class TestDifferentiablePolynomialFloorAutomated(BaseTester):
     """Demonstration of automated tests for differentiable_polynomial_floor function.
@@ -84,5 +73,6 @@ class TestDifferentiablePolynomialFloorAutomated(BaseTester):
     Uses the same @parametrized_test decorator pattern as TestDifferentiableClippingAutomated.
     """
 
-    def __init__(self):
+    def setup_method(self) -> None:
+        """Set up test fixtures."""
         self.func = differentiable_polynomial_floor
