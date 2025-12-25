@@ -46,7 +46,7 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Restore cache
-        if: "${{ inputs.cache-path != '' }}"
+        if: inputs.cache-path != ''
         uses: actions/cache/restore@v4
         with:
           path: ${{ inputs.cache-path }}
@@ -76,7 +76,7 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Restore cache
-        if: "${{ inputs.cache-path != '' }}"
+        if: inputs.cache-path != ''
         uses: actions/cache/restore@v4
         with:
           path: ${{ inputs.cache-path }}
@@ -106,7 +106,7 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Restore cache
-        if: "${{ inputs.cache-path != '' }}"
+        if: inputs.cache-path != ''
         uses: actions/cache/restore@v4
         with:
           path: ${{ inputs.cache-path }}
