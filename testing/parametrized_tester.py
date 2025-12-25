@@ -42,6 +42,8 @@ import torch
 
 from kornia.core import Dtype, Tensor
 
+from .base import BaseTester
+
 
 def parametrized_test(
     smoke_inputs: Optional[Callable[[torch.device, Dtype], tuple[Any, ...]]] = None,
