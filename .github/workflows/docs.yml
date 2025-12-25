@@ -4,15 +4,7 @@ on:
       python-version:
         required: false
         type: string
-        default: '["3.12"]'
-      pytorch-version:
-        required: false
-        type: string
-        default: '["2.5.1"]'
-      os:
-        required: false
-        type: string
-        default: ubuntu-latest
+        default: '["3.11"]'
       fail-fast:
         required: false
         type: boolean
@@ -32,79 +24,18 @@ on:
         type: string
 
 jobs:
-  test-and-build:
-    name: docstests & sphinx-build - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+  docs:
+    name: doctests & sphinx-build - py${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
         python-version: ${{ fromJSON(inputs.python-version) }}
-        pytorch-version: ${{ fromJSON(inputs.pytorch-version) }}
-        exclude:
-          # support to python3.10 only on torch 1.11 or greater
-          - pytorch-version: "1.9.1"
-            python-version: "3.10"
-          - pytorch-version: "1.10.2"
-            python-version: "3.10"
-            # support to python3.11 only on torch 2.0 or greater
-          - pytorch-version: "1.9.1"
-            python-version: "3.11"
-          - pytorch-version: "1.10.2"
-            python-version: "3.11"
-          - pytorch-version: "1.11.0"
-            python-version: "3.11"
-          - pytorch-version: "1.12.1"
-            python-version: "3.11"
-          - pytorch-version: "1.13.1"
-            python-version: "3.11"
-            # support to python3.12 only on torch 2.2 or greater
-          - pytorch-version: "1.9.1"
-            python-version: "3.12"
-          - pytorch-version: "1.10.2"
-            python-version: "3.12"
-          - pytorch-version: "1.11.0"
-            python-version: "3.12"
-          - pytorch-version: "1.12.1"
-            python-version: "3.12"
-          - pytorch-version: "1.13.1"
-            python-version: "3.12"
-          - pytorch-version: "2.0.1"
-            python-version: "3.12"
-          - pytorch-version: "2.1.2"
-            python-version: "3.12"
-            # support to python3.13 only on torch 2.5 or greater
-          - pytorch-version: "1.9.1"
-            python-version: "3.13"
-          - pytorch-version: "1.10.2"
-            python-version: "3.13"
-          - pytorch-version: "1.11.0"
-            python-version: "3.13"
-          - pytorch-version: "1.12.1"
-            python-version: "3.13"
-          - pytorch-version: "1.13.1"
-            python-version: "3.13"
-          - pytorch-version: "2.0.1"
-            python-version: "3.13"
-          - pytorch-version: "2.1.2"
-            python-version: "3.13"
-          - pytorch-version: "2.2.2"
-            python-version: "3.13"
-          - pytorch-version: "2.3.1"
-            python-version: "3.13"
-          - pytorch-version: "2.4.1"
-            python-version: "3.13"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
-
-      - name: Setting environment on ${{ inputs.os }} with python ${{ matrix.python-version }} and pytorch ${{ matrix.pytorch-version }}
-        uses: ./.github/actions/env
-        with:
-          python-version: ${{ matrix.python-version }}
-          pytorch-version: ${{ matrix.pytorch-version }}
           ref: ${{ inputs.ref }}
 
       - name: Restore cache
@@ -115,14 +46,22 @@ jobs:
           key: ${{ inputs.cache-key }}
           restore-keys: ${{ inputs.cache-restore-keys }}
 
-      - name: Run doctest
-        shell: bash -l {0}
-        run: just ci-doctest
+      - name: Set pixi environment name
+        id: pixi-env
+        run: echo "name=py$(echo '${{ matrix.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
-      - name: Install docs deps
-        shell: bash -l {0}
-        run: uv pip install --system --editable .[docs]
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.40.0
+          cache: true
+          environments: ${{ steps.pixi-env.outputs.name }}
+
+      - name: Install docs dependencies
+        run: pixi run -e ${{ steps.pixi-env.outputs.name }} install-docs
+
+      - name: Run doctest
+        run: pixi run -e ${{ steps.pixi-env.outputs.name }} doctest
 
       - name: Build Documentation
-        shell: bash -l {0}
-        run: just ci-build-docs
+        run: pixi run -e ${{ steps.pixi-env.outputs.name }} build-docs

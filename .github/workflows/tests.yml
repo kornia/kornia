@@ -4,7 +4,7 @@ on:
       python-version:
         required: false
         type: string
-        default: '["3.12"]'
+        default: '["3.9", "3.12"]'
       pytorch-version:
         required: false
         type: string
@@ -17,15 +17,15 @@ on:
         required: false
         type: string
         default: float32
-      pytorch-device:
-        required: false
-        type: string
-        default: cpu
       pytest-extra:
         required: false
         type: string
-        default: --timeout=30 -k "not test_dynamo"
+        default: ""
       fail-fast:
+        required: false
+        type: boolean
+        default: false
+      runslow:
         required: false
         type: boolean
         default: false
@@ -45,66 +45,13 @@ on:
 
 jobs:
   tests:
-    name: python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+    name: py${{ matrix.python-version }}-pt${{ matrix.pytorch-version }}
     runs-on: ${{ inputs.os }}
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
         python-version: ${{ fromJSON(inputs.python-version) }}
         pytorch-version: ${{ fromJSON(inputs.pytorch-version) }}
-        exclude:
-          # support to python3.10 only on torch 1.11 or greater
-          - pytorch-version: "1.9.1"
-            python-version: "3.10"
-          - pytorch-version: "1.10.2"
-            python-version: "3.10"
-            # support to python3.11 only on torch 2.0 or greater
-          - pytorch-version: "1.9.1"
-            python-version: "3.11"
-          - pytorch-version: "1.10.2"
-            python-version: "3.11"
-          - pytorch-version: "1.11.0"
-            python-version: "3.11"
-          - pytorch-version: "1.12.1"
-            python-version: "3.11"
-          - pytorch-version: "1.13.1"
-            python-version: "3.11"
-            # support to python3.12 only on torch 2.2 or greater
-          - pytorch-version: "1.9.1"
-            python-version: "3.12"
-          - pytorch-version: "1.10.2"
-            python-version: "3.12"
-          - pytorch-version: "1.11.0"
-            python-version: "3.12"
-          - pytorch-version: "1.12.1"
-            python-version: "3.12"
-          - pytorch-version: "1.13.1"
-            python-version: "3.12"
-          - pytorch-version: "2.0.1"
-            python-version: "3.12"
-          - pytorch-version: "2.1.2"
-            python-version: "3.12"
-            # support to python3.13 only on torch 2.5 or greater
-          - pytorch-version: "1.9.1"
-            python-version: "3.13"
-          - pytorch-version: "1.10.2"
-            python-version: "3.13"
-          - pytorch-version: "1.11.0"
-            python-version: "3.13"
-          - pytorch-version: "1.12.1"
-            python-version: "3.13"
-          - pytorch-version: "1.13.1"
-            python-version: "3.13"
-          - pytorch-version: "2.0.1"
-            python-version: "3.13"
-          - pytorch-version: "2.1.2"
-            python-version: "3.13"
-          - pytorch-version: "2.2.2"
-            python-version: "3.13"
-          - pytorch-version: "2.3.1"
-            python-version: "3.13"
-          - pytorch-version: "2.4.1"
-            python-version: "3.13"
 
     steps:
       - name: Checkout repository
@@ -120,12 +67,23 @@ jobs:
           key: ${{ inputs.cache-key }}
           restore-keys: ${{ inputs.cache-restore-keys }}
 
-      - uses: ./.github/actions/tests
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
         with:
-          os: ${{ inputs.os }}
-          python-version: ${{ matrix.python-version }}
-          pytorch-version: ${{ matrix.pytorch-version }}
-          pytorch-dtype: ${{ inputs.pytorch-dtype }}
-          pytorch-device: ${{ inputs.pytorch-device }}
-          pytest-extra: ${{ inputs.pytest-extra }}
-          ref: ${{ inputs.ref }}
+          pixi-version: v0.40.0
+          cache: true
+          environments: py${{ matrix.python-version == '3.9' && '39' || matrix.python-version == '3.10' && '310' || matrix.python-version == '3.11' && '311' || '312' }}
+
+      - name: Set pixi environment name
+        id: pixi-env
+        run: echo "name=py$(echo '${{ matrix.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
+
+      - name: Run tests
+        env:
+          KORNIA_TEST_DEVICE: cpu
+          KORNIA_TEST_DTYPE: ${{ inputs.pytorch-dtype }}
+          KORNIA_TEST_RUNSLOW: ${{ inputs.runslow }}
+        run: pixi run -e ${{ steps.pixi-env.outputs.name }} test ${{ inputs.pytest-extra }}

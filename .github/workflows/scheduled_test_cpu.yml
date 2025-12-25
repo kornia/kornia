@@ -20,7 +20,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - uses: ./.github/actions/env
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.40.0
+          cache: true
+
       - uses: actions/cache@v4
         id: cache-weights
         with:
@@ -30,7 +35,7 @@ jobs:
 
       - name: Download models weights...
         if: steps.cache-weights.outputs.cache-hit != 'true'
-        run: python .github/download-models-weights.py -t weights/
+        run: pixi run uv run python .github/download-models-weights.py -t weights/
 
       - name: write hashid
         id: hashid
@@ -41,16 +46,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
         pytorch-dtype: ["float32", "float64"]
 
     uses: ./.github/workflows/tests.yml
     with:
-      os: "Ubuntu-latest"
+      os: "ubuntu-latest"
       python-version: '["3.9", "3.10", "3.11", "3.12"]'
       pytorch-version: '["2.0.1", "2.1.2", "2.2.2", "2.3.1", "2.4.0", "2.5.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
-      pytest-extra: "--runslow"
+      runslow: true
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
@@ -66,7 +70,7 @@ jobs:
 
     uses: ./.github/workflows/tests.yml
     with:
-      os: "Windows-latest"
+      os: "windows-latest"
       python-version: '["3.12"]'
       pytorch-version: '["2.0.1", "2.5.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
@@ -85,7 +89,9 @@ jobs:
 
     uses: ./.github/workflows/tests.yml
     with:
-      os: "MacOS-latest"
+      os: "macos-latest"
+      python-version: '["3.9", "3.12"]'
+      pytorch-version: '["2.5.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
@@ -104,7 +110,7 @@ jobs:
         model-weights-
 
   typing:
-    uses: ./.github/workflows/mypy.yml
+    uses: ./.github/workflows/typecheck.yml
 
   tutorials:
     uses: ./.github/workflows/tutorials.yml

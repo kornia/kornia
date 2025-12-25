@@ -1,0 +1,25 @@
+name: Type Check
+
+on:
+  workflow_call:
+
+jobs:
+  typecheck:
+    name: ty type checker
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.40.0
+          cache: true
+
+      - name: Install dependencies
+        run: pixi run -e default install
+
+      - name: Run type checking with ty
+        run: pixi run -e default typecheck

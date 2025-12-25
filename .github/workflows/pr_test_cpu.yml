@@ -21,7 +21,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - uses: ./.github/actions/env
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.40.0
+          cache: true
+
       - uses: actions/cache@v4
         id: cache-weights
         with:
@@ -31,7 +36,7 @@ jobs:
 
       - name: Download models weights...
         if: steps.cache-weights.outputs.cache-hit != 'true'
-        run: python .github/download-models-weights.py -t weights/
+        run: pixi run uv run python .github/download-models-weights.py -t weights/
 
       - name: write hashid
         id: hashid
@@ -42,7 +47,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        os: ["Ubuntu-latest", "Windows-latest"]
+        os: ["ubuntu-latest", "windows-latest"]
         pytorch-dtype: ["float32", "float64"]
 
     uses: ./.github/workflows/tests.yml
@@ -61,8 +66,9 @@ jobs:
     needs: [pre-tests]
     uses: ./.github/workflows/tests.yml
     with:
-      os: "MacOS-latest"
+      os: "macos-latest"
       python-version: '["3.9", "3.12"]'
+      pytorch-version: '["2.5.1"]'
       pytorch-dtype: "float32"
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
@@ -81,7 +87,7 @@ jobs:
         model-weights-
 
   typing:
-    uses: ./.github/workflows/mypy.yml
+    uses: ./.github/workflows/typecheck.yml
 
   tutorials:
     uses: ./.github/workflows/tutorials.yml
@@ -98,32 +104,10 @@ jobs:
         model-weights-
 
   collector:
-    needs: [coverage, tests-cpu, tutorials, typing, docs]
+    needs: [coverage, tests-cpu, tests-cpu-macos, tutorials, typing, docs]
     if: always()
     runs-on: ubuntu-latest
     steps:
       - name: check for failures
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
         run: echo job failed && exit 1
-
-  tests-nightly:
-    if: contains(github.event.pull_request.labels.*.name, 'nightly')
-    needs: [pre-tests]
-    name: ${{ matrix.os }} - torch-nightly, ${{ matrix.pytorch-dtype }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ["Ubuntu-latest", "Windows-latest"] #, 'MacOS-latest'] add it when https://github.com/pytorch/pytorch/pull/89262 be merged
-        pytorch-dtype: ["float32", "float64"]
-
-    uses: ./.github/workflows/tests.yml
-    with:
-      os: ${{ matrix.os }}
-      pytorch-version: '["nightly"]'
-      pytorch-dtype: ${{ matrix.pytorch-dtype }}
-      cache-path: weights/
-      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
-      cache-restore-keys: |
-        model-weights-${{ needs.pre-tests.outputs.hash }}
-        model-weights-
