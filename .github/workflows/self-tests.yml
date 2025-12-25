@@ -77,4 +77,7 @@ jobs:
     steps:
       - name: check for failures
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
-        run: echo job failed && exit 1
+        run: echo "One or more upstream jobs failed or were cancelled" && exit 1
+      - name: all checks passed
+        if: success()
+        run: echo "All upstream jobs passed successfully"
