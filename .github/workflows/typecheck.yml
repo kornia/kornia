@@ -3,6 +3,9 @@ name: Type Check
 on:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
   typecheck:
     name: ty type checker

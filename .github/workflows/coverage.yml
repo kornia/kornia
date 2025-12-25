@@ -27,6 +27,9 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   slow:
     # Only run tests with slow marker which aren't dynamo tests

@@ -43,6 +43,9 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   tests:
     name: py${{ matrix.python-version }}-pt${{ matrix.pytorch-version }}

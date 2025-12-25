@@ -18,6 +18,9 @@ on:
         type: string
         default: ${{ github.sha }}
 
+permissions:
+  contents: read
+
 jobs:
   run:
     name: py${{ matrix.python-version }}
