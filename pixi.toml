@@ -54,8 +54,8 @@ clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '_
 # ------------------------------------------------------------------------------
 
 [feature.cpu.tasks]
-install = { cmd = "uv sync --extra dev --python $(which python)", description = "Install dev dependencies (CPU PyTorch)" }
-install-docs = { cmd = "uv sync --extra dev --extra docs --python $(which python)", description = "Install dev + docs (CPU PyTorch)" }
+install = { cmd = "uv sync --extra dev", description = "Install dev dependencies (CPU PyTorch)" }
+install-docs = { cmd = "uv sync --extra dev --extra docs", description = "Install dev + docs (CPU PyTorch)" }
 
 # ------------------------------------------------------------------------------
 # Feature: CUDA (PyTorch CUDA wheels) - for local GPU development
@@ -64,8 +64,8 @@ install-docs = { cmd = "uv sync --extra dev --extra docs --python $(which python
 # ------------------------------------------------------------------------------
 
 [feature.cuda.tasks]
-install = { cmd = "uv sync --extra dev --extra x --python $(which python) && uv pip install --reinstall torch torchvision --index pytorch-cu121 --python .venv-cuda", env = { UV_PROJECT_ENVIRONMENT = ".venv-cuda" }, description = "Install dev dependencies (CUDA PyTorch)" }
-install-docs = { cmd = "uv sync --extra dev --extra docs --extra x --python $(which python) && uv pip install --reinstall torch torchvision --index pytorch-cu121 --python .venv-cuda", env = { UV_PROJECT_ENVIRONMENT = ".venv-cuda" }, description = "Install dev + docs (CUDA PyTorch)" }
+install = { cmd = "uv sync --extra dev --extra x && uv pip install --reinstall torch torchvision --index pytorch-cu121 --python .venv-cuda", env = { UV_PROJECT_ENVIRONMENT = ".venv-cuda" }, description = "Install dev dependencies (CUDA PyTorch)" }
+install-docs = { cmd = "uv sync --extra dev --extra docs --extra x && uv pip install --reinstall torch torchvision --index pytorch-cu121 --python .venv-cuda", env = { UV_PROJECT_ENVIRONMENT = ".venv-cuda" }, description = "Install dev + docs (CUDA PyTorch)" }
 # CUDA test tasks
 test-cuda = { cmd = ".venv-cuda/bin/pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda" }, description = "Run tests on CUDA" }
 test-cuda-f32 = { cmd = ".venv-cuda/bin/pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda", KORNIA_TEST_DTYPE = "float32" } }
