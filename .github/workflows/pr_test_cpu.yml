@@ -1,8 +1,6 @@
 name: Tests on CPU (PR)
 
 on:
-  push:
-    branches: [test-me-*]
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review]

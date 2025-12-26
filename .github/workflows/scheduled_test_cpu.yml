@@ -2,9 +2,9 @@ name: Tests on CPU (scheduled)
 
 on:
   push:
-    branches: [main, test-me-*]
+    branches: [main]
   schedule:
-    - cron: "0 4 * * *"
+    - cron: '0 4 * * *'
   workflow_call:
 
 permissions:
