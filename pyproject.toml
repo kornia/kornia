@@ -10,7 +10,7 @@ license = { text = "Apache-2.0" }
 authors = [
   { name = "Edgar Riba", email = "edgar@kornia.org" },
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "kornia_rs>=0.1.9",
     "packaging",
@@ -352,6 +352,7 @@ dev = [
     "transformers<4.57",
     "huggingface-hub<1.0",
     "types-requests",
+    "ipykernel>=7.1.0",
 ]
 x = [
     "accelerate",
