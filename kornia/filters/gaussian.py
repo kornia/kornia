@@ -101,8 +101,7 @@ def gaussian_blur2d(
 
     # Validate sigma values are positive
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
-    KORNIA_CHECK(torch.all(sigma > 0).item(),f"sigma must be positive, got {sigma}")
-
+    KORNIA_CHECK(torch.all(sigma > 0).item(), f"sigma must be positive, got {sigma}")
 
     if separable:
         ky, kx = _unpack_2d_ks(kernel_size)
