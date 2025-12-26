@@ -19,8 +19,14 @@ import argparse
 import logging
 import os
 
-import diffusers
 import torch
+
+try:
+    import diffusers
+
+    HAS_DIFFUSERS = True
+except ImportError:
+    HAS_DIFFUSERS = False
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -94,6 +100,9 @@ if __name__ == "__main__":
             # This ensures files go to {hub_dir}/checkpoints/ matching test behavior
             torch.hub.load_state_dict_from_url(path, map_location=torch.device("cpu"))
         elif src == "diffusers":
+            if not HAS_DIFFUSERS:
+                logger.warning(f"Skipping `{name}` - diffusers not installed")
+                continue
             logger.info(f"Downloading `{name}` from diffusers...")
             if path == "StableDiffusionPipeline":
                 diffusers.StableDiffusionPipeline.from_pretrained(
