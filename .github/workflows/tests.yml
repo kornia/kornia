@@ -48,7 +48,6 @@ permissions:
 
 jobs:
   tests:
-    name: py${{ matrix.python-version }}-pt${{ matrix.pytorch-version }}
     runs-on: ${{ inputs.os }}
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
@@ -85,20 +84,8 @@ jobs:
       - name: Install dependencies
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
 
-      - name: Check PyTorch compatibility
-        id: pytorch-compat
-        run: |
-          # Skip PyTorch 2.5.1 for Python 3.13 on Windows (no wheels available)
-          if [ "${{ matrix.python-version }}" == "3.13" ] && [ "${{ matrix.pytorch-version }}" == "2.5.1" ] && [ "${{ inputs.os }}" == "windows-latest" ]; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-            echo "⚠️ Skipping PyTorch 2.5.1 for Python 3.13 on Windows (no wheels available)"
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-          fi
-        shell: bash
-
       - name: Install specific PyTorch version
-        if: matrix.pytorch-version != '' && steps.pytorch-compat.outputs.skip != 'true'
+        if: matrix.pytorch-version != ''
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} uv pip install --upgrade "torch==${{ matrix.pytorch-version }}"
 
       - name: Run tests

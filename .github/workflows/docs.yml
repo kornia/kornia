@@ -28,7 +28,6 @@ permissions:
 
 jobs:
   docs:
-    name: doctests & sphinx-build - py${{ matrix.python-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
