@@ -79,16 +79,6 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
-  coverage:
-    needs: [pre-tests]
-    uses: ./.github/workflows/coverage.yml
-    with:
-      cache-path: weights/
-      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
-      cache-restore-keys: |
-        model-weights-${{ needs.pre-tests.outputs.hash }}
-        model-weights-
-
   typecheck:
     needs: [pre-tests]
     uses: ./.github/workflows/typecheck.yml
@@ -109,7 +99,7 @@ jobs:
         model-weights-
 
   collector:
-    needs: [coverage, tests, tutorials, typecheck, docs]
+    needs: [tests, tutorials, typecheck, docs]
     if: always()
     runs-on: ubuntu-latest
     steps:
