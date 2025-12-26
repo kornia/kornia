@@ -70,16 +70,16 @@ jobs:
           key: ${{ inputs.cache-key }}
           restore-keys: ${{ inputs.cache-restore-keys }}
 
+      - name: Set pixi environment name
+        id: pixi-env
+        run: echo "name=py$(echo '${{ matrix.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
+
       - name: Setup pixi
         uses: prefix-dev/setup-pixi@v0.8.1
         with:
           pixi-version: v0.40.0
           cache: true
-          environments: py${{ matrix.python-version == '3.10' && '310' || matrix.python-version == '3.11' && '311' || '312' }}
-
-      - name: Set pixi environment name
-        id: pixi-env
-        run: echo "name=py$(echo '${{ matrix.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
+          environments: ${{ steps.pixi-env.outputs.name }}
 
       - name: Install dependencies
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
