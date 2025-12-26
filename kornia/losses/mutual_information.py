@@ -72,18 +72,17 @@ def compute_joint_histogram(
     # density_2 /= density_2.sum()
 
     joint_histogram = torch.einsum("...in,...jn->...ij", vals_1, vals_2)
-    joint_density = joint_histogram / (joint_histogram.sum(dim=(-1, -2)))
 
-    return joint_density
+    return joint_histogram
 
 
-def _joint_density_to_entropies(joint_density):
-    P_xy = joint_density
+def _joint_histogram_to_entropies(joint_histogram):
+    P_xy = joint_histogram
     eps = torch.finfo(P_xy.dtype).eps
     # clamp for numerical stability
     P_xy = P_xy.clamp(eps)
     # divide by sum to get a density
-    P_xy /= P_xy.sum(dim=(-1, -2))
+    P_xy /= P_xy.sum(dim=(-1, -2), keepdim=True)
 
     P_x = P_xy.sum(dim=-2)
     P_y = P_xy.sum(dim=-1)
@@ -117,7 +116,7 @@ def normalized_mutual_information_loss(
         window_radius=window_radius,
     )
 
-    H_x, H_y, H_xy = _joint_density_to_entropies(P_xy)
+    H_x, H_y, H_xy = _joint_histogram_to_entropies(P_xy)
     nmi = (H_x + H_y) / H_xy
 
     return -nmi
@@ -145,7 +144,7 @@ def mutual_information_loss(
         window_radius=window_radius,
     )
 
-    H_x, H_y, H_xy = _joint_density_to_entropies(P_xy)
+    H_x, H_y, H_xy = _joint_histogram_to_entropies(P_xy)
     mi = H_x + H_y - H_xy
 
     return -mi
