@@ -175,7 +175,7 @@ class BoxMotTracker:
 
         """
         if directory is None:
-            name = f"{self.name}_{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}"
+            name = f"{self.name}_{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}"
             directory = os.path.join("kornia_outputs", name)
         output = self.visualize(image, show_trajectories=show_trajectories)
 

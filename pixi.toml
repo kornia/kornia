@@ -10,7 +10,7 @@ platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64", "win-64"]
 # ------------------------------------------------------------------------------
 
 [dependencies]
-python = ">=3.10,<3.13"
+python = ">=3.11,<3.13"
 uv = "*"
 tombi = "*"
 
@@ -24,7 +24,6 @@ default = { features = ["cpu", "py311"], solve-group = "default" }
 # CUDA environment for GPU development
 cuda = { features = ["cuda", "py311"], solve-group = "cuda" }
 # CI environments - CPU PyTorch with specific Python versions
-py310 = { features = ["cpu", "py310"], solve-group = "py310" }
 py311 = { features = ["cpu", "py311"], solve-group = "py311" }
 py312 = { features = ["cpu", "py312"], solve-group = "py312" }
 
@@ -75,9 +74,6 @@ test-cuda-f64 = { cmd = ".venv-cuda/bin/pytest -v tests/", env = { KORNIA_TEST_D
 # ------------------------------------------------------------------------------
 # Python version features (for CI matrix)
 # ------------------------------------------------------------------------------
-
-[feature.py310.dependencies]
-python = "3.10.*"
 
 [feature.py311.dependencies]
 python = "3.11.*"

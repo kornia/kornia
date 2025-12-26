@@ -54,7 +54,7 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: "ubuntu-latest"
-      python-version: '["3.10", "3.11", "3.12"]'
+      python-version: '["3.11", "3.12"]'
       pytorch-version: '["2.0.1", "2.1.2", "2.2.2", "2.3.1", "2.4.0", "2.5.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       runslow: true
@@ -93,7 +93,7 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: "macos-latest"
-      python-version: '["3.10", "3.12"]'
+      python-version: '["3.11", "3.12"]'
       pytorch-version: '["2.5.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       cache-path: weights/
