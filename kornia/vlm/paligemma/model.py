@@ -183,37 +183,59 @@ class PaliGemma2(VLMBase):
                 n_to_insert = min(len(image_positions), n_patches)
                 fused[batch_idx, image_positions[:n_to_insert]] = visual_embeds[batch_idx, :n_to_insert]
 
-        # Create position IDs
-        positions = mask.long().cumsum(-1) - 1
-        positions.masked_fill_(mask == 0, 1)
+        # Create position IDs - sequential indices starting from 0
+        # Transformers uses sequential position IDs for all tokens
+        # Padding is handled by attention mask, not position IDs
+        seq_len = token_ids.shape[1]
+        positions = torch.arange(seq_len, device=token_ids.device, dtype=torch.long)
+        positions = positions.unsqueeze(0).expand(B, -1)
 
         return fused, mask, positions
 
     def forward(
         self,
-        images: Tensor,
-        token_ids: Tensor,
+        images: Optional[Tensor] = None,
+        token_ids: Optional[Tensor] = None,
         mask: Optional[Tensor] = None,
         labels: Optional[Tensor] = None,
         return_intermediates: bool = False,
         return_attention_weights: bool = False,
         use_cache: bool = False,
+        pixel_values: Optional[Tensor] = None,
+        input_ids: Optional[Tensor] = None,
+        attention_mask: Optional[Tensor] = None,
     ) -> VLMOutput:
         """Forward pass through the Vision-Language Model.
 
         Args:
-            images: Input images of shape (B, C, H, W).
-            token_ids: Tokenized text input of shape (B, seq_len).
-            mask: Optional attention mask of shape (B, seq_len).
+            images: Input images of shape (B, C, H, W). Can use pixel_values instead.
+            token_ids: Tokenized text input of shape (B, seq_len). Can use input_ids instead.
+            mask: Optional attention mask of shape (B, seq_len). Can use attention_mask instead.
             labels: Optional labels for computing loss, shape (B, seq_len).
             return_intermediates: Whether to return all layer features.
             return_attention_weights: Whether to return attention weights.
             use_cache: Whether to return key-value cache.
+            pixel_values: Transformers-compatible alias for images.
+            input_ids: Transformers-compatible alias for token_ids.
+            attention_mask: Transformers-compatible alias for mask.
 
         Returns:
             VLMOutput containing logits and optional intermediate representations.
 
         """
+        # Support transformers-compatible argument names
+        if images is None and pixel_values is not None:
+            images = pixel_values
+        if token_ids is None and input_ids is not None:
+            token_ids = input_ids
+        if mask is None and attention_mask is not None:
+            mask = attention_mask
+        
+        if images is None:
+            raise ValueError("Either images or pixel_values must be provided")
+        if token_ids is None:
+            raise ValueError("Either token_ids or input_ids must be provided")
+        
         B = images.shape[0]
 
         if mask is None:

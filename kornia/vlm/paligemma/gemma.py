@@ -173,10 +173,23 @@ class GemmaDecoder(nn.Module):
         B, L = shape
         total_len = L + cache_len
 
-        # Create causal mask
+        # Create causal mask: lower triangular matrix (including diagonal)
+        # Positions can attend to themselves and all previous positions
+        # Upper triangle (future positions) is masked with -inf
+        # 
+        # For cached positions: all new positions can attend to all cached positions
+        # For new positions: use standard causal mask (lower triangular)
         causal = torch.full((L, total_len), float("-inf"), dtype=dtype, device=device)
-        if L > 1:
-            causal = torch.triu(causal, diagonal=cache_len + 1)
+        
+        if L > 0:
+            # All new positions can attend to all cached positions
+            if cache_len > 0:
+                causal[:, :cache_len] = 0.0
+            
+            # Create lower triangular mask for new positions
+            # Position i in new sequence can attend to positions [cache_len, cache_len + i + 1)
+            for i in range(L):
+                causal[i, cache_len : cache_len + i + 1] = 0.0
 
         # Expand for batch and heads
         causal = causal.unsqueeze(0).unsqueeze(0)  # (1, 1, L, total_len)
@@ -184,27 +197,13 @@ class GemmaDecoder(nn.Module):
 
         # Apply padding mask if provided
         if padding_mask is not None:
-            # padding_mask: (B, total_len) -> (B, 1, 1, total_len)
+            # padding_mask: (B, total_len) where 1 = valid token, 0 = padding
+            # Convert to attention mask: 0 -> -inf, 1 -> 0
             pad_mask = padding_mask[:, None, None, :].to(dtype)
             pad_mask = (1.0 - pad_mask) * float("-inf")
             causal = causal + pad_mask
 
         return causal
-
-    def _debug_log(self, msg: str, data: dict, hypothesis: str) -> None:
-        # #region agent log
-        import json
-
-        log_entry = {
-            "location": "gemma.py",
-            "message": msg,
-            "data": data,
-            "hypothesisId": hypothesis,
-            "timestamp": __import__("time").time(),
-        }
-        with open("/home/edgar/software/kornia-rs/.cursor/debug.log", "a") as f:
-            f.write(json.dumps(log_entry) + "\n")
-        # #endregion
 
     def forward(
         self,
@@ -246,19 +245,6 @@ class GemmaDecoder(nn.Module):
         # Gemma normalizes embeddings by sqrt(dim)
         x = embeds * (self.dim**0.5)
 
-        # #region agent log
-        self._debug_log(
-            "after_sqrt_scaling",
-            {
-                "has_nan": bool(torch.isnan(x).any().item()),
-                "min": float(x.min().item()),
-                "max": float(x.max().item()),
-                "dim": self.dim,
-            },
-            "C",
-        )
-        # #endregion
-
         B, L = x.shape[:2]
         cache_len = kv_cache[0][0].shape[2] if kv_cache is not None else 0
 
@@ -267,30 +253,8 @@ class GemmaDecoder(nn.Module):
             positions = torch.arange(cache_len, cache_len + L, device=x.device)
             positions = positions.unsqueeze(0).expand(B, -1)
 
-        # #region agent log
-        self._debug_log(
-            "positions",
-            {"min": int(positions.min().item()), "max": int(positions.max().item()), "shape": list(positions.shape)},
-            "B",
-        )
-        # #endregion
-
         # Prepare causal mask
         causal_mask = self._make_causal_mask(mask, (B, L), cache_len, x.dtype, x.device)
-
-        # #region agent log
-        finite_mask = causal_mask[causal_mask != float("-inf")]
-        self._debug_log(
-            "causal_mask",
-            {
-                "has_nan": bool(torch.isnan(causal_mask).any().item()),
-                "finite_min": float(finite_mask.min().item()) if finite_mask.numel() > 0 else None,
-                "finite_max": float(finite_mask.max().item()) if finite_mask.numel() > 0 else None,
-                "all_inf_rows": int((causal_mask == float("-inf")).all(dim=-1).sum().item()),
-            },
-            "A,E",
-        )
-        # #endregion
 
         # Initialize outputs
         all_features: Optional[Tuple[Tensor, ...]] = () if return_intermediates else None
@@ -312,23 +276,6 @@ class GemmaDecoder(nn.Module):
                 return_weights=return_weights,
                 use_cache=use_cache,
             )
-
-            # #region agent log
-            if i < 3 or torch.isnan(x).any().item():
-                self._debug_log(
-                    f"after_block_{i}",
-                    {
-                        "has_nan": bool(torch.isnan(x).any().item()),
-                        "min": float(x.min().item()) if not torch.isnan(x).any() else "nan",
-                        "max": float(x.max().item()) if not torch.isnan(x).any() else "nan",
-                    },
-                    "D,E",
-                )
-                if torch.isnan(x).any().item():
-                    self._debug_log(
-                        f"nan_found_at_block_{i}", {"block_idx": i, "total_blocks": len(self.blocks)}, "ALL"
-                    )
-            # #endregion
 
             if use_cache and present_kv is not None:
                 new_cache = new_cache + (present_kv,)
