@@ -124,7 +124,7 @@ jobs:
         model-weights-
 
   collector:
-    needs: [coverage, tests-cpu, tests-cpu-macos, tutorials, typing, docs]
+    needs: [coverage, tests-cpu, tests-cpu-macos, tutorials, typecheck, docs]
     if: always()
     runs-on: ubuntu-latest
     steps:
