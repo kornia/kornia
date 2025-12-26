@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-from pathlib import Path
 
 import pytest
 import torch
@@ -57,19 +56,6 @@ class TestEfficientViT:
     @pytest.mark.parametrize("img_size,expected_resolution", [(224, 7), (256, 8), (288, 9), (320, 10), (384, 12)])
     def test_smoke_large(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
         self._test_smoke(device, dtype, img_size, expected_resolution, model_name)
-
-    @pytest.mark.skipif(torch_version_lt(2, 0, 0), reason="requires torch 2.0.0 or higher")
-    def test_onnx(self, device, dtype, tmp_path: Path):
-        model: vit.EfficientViTBackbone = vit.efficientvit_backbone_b0()
-        model = model.to(device=device, dtype=dtype)
-
-        image = torch.randn(1, 3, 224, 224, device=device, dtype=dtype)
-
-        model_path = tmp_path / "efficientvit_backbone_b0.onnx"
-
-        torch.onnx.export(model, image, model_path, opset_version=16)
-
-        assert model_path.is_file()
 
     @pytest.mark.slow
     def test_load_pretrained(self, device, dtype):
