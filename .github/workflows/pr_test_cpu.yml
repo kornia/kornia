@@ -45,7 +45,7 @@ jobs:
         id: hashid
         run: echo "weights-hash=${{ hashFiles('.github/download-models-weights.py') }}" >> "$GITHUB_OUTPUT"
 
-  tests-cpu:
+  tests:
     needs: [pre-tests]
     strategy:
       fail-fast: true
@@ -72,7 +72,7 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
-  tests-cpu-macos:
+  tests-macos:
     needs: [pre-tests]
     strategy:
       fail-fast: true
@@ -96,7 +96,7 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
-  coverage:
+  slow:
     needs: [pre-tests]
     uses: ./.github/workflows/coverage.yml
     with:
@@ -109,7 +109,7 @@ jobs:
   typecheck:
     uses: ./.github/workflows/typecheck.yml
 
-  tutorials:
+  run:
     uses: ./.github/workflows/tutorials.yml
 
   docs:
@@ -124,7 +124,7 @@ jobs:
         model-weights-
 
   collector:
-    needs: [coverage, tests-cpu, tests-cpu-macos, tutorials, typecheck, docs]
+    needs: [slow, tests, tests-macos, run, typecheck, docs]
     if: always()
     runs-on: ubuntu-latest
     steps:
