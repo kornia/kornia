@@ -84,6 +84,8 @@ jobs:
           restore-keys: ${{ inputs.cache-restore-keys }}
 
       - uses: ./.github/actions/coverage
+        env:
+          KORNIA_TEST_OPTIMIZER: inductor
         with:
           python-version: ${{ inputs.python-version }}
           pytorch-dtype: ${{ matrix.pytorch-dtype }}
