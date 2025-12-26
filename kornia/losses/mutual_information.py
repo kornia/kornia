@@ -19,9 +19,9 @@ import torch
 
 
 def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
-    """Implementation of the 2nd-order polynomial kernel (Xu et al., 2008).
+    """Implementation of a 2nd-order polynomial kernel (Xu et al., 2008).
 
-    Range: [-1, 1]. Returns 0 outside this range.
+    Support: [-window_radius, window_radius]. Returns 0 outside this range.
 
     Ref: "Parzen-Window Based Normalized Mutual Information for Medical Image Registration", Eq. 22.
     """
@@ -66,11 +66,6 @@ def compute_joint_histogram(
     vals_1 = kernel_function(diff_1, window_radius=window_radius)
     vals_2 = kernel_function(diff_2, window_radius=window_radius)
 
-    # density_1 = vals_1.sum(axis=-2)
-    # density_1 /= density_1.sum()
-    # density_2 = vals_2.sum(axis=-2)
-    # density_2 /= density_2.sum()
-
     joint_histogram = torch.einsum("...in,...jn->...ij", vals_1, vals_2)
 
     return joint_histogram
@@ -101,9 +96,23 @@ def normalized_mutual_information_loss(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Calculates the Negative Normalized Mutual Information Loss.
+    """Compute differentiable normalized mutual information for for flat tensors.
 
-    loss = - (H(X) + H(Y)) / H(X,Y)
+    nmi = (H(X) + H(Y)) / H(X,Y)
+    To have a loss function, the opposite is returned.
+    Can also handle two batches of flat tensors, then a batch of loss values is returned.
+
+    :param input: Batch of flat tensors shape (B,N) where B is any batch dimensions tuple, possibly empty
+    :type input: torch.Tensor
+    :param target: Batch of flat tensors, same shape as input.
+    :type target: torch.Tensor
+    :param kernel_function: The kernel function used for KDE, defaults to built-in xu_kernel.
+    :param num_bins:The number of bins used for KDE, defaults to 64.
+    :type num_bins: int
+    :param window_radius: The smoothing window radius in KDE, in terms of bin width units, defaults to 1.
+    :type window_radius: float
+    :return: tensor of losses, shape B (common batch dims tuple of input and target)
+    :rtype: torch.Tensor
     """
     if input.shape != target.shape:
         raise ValueError(f"Shape mismatch: {input.shape} != {target.shape}")
@@ -129,9 +138,23 @@ def mutual_information_loss(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Calculates the Negative Mutual Information Loss.
+    """Compute differentiable mutual information for for flat tensors.
 
-    loss = - (H(X) + H(Y) - H(X,Y))
+    mi = (H(X) + H(Y) - H(X,Y))
+    To have a loss function, the opposite is returned.
+    Can also handle two batches of flat tensors, then a batch of loss values is returned.
+
+    :param input: Batch of flat tensors shape (B,N) where B is any batch dimensions tuple, possibly empty
+    :type input: torch.Tensor
+    :param target: Batch of flat tensors, same shape as input.
+    :type target: torch.Tensor
+    :param kernel_function: The kernel function used for KDE, defaults to built-in xu_kernel.
+    :param num_bins:The number of bins used for KDE, defaults to 64.
+    :type num_bins: int
+    :param window_radius: The smoothing window radius in KDE, in terms of bin width units, defaults to 1.
+    :type window_radius: float
+    :return: tensor of losses, shape B (common batch dims tuple of input and target)
+    :rtype: torch.Tensor
     """
     if input.shape != target.shape:
         raise ValueError(f"Shape mismatch: {input.shape} != {target.shape}")
