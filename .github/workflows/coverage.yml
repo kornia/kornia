@@ -137,6 +137,7 @@ jobs:
 
       - name: Set pixi environment name
         id: pixi-env
+        shell: bash
         run: echo "name=py$(echo '${{ inputs.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
       - name: Setup pixi
