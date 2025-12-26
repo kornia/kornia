@@ -19,14 +19,14 @@ tombi = "*"
 # ------------------------------------------------------------------------------
 
 [environments]
-# Default uses CPU PyTorch with Python 3.11 (best compatibility)
-default = { features = ["cpu", "py311"], solve-group = "default" }
+# Default environment with Python 3.11 (best compatibility)
+default = { features = ["py311"], solve-group = "default" }
 # CUDA environment for GPU development
 cuda = { features = ["cuda", "py311"], solve-group = "cuda" }
-# CI environments - CPU PyTorch with specific Python versions
-py311 = { features = ["cpu", "py311"], solve-group = "py311" }
-py312 = { features = ["cpu", "py312"], solve-group = "py312" }
-py313 = { features = ["cpu", "py313"], solve-group = "py313" }
+# CI environments with specific Python versions
+py311 = { features = ["py311"], solve-group = "py311" }
+py312 = { features = ["py312"], solve-group = "py312" }
+py313 = { features = ["py313"], solve-group = "py313" }
 
 # ------------------------------------------------------------------------------
 # Tasks (shared across environments)
@@ -51,17 +51,8 @@ build-docs = { cmd = "uv run sphinx-build -W -b html docs/source docs/build/html
 clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete && rm -rf .venv" }
 
 # ------------------------------------------------------------------------------
-# Feature: CPU (PyTorch CPU wheels) - default for CI and non-GPU machines
-# ------------------------------------------------------------------------------
-
-[feature.cpu.tasks]
-install = { cmd = "uv sync --extra dev", description = "Install dev dependencies (CPU PyTorch)" }
-install-docs = { cmd = "uv sync --extra dev --extra docs", description = "Install dev + docs (CPU PyTorch)" }
-
-# ------------------------------------------------------------------------------
 # Feature: CUDA (PyTorch CUDA wheels) - for local GPU development
-# Uses .venv-cuda; requires reinstall because pyproject.toml locks torch to CPU
-# (uv doesn't support per-environment sources)
+# Uses .venv-cuda; requires reinstall because uv doesn't support per-environment sources
 # ------------------------------------------------------------------------------
 
 [feature.cuda.tasks]
