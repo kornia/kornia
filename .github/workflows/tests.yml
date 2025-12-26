@@ -82,11 +82,12 @@ jobs:
           environments: ${{ steps.pixi-env.outputs.name }}
 
       - name: Install dependencies
-        run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
-
-      - name: Install specific PyTorch version
-        if: matrix.pytorch-version != ''
-        run: pixi run -e ${{ steps.pixi-env.outputs.name }} uv pip install --upgrade "torch==${{ matrix.pytorch-version }}"
+        run: |
+          pixi run -e ${{ steps.pixi-env.outputs.name }} install
+          if [ -n "${{ matrix.pytorch-version }}" ]; then
+            pixi run -e ${{ steps.pixi-env.outputs.name }} uv pip install --upgrade "torch==${{ matrix.pytorch-version }}"
+          fi
+        shell: bash
 
       - name: Run tests
         env:
