@@ -87,7 +87,7 @@ jobs:
 
       - name: Install specific PyTorch version
         if: matrix.pytorch-version != ''
-        run: pixi run -e ${{ steps.pixi-env.outputs.name }} uv pip install --upgrade "torch==${{ matrix.pytorch-version }}" --index-url https://download.pytorch.org/whl/cpu
+        run: pixi run -e ${{ steps.pixi-env.outputs.name }} uv pip install --upgrade "torch==${{ matrix.pytorch-version }}"
 
       - name: Run tests
         env:

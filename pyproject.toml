@@ -293,17 +293,11 @@ formatter-cmds = ["disabled"]
 # =============================================================================
 # uv configuration
 # =============================================================================
-# PyTorch: CPU wheels by default (safe for CI)
+# PyTorch: Use standard PyPI version (simpler, more compatible)
 # For CUDA: pixi run -e cuda install (uses reinstall workaround)
 # Note: uv doesn't support per-environment sources
 
-[tool.uv.sources]
-torch = { index = "pytorch-cpu" }
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
+# torch is installed from standard PyPI (no custom index needed)
 
 [[tool.uv.index]]
 name = "pytorch-cu121"
