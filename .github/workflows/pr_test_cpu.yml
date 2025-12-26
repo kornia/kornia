@@ -90,9 +90,11 @@ jobs:
         model-weights-
 
   typecheck:
+    needs: [pre-tests]
     uses: ./.github/workflows/typecheck.yml
 
   tutorials:
+    needs: [pre-tests]
     uses: ./.github/workflows/tutorials.yml
 
   docs:
