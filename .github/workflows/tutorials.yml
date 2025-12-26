@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 jobs:
-  run:
+  tutorials:
     runs-on: ${{ inputs.os }}
     strategy:
       fail-fast: ${{ inputs.fail-fast }}

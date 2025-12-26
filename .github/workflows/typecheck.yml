@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   typecheck:
+    name: typecheck
     runs-on: ubuntu-latest
 
     steps:

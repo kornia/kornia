@@ -48,6 +48,7 @@ permissions:
 
 jobs:
   tests:
+    name: ${{ inputs.os }}, ${{ inputs.pytorch-dtype }}, ${{ inputs.python-version }}, ${{ inputs.pytorch-version }}
     runs-on: ${{ inputs.os }}
     strategy:
       fail-fast: ${{ inputs.fail-fast }}

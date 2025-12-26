@@ -28,6 +28,7 @@ permissions:
 
 jobs:
   docs:
+    name: docs
     runs-on: ubuntu-latest
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
