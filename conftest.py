@@ -16,7 +16,6 @@
 #
 
 import os
-import sys
 from functools import partial
 from itertools import product
 
@@ -25,7 +24,6 @@ import pytest
 import torch
 
 import kornia
-from kornia.utils._compat import torch_version
 
 try:
     import torch._dynamo
@@ -116,18 +114,8 @@ def torch_optimizer(optimizer_backend):
     if optimizer_backend == "jit":
         return torch.jit.script
 
-    if hasattr(torch, "compile") and sys.platform == "linux":
-        # torch.compile requires PyTorch 2.0+ and has version-specific constraints
-        pt_version = torch_version()
-        py_version = sys.version_info[:2]
-
-        # Skip unsupported combinations
-        unsupported = py_version == (3, 11) and pt_version in {"2.0.0", "2.0.1"}
-        if not unsupported:
-            torch._dynamo.reset()
-            return partial(torch.compile, backend=optimizer_backend)
-
-    pytest.skip(f"Skipped: torch.compile not available for PyTorch {torch.__version__} on this platform.")
+    torch._dynamo.reset()
+    return partial(torch.compile, backend=optimizer_backend)
 
 
 def _parse_test_option(config, option: str, all_values: dict | set) -> list[str]:
@@ -222,9 +210,6 @@ def pytest_addoption(parser):
 
 def _setup_torch_compile() -> None:
     """Warm up torch.compile to reduce first-run latency in tests."""
-    if not (hasattr(torch, "compile") and sys.platform == "linux"):
-        return
-
     print("Setting up torch compile...")
     torch.set_float32_matmul_precision("high")
 
