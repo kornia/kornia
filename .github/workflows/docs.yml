@@ -58,7 +58,7 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.8.1
         with:
           pixi-version: v0.40.0
-          cache: true
+          cache: false
           environments: ${{ steps.pixi-env.outputs.name }}
 
       - name: Install docs dependencies
