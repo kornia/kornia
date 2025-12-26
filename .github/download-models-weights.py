@@ -16,10 +16,14 @@
 #
 
 import argparse
+import logging
 import os
 
 import diffusers
 import torch
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
 
 # Models used in doctests and tests
 # Format: "name": ("source", "url_or_config")
@@ -81,20 +85,20 @@ if __name__ == "__main__":
     # For HuggingFace model caching
     os.environ["HF_HOME"] = args.target_directory
 
-    print(f"Downloading models to: {torch.hub.get_dir()}/checkpoints/")
+    logger.info(f"Downloading models to: {torch.hub.get_dir()}/checkpoints/")
 
     for name, (src, path) in models.items():
         if src == "torchhub":
-            print(f"Downloading `{name}` from `{path}`...")
+            logger.info(f"Downloading `{name}` from `{path}`...")
             # Don't pass model_dir - use the default from torch.hub.set_dir()
             # This ensures files go to {hub_dir}/checkpoints/ matching test behavior
             torch.hub.load_state_dict_from_url(path, map_location=torch.device("cpu"))
         elif src == "diffusers":
-            print(f"Downloading `{name}` from diffusers...")
+            logger.info(f"Downloading `{name}` from diffusers...")
             if path == "StableDiffusionPipeline":
                 diffusers.StableDiffusionPipeline.from_pretrained(
                     name, cache_dir=args.target_directory, device_map="balanced"
                 )
 
-    print("All models downloaded successfully!")
+    logger.info("All models downloaded successfully!")
     raise SystemExit(0)
