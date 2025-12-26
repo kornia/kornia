@@ -157,6 +157,8 @@ select = [
   # "TRY",  # tryceratops
 ]
 ignore = [
+  "B905",  # `zip()` without explicit `strict=` - too many to fix, not a bug
+  "RUF007",  # Prefer `itertools.pairwise()` over `zip()` - style preference
   "PLR0915",  # Allow condition check in list comprehension
   "PLC0415",  # `import` should be at the top-level of a file
   "PLW2901",  # Allow overwritten values on loops
