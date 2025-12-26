@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "kornia"
 description = "Open Source Differentiable Computer Vision Library for PyTorch"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Edgar Riba", email = "edgar@kornia.org" }]
 keywords = ["computer vision", "deep learning", "pytorch"]
@@ -22,7 +22,6 @@ classifiers = [
   "Natural Language :: English",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
@@ -92,7 +91,7 @@ exclude = ["**/*.md"]  # Exclude markdown files from wheel
 include = ["kornia/", "LICENSE", "README.md"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py310"
 line-length = 120
 
 [tool.ruff.format]

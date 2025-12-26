@@ -56,7 +56,7 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
-      python-version: '["3.9", "3.12"]'
+      python-version: '["3.10", "3.12"]'
       pytorch-version: '["2.0.1", "2.5.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       cache-path: weights/
@@ -70,7 +70,7 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: "macos-latest"
-      python-version: '["3.9", "3.12"]'
+      python-version: '["3.10", "3.12"]'
       pytorch-version: '["2.5.1"]'
       pytorch-dtype: "float32"
       cache-path: weights/

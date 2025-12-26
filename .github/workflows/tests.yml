@@ -4,7 +4,7 @@ on:
       python-version:
         required: false
         type: string
-        default: '["3.9", "3.12"]'
+        default: '["3.10", "3.12"]'
       pytorch-version:
         required: false
         type: string
@@ -75,7 +75,7 @@ jobs:
         with:
           pixi-version: v0.40.0
           cache: true
-          environments: py${{ matrix.python-version == '3.9' && '39' || matrix.python-version == '3.10' && '310' || matrix.python-version == '3.11' && '311' || '312' }}
+          environments: py${{ matrix.python-version == '3.10' && '310' || matrix.python-version == '3.11' && '311' || '312' }}
 
       - name: Set pixi environment name
         id: pixi-env
