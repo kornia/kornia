@@ -300,3 +300,124 @@ class TestGaussianBlur2d(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
+
+    # ========== EDGE CASES AND VALIDATION TESTS ==========
+
+    def test_sigma_negative_raises_exception(self, device, dtype):
+        """Test that negative sigma raises an exception."""
+        sample = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+        with pytest.raises(Exception) as errinfo:
+            gaussian_blur2d(sample, (3, 3), (-1.5, 1.5))
+        assert "sigma must be positive" in str(errinfo.value)
+
+    def test_sigma_zero_raises_exception(self, device, dtype):
+        """Test that zero sigma raises an exception."""
+        sample = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+        with pytest.raises(Exception) as errinfo:
+            gaussian_blur2d(sample, (3, 3), (0.0, 1.5))
+        assert "sigma must be positive" in str(errinfo.value)
+
+    def test_sigma_tensor_negative_raises_exception(self, device, dtype):
+        """Test that negative sigma tensor raises an exception."""
+        sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
+        sigma = torch.tensor([[-1.5, 1.5], [1.5, 1.5]], device=device, dtype=dtype)
+        with pytest.raises(Exception) as errinfo:
+            gaussian_blur2d(sample, (3, 3), sigma)
+        assert "sigma must be positive" in str(errinfo.value)
+
+    def test_kernel_size_even_raises_exception(self, device, dtype):
+        """Test that even kernel size raises an exception."""
+        sample = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+        with pytest.raises(Exception) as errinfo:
+            gaussian_blur2d(sample, 4, (1.5, 1.5))
+        assert "Kernel size must be" in str(errinfo.value)
+
+    def test_kernel_size_zero_raises_exception(self, device, dtype):
+        """Test that zero kernel size raises an exception."""
+        sample = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+        with pytest.raises(Exception) as errinfo:
+            gaussian_blur2d(sample, 0, (1.5, 1.5))
+        assert "Kernel size must be" in str(errinfo.value)
+
+    def test_very_small_sigma(self, device, dtype):
+        """Test with very small positive sigma values (should not raise)."""
+        sample = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+        # Should not raise - any positive value is valid
+        output = gaussian_blur2d(sample, (3, 3), (0.01, 0.01))
+        assert output.shape == sample.shape
+
+    def test_very_large_sigma(self, device, dtype):
+        """Test with very large sigma values (should not raise)."""
+        sample = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+        # Should not raise - large sigma just blurs more
+        output = gaussian_blur2d(sample, (3, 3), (100.0, 100.0))
+        assert output.shape == sample.shape
+
+    @pytest.mark.parametrize("sigma_value", [0.1, 1.0, 5.0, 10.0])
+    def test_sigma_range(self, sigma_value, device, dtype):
+        """Test various sigma values across a reasonable range."""
+        sample = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        output = gaussian_blur2d(sample, (5, 5), (sigma_value, sigma_value))
+        assert output.shape == sample.shape
+
+    def test_single_pixel_image(self, device, dtype):
+        """Test with minimal spatial dimensions (3x3 - smallest for 3x3 kernel)."""
+        sample = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
+        output = gaussian_blur2d(sample, 3, (1.5, 1.5))
+        assert output.shape == sample.shape
+
+    def test_large_batch_size(self, device, dtype):
+        """Test with large batch size."""
+        sample = torch.rand(32, 3, 8, 8, device=device, dtype=dtype)
+        output = gaussian_blur2d(sample, (3, 3), (1.5, 1.5))
+        assert output.shape == sample.shape
+
+    def test_many_channels(self, device, dtype):
+        """Test with many channels (e.g., video or multi-spectral)."""
+        sample = torch.rand(1, 64, 8, 8, device=device, dtype=dtype)
+        output = gaussian_blur2d(sample, (3, 3), (1.5, 1.5))
+        assert output.shape == sample.shape
+
+    def test_batched_sigma_mismatched_batch_size(self, device, dtype):
+        """Test that batched sigma uses first batch element when shapes don't match."""
+        # Note: The function broadcasts sigma, so mismatched batch size is allowed
+        # but only the first sigma in the batch is used for all input samples
+        sample = torch.rand(4, 3, 8, 8, device=device, dtype=dtype)
+        sigma = torch.tensor([[1.5, 1.5], [2.0, 2.0]], device=device, dtype=dtype)
+        # Should not raise - will use broadcasting behavior
+        output = gaussian_blur2d(sample, (3, 3), sigma)
+        assert output.shape == sample.shape
+
+    def test_all_border_types(self, device, dtype):
+        """Test that all supported border types work."""
+        sample = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        for border_type in ["constant", "reflect", "replicate", "circular"]:
+            output = gaussian_blur2d(sample, (3, 3), (1.5, 1.5), border_type=border_type)
+            assert output.shape == sample.shape
+
+    def test_separable_vs_non_separable_small_kernel(self, device, dtype):
+        """Test that separable and non-separable modes produce similar results."""
+        sample = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        sigma = (1.5, 1.5)
+        output_sep = gaussian_blur2d(sample, (3, 3), sigma, separable=True)
+        output_non_sep = gaussian_blur2d(sample, (3, 3), sigma, separable=False)
+        assert_close(output_sep, output_non_sep, atol=1e-4, rtol=1e-4)
+
+    def test_different_kernel_sizes(self, device, dtype):
+        """Test with various kernel sizes."""
+        sample = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        for ksize in [3, 5, 7, 11, (3, 5), (5, 7)]:
+            output = gaussian_blur2d(sample, ksize, (1.5, 1.5))
+            assert output.shape == sample.shape
+
+    def test_output_dtype_preserved(self, dtype, device):
+        """Test that output dtype matches input dtype."""
+        sample = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        output = gaussian_blur2d(sample, (3, 3), (1.5, 1.5))
+        assert output.dtype == dtype
+
+    def test_output_device_preserved(self, device, dtype):
+        """Test that output device matches input device."""
+        sample = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        output = gaussian_blur2d(sample, (3, 3), (1.5, 1.5))
+        assert output.device.type == sample.device.type

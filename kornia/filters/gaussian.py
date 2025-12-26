@@ -21,12 +21,12 @@ from typing import Any
 
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor, tensor
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils import deprecated
 
 from .filter import filter2d, filter2d_separable
-from .kernels import _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
-
+from .kernels import _check_kernel_size, _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
+import torch
 
 def gaussian_blur2d(
     input: Tensor,
@@ -44,37 +44,63 @@ def gaussian_blur2d(
 
     Arguments:
         input: the input tensor with shape :math:`(B,C,H,W)`.
-        kernel_size: the size of the kernel.
-        sigma: the standard deviation of the kernel.
+        kernel_size: the size of the kernel. Can be an integer or tuple of two integers (height, width).
+        sigma: the standard deviation of the kernel. Can be a tuple of two floats or a tensor with shape :math:`(B, 2)`.
+          Values must be positive.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        separable: run as composition of two 1d-convolutions.
+        separable: run as composition of two 1d-convolutions. Default: ``True``.
 
     Returns:
         the blurred tensor with shape :math:`(B, C, H, W)`.
+
+    Raises:
+        RuntimeError: if input is not a 4D tensor.
+        RuntimeError: if sigma values are not positive.
+        RuntimeError: if kernel_size is not a positive odd integer.
 
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/gaussian_blur.html>`__.
 
     Examples:
+        >>> import torch
         >>> input = torch.rand(2, 4, 5, 5)
         >>> output = gaussian_blur2d(input, (3, 3), (1.5, 1.5))
         >>> output.shape
         torch.Size([2, 4, 5, 5])
 
+        >>> # Single kernel size applies to both dimensions
+        >>> output = gaussian_blur2d(input, 3, (1.5, 1.5))
+        >>> output.shape
+        torch.Size([2, 4, 5, 5])
+
+        >>> # Using batched sigma (different sigma per batch element)
+        >>> sigma_batch = torch.tensor([[1.5, 1.5], [2.0, 2.0]])
+        >>> output = gaussian_blur2d(input[:2], (3, 3), sigma_batch)
+        >>> output.shape
+        torch.Size([2, 4, 5, 5])
+
+        >>> # Using tensor sigma
         >>> output = gaussian_blur2d(input, (3, 3), torch.tensor([[1.5, 1.5]]))
         >>> output.shape
         torch.Size([2, 4, 5, 5])
 
     """
     KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    _check_kernel_size(kernel_size, min_value=0)
 
     if isinstance(sigma, tuple):
         sigma = tensor([sigma], device=input.device, dtype=input.dtype)
     else:
         KORNIA_CHECK_IS_TENSOR(sigma)
         sigma = sigma.to(device=input.device, dtype=input.dtype)
+
+    # Validate sigma values are positive
+    KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
+    KORNIA_CHECK(torch.all(sigma > 0).item(),f"sigma must be positive, got {sigma}")
+
 
     if separable:
         ky, kx = _unpack_2d_ks(kernel_size)
