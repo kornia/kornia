@@ -52,12 +52,19 @@ jobs:
       matrix:
         os: ["ubuntu-latest", "windows-latest"]
         pytorch-dtype: ["float32", "float64"]
+        python-version: ["3.11", "3.12", "3.13"]
+        pytorch-version: ["2.5.1", "2.9.1"]
+        exclude:
+          # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on Windows
+          - os: windows-latest
+            python-version: "3.13"
+            pytorch-version: "2.5.1"
 
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
-      python-version: '["3.11", "3.12", "3.13"]'
-      pytorch-version: ${{ matrix.os == 'windows-latest' && '["2.9.1"]' || '["2.5.1", "2.9.1"]' }}
+      python-version: '["${{ matrix.python-version }}"]'
+      pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}

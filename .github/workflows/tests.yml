@@ -55,10 +55,6 @@ jobs:
       matrix:
         python-version: ${{ fromJSON(inputs.python-version) }}
         pytorch-version: ${{ fromJSON(inputs.pytorch-version) }}
-        exclude:
-          # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on Windows
-          - python-version: "3.13"
-            pytorch-version: "2.5.1"
 
     steps:
       - name: Checkout repository
