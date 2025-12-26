@@ -89,4 +89,5 @@ jobs:
           KORNIA_TEST_DEVICE: cpu
           KORNIA_TEST_DTYPE: ${{ inputs.pytorch-dtype }}
           KORNIA_TEST_RUNSLOW: ${{ inputs.runslow }}
+          KORNIA_TEST_OPTIMIZER: ""
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} test ${{ inputs.pytest-extra }}
