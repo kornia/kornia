@@ -230,12 +230,12 @@ class PaliGemma2(VLMBase):
             token_ids = input_ids
         if mask is None and attention_mask is not None:
             mask = attention_mask
-        
+
         if images is None:
             raise ValueError("Either images or pixel_values must be provided")
         if token_ids is None:
             raise ValueError("Either token_ids or input_ids must be provided")
-        
+
         B = images.shape[0]
 
         if mask is None:

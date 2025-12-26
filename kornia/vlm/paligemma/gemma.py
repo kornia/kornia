@@ -176,16 +176,16 @@ class GemmaDecoder(nn.Module):
         # Create causal mask: lower triangular matrix (including diagonal)
         # Positions can attend to themselves and all previous positions
         # Upper triangle (future positions) is masked with -inf
-        # 
+        #
         # For cached positions: all new positions can attend to all cached positions
         # For new positions: use standard causal mask (lower triangular)
         causal = torch.full((L, total_len), float("-inf"), dtype=dtype, device=device)
-        
+
         if L > 0:
             # All new positions can attend to all cached positions
             if cache_len > 0:
                 causal[:, :cache_len] = 0.0
-            
+
             # Create lower triangular mask for new positions
             # Position i in new sequence can attend to positions [cache_len, cache_len + i + 1)
             for i in range(L):
