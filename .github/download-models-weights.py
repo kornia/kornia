@@ -47,6 +47,13 @@ MODELS = {
     "rtdetr_r18vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
     # VisionTransformer - used by VisionTransformer.from_config doctest
     "vit_b_16": "https://huggingface.co/kornia/vit_b16_augreg_i21k_r224/resolve/main/vit_b-16.pth",
+    # LocalFeatureMatcher - AffNet and HardNet (used by LocalFeatureMatcher doctest)
+    "affnet": "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth",
+    "hardnet_liberty": "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth",
+    # LoFTR - feature matching (used by LoFTR doctest)
+    "loftr_outdoor": "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt",
+    # MKD - descriptor (used by MKDDescriptor doctest)
+    "mkd_concat": "https://github.com/manyids2/mkd_pytorch/raw/master/mkd_pytorch/mkd-concat-64.pth",
 }
 
 
