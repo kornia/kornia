@@ -58,8 +58,11 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.8.1
         with:
           pixi-version: v0.40.0
-          cache: false
+          cache: true
           environments: ${{ steps.pixi-env.outputs.name }}
+
+      - name: Install environment
+        run: pixi install -e ${{ steps.pixi-env.outputs.name }} --locked
 
       - name: Install docs dependencies
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install-docs
