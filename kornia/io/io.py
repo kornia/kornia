@@ -145,16 +145,31 @@ def load_image(
     raise NotImplementedError(f"Unknown type: {desired_type}")
 
 
-def _write_uint8_image(path_file: Path, img_np: Any, quality: int) -> None:
+def _detect_image_mode(img_np: Any) -> str:
+    """Detect the image mode (mono or rgb) from numpy array.
+
+    Args:
+        img_np: Image numpy array with shape HxWxC (always has channel dimension).
+
+    Returns:
+        "mono" for grayscale images, "rgb" for color images.
+    """
+    # Note: img_np always has at least 3 dimensions (HxWxC) because write_image()
+    # ensures channel dimension exists before calling this function.
+    return "mono" if img_np.shape[-1] == 1 else "rgb"
+
+
+def _write_uint8_image(path_file: Path, img_np: Any, quality: int | None) -> None:
     """Write uint8 image to file."""
-    if path_file.suffix.lower() in [".jpg", ".jpeg"]:
-        mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
+    suffix = path_file.suffix.lower()
+    mode = _detect_image_mode(img_np)
+    if suffix in [".jpg", ".jpeg"]:
+        if quality is None:
+            quality = 80
         kornia_rs.write_image_jpeg(str(path_file), img_np, mode=mode, quality=quality)
-    elif path_file.suffix.lower() == ".png":
-        mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
+    elif suffix == ".png":
         kornia_rs.write_image_png_u8(str(path_file), img_np, mode=mode)
-    elif path_file.suffix.lower() == ".tiff":
-        mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
+    elif suffix == ".tiff":
         kornia_rs.write_image_tiff_u8(str(path_file), img_np, mode=mode)
     else:
         raise NotImplementedError(f"Unsupported file extension: {path_file.suffix} for uint8 image")
@@ -162,10 +177,11 @@ def _write_uint8_image(path_file: Path, img_np: Any, quality: int) -> None:
 
 def _write_uint16_image(path_file: Path, img_np: Any) -> None:
     """Write uint16 image to file."""
-    mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
-    if path_file.suffix.lower() == ".png":
+    suffix = path_file.suffix.lower()
+    mode = _detect_image_mode(img_np)
+    if suffix == ".png":
         kornia_rs.write_image_png_u16(str(path_file), img_np, mode=mode)
-    elif path_file.suffix.lower() == ".tiff":
+    elif suffix == ".tiff":
         kornia_rs.write_image_tiff_u16(str(path_file), img_np, mode=mode)
     else:
         raise NotImplementedError(f"Unsupported file extension: {path_file.suffix} for uint16 image")
@@ -173,20 +189,22 @@ def _write_uint16_image(path_file: Path, img_np: Any) -> None:
 
 def _write_float32_image(path_file: Path, img_np: Any) -> None:
     """Write float32 image to file."""
-    mode = "mono" if img_np.ndim == 2 or (img_np.ndim == 3 and img_np.shape[-1] == 1) else "rgb"
-    if path_file.suffix.lower() == ".tiff":
+    suffix = path_file.suffix.lower()
+    mode = _detect_image_mode(img_np)
+    if suffix == ".tiff":
         kornia_rs.write_image_tiff_f32(str(path_file), img_np, mode=mode)
     else:
         raise NotImplementedError(f"Unsupported file extension: {path_file.suffix} for float32 image")
 
 
-def write_image(path_file: str | Path, image: Tensor, quality: int = 80) -> None:
+def write_image(path_file: str | Path, image: Tensor, quality: int | None = None) -> None:
     """Save an image file using the Kornia Rust backend.
 
     Args:
         path_file: Path to a valid image file.
         image: Image tensor with shape :math:`(3,H,W)`, `(1,H,W)` and `(H,W)`.
-        quality: The quality of the JPEG encoding. If the file extension is .png or .tiff, the quality is ignored.
+        quality: The quality of the JPEG encoding (1-100). If None, defaults to 80 for JPEG files.
+                If the file extension is .png or .tiff, the quality is ignored.
 
     Return:
         None.
