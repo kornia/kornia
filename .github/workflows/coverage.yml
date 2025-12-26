@@ -35,7 +35,7 @@ jobs:
     # Only run tests with slow marker which aren't dynamo tests
     runs-on: ${{ inputs.os }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         pytorch-dtype: ["float32", "float64"]
 
@@ -65,7 +65,7 @@ jobs:
     # Run all dynamo (torch.compile) related tests
     runs-on: ${{ inputs.os }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         pytorch-dtype: ["float32"]
 
@@ -97,7 +97,7 @@ jobs:
     # Run all tests which didn't have a slow marker or are dynamo tests
     runs-on: ${{ inputs.os }}
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         pytorch-dtype: ["float32", "float64"]
 
