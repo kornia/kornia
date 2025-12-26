@@ -168,6 +168,13 @@ def pytest_generate_tests(metafunc) -> None:
 
 def pytest_collection_modifyitems(config, items):
     """Collect test options."""
+    # Deselect dynamo/compile tests when no optimizer is specified
+    # Check environment variable directly (not config option which has default "inductor")
+    optimizer_env = os.environ.get("KORNIA_TEST_OPTIMIZER", "").strip()
+    if not optimizer_env:
+        # Filter out tests with "dynamo" or "compile" in their name
+        items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
+
     if config.getoption("--runslow"):
         # --runslow given in cli: do not skip slow tests
         return
