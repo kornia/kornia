@@ -85,8 +85,19 @@ jobs:
       - name: Install dependencies
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
 
+      - name: Check PyTorch compatibility
+        id: check-pytorch
+        run: |
+          if [ "${{ matrix.python-version }}" == "3.13" ] && [ "${{ matrix.pytorch-version }}" == "2.5.1" ] && [ "${{ inputs.os }}" == "windows-latest" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "PyTorch 2.5.1 not available for Python 3.13 on Windows, skipping..."
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
       - name: Install specific PyTorch version
-        if: matrix.pytorch-version != ''
+        if: matrix.pytorch-version != '' && steps.check-pytorch.outputs.skip != 'true'
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} uv pip install --upgrade "torch==${{ matrix.pytorch-version }}"
 
       - name: Run tests

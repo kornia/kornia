@@ -75,7 +75,7 @@ jobs:
     with:
       os: "windows-latest"
       python-version: '["3.12", "3.13"]'
-      pytorch-version: '["2.5.1", "2.9.1"]'
+      pytorch-version: '["2.9.1"]'  # Skip 2.5.1 - no Python 3.13 wheels on Windows
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
