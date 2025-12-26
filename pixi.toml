@@ -33,6 +33,9 @@ py313 = { features = ["py313"], solve-group = "py313" }
 # ------------------------------------------------------------------------------
 
 [tasks]
+# Installation
+install = { cmd = "uv sync --extra dev", description = "Install dev dependencies" }
+install-docs = { cmd = "uv sync --extra dev --extra docs", description = "Install dev + docs dependencies" }
 # Tests - use env vars (KORNIA_TEST_DEVICE, KORNIA_TEST_DTYPE, KORNIA_TEST_RUNSLOW)
 test = { cmd = "uv run pytest -v tests/", description = "Run tests (configure via KORNIA_TEST_* env vars)" }
 test-f32 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DTYPE = "float32" } }
