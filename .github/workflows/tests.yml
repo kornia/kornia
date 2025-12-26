@@ -81,13 +81,8 @@ jobs:
           cache: true
           environments: ${{ steps.pixi-env.outputs.name }}
 
-      - name: Install dependencies and PyTorch version
-        run: |
-          pixi run -e ${{ steps.pixi-env.outputs.name }} install
-          if [ -n "${{ matrix.pytorch-version }}" ]; then
-            pixi run -e ${{ steps.pixi-env.outputs.name }} uv pip install --upgrade "torch==${{ matrix.pytorch-version }}"
-          fi
-        shell: bash
+      - name: Install dependencies
+        run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
 
       - name: Run tests
         env:

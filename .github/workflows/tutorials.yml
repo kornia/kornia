@@ -23,7 +23,6 @@ permissions:
 
 jobs:
   run:
-    name: py${{ matrix.python-version }}
     runs-on: ${{ inputs.os }}
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
