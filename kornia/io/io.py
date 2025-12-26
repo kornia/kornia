@@ -22,7 +22,9 @@ from pathlib import Path
 from typing import Any
 
 import kornia_rs
+import numpy as np
 import torch
+from PIL import Image
 
 import kornia
 from kornia.core import Device, Tensor
@@ -44,7 +46,7 @@ class ImageLoadType(Enum):
 def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
     """Read an image file and decode using the Kornia Rust backend.
 
-    The decoded image is returned as numpy array with shape HxWxC.
+    Falls back to Pillow when kornia_rs cannot handle the image format.
 
     Args:
         path_file: Path to a valid image file.
@@ -52,20 +54,28 @@ def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
 
     Return:
         Image tensor with shape :math:`(3,H,W)`.
-
     """
-    # read image and return as `np.ndarray` with shape HxWxC
-    if path_file.suffix.lower() in [".jpg", ".jpeg"]:
-        img = kornia_rs.read_image_jpegturbo(str(path_file))
-    else:
-        img = kornia_rs.read_image_any(str(path_file))
+    # Try reading with kornia_rs first, fallback to Pillow if needed
+    try:
+        if path_file.suffix.lower() in [".jpg", ".jpeg"]:
+            img = kornia_rs.read_image_jpegturbo(str(path_file))
+        else:
+            img = kornia_rs.read_image_any(str(path_file))
+    except (FileExistsError, RuntimeError):
+        # Fallback to Pillow for images that kornia_rs can't handle
+        # (e.g., RGBA, paletted PNGs, or corrupted/unsupported formats)
+        pil = Image.open(str(path_file))
+        if pil.mode == "L":
+            img = np.array(pil)[:, :, None]  # Add channel dimension for grayscale
+        else:
+            pil_rgb = pil.convert("RGB")
+            img = np.array(pil_rgb)
 
     # convert the image to tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)
 
     # move the tensor to the desired device,
     dev = device if isinstance(device, torch.device) or device is None else torch.device(device)
-
     return img_t.to(device=dev)
 
 
