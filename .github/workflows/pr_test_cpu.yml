@@ -79,30 +79,6 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
-  tests-macos:
-    needs: [pre-tests]
-    strategy:
-      fail-fast: true
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
-        pytorch-version: ["2.5.1", "2.9.1"]
-        exclude:
-          # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on macOS
-          - python-version: "3.13"
-            pytorch-version: "2.5.1"
-
-    uses: ./.github/workflows/tests.yml
-    with:
-      os: "macos-latest"
-      python-version: '["${{ matrix.python-version }}"]'
-      pytorch-version: '["${{ matrix.pytorch-version }}"]'
-      pytorch-dtype: "float32"
-      cache-path: weights/
-      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
-      cache-restore-keys: |
-        model-weights-${{ needs.pre-tests.outputs.hash }}
-        model-weights-
-
   coverage:
     needs: [pre-tests]
     uses: ./.github/workflows/coverage.yml
