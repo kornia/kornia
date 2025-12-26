@@ -49,6 +49,7 @@ dev = [
   "numpy<3",
   "onnx",
   "onnxruntime",
+  "onnxscript",
   "pillow",
   "pre-commit",
   "pytest",
