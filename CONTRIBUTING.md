@@ -66,122 +66,111 @@ repository under your GitHub account.
 
 4. Creating a development environment
 
-    **Using kornia script (Recommended)**
+    **Using Pixi (Recommended)**
 
-    Kornia now uses [uv](https://github.com/astral-sh/uv) for fast Python package management and virtual environment creation.
-    The `setup_dev_env.sh` script will automatically install uv (if not already installed), create a virtual environment,
-    and install all development dependencies including PyTorch with the appropriate CUDA version.
+    Kornia uses [pixi](https://pixi.sh) for fast Python package management and environment management. Pixi provides a unified way to manage dependencies, environments, and tasks across different platforms.
 
-    ```bash
-    $ ./setup_dev_env.sh
-    ```
+    **Install Pixi:**
 
-    This script will:
-    - Install uv if it's not already available
-    - Create a virtual environment in the `./venv` directory
-    - Install PyTorch with the appropriate CUDA version (default CUDA 12.1)
-    - Install all development dependencies using uv dependency groups
-    - Install documentation dependencies using uv dependency groups
-
-    You can customize the Python version, PyTorch version, and CUDA version using environment variables:
-    ```bash
-    $ PYTHON_VERSION=3.10 PYTORCH_VERSION=2.4.0 CUDA_VERSION=11.8 ./setup_dev_env.sh
-    ```
-
-    To use CPU-only PyTorch:
-    ```bash
-    $ PYTORCH_MODE=cpuonly ./setup_dev_env.sh
-    ```
-
-    **Using justfile commands (Recommended)**
-
-    Kornia provides a `justfile` with convenient commands for development tasks. The justfile automatically
-    ensures the virtual environment is set up before running any commands.
-
-    To see all available commands:
-    ```bash
-    $ just
-    ```
-
-    To run tests:
-    ```bash
-    $ just test-cpu        # Run CPU tests
-    $ just test-cuda       # Run CUDA tests
-    $ just test-all        # Run all tests
-    ```
-
-    To run linting and type checking:
-    ```bash
-    $ just lint            # Run code formatting and linting
-    $ just mypy            # Run type checking
-    ```
-
-    **Manually setup with uv**
-
-    If you prefer to set up the environment manually:
-
-    1. Install uv:
     ```bash
     # On Linux/macOS
-    $ curl -LsSf https://astral.sh/uv/install.sh | sh
+    curl -fsSL https://pixi.sh/install.sh | bash
 
-    # Or using pip
-    $ pip install uv
+    # On Windows (PowerShell)
+    irm https://pixi.sh/install.ps1 | iex
+
+    # Or using conda/mamba
+    conda install -c conda-forge pixi
     ```
 
-    2. Create and activate a virtual environment:
+    **Set up the development environment:**
+
     ```bash
-    $ uv venv
-    $ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+    # Install all dependencies (defaults to Python 3.11)
+    pixi install
+
+    # For specific Python versions
+    pixi install -e py312  # Python 3.12
+    pixi install -e py313  # Python 3.13
+
+    # For CUDA development (requires reinstall of PyTorch)
+    pixi run -e cuda install
     ```
 
-    3. Install PyTorch with appropriate CUDA version:
+    **Available tasks:**
+
+    Kornia provides several tasks via pixi for common development workflows:
+
     ```bash
-    # For CUDA 12.1 (default)
-    $ uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+    # Installation
+    pixi run install          # Install dev dependencies
+    pixi run install-docs     # Install dev + docs dependencies
 
-    # For CPU-only
-    $ uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+    # Testing
+    pixi run test             # Run tests (configure via KORNIA_TEST_* env vars)
+    pixi run test-f32         # Run tests with float32
+    pixi run test-f64         # Run tests with float64
+    pixi run test-slow        # Run slow tests
+    pixi run test-quick       # Run quick tests (excludes jit, grad, nn)
+
+    # CUDA testing (requires cuda environment)
+    pixi run -e cuda test-cuda      # Run tests on CUDA
+    pixi run -e cuda test-cuda-f32  # Run CUDA tests with float32
+    pixi run -e cuda test-cuda-f64  # Run CUDA tests with float64
+
+    # Code quality
+    pixi run lint             # Run ruff linting
+    pixi run typecheck        # Run type checking with ty
+    pixi run doctest          # Run doctests
+
+    # Documentation
+    pixi run build-docs       # Build documentation
+
+    # Utilities
+    pixi run clean            # Clean Python cache files
     ```
 
-    4. Install Kornia development dependencies:
+    **Environment variables for tests:**
+
+    Tests can be configured using environment variables:
+
     ```bash
-    $ uv pip install -e .[dev,x]
-    $ uv pip install -e .[docs]  # For documentation development
+    # Set device (cpu, cuda, mps, tpu)
+    export KORNIA_TEST_DEVICE=cuda
+
+    # Set dtype (float32, float64, float16, bfloat16)
+    export KORNIA_TEST_DTYPE=float32
+
+    # Run slow tests
+    export KORNIA_TEST_RUNSLOW=true
+
+    # Then run tests
+    pixi run test
     ```
 
-    **Attention**: If *Kornia* was already installed in your virtual environment, remove it with
-    `uv pip uninstall kornia` before reinstalling it in editable mode with the `-e` flag.
+    **Dependency Management:**
 
-    **Dependency Management with uv.lock**
+    Kornia uses `pixi.toml` for dependency management. The configuration includes:
 
-    Kornia uses a `uv.lock` file for reproducible dependency management. This ensures all developers get exactly
-    the same versions of dependencies:
+    - **Environments**: `default` (Python 3.11), `cuda` (CUDA development), `py311`, `py312`, `py313` (specific Python versions)
+    - **Dependencies**: Defined in `pyproject.toml` and managed by pixi
+    - **Tasks**: Common development tasks are defined in `pixi.toml`
 
-    - **Adding dependencies**: Add new dependencies to the appropriate section in `pyproject.toml`:
-      - Main dependencies: `dependencies = [...]`
-      - Dev dependencies: `optional-dependencies.dev = [...]`
-      - Docs dependencies: `optional-dependencies.docs = [...]`
-      - Extra dependencies: `optional-dependencies.x = [...]`
+    To add new dependencies, update `pyproject.toml` and then:
 
-    - **Updating the lock file**: After adding dependencies, regenerate the lock file:
-      ```bash
-      $ just lock-update
-      # or: uv lock --upgrade
-      ```
+    ```bash
+    pixi install  # Updates the environment with new dependencies
+    ```
 
-    - **Installing from lock file**: The setup script automatically uses the lock file when available:
-      ```bash
-      $ just sync  # Install dependencies from lock file
-      # or: uv sync --frozen
-      ```
+    **Note on CUDA development:**
 
-    - **Updating specific packages**:
-      ```bash
-      $ uv lock --upgrade-package <package-name>
-      ```
+    For CUDA development, pixi installs PyTorch from the standard PyPI, but you need to reinstall it with CUDA support:
 
-    Always commit both your `pyproject.toml` changes AND the updated `uv.lock` file together.
+    ```bash
+    pixi run -e cuda install  # This handles the PyTorch CUDA reinstall automatically
+    ```
+
+    The CUDA environment uses PyTorch with CUDA 12.1 by default. The install task automatically handles the reinstall process.
 
 5. Develop the code on your branch, and before creating the pull request, make sure to ensure the code passes the checks.
 
@@ -363,7 +352,7 @@ maintainable.
         assert x.shape == (batch_size, 2, 3)
     ```
 
-- We give support to static type checker for Python >= 3.8
+- We give support to static type checker for Python >= 3.11
 
   - Please, read
     [MyPy cheatsheet](https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html#type-hints-cheat-sheet-python-3) for

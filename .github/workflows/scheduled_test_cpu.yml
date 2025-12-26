@@ -2,10 +2,13 @@ name: Tests on CPU (scheduled)
 
 on:
   push:
-    branches: [main, test-me-*]
+    branches: [main]
   schedule:
-    - cron: "0 4 * * *"
+    - cron: '0 4 * * *'
   workflow_call:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,7 +23,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - uses: ./.github/actions/env
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: v0.40.0
+          cache: true
+
       - uses: actions/cache@v4
         id: cache-weights
         with:
@@ -30,7 +38,7 @@ jobs:
 
       - name: Download models weights...
         if: steps.cache-weights.outputs.cache-hit != 'true'
-        run: python .github/download-models-weights.py -t weights/
+        run: pixi run uv run python .github/download-models-weights.py -t weights/
 
       - name: write hashid
         id: hashid
@@ -41,16 +49,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
         pytorch-dtype: ["float32", "float64"]
 
     uses: ./.github/workflows/tests.yml
     with:
-      os: "Ubuntu-latest"
-      python-version: '["3.9", "3.10", "3.11", "3.12"]'
-      pytorch-version: '["2.0.1", "2.1.2", "2.2.2", "2.3.1", "2.4.0", "2.5.1"]'
+      os: "ubuntu-latest"
+      python-version: '["3.11", "3.12", "3.13"]'
+      pytorch-version: '["2.1.2", "2.2.2", "2.3.1", "2.4.0", "2.5.1", "2.9.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
-      pytest-extra: "--runslow"
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
       cache-restore-keys: |
@@ -60,15 +66,21 @@ jobs:
   tests-cpu-windows:
     needs: [pre-tests]
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         pytorch-dtype: ["float32", "float64"]
+        python-version: ["3.11", "3.12", "3.13"]
+        pytorch-version: ["2.5.1", "2.9.1"]
+        exclude:
+          # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on Windows
+          - python-version: "3.13"
+            pytorch-version: "2.5.1"
 
     uses: ./.github/workflows/tests.yml
     with:
-      os: "Windows-latest"
-      python-version: '["3.12"]'
-      pytorch-version: '["2.0.1", "2.5.1"]'
+      os: "windows-latest"
+      python-version: '["${{ matrix.python-version }}"]'
+      pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
@@ -79,13 +91,23 @@ jobs:
   tests-cpu-mac:
     needs: [pre-tests]
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         pytorch-dtype: ["float32", "float64"]
+        python-version: ["3.11", "3.12", "3.13"]
+        pytorch-version: ["2.5.1", "2.9.1"]
+        exclude:
+          # PyTorch 2.5.1 doesn't have wheels for Python 3.13 on macOS
+          - python-version: "3.13"
+            pytorch-version: "2.5.1"
+          # macOS only runs float32 tests
+          - pytorch-dtype: "float64"
 
     uses: ./.github/workflows/tests.yml
     with:
-      os: "MacOS-latest"
+      os: "macos-latest"
+      python-version: '["${{ matrix.python-version }}"]'
+      pytorch-version: '["${{ matrix.pytorch-version }}"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
@@ -104,7 +126,7 @@ jobs:
         model-weights-
 
   typing:
-    uses: ./.github/workflows/mypy.yml
+    uses: ./.github/workflows/typecheck.yml
 
   tutorials:
     uses: ./.github/workflows/tutorials.yml

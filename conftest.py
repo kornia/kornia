@@ -16,7 +16,6 @@
 #
 
 import os
-import sys
 from functools import partial
 from itertools import product
 
@@ -25,7 +24,6 @@ import pytest
 import torch
 
 import kornia
-from kornia.utils._compat import torch_version
 
 try:
     import torch._dynamo
@@ -41,39 +39,39 @@ WEIGHTS_CACHE_DIR = "weights/"
 def get_test_devices() -> dict[str, torch.device]:
     """Create a dictionary with the devices to test the source code.
 
-    CUDA devices will be test only in case the current hardware supports it.
+    CUDA devices will be tested only if the current hardware supports it.
 
-    Return:
-        dict(str, torch.device): list with devices names.
-
+    Returns:
+        Dictionary mapping device names to torch.device objects.
     """
-    devices: dict[str, torch.device] = {}
-    devices["cpu"] = torch.device("cpu")
+    devices: dict[str, torch.device] = {"cpu": torch.device("cpu")}
+
     if torch.cuda.is_available():
         devices["cuda"] = torch.device("cuda:0")
+
     if kornia.xla_is_available():
         import torch_xla.core.xla_model as xm
 
         devices["tpu"] = xm.xla_device()
-    if hasattr(torch.backends, "mps"):
-        if torch.backends.mps.is_available():
-            devices["mps"] = torch.device("mps")
+
+    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        devices["mps"] = torch.device("mps")
+
     return devices
 
 
 def get_test_dtypes() -> dict[str, torch.dtype]:
-    """Create a dictionary with the dtypes the source code.
+    """Create a dictionary with the dtypes to test.
 
-    Return:
-        dict(str, torch.dtype): list with dtype names.
-
+    Returns:
+        Dictionary mapping dtype names to torch.dtype objects.
     """
-    dtypes: dict[str, torch.dtype] = {}
-    dtypes["bfloat16"] = torch.bfloat16
-    dtypes["float16"] = torch.float16
-    dtypes["float32"] = torch.float32
-    dtypes["float64"] = torch.float64
-    return dtypes
+    return {
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+        "float32": torch.float32,
+        "float64": torch.float64,
+    }
 
 
 # setup the devices to test the source code
@@ -82,13 +80,15 @@ TEST_DEVICES: dict[str, torch.device] = get_test_devices()
 TEST_DTYPES: dict[str, torch.dtype] = get_test_dtypes()
 TEST_OPTIMIZER_BACKEND = {"", None, "jit", *_backends_non_experimental}
 # Combinations of device and dtype to be excluded from testing.
-# DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
-DEVICE_DTYPE_BLACKLIST = {}
+# Example: DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
+DEVICE_DTYPE_BLACKLIST: set[tuple[str, ...]] = set()
 
 
 @pytest.fixture()
 def device(device_name) -> torch.device:
-    """Return device for testing."""
+    """Return device for testing, skipping if device is unavailable."""
+    if device_name not in TEST_DEVICES:
+        pytest.skip(f"Device '{device_name}' is not available on this system")
     return TEST_DEVICES[device_name]
 
 
@@ -100,79 +100,69 @@ def dtype(dtype_name) -> torch.dtype:
 
 @pytest.fixture()
 def torch_optimizer(optimizer_backend):
-    """Return torch optimizer."""
+    """Return torch optimizer based on backend selection.
+
+    Args:
+        optimizer_backend: The optimization backend ('jit', 'inductor', etc.)
+
+    Returns:
+        A function that optimizes/compiles torch modules or functions.
+    """
     if not optimizer_backend:
         return lambda x: x
 
     if optimizer_backend == "jit":
         return torch.jit.script
 
-    if hasattr(torch, "compile") and sys.platform == "linux":
-        if (not (sys.version_info[:2] == (3, 11) and torch_version() in {"2.0.0", "2.0.1"})) and (
-            not sys.version_info[:2] == (3, 12)
-        ):
-            # torch compile don't have support for python3.12 yet
-            torch._dynamo.reset()
-            # torch compile just have support for python 3.11 after torch 2.1.0
-            return partial(
-                torch.compile, backend=optimizer_backend
-            )  # TODO: explore the others parameters of torch compile
-
-    pytest.skip(f"skipped because {torch.__version__} not have `compile` available! Failed to setup dynamo.")
+    torch._dynamo.reset()
+    return partial(torch.compile, backend=optimizer_backend)
 
 
-def pytest_generate_tests(metafunc):
-    """Generate tests."""
-    device_names = None
-    dtype_names = None
-    optimizer_backends_names = None
+def _parse_test_option(config, option: str, all_values: dict | set) -> list[str]:
+    """Parse a test option from CLI, expanding 'all' to full list."""
+    raw_value = config.getoption(option)
+    if raw_value == "all":
+        return list(all_values.keys()) if isinstance(all_values, dict) else list(all_values)
+    return raw_value.split(",")
+
+
+def pytest_generate_tests(metafunc) -> None:
+    """Generate test parametrization based on fixtures and CLI options."""
+    # Build list of (fixture_name, values) for fixtures that are used
+    params: list[tuple[str, list]] = []
 
     if "device_name" in metafunc.fixturenames:
-        raw_value = metafunc.config.getoption("--device")
-        if raw_value == "all":
-            device_names = list(TEST_DEVICES.keys())
-        else:
-            device_names = raw_value.split(",")
+        params.append(("device_name", _parse_test_option(metafunc.config, "--device", TEST_DEVICES)))
     if "dtype_name" in metafunc.fixturenames:
-        raw_value = metafunc.config.getoption("--dtype")
-        if raw_value == "all":
-            dtype_names = list(TEST_DTYPES.keys())
-        else:
-            dtype_names = raw_value.split(",")
-
+        params.append(("dtype_name", _parse_test_option(metafunc.config, "--dtype", TEST_DTYPES)))
     if "optimizer_backend" in metafunc.fixturenames:
-        raw_value = metafunc.config.getoption("--optimizer")
-        if raw_value == "all":
-            optimizer_backends_names = TEST_OPTIMIZER_BACKEND
-        else:
-            optimizer_backends_names = raw_value.split(",")
+        params.append(("optimizer_backend", _parse_test_option(metafunc.config, "--optimizer", TEST_OPTIMIZER_BACKEND)))
 
-    if device_names is not None and dtype_names is not None and optimizer_backends_names is not None:
-        # Exclude any blacklisted device/dtype combinations.
-        params = [
-            combo
-            for combo in product(device_names, dtype_names, optimizer_backends_names)
-            if combo not in DEVICE_DTYPE_BLACKLIST
-        ]
-        metafunc.parametrize("device_name,dtype_name,optimizer_backend", params)
-    elif device_names is not None and dtype_names is not None and optimizer_backends_names is None:
-        # Exclude any blacklisted device/dtype combinations.
-        params = [combo for combo in product(device_names, dtype_names) if combo not in DEVICE_DTYPE_BLACKLIST]
-        metafunc.parametrize("device_name,dtype_name", params)
-    elif device_names is not None and dtype_names is None and optimizer_backends_names is not None:
-        params = product(device_names, optimizer_backends_names)
-        metafunc.parametrize("device_name,optimizer_backend", params)
+    if not params:
+        return
 
-    elif device_names is not None:
-        metafunc.parametrize("device_name", device_names)
-    elif dtype_names is not None:
-        metafunc.parametrize("dtype_name", dtype_names)
-    elif optimizer_backends_names is not None:
-        metafunc.parametrize("optimizer_backend", optimizer_backends_names)
+    # Single parameter: pass values directly (not as tuples)
+    if len(params) == 1:
+        name, values = params[0]
+        metafunc.parametrize(name, values)
+        return
+
+    # Multiple parameters: generate combinations and filter blacklisted ones
+    names = ",".join(name for name, _ in params)
+    values = [v for _, v in params]
+    combinations = [combo for combo in product(*values) if combo[:2] not in DEVICE_DTYPE_BLACKLIST]
+    metafunc.parametrize(names, combinations)
 
 
 def pytest_collection_modifyitems(config, items):
     """Collect test options."""
+    # Deselect dynamo/compile tests when no optimizer is specified
+    # Check environment variable directly (not config option which has default "inductor")
+    optimizer_env = os.environ.get("KORNIA_TEST_OPTIMIZER", "").strip()
+    if not optimizer_env:
+        # Filter out tests with "dynamo" or "compile" in their name
+        items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
+
     if config.getoption("--runslow"):
         # --runslow given in cli: do not skip slow tests
         return
@@ -184,30 +174,54 @@ def pytest_collection_modifyitems(config, items):
 
 
 def pytest_addoption(parser):
-    """Add options."""
-    parser.addoption("--device", action="store", default="cpu")
-    parser.addoption("--dtype", action="store", default="float32")
-    parser.addoption("--optimizer", action="store", default="inductor")
-    parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")
+    """Add options with environment variable fallbacks.
+
+    Environment variables (for CI/pixi integration):
+        KORNIA_TEST_DEVICE: Device to test on (default: cpu)
+        KORNIA_TEST_DTYPE: Data type to test (default: float32)
+        KORNIA_TEST_OPTIMIZER: Optimizer backend (default: inductor)
+        KORNIA_TEST_RUNSLOW: Run slow tests (default: false)
+    """
+    parser.addoption(
+        "--device",
+        action="store",
+        default=os.environ.get("KORNIA_TEST_DEVICE", "cpu"),
+        help="Device to run tests on (env: KORNIA_TEST_DEVICE)",
+    )
+    parser.addoption(
+        "--dtype",
+        action="store",
+        default=os.environ.get("KORNIA_TEST_DTYPE", "float32"),
+        help="Data type for tests (env: KORNIA_TEST_DTYPE)",
+    )
+    parser.addoption(
+        "--optimizer",
+        action="store",
+        default=os.environ.get("KORNIA_TEST_OPTIMIZER", "inductor"),
+        help="Optimizer backend (env: KORNIA_TEST_OPTIMIZER)",
+    )
+    parser.addoption(
+        "--runslow",
+        action="store_true",
+        default=os.environ.get("KORNIA_TEST_RUNSLOW", "false").lower() == "true",
+        help="Run slow tests (env: KORNIA_TEST_RUNSLOW)",
+    )
 
 
-def _setup_torch_compile():
-    if hasattr(torch, "compile") and sys.platform == "linux":
-        print("Setting up torch compile...")
-        torch.set_float32_matmul_precision("high")
+def _setup_torch_compile() -> None:
+    """Warm up torch.compile to reduce first-run latency in tests."""
+    print("Setting up torch compile...")
+    torch.set_float32_matmul_precision("high")
 
-        def _dummy_function(x, y):
-            return (x + y).sum()
+    def _dummy_fn(x, y):
+        return (x + y).sum()
 
-        class _dummy_module(torch.nn.Module):
-            def __init__(self):
-                super().__init__()
+    class _DummyModule(torch.nn.Module):
+        def forward(self, x):
+            return (x**2).sum()
 
-            def forward(self, x):
-                return (x**2).sum()
-
-        torch.compile(_dummy_function)
-        torch.compile(_dummy_module())
+    torch.compile(_dummy_fn)
+    torch.compile(_DummyModule())
 
 
 def pytest_sessionstart(session):
@@ -284,7 +298,7 @@ def pytest_report_header(config):
     import onnx
 
     env_info = _get_env_info()
-    CACHED_WEIGTHS = os.listdir(WEIGHTS_CACHE_DIR)
+    cached_weights = os.listdir(WEIGHTS_CACHE_DIR) if os.path.exists(WEIGHTS_CACHE_DIR) else []
     if "cpu" in env_info:
         desired_cpu_info = ["Model name", "Architecture", "CPU(s)", "Thread(s) per core", "CPU max MHz", "CPU min MHz"]
         cpu_info = "cpu info:\n" + "\n".join(
@@ -311,7 +325,7 @@ dev deps:
     - onnx-{onnx.__version__}
 {gcc_info}
 available optimizers: {TEST_OPTIMIZER_BACKEND}
-model weights cached: {CACHED_WEIGTHS}
+model weights cached: {cached_weights}
 """
 
 
@@ -323,21 +337,30 @@ def add_doctest_deps(doctest_namespace):
     doctest_namespace["kornia"] = kornia
 
 
-# the commit hash for the data version
-sha: str = "cb8f42bf28b9f347df6afba5558738f62a11f28a"
-sha2: str = "f7d8da661701424babb64850e03c5e8faec7ea62"
-sha3: str = "8b98f44abbe92b7a84631ed06613b08fee7dae14"
+# Test data commit hashes from kornia/data_test repository
+_DATA_TEST_SHA = {
+    "loftr": "cb8f42bf28b9f347df6afba5558738f62a11f28a",
+    "adalam": "f7d8da661701424babb64850e03c5e8faec7ea62",
+    "disk": "8b98f44abbe92b7a84631ed06613b08fee7dae14",
+}
+
+# URLs for test data files
+_TEST_DATA_URLS: dict[str, str] = {
+    "loftr_homo": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['loftr']}/loftr_outdoor_and_homography_data.pt?raw=true",
+    "loftr_fund": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['loftr']}/loftr_indoor_and_fundamental_data.pt?raw=true",
+    "adalam_idxs": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['adalam']}/adalam_test.pt?raw=true",
+    "lightglue_idxs": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['adalam']}/adalam_test.pt?raw=true",
+    "disk_outdoor": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['disk']}/knchurch_disk.pt?raw=true",
+    "dexined": "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
+}
 
 
 @pytest.fixture(scope="session")
 def data(request):
-    """Return loaded data."""
-    url = {
-        "loftr_homo": f"https://github.com/kornia/data_test/blob/{sha}/loftr_outdoor_and_homography_data.pt?raw=true",
-        "loftr_fund": f"https://github.com/kornia/data_test/blob/{sha}/loftr_indoor_and_fundamental_data.pt?raw=true",
-        "adalam_idxs": f"https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true",
-        "lightglue_idxs": f"https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true",
-        "disk_outdoor": f"https://github.com/kornia/data_test/blob/{sha3}/knchurch_disk.pt?raw=true",
-        "dexined": "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
-    }
-    return torch.hub.load_state_dict_from_url(url[request.param], map_location=torch.device("cpu"))
+    """Load test data from remote URL.
+
+    Use with @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
+    """
+    if request.param not in _TEST_DATA_URLS:
+        raise ValueError(f"Unknown test data: {request.param}. Available: {list(_TEST_DATA_URLS.keys())}")
+    return torch.hub.load_state_dict_from_url(_TEST_DATA_URLS[request.param], map_location=torch.device("cpu"))

@@ -60,14 +60,14 @@ class TestObjectDetector(BaseTester):
         post_processor = DETRPostProcessor(0.3, num_top_queries=3)
         detector = kornia.models.detection.ObjectDetector(model, pre_processor, post_processor)
 
-        data = torch.rand(3, 400, 640, device=device, dtype=dtype)
+        data = torch.rand(1, 3, 400, 640, device=device, dtype=dtype)
 
         model_path = tmp_path / "rtdetr.onnx"
 
         dynamic_axes = {"images": {0: "N"}}
         torch.onnx.export(
             detector,
-            [data],
+            data,
             model_path,
             input_names=["images"],
             output_names=["detections"],

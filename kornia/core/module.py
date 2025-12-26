@@ -254,7 +254,7 @@ class ImageModuleMixIn:
 
         """
         if name is None:
-            name = f"Kornia-{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}.jpg"
+            name = f"Kornia-{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}.jpg"
         if len(self._output_image.shape) == 3:
             out_image = self._output_image
         if len(self._output_image.shape) == 4:
