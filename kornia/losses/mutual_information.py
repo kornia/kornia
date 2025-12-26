@@ -43,7 +43,7 @@ def _normalize_signal(data: torch.Tensor, num_bins: int):
     return (data - min_val.unsqueeze(-1)) / (max_val - min_val).unsqueeze(-1) * num_bins
 
 
-def compute_joint_histogram(
+def _compute_joint_histogram(
     img_1: torch.Tensor,
     img_2: torch.Tensor,
     kernel_function=xu_kernel,
@@ -117,7 +117,7 @@ def normalized_mutual_information_loss(
     if input.shape != target.shape:
         raise ValueError(f"Shape mismatch: {input.shape} != {target.shape}")
 
-    P_xy = compute_joint_histogram(
+    P_xy = _compute_joint_histogram(
         input,
         target,
         kernel_function=kernel_function,
@@ -159,7 +159,7 @@ def mutual_information_loss(
     if input.shape != target.shape:
         raise ValueError(f"Shape mismatch: {input.shape} != {target.shape}")
 
-    P_xy = compute_joint_histogram(
+    P_xy = _compute_joint_histogram(
         input,
         target,
         kernel_function=kernel_function,
