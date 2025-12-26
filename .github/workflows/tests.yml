@@ -8,7 +8,7 @@ on:
       pytorch-version:
         required: false
         type: string
-        default: '["2.5.1"]'
+        default: '["2.9.1"]'
       os:
         required: false
         type: string
@@ -84,6 +84,10 @@ jobs:
 
       - name: Install dependencies
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
+
+      - name: Install specific PyTorch version
+        if: matrix.pytorch-version != ''
+        run: pixi run -e ${{ steps.pixi-env.outputs.name }} uv pip install --upgrade "torch==${{ matrix.pytorch-version }}" --index-url https://download.pytorch.org/whl/cpu
 
       - name: Run tests
         env:
