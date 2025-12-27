@@ -19,8 +19,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import torch
-
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE

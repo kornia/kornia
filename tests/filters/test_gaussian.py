@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-from networkx import sigma
 import pytest
 import torch
 
@@ -328,8 +327,8 @@ class TestGaussianBlur2d(BaseTester):
 
         # Test ONNX export - just ensure it doesn't error
         try:
-            import tempfile
             import os
+            import tempfile
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 onnx_path = os.path.join(tmpdir, "gaussian_blur2d.onnx")
