@@ -252,7 +252,7 @@ class GFTTAffNetHardNet(LocalFeature):
             num_features,
             config,
             ori_module=PassLAF() if upright else LAFOrienter(19),
-            aff_module=LAFAffNetShapeEstimator(True).eval(),
+            aff_module=LAFAffNetShapeEstimator(True, preserve_orientation=False).eval(),
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)
@@ -277,7 +277,7 @@ class HesAffNetHardNet(LocalFeature):
             num_features,
             config,
             ori_module=PassLAF() if upright else LAFOrienter(19),
-            aff_module=LAFAffNetShapeEstimator(True).eval(),
+            aff_module=LAFAffNetShapeEstimator(True, preserve_orientation=False).eval(),
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)
@@ -318,7 +318,10 @@ class KeyNetAffNetHardNet(LocalFeature):
             device = torch.device("cpu")
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
         detector = KeyNetDetector(
-            True, num_features=num_features, ori_module=ori_module, aff_module=LAFAffNetShapeEstimator(True).eval()
+            True,
+            num_features=num_features,
+            ori_module=ori_module,
+            aff_module=LAFAffNetShapeEstimator(True, preserve_orientation=False).eval(),
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor, scale_laf)

@@ -129,7 +129,7 @@ def _dct_8x8(input: Tensor) -> Tensor:
     device: Device = input.device
     # Make DCT tensor and scaling
     index: Tensor = torch.arange(8, dtype=dtype, device=device)
-    x, y, u, v = torch.meshgrid(index, index, index, index)
+    x, y, u, v = torch.meshgrid(index, index, index, index, indexing="ij")
     dct_tensor: Tensor = ((2.0 * x + 1.0) * u * pi / 16.0).cos() * ((2.0 * y + 1.0) * v * pi / 16.0).cos()
     alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
     alpha[0] = 1.0 / (2**0.5)
@@ -159,7 +159,7 @@ def _idct_8x8(input: Tensor) -> Tensor:
     input = input * dct_scale[None, None]
     # Make DCT tensor and scaling
     index: Tensor = torch.arange(8, dtype=dtype, device=device)
-    x, y, u, v = torch.meshgrid(index, index, index, index)
+    x, y, u, v = torch.meshgrid(index, index, index, index, indexing="ij")
     idct_tensor: Tensor = ((2.0 * u + 1.0) * x * pi / 16.0).cos() * ((2.0 * v + 1.0) * y * pi / 16.0).cos()
     # Apply DCT
     output: Tensor = 0.25 * torch.tensordot(input, idct_tensor, dims=2) + 128.0

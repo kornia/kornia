@@ -152,7 +152,6 @@ class RandomRotation90(GeometricAugmentationBase2D):
 
     Examples:
         >>> rng = torch.manual_seed(1)
-        >>> torch.set_printoptions(sci_mode=False)
         >>> input = torch.tensor([[1., 0., 0., 2.],
         ...                       [0., 0., 0., 0.],
         ...                       [0., 1., 2., 0.],
@@ -160,16 +159,15 @@ class RandomRotation90(GeometricAugmentationBase2D):
         >>> aug = RandomRotation90(times=(1, 1), p=1.)
         >>> out = aug(input)
         >>> out
-        tensor([[[[    2.0000,     0.0000,     0.0000,     2.0000],
-                  [    0.0000,     0.0000,     2.0000,     1.0000],
-                  [    0.0000,     0.0000,     1.0000,     0.0000],
-                  [    1.0000,     0.0000,     0.0000,     0.0000]]]])
+        tensor([[[[2.0000e+00, 0.0000e+00, 0.0000e+00, 2.0000e+00],
+                  [0.0000e+00, 0.0000e+00, 2.0000e+00, 1.0000e+00],
+                  [5.9605e-08, 0.0000e+00, 1.0000e+00, 0.0000e+00],
+                  [1.0000e+00, 5.9605e-08, 0.0000e+00, 0.0000e+00]]]])
         >>> aug.transform_matrix
-        tensor([[[    -0.0000,      1.0000,      0.0000],
-                 [    -1.0000,     -0.0000,      3.0000],
-                 [     0.0000,      0.0000,      1.0000]]])
+        tensor([[[-4.3711e-08,  1.0000e+00,  1.1921e-07],
+                 [-1.0000e+00, -4.3711e-08,  3.0000e+00],
+                 [ 0.0000e+00,  0.0000e+00,  1.0000e+00]]])
         >>> inv = aug.inverse(out)
-        >>> torch.set_printoptions(profile='default')
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
