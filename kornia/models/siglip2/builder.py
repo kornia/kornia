@@ -33,214 +33,6 @@ logger = logging.getLogger(__name__)
 __all__ = ["SigLip2Builder"]
 
 
-def _map_hf_to_kornia_weight_name(hf_name: str) -> str:
-    """Map HuggingFace weight name to Kornia format.
-
-    Our implementation matches HF structure, so most names are identical.
-    Only need to handle minor naming differences.
-
-    Args:
-        hf_name: HuggingFace weight name.
-
-    Returns:
-        Kornia weight name.
-    """
-    # Remove 'model.' prefix if present (from Siglip2Model wrapper)
-    if hf_name.startswith("model."):
-        hf_name = hf_name[6:]
-
-    # Handle projection layer naming difference
-    if hf_name.startswith("visual_projection"):
-        return hf_name.replace("visual_projection", "vision_projection")
-
-    # All other names should match directly
-    return hf_name
-
-
-def _handle_special_components(
-    hf_name: str, kornia_name: str, tensor: torch.Tensor, kornia_state_dict: dict[str, torch.Tensor]
-) -> bool:
-    """Handle special components that need early return.
-
-    Returns True if handled (should continue), False otherwise.
-    """
-    # Handle vision_model.head components (MultiheadAttention pooling head)
-    if "vision_model.head." in hf_name or "text_model.head." in hf_name:
-        kornia_state_dict[kornia_name] = tensor
-        return True
-
-    # Handle vision_model.post_layernorm
-    if "vision_model.post_layernorm" in hf_name:
-        kornia_state_dict[kornia_name] = tensor
-        return True
-
-    # Handle text_model.final_layer_norm (applied in text_model forward, not encoder)
-    if "text_model.final_layer_norm" in hf_name:
-        kornia_name = kornia_name.replace("final_layer_norm", "encoder.layer_norm")
-        kornia_state_dict[kornia_name] = tensor
-        return True
-
-    # Handle logit_bias
-    if "logit_bias" in hf_name:
-        kornia_state_dict[kornia_name] = tensor
-        return True
-
-    return False
-
-
-def _handle_position_embeddings(kornia_name: str, tensor: torch.Tensor) -> tuple[str, torch.Tensor]:
-    """Handle position embedding naming and shape differences."""
-    # Vision: singular -> plural, and remove .weight (it's a Parameter, not Embedding)
-    if "vision_model" in kornia_name and "position_embedding.weight" in kornia_name:
-        kornia_name = kornia_name.replace("position_embedding.weight", "position_embeddings")
-        # Add batch dimension: [num_patches, hidden_size] -> [1, num_patches, hidden_size]
-        if tensor.dim() == 2:
-            tensor = tensor.unsqueeze(0)
-    return kornia_name, tensor
-
-
-def _extract_qkv_component(kornia_name: str, tensor: torch.Tensor) -> tuple[str, str, str] | None:
-    """Extract QKV component info from weight name.
-
-    Returns (prefix, component, suffix) if it's a QKV projection, None otherwise.
-    """
-    if not (
-        ".attention.q_proj." in kornia_name
-        or ".attention.k_proj." in kornia_name
-        or ".attention.v_proj." in kornia_name
-    ):
-        return None
-
-    parts = kornia_name.split(".")
-    if "q_proj" in kornia_name:
-        component = "q"
-    elif "k_proj" in kornia_name:
-        component = "k"
-    else:  # v_proj
-        component = "v"
-
-    # Find the layer index
-    layer_idx = None
-    for i, part in enumerate(parts):
-        if part == "layers" and i + 1 < len(parts):
-            layer_idx = parts[i + 1]
-            break
-
-    if layer_idx is None:
-        return None
-
-    # Build prefix
-    prefix_parts = []
-    for _i, part in enumerate(parts):
-        if part == "layers":
-            prefix_parts.append(part)
-            prefix_parts.append(layer_idx)
-            prefix_parts.append("attention")
-            break
-        prefix_parts.append(part)
-
-    prefix = ".".join(prefix_parts)
-    suffix = ".weight" if ".weight" in kornia_name else ".bias"
-    return (prefix, component, suffix)
-
-
-def _combine_qkv_weights(qkv_weights: dict[tuple[str, str, str], torch.Tensor]) -> dict[str, torch.Tensor]:
-    """Combine separate Q/K/V projections into fused QKV projection."""
-    qkv_dict = {}
-    processed = set()
-
-    for (prefix, _component, suffix), _tensor in qkv_weights.items():
-        if (prefix, suffix) in processed:
-            continue
-
-        q_key = (prefix, "q", suffix)
-        k_key = (prefix, "k", suffix)
-        v_key = (prefix, "v", suffix)
-
-        if q_key in qkv_weights and k_key in qkv_weights and v_key in qkv_weights:
-            q_tensor = qkv_weights[q_key]
-            k_tensor = qkv_weights[k_key]
-            v_tensor = qkv_weights[v_key]
-
-            # Concatenate along the first dimension (output features)
-            qkv_tensor = torch.cat([q_tensor, k_tensor, v_tensor], dim=0)
-
-            # Build the final key
-            kornia_key = prefix + ".qkv_proj" + suffix
-            qkv_dict[kornia_key] = qkv_tensor
-            processed.add((prefix, suffix))
-
-    return qkv_dict
-
-
-def _load_hf_state_dict(hf_state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-    """Load and map HuggingFace state dict to Kornia format.
-
-    Handles the conversion from HF's separate q/k/v projections to our fused qkv_proj,
-    and other naming differences.
-
-    Args:
-        hf_state_dict: HuggingFace state dict.
-
-    Returns:
-        Kornia state dict.
-    """
-    kornia_state_dict = {}
-    qkv_weights = {}  # (kornia_key_prefix, component) -> tensor
-
-    for hf_name, tensor in hf_state_dict.items():
-        # Map basic naming differences first
-        kornia_name = _map_hf_to_kornia_weight_name(hf_name)
-
-        # Handle special components (early return cases)
-        if _handle_special_components(hf_name, kornia_name, tensor, kornia_state_dict):
-            continue
-
-        # Handle position embeddings
-        kornia_name, tensor = _handle_position_embeddings(kornia_name, tensor)
-
-        # Handle self_attn -> attention
-        if ".self_attn." in kornia_name:
-            kornia_name = kornia_name.replace(".self_attn.", ".attention.")
-
-        # Collect q/k/v projections for later fusion
-        qkv_info = _extract_qkv_component(kornia_name, tensor)
-        if qkv_info is not None:
-            prefix, component, suffix = qkv_info
-            qkv_weights[(prefix, component, suffix)] = tensor
-            continue
-
-        # Handle out_proj -> out_proj (same name)
-        if ".attention.out_proj." in kornia_name:
-            kornia_state_dict[kornia_name] = tensor
-            continue
-
-        # Skip embeddings layer_norm if not in checkpoint
-        if "embeddings.layer_norm" in kornia_name and kornia_name not in hf_state_dict:
-            continue
-
-        # All other weights map directly (after basic name mapping)
-        kornia_state_dict[kornia_name] = tensor
-
-    # Combine q/k/v into qkv_proj
-    qkv_dict = _combine_qkv_weights(qkv_weights)
-    kornia_state_dict.update(qkv_dict)
-
-    # Handle logit_scale shape difference (checkpoint has [1], model expects [])
-    if "logit_scale" in kornia_state_dict:
-        logit_scale = kornia_state_dict["logit_scale"]
-        if logit_scale.dim() > 0:
-            kornia_state_dict["logit_scale"] = logit_scale.squeeze()
-
-    # Handle logit_bias shape difference (checkpoint might have [1], model expects [])
-    if "logit_bias" in kornia_state_dict:
-        logit_bias = kornia_state_dict["logit_bias"]
-        if logit_bias.dim() > 0:
-            kornia_state_dict["logit_bias"] = logit_bias.squeeze()
-
-    return kornia_state_dict
-
-
 def _load_and_update_config(config: SigLip2Config, model_name: str, cache_dir: Optional[str]) -> SigLip2Config:
     """Load and update config from HuggingFace config.json."""
     try:
@@ -447,9 +239,36 @@ class SigLip2Builder:
         # Set random seeds for reproducible initialization
         _set_random_seeds()
 
-        # Create model and load weights
+        # Remove 'model.' prefix if present (from Siglip2Model wrapper)
+        cleaned_state_dict = {}
+        for key, value in state_dict.items():
+            if key.startswith("model."):
+                cleaned_state_dict[key[6:]] = value
+            else:
+                cleaned_state_dict[key] = value
+        state_dict = cleaned_state_dict
+
+        # Handle projection layer naming difference (visual_projection -> vision_projection)
+        if "visual_projection.weight" in state_dict:
+            state_dict["vision_projection.weight"] = state_dict.pop("visual_projection.weight")
+        if "visual_projection.bias" in state_dict:
+            state_dict["vision_projection.bias"] = state_dict.pop("visual_projection.bias")
+
+        # Handle vision position embedding: HF has position_embedding.weight, we use position_embedding (Parameter)
+        if "vision_model.embeddings.position_embedding.weight" in state_dict:
+            state_dict["vision_model.embeddings.position_embedding"] = state_dict.pop(
+                "vision_model.embeddings.position_embedding.weight"
+            )
+
+        # Create model and load weights directly (no transformation needed)
         model = SigLip2Model(config)
-        kornia_state_dict = _load_hf_state_dict(state_dict)
-        model.load_state_dict(kornia_state_dict, strict=True)
+
+        # Handle only shape differences (logit_scale, logit_bias)
+        if "logit_scale" in state_dict and state_dict["logit_scale"].dim() > 0:
+            state_dict["logit_scale"] = state_dict["logit_scale"].squeeze()
+        if "logit_bias" in state_dict and state_dict["logit_bias"].dim() > 0:
+            state_dict["logit_bias"] = state_dict["logit_bias"].squeeze()
+
+        model.load_state_dict(state_dict, strict=True)
 
         return model

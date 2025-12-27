@@ -68,8 +68,8 @@ class SigLip2VisionEmbeddings(Module):
         # Calculate number of patches
         self.num_patches = (config.image_size // config.patch_size) ** 2
 
-        # Position embeddings (learned)
-        self.position_embeddings = nn.Parameter(torch.randn(1, self.num_patches, config.hidden_size) * 0.02)
+        # Position embeddings (learned) - matching HF format: [num_patches, hidden_size]
+        self.position_embedding = nn.Parameter(torch.randn(self.num_patches, config.hidden_size) * 0.02)
 
         # Note: HF SigLip does NOT use layer_norm or dropout in embeddings
         # Removed to match HF exactly and enable strict weight loading
@@ -88,8 +88,8 @@ class SigLip2VisionEmbeddings(Module):
         embeddings = self.patch_embedding(pixel_values)  # (batch_size, hidden_size, H', W')
         embeddings = embeddings.flatten(2).transpose(1, 2)  # (batch_size, num_patches, hidden_size)
 
-        # Add position embeddings
-        embeddings = embeddings + self.position_embeddings
+        # Add position embeddings (unsqueeze for batch dimension)
+        embeddings = embeddings + self.position_embedding.unsqueeze(0)
 
         # Note: HF SigLip does NOT use layer_norm or dropout in embeddings
         # Layer norm is only applied at encoder level
@@ -134,7 +134,7 @@ class SigLip2VisionLayer(Module):
 
     def __init__(self, config: SigLip2VisionConfig) -> None:
         super().__init__()
-        self.attention = SigLip2Attention(
+        self.self_attn = SigLip2Attention(
             hidden_size=config.hidden_size,
             num_heads=config.num_attention_heads,
             dropout=config.attention_dropout,
@@ -156,7 +156,7 @@ class SigLip2VisionLayer(Module):
         # Self-attention with pre-norm
         residual = hidden_states
         hidden_states = self.layer_norm1(hidden_states)
-        hidden_states = self.attention(hidden_states, attention_mask=attention_mask)
+        hidden_states = self.self_attn(hidden_states, attention_mask=attention_mask)
         hidden_states = residual + hidden_states
 
         # MLP with pre-norm
