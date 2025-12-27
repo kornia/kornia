@@ -15,11 +15,7 @@ Learn more: `https://paperswithcode.com/task/semantic-segmentation <https://pape
 Finetuning
 ----------
 
-In order to customize your model with your own data you can use our :ref:`training_api` to perform the
-`fine-tuning <https://paperswithcode.com/methods/category/fine-tuning>`_ of your model.
-
-We provide :py:class:`~kornia.x.SemanticSegmentationTrainer` with a default training structure to train semantic
-segmentation problems. However, one can leverage this is API using the models provided by Kornia or
+In order to customize your model with your own data, you can use the models provided by Kornia or
 use existing libraries from the PyTorch ecosystem such as `torchvision <https://pytorch.org/vision/stable/models.html>`_.
 
 Create the dataloaders and transforms:
@@ -40,7 +36,7 @@ Create your preprocessing and augmentations pipeline:
    :language: python
    :lines: 62-81
 
-Finally, instantiate the :py:class:`~kornia.x.SemanticSegmentationTrainer` and execute your training pipeline.
+Finally, execute your training pipeline.
 
 .. literalinclude:: ../_static/scripts/semantic_segmentation.py
    :language: python

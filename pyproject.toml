@@ -79,7 +79,6 @@ docs = [
   "sphinxcontrib-gtagjs",
   "sphinxcontrib-youtube",
 ]
-x = ["accelerate", "onnxruntime-gpu>=1.16; sys_platform != 'darwin'"]
 
 [tool.hatch.version]
 path = "kornia/__init__.py"

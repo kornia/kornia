@@ -25,7 +25,6 @@ convenience imports at the top level.
 # and by changing the import order you might get into a circular dependencies issue.
 from . import filters
 from . import geometry
-from . import grad_estimator
 
 # import the other modules for convenience
 from . import (
@@ -44,7 +43,6 @@ from . import (
     onnx,
     tracking,
     utils,
-    x,
 )
 
 

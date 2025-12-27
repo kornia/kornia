@@ -64,7 +64,7 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 | **Image Registration**      | - Affine and homography-based registration<br>- Image alignment using feature matching                                                                     |
 | **Pose Estimation**         | - Essential and Fundamental matrix estimation<br>- PnP problem solvers<br>- Pose refinement                                                                |
 | **Optical Flow**            | - Farneback optical flow<br>- Dense optical flow<br>- Sparse optical flow                                                                                  |
-| **3D Vision**               | - Depth estimation<br>- Point cloud operations<br>- Nerf<br>                                                                |
+| **3D Vision**               | - Depth estimation<br>- Point cloud operations<br>                                                                |
 | **Image Denoising**         | - Gaussian noise removal<br>- Poisson noise removal                                                                                                        |
 | **Edge Detection**          | - Sobel operator<br>- Canny edge detection                                                                                                                 |                                               |
 | **Transformations**         | - Rotation<br>- Translation<br>- Scaling<br>- Shearing                                                                                                     |

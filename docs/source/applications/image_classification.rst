@@ -39,11 +39,7 @@ to perform image classification. Checkout the following apis :py:class:`~kornia.
 Finetuning
 ----------
 
-In order to customize your model with your own data you can use our :ref:`training_api` to perform the
-`fine-tuning <https://paperswithcode.com/methods/category/fine-tuning>`_ of your model.
-
-We provide :py:class:`~kornia.x.ImageClassifierTrainer` with a default training structure to train basic
-image classification problems. However, one can leverage this is API using the models provided by Kornia or
+In order to customize your model with your own data, you can use the models provided by Kornia or
 use existing libraries from the PyTorch ecosystem such as `torchvision <https://pytorch.org/vision/stable/models.html>`_
 or `timm <https://rwightman.github.io/pytorch-image-models/>`_.
 
@@ -65,7 +61,7 @@ Define your augmentations:
    :language: python
    :lines: 50-65
 
-Finally, instantiate the :py:class:`~kornia.x.ImageClassifierTrainer` and execute your training pipeline.
+Finally, execute your training pipeline.
 
 .. literalinclude:: ../_static/scripts/image_classifier.py
    :language: python
