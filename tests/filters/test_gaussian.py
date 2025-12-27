@@ -346,7 +346,6 @@ class TestGaussianBlur2d(BaseTester):
         except Exception as e:
             pytest.skip(f"ONNX export not supported: {e}")
 
-
     def test_sigma_negative_raises_exception(self, device, dtype):
         """Test that negative sigma raises an exception."""
         sample = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
