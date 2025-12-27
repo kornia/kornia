@@ -42,7 +42,6 @@ Issues = "https://github.com/kornia/kornia/issues"
 
 [project.optional-dependencies]
 dev = [
-  "accelerate",
   "coverage",
   "diffusers",
   "ivy>=1.0.0.0",

@@ -132,13 +132,10 @@ Join the community
    applications/visual_prompting
    applications/face_detection
    applications/image_augmentations
-   applications/image_classification
    applications/image_matching
    applications/image_stitching
    applications/image_registration
    applications/image_denoising
-   applications/semantic_segmentation
-   applications/object_detection
 
 .. toctree::
    :caption: KORNIA MODELS
