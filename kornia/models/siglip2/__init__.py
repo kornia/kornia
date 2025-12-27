@@ -15,19 +15,11 @@
 # limitations under the License.
 #
 
-"""Models submodule for Kornia.
+"""SigLip2 vision-language model implementation."""
 
-This package provides model architectures and utilities for tasks such as depth estimation,
-detection, segmentation, super-resolution, and tracking.
-"""
+from .builder import SigLip2Builder
+from .config import SigLip2Config
+from .model import SigLip2Model
+from .preprocessor import SigLip2ImagePreprocessor
 
-from . import (
-    depth_estimation,
-    detection,
-    edge_detection,
-    segmentation,
-    siglip2,
-    super_resolution,
-    tracking,
-)
-from .utils import *
+__all__ = ["SigLip2Builder", "SigLip2Config", "SigLip2ImagePreprocessor", "SigLip2Model"]
