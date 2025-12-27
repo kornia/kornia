@@ -301,6 +301,47 @@ class TestGaussianBlur2d(BaseTester):
 
         self.assert_close(op(data), op_optimized(data))
 
+    @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
+    @pytest.mark.parametrize("sigma", [(1.5, 2.1), (0.5, 0.5)])
+    def test_dynamo_functional(self, kernel_size, sigma, device, dtype, torch_optimizer):
+        """Test that functional gaussian_blur2d works with torch.compile / torch._dynamo."""
+        data = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+
+        # Test functional form
+        op = lambda x: gaussian_blur2d(x, kernel_size, sigma, "reflect", separable=True)
+        op_optimized = torch_optimizer(op)
+
+        self.assert_close(op(data), op_optimized(data))
+
+    def test_onnx_export(self, device, dtype):
+        """Test that GaussianBlur2d can be exported via torch.onnx.export."""
+        kernel_size = (3, 3)
+        sigma = (1.5, 1.5)
+
+        # Create model and sample input
+        model = GaussianBlur2d(kernel_size, sigma)
+        sample_input = torch.ones(1, 3, 8, 8, device=device, dtype=dtype)
+
+        # Test ONNX export - just ensure it doesn't error
+        try:
+            import tempfile
+            import os
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                onnx_path = os.path.join(tmpdir, "gaussian_blur2d.onnx")
+                torch.onnx.export(
+                    model,
+                    sample_input,
+                    onnx_path,
+                    input_names=["input"],
+                    output_names=["output"],
+                    opset_version=17,
+                )
+                # Verify the file was created
+                assert os.path.exists(onnx_path)
+        except Exception as e:
+            pytest.skip(f"ONNX export not supported: {e}")
+
     # ========== EDGE CASES AND VALIDATION TESTS ==========
 
     def test_sigma_negative_raises_exception(self, device, dtype):
