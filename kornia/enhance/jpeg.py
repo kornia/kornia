@@ -579,6 +579,7 @@ def jpeg_codec_differentiable(
     image_rgb_jpeg = image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
     return image_rgb_jpeg
 
+
 def _get_dct8_basis_scale(dtype: Dtype, device: Device) -> tuple[Tensor, Tensor]:
     key = (dtype, device)
     if key not in _DCT8_CACHE:
