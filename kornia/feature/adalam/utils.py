@@ -77,7 +77,7 @@ def piecewise_arange(piecewise_idxer: Tensor) -> Tensor:
 
 
 def batch_2x2_inv(m: Tensor, check_dets: bool = False) -> Tensor:
-    """Returns inverse of batch of 2x2 matrices."""
+    """Return inverse of batch of 2x2 matrices."""
     a = m[..., 0, 0]
     b = m[..., 0, 1]
     c = m[..., 1, 0]
@@ -94,17 +94,17 @@ def batch_2x2_inv(m: Tensor, check_dets: bool = False) -> Tensor:
 
 
 def batch_2x2_Q(m: Tensor) -> Tensor:
-    """Returns Q of batch of 2x2 matrices."""
+    """Return Q of batch of 2x2 matrices."""
     return batch_2x2_inv(batch_2x2_invQ(m), check_dets=True)
 
 
 def batch_2x2_invQ(m: Tensor) -> Tensor:
-    """Returns inverse Q of batch of 2x2 matrices."""
+    """Return inverse Q of batch of 2x2 matrices."""
     return m @ m.transpose(-1, -2)
 
 
 def batch_2x2_det(m: Tensor) -> Tensor:
-    """Returns determinant of batch of 2x2 matrices."""
+    """Return determinant of batch of 2x2 matrices."""
     a = m[..., 0, 0]
     b = m[..., 0, 1]
     c = m[..., 1, 0]
@@ -113,7 +113,7 @@ def batch_2x2_det(m: Tensor) -> Tensor:
 
 
 def batch_2x2_ellipse(m: Tensor, *, eps: float = 0.0) -> Tuple[Tensor, Tensor]:
-    """Returns Eigenvalues and Eigenvectors of batch of 2x2 matrices."""
+    """Return Eigenvalues and Eigenvectors of batch of 2x2 matrices."""
     am = m[..., 0, 0]
     bm = m[..., 0, 1]
     cm = m[..., 1, 0]
@@ -150,7 +150,7 @@ def batch_2x2_ellipse(m: Tensor, *, eps: float = 0.0) -> Tuple[Tensor, Tensor]:
 
 
 def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device) -> Tensor:
-    """Returns first k couples.
+    """Return first k couples.
 
     Exhaustive search over the first n samples:
      * n(n+1)/2 = n2/2 + n/2 couples

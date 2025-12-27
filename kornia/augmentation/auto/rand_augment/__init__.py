@@ -15,4 +15,9 @@
 # limitations under the License.
 #
 
+"""Kornia RandAugment — RandAugment policy implementations for Kornia augmentation.
+
+This subpackage provides the RandAugment class and related utilities.
+"""
+
 from .rand_augment import RandAugment

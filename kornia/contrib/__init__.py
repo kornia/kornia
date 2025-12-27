@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Contrib — Experimental and contributed modules for Kornia.
+
+This subpackage provides community-contributed and experimental features.
+"""
+
 from .classification import ClassificationHead
 from .connected_components import connected_components
 from .diamond_square import diamond_square

@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Detection models submodule for Kornia.
+
+This package provides model architectures and utilities for object detection tasks.
+"""
+
 from .base import *
 from .rtdetr import *
 from .utils import *

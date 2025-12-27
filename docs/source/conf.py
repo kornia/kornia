@@ -20,7 +20,7 @@ import importlib.util
 import inspect
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # To add an evnironment variable
 builtins.__sphinx_build__ = True
@@ -93,7 +93,7 @@ master_doc = "index"
 # General information about the project.
 project = "Kornia"
 author = f"{project} developers"
-copyright = f"{datetime.now(tz=timezone.utc).year}, {author}"
+copyright = f"{datetime.now(tz=UTC).year}, {author}"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the

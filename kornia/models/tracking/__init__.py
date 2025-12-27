@@ -15,4 +15,9 @@
 # limitations under the License.
 #
 
+"""Tracking models submodule for Kornia.
+
+This package provides model architectures and utilities for object tracking tasks.
+"""
+
 from .boxmot_tracker import *

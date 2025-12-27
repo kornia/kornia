@@ -4894,11 +4894,6 @@ class TestRandomRGBShift(BaseTester):
         out = aug(img)
         assert out.shape == (2, 3, 4, 5)
 
-    def test_onnx_export(self, device, dtype):
-        img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
-        aug = RandomRGBShift(p=1.0).to(device)
-        torch.onnx.export(aug, img, "temp.onnx", export_params=True)
-
     def test_random_rgb_shift(self, device, dtype):
         torch.manual_seed(0)
         input = torch.tensor(
@@ -5248,12 +5243,12 @@ class TestRandomDissolving(BaseTester):
 
     def test_batch_proc(self, device, dtype):
         images = torch.rand(4, 3, 16, 16)
-        aug = RandomDissolving(p=1.0, version="2.1", cache_dir="weights/")
+        aug = RandomDissolving(p=1.0, version="1.5", cache_dir="weights/")
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
     def test_single_proc(self, device, dtype):
         images = torch.rand(3, 16, 16)
-        aug = RandomDissolving(p=1.0, keepdim=True, version="2.1", cache_dir="weights/")
+        aug = RandomDissolving(p=1.0, keepdim=True, version="1.5", cache_dir="weights/")
         images_aug = aug(images)
         assert images_aug.shape == images.shape

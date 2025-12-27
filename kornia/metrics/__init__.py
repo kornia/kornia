@@ -15,6 +15,12 @@
 # limitations under the License.
 #
 
+"""Metrics submodule for Kornia.
+
+This package provides evaluation metrics for computer vision, such as accuracy, mean IoU,
+PSNR, SSIM, and endpoint error.
+"""
+
 from .accuracy import accuracy
 from .average_meter import AverageMeter
 from .confusion_matrix import confusion_matrix

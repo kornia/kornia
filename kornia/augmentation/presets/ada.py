@@ -178,7 +178,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         )
 
     def update(self, real_acc: float) -> None:
-        r"""Updates internal params `p` once every `update_every` calls based on discriminator accuracy.
+        r"""Update internal params `p` once every `update_every` calls based on discriminator accuracy.
 
         the update is based on an exponential moving average of `real_acc`
         `p` is updated by adding or subtracting `adjustment_speed` from it and clamp it at [0, `max_p`]

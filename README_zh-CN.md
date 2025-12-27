@@ -22,7 +22,7 @@
 [![star](https://gitcode.com/kornia/kornia/star/badge.svg)](https://gitcode.com/kornia/kornia)
 [![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/HfnywwpBnD)
 [![Twitter](https://img.shields.io/twitter/follow/kornia_foss?style=social)](https://twitter.com/kornia_foss)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENCE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 </p>
 </div>
@@ -81,6 +81,27 @@
   ```bash
   pip install -e .
   ```
+
+  #### 使用 Pixi 进行开发（推荐）
+
+  对于开发，Kornia 使用 [pixi](https://pixi.sh) 进行快速的 Python 包管理和环境管理。项目包含一个 `pixi.toml` 配置文件用于可重现的依赖管理。
+
+  ```bash
+  # 安装 pixi（如果尚未安装）
+  curl -fsSL https://pixi.sh/install.sh | bash
+
+  # 安装依赖并设置开发环境
+  pixi install
+
+  # 运行测试
+  pixi run test
+
+  # 用于 CUDA 开发
+  pixi run -e cuda install
+  pixi run -e cuda test-cuda
+  ```
+
+  这将设置一个包含所有依赖的完整开发环境。有关依赖管理和可用任务的更多详细信息，请参阅 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
   #### 通过源码安装（从GIT自动下载最新代码）:
 

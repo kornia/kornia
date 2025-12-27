@@ -15,4 +15,9 @@
 # limitations under the License.
 #
 
+"""Kornia Feature Adalam — AdaLAM feature matching for Kornia.
+
+This subpackage provides AdaLAM filtering and matching utilities.
+"""
+
 from .adalam import AdalamFilter, get_adalam_default_config, match_adalam

@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Camera models submodule for Kornia sensors.
+
+This package provides camera model definitions and utilities for camera calibration and projection.
+"""
+
 from .camera_model import (
     BrownConradyModel,
     CameraModel,

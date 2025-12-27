@@ -1,63 +1,15 @@
 [build-system]
-build-backend = "setuptools.build_meta"
-requires = ["setuptools>=61.2"]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "kornia"
 description = "Open Source Differentiable Computer Vision Library for PyTorch"
-keywords = ["computer vision", "deep learning", "pytorch"]
+readme = "README.md"
+requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
-authors = [
-  { name = "Edgar Riba", email = "edgar@kornia.org" },
-]
-requires-python = ">=3.9"
-dependencies = [
-    "kornia_rs>=0.1.9",
-    "packaging",
-    "torch>=2.0.0",
-]
-optional-dependencies.dev = [
-    "accelerate",
-    "coverage",
-    "diffusers",
-    "ivy>=1.0.0.0",
-    "mypy",
-    "numpy<3",
-    "onnx",
-    "onnxruntime",
-    "pillow",
-    "pre-commit>=2",
-    "pytest==8.3.5",
-    "pytest-cov",
-    "pytest-timeout",
-    "requests",
-    "setuptools>=61.2",
-    "transformers<4.57",
-    "types-requests",
-]
-optional-dependencies.x = [
-    "accelerate",
-    "onnxruntime-gpu>=1.16; sys_platform != 'darwin'",
-]
-optional-dependencies.docs = [
-    "furo",
-    "ivy>=1.0.0.0",
-    "kornia_moons",
-    "matplotlib",
-    "onnx",
-    "onnxruntime",
-    "opencv-python",
-    "PyYAML>=5.1",
-    "sphinx",
-    "sphinx-autodoc-defaultargs",
-    "sphinx-autodoc-typehints",
-    "sphinx-copybutton>=0.3",
-    "sphinx-design",
-    "sphinx-notfound-page",
-    "sphinxcontrib-bibtex",
-    "sphinxcontrib-gtagjs",
-    "sphinxcontrib-youtube",
-]
+authors = [{ name = "Edgar Riba", email = "edgar@kornia.org" }]
+keywords = ["computer vision", "deep learning", "pytorch"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
@@ -70,45 +22,77 @@ classifiers = [
   "Natural Language :: English",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Scientific/Engineering :: Image Processing",
   "Topic :: Software Development :: Libraries",
 ]
-dynamic = ["readme", "version"]
+dependencies = ["kornia_rs>=0.1.9", "packaging", "torch>=2.0.0"]
+dynamic = ["version"]
 
 [project.urls]
 "Bug Tracker" = "https://github.com/kornia/kornia/issues"
 Documentation = "https://kornia.readthedocs.io/en/latest"
 Download = "https://github.com/kornia/kornia"
-Issues = "https://github.com/kornia/kornia/issues"
 Homepage = "https://kornia.github.io/"
+Issues = "https://github.com/kornia/kornia/issues"
 "Source Code" = "https://github.com/kornia/kornia"
 
-[tool.setuptools]
-zip-safe = true
-license-files = ["LICENSE"]
-include-package-data = false
+[project.optional-dependencies]
+dev = [
+  "accelerate",
+  "coverage",
+  "diffusers",
+  "ivy>=1.0.0.0",
+  "numpy<3",
+  "onnx",
+  "onnxruntime",
+  "onnxscript",
+  "pillow",
+  "pre-commit",
+  "pytest",
+  "pytest-cov",
+  "pytest-timeout",
+  "requests",
+  "ruff",
+  "setuptools",  # For torch.compile
+  "transformers<4.57",
+]
+docs = [
+  "furo",
+  "ivy>=1.0.0.0",
+  "kornia_moons",
+  "matplotlib",
+  "onnx",
+  "onnxruntime",
+  "opencv-python",
+  "PyYAML>=5.1",
+  "sphinx",
+  "sphinx-autodoc-defaultargs",
+  "sphinx-autodoc-typehints",
+  "sphinx-copybutton>=0.3",
+  "sphinx-design",
+  "sphinx-notfound-page",
+  "sphinxcontrib-bibtex",
+  "sphinxcontrib-gtagjs",
+  "sphinxcontrib-youtube",
+]
+x = ["accelerate", "onnxruntime-gpu>=1.16; sys_platform != 'darwin'"]
 
-[tool.setuptools.dynamic]
-version = { attr = "kornia.__version__" }
-readme = { file = ["README.md"], content-type = "text/markdown" }
+[tool.hatch.version]
+path = "kornia/__init__.py"
 
-[tool.setuptools.packages.find]
-exclude = ["docs*", "test*", "examples*"]
-namespaces = false
+[tool.hatch.build.targets.wheel]
+packages = ["kornia"]
+exclude = ["**/*.md"]  # Exclude markdown files from wheel
 
-[tool.setuptools.package-data]
-kornia = ["py.typed"]
-
-[tool.distutils.bdist_wheel]
-universal = true
+[tool.hatch.build.targets.sdist]
+include = ["kornia/", "LICENSE", "README.md"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py311"
 line-length = 120
 
 [tool.ruff.format]
@@ -116,37 +100,37 @@ skip-magic-trailing-comma = false
 
 [tool.ruff.lint]
 select = [
-  "AIR",   # Airflow
-  "ASYNC", # flake8-async
-  "B",    # flake8-bugbear
-  "BLE",   # flake8-blind-except
-  "C4",    # flake8-comprehensions
-  "C90",   # McCabe cyclomatic complexity
+  "AIR",  # Airflow
+  "ASYNC",  # flake8-async
+  "B",  # flake8-bugbear
+  "BLE",  # flake8-blind-except
+  "C4",  # flake8-comprehensions
+  "C90",  # McCabe cyclomatic complexity
   # "CPY",    # Copyright-related rules
   "DTZ",  # flake8-datetimez
-  "E",    # pycodestyle
-  "F",    # Pyflakes
+  "E",  # pycodestyle
+  "F",  # Pyflakes
   "FLY",  # flynt
-  "I",    # isort
+  "I",  # isort
   "ICN",  # flake8-import-conventions
   "INT",  # flake8-gettext
   "NPY",  # NumPy-specific rules
-  "PL",   # Pylint
+  "PL",  # Pylint
   "PYI",  # flake8-pyi
   "RSE",  # flake8-raise
   "RUF",  # Ruff-specific rules
-  "S",    # flake8-bandit
-  "SLOT", # flake8-slots
+  "S",  # flake8-bandit
+  "SLOT",  # flake8-slots
   "T10",  # flake8-debugger
   "TID",  # flake8-tidy-imports
-  "UP",   # pyupgrade
-  "W",    # pycodestyle
+  "UP",  # pyupgrade
+  "W",  # pycodestyle
   "YTT",  # flake8-2020
   # "A",    # flake8-builtins
   # "ANN",  # flake8-annotations
   # "ARG",  # flake8-unused-arguments
   # "COM",  # flake8-commas
-  "D",    # pydocstyle
+  "D",  # pydocstyle
   # "DJ",   # flake8-django
   # "EM",   # flake8-errmsg
   # "ERA",  # eradicate
@@ -174,22 +158,24 @@ select = [
   # "TRY",  # tryceratops
 ]
 ignore = [
-  "PLR0915", # Allow condition check in list comprehension
-  "PLC0415", # `import` should be at the top-level of a file
-  "PLW2901", # Allow overwritten values on loops
-  "PLW1641", # Object does not implement `__hash__` method
-  "UP007",   # Prefer Optional[], Union[] over | due to torch jit scripting
-  "UP006",   # Prefer List[], over list due to torch jit scripting
-  "UP035",   # Ignore deprecated typing because of jit scripting
-  "UP045",   # Use `X | None` for type annotations
+  "B905",  # `zip()` without explicit `strict=` - too many to fix, not a bug
+  "RUF007",  # Prefer `itertools.pairwise()` over `zip()` - style preference
+  "PLR0915",  # Allow condition check in list comprehension
+  "PLC0415",  # `import` should be at the top-level of a file
+  "PLW2901",  # Allow overwritten values on loops
+  "PLW1641",  # Object does not implement `__hash__` method
+  "UP007",  # Prefer Optional[], Union[] over | due to torch jit scripting
+  "UP006",  # Prefer List[], over list due to torch jit scripting
+  "UP035",  # Ignore deprecated typing because of jit scripting
+  "UP045",  # Use `X | None` for type annotations
   "RUF005",  # Consider `(*points_in_cam_canonical.shape[:-1], 1)` instead of concatenation. Note: breaks JIT.
-  'D100',    # Allow Undocumented public module
-  'D101',    # TODO: Undocumented public class
-  'D102',    # TODO: Undocumented public method
-  'D104',    # TODO: Undocumented public package
-  'D105',    # Allow Undocumented magic method
-  'D107',    # TODO: Undocumented public init
- ]
+  "D100",  # Allow Undocumented public module
+  "D101",  # TODO: Undocumented public class
+  "D102",  # TODO: Undocumented public method
+  "D104",  # TODO: Undocumented public package
+  "D105",  # Allow Undocumented magic method
+  "D107",  # TODO: Undocumented public init
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -204,13 +190,13 @@ max-complexity = 20
 
 [tool.ruff.lint.pylint]
 allow-magic-value-types = ["bytes", "float", "int", "str"]
-max-args = 30                                              # Recommended: 5
-max-branches = 21                                          # Recommended: 12
-max-returns = 13                                           # Recommended: 6
-max-statements = 64                                        # Recommended: 50
+max-args = 30  # Recommended: 5
+max-branches = 21  # Recommended: 12
+max-returns = 13  # Recommended: 6
+max-statements = 64  # Recommended: 50
 
 [tool.ruff.lint.per-file-ignores]
-"*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
+"*/__init__.py" = ["F401", "F403"]  # Allow unused imports and star imports
 "benchmarks/*" = [
   "BLE",
   "RUF005",
@@ -218,25 +204,25 @@ max-statements = 64                                        # Recommended: 50
   "S101",
   "S311",
   "D",
-] # allow assert, random, ignore BLE, mutable class attr
+]  # allow assert, random, ignore BLE, mutable class attr
 "docs/*" = [
   "PLR0912",
   "PLR0915",
   "S101",
   "D",
-] # allow assert, ignore max branches and statements
-"docs/generate_examples.py" = ["C901"] # Allow too complex function
-"kornia/__init__.py" = ["I001"] # Allow unsorted imports
+]  # allow assert, ignore max branches and statements
+"docs/generate_examples.py" = ["C901"]  # Allow too complex function
+"kornia/__init__.py" = ["I001"]  # Allow unsorted imports
 "kornia/feature/dedode/*" = [
   "C408",
   "F401",
   "F841",
   "FLY002",
   "PLR1714",
-] # allow DINOv2 things
+]  # allow DINOv2 things
 "testing/*" = [
-  "S101", # allow assert
-  "D", # Don't enforce documentation rules
+  "S101",  # allow assert
+  "D",  # Don't enforce documentation rules
 ]
 "tests/*" = [
   "BLE",
@@ -244,23 +230,29 @@ max-statements = 64                                        # Recommended: 50
   "RUF012",
   "S101",
   "S311",
-  "B017", # Check for Exception since KORNIA_CHECK raises it
-  "D", # Don't enforce documentation rules
-] # allow assert, random, ignore BLE, mutable class attr
+  "B017",  # Check for Exception since KORNIA_CHECK raises it
+  "D",  # Don't enforce documentation rules
+]  # allow assert, random, ignore BLE, mutable class attr
 
 [tool.pytest.ini_options]
-addopts = "--color=yes"
+addopts = "--color=yes -v"
+testpaths = ["tests"]
 markers = [
   "grad: mark a test as gradcheck test",
   "jit: mark a test as torchscript test",
   "nn: mark a test as module test",
   "slow: mark test as slow to run",
 ]
+# Test configuration via environment variables:
+# KORNIA_TEST_DEVICE: cpu, cuda, mps (default: cpu)
+# KORNIA_TEST_DTYPE: float32, float64, float16, bfloat16 (default: float32)
+# KORNIA_TEST_OPTIMIZER: inductor, jit, etc. (default: inductor)
+# KORNIA_TEST_RUNSLOW: true/false (default: false)
 
 [tool.coverage.run]
 branch = true
-source = ['kornia/']
-omit = ['*/__main__.py', '*/setup.py']
+source = ["kornia/"]
+omit = ["*/__main__.py", "*/setup.py"]
 
 [tool.coverage.report]
 show_missing = true
@@ -270,46 +262,25 @@ exclude_lines = [
   # Based into the covdefaults plugin config
   # a more strict default pragma
   '\# pragma: no cover\b',
-
   # allow defensive code
   '^\s*raise AssertionError\b',
   '^\s*raise NotImplementedError\b',
   '^\s*return NotImplemented\b',
   '^\s*raise$',
-
   # typing-related code
   '^\s*if (False|TYPE_CHECKING):',
   ': \.\.\.(\s*#.*)?$',
   '^ +\.\.\.$',
-
   # ----------------------------
   "def __repr__",
   "if __name__ == .__main__.:",
   "if 0:",
   "if self.debug:",
 ]
-
 partial_branches = [
   # a more strict default pragma
   '\# pragma: no cover\b',
 ]
-
-[tool.mypy]
-check_untyped_defs = true
-disallow_any_generics = true
-disallow_incomplete_defs = true
-disallow_untyped_defs = true
-files = ["kornia/"]
-ignore_missing_imports = true
-no_implicit_optional = true
-pretty = true
-show_error_codes = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-
-[[tool.mypy.overrides]]
-module = "kornia.feature.dedode.transformer.*"
-ignore_errors = true
 
 [tool.pydocstyle]
 match = '.*\.py'
@@ -321,58 +292,21 @@ test-framework = "pytest"
 ignore-paths = []
 formatter-cmds = ["disabled"]
 
-[tool.uv.sources]
-# Pin PyTorch to specific versions for reproducibility
-torch = { index = "pytorch" }
-torchvision = { index = "pytorch" }
+# =============================================================================
+# uv configuration
+# =============================================================================
+# PyTorch: Use standard PyPI version (simpler, more compatible)
+# For CUDA: pixi run -e cuda install (uses reinstall workaround)
+# Note: uv doesn't support per-environment sources
+
+# torch is installed from standard PyPI (no custom index needed)
 
 [[tool.uv.index]]
-name = "pytorch"
-url = "https://download.pytorch.org/whl/cpu"
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
 explicit = true
 
-[dependency-groups]
-# Development dependencies for uv lock file generation
-dev = [
-    "accelerate",
-    "coverage",
-    "diffusers",
-    "ivy>=1.0.0.0",
-    "mypy",
-    "numpy<3",
-    "onnx",
-    "onnxruntime",
-    "pillow",
-    "pre-commit>=2",
-    "pytest==8.3.5",
-    "pytest-cov",
-    "pytest-timeout",
-    "requests",
-    "setuptools>=61.2",
-    "transformers<4.57",
-    "huggingface-hub<1.0",
-    "types-requests",
-]
-x = [
-    "accelerate",
-    "onnxruntime-gpu>=1.16; sys_platform != 'darwin'",
-]
-docs = [
-    "furo",
-    "ivy>=1.0.0.0",
-    "kornia_moons",
-    "matplotlib",
-    "onnx",
-    "onnxruntime",
-    "opencv-python",
-    "PyYAML>=5.1",
-    "sphinx",
-    "sphinx-autodoc-defaultargs",
-    "sphinx-autodoc-typehints",
-    "sphinx-copybutton>=0.3",
-    "sphinx-design",
-    "sphinx-notfound-page",
-    "sphinxcontrib-bibtex",
-    "sphinxcontrib-gtagjs",
-    "sphinxcontrib-youtube",
-]
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true

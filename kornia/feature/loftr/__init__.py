@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Feature LoFTR — LoFTR feature matcher for Kornia.
+
+This subpackage provides the LoFTR (Detector-Free Local Feature Matching) implementation.
+"""
+
 from __future__ import annotations
 
 from .loftr import LoFTR

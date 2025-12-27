@@ -54,6 +54,68 @@ mix usage of both image processing and augmentation modules.
 
    .. automethod:: forward
 
+Differences Between ImageSequential and AugmentationSequential
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``ImageSequential`` and ``AugmentationSequential`` are both pipeline containers
+in Kornia, but they're designed for fundamentally different data handling
+scenarios. Understanding when to use each prevents common pitfalls in vision
+pipelines.
+
+**Use ``AugmentationSequential`` when:**
+
+- The task requires synchronized transformations across multiple related tensors
+  (images, masks, bounding boxes, keypoints).
+- Spatial correspondence must be maintained between inputs and targets, as in
+  semantic segmentation or object detection workflows.
+- Multiple data formats need to be handled automatically with consistent random
+  parameter sampling across all targets.
+
+**Use ``ImageSequential`` when:**
+
+- The pipeline only processes image tensors without auxiliary spatial targets.
+- The workflow combines augmentation modules with general image processing
+  operations (gaussian blur, edge detection, color transforms).
+- A lightweight container is preferred without the overhead of multi-target
+  synchronization logic.
+
+Example using ``ImageSequential``::
+
+    import torch
+    import kornia.augmentation as K
+    from kornia.augmentation.container import ImageSequential
+    from kornia.filters import gaussian_blur2d
+
+    img = torch.rand(1, 3, 256, 256)
+
+    seq = ImageSequential(
+        K.RandomHorizontalFlip(p=1.0),
+        gaussian_blur2d,  # arbitrary differentiable ops can be inserted
+    )
+
+    out = seq(img)
+
+Example using ``AugmentationSequential`` with synchronized transforms::
+
+    import torch
+    import kornia.augmentation as K
+
+    img = torch.rand(1, 3, 256, 256)
+    mask = torch.rand(1, 1, 256, 256)
+
+    aug = K.AugmentationSequential(
+        K.RandomResizedCrop((128, 128), p=1.0),
+        data_keys=["input", "mask"],
+    )
+
+    img_out, mask_out = aug(img, mask)
+    # identical random parameters applied to both tensors
+
+The core distinction: ``AugmentationSequential`` guarantees that random
+augmentation parameters are shared across all specified data keys, maintaining
+geometric consistency. ``ImageSequential`` applies operations independently to
+single image tensors without multi-target awareness.
+
 
 PatchSequential
 ---------------

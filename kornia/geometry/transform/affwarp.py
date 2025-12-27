@@ -166,12 +166,15 @@ def affine(
 
     """
     # warping needs data in the shape of BCHW
-    is_unbatched: bool = tensor.ndimension() == 3
+    is_unbatched: bool = tensor.dim() == 3
     if is_unbatched:
         tensor = torch.unsqueeze(tensor, dim=0)
 
     # we enforce broadcasting since by default grid_sample it does not
     # give support for that
+    if tensor.shape[0] == 1 and matrix.shape[0] != 1:
+        tensor = tensor.expand(matrix.shape[0], tensor.shape[1], tensor.shape[2], tensor.shape[3])
+
     matrix = matrix.expand(tensor.shape[0], -1, -1)
 
     # warp the input tensor
@@ -217,7 +220,7 @@ def affine3d(
 
     """
     # warping needs data in the shape of BCDHW
-    is_unbatched: bool = tensor.ndimension() == 4
+    is_unbatched: bool = tensor.dim() == 4
     if is_unbatched:
         tensor = torch.unsqueeze(tensor, dim=0)
 

@@ -15,4 +15,9 @@
 # limitations under the License.
 #
 
+"""Kornia Contrib Models — Experimental and contributed model structures for Kornia.
+
+This subpackage provides contributed model classes and result structures.
+"""
+
 from kornia.contrib.models.structures import Prompts, SegmentationResults

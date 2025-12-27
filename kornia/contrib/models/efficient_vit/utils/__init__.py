@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Contrib EfficientViT Utils — Utility functions for EfficientViT models.
+
+This subpackage provides helper functions and utilities for EfficientViT implementations.
+"""
+
 # EfficientViT: Multi-Scale Linear Attention for High-Resolution Dense Prediction
 # Han Cai, Junyan Li, Muyan Hu, Chuang Gan, Song Han
 # International Conference on Computer Vision (ICCV), 2023

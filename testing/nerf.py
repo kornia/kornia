@@ -15,7 +15,12 @@
 # limitations under the License.
 #
 
-"""Kornia Contrib RT-DETR Architecture — Model architecture components for RT-DETR.
+from __future__ import annotations
 
-This subpackage provides building blocks for RT-DETR model architectures.
-"""
+# Shim imports for backward compatibility - implementations moved to kornia.geometry.camera.utils
+from kornia.geometry.camera.utils import (
+    create_pinhole_camera,
+)
+
+# Deprecated alias for backward compatibility - use create_pinhole_camera instead
+create_one_camera = create_pinhole_camera

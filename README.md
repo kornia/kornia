@@ -20,7 +20,7 @@ English | [简体中文](README_zh-CN.md)
 [![star](https://gitcode.com/kornia/kornia/star/badge.svg)](https://gitcode.com/kornia/kornia)
 [![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white)](https://discord.gg/HfnywwpBnD)
 [![Twitter](https://img.shields.io/twitter/follow/kornia_foss?style=social)](https://twitter.com/kornia_foss)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENCE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 </p>
 </div>
@@ -84,7 +84,7 @@ Kornia is an open-source project that is developed and maintained by volunteers.
 ## Installation
 
 [![PyPI python](https://img.shields.io/pypi/pyversions/kornia)](https://pypi.org/project/kornia)
-[![pytorch](https://img.shields.io/badge/PyTorch_1.9.1+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
+[![pytorch](https://img.shields.io/badge/PyTorch_2.0.0+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
 
 ### From pip
 
@@ -101,15 +101,26 @@ Kornia is an open-source project that is developed and maintained by volunteers.
   pip install -e .
   ```
 
-#### For development with UV (Recommended)
+#### For development with Pixi (Recommended)
 
-For development, Kornia uses [uv](https://github.com/astral-sh/uv) for fast Python package management and virtual environment creation. The project includes a `uv.lock` file for reproducible dependency management.
+For development, Kornia uses [pixi](https://pixi.sh) for fast Python package management and environment management. The project includes a `pixi.toml` configuration file for reproducible dependency management.
 
   ```bash
-  ./setup_dev_env.sh
+  # Install pixi (if not already installed)
+  curl -fsSL https://pixi.sh/install.sh | bash
+
+  # Install dependencies and set up the development environment
+  pixi install
+
+  # Run tests
+  pixi run test
+
+  # For CUDA development
+  pixi run -e cuda install
+  pixi run -e cuda test-cuda
   ```
 
-This will set up a complete development environment with all dependencies using the lock file for reproducibility. For more details on dependency management and lock file usage, see [CONTRIBUTING.md](CONTRIBUTING.md).
+This will set up a complete development environment with all dependencies. For more details on dependency management and available tasks, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 #### From Github url (latest version)
 

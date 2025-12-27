@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Core — Core tensor operations, backends, and utilities for Kornia.
+
+This subpackage provides core functionality, device management, and backend support.
+"""
+
 from . import external
 from ._backend import (
     Device,

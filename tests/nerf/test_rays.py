@@ -15,12 +15,8 @@
 # limitations under the License.
 #
 
-import math
 
-import torch
-
-from kornia.core import Device
-from kornia.geometry.camera import PinholeCamera
+from kornia.geometry.camera.utils import create_camera_dimensions, create_four_cameras
 from kornia.nerf.samplers import (
     RandomGridRaySampler,
     RandomRaySampler,
@@ -32,30 +28,6 @@ from kornia.nerf.samplers import (
 )
 
 from testing.base import assert_close
-
-
-def create_camera_dimensions(device, dtype):
-    n_cams1 = 3
-    n_cams2 = 2
-    heights: torch.Tensor = torch.cat(
-        (
-            torch.tensor([200] * n_cams1, device=device, dtype=dtype),
-            torch.tensor([100] * n_cams2, device=device, dtype=dtype),
-        )
-    )
-    widths: torch.Tensor = torch.cat(
-        (
-            torch.tensor([300] * n_cams1, device=device, dtype=dtype),
-            torch.tensor([400] * n_cams2, device=device, dtype=dtype),
-        )
-    )
-    num_img_rays: torch.Tensor = torch.cat(
-        (
-            torch.tensor([10] * n_cams1, device=device, dtype=dtype),
-            torch.tensor([15] * n_cams2, device=device, dtype=dtype),
-        )
-    )
-    return heights, widths, num_img_rays
 
 
 class TestRaySampler_2DPoints:
@@ -81,103 +53,6 @@ class TestRaySampler_2DPoints:
         points_2d_camera = sampler.sample_points_2d(heights, widths, num_img_rays)
         assert len(points_2d_camera) == 1
         assert points_2d_camera[9].points_2d.shape == (5, 9, 2)
-
-
-def create_intrinsics(fxs, fys, cxs, cys, device, dtype):
-    intrinsics_batch = []
-    for fx, fy, cx, cy in zip(fxs, fys, cxs, cys):
-        intrinsics = torch.eye(4, device=device, dtype=dtype)
-        intrinsics[0, 0] = fx
-        intrinsics[1, 1] = fy
-        intrinsics[0, 2] = cx
-        intrinsics[1, 2] = cy
-        intrinsics_batch.append(intrinsics)
-    return torch.stack(intrinsics_batch)
-
-
-def create_extrinsics_with_rotation(alphas, betas, gammas, txs, tys, tzs, device, dtype):
-    extrinsics_batch = []
-    for alpha, beta, gamma, tx, ty, tz in zip(alphas, betas, gammas, txs, tys, tzs):
-        Rx = torch.eye(3, device=device, dtype=dtype)
-        Rx[1, 1] = math.cos(alpha)
-        Rx[1, 2] = math.sin(alpha)
-        Rx[2, 1] = -Rx[1, 2]
-        Rx[2, 2] = Rx[1, 1]
-
-        Ry = torch.eye(3, device=device, dtype=dtype)
-        Ry[0, 0] = math.cos(beta)
-        Ry[0, 2] = -math.sin(beta)
-        Ry[2, 0] = -Ry[0, 2]
-        Ry[2, 2] = Ry[0, 0]
-
-        Rz = torch.eye(3, device=device, dtype=dtype)
-        Rz[0, 0] = math.cos(gamma)
-        Rz[0, 1] = math.sin(gamma)
-        Rz[1, 0] = -Rz[0, 1]
-        Rz[1, 1] = Rz[0, 0]
-
-        Ryz = torch.matmul(Ry, Rz)
-        R = torch.matmul(Rx, Ryz)
-
-        extrinsics = torch.eye(4, device=device, dtype=dtype)
-        extrinsics[..., 0, -1] = tx
-        extrinsics[..., 1, -1] = ty
-        extrinsics[..., 2, -1] = tz
-        extrinsics[:3, :3] = R
-
-        extrinsics_batch.append(extrinsics)
-    return torch.stack(extrinsics_batch)
-
-
-def create_one_camera(height, width, device: Device, dtype: torch.dtype) -> PinholeCamera:
-    fx = width
-    fy = height
-    cx = (width - 1.0) / 2.0
-    cy = (height - 1.0) / 2.0
-
-    tx = 0.0
-    ty = 0.0
-    tz = 1.0
-
-    alpha = math.pi / 2.0
-    beta = 0.0
-    gamma = -math.pi / 2.0
-
-    intrinsics = create_intrinsics([fx], [fy], [cx], [cy], device=device, dtype=dtype)
-    extrinsics = create_extrinsics_with_rotation([alpha], [beta], [gamma], [tx], [ty], [tz], device=device, dtype=dtype)
-
-    return PinholeCamera(
-        intrinsics,
-        extrinsics,
-        torch.tensor([height], device=device, dtype=dtype),
-        torch.tensor([width], device=device, dtype=dtype),
-    )
-
-
-def create_four_cameras(device, dtype) -> PinholeCamera:
-    height = torch.tensor([5, 4, 4, 4], device=device, dtype=dtype)
-    width = torch.tensor([9, 7, 7, 7], device=device, dtype=dtype)
-
-    fx = width.tolist()
-    fy = height.tolist()
-
-    cx = (width - 1.0) / 2.0
-    cy = (height - 1.0) / 2.0
-
-    tx = [0.0, 0.0, 0.0, 0.0]
-    ty = [0.0, 0.0, 0.0, 0.0]
-    tz = [11.0, 11.0, 11.0, 5.0]
-
-    pi = math.pi
-    alpha = [pi / 2.0, pi / 2.0, pi / 2.0, 0.0]
-    beta = [0.0, 0.0, 0.0, pi]
-    gamma = [-pi / 2.0, 0.0, pi / 2.0, 0.0]
-
-    intrinsics = create_intrinsics(fx, fy, cx, cy, device=device, dtype=dtype)
-    extrinsics = create_extrinsics_with_rotation(alpha, beta, gamma, tx, ty, tz, device=device, dtype=dtype)
-
-    cameras = PinholeCamera(intrinsics, extrinsics, height, width)
-    return cameras
 
 
 class TestRaySampler_3DPoints:
