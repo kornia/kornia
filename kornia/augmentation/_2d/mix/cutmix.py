@@ -74,7 +74,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         >>> input = torch.rand(2, 1, 3, 3)
         >>> input[0] = torch.ones((1, 3, 3))
         >>> label = torch.tensor([0, 1])
-        >>> cutmix = RandomCutMixV2(data_keys=["input", "class"])
+        >>> cutmix = RandomCutMixV2(data_keys=["input", "class"], use_correct_lambda=True)
         >>> cutmix(input, label)
         [tensor([[[[0.8879, 0.4510, 1.0000],
                   [0.1498, 0.4015, 1.0000],
@@ -83,8 +83,8 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         <BLANKLINE>
                 [[[1.0000, 1.0000, 0.7995],
                   [1.0000, 1.0000, 0.0542],
-                  [0.4594, 0.1756, 0.9492]]]]), tensor([[[0.0000, 1.0000, 0.4444],
-                 [1.0000, 0.0000, 0.4444]]])]
+                  [0.4594, 0.1756, 0.9492]]]]), tensor([[[0.0000, 1.0000, 0.5556],
+                 [1.0000, 0.0000, 0.5556]]])]
 
     """
 

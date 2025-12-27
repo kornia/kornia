@@ -39,6 +39,8 @@ from kornia.utils.misc import (
     differentiable_polynomial_rounding,
 )
 
+_DCT8_CACHE: dict[tuple[Dtype, Device], tuple[Tensor, Tensor]] = {}
+
 __all__ = ["JPEGCodecDifferentiable", "jpeg_codec_differentiable"]
 
 
@@ -127,13 +129,7 @@ def _dct_8x8(input: Tensor) -> Tensor:
     # Get dtype and device
     dtype: Dtype = input.dtype
     device: Device = input.device
-    # Make DCT tensor and scaling
-    index: Tensor = torch.arange(8, dtype=dtype, device=device)
-    x, y, u, v = torch.meshgrid(index, index, index, index)
-    dct_tensor: Tensor = ((2.0 * x + 1.0) * u * pi / 16.0).cos() * ((2.0 * y + 1.0) * v * pi / 16.0).cos()
-    alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
-    alpha[0] = 1.0 / (2**0.5)
-    dct_scale: Tensor = torch.einsum("i, j -> ij", alpha, alpha) * 0.25
+    dct_tensor, dct_scale = _get_dct8_basis_scale(dtype, device)
     # Apply DCT
     output: Tensor = dct_scale[None, None] * torch.tensordot(input - 128.0, dct_tensor)
     return output
@@ -159,7 +155,7 @@ def _idct_8x8(input: Tensor) -> Tensor:
     input = input * dct_scale[None, None]
     # Make DCT tensor and scaling
     index: Tensor = torch.arange(8, dtype=dtype, device=device)
-    x, y, u, v = torch.meshgrid(index, index, index, index)
+    x, y, u, v = torch.meshgrid(index, index, index, index, indexing="ij")
     idct_tensor: Tensor = ((2.0 * u + 1.0) * x * pi / 16.0).cos() * ((2.0 * v + 1.0) * y * pi / 16.0).cos()
     # Apply DCT
     output: Tensor = 0.25 * torch.tensordot(input, idct_tensor, dims=2) + 128.0
@@ -582,6 +578,19 @@ def jpeg_codec_differentiable(
     # Crop the image again to the original shape
     image_rgb_jpeg = image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
     return image_rgb_jpeg
+
+
+def _get_dct8_basis_scale(dtype: Dtype, device: Device) -> tuple[Tensor, Tensor]:
+    key = (dtype, device)
+    if key not in _DCT8_CACHE:
+        index: Tensor = torch.arange(8, dtype=dtype, device=device)
+        x, y, u, v = torch.meshgrid(index, index, index, index, indexing="ij")
+        dct_tensor: Tensor = ((2.0 * x + 1.0) * u * pi / 16.0).cos() * ((2.0 * y + 1.0) * v * pi / 16.0).cos()
+        alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
+        alpha[0] = 1.0 / (2**0.5)
+        dct_scale: Tensor = torch.outer(alpha, alpha) * 0.25
+        _DCT8_CACHE[key] = (dct_tensor, dct_scale)
+    return _DCT8_CACHE[key]
 
 
 class JPEGCodecDifferentiable(Module):
