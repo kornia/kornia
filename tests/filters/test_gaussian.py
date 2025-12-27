@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+from networkx import sigma
 import pytest
 import torch
 
@@ -308,7 +309,10 @@ class TestGaussianBlur2d(BaseTester):
         data = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
 
         # Test functional form
-        op = lambda x: gaussian_blur2d(x, kernel_size, sigma, "reflect", separable=True)
+        # Test functional form
+        def op(x):
+            return gaussian_blur2d(x, kernel_size, sigma, "reflect", separable=True)
+
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(data), op_optimized(data))
