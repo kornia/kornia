@@ -17,38 +17,7 @@ Learn more: `https://paperswithcode.com/task/object-detection <https://paperswit
 Finetuning
 ----------
 
-In order to customize your model with your own data you can use our :ref:`training_api` to perform the
-`fine-tuning <https://paperswithcode.com/methods/category/fine-tuning>`_ of your model.
-
-We provide :py:class:`~kornia.x.ObjectDetectionTrainer`
-with a default training structure to train object detection problems. However, one can leverage this is
-API using the models provided by Kornia or use existing libraries from the PyTorch ecosystem such
+In order to customize your model with your own data, you can use the models provided by Kornia or use existing libraries from the PyTorch ecosystem such
 as `torchvision <https://pytorch.org/vision/stable/models.html>`_.
 
-Create the dataloaders and transforms:
-
-.. literalinclude:: ../_static/scripts/object_detection.py
-   :language: python
-   :lines: 17-39
-
-Define your model, losses, optimizers and schedulers:
-
-.. literalinclude:: ../_static/scripts/object_detection.py
-   :language: python
-   :lines: 40-50
-
-Create your preprocessing and augmentations pipeline:
-
-.. literalinclude:: ../_static/scripts/object_detection.py
-   :language: python
-   :lines: 50-90
-
-Finally, instantiate the :py:class:`~kornia.x.ObjectDetectionTrainer`
-and execute your training pipeline.
-
-.. literalinclude:: ../_static/scripts/object_detection.py
-   :language: python
-   :lines: 90-111
-
-.. seealso::
-   Play with the full example `here <https://github.com/kornia/tutorials/tree/master/scripts/training/object_detection>`_
+You can use standard PyTorch training loops with Kornia models and augmentations.

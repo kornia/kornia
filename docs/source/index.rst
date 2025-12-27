@@ -96,7 +96,6 @@ Join the community
    get-started/about
    Tutorials <https://kornia.github.io/tutorials/>
    get-started/multi-framework-support
-   get-started/training
    OpenCV AI Kit <https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia>
    get-started/governance
 
@@ -120,12 +119,10 @@ Join the community
    models
    metrics
    morphology
-   nerf
    onnx
    tracking
    testing
    utils
-   x
 
 .. toctree::
    :caption: KORNIA APPLICATIONS
@@ -135,13 +132,10 @@ Join the community
    applications/visual_prompting
    applications/face_detection
    applications/image_augmentations
-   applications/image_classification
    applications/image_matching
    applications/image_stitching
    applications/image_registration
    applications/image_denoising
-   applications/semantic_segmentation
-   applications/object_detection
 
 .. toctree::
    :caption: KORNIA MODELS

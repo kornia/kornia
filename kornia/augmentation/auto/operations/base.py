@@ -15,11 +15,10 @@
 # limitations under the License.
 #
 
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Callable, Dict, List, Optional, Tuple, TypeVar
 
 import torch
 from torch import nn
-from torch.autograd import Function
 from torch.distributions import Bernoulli, RelaxedBernoulli
 from typing_extensions import Self
 
@@ -51,7 +50,6 @@ class OperationBase(Module):
         temperature: float = 0.1,
         is_batch_operation: bool = False,
         magnitude_fn: Optional[Callable[[Tensor], Tensor]] = None,
-        gradient_estimator: Optional[Type[Function]] = None,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__()
@@ -76,7 +74,6 @@ class OperationBase(Module):
 
         self.symmetric_megnitude = symmetric_megnitude
         self._magnitude_fn = self._init_magnitude_fn(magnitude_fn)
-        self._gradient_estimator = gradient_estimator
 
     def _init_magnitude_fn(self, magnitude_fn: Optional[Callable[[Tensor], Tensor]]) -> Callable[[Tensor], Tensor]:
         def _identity(x: Tensor) -> Tensor:
@@ -163,16 +160,6 @@ class OperationBase(Module):
 
         batch_prob = params["batch_prob"][(...,) + ((None,) * (len(input.shape) - 1))].to(device=input.device)
 
-        if self._gradient_estimator is not None:
-            # skip the gradient computation if gradient estimator is provided.
-            with torch.no_grad():
-                output = self.op(input, params=params)
-            output = batch_prob * output + (1 - batch_prob) * input
-            if self.magnitude is None:
-                # If magnitude is None, make the grad w.r.t the input
-                return self._gradient_estimator.apply(input, output)
-            # If magnitude is not None, make the grad w.r.t the magnitude
-            return self._gradient_estimator.apply(self.magnitude, output)
         return batch_prob * self.op(input, params=params) + (1 - batch_prob) * input
 
     @property

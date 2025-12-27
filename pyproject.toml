@@ -42,7 +42,6 @@ Issues = "https://github.com/kornia/kornia/issues"
 
 [project.optional-dependencies]
 dev = [
-  "accelerate",
   "coverage",
   "diffusers",
   "ivy>=1.0.0.0",
@@ -79,7 +78,6 @@ docs = [
   "sphinxcontrib-gtagjs",
   "sphinxcontrib-youtube",
 ]
-x = ["accelerate", "onnxruntime-gpu>=1.16; sys_platform != 'darwin'"]
 
 [tool.hatch.version]
 path = "kornia/__init__.py"

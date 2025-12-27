@@ -96,11 +96,9 @@ def draw_bbox_kpts(imgs, bboxes, keypoints):
 
 def main():
     # Download the tutorial examples for the main docs
-    URLS_TUTORIALS_EXAMPLES = {
-        "image_classifier.py": "scripts/training/image_classifier/main.py",
-        "object_detection.py": "scripts/training/object_detection/main.py",
-        "semantic_segmentation.py": "scripts/training/semantic_segmentation/main.py",
-    }
+    # Note: Training API examples (image_classifier, object_detection, semantic_segmentation) removed
+    # as they depend on kornia.x which has been removed
+    URLS_TUTORIALS_EXAMPLES = {}
 
     OUTPUT_PATH_SCRIPTS = Path(__file__).absolute().parent / "source/_static/scripts/"
 
