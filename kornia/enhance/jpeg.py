@@ -578,6 +578,7 @@ def jpeg_codec_differentiable(
     image_rgb_jpeg = image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
     return image_rgb_jpeg
 
+
 def _get_idct8x8_constants(dtype: Dtype, device: Device):
     key = (str(dtype), str(device))
     cached = _idct8x8_cache.get(key, None)
