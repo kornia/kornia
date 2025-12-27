@@ -326,6 +326,7 @@ class TestGaussianBlur2d(BaseTester):
         sample_input = torch.ones(1, 3, 8, 8, device=device, dtype=dtype)
 
         # Test ONNX export - just ensure it doesn't error
+        # TODO: think of an absctraction
         try:
             import os
             import tempfile
