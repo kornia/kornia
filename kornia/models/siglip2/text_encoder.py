@@ -124,7 +124,7 @@ class SigLip2TextLayer(Module):
 
     def __init__(self, config: SigLip2TextConfig) -> None:
         super().__init__()
-        self.attention = SigLip2Attention(
+        self.self_attn = SigLip2Attention(
             hidden_size=config.hidden_size,
             num_heads=config.num_attention_heads,
             dropout=config.attention_dropout,
@@ -146,7 +146,7 @@ class SigLip2TextLayer(Module):
         # Self-attention with pre-norm
         residual = hidden_states
         hidden_states = self.layer_norm1(hidden_states)
-        hidden_states = self.attention(hidden_states, attention_mask=attention_mask)
+        hidden_states = self.self_attn(hidden_states, attention_mask=attention_mask)
         hidden_states = residual + hidden_states
 
         # MLP with pre-norm
@@ -168,9 +168,8 @@ class SigLip2TextEncoder(Module):
     def __init__(self, config: SigLip2TextConfig) -> None:
         super().__init__()
         self.layers = nn.ModuleList([SigLip2TextLayer(config) for _ in range(config.num_hidden_layers)])
-        # Note: HF SigLip does NOT use layer_norm at encoder level (uses final_layer_norm instead)
-        # Keep for compatibility but don't use
-        self.layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        # Note: HF SigLip does NOT use layer_norm at encoder level (uses final_layer_norm at model level)
+        # Removed to match HF exactly
 
     def forward(
         self,
@@ -221,6 +220,8 @@ class SigLip2TextModel(Module):
         self.config = config
         self.embeddings = SigLip2TextEmbeddings(config)
         self.encoder = SigLip2TextEncoder(config)
+        # Final layer norm (HF applies this after encoder, before pooling)
+        self.final_layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         # Head layer (HF applies this after pooling)
         self.head = nn.Linear(config.hidden_size, config.hidden_size)
 
@@ -259,8 +260,7 @@ class SigLip2TextModel(Module):
         last_hidden_state = encoder_outputs[0]
 
         # Apply final_layer_norm (HF applies it here, not in encoder)
-        # We map final_layer_norm -> encoder.layer_norm in weight loading
-        last_hidden_state = self.encoder.layer_norm(last_hidden_state)
+        last_hidden_state = self.final_layer_norm(last_hidden_state)
 
         # Pool: HF uses last token (assuming "sticky" EOS tokenization)
         # From HF code: "Assuming 'sticky' EOS tokenization, last token is always EOS."

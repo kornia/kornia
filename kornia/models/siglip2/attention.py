@@ -67,8 +67,10 @@ class SigLip2Attention(Module):
 
         self.scale = 1.0 / math.sqrt(self.head_dim)
 
-        # Fused QKV projection (more efficient)
-        self.qkv_proj = nn.Linear(hidden_size, hidden_size * 3)
+        # Separate Q/K/V projections (matching HF structure)
+        self.q_proj = nn.Linear(hidden_size, hidden_size)
+        self.k_proj = nn.Linear(hidden_size, hidden_size)
+        self.v_proj = nn.Linear(hidden_size, hidden_size)
         self.out_proj = nn.Linear(hidden_size, hidden_size)
         self.dropout_layer = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
 
@@ -91,11 +93,20 @@ class SigLip2Attention(Module):
         """
         batch_size, seq_len, _ = hidden_states.shape
 
-        # Compute QKV
-        qkv = self.qkv_proj(hidden_states)
-        qkv = qkv.reshape(batch_size, seq_len, 3, self.num_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)  # (3, batch_size, num_heads, seq_len, head_dim)
-        query, key, value = qkv[0], qkv[1], qkv[2]
+        # Compute Q, K, V separately (matching HF structure)
+        query = self.q_proj(hidden_states)
+        key = self.k_proj(hidden_states)
+        value = self.v_proj(hidden_states)
+
+        # Reshape to (batch_size, seq_len, num_heads, head_dim)
+        query = query.reshape(batch_size, seq_len, self.num_heads, self.head_dim)
+        key = key.reshape(batch_size, seq_len, self.num_heads, self.head_dim)
+        value = value.reshape(batch_size, seq_len, self.num_heads, self.head_dim)
+
+        # Transpose to (batch_size, num_heads, seq_len, head_dim)
+        query = query.transpose(1, 2)
+        key = key.transpose(1, 2)
+        value = value.transpose(1, 2)
 
         # Compute attention scores: (batch_size, num_heads, seq_len, seq_len)
         attention_scores = torch.matmul(query, key.transpose(-2, -1)) * self.scale
