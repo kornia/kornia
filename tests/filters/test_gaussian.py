@@ -345,7 +345,6 @@ class TestGaussianBlur2d(BaseTester):
         except Exception as e:
             pytest.skip(f"ONNX export not supported: {e}")
 
-    # ========== EDGE CASES AND VALIDATION TESTS ==========
 
     def test_sigma_negative_raises_exception(self, device, dtype):
         """Test that negative sigma raises an exception."""
