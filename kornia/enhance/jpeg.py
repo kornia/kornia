@@ -39,6 +39,8 @@ from kornia.utils.misc import (
     differentiable_polynomial_rounding,
 )
 
+_idct8x8_cache = {}
+
 __all__ = ["JPEGCodecDifferentiable", "jpeg_codec_differentiable"]
 
 
@@ -152,15 +154,8 @@ def _idct_8x8(input: Tensor) -> Tensor:
     # Get dtype and device
     dtype: Dtype = input.dtype
     device: Device = input.device
-    # Make and apply scaling
-    alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
-    alpha[0] = 1.0 / (2**0.5)
-    dct_scale: Tensor = torch.outer(alpha, alpha)
+    dct_scale, idct_tensor = _get_idct8x8_constants(dtype, device)
     input = input * dct_scale[None, None]
-    # Make DCT tensor and scaling
-    index: Tensor = torch.arange(8, dtype=dtype, device=device)
-    x, y, u, v = torch.meshgrid(index, index, index, index, indexing="ij")
-    idct_tensor: Tensor = ((2.0 * u + 1.0) * x * pi / 16.0).cos() * ((2.0 * v + 1.0) * y * pi / 16.0).cos()
     # Apply DCT
     output: Tensor = 0.25 * torch.tensordot(input, idct_tensor, dims=2) + 128.0
     return output
@@ -582,6 +577,20 @@ def jpeg_codec_differentiable(
     # Crop the image again to the original shape
     image_rgb_jpeg = image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
     return image_rgb_jpeg
+
+def _get_idct8x8_constants(dtype: Dtype, device: Device):
+    key = (str(dtype), str(device))
+    cached = _idct8x8_cache.get(key, None)
+    if cached is not None:
+        return cached
+    alpha = torch.ones(8, dtype=dtype, device=device)
+    alpha[0] = 1.0 / (2**0.5)
+    dct_scale = torch.outer(alpha, alpha)
+    index = torch.arange(8, dtype=dtype, device=device)
+    x, y, u, v = torch.meshgrid(index, index, index, index, indexing="ij")
+    idct_tensor = ((2.0 * u + 1.0) * x * pi / 16.0).cos() * ((2.0 * v + 1.0) * y * pi / 16.0).cos()
+    _idct8x8_cache[key] = (dct_scale, idct_tensor)
+    return dct_scale, idct_tensor
 
 
 class JPEGCodecDifferentiable(Module):
