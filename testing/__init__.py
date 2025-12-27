@@ -1,4 +1,4 @@
-﻿# LICENSE HEADER MANAGED BY add-license-header
+# LICENSE HEADER MANAGED BY add-license-header
 #
 # Copyright 2018 Kornia Team
 #

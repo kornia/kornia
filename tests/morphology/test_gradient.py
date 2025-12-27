@@ -25,7 +25,10 @@ from testing.parametrized_tester import parametrized_test
 
 
 @parametrized_test(
-    smoke_inputs=lambda device, dtype: (torch.rand(1, 3, 4, 4, device=device, dtype=dtype), torch.ones((3, 3), device=device, dtype=dtype)),
+    smoke_inputs=lambda device, dtype: (
+        torch.rand(1, 3, 4, 4, device=device, dtype=dtype),
+        torch.ones((3, 3), device=device, dtype=dtype),
+    ),
     cardinality_tests=[
         {
             "inputs": lambda device, dtype: (
