@@ -71,13 +71,9 @@ def get_processor(model_name: str):
 
 def get_hf_model(model_name: str):
     """Get the appropriate HF model for the model name."""
-    if HFSigLip2Model is not None and "siglip2" in model_name:
-        return HFSigLip2Model.from_pretrained(model_name)
-    elif HFSigLipModel is not None and "siglip-base" in model_name and "siglip2" not in model_name:
-        return HFSigLipModel.from_pretrained(model_name)
-    else:
-        # Fallback to AutoModel
-        return AutoModel.from_pretrained(model_name)
+    # Always use AutoModel as it handles model selection automatically
+    # and avoids issues with model class mismatches
+    return AutoModel.from_pretrained(model_name)
 
 
 def compare_state_dicts(kornia_model, hf_model, model_name: str):
@@ -260,9 +256,9 @@ def compare_outputs(kornia_model, hf_model, processor, model_name: str, device="
     all_match = True
 
     # Compare image embeddings
-    if hf_outputs.image_embeds is not None and kornia_outputs["image_embeds"] is not None:
+    if hf_outputs.image_embeds is not None and kornia_outputs.image_embeds is not None:
         print("\n  Image Embeddings:")
-        kornia_img = kornia_outputs["image_embeds"]
+        kornia_img = kornia_outputs.image_embeds
         hf_img = hf_outputs.image_embeds
 
         img_diff = (kornia_img - hf_img).abs()
@@ -284,9 +280,9 @@ def compare_outputs(kornia_model, hf_model, processor, model_name: str, device="
             all_match = False
 
     # Compare text embeddings
-    if hf_outputs.text_embeds is not None and kornia_outputs["text_embeds"] is not None:
+    if hf_outputs.text_embeds is not None and kornia_outputs.text_embeds is not None:
         print("\n  Text Embeddings:")
-        kornia_txt = kornia_outputs["text_embeds"]
+        kornia_txt = kornia_outputs.text_embeds
         hf_txt = hf_outputs.text_embeds
 
         txt_diff = (kornia_txt - hf_txt).abs()
@@ -308,9 +304,9 @@ def compare_outputs(kornia_model, hf_model, processor, model_name: str, device="
             all_match = False
 
     # Compare logits
-    if hasattr(hf_outputs, "logits_per_image") and "logits_per_image" in kornia_outputs:
+    if hasattr(hf_outputs, "logits_per_image") and kornia_outputs.logits_per_image is not None:
         print("\n  Logits per Image:")
-        kornia_logits = kornia_outputs["logits_per_image"]
+        kornia_logits = kornia_outputs.logits_per_image
         hf_logits = hf_outputs.logits_per_image
 
         logits_diff = (kornia_logits - hf_logits).abs()
@@ -394,8 +390,8 @@ def compare_outputs(kornia_model, hf_model, processor, model_name: str, device="
             attention_mask=attention_mask2,
         )
 
-    if hf_outputs2.image_embeds is not None and kornia_outputs2["image_embeds"] is not None:
-        img_diff2 = (kornia_outputs2["image_embeds"] - hf_outputs2.image_embeds).abs().max().item()
+    if hf_outputs2.image_embeds is not None and kornia_outputs2.image_embeds is not None:
+        img_diff2 = (kornia_outputs2.image_embeds - hf_outputs2.image_embeds).abs().max().item()
         print(f"  Image embeds max diff: {img_diff2:.6e}")
         if img_diff2 < 1e-3:
             print("  ✓ MATCH")
@@ -439,7 +435,7 @@ def main():
         # Set seed before loading Kornia model (for reproducible initialization)
         torch.manual_seed(42)
         _rng3 = np.random.default_rng(42)  # Set seed for reproducibility
-        kornia_model = SigLip2Builder.from_pretrained(model_name).to(device).eval()
+        kornia_model = SigLip2Builder.from_pretrained_hf(model_name).to(device).eval()
         print("  ✓ Kornia model loaded")
 
         try:

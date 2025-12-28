@@ -93,48 +93,47 @@ class SigLip2Attention(Module):
         """
         batch_size, seq_len, _ = hidden_states.shape
 
-        # Compute Q, K, V separately (matching HF structure)
+        # compute Q, K, V separately
         query = self.q_proj(hidden_states)
         key = self.k_proj(hidden_states)
         value = self.v_proj(hidden_states)
 
-        # Reshape to (batch_size, seq_len, num_heads, head_dim)
+        # reshape to (batch_size, seq_len, num_heads, head_dim)
         query = query.reshape(batch_size, seq_len, self.num_heads, self.head_dim)
         key = key.reshape(batch_size, seq_len, self.num_heads, self.head_dim)
         value = value.reshape(batch_size, seq_len, self.num_heads, self.head_dim)
 
-        # Transpose to (batch_size, num_heads, seq_len, head_dim)
+        # transpose to (batch_size, num_heads, seq_len, head_dim)
         query = query.transpose(1, 2)
         key = key.transpose(1, 2)
         value = value.transpose(1, 2)
 
-        # Compute attention scores: (batch_size, num_heads, seq_len, seq_len)
+        # compute attention scores: (batch_size, num_heads, seq_len, seq_len)
         attention_scores = torch.matmul(query, key.transpose(-2, -1)) * self.scale
 
-        # Apply attention mask if provided
+        # apply attention mask if provided
         if attention_mask is not None:
-            # Handle different mask formats
+            # handle different mask formats
             if attention_mask.dim() == 2:
                 # (batch_size, seq_len) -> (batch_size, seq_len, seq_len)
-                # Position i can attend to j if both are unmasked
                 attention_mask = attention_mask.unsqueeze(2) * attention_mask.unsqueeze(1)
 
-            # Ensure mask has shape (batch_size, 1, seq_len, seq_len) for broadcasting
+            # ensure mask has shape (batch_size, 1, seq_len, seq_len) for broadcasting
             if attention_mask.dim() == 3:
                 attention_mask = attention_mask.unsqueeze(1)
 
-            # Convert: 1 -> 0 (keep), 0 -> -inf (mask)
+            # convert: 1 -> 0 (keep), 0 -> -inf (mask)
             attention_mask = (1.0 - attention_mask.float()) * -10000.0
             attention_scores = attention_scores + attention_mask
 
-        # Apply softmax and dropout
+        # apply softmax and dropout
         attention_probs = torch.softmax(attention_scores, dim=-1)
         attention_probs = self.dropout_layer(attention_probs)
 
-        # Apply attention to values
+        # apply attention to values
         attention_output = torch.matmul(attention_probs, value)
 
-        # Reshape and project output
+        # reshape and project output
         attention_output = attention_output.permute(0, 2, 1, 3).contiguous()
         attention_output = attention_output.reshape(batch_size, seq_len, self.hidden_size)
         attention_output = self.out_proj(attention_output)

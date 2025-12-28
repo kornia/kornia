@@ -48,15 +48,11 @@ class SigLip2TextEmbeddings(Module):
         self.hidden_size = config.hidden_size
         self.max_position_embeddings = config.max_position_embeddings
 
-        # Token embeddings
+        # token embeddings - [vocab_size, hidden_size]
         self.token_embedding = nn.Embedding(config.vocab_size, config.hidden_size)
 
-        # Position embeddings (learned)
+        # position embeddings - [max_position_embeddings, hidden_size]
         self.position_embedding = nn.Embedding(config.max_position_embeddings, config.hidden_size)
-
-        # Note: HF SigLip does NOT use layer_norm or dropout in embeddings
-        # Removed to match HF exactly and enable strict weight loading
-        self.dropout = nn.Dropout(config.dropout) if config.dropout > 0.0 else nn.Identity()
 
     def forward(self, input_ids: Tensor, position_ids: Optional[Tensor] = None) -> Tensor:
         """Forward pass.
@@ -71,21 +67,16 @@ class SigLip2TextEmbeddings(Module):
         """
         batch_size, seq_len = input_ids.shape
 
-        # Token embeddings
+        # token embeddings - [batch_size, seq_len, hidden_size]
         token_embeddings = self.token_embedding(input_ids)
 
-        # Position embeddings
+        # position embeddings - [batch_size, seq_len, hidden_size]
         if position_ids is None:
             position_ids = torch.arange(seq_len, device=input_ids.device).unsqueeze(0).expand(batch_size, -1)
         position_embeddings = self.position_embedding(position_ids)
 
-        # Combine embeddings
+        # combine embeddings - [batch_size, seq_len, hidden_size]
         embeddings = token_embeddings + position_embeddings
-
-        # Note: HF SigLip does NOT use layer_norm or dropout in embeddings
-        # Skip to match HF exactly
-        # embeddings = self.layer_norm(embeddings)  # HF doesn't use this
-        # embeddings = self.dropout(embeddings)  # HF doesn't use this
 
         return embeddings
 
@@ -105,16 +96,18 @@ class SigLip2TextMLP(Module):
         self.dropout = nn.Dropout(config.dropout) if config.dropout > 0.0 else nn.Identity()
 
     def forward(self, hidden_states: Tensor) -> Tensor:
-        """Forward pass."""
+        # linear transformation - [batch_size, seq_len, intermediate_size]
         hidden_states = self.fc1(hidden_states)
+        # activation function - [batch_size, seq_len, intermediate_size]
         hidden_states = self.activation(hidden_states)
+        # linear transformation - [batch_size, seq_len, hidden_size]
         hidden_states = self.fc2(hidden_states)
         hidden_states = self.dropout(hidden_states)
         return hidden_states
 
 
 class SigLip2TextLayer(Module):
-    """Transformer layer for text encoder.
+    """Transformer layer for SigLip2 text encoder.
 
     Implements pre-norm architecture with residual connections.
 
@@ -143,18 +136,19 @@ class SigLip2TextLayer(Module):
         Returns:
             Output tensor of shape (batch_size, seq_len, hidden_size).
         """
-        # Self-attention with pre-norm
+        # self-attention with pre-norm
         residual = hidden_states
         hidden_states = self.layer_norm1(hidden_states)
         hidden_states = self.self_attn(hidden_states, attention_mask=attention_mask)
         hidden_states = residual + hidden_states
 
-        # MLP with pre-norm
+        # MLP with pre-norm - [batch_size, seq_len, hidden_size]
         residual = hidden_states
         hidden_states = self.layer_norm2(hidden_states)
         hidden_states = self.mlp(hidden_states)
         hidden_states = residual + hidden_states
 
+        # return the hidden states - [batch_size, seq_len, hidden_size]
         return hidden_states
 
 
@@ -168,8 +162,6 @@ class SigLip2TextEncoder(Module):
     def __init__(self, config: SigLip2TextConfig) -> None:
         super().__init__()
         self.layers = nn.ModuleList([SigLip2TextLayer(config) for _ in range(config.num_hidden_layers)])
-        # Note: HF SigLip does NOT use layer_norm at encoder level (uses final_layer_norm at model level)
-        # Removed to match HF exactly
 
     def forward(
         self,
@@ -194,13 +186,6 @@ class SigLip2TextEncoder(Module):
                 all_hidden_states.append(hidden_states)
             hidden_states = layer(hidden_states, attention_mask=attention_mask)
 
-        # Note: HF SigLip uses final_layer_norm, not encoder.layer_norm
-        # We map final_layer_norm -> encoder.layer_norm in weight loading
-        # But HF doesn't apply it here - it's applied in the model forward
-        # Actually, let me check if HF applies it...
-        # For now, skip to match HF structure
-        # hidden_states = self.layer_norm(hidden_states)
-
         if output_hidden_states:
             all_hidden_states.append(hidden_states)
             return (hidden_states, tuple(all_hidden_states))
@@ -220,9 +205,9 @@ class SigLip2TextModel(Module):
         self.config = config
         self.embeddings = SigLip2TextEmbeddings(config)
         self.encoder = SigLip2TextEncoder(config)
-        # Final layer norm (HF applies this after encoder, before pooling)
+        # final layer norm - [batch_size, hidden_size]
         self.final_layer_norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        # Head layer (HF applies this after pooling)
+        # head layer - [batch_size, hidden_size]
         self.head = nn.Linear(config.hidden_size, config.hidden_size)
 
     def forward(
@@ -247,10 +232,10 @@ class SigLip2TextModel(Module):
             - Last hidden state
             - All hidden states (if output_hidden_states=True)
         """
-        # Get embeddings
+        # get embeddings - [batch_size, seq_len, hidden_size]
         hidden_states = self.embeddings(input_ids, position_ids=position_ids)
 
-        # Encode (attention module handles mask conversion internally)
+        # encode - [batch_size, seq_len, hidden_size]
         encoder_outputs = self.encoder(
             hidden_states,
             attention_mask=attention_mask,
@@ -259,14 +244,13 @@ class SigLip2TextModel(Module):
 
         last_hidden_state = encoder_outputs[0]
 
-        # Apply final_layer_norm (HF applies it here, not in encoder)
+        # apply final layer norm - [batch_size, hidden_size]
         last_hidden_state = self.final_layer_norm(last_hidden_state)
 
-        # Pool: HF uses last token (assuming "sticky" EOS tokenization)
-        # From HF code: "Assuming 'sticky' EOS tokenization, last token is always EOS."
+        # pool: use the last token - [batch_size, hidden_size]
         pooled_output = last_hidden_state[:, -1]
 
-        # Apply head layer (HF applies this after pooling)
+        # apply head layer - [batch_size, hidden_size]
         pooled_output = self.head(pooled_output)
 
         if output_hidden_states:

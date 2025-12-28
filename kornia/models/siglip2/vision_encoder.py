@@ -55,24 +55,22 @@ class SigLip2VisionEmbeddings(Module):
         self.num_channels = config.num_channels
         self.hidden_size = config.hidden_size
 
-        # Patch embedding: Conv2d with patch_size stride
-        # Note: HF model uses bias=True, so we need bias too
+        # extract patches from the image using a convolutional layer
         self.patch_embedding = nn.Conv2d(
             in_channels=config.num_channels,
             out_channels=config.hidden_size,
             kernel_size=config.patch_size,
             stride=config.patch_size,
-            bias=True,  # HF model has bias
+            bias=True,
         )
 
-        # Calculate number of patches
+        # calculate the number of patches in the image
         self.num_patches = (config.image_size // config.patch_size) ** 2
 
-        # Position embeddings (learned) - matching HF format: [num_patches, hidden_size]
+        # position embeddings - [num_patches, hidden_size]
         self.position_embedding = nn.Parameter(torch.randn(self.num_patches, config.hidden_size) * 0.02)
 
-        # Note: HF SigLip does NOT use layer_norm or dropout in embeddings
-        # Removed to match HF exactly and enable strict weight loading
+        # dropout or identity
         self.dropout = nn.Dropout(config.dropout) if config.dropout > 0.0 else nn.Identity()
 
     def forward(self, pixel_values: Tensor) -> Tensor:
@@ -84,18 +82,12 @@ class SigLip2VisionEmbeddings(Module):
         Returns:
             Embedded patches of shape (batch_size, num_patches, hidden_size).
         """
-        # Patch embedding
+        # extract patches from the image
         embeddings = self.patch_embedding(pixel_values)  # (batch_size, hidden_size, H', W')
         embeddings = embeddings.flatten(2).transpose(1, 2)  # (batch_size, num_patches, hidden_size)
 
-        # Add position embeddings (unsqueeze for batch dimension)
+        # add position embeddings to the embeddings
         embeddings = embeddings + self.position_embedding.unsqueeze(0)
-
-        # Note: HF SigLip does NOT use layer_norm or dropout in embeddings
-        # Layer norm is only applied at encoder level
-        # Skip layer_norm and dropout to match HF exactly
-        # embeddings = self.layer_norm(embeddings)  # HF doesn't use this
-        # embeddings = self.dropout(embeddings)  # HF doesn't use this
 
         return embeddings
 
@@ -115,7 +107,6 @@ class SigLip2VisionMLP(Module):
         self.dropout = nn.Dropout(config.dropout) if config.dropout > 0.0 else nn.Identity()
 
     def forward(self, hidden_states: Tensor) -> Tensor:
-        """Forward pass."""
         hidden_states = self.fc1(hidden_states)
         hidden_states = self.activation(hidden_states)
         hidden_states = self.fc2(hidden_states)
@@ -192,26 +183,19 @@ class SigLip2MultiheadAttentionPoolingHead(Module):
         self.mlp = SigLip2VisionMLP(config)
 
     def forward(self, hidden_state: Tensor) -> Tensor:
-        """Forward pass.
-
-        Args:
-            hidden_state: Input tensor of shape (batch_size, seq_len, hidden_size).
-
-        Returns:
-            Pooled output of shape (batch_size, hidden_size).
-        """
+        # repeat the probe token for the batch size
         batch_size = hidden_state.shape[0]
         probe = self.probe.repeat(batch_size, 1, 1)  # (batch_size, 1, hidden_size)
 
-        # Multi-head attention: probe as query, hidden_state as key/value
+        # multi-head attention: probe as query, hidden_state as key/value
         hidden_state, _ = self.attention(probe, hidden_state, hidden_state)
 
-        # Residual connection with layer norm and MLP
+        # residual connection with layer norm and MLP
         residual = hidden_state
         hidden_state = self.layernorm(hidden_state)
         hidden_state = residual + self.mlp(hidden_state)
 
-        # Return first (and only) token
+        # return the first (and only) token - [batch_size, hidden_size]
         return hidden_state[:, 0]
 
 
@@ -225,8 +209,6 @@ class SigLip2VisionEncoder(Module):
     def __init__(self, config: SigLip2VisionConfig) -> None:
         super().__init__()
         self.layers = nn.ModuleList([SigLip2VisionLayer(config) for _ in range(config.num_hidden_layers)])
-        # Note: HF SigLip does NOT use layer_norm at encoder level
-        # Removed to match HF exactly and enable strict weight loading
 
     def forward(
         self,
@@ -251,10 +233,6 @@ class SigLip2VisionEncoder(Module):
                 all_hidden_states.append(hidden_states)
             hidden_states = layer(hidden_states, attention_mask=attention_mask)
 
-        # Note: HF SigLip does NOT apply layer_norm at encoder level
-        # Skip to match HF exactly
-        # hidden_states = self.layer_norm(hidden_states)
-
         if output_hidden_states:
             all_hidden_states.append(hidden_states)
             return (hidden_states, tuple(all_hidden_states))
@@ -274,9 +252,9 @@ class SigLip2VisionModel(Module):
         self.config = config
         self.embeddings = SigLip2VisionEmbeddings(config)
         self.encoder = SigLip2VisionEncoder(config)
-        # Post layer norm (HF applies this before head)
+        # post layer norm - [batch_size, hidden_size]
         self.post_layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        # Head: Multi-head attention pooling (HF uses this for pooling)
+        # head: multi-head attention pooling - [batch_size, hidden_size]
         self.head = SigLip2MultiheadAttentionPoolingHead(config)
 
     def forward(
@@ -310,12 +288,14 @@ class SigLip2VisionModel(Module):
 
         last_hidden_state = encoder_outputs[0]
 
-        # Apply post_layernorm (HF applies this before head)
+        # apply post layer norm - [batch_size, hidden_size]
         last_hidden_state = self.post_layernorm(last_hidden_state)
 
-        # Pool: Multi-head attention pooling (HF uses head for pooling)
+        # pool: multi-head attention pooling - [batch_size, hidden_size]
         pooled_output = self.head(last_hidden_state)
 
         if output_hidden_states:
             return (pooled_output, last_hidden_state, encoder_outputs[1])
+
+        # return the pooled output and the last hidden state - [batch_size, hidden_size]
         return (pooled_output, last_hidden_state)

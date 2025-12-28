@@ -19,9 +19,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Optional
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from kornia.core import Module, Tensor
@@ -30,7 +32,28 @@ from .config import SigLip2Config
 from .text_encoder import SigLip2TextModel
 from .vision_encoder import SigLip2VisionModel
 
-__all__ = ["SigLip2Model"]
+__all__ = ["SigLip2Model", "SigLip2Result"]
+
+
+@dataclass
+class SigLip2Result:
+    """Result from SigLip2 model forward pass.
+
+    Attributes:
+        image_embeds: Image embeddings of shape (batch_size, projection_dim) or None.
+        text_embeds: Text embeddings of shape (batch_size, projection_dim) or None.
+        logit_scale: Logit scale parameter (temperature)
+        logits_per_image: Logits for image-to-text matching of shape (batch_size, batch_size) or None.
+        logits_per_text: Logits for text-to-image matching of shape (batch_size, batch_size) or None.
+        loss: Contrastive loss or None.
+    """
+
+    logit_scale: Tensor
+    image_embeds: Optional[Tensor] = None
+    text_embeds: Optional[Tensor] = None
+    logits_per_image: Optional[Tensor] = None
+    logits_per_text: Optional[Tensor] = None
+    loss: Optional[Tensor] = None
 
 
 class SigLip2Model(Module):
@@ -43,16 +66,7 @@ class SigLip2Model(Module):
         config: Model configuration.
 
     Note:
-        Image preprocessing: Images should be preprocessed to match HuggingFace:
-        - Resize to (image_size, image_size) (typically 224x224)
-        - Rescale by 1/255 (convert from [0, 255] to [0, 1])
-        - Normalize with mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]
-          (converts from [0, 1] to [-1, 1])
-
-        You can use HuggingFace's SiglipImageProcessor:
-        >>> from transformers import SiglipImageProcessor
-        >>> processor = SiglipImageProcessor.from_pretrained(model_name)
-        >>> pixel_values = processor(image, return_tensors='pt')['pixel_values']
+        Image preprocessing: Images should be preprocessed to match SigLip2ImagePreprocessor.
 
     Example:
         >>> import torch
@@ -62,29 +76,31 @@ class SigLip2Model(Module):
         >>> config = SigLip2Config()
         >>> model = SigLip2Model(config)
         >>>
-        >>> # Process images (preprocessed to [-1, 1] range, 224x224)
-        >>> images = torch.randn(2, 3, 224, 224)
-        >>> image_features = model.get_image_features(images)
+        >>> # Create preprocessor
+        >>> preprocessor = SigLip2ImagePreprocessor(image_size=(224, 224))
+        >>> pixel_values = preprocessor(images)
         >>>
-        >>> # Process text
+        >>> # Process image features
+        >>> image_features = model.get_image_features(pixel_values)
+        >>>
+        >>> # Process text features
         >>> input_ids = torch.randint(0, 32000, (2, 10))
         >>> text_features = model.get_text_features(input_ids)
         >>>
         >>> # Joint processing
-        >>> output = model(pixel_values=images, input_ids=input_ids)
-        >>> logits = output['logits_per_image']  # Image-text similarity scores
+        >>> output = model(pixel_values=pixel_values, input_ids=input_ids)
+        >>> logits = output.logits_per_image  # Image-text similarity scores
     """
 
     def __init__(self, config: SigLip2Config) -> None:
         super().__init__()
         self.config = config
 
-        # Vision and text encoders
+        # vision and text encoders
         self.vision_model = SigLip2VisionModel(config.vision_config)
         self.text_model = SigLip2TextModel(config.text_config)
 
-        # Projection layers (only create when projection_dim != hidden_size)
-        # When projection_dim == hidden_size, HF doesn't use projections
+        # projection layers (use Identity when projection_dim == hidden_size)
         vision_hidden_size = config.vision_config.hidden_size
         text_hidden_size = config.text_config.hidden_size
         projection_dim = config.projection_dim
@@ -99,9 +115,9 @@ class SigLip2Model(Module):
         else:
             self.text_projection = nn.Identity()
 
-        # Logit scale (temperature parameter)
+        # logit scale (temperature parameter)
         self.logit_scale = nn.Parameter(torch.tensor(config.logit_scale_init_value))
-        # Logit bias (HF adds this to logits)
+        # logit bias
         self.logit_bias = nn.Parameter(torch.tensor(0.0))
 
     def get_image_features(
@@ -114,7 +130,7 @@ class SigLip2Model(Module):
 
         Args:
             pixel_values: Input images of shape (batch_size, num_channels, height, width).
-            attention_mask: Optional attention mask for vision encoder.
+            attention_mask: Optional attention mask for vision encoder of shape (batch_size, seq_len).
             normalize: Whether to normalize the output features.
 
         Returns:
@@ -143,7 +159,7 @@ class SigLip2Model(Module):
         Args:
             input_ids: Token IDs of shape (batch_size, seq_len).
             attention_mask: Optional attention mask of shape (batch_size, seq_len).
-            position_ids: Optional position IDs.
+            position_ids: Optional position IDs of shape (batch_size, seq_len).
             normalize: Whether to normalize the output features.
 
         Returns:
@@ -156,7 +172,7 @@ class SigLip2Model(Module):
         )
         text_features = text_outputs[0]  # Pooled output
 
-        # Apply projection (will be identity if projection_dim == hidden_size)
+        # apply projection (will be identity if projection_dim == hidden_size)
         text_features = self.text_projection(text_features)
 
         if normalize:
@@ -171,7 +187,7 @@ class SigLip2Model(Module):
         attention_mask: Optional[Tensor] = None,
         position_ids: Optional[Tensor] = None,
         return_loss: bool = False,
-    ) -> dict[str, Tensor]:
+    ) -> SigLip2Result:
         """Forward pass.
 
         Args:
@@ -182,7 +198,7 @@ class SigLip2Model(Module):
             return_loss: Whether to compute and return contrastive loss.
 
         Returns:
-            Dictionary containing:
+            SigLip2Result containing:
             - image_embeds: Image embeddings (if pixel_values provided)
             - text_embeds: Text embeddings (if input_ids provided)
             - logit_scale: Logit scale parameter
@@ -190,7 +206,7 @@ class SigLip2Model(Module):
             - logits_per_text: Logits for text-to-image matching (if both provided)
             - loss: Contrastive loss (if return_loss=True and both provided)
         """
-        # Get embeddings
+        # get embeddings
         image_embeds = self.get_image_features(pixel_values, normalize=True) if pixel_values is not None else None
         text_embeds = (
             self.get_text_features(input_ids, attention_mask=attention_mask, position_ids=position_ids, normalize=True)
@@ -198,28 +214,29 @@ class SigLip2Model(Module):
             else None
         )
 
-        # Build output dictionary
-        output = {
-            "image_embeds": image_embeds,
-            "text_embeds": text_embeds,
-            "logit_scale": self.logit_scale.exp(),
-        }
+        logit_scale = self.logit_scale.exp()
+        logits_per_image = None
+        logits_per_text = None
+        loss = None
 
-        # Compute similarity logits if both embeddings available
+        # compute similarity logits if both embeddings available
         if image_embeds is not None and text_embeds is not None:
-            logit_scale = self.logit_scale.exp()
-            # HF computes logits_per_text first, then transposes
             logits_per_text = torch.matmul(text_embeds, image_embeds.t()) * logit_scale + self.logit_bias
             logits_per_image = logits_per_text.t()
-            output["logits_per_image"] = logits_per_image
-            output["logits_per_text"] = logits_per_text
 
-            # Compute loss if requested
+            # compute loss if requested for training or evaluation
             if return_loss:
                 batch_size = image_embeds.shape[0]
                 labels = torch.arange(batch_size, device=image_embeds.device)
-                loss_img = -torch.nn.functional.logsigmoid(logits_per_image[labels, labels]).mean()
-                loss_txt = -torch.nn.functional.logsigmoid(logits_per_image.t()[labels, labels]).mean()
-                output["loss"] = (loss_img + loss_txt) / 2.0
+                loss_img = -F.logsigmoid(logits_per_image[labels, labels]).mean()
+                loss_txt = -F.logsigmoid(logits_per_image.t()[labels, labels]).mean()
+                loss = (loss_img + loss_txt) / 2.0
 
-        return output
+        return SigLip2Result(
+            image_embeds=image_embeds,
+            text_embeds=text_embeds,
+            logit_scale=logit_scale,
+            logits_per_image=logits_per_image,
+            logits_per_text=logits_per_text,
+            loss=loss,
+        )

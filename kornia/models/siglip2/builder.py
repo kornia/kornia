@@ -78,8 +78,8 @@ def _load_and_update_config(config: SigLip2Config, model_name: str, cache_dir: O
         if hf_config.get("projection_dim") is not None:
             config.projection_dim = hf_config["projection_dim"]
     except (FileNotFoundError, json.JSONDecodeError, KeyError, OSError):
-        # Config download failed or incomplete - will infer from weights
-        pass
+        # config download failed or incomplete - will infer from weights
+        logger.warning(f"Could not load config from {model_name}. Inferred from weights.")
 
     return config
 
@@ -131,7 +131,7 @@ def _set_random_seeds() -> None:
     random.seed(42)
     import numpy as np
 
-    _rng = np.random.default_rng(42)  # Set seed for reproducibility
+    np.random.default_rng(42)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(42)
 
@@ -180,7 +180,7 @@ class SigLip2Builder:
         return SigLip2Model(config)
 
     @staticmethod
-    def from_pretrained(
+    def from_pretrained_hf(
         model_name: str = "google/siglip2-base-patch16-224",
         cache_dir: Optional[str] = None,
     ) -> SigLip2Model:
@@ -215,7 +215,7 @@ class SigLip2Builder:
             >>> from kornia.models.siglip2 import SigLip2Builder
             >>> model = SigLip2Builder.from_pretrained("google/siglip2-base-patch16-224")
         """
-        # Check for huggingface_hub dependency
+        # check for huggingface_hub dependency
         try:
             import huggingface_hub  # noqa: F401
         except ImportError as e:
@@ -224,22 +224,22 @@ class SigLip2Builder:
                 "Install it with: pip install huggingface_hub"
             ) from e
 
-        # Create config from model name (PyTorch-only)
+        # create config from model name
         config = SigLip2Config.from_name(model_name)
 
-        # Download and update config from HF
+        # download and update config from HF
         config = _load_and_update_config(config, model_name, cache_dir)
 
-        # Download model weights
+        # download model weights
         state_dict = _download_weights(model_name, cache_dir)
 
-        # Infer max_position_embeddings from checkpoint if not in config
+        # infer max_position_embeddings from checkpoint if not in config
         config = _infer_max_position_embeddings(config, state_dict)
 
-        # Set random seeds for reproducible initialization
+        # set random seeds for reproducible initialization
         _set_random_seeds()
 
-        # Remove 'model.' prefix if present (from Siglip2Model wrapper)
+        # remove 'model.' prefix if present
         cleaned_state_dict = {}
         for key, value in state_dict.items():
             if key.startswith("model."):
@@ -248,22 +248,22 @@ class SigLip2Builder:
                 cleaned_state_dict[key] = value
         state_dict = cleaned_state_dict
 
-        # Handle projection layer naming difference (visual_projection -> vision_projection)
+        # handle projection layer naming difference (visual_projection -> vision_projection)
         if "visual_projection.weight" in state_dict:
             state_dict["vision_projection.weight"] = state_dict.pop("visual_projection.weight")
         if "visual_projection.bias" in state_dict:
             state_dict["vision_projection.bias"] = state_dict.pop("visual_projection.bias")
 
-        # Handle vision position embedding: HF has position_embedding.weight, we use position_embedding (Parameter)
+        # handle vision position embedding: HF has position_embedding.weight, we use position_embedding (Parameter)
         if "vision_model.embeddings.position_embedding.weight" in state_dict:
             state_dict["vision_model.embeddings.position_embedding"] = state_dict.pop(
                 "vision_model.embeddings.position_embedding.weight"
             )
 
-        # Create model and load weights directly (no transformation needed)
+        # create model and load weights directly (no transformation needed)
         model = SigLip2Model(config)
 
-        # Handle only shape differences (logit_scale, logit_bias)
+        # handle only shape differences (logit_scale, logit_bias)
         if "logit_scale" in state_dict and state_dict["logit_scale"].dim() > 0:
             state_dict["logit_scale"] = state_dict["logit_scale"].squeeze()
         if "logit_bias" in state_dict and state_dict["logit_bias"].dim() > 0:
