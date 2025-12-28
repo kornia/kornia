@@ -25,10 +25,10 @@ from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize,
 from kornia.image.image import Image
 from kornia.utils._compat import torch_version_le
 
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestImage:
+class TestImage(BaseTester):
     def test_smoke(self, device):
         data = torch.randint(0, 255, (3, 4, 5), device=device, dtype=torch.uint8)
         pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=8)
@@ -60,7 +60,8 @@ class TestImage:
         assert img.shape == (4, 5, 3)
         assert img.device == device
         assert img.dtype == torch.uint8
-        assert_close(data, img.to_numpy())
+        np_img = np.asarray(img.to_numpy())
+        np.testing.assert_array_equal(data, np_img)
 
         # check clone
         img2 = img.clone()
@@ -78,7 +79,46 @@ class TestImage:
         pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=data.element_size() * 8)
         layout = ImageLayout(image_size=ImageSize(4, 5), channels=3, channels_order=ChannelsOrder.CHANNELS_FIRST)
         img = Image(data, pixel_format=pixel_format, layout=layout)
-        assert_close(data, Image.from_dlpack(img.to_dlpack()).data)
+        self.assert_close(data, Image.from_dlpack(img.to_dlpack()).data)
+
+    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
+    def test_color_space_conversions(self, order):
+        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
+        bgr_val = rgb_val.flip(0)
+
+        if order == ChannelsOrder.CHANNELS_FIRST:
+            rgb_data = rgb_val.view(3, 1, 1)
+            bgr_data = bgr_val.view(3, 1, 1)
+        else:
+            rgb_data = rgb_val.view(1, 1, 3)
+            bgr_data = bgr_val.view(1, 1, 3)
+
+        # Create images
+        img_rgb = make_image(rgb_data, ColorSpace.RGB, order)
+        img_bgr = make_image(bgr_data, ColorSpace.BGR, order)
+
+        # 1) RGB -> Gray -> RGB
+        gray = img_rgb.to_gray()
+        lum = 0.299 * rgb_val[0] + 0.587 * rgb_val[1] + 0.114 * rgb_val[2]
+        expected_lum = lum.to(gray.data.device)
+        self.assert_close(gray.data.squeeze(), expected_lum)
+
+        rgb_back = gray.to_rgb().data.squeeze()
+        expected = lum.repeat(3)
+        self.assert_close(rgb_back, expected)
+
+        # 2) BGR -> Gray -> BGR
+        gray2 = img_bgr.to_gray()
+        expected_lum = lum.to(gray2.data.device)
+        self.assert_close(gray2.data.squeeze(), expected_lum)
+        bgr_back = gray2.to_bgr().data.squeeze()
+        expected_bgr = expected.flip(0)
+        self.assert_close(bgr_back, expected_bgr)
+
+        # 3) RGB <-> BGR swap
+        self.assert_close(img_rgb.to_bgr().data.squeeze(), bgr_val)
+        self.assert_close(img_bgr.to_rgb().data.squeeze(), rgb_val)
+
 
     @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="dlpack is broken in torch<=1.9.1")
     @pytest.mark.xfail(reason="This may fail some time due to jpeg compression assertion")
@@ -92,7 +132,7 @@ class TestImage:
         img2 = Image.from_file(file_name)
 
         # NOTE: the tolerance is high due to the jpeg compression
-        assert (img.float().data - img2.float().data).pow(2).mean() <= 0.75
+        assert (img.float().data - img2.float().data).pow(2).mean() < 0.75
 
     def test_write_first_channel(self, tmp_path: Path) -> None:
         data = np.ones((4, 5, 3), dtype=np.uint8)
@@ -112,37 +152,3 @@ def make_image(data: torch.Tensor, cs: ColorSpace, order: ChannelsOrder) -> Imag
     return Image(data.clone(), pf, layout)
 
 
-@pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
-def test_color_space_conversions(order):
-    rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
-    bgr_val = rgb_val.flip(0)
-
-    if order == ChannelsOrder.CHANNELS_FIRST:
-        rgb_data = rgb_val.view(3, 1, 1)
-        bgr_data = bgr_val.view(3, 1, 1)
-    else:
-        rgb_data = rgb_val.view(1, 1, 3)
-        bgr_data = bgr_val.view(1, 1, 3)
-
-    # Create images
-    img_rgb = make_image(rgb_data, ColorSpace.RGB, order)
-    img_bgr = make_image(bgr_data, ColorSpace.BGR, order)
-
-    # 1) RGB -> Gray -> RGB
-    gray = img_rgb.to_gray()
-    lum = 0.299 * rgb_val[0] + 0.587 * rgb_val[1] + 0.114 * rgb_val[2]
-    assert pytest.approx(gray.data.squeeze().item(), rel=1e-3) == lum
-    rgb_back = gray.to_rgb().data.squeeze()
-    expected = torch.tensor([lum, lum, lum])
-    assert torch.allclose(rgb_back, expected)
-
-    # 2) BGR -> Gray -> BGR
-    gray2 = img_bgr.to_gray()
-    assert pytest.approx(gray2.data.squeeze().item(), rel=1e-3) == lum
-    bgr_back = gray2.to_bgr().data.squeeze()
-    expected_bgr = expected.flip(0)
-    assert torch.allclose(bgr_back, expected_bgr)
-
-    # 3) RGB <-> BGR swap
-    assert torch.allclose(img_rgb.to_bgr().data.squeeze(), bgr_val)
-    assert torch.allclose(img_bgr.to_rgb().data.squeeze(), rgb_val)
