@@ -42,7 +42,8 @@ class TestWelschLoss(BaseTester):
         actual = kornia.losses.WelschLoss(reduction="mean")(img, img)
         assert actual.shape == ()
 
-    def test_gradcheck(self, device):
+    @pytest.mark.grad()
+    def test_gradcheck(self, device, dtype):
         img1 = torch.rand(2, 3, 3, 3, device=device, dtype=torch.float64)
         img2 = torch.rand(2, 3, 3, 3, device=device, dtype=torch.float64)
 

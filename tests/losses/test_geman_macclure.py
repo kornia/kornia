@@ -68,7 +68,8 @@ class TestGemanMcclureLossLoss(BaseTester):
         actual = kornia.losses.geman_mcclure_loss(img, img, reduction="mean")
         assert actual.shape == ()
 
-    def test_gradcheck(self, device):
+    @pytest.mark.grad()
+    def test_gradcheck(self, device, dtype):
         img1 = torch.rand(2, 3, 3, 3, device=device, dtype=torch.float64)
         img2 = torch.rand(2, 3, 3, 3, device=device, dtype=torch.float64)
 
