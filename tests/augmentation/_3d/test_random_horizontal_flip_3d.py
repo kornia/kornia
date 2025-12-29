@@ -30,7 +30,7 @@ class TestRandomHorizontalFlip3D(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
-    def test_smoke(self):
+    def test_smoke(self, device):
         f = RandomHorizontalFlip3D(0.5)
         repr = "RandomHorizontalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=None)"
         assert str(f) == repr
@@ -123,5 +123,5 @@ class TestRandomHorizontalFlip3D(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform_1)
 
     def test_gradcheck(self, device):
-        input_tensor = torch.rand((1, 3, 3)).to(device)  # 3 x 3
+        input_tensor = torch.rand((1, 3, 3), dtype=torch.float64, device=device)  # 3 x 3
         self.gradcheck(RandomHorizontalFlip3D(p=1.0), (input_tensor,))

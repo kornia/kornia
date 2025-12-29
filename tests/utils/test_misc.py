@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import torch
+
 from kornia.core import tensor
 from kornia.utils.misc import (
     differentiable_clipping,
@@ -34,7 +36,7 @@ class TestDifferentiableClipping(BaseTester):
         self.assert_close(y, y_expected)
 
     def test_gradcheck(self, device):
-        x = tensor([1.0, 6.0, 11.0, 12.0], device=device)
+        x = tensor([1.0, 6.0, 11.0, 12.0], device=device, dtype=torch.float64)
         self.gradcheck(differentiable_clipping, (x, 5.0, 10.0))
 
 
@@ -47,7 +49,7 @@ class TestDifferentiablePolynomialRounding(BaseTester):
         self.assert_close(y, y_expected)
 
     def test_gradcheck(self, device):
-        x = tensor([1.0, 6.0, 10.0, 12.0], device=device)
+        x = tensor([1.0, 6.0, 10.0, 12.0], device=device, dtype=torch.float64)
         self.gradcheck(differentiable_polynomial_rounding, (x))
 
 
@@ -60,5 +62,5 @@ class TestDifferentiablePolynomialFloor(BaseTester):
         self.assert_close(y, y_expected)
 
     def test_gradcheck(self, device):
-        x = tensor([1.5, 3.1, 5.9, 6.6], device=device)
+        x = tensor([1.5, 3.1, 5.9, 6.6], device=device, dtype=torch.float64)
         self.gradcheck(differentiable_polynomial_floor, (x))
