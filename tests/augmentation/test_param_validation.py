@@ -75,7 +75,7 @@ class TestParamValidation:
             (([1, 2, 3], 2), {}, TypeError, "If not pass a tensor"),
             # Mixed types
             ((["a", 1.0], 2), {}, TypeError, "If not pass a tensor"),
-        ]
+        ],
     )
     def test_tuple_range_reader_errors(self, args, kwargs, expected_exception, match_msg):
         with pytest.raises(expected_exception, match=match_msg):
@@ -90,7 +90,7 @@ class TestParamValidation:
             ((10, 5), 0, None, "joint", ValueError, "should be smaller than"),
             ("invalid", 0, (-10, 10), "singular", TypeError, None),
             ((-10.0, 10.0), 0, (-5, 5), "singular", ValueError, "param out of bounds"),
-        ]
+        ],
     )
     def test_range_bound_errors(self, factor, center, bounds, check, expected_exception, match_msg):
         with pytest.raises(expected_exception, match=match_msg):
@@ -101,19 +101,16 @@ class TestParamValidation:
         [
             # Float input: [center - x, center + x] clamped to bounds
             (10.0, 0, (-10, 10), "singular", torch.tensor([-10.0, 10.0])),
-            (10.0, 0, (-5, 5), "singular", torch.tensor([-5.0, 5.0])), # Clamped
+            (10.0, 0, (-5, 5), "singular", torch.tensor([-5.0, 5.0])),  # Clamped
             (0.2, 1.0, (0, 2), "singular", torch.tensor([0.8, 1.2])),
-
             # Tuple/List input: [min, max] strictly within bounds
             ((5.0, 10.0), 0, None, "singular", torch.tensor([5.0, 10.0])),
             ([-5.0, 5.0], 0, (-10, 10), "singular", torch.tensor([-5.0, 5.0])),
-
             # Tensor input
             (torch.tensor([5.0, 10.0]), 0, None, "singular", torch.tensor([5.0, 10.0])),
-
             # Check singular allows min > max
             ((10.0, 5.0), 0, None, "singular", torch.tensor([10.0, 5.0])),
-        ]
+        ],
     )
     def test_range_bound_valid(self, factor, center, bounds, check, expected):
         res = _range_bound(factor, "param", center=center, bounds=bounds, check=check)
