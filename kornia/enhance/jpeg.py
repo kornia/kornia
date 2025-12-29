@@ -149,10 +149,10 @@ def _idct_8x8(input: Tensor) -> Tensor:
     device = input.device
 
     idx = torch.arange(8, dtype=dtype, device=device)
-    u = idx.unsqueeze(0)
-    x = idx.unsqueeze(1)
+    spatial_idx = idx.unsqueeze(0)
+    freq_idx = idx.unsqueeze(1)
 
-    basis = ((2.0 * u + 1.0) * x * pi / 16.0).cos()
+    basis = ((2.0 * spatial_idx + 1.0) * freq_idx * pi / 16.0).cos()
     alpha = torch.ones(8, dtype=dtype, device=device)
     alpha[0] = 1.0 / (2**0.5)
     dct_scale = torch.outer(alpha, alpha)
