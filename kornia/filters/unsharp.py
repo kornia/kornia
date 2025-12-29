@@ -50,9 +50,7 @@ def unsharp_mask(
 
     """
     data_blur: Tensor = gaussian_blur2d(input, kernel_size, sigma, border_type)
-    data_sharpened: Tensor = torch.lerp(data_blur, input, weight=2.0)
-    return data_sharpened
-
+    return torch.lerp(data_blur, input, weight=2.0)
 
 class UnsharpMask(Module):
     r"""Create an operator that sharpens image with: out = 2 * image - gaussian_blur2d(image).
