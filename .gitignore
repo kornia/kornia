@@ -31,3 +31,5 @@ weights/
 
 # uv
 .uv_cache/
+
+.python-version
