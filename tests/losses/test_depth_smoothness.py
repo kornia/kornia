@@ -81,7 +81,8 @@ class TestDepthSmoothnessLoss(BaseTester):
 
         self.assert_close(op(image, depth), op_module(image, depth))
 
-    def test_gradcheck(self, device):
+    @pytest.mark.grad()
+    def test_gradcheck(self, device, dtype):
         image = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         depth = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.losses.inverse_depth_smoothness_loss, (depth, image))

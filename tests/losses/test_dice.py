@@ -194,7 +194,8 @@ class TestDiceLoss(BaseTester):
         loss = criterion(logits, labels)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
-    def test_gradcheck(self, device):
+    @pytest.mark.grad()
+    def test_gradcheck(self, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
         labels = torch.randint(0, num_classes, (2, 3, 2), device=device)
