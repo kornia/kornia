@@ -15,9 +15,11 @@
 # limitations under the License.
 #
 
+from typing import cast
+
 import pytest
 import torch
-from typing import cast
+
 from kornia.augmentation.utils.param_validation import _common_param_check, _range_bound, _tuple_range_reader
 
 
