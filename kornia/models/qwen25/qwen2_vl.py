@@ -16,11 +16,12 @@
 #
 
 from __future__ import annotations
+
 from typing import Optional
 
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.core import Module, Tensor
 
@@ -33,14 +34,14 @@ class Qwen2VLPatchMerger(Module):
         self.spatial_merge_size = spatial_merge_size
 
         self.ln_q = nn.LayerNorm(dim, eps=1e-6)
-        
+
         # 3D Convolution to merge temporal and spatial dimensions
         self.merger = nn.Conv3d(
             dim,
             self.hidden_size,
             kernel_size=(1, spatial_merge_size, spatial_merge_size),
             stride=(1, spatial_merge_size, spatial_merge_size),
-            bias=False
+            bias=False,
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -100,7 +101,7 @@ class Qwen2VLVisionBlock(Module):
         super().__init__()
         self.norm1 = nn.LayerNorm(dim, eps=1e-6)
         self.attn = Qwen2VLVisionAttention(dim, num_heads=num_heads)
-        
+
         self.norm2 = nn.LayerNorm(dim, eps=1e-6)
         self.mlp = Qwen2VLMLP(dim, int(dim * mlp_ratio))
 
@@ -119,7 +120,7 @@ class Qwen2VLVisionTransformer(Module):
         depth: int = 32,
         num_heads: int = 16,
         patch_size: int = 14,
-        context_window: int = 224 
+        context_window: int = 224,
     ) -> None:
         super().__init__()
         self.patch_embed = Qwen2VLPatchMerger(embed_dim, context_window=context_window, spatial_merge_size=2)
