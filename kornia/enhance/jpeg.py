@@ -136,29 +136,32 @@ def _dct_8x8(input: Tensor) -> Tensor:
 
 
 def _idct_8x8(input: Tensor) -> Tensor:
-    """Perform an 8 x 8 discrete cosine transform.
+    """Perform an 8 x 8 inverse discrete cosine transform.
 
     Args:
         input (Tensor): Patched input tensor of the shape :math:`(B, N, 8, 8)`.
 
     Returns:
-        output (Tensor): DCT output tensor of the shape :math:`(B, N, 8, 8)`.
+        output (Tensor): IDCT output tensor of the shape :math:`(B, N, 8, 8)`.
 
     """
-    # Get dtype and device
-    dtype: Dtype = input.dtype
-    device: Device = input.device
-    # Make and apply scaling
-    alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
+    dtype = input.dtype
+    device = input.device
+
+    idx = torch.arange(8, dtype=dtype, device=device)
+    u = idx.unsqueeze(0) 
+    x = idx.unsqueeze(1)  
+
+    basis = ((2.0 * u + 1.0) * x * pi / 16.0).cos()
+    alpha = torch.ones(8, dtype=dtype, device=device)
     alpha[0] = 1.0 / (2**0.5)
-    dct_scale: Tensor = torch.outer(alpha, alpha)
-    input = input * dct_scale[None, None]
-    # Make DCT tensor and scaling
-    index: Tensor = torch.arange(8, dtype=dtype, device=device)
-    x, y, u, v = torch.meshgrid(index, index, index, index, indexing="ij")
-    idct_tensor: Tensor = ((2.0 * u + 1.0) * x * pi / 16.0).cos() * ((2.0 * v + 1.0) * y * pi / 16.0).cos()
-    # Apply DCT
-    output: Tensor = 0.25 * torch.tensordot(input, idct_tensor, dims=2) + 128.0
+    dct_scale = torch.outer(alpha, alpha)
+    input = input * dct_scale
+
+    tmp = input @ basis
+    output = (tmp.transpose(-1, -2) @ basis).transpose(-1, -2)
+    
+    output = output * 0.25 + 128.0
     return output
 
 
@@ -583,13 +586,14 @@ def jpeg_codec_differentiable(
 def _get_dct8_basis_scale(dtype: Dtype, device: Device) -> tuple[Tensor, Tensor]:
     key = (dtype, device)
     if key not in _DCT8_CACHE:
-        index: Tensor = torch.arange(8, dtype=dtype, device=device)
-        x, y, u, v = torch.meshgrid(index, index, index, index, indexing="ij")
-        dct_tensor: Tensor = ((2.0 * x + 1.0) * u * pi / 16.0).cos() * ((2.0 * y + 1.0) * v * pi / 16.0).cos()
-        alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
+        i = torch.arange(8, dtype=dtype, device=device)
+        freq = (2.0 * i + 1.0)[:, None] * i[None, :] * (pi / 16.0)
+        basis_1d = freq.cos()
+        dct_tensor = basis_1d[:, None, :, None] * basis_1d[None, :, None, :]
+        alpha = torch.ones(8, dtype=dtype, device=device)
         alpha[0] = 1.0 / (2**0.5)
-        dct_scale: Tensor = torch.outer(alpha, alpha) * 0.25
-        _DCT8_CACHE[key] = (dct_tensor, dct_scale)
+        dct_scale = torch.outer(alpha, alpha) * 0.25
+        _DCT8_CACHE[key] = (dct_tensor, dct_scale)       
     return _DCT8_CACHE[key]
 
 
