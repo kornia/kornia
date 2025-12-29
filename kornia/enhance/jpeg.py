@@ -149,8 +149,8 @@ def _idct_8x8(input: Tensor) -> Tensor:
     device = input.device
 
     idx = torch.arange(8, dtype=dtype, device=device)
-    u = idx.unsqueeze(0) 
-    x = idx.unsqueeze(1)  
+    u = idx.unsqueeze(0)
+    x = idx.unsqueeze(1)
 
     basis = ((2.0 * u + 1.0) * x * pi / 16.0).cos()
     alpha = torch.ones(8, dtype=dtype, device=device)
@@ -160,7 +160,7 @@ def _idct_8x8(input: Tensor) -> Tensor:
 
     tmp = input @ basis
     output = (tmp.transpose(-1, -2) @ basis).transpose(-1, -2)
-    
+
     output = output * 0.25 + 128.0
     return output
 
@@ -593,7 +593,7 @@ def _get_dct8_basis_scale(dtype: Dtype, device: Device) -> tuple[Tensor, Tensor]
         alpha = torch.ones(8, dtype=dtype, device=device)
         alpha[0] = 1.0 / (2**0.5)
         dct_scale = torch.outer(alpha, alpha) * 0.25
-        _DCT8_CACHE[key] = (dct_tensor, dct_scale)       
+        _DCT8_CACHE[key] = (dct_tensor, dct_scale)
     return _DCT8_CACHE[key]
 
 
