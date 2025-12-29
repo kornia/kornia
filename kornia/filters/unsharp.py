@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor
+import torch
 
 from .gaussian import gaussian_blur2d
 
@@ -49,7 +50,7 @@ def unsharp_mask(
 
     """
     data_blur: Tensor = gaussian_blur2d(input, kernel_size, sigma, border_type)
-    data_sharpened: Tensor = input + (input - data_blur)
+    data_sharpened: Tensor = torch.lerp(data_blur, input, weight=2.0)
     return data_sharpened
 
 
