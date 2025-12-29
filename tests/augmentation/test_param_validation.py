@@ -17,7 +17,7 @@
 
 import pytest
 import torch
-
+from typing import cast
 from kornia.augmentation.utils.param_validation import _common_param_check, _range_bound, _tuple_range_reader
 
 
@@ -33,8 +33,7 @@ class TestParamValidation:
 
         # Invalid same_on_batch type
         with pytest.raises(AssertionError):
-            # type ignore because we are testing runtime checks
-            _common_param_check(batch_size=1, same_on_batch="invalid")  # type: ignore
+            _common_param_check(batch_size=1, same_on_batch=cast(bool, "invalid"))
 
     def test_tuple_range_reader_valid(self):
         device = torch.device("cpu")
