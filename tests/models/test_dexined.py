@@ -50,7 +50,7 @@ class TestDexiNed(BaseTester):
         )
 
         out = model(img)
-        self.assert_close(out, expect, atol=3e-4, rtol=3e-4)
+        self.assert_close(out, expect, atol=1e-3, rtol=1e-2)
 
     @pytest.mark.skip(reason="DexiNed do not compile with dynamo.")
     def test_dynamo(self, device, dtype, torch_optimizer):

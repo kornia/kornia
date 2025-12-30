@@ -26,7 +26,7 @@ from .boxmot_tracker import BoxMotTracker
 from .connected_components import connected_components
 from .diamond_square import diamond_square
 from .distance_transform import DistanceTransform, distance_transform
-from .edge_detection import EdgeDetector
+from .edge_detection import EdgeDetector, EdgeDetectorBuilder
 from .extract_patches import (
     CombineTensorPatches,
     ExtractTensorPatches,
@@ -47,6 +47,7 @@ __all__ = [
     "CombineTensorPatches",
     "DistanceTransform",
     "EdgeDetector",
+    "EdgeDetectorBuilder",
     "ExtractTensorPatches",
     "ImageStitcher",
     "KMeans",

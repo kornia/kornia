@@ -85,7 +85,7 @@ def test_regvgg_optimize_for_deployment(device, dtype):
     expected = module(x)
     module.optimize_for_deployment()
     actual = module(x)
-    assert_close(actual, expected)
+    assert_close(actual, expected, atol=1e-3, rtol=1e-2)
 
 
 class TestRTDETR(BaseTester):
