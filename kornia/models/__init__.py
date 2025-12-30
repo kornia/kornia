@@ -24,7 +24,6 @@ segmentation, and super-resolution.
 from . import (
     depth_estimation,
     segmentation,
-    super_resolution,
 )
 from .dexined import DexiNed
 from .processors import *

@@ -15,18 +15,13 @@
 # limitations under the License.
 #
 
-from typing import Optional
-
 import torch
 from torch import nn
 
 from kornia.color.ycbcr import RgbToYcbcr, YcbcrToRgb
 from kornia.config import kornia_config
 from kornia.core import Module, Tensor, concatenate
-from kornia.models.processors import ResizePreProcessor
 from kornia.utils.download import CachedDownloader
-
-from .base import SuperResolution
 
 url = "https://s3.amazonaws.com/pytorch/test_data/export/superres_epoch100-44c6958e.pth"
 
@@ -96,28 +91,3 @@ class SmallSRNetWrapper(Module):
         out_cr = torch.nn.functional.interpolate(cr, scale_factor=self.upscale_factor, mode="bicubic")
         out = concatenate([out_y, out_cb, out_cr], dim=1)
         return self.ycbcr_to_rgb(out)
-
-
-class SmallSRBuilder:
-    @staticmethod
-    def build(
-        model_name: str = "small_sr", pretrained: bool = True, upscale_factor: int = 3, image_size: Optional[int] = None
-    ) -> SuperResolution:
-        if model_name.lower() == "small_sr":
-            model = SmallSRNetWrapper(upscale_factor, pretrained=pretrained)
-        else:
-            raise ValueError(f"Model {model_name} not found. Please choose from 'small_sr'.")
-
-        sr = SuperResolution(
-            model,
-            pre_processor=ResizePreProcessor(224, 224),
-            post_processor=nn.Identity(),
-            name=model_name,
-        )
-        if image_size is None:
-            sr.pseudo_image_size = 224
-        else:
-            sr.input_image_size = image_size
-            sr.output_image_size = image_size * 3
-            sr.pseudo_image_size = image_size
-        return sr

@@ -40,6 +40,7 @@ from .image_stitching import ImageStitcher
 from .kmeans import KMeans
 from .lambda_module import Lambda
 from .object_detection import ObjectDetector, ObjectDetectorBuilder
+from .super_resolution import RRDBNetBuilder, SmallSRBuilder, SuperResolution
 
 __all__ = [
     "BoxMotTracker",
@@ -52,6 +53,9 @@ __all__ = [
     "Lambda",
     "ObjectDetector",
     "ObjectDetectorBuilder",
+    "RRDBNetBuilder",
+    "SmallSRBuilder",
+    "SuperResolution",
     "TinyViT",
     "combine_tensor_patches",
     "compute_padding",
