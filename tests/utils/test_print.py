@@ -41,15 +41,19 @@ class TestImageToString:
         img = torch.rand(3, 15, 15)
         image_to_string(img, max_width=12)
 
-        with pytest.raises(TypeError) as errinfo:
+        from kornia.core.exceptions import ShapeError
+
+        with pytest.raises(ShapeError) as errinfo:
             img = torch.rand(1, 3, 15, 15)
             image_to_string(img)
-        assert "shape must be [['C', 'H', 'W']]. Got torch.Size([1, 3, 15, 15])" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
-        with pytest.raises(ValueError) as errinfo:
+        from kornia.core.exceptions import ValueCheckError
+
+        with pytest.raises(ValueCheckError) as errinfo:
             img = torch.rand(3, 15, 15) * 10
             image_to_string(img)
-        assert "Invalid image value range. Expect [0, 1] but got" in str(errinfo)
+        assert "Value range mismatch" in str(errinfo.value) or "Invalid image value range" in str(errinfo.value)
 
         with pytest.raises(RuntimeError):
             print_image([img])  # Do not accept list

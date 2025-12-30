@@ -92,23 +92,27 @@ class TestFilter2D(BaseTester):
         self.assert_close(out_conv, conv_expected)
 
     def test_exception(self):
+        from kornia.core.exceptions import ShapeError, TypeCheckError
+
         k = torch.ones(1, 1, 1)
         data = torch.ones(1, 1, 1, 1)
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
             filter2d(1, k)
-        assert "Not a Tensor type." in str(errinfo)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
             filter2d(data, 1)
-        assert "Not a Tensor type." in str(errinfo)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             filter2d(torch.ones(1), k)
-        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value)
+        assert "['B', 'C', 'H', 'W']" in str(errinfo.value)
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             filter2d(data, torch.ones(1))
-        assert "shape must be [['B', 'H', 'W']]" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value)
+        assert "['B', 'H', 'W']" in str(errinfo.value)
 
         with pytest.raises(Exception) as errinfo:
             filter2d(data, k, border_type="a")
@@ -407,23 +411,25 @@ class TestFilter3D(BaseTester):
         assert filter3d(data, kernel).shape == data.shape
 
     def test_exception(self):
+        from kornia.core.exceptions import ShapeError, TypeCheckError
+
         k = torch.ones(1, 1, 1, 1)
         data = torch.ones(1, 1, 1, 1, 1)
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
             filter3d(1, k)
-        assert "Not a Tensor type." in str(errinfo)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
             filter3d(data, 1)
-        assert "Not a Tensor type." in str(errinfo)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             filter3d(torch.ones(1), k)
-        assert "shape must be [['B', 'C', 'D', 'H', 'W']]" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             filter3d(data, torch.ones(1))
-        assert "shape must be [['B', 'D', 'H', 'W']]" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
         with pytest.raises(Exception) as errinfo:
             filter3d(data, k, border_type="a")

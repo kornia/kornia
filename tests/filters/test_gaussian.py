@@ -240,15 +240,17 @@ class TestGaussianBlur2d(BaseTester):
         assert actual.shape == shape
 
     def test_exception(self):
+        from kornia.core.exceptions import TypeCheckError
+
         # input should be a tensor
-        with pytest.raises(Exception) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
             gaussian_blur2d(1, 3, (1.0, 1.0))
-        assert "Not a Tensor type. Go" in str(errinfo)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
         # Sigma should be a tuple or a tensor
-        with pytest.raises(Exception) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
             gaussian_blur2d(torch.rand(1, 1, 1, 1), 3, 1.0)
-        assert "Not a Tensor type. Go" in str(errinfo)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3

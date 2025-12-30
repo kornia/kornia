@@ -68,13 +68,15 @@ class TestGuidedBlur(BaseTester):
         assert actual.shape == shape
 
     def test_exception(self):
-        with pytest.raises(Exception) as errinfo:
-            guided_blur(torch.rand(1, 1, 5, 5), 3, 3, 0.1)
-        assert "Not a Tensor type. Go" in str(errinfo)
+        from kornia.core.exceptions import BaseError, TypeCheckError
 
-        with pytest.raises(Exception) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
+            guided_blur(torch.rand(1, 1, 5, 5), 3, 3, 0.1)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(BaseError) as errinfo:
             guided_blur(torch.rand(1, 1, 5, 5), torch.rand(2, 1, 5, 5), 3, 0.1)
-        assert "same batch size and spatial dimensions" in str(errinfo)
+        assert "same batch size and spatial dimensions" in str(errinfo.value)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3

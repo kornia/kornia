@@ -113,9 +113,11 @@ class TestProjectionZ1(BaseTester):
         self.assert_close(dx_project_points_z1(points), expected)
 
     def test_exception(self, device, dtype) -> None:
+        from kornia.core.exceptions import ShapeError
+
         points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
         extension = torch.tensor([2.0], device=device, dtype=dtype)
-        with pytest.raises(TypeError):
+        with pytest.raises(ShapeError):
             unproject_points_z1(points, extension)
 
     def _test_gradcheck_unproject(self, device):
@@ -205,9 +207,11 @@ class TestProjectionOrthographic(BaseTester):
         self.assert_close(dx_project_points_orthographic(points), expected)
 
     def test_exception(self, device, dtype) -> None:
+        from kornia.core.exceptions import ShapeError
+
         points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
         extension = torch.tensor([2.0], device=device, dtype=dtype)
-        with pytest.raises(TypeError):
+        with pytest.raises(ShapeError):
             unproject_points_orthographic(points, extension)
 
     def _test_gradcheck_project(self, device):

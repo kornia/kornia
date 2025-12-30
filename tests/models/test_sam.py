@@ -68,10 +68,12 @@ class TestSam(BaseTester):
     def test_exception(self):
         model = Sam.from_config(SamConfig("mobile_sam"))
 
-        with pytest.raises(TypeError) as errinfo:
+        from kornia.core.exceptions import ShapeError
+
+        with pytest.raises(ShapeError) as errinfo:
             data = torch.rand(3, 1, 2)
             model(data, [], False)
-        assert "shape must be [['B', '3', 'H', 'W']]. Got torch.Size([3, 1, 2])" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
         with pytest.raises(Exception) as errinfo:
             data = torch.rand(2, 3, 1, 2)

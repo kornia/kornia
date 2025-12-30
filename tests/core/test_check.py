@@ -34,6 +34,14 @@ from kornia.core.check import (
     KORNIA_CHECK_SHAPE,
     KORNIA_CHECK_TYPE,
 )
+from kornia.core.exceptions import (
+    BaseError,
+    DeviceError,
+    ImageError,
+    ShapeError,
+    TypeCheckError,
+    ValueCheckError,
+)
 
 
 class TestCheck:
@@ -41,7 +49,7 @@ class TestCheck:
         assert KORNIA_CHECK(True, "This is a test") is True
 
     def test_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError):
             KORNIA_CHECK(False, "This is a test")
 
     def test_invalid_raises_false(self):
@@ -76,7 +84,7 @@ class TestCheckShape:
         ],
     )
     def test_invalid(self, data, shape):
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError):
             KORNIA_CHECK_SHAPE(data, shape)
 
     def test_invalid_raises_false(self):
@@ -100,11 +108,11 @@ class TestCheckSameShape:
         assert op_jit(torch.rand(2, 3), torch.rand(2, 3)) is True
 
     def test_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError):
             KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3), torch.rand(2, 2, 3))
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError):
             KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3), torch.rand(1, 2, 3))
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError):
             KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3), torch.rand(2, 3, 3))
 
     def test_invalid_raises_false(self):
@@ -119,11 +127,11 @@ class TestCheckType:
         assert KORNIA_CHECK_TYPE(torch.rand(1), (int, torch.Tensor)) is True
 
     def test_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(TypeCheckError):
             KORNIA_CHECK_TYPE("world", int)
-        with pytest.raises(Exception):
+        with pytest.raises(TypeCheckError):
             KORNIA_CHECK_TYPE(23, float)
-        with pytest.raises(Exception):
+        with pytest.raises(TypeCheckError):
             KORNIA_CHECK_TYPE(23, (float, str))
 
     def test_invalid_raises_false(self):
@@ -135,7 +143,7 @@ class TestCheckIsTensor:
         assert KORNIA_CHECK_IS_TENSOR(torch.rand(1)) is True
 
     def test_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(TypeCheckError):
             KORNIA_CHECK_IS_TENSOR([1, 2, 3])
 
     def test_invalid_raises_false(self):
@@ -147,9 +155,9 @@ class TestCheckIsListOfTensor:
         assert KORNIA_CHECK_IS_LIST_OF_TENSOR([torch.rand(1), torch.rand(1), torch.rand(1)]) is True
 
     def test_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(TypeCheckError):
             KORNIA_CHECK_IS_LIST_OF_TENSOR([torch.rand(1), [2, 3], torch.rand(1)])
-        with pytest.raises(Exception):
+        with pytest.raises(TypeCheckError):
             KORNIA_CHECK_IS_LIST_OF_TENSOR([1, 2, 3])
 
     def test_invalid_raises_false(self):
@@ -162,7 +170,7 @@ class TestCheckSameDevice:
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
     def test_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(DeviceError):
             KORNIA_CHECK_SAME_DEVICE(torch.rand(1, device="cpu"), torch.rand(1, device="cuda"))
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
@@ -178,7 +186,7 @@ class TestCheckSameDevices:
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
     def test_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(DeviceError):
             KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device="cpu"), torch.rand(1, device="cuda")])
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
@@ -196,13 +204,13 @@ class TestCheckIsColor:
         assert KORNIA_CHECK_IS_COLOR(torch.rand(2, 3, 4, 4)) is True
 
     def test_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ImageError):
             KORNIA_CHECK_IS_COLOR(torch.rand(1, 4, 4))
-        with pytest.raises(Exception):
+        with pytest.raises(ImageError):
             KORNIA_CHECK_IS_COLOR(torch.rand(2, 4, 4))
-        with pytest.raises(Exception):
+        with pytest.raises(ImageError):
             KORNIA_CHECK_IS_COLOR(torch.rand(3, 4, 4, 4))
-        with pytest.raises(Exception):
+        with pytest.raises(ImageError):
             KORNIA_CHECK_IS_COLOR(torch.rand(1, 3, 4, 4, 4))
 
     def test_invalid_raises_false(self):
@@ -216,13 +224,13 @@ class TestCheckIsGray:
         assert KORNIA_CHECK_IS_GRAY(torch.rand(3, 1, 4, 4)) is True
 
     def test_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ImageError):
             KORNIA_CHECK_IS_GRAY(torch.rand(3, 4, 4))
-        with pytest.raises(Exception):
+        with pytest.raises(ImageError):
             KORNIA_CHECK_IS_GRAY(torch.rand(1, 4, 4, 4))
-        with pytest.raises(Exception):
+        with pytest.raises(ImageError):
             KORNIA_CHECK_IS_GRAY(torch.rand(1, 3, 4, 4))
-        with pytest.raises(Exception):
+        with pytest.raises(ImageError):
             KORNIA_CHECK_IS_GRAY(torch.rand(1, 3, 4, 4, 4))
 
     def test_invalid_raises_false(self):
@@ -239,9 +247,9 @@ class TestCheckIsColorOrGray:
         assert KORNIA_CHECK_IS_COLOR_OR_GRAY(torch.rand(3, 1, 4, 4)) is True
 
     def test_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ImageError):
             KORNIA_CHECK_IS_COLOR_OR_GRAY(torch.rand(1, 4, 4, 4))
-        with pytest.raises(Exception):
+        with pytest.raises(ImageError):
             KORNIA_CHECK_IS_COLOR_OR_GRAY(torch.rand(1, 3, 4, 4, 4))
 
     def test_invalid_raises_false(self):
@@ -253,13 +261,13 @@ class TestCheckDmDesc:
         assert KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(4, 8)) is True
 
     def test_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError):
             KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(4, 7))
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError):
             KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(3, 8))
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError):
             KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(3, 7))
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError):
             KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(4, 3, 8))
 
     def test_invalid_raises_false(self):
@@ -271,13 +279,13 @@ class TestCheckLaf:
         assert KORNIA_CHECK_LAF(torch.rand(4, 2, 2, 3)) is True
 
     def test_invalid(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError):
             KORNIA_CHECK_LAF(torch.rand(4, 2, 2))
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError):
             KORNIA_CHECK_LAF(torch.rand(4, 2, 3, 2))
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError):
             KORNIA_CHECK_LAF(torch.rand(4, 2, 2, 2))
-        with pytest.raises(Exception):
+        with pytest.raises(ShapeError):
             KORNIA_CHECK_LAF(torch.rand(4, 2, 3, 3, 3))
 
     def test_invalid_raises_false(self):
@@ -297,12 +305,12 @@ class TestCheckIsImage:
         assert KORNIA_CHECK_IS_IMAGE(y) is True
 
     def test_invalid_float_range(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueCheckError):
             KORNIA_CHECK_IS_IMAGE(torch.tensor([[[-0.5, 1.2]]], dtype=torch.float32))
 
     def test_invalid_int_range(self):
         bad = torch.tensor([[[300]]], dtype=torch.int32)
-        with pytest.raises(Exception):
+        with pytest.raises(ValueCheckError):
             KORNIA_CHECK_IS_IMAGE(bad)
 
     def test_invalid_shape(self):

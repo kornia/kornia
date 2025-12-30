@@ -165,14 +165,16 @@ class TestEdgeAwareBlurPool(BaseTester):
         assert blur.shape == inp.shape
 
     def test_exception(self):
-        with pytest.raises(Exception) as errinfo:
+        from kornia.core.exceptions import BaseError, ShapeError
+
+        with pytest.raises(ShapeError) as errinfo:
             data = torch.rand(1, 3, 3)
             edge_aware_blur_pool2d(data, 3)
-        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo)
-        with pytest.raises(Exception) as errinfo:
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
+        with pytest.raises(BaseError) as errinfo:
             data = torch.rand(1, 1, 3, 3)
             edge_aware_blur_pool2d(data, 3, edge_threshold=-1)
-        assert "edge threshold should be positive, but got" in str(errinfo)
+        assert "edge threshold should be positive, but got" in str(errinfo.value)
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_noncontiguous(self, batch_size, device, dtype):

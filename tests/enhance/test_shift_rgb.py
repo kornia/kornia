@@ -49,9 +49,11 @@ class TestRGBShift(BaseTester):
         self.assert_close(shifted, expected)
 
     def test_rgb_shift_invalid_parameter_shape(self, device, dtype):
+        from kornia.core.exceptions import ImageError
+
         r_shift, g_shift, b_shift = torch.Tensor([0.5]), torch.Tensor([0.5]), torch.Tensor([0.5])
         image = torch.randn(3, 3, device=device, dtype=dtype)
-        with pytest.raises(TypeError):
+        with pytest.raises(ImageError):
             kornia.enhance.shift_rgb(image, r_shift, g_shift, b_shift)
 
     def test_rgb_shift_gradcheck(self, device):

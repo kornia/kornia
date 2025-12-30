@@ -64,9 +64,15 @@ class TestVisualPrompter(BaseTester):
         data = torch.rand(1, 3, 1, 2)
 
         # Wrong shape for the image
-        with pytest.raises(TypeError) as errinfo:
+        from kornia.core.exceptions import ShapeError
+
+        with pytest.raises(ShapeError) as errinfo:
             prompter.set_image(data, [], False)
-        assert "shape must be [['3', 'H', 'W']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
+        assert (
+            "Shape mismatch" in str(errinfo.value)
+            or "Shape dimension mismatch" in str(errinfo.value)
+            or "Expected shape" in str(errinfo.value)
+        )
 
         # predict without set an image
         with pytest.raises(Exception) as errinfo:
@@ -74,23 +80,39 @@ class TestVisualPrompter(BaseTester):
         assert "An image must be set with `self.set_image(...)`" in str(errinfo)
 
         # Valid masks
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             prompter._valid_masks(data)
-        assert "shape must be [['K', '1', '256', '256']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
+        assert (
+            "Shape mismatch" in str(errinfo.value)
+            or "Shape dimension mismatch" in str(errinfo.value)
+            or "Expected shape" in str(errinfo.value)
+        )
 
         # Valid boxes
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             prompter._valid_boxes(data)
-        assert "shape must be [['K', '4']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
+        assert (
+            "Shape mismatch" in str(errinfo.value)
+            or "Shape dimension mismatch" in str(errinfo.value)
+            or "Expected shape" in str(errinfo.value)
+        )
 
         # Valid keypoints
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             prompter._valid_keypoints(data, None)
-        assert "shape must be [['K', 'N', '2']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
+        assert (
+            "Shape mismatch" in str(errinfo.value)
+            or "Shape dimension mismatch" in str(errinfo.value)
+            or "Expected shape" in str(errinfo.value)
+        )
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             prompter._valid_keypoints(torch.rand(1, 1, 2), data)
-        assert "shape must be [['K', 'N']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
+        assert (
+            "Shape mismatch" in str(errinfo.value)
+            or "Shape dimension mismatch" in str(errinfo.value)
+            or "Expected shape" in str(errinfo.value)
+        )
 
         with pytest.raises(Exception) as errinfo:
             prompter._valid_keypoints(torch.rand(1, 1, 2), torch.rand(2, 1))
