@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-import kornia
+from kornia.models import MobileViT
 
 from testing.base import BaseTester
 
@@ -33,7 +33,7 @@ class TestMobileViT(BaseTester):
         channel = {"xxs": 320, "xs": 384, "s": 640}
 
         img = torch.rand(B, 3, ih, iw, device=device, dtype=dtype)
-        mvit = kornia.contrib.MobileViT(mode=mode, patch_size=patch_size).to(device, dtype)
+        mvit = MobileViT(mode=mode, patch_size=patch_size).to(device, dtype)
 
         out = mvit(img)
         assert isinstance(out, torch.Tensor)

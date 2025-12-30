@@ -177,9 +177,9 @@ Image Patches
 Image Classification
 --------------------
 
-.. autoclass:: VisionTransformer
+.. autoclass:: kornia.models.VisionTransformer
     :members:
-.. autoclass:: MobileViT
+.. autoclass:: kornia.models.MobileViT
 .. autoclass:: TinyViT
     :members:
 .. autoclass:: ClassificationHead

@@ -39,8 +39,6 @@ from .kmeans import KMeans
 from .lambda_module import Lambda
 from .models.tiny_vit import TinyViT
 from .object_detection import ObjectDetector
-from .vit import VisionTransformer
-from .vit_mobile import MobileViT
 
 __all__ = [
     "ClassificationHead",
@@ -51,10 +49,8 @@ __all__ = [
     "ImageStitcher",
     "KMeans",
     "Lambda",
-    "MobileViT",
     "ObjectDetector",
     "TinyViT",
-    "VisionTransformer",
     "combine_tensor_patches",
     "compute_padding",
     "connected_components",

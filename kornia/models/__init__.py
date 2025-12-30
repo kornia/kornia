@@ -30,3 +30,5 @@ from . import (
     tracking,
 )
 from .utils import *
+from .vit import VisionTransformer
+from .vit_mobile import MobileViT

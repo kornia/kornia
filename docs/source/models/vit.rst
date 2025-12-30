@@ -28,7 +28,7 @@ Vision Transformer (ViT)
 Kornia-ViT
 ----------
 
-We provide the operator :py:class:`~kornia.contrib.VisionTransformer` that is meant to be used across tasks.
+We provide the operator :py:class:`~kornia.models.vit.VisionTransformer` that is meant to be used across tasks.
 One can use the *ViT* in Kornia as follows:
 
 .. code:: python
@@ -47,10 +47,11 @@ with a `nn.Sequential` in order to easily build a custom image classification pi
 .. code:: python
 
     import torch.nn as nn
+    from kornia.models import VisionTransformer
     import kornia.contrib as K
 
     classifier = nn.Sequential(
-        K.VisionTransformer(image_size=224, patch_size=16),
+        VisionTransformer(image_size=224, patch_size=16),
         K.ClassificationHead(num_classes=1000)
     )
 
@@ -64,10 +65,12 @@ class with two different classification heads:
 
 .. code:: python
 
+    from kornia.models import VisionTransformer
+
     class MultiTaskTransfornmer(nn.Module):
         def __init__(self) -> None:
             super().__init__()
-            self.transformer = K.VisionTransformer(
+            self.transformer = VisionTransformer(
                 image_size=224, patch_size=16)
             self.head1 = K.ClassificationHead(num_classes=10)
             self.head2 = K.ClassificationHead(num_classes=50)

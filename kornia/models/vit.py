@@ -274,13 +274,13 @@ class VisionTransformer(Module):
         Args:
             variant: ViT model variant e.g. ``vit_b/16``.
             pretrained: whether to load pre-trained AugReg weights.
-            kwargs: other keyword arguments that will be passed to :func:`kornia.contrib.vit.VisionTransformer`.
+            kwargs: other keyword arguments that will be passed to :func:`kornia.models.vit.VisionTransformer`.
 
         Returns:
             The respective ViT model
 
         Example:
-            >>> from kornia.contrib import VisionTransformer
+            >>> from kornia.models import VisionTransformer
             >>> vit_model = VisionTransformer.from_config("vit_b/16", pretrained=True)
 
         """
