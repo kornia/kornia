@@ -15,23 +15,6 @@
 # limitations under the License.
 #
 
-"""Models submodule for Kornia.
+from .model import YuNet
 
-This package provides model architectures and utilities for tasks such as depth estimation,
-detection, segmentation, super-resolution, and tracking.
-"""
-
-from . import (
-    depth_estimation,
-    detection,
-    edge_detection,
-    segmentation,
-    super_resolution,
-    tracking,
-)
-from .processors import *
-from .structures import Prompts, SegmentationResults
-from .tiny_vit import TinyViT
-from .vit import VisionTransformer
-from .vit_mobile import MobileViT
-from .yunet import YuNet
+__all__ = ["YuNet"]
