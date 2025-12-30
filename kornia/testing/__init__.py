@@ -101,13 +101,6 @@ def tensor_to_gradcheck_var(
 T = TypeVar("T")
 
 
-def dict_to(data: Dict[T, Any], device: Device, dtype: Dtype) -> Dict[T, Any]:
-    out: Dict[T, Any] = {}
-    for key, val in data.items():
-        out[key] = val.to(device, dtype) if isinstance(val, Tensor) else val
-    return out
-
-
 def compute_patch_error(x: Tensor, y: Tensor, h: int, w: int) -> Tensor:
     """Compute the absolute error between patches."""
     return torch.abs(x - y)[..., h // 4 : -h // 4, w // 4 : -w // 4].mean()
