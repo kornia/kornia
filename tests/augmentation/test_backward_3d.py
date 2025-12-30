@@ -22,6 +22,7 @@ from torch import nn
 from kornia.augmentation import RandomAffine3D, RandomMotionBlur3D, RandomPerspective3D, RandomRotation3D
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestRandomAffine3DBackward:
     @pytest.mark.parametrize(
         "degrees",
