@@ -173,8 +173,6 @@ class TestImage(BaseTester):
         self.assert_close(img_rgb.to_bgr().data.squeeze(), bgr_val)
         self.assert_close(img_bgr.to_rgb().data.squeeze(), rgb_val)
 
-
-
     @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="dlpack is broken in torch<=1.9.1")
     @pytest.mark.xfail(reason="This may fail some time due to jpeg compression assertion")
     def test_load_write(self, tmp_path: Path) -> None:
@@ -205,5 +203,3 @@ def make_image(data: torch.Tensor, cs: ColorSpace, order: ChannelsOrder) -> Imag
     pf = PixelFormat(color_space=cs, bit_depth=data.element_size() * 8)
     layout = ImageLayout(image_size=ImageSize(H, W), channels=C, channels_order=order)
     return Image(data.clone(), pf, layout)
-
-
