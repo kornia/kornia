@@ -102,9 +102,15 @@ def disable_checks() -> None:
     """Disable all Kornia validation checks for production.
 
     Note:
+<<<<<<< HEAD
         This function can override the initial setting determined at import time.
         The module-level flag is evaluated once at import time for performance, but
         can be changed at runtime via this function or `enable_checks()`.
+=======
+        This function has no effect if checks were disabled at import time
+        (via `python -O` or KORNIA_CHECKS=0). The module-level flag is
+        evaluated once at import time for performance.
+>>>>>>> 846b6f22 (implement custom errors)
 
     Example:
         >>> disable_checks()
@@ -118,11 +124,14 @@ def disable_checks() -> None:
 def enable_checks() -> None:
     """Enable all Kornia validation checks.
 
+<<<<<<< HEAD
     Note:
         This function can override the initial setting determined at import time.
         The module-level flag is evaluated once at import time for performance, but
         can be changed at runtime via this function or `disable_checks()`.
 
+=======
+>>>>>>> 846b6f22 (implement custom errors)
     Example:
         >>> enable_checks()
         >>> are_checks_enabled()
