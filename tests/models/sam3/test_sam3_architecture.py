@@ -128,12 +128,16 @@ class TestImageEncoderHiera(BaseTester):
 
     def test_image_encoder_hiera_gradcheck(self, device: str) -> None:
         """Test ImageEncoderHiera gradient computation."""
-        encoder = ImageEncoderHiera(
-            img_size=64,
-            patch_size=16,
-            embed_dim=64,
-            depth=1,
-            num_heads=2,
-        ).to(device).double()
+        encoder = (
+            ImageEncoderHiera(
+                img_size=64,
+                patch_size=16,
+                embed_dim=64,
+                depth=1,
+                num_heads=2,
+            )
+            .to(device)
+            .double()
+        )
         x = torch.randn(1, 3, 64, 64, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(encoder, (x,), raise_exception=True)

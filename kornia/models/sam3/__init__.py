@@ -24,7 +24,6 @@ capability.
 
 from __future__ import annotations
 
-# Placeholder for Phase 1: Architecture modules only
-# Phase 3 will add the model wrapper, config, and factory methods
+from kornia.models.sam3.architecture import ImageEncoderHiera
 
-__all__ = []
+__all__ = ["ImageEncoderHiera"]

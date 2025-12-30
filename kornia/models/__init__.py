@@ -21,11 +21,20 @@ This package provides model architectures and utilities for state-of-the-art mod
 Models and Vision Language Action Models.
 """
 
-from . import (
-    depth_estimation,
-    detection,
-    edge_detection,
-    segmentation,
-    super_resolution,
-    tracking,
-)
+__all__ = [
+    "depth_estimation",
+    "detection",
+    "edge_detection",
+    "sam3",
+    "segmentation",
+    "super_resolution",
+    "tracking",
+]
+
+
+def __getattr__(name: str):
+    """Lazy load submodules to avoid circular imports."""
+    if name in __all__:
+        import importlib
+        return importlib.import_module(f".{name}", __name__)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
