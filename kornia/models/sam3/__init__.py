@@ -15,6 +15,16 @@
 # limitations under the License.
 #
 
-"""Tests for Kornia models."""
+"""SAM-3 (Segment Anything Model v3) integration for Kornia.
+
+This module provides the Segment Anything Model v3 (SAM-3) implementation for image segmentation tasks.
+SAM-3 is a foundation model for image segmentation that can segment any object in an image with zero-shot
+capability.
+"""
+
+from __future__ import annotations
+
+# Placeholder for Phase 1: Architecture modules only
+# Phase 3 will add the model wrapper, config, and factory methods
 
 __all__ = []

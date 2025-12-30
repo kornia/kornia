@@ -15,6 +15,17 @@
 # limitations under the License.
 #
 
-"""Tests for Kornia models."""
+"""SAM-3 architecture modules for Kornia."""
 
-__all__ = []
+from __future__ import annotations
+
+from .common import Attention, MLPBlock
+from .image_encoder import ImageEncoderHiera, PatchEmbedding, ViTBlock
+
+__all__ = [
+    "Attention",
+    "ImageEncoderHiera",
+    "MLPBlock",
+    "PatchEmbedding",
+    "ViTBlock",
+]
