@@ -15,22 +15,9 @@
 # limitations under the License.
 #
 
-"""Models submodule for Kornia.
+"""Kornia Contrib SAM — Segment Anything Model (SAM) integration for Kornia.
 
-This package provides model architectures and utilities for tasks such as depth estimation,
-detection, segmentation, super-resolution, and tracking.
+This subpackage provides SAM model classes and configuration for segmentation tasks.
 """
 
-from . import (
-    depth_estimation,
-    detection,
-    edge_detection,
-    segmentation,
-    super_resolution,
-    tracking,
-)
-from .processors import *
-from .structures import Prompts, SegmentationResults
-from .tiny_vit import TinyViT
-from .vit import VisionTransformer
-from .vit_mobile import MobileViT
+from kornia.models.sam.model import Sam, SamConfig, SamModelType

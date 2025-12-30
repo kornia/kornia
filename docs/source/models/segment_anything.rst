@@ -91,7 +91,7 @@ to query the image masks from the SAM model.
 
     import torch
 
-    from kornia.contrib.models.sam import SamConfig
+    from kornia.models.sam import SamConfig
     from kornia.contrib.visual_prompter import VisualPrompter
     from kornia.io import load_image, ImageLoadType
     from kornia.geometry.keypoints import Keypoints
@@ -179,13 +179,13 @@ parameters. If a checkpoint URL or path for a file is seted, the method will aut
 
 .. code-block:: python
 
-    from kornia.contrib.models.sam import Sam, SamConfig
+    from kornia.models.sam import Sam, SamConfig
     from kornia.utils import get_cuda_or_mps_device_if_available
 
     # model_type can be:
-    #   0, 'vit_h' or `kornia.contrib.models.sam.SamModelType.vit_h`
-    #   1, 'vit_l' or `kornia.contrib.models.sam.SamModelType.vit_l`
-    #   2, 'vit_b' or `kornia.contrib.models.sam.SamModelType.vit_b`
+    #   0, 'vit_h' or `kornia.models.sam.SamModelType.vit_h`
+    #   1, 'vit_l' or `kornia.models.sam.SamModelType.vit_l`
+    #   2, 'vit_b' or `kornia.models.sam.SamModelType.vit_b`
     model_type = 'vit_b'
 
     # The checkpoint can be a filepath or a url
@@ -215,7 +215,7 @@ If a URL is passed the model will automatically download and cache the weights u
 
 .. code-block:: python
 
-    from kornia.contrib.models.sam import Sam, SamConfig
+    from kornia.models.sam import Sam, SamConfig
     from kornia.utils import get_cuda_or_mps_device_if_available
 
     model_type = 'vit_b'
@@ -242,8 +242,8 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
 
 .. code-block:: python
 
-    from kornia.contrib.models.sam import Sam
-    from kornia.contrib.models import SegmentationResults
+    from kornia.models.sam import Sam
+    from kornia.models import SegmentationResults
     from kornia.io import load_image, ImageLoadType
     from kornia.utils import get_cuda_or_mps_device_if_available
     from kornia.geometry import resize

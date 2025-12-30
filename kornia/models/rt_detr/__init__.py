@@ -15,22 +15,10 @@
 # limitations under the License.
 #
 
-"""Models submodule for Kornia.
+"""Kornia Contrib RT-DETR — Real-time DEtection TRansformer models for Kornia.
 
-This package provides model architectures and utilities for tasks such as depth estimation,
-detection, segmentation, super-resolution, and tracking.
+This subpackage provides RT-DETR model classes, configs, and post-processors.
 """
 
-from . import (
-    depth_estimation,
-    detection,
-    edge_detection,
-    segmentation,
-    super_resolution,
-    tracking,
-)
-from .processors import *
-from .structures import Prompts, SegmentationResults
-from .tiny_vit import TinyViT
-from .vit import VisionTransformer
-from .vit_mobile import MobileViT
+from kornia.models.rt_detr.model import RTDETR, RTDETRConfig, RTDETRModelType
+from kornia.models.rt_detr.post_processor import DETRPostProcessor

@@ -23,7 +23,7 @@ from torch import nn
 from kornia.color.ycbcr import RgbToYcbcr, YcbcrToRgb
 from kornia.config import kornia_config
 from kornia.core import Module, Tensor, concatenate
-from kornia.models.utils import ResizePreProcessor
+from kornia.models.processors import ResizePreProcessor
 from kornia.utils.download import CachedDownloader
 
 from .base import SuperResolution

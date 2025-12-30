@@ -12,53 +12,53 @@ Models
 
 Base
 ^^^^
-.. autoclass:: kornia.contrib.models.base.ModelBase
+.. autoclass:: kornia.models.base.ModelBase
     :members:
     :undoc-members:
 
 EfficientViT
 ^^^^^^^^^^^^
 
-.. autoclass:: kornia.contrib.models.efficient_vit.EfficientViT
+.. autoclass:: kornia.models.efficient_vit.EfficientViT
     :members: from_config, forward, load_checkpoint
     :undoc-members:
     :special-members: __init__,
 
 
-.. autoclass:: kornia.contrib.models.efficient_vit.EfficientViTConfig
+.. autoclass:: kornia.models.efficient_vit.EfficientViTConfig
     :members:
     :undoc-members:
 
 Backbones
 ^^^^^^^^^
 
-.. autoclass:: kornia.contrib.models.efficient_vit.backbone.EfficientViTBackbone
+.. autoclass:: kornia.models.efficient_vit.backbone.EfficientViTBackbone
     :members:
     :undoc-members:
 
-.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_b0
-.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_b1
-.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_b2
-.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_b3
+.. autofunction:: kornia.models.efficient_vit.backbone.efficientvit_backbone_b0
+.. autofunction:: kornia.models.efficient_vit.backbone.efficientvit_backbone_b1
+.. autofunction:: kornia.models.efficient_vit.backbone.efficientvit_backbone_b2
+.. autofunction:: kornia.models.efficient_vit.backbone.efficientvit_backbone_b3
 
-.. autoclass:: kornia.contrib.models.efficient_vit.backbone.EfficientViTLargeBackbone
+.. autoclass:: kornia.models.efficient_vit.backbone.EfficientViTLargeBackbone
     :members:
     :undoc-members:
 
-.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_l0
-.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_l1
-.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_l2
-.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_l3
+.. autofunction:: kornia.models.efficient_vit.backbone.efficientvit_backbone_l0
+.. autofunction:: kornia.models.efficient_vit.backbone.efficientvit_backbone_l1
+.. autofunction:: kornia.models.efficient_vit.backbone.efficientvit_backbone_l2
+.. autofunction:: kornia.models.efficient_vit.backbone.efficientvit_backbone_l3
 
 Structures
 ^^^^^^^^^^
 
 .. _anchor SegmentationResults:
-.. autoclass:: kornia.contrib.models.SegmentationResults
+.. autoclass:: kornia.models.SegmentationResults
     :members:
     :undoc-members:
 
-.. autoclass:: kornia.contrib.models.Prompts
+.. autoclass:: kornia.models.Prompts
     :members:
     :undoc-members:
 
@@ -125,21 +125,21 @@ Object Detection
 Real-Time Detection Transformer (RT-DETR)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: kornia.contrib.models.rt_detr.RTDETRModelType
+.. autoclass:: kornia.models.rt_detr.RTDETRModelType
     :members:
     :undoc-members:
     :member-order: bysource
 
-.. autoclass:: kornia.contrib.models.rt_detr.RTDETRConfig
+.. autoclass:: kornia.models.rt_detr.RTDETRConfig
     :members:
     :undoc-members:
 
-.. autoclass:: kornia.contrib.models.rt_detr.RTDETR
+.. autoclass:: kornia.models.rt_detr.RTDETR
     :members: from_config, forward, load_checkpoint
     :undoc-members:
     :special-members: __init__,
 
-.. autoclass:: kornia.contrib.models.rt_detr.DETRPostProcessor
+.. autoclass:: kornia.models.rt_detr.DETRPostProcessor
     :members:
     :undoc-members:
 
@@ -150,16 +150,16 @@ Image Segmentation
 Segment Anything (SAM)
 ^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: kornia.contrib.models.sam.SamModelType
+.. autoclass:: kornia.models.sam.SamModelType
     :members:
     :undoc-members:
     :member-order: bysource
 
-.. autoclass:: kornia.contrib.models.sam.SamConfig
+.. autoclass:: kornia.models.sam.SamConfig
     :members:
     :undoc-members:
 
-.. autoclass:: kornia.contrib.models.sam.Sam
+.. autoclass:: kornia.models.sam.Sam
     :members: from_config, forward, load_checkpoint
     :undoc-members:
     :special-members: __init__,
@@ -182,7 +182,6 @@ Image Classification
 .. autoclass:: kornia.models.MobileViT
 .. autoclass:: TinyViT
     :members:
-.. autoclass:: ClassificationHead
 
 Image Stitching
 ---------------

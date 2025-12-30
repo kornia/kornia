@@ -23,7 +23,7 @@ from typing import Any, Optional, Union
 
 import torch
 
-from kornia.core import Tensor
+from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
@@ -122,6 +122,38 @@ class ObjectDetector(ModelBase):
     """Wrap an object detection model and perform pre-processing and post-processing."""
 
     name: str = "detection"
+
+    def __init__(self, model: Module, pre_processor: Module, post_processor: Module) -> None:
+        """Initialize ObjectDetector.
+
+        Args:
+            model: The object detection model.
+            pre_processor: Pre-processing module (e.g., ResizePreProcessor).
+            post_processor: Post-processing module (e.g., DETRPostProcessor).
+        """
+        super().__init__()
+        self.model = model.eval()
+        self.pre_processor = pre_processor
+        self.post_processor = post_processor
+
+    @staticmethod
+    def from_config(config: Any) -> ObjectDetector:
+        """Build ObjectDetector from config.
+
+        This is a placeholder to satisfy the abstract method requirement.
+        Use RTDETRDetectorBuilder.build() or instantiate ObjectDetector directly.
+
+        Args:
+            config: Configuration object (not used, kept for interface compatibility).
+
+        Returns:
+            ObjectDetector instance.
+
+        """
+        raise NotImplementedError(
+            "ObjectDetector.from_config() is not implemented. "
+            "Use RTDETRDetectorBuilder.build() or instantiate ObjectDetector directly."
+        )
 
     @torch.inference_mode()
     def forward(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:

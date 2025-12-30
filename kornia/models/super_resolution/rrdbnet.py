@@ -20,7 +20,7 @@ from torch import nn
 
 from kornia.config import kornia_config
 from kornia.core.external import basicsr
-from kornia.models.utils import OutputRangePostProcessor
+from kornia.models.processors import OutputRangePostProcessor
 from kornia.utils.download import CachedDownloader
 
 from .base import SuperResolution

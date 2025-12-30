@@ -21,7 +21,7 @@ from kornia.core import tensor
 from kornia.enhance.normalize import Normalize
 from kornia.filters.dexined import DexiNed
 from kornia.models.edge_detection.base import EdgeDetector
-from kornia.models.utils import ResizePostProcessor, ResizePreProcessor
+from kornia.models.processors import ResizePostProcessor, ResizePreProcessor
 
 __all__ = ["DexiNedBuilder"]
 

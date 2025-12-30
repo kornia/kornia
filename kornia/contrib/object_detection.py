@@ -35,7 +35,7 @@ from kornia.models.detection.base import (
 from kornia.models.detection.base import (
     results_from_detections as results_from_detections_base,
 )
-from kornia.models.utils import ResizePreProcessor as ResizePreProcessorBase
+from kornia.models.processors import ResizePreProcessor as ResizePreProcessorBase
 
 __all__ = [
     "BoundingBox",
@@ -73,7 +73,7 @@ class ResizePreProcessor(ResizePreProcessorBase):
         super().__init__(*args, **kwargs)
         warnings.warn(
             "ResizePreProcessor is deprecated and will be removed in v0.8.0. "
-            "Use kornia.models.utils.ResizePreProcessor instead.",
+            "Use kornia.models.processors.ResizePreProcessor instead.",
             DeprecationWarning,
             stacklevel=1,
         )

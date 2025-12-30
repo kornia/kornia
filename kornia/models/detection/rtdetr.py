@@ -20,10 +20,10 @@ from typing import Optional
 
 import torch
 
-from kornia.contrib.models.rt_detr import DETRPostProcessor
-from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
 from kornia.models.detection.base import ObjectDetector
-from kornia.models.utils import ResizePreProcessor
+from kornia.models.processors import ResizePreProcessor
+from kornia.models.rt_detr import DETRPostProcessor
+from kornia.models.rt_detr.model import RTDETR, RTDETRConfig
 
 __all__ = ["RTDETRDetectorBuilder"]
 

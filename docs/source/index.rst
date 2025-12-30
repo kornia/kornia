@@ -48,10 +48,9 @@ Vision Transformer for image classification.
 
    >>> import torch.nn as nn
    >>> from kornia.models import VisionTransformer
-   >>> import kornia.contrib as K
    >>> classifier = nn.Sequential(
    ...   VisionTransformer(image_size=224, patch_size=16),
-   ...   K.ClassificationHead(num_classes=1000),
+   ...   nn.Linear(768, 1000),  # Example: 768 is the default hidden_dim, 1000 is num_classes
    ... )
    >>> logits = classifier(img)    # BxN
    >>> scores = logits.argmax(-1)  # B

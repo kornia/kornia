@@ -23,13 +23,13 @@ import torch
 
 from kornia.augmentation import LongestMaxSize
 from kornia.augmentation.container.augment import AugmentationSequential
-from kornia.contrib.models import Prompts, SegmentationResults
-from kornia.contrib.models.sam import Sam, SamConfig
 from kornia.core import Tensor, pad, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.enhance import normalize
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
+from kornia.models import Prompts, SegmentationResults
+from kornia.models.sam import Sam, SamConfig
 
 
 class VisualPrompter:
