@@ -279,7 +279,7 @@ class VisionTransformer(nn.Module):
             The respective ViT model
 
         Example:
-            >>> from kornia.models import VisionTransformer
+            >>> from kornia.models.vit import VisionTransformer
             >>> vit_model = VisionTransformer.from_config("vit_b/16", pretrained=True)
 
         """
