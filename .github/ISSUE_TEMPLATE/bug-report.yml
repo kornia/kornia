@@ -1,6 +1,7 @@
-name: 🐛 Bug report
+name: 🐛 Bug Report
 description: Create a report to help us improve
-labels: bug, help wanted
+title: "[Bug]: "
+labels: ["bug", "help wanted"]
 
 body:
   - type: markdown
@@ -8,19 +9,26 @@ body:
       value: |
         Thanks for taking the time to fill out this bug report!
 
+        **Before submitting:**
+        - [ ] I have searched existing issues to ensure this bug hasn't been reported
+        - [ ] I have checked the [help wanted issues](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) list
+        - [ ] I have read the [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md)
+
   - type: textarea
     id: describe-bug
     attributes:
-      label: Describe the bug
+      label: 🐛 Describe the bug
       description: A clear and concise description of what the bug is.
+      placeholder: |
+        Example: When I call function X with parameters Y, I get error Z instead of the expected result.
     validations:
       required: true
 
   - type: textarea
     id: reproduction-steps
     attributes:
-      label: Reproduction steps
-      description: Steps to reproduce the behavior
+      label: 🔄 Steps to Reproduce
+      description: Steps to reproduce the behavior. Include minimal code example if possible.
       value: |
         1.
         2.
@@ -31,32 +39,55 @@ body:
       required: true
 
   - type: textarea
+    id: code-example
+    attributes:
+      label: 💻 Minimal Code Example
+      description: If applicable, provide a minimal code example that reproduces the bug
+      placeholder: |
+        ```python
+        import kornia
+        # Your minimal code here
+        ```
+      render: python
+    validations:
+      required: false
+
+  - type: textarea
     id: expected-behavior
     attributes:
-      label: Expected behavior
+      label: ✅ Expected behavior
       description: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: ❌ Actual behavior
+      description: What actually happened? Include error messages if any.
     validations:
       required: true
 
   - type: textarea
     id: environment
     attributes:
-      label: Environment
-      description: Please copy and paste the output from our collection script
+      label: 🔧 Environment
+      description: Please provide your environment details
       value: |
-        ```
+        - Kornia version:
+        - PyTorch version:
+        - Python version:
+        - OS (e.g., Linux, macOS, Windows):
+        - Installation method (pip, conda, from source):
+        - CUDA/cuDNN version (if applicable):
+        - GPU model (if applicable):
+
+        You can also run:
+        ```bash
         wget https://raw.githubusercontent.com/pytorch/pytorch/main/torch/utils/collect_env.py
         # For security purposes, please check the contents of collect_env.py before running it.
         python collect_env.py
         ```
-        - PyTorch Version (e.g., 1.0):
-        - OS (e.g., Linux):
-        - How you installed PyTorch (`conda`, `pip`, source):
-        - Build command you used (if compiling from source):
-        - Python version:
-        - CUDA/cuDNN version:
-        - GPU models and configuration:
-        - Any other relevant information:
       render: shell
     validations:
       required: true
@@ -64,5 +95,18 @@ body:
   - type: textarea
     id: additional-context
     attributes:
-      label: Additional context
-      description: Add any other context about the problem here.
+      label: 📝 Additional context
+      description: Add any other context, screenshots, or relevant information about the problem here.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution-intent
+    attributes:
+      label: 🤝 Contribution Intent
+      description: Are you planning to contribute a fix for this bug?
+      options:
+        - label: I plan to submit a PR to fix this bug
+          required: false
+        - label: I'm reporting this bug but not planning to fix it
+          required: false

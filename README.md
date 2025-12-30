@@ -25,7 +25,9 @@ English | [简体中文](README_zh-CN.md)
 </p>
 </div>
 
-**Kornia** is a differentiable computer vision library that provides a rich set of differentiable image processing and geometric vision algorithms. Built on top of [PyTorch](https://pytorch.org), Kornia integrates seamlessly into existing AI workflows, allowing you to leverage powerful [batch transformations](), [auto-differentiation]() and [GPU acceleration](). Whether you’re working on image transformations, augmentations, or AI-driven image processing, Kornia equips you with the tools you need to bring your ideas to life.
+**Kornia** is a differentiable computer vision library that provides a rich set of differentiable image processing and geometric vision algorithms. Built on top of [PyTorch](https://pytorch.org), Kornia integrates seamlessly into existing AI workflows, allowing you to leverage powerful [batch transformations](), [auto-differentiation]() and [GPU acceleration](). Whether you're working on image transformations, augmentations, or AI-driven image processing, Kornia equips you with the tools you need to bring your ideas to life.
+
+> **📢 Announcement**: Kornia is shifting towards end-to-end vision models. We are focusing on integrating state-of-the-art Vision Language Models (VLM) and Vision Language Agents (VLA) to provide comprehensive end-to-end vision solutions.
 
 ## Key Components
 1. **Differentiable Image Processing**<br>
@@ -220,12 +222,15 @@ Are you passionate about computer vision, AI, and open-source development? Join 
 
 We are excited to announce our latest advancement: a new initiative designed to seamlessly integrate lightweight AI models into Kornia.
 We aim to run any models as smooth as big models such as StableDiffusion, to support them well in many perspectives.
-We have already included a selection of lightweight AI models like [YuNet (Face Detection)](), [Loftr (Feature Matching)](), and [SAM (Segmentation)](). Now, we're looking for contributors to help us:
 
+**Priority Focus: VLM/VLA Models**
+
+Our primary focus is on integrating **Vision Language Models (VLM)** and **Vision Language Agents (VLA)** to enable end-to-end vision solutions. We're actively seeking contributors to help us:
+
+- **VLM/VLA Integration (Priority)**: Implement and integrate state-of-the-art Vision Language Models and Vision Language Agents. This includes models like Qwen2.5-VL, SAM-3, and other cutting-edge VLM/VLA architectures. If you are a researcher working on VLM/VLA models, Kornia is an excellent place for you to promote your model!
 - Expand the Model Selection: Import decent models into our library. If you are a researcher, Kornia is an excellent place for you to promote your model!
 - Model Optimization: Work on optimizing models to reduce their computational footprint while maintaining accuracy and performance. You may start from offering ONNX support!
 - Model Documentation: Create detailed guides and examples to help users get the most out of these models in their projects.
-
 
 ### Documentation And Tutorial Optimization
 
