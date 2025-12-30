@@ -15,43 +15,238 @@
 # limitations under the License.
 #
 
-from kornia.core import Module, Tensor
-from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.filters.dexined import DexiNed
+from __future__ import annotations
+
+from typing import Any, Optional, Union
+
+import torch
+
+from kornia.color.gray import grayscale_to_rgb
+from kornia.core import Tensor, tensor
+from kornia.core.external import PILImage as Image
+from kornia.core.external import onnx
+from kornia.enhance.normalize import Normalize
+from kornia.models.base import ModelBase
+from kornia.models.dexined import DexiNed
+from kornia.models.processors import ResizePostProcessor, ResizePreProcessor
+
+__all__ = ["EdgeDetector", "EdgeDetectorBuilder"]
 
 
-class EdgeDetector(Module):
-    r"""Detect edges in a given image using a CNN.
+class EdgeDetector(ModelBase):
+    """EdgeDetector is a module that wraps an edge detection model.
 
-    By default, it uses the method described in :cite:`xsoria2020dexined`.
+    This is a high-level API that wraps edge detection models like :py:class:`kornia.models.DexiNed`.
 
-    Return:
-        A tensor of shape :math:`(B,1,H,W)`.
+    Args:
+        model: The edge detection model.
+        pre_processor: Pre-processing module (e.g., ResizePreProcessor).
+        post_processor: Post-processing module (e.g., ResizePostProcessor).
+        name: Optional name for the detector.
 
     Example:
+        >>> from kornia.models import DexiNed
+        >>> from kornia.models.processors import ResizePreProcessor, ResizePostProcessor
+        >>> model = DexiNed(pretrained=True)
+        >>> detector = EdgeDetector(model, ResizePreProcessor(352, 352), ResizePostProcessor())
         >>> img = torch.rand(1, 3, 320, 320)
-        >>> detect = EdgeDetector()
-        >>> out = detect(img)
-        >>> out.shape
-        torch.Size([1, 1, 320, 320])
+        >>> out = detector(img)
 
     """
 
-    def __init__(self) -> None:
+    name: str = "edge_detection"
+
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        pre_processor: torch.nn.Module,
+        post_processor: torch.nn.Module,
+        name: Optional[str] = None,
+    ) -> None:
+        """Initialize EdgeDetector.
+
+        Args:
+            model: The edge detection model.
+            pre_processor: Pre-processing module (e.g., ResizePreProcessor).
+            post_processor: Post-processing module (e.g., ResizePostProcessor).
+            name: Optional name for the detector.
+
+        """
         super().__init__()
-        self.model = DexiNed(pretrained=True)
+        self.model = model.eval()
+        self.pre_processor = pre_processor
+        self.post_processor = post_processor
+        if name is not None:
+            self.name = name
 
-    def load(self, path_file: str) -> None:
-        self.model.load_from_file(path_file)
+    @staticmethod
+    def from_config(config: Any) -> EdgeDetector:
+        """Build EdgeDetector from config.
 
-    def preprocess(self, image: Tensor) -> Tensor:
-        return image
+        This is a placeholder to satisfy the abstract method requirement.
+        Use EdgeDetectorBuilder.build() or instantiate EdgeDetector directly.
 
-    def postprocess(self, data: Tensor) -> Tensor:
-        return data
+        Args:
+            config: Configuration object (not used, kept for interface compatibility).
 
-    def forward(self, image: Tensor) -> Tensor:
-        KORNIA_CHECK_SHAPE(image, ["B", "3", "H", "W"])
-        img = self.preprocess(image)
-        out = self.model(img)
-        return self.postprocess(out)
+        Returns:
+            EdgeDetector instance.
+
+        """
+        raise NotImplementedError(
+            "EdgeDetector.from_config() is not implemented. "
+            "Use EdgeDetectorBuilder.build() or instantiate EdgeDetector directly."
+        )
+
+    @torch.inference_mode()
+    def forward(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:
+        """Forward pass of the edge detection model.
+
+        Args:
+            images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
+                If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
+
+        Returns:
+            output tensor.
+
+        """
+        images, image_sizes = self.pre_processor(images)
+        out_images = self.model(images)
+        return self.post_processor(out_images, image_sizes)
+
+    def visualize(
+        self,
+        images: Union[Tensor, list[Tensor]],
+        edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
+        output_type: str = "torch",
+    ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
+        """Draw the edge detection results.
+
+        Args:
+            images: input tensor.
+            edge_maps: detected edges.
+            output_type: type of the output.
+
+        Returns:
+            output tensor.
+
+        """
+        if edge_maps is None:
+            edge_maps = self.forward(images)
+        output = []
+        for edge_map in edge_maps:
+            output.append(grayscale_to_rgb(edge_map)[0])
+
+        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, Tensor))
+
+    def save(
+        self,
+        images: Union[Tensor, list[Tensor]],
+        edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
+        directory: Optional[str] = None,
+        output_type: str = "torch",
+    ) -> None:
+        """Save the edge detection results.
+
+        Args:
+            images: input tensor.
+            edge_maps: detected edges.
+            output_type: type of the output.
+            directory: where to save outputs.
+
+        Returns:
+            output tensor.
+
+        """
+        outputs = self.visualize(images, edge_maps, output_type)
+        self._save_outputs(images, directory, suffix="_src")
+        self._save_outputs(outputs, directory, suffix="_edge")
+
+    def to_onnx(  # type: ignore[override]
+        self,
+        onnx_name: Optional[str] = None,
+        image_size: Optional[int] = 352,
+        include_pre_and_post_processor: bool = True,
+        save: bool = True,
+        additional_metadata: Optional[list[tuple[str, str]]] = None,
+        **kwargs: Any,
+    ) -> onnx.ModelProto:  # type: ignore
+        """Export the current edge detection model to an ONNX model file.
+
+        Args:
+            onnx_name:
+                The name of the output ONNX file. If not provided, a default name in the
+                format "Kornia-<ClassName>.onnx" will be used.
+            image_size:
+                The size to which input images will be resized during preprocessing.
+                If None, image_size will be dynamic. For DexiNed, recommended scale is 352.
+            include_pre_and_post_processor:
+                Whether to include the pre-processor and post-processor in the exported model.
+            save:
+                If to save the model or load it.
+            additional_metadata:
+                Additional metadata to add to the ONNX model.
+            kwargs: Additional arguments to convert to onnx.
+
+        """
+        if onnx_name is None:
+            onnx_name = f"kornia_{self.name}_{image_size}.onnx"
+
+        return super().to_onnx(
+            onnx_name,
+            input_shape=[-1, 3, image_size or -1, image_size or -1],
+            output_shape=[-1, 1, image_size or -1, image_size or -1],
+            pseudo_shape=[1, 3, image_size or 352, image_size or 352],
+            model=self if include_pre_and_post_processor else self.model,
+            save=save,
+            additional_metadata=additional_metadata,
+            **kwargs,
+        )
+
+
+class EdgeDetectorBuilder:
+    """EdgeDetectorBuilder is a class that builds an edge detection model.
+
+    This is a high-level API that builds edge detection models like :py:class:`kornia.models.DexiNed`
+    and wraps them with :py:class:`EdgeDetector`.
+
+    .. code-block:: python
+
+        images = kornia.utils.sample.get_sample_images()
+        model = EdgeDetectorBuilder.build()
+        model.save(images)
+    """
+
+    @staticmethod
+    def build(model_name: str = "dexined", pretrained: bool = True, image_size: int = 352) -> EdgeDetector:
+        """Build an edge detection model.
+
+        Args:
+            model_name: Name of the model to build. Currently only "dexined" is supported.
+            pretrained: If True, loads pretrained weights.
+            image_size: Size to which input images will be resized during preprocessing.
+
+        Returns:
+            EdgeDetector instance configured with the specified model.
+
+        Example:
+            >>> detector = EdgeDetectorBuilder.build(pretrained=True, image_size=352)
+            >>> img = torch.rand(1, 3, 320, 320)
+            >>> out = detector(img)
+
+        """
+        if model_name.lower() == "dexined":
+            # Normalize then scale to [0, 255]
+            norm = Normalize(mean=tensor([[0.485, 0.456, 0.406]]), std=tensor([[1.0 / 255.0] * 3]))
+            from torch import nn
+
+            model = nn.Sequential(norm, DexiNed(pretrained=pretrained), nn.Sigmoid())
+        else:
+            raise ValueError(f"Model {model_name} not found. Please choose from 'dexined'.")
+
+        return EdgeDetector(
+            model,
+            ResizePreProcessor(image_size, image_size),
+            ResizePostProcessor(),
+            name="dexined",
+        )

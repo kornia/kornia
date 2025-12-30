@@ -19,6 +19,3 @@
 
 This package provides model architectures and utilities for edge detection tasks.
 """
-
-from .base import *
-from .dexined import *

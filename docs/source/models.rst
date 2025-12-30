@@ -36,32 +36,32 @@ The `RTDETRDetectorBuilder` class is a builder for constructing a detection mode
        model = kornia.models.detection.rtdetr.RTDETRDetectorBuilder.build()
        model.save(image)
 
-.. _DexiNedBuilder:
+.. _EdgeDetectorBuilder:
 
-DexiNedBuilder
---------------
+EdgeDetectorBuilder
+-------------------
 
-The `DexiNedBuilder` class implements a state-of-the-art edge detection model based on DexiNed, which excels at detecting fine-grained edges in images. This model is well-suited for tasks like medical imaging, object contour detection, and more.
+The `EdgeDetectorBuilder` class implements a state-of-the-art edge detection model based on DexiNed, which excels at detecting fine-grained edges in images. This model is well-suited for tasks like medical imaging, object contour detection, and more.
 
 **Key Methods:**
 
 - `build`: Builds and returns an instance of the DexiNed edge detection model.
 - `save`: Saves the detected edges for further processing or visualization.
 
-.. autoclass:: kornia.models.edge_detection.dexined.DexiNedBuilder
+.. autoclass:: kornia.contrib.edge_detection.EdgeDetectorBuilder
    :members:
    :undoc-members:
    :show-inheritance:
 
    .. rubric:: Example
 
-   The following code shows how to use the `DexiNedBuilder` to detect edges in an image:
+   The following code shows how to use the `EdgeDetectorBuilder` to detect edges in an image:
 
    .. code-block:: python
 
        import kornia
        image = kornia.utils.sample.get_sample_images()[0][None]
-       model = kornia.models.edge_detection.dexined.DexiNedBuilder.build()
+       model = kornia.contrib.edge_detection.EdgeDetectorBuilder.build()
        model.save(image)
 
 .. _SegmentationModels:

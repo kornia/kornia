@@ -24,11 +24,11 @@ detection, segmentation, super-resolution, and tracking.
 from . import (
     depth_estimation,
     detection,
-    edge_detection,
     segmentation,
     super_resolution,
     tracking,
 )
+from .dexined import DexiNed
 from .processors import *
 from .structures import Prompts, SegmentationResults
 from .tiny_vit import TinyViT
