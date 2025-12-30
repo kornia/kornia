@@ -2,6 +2,14 @@
 
 This document provides guidelines for reviewing Python code in the Kornia project. Follow these best practices to ensure consistency and quality across the codebase.
 
+## AI-Generated Content Policy
+
+- **Human oversight required**: Code and comments must not be direct, unreviewed outputs of AI agents
+- AI-generated PRs without human oversight will be flagged and may be closed
+- All AI-assisted contributions must be reviewed and validated by a human before submission
+- Ensure code logic is understood and verified, not just copied from AI output
+- Comments should reflect genuine understanding, not generic AI-generated explanations
+
 ## Code Style
 
 ### Formatting and Linting
@@ -174,6 +182,7 @@ pixi run doctest
 
 When reviewing Python code, verify:
 
+- [ ] Code and comments are not direct, unreviewed AI agent outputs
 - [ ] Code follows PEP 8 style guidelines
 - [ ] Line length does not exceed 120 characters
 - [ ] License header is present on new files
