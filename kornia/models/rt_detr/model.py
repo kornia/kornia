@@ -26,7 +26,6 @@ from typing import Optional
 
 import torch
 
-from kornia.core import Tensor
 from kornia.models.base import ModelBase
 from kornia.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
@@ -251,7 +250,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
             return new_name
 
-        def _state_dict_proc(state_dict: dict[str, Tensor]) -> dict[str, Tensor]:
+        def _state_dict_proc(state_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
             state_dict = state_dict["ema"]["module"]  # type:ignore
             new_state_dict = {}
 
@@ -279,7 +278,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
         model = RTDETR.from_config(RTDETRConfig.from_name(model_name, num_classes))
         return model
 
-    def forward(self, images: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Detect objects in an image.
 
         Args:

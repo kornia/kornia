@@ -21,8 +21,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, Tensor, pad
-
 
 class ConvNormAct(nn.Sequential):
     def __init__(
@@ -60,7 +58,7 @@ class ConvNormAct(nn.Sequential):
 
 # Lightly adapted from
 # https://github.com/facebookresearch/MaskFormer/blob/main/mask_former/modeling/transformer/transformer_predictor.py
-class MLP(Module):
+class MLP(nn.Module):
     def __init__(
         self, input_dim: int, hidden_dim: int, output_dim: int, num_layers: int, sigmoid_output: bool = False
     ) -> None:
@@ -70,7 +68,7 @@ class MLP(Module):
         self.layers = nn.ModuleList(nn.Linear(n, k) for n, k in zip([input_dim, *h], [*h, output_dim]))
         self.sigmoid_output = sigmoid_output
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         for i, layer in enumerate(self.layers):
             x = F.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         if self.sigmoid_output:
@@ -80,7 +78,7 @@ class MLP(Module):
 
 # Adapted from timm
 # https://github.com/huggingface/pytorch-image-models/blob/v0.9.2/timm/layers/drop.py#L137
-class DropPath(Module):
+class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks)."""
 
     def __init__(self, drop_prob: float = 0.0, scale_by_keep: bool = True) -> None:
@@ -88,7 +86,7 @@ class DropPath(Module):
         self.drop_prob = drop_prob
         self.scale_by_keep = scale_by_keep
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.drop_prob == 0.0 or not self.training:
             return x
         keep_prob = 1 - self.drop_prob
@@ -101,14 +99,14 @@ class DropPath(Module):
 
 # From https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py
 # Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa
-class LayerNorm2d(Module):
+class LayerNorm2d(nn.Module):
     def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
         super().__init__()
         self.weight = nn.Parameter(torch.ones(num_channels))
         self.bias = nn.Parameter(torch.zeros(num_channels))
         self.eps = eps
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         u = x.mean(1, keepdim=True)
         s = (x - u).pow(2).mean(1, keepdim=True)
         x = (x - u) / (s + self.eps).sqrt()
@@ -116,7 +114,7 @@ class LayerNorm2d(Module):
         return x
 
 
-def window_partition(x: Tensor, window_size: int) -> tuple[Tensor, tuple[int, int]]:
+def window_partition(x: torch.Tensor, window_size: int) -> tuple[torch.Tensor, tuple[int, int]]:
     """Partition into non-overlapping windows with padding if needed.
 
     Args:
@@ -133,7 +131,7 @@ def window_partition(x: Tensor, window_size: int) -> tuple[Tensor, tuple[int, in
     pad_h = (window_size - H % window_size) % window_size
     pad_w = (window_size - W % window_size) % window_size
     if pad_h > 0 or pad_w > 0:
-        x = pad(x, (0, 0, 0, pad_w, 0, pad_h))
+        x = F.pad(x, (0, 0, 0, pad_w, 0, pad_h))
     Hp, Wp = H + pad_h, W + pad_w
 
     x = x.view(B, Hp // window_size, window_size, Wp // window_size, window_size, C)
@@ -141,7 +139,9 @@ def window_partition(x: Tensor, window_size: int) -> tuple[Tensor, tuple[int, in
     return windows, (Hp, Wp)
 
 
-def window_unpartition(windows: Tensor, window_size: int, pad_hw: tuple[int, int], hw: tuple[int, int]) -> Tensor:
+def window_unpartition(
+    windows: torch.Tensor, window_size: int, pad_hw: tuple[int, int], hw: tuple[int, int]
+) -> torch.Tensor:
     """Window unpartition into original sequences and removing padding.
 
     Args:

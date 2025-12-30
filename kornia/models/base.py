@@ -24,8 +24,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Generic, List, Optional, TypeVar, Union, cast
 
 import torch
+from torch import nn
 
-from kornia.core import Module, Tensor
 from kornia.core.external import PILImage as Image
 from kornia.io import write_image
 from kornia.utils.image import tensor_to_image
@@ -39,8 +39,8 @@ class ModelBaseMixin:
     name: str = "model"
 
     def _tensor_to_type(
-        self, output: Union[Tensor, List[Tensor]], output_type: str, is_batch: bool = False
-    ) -> Union[Tensor, List[Tensor], List[Image.Image]]:  # type: ignore
+        self, output: Union[torch.Tensor, List[torch.Tensor]], output_type: str, is_batch: bool = False
+    ) -> Union[torch.Tensor, List[torch.Tensor], List[Image.Image]]:  # type: ignore
         """Convert the output tensor to the desired type.
 
         Args:
@@ -65,7 +65,7 @@ class ModelBaseMixin:
         else:
             raise RuntimeError(f"Output type {output_type} is not supported. Accepted values are 'torch' and 'pil'.")
 
-    def save(self, output: Union[Tensor, List[Tensor]], directory: str, is_batch: bool = False) -> None:
+    def save(self, output: Union[torch.Tensor, List[torch.Tensor]], directory: str, is_batch: bool = False) -> None:
         """Save the output tensor to a directory.
 
         Args:
@@ -83,8 +83,32 @@ class ModelBaseMixin:
             write_image(output, os.path.join(directory, f"{self.name}_{timestamp}.png"))
         logger.info(f"Outputs are saved in {directory}")
 
+    def _save_outputs(
+        self, output: Union[torch.Tensor, List[torch.Tensor]], directory: Optional[str] = None, suffix: str = ""
+    ) -> None:
+        """Save the output tensor to a directory with an optional suffix.
 
-class ModelBase(ABC, Module, Generic[ModelConfig]):
+        Args:
+            output: The output tensor or list of tensors.
+            directory: The directory to save the output. If None, a default directory is used.
+            suffix: Optional suffix to add to the filename.
+
+        """
+        if directory is None:
+            name = f"{self.name}{suffix}_{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}"
+            directory = os.path.join("kornia_outputs", name)
+
+        os.makedirs(directory, exist_ok=True)
+        timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
+        if isinstance(output, list):
+            for i, out in enumerate(output):
+                write_image(out, os.path.join(directory, f"{self.name}{suffix}_{timestamp}_{i}.png"))
+        else:
+            write_image(output, os.path.join(directory, f"{self.name}{suffix}_{timestamp}.png"))
+        logger.info(f"Outputs are saved in {directory}")
+
+
+class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
     """Abstract model class with some utilities function."""
 
     def load_checkpoint(self, checkpoint: str, device: Optional[torch.device] = None) -> None:

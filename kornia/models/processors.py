@@ -19,15 +19,14 @@ import warnings
 from typing import List, Tuple, Union
 
 import torch
-from torch import Tensor
+from torch import nn
 
-from kornia.core import Module, concatenate
 from kornia.geometry.transform import resize
 
 __all__ = ["OutputRangePostProcessor", "ResizePostProcessor", "ResizePreProcessor"]
 
 
-class ResizePreProcessor(Module):
+class ResizePreProcessor(nn.Module):
     """Resize a list of image tensors to the given size.
 
     Additionally, also returns the original image sizes for further post-processing.
@@ -47,7 +46,7 @@ class ResizePreProcessor(Module):
         self.size = (height, width)
         self.interpolation_mode = interpolation_mode
 
-    def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Tuple[Tensor, Tensor]:
+    def forward(self, imgs: Union[torch.Tensor, List[torch.Tensor]]) -> Tuple[torch.Tensor, torch.Tensor]:
         """Run forward.
 
         Returns:
@@ -56,7 +55,7 @@ class ResizePreProcessor(Module):
 
         """
         # TODO: support other input formats e.g. file path, numpy
-        resized_imgs: list[Tensor] = []
+        resized_imgs: list[torch.Tensor] = []
 
         iters = len(imgs) if isinstance(imgs, list) else imgs.shape[0]
         original_sizes = imgs[0].new_zeros((iters, 2))
@@ -65,15 +64,17 @@ class ResizePreProcessor(Module):
             original_sizes[i, 0] = img.shape[-2]  # Height
             original_sizes[i, 1] = img.shape[-1]  # Width
             resized_imgs.append(resize(img[None], size=self.size, interpolation=self.interpolation_mode))
-        return concatenate(resized_imgs), original_sizes
+        return torch.cat(resized_imgs), original_sizes
 
 
-class ResizePostProcessor(Module):
+class ResizePostProcessor(nn.Module):
     def __init__(self, interpolation_mode: str = "bilinear") -> None:
         super().__init__()
         self.interpolation_mode = interpolation_mode
 
-    def forward(self, imgs: Union[Tensor, List[Tensor]], original_sizes: Tensor) -> Union[Tensor, List[Tensor]]:
+    def forward(
+        self, imgs: Union[torch.Tensor, List[torch.Tensor]], original_sizes: torch.Tensor
+    ) -> Union[torch.Tensor, List[torch.Tensor]]:
         """Run forward.
 
         Returns:
@@ -82,7 +83,7 @@ class ResizePostProcessor(Module):
 
         """
         # TODO: support other input formats e.g. file path, numpy
-        resized_imgs: list[Tensor] = []
+        resized_imgs: list[torch.Tensor] = []
 
         if torch.onnx.is_in_onnx_export():
             warnings.warn(
@@ -102,13 +103,13 @@ class ResizePostProcessor(Module):
         return resized_imgs
 
 
-class OutputRangePostProcessor(Module):
+class OutputRangePostProcessor(nn.Module):
     def __init__(self, min_val: float = 0.0, max_val: float = 1.0) -> None:
         super().__init__()
         self.min_val = min_val
         self.max_val = max_val
 
-    def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Union[Tensor, List[Tensor]]:
-        if isinstance(imgs, Tensor):
+    def forward(self, imgs: Union[torch.Tensor, List[torch.Tensor]]) -> Union[torch.Tensor, List[torch.Tensor]]:
+        if isinstance(imgs, torch.Tensor):
             return torch.clamp(imgs, self.min_val, self.max_val)
         return [img.clamp_(self.min_val, self.max_val) for img in imgs]

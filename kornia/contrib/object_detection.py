@@ -37,8 +37,8 @@ __all__ = [
     "BoundingBoxDataFormat",
     "BoxFiltering",
     "ObjectDetector",
-    "ObjectDetectorBuilder",
     "ObjectDetectorResult",
+    "RTDETRDetectorBuilder",
     "results_from_detections",
 ]
 
@@ -122,7 +122,7 @@ def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFor
     return results
 
 
-class ObjectDetector(ModelBase):
+class ObjectDetector(ModelBase, ONNXExportMixin):
     """Wrap an object detection model and perform pre-processing and post-processing."""
 
     name: str = "detection"
@@ -145,7 +145,7 @@ class ObjectDetector(ModelBase):
         """Build ObjectDetector from config.
 
         This is a placeholder to satisfy the abstract method requirement.
-        Use kornia.contrib.object_detection.ObjectDetectorBuilder.build() or instantiate ObjectDetector directly.
+        Use kornia.contrib.object_detection.RTDETRDetectorBuilder.build() or instantiate ObjectDetector directly.
 
         Args:
             config: Configuration object (not used, kept for interface compatibility).
@@ -156,7 +156,7 @@ class ObjectDetector(ModelBase):
         """
         raise NotImplementedError(
             "ObjectDetector.from_config() is not implemented. "
-            "Use kornia.contrib.object_detection.ObjectDetectorBuilder.build() or instantiate ObjectDetector directly."
+            "Use kornia.contrib.object_detection.RtdetrBuilder.build() or instantiate ObjectDetector directly."
         )
 
     @torch.inference_mode()
@@ -245,7 +245,8 @@ class ObjectDetector(ModelBase):
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}_{image_size}.onnx"
 
-        return super().to_onnx(
+        return ONNXExportMixin.to_onnx(
+            self,
             onnx_name,
             input_shape=[-1, 3, image_size or -1, image_size or -1],
             output_shape=[-1, -1, 6],
@@ -379,7 +380,7 @@ class BoxFiltering(Module, ONNXExportMixin):
         return pseudo_input
 
 
-class ObjectDetectorBuilder:
+class RTDETRDetectorBuilder:
     """A builder class for constructing RT-DETR object detection models.
 
     This class provides static methods to:
@@ -389,7 +390,7 @@ class ObjectDetectorBuilder:
     .. code-block:: python
 
         images = kornia.utils.sample.get_sample_images()
-        model = ObjectDetectorBuilder.build()
+        model = RTDETRDetectorBuilder.build()
         model.save(images)
     """
 

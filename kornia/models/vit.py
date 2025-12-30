@@ -31,18 +31,17 @@ from typing import Any, Callable
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK
 
 __all__ = ["VisionTransformer"]
 
 
-class ResidualAdd(Module):
-    def __init__(self, fn: Callable[..., Tensor]) -> None:
+class ResidualAdd(nn.Module):
+    def __init__(self, fn: Callable[..., torch.Tensor]) -> None:
         super().__init__()
         self.fn = fn
 
-    def forward(self, x: Tensor, **kwargs: Any) -> Tensor:
+    def forward(self, x: torch.Tensor, **kwargs: Any) -> torch.Tensor:
         res = x
         x = self.fn(x, **kwargs)
         x += res
@@ -60,7 +59,7 @@ class FeedForward(nn.Sequential):
         )
 
 
-class MultiHeadAttention(Module):
+class MultiHeadAttention(nn.Module):
     def __init__(self, emb_size: int, num_heads: int, att_drop: float, proj_drop: float) -> None:
         super().__init__()
         self.emb_size = emb_size
@@ -81,7 +80,7 @@ class MultiHeadAttention(Module):
         self.projection = nn.Linear(emb_size, emb_size)
         self.projection_drop = nn.Dropout(proj_drop)  # added timm trick
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, N, C = x.shape
         # split keys, queries and values in num_heads
         # NOTE: the line below differs from timm
@@ -122,7 +121,7 @@ class TransformerEncoderBlock(nn.Sequential):
         )
 
 
-class TransformerEncoder(Module):
+class TransformerEncoder(nn.Module):
     def __init__(
         self,
         embed_dim: int = 768,
@@ -135,9 +134,9 @@ class TransformerEncoder(Module):
         self.blocks = nn.Sequential(
             *(TransformerEncoderBlock(embed_dim, num_heads, dropout_rate, dropout_attn) for _ in range(depth))
         )
-        self.results: list[Tensor] = []
+        self.results: list[torch.Tensor] = []
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         self.results = []
         out = x
         for m in self.blocks.children():
@@ -146,7 +145,7 @@ class TransformerEncoder(Module):
         return out
 
 
-class PatchEmbedding(Module):
+class PatchEmbedding(nn.Module):
     """Compute the 2d image patch embedding ready to pass to transformer encoder."""
 
     def __init__(
@@ -155,7 +154,7 @@ class PatchEmbedding(Module):
         out_channels: int = 768,
         patch_size: int = 16,
         image_size: int = 224,
-        backbone: Module | None = None,
+        backbone: nn.Module | None = None,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -177,19 +176,19 @@ class PatchEmbedding(Module):
         out = self.backbone(torch.zeros(1, *image_size)).detach()
         return out.shape[-3], out.shape[-2] * out.shape[-1]
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.backbone(x)
         B, N, _, _ = x.shape
         x = x.view(B, N, -1).permute(0, 2, 1)  # BxNxE
         cls_tokens = self.cls_token.repeat(B, 1, 1)  # Bx1xE
         # prepend the cls token to the input
-        x = concatenate([cls_tokens, x], dim=1)  # Bx(N+1)xE
+        x = torch.cat([cls_tokens, x], dim=1)  # Bx(N+1)xE
         # add position embedding
         x += self.positions
         return x
 
 
-class VisionTransformer(Module):
+class VisionTransformer(nn.Module):
     """Vision transformer (ViT) module.
 
     The module is expected to be used as operator for different vision tasks.
@@ -228,7 +227,7 @@ class VisionTransformer(Module):
         num_heads: int = 12,
         dropout_rate: float = 0.0,
         dropout_attn: float = 0.0,
-        backbone: Module | None = None,
+        backbone: nn.Module | None = None,
     ) -> None:
         super().__init__()
         self.image_size = image_size
@@ -242,12 +241,12 @@ class VisionTransformer(Module):
         self.norm = nn.LayerNorm(hidden_dim, 1e-6)
 
     @property
-    def encoder_results(self) -> list[Tensor]:
+    def encoder_results(self) -> list[torch.Tensor]:
         return self.encoder.results
 
-    def forward(self, x: Tensor) -> Tensor:
-        if not isinstance(x, Tensor):
-            raise TypeError(f"Input x type is not a Tensor. Got: {type(x)}")
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Input x type is not a torch.Tensor. Got: {type(x)}")
 
         if self.image_size not in (*x.shape[-2:],) and x.shape[-3] != self.in_channels:
             raise ValueError(

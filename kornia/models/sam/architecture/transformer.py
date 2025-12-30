@@ -25,21 +25,21 @@ from __future__ import annotations
 
 import math
 
+import torch
 from torch import nn
 
-from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 from kornia.models.sam.architecture.common import MLPBlock
 
 
-class TwoWayTransformer(Module):
+class TwoWayTransformer(nn.Module):
     def __init__(
         self,
         depth: int,
         embedding_dim: int,
         num_heads: int,
         mlp_dim: int,
-        activation: type[Module] = nn.ReLU,
+        activation: type[nn.Module] = nn.ReLU,
         attention_downsample_rate: int = 2,
     ) -> None:
         """Construct a transformer decoder that attends to an input image using queries whose positional embedding is
@@ -76,7 +76,9 @@ class TwoWayTransformer(Module):
         self.final_attn_token_to_image = Attention(embedding_dim, num_heads, downsample_rate=attention_downsample_rate)
         self.norm_final_attn = nn.LayerNorm(embedding_dim)
 
-    def forward(self, image_embedding: Tensor, image_pe: Tensor, point_embedding: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(
+        self, image_embedding: torch.Tensor, image_pe: torch.Tensor, point_embedding: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run forward.
 
         Args:
@@ -113,13 +115,13 @@ class TwoWayTransformer(Module):
         return queries, keys
 
 
-class TwoWayAttentionBlock(Module):
+class TwoWayAttentionBlock(nn.Module):
     def __init__(
         self,
         embedding_dim: int,
         num_heads: int,
         mlp_dim: int = 2048,
-        activation: type[Module] = nn.ReLU,
+        activation: type[nn.Module] = nn.ReLU,
         attention_downsample_rate: int = 2,
         skip_first_layer_pe: bool = False,
     ) -> None:
@@ -153,7 +155,9 @@ class TwoWayAttentionBlock(Module):
 
         self.skip_first_layer_pe = skip_first_layer_pe
 
-    def forward(self, queries: Tensor, keys: Tensor, query_pe: Tensor, key_pe: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(
+        self, queries: torch.Tensor, keys: torch.Tensor, query_pe: torch.Tensor, key_pe: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         # Self attention block
         if self.skip_first_layer_pe:
             queries = self.self_attn(q=queries, k=queries, v=queries)
@@ -185,7 +189,7 @@ class TwoWayAttentionBlock(Module):
         return queries, keys
 
 
-class Attention(Module):
+class Attention(nn.Module):
     """Attention layer that allows for downscaling the embedding after projection to queries, keys, and values."""
 
     def __init__(self, embedding_dim: int, num_heads: int, downsample_rate: int = 1) -> None:
@@ -200,17 +204,17 @@ class Attention(Module):
         self.v_proj = nn.Linear(embedding_dim, self.internal_dim)
         self.out_proj = nn.Linear(self.internal_dim, embedding_dim)
 
-    def _separate_heads(self, x: Tensor, num_heads: int) -> Tensor:
+    def _separate_heads(self, x: torch.Tensor, num_heads: int) -> torch.Tensor:
         b, n, c = x.shape
         x = x.reshape(b, n, num_heads, c // num_heads)
         return x.transpose(1, 2)  # B x N_heads x N_tokens x C_per_head
 
-    def _recombine_heads(self, x: Tensor) -> Tensor:
+    def _recombine_heads(self, x: torch.Tensor) -> torch.Tensor:
         b, n_heads, n_tokens, c_per_head = x.shape
         x = x.transpose(1, 2)
         return x.reshape(b, n_tokens, n_heads * c_per_head)  # B x N_tokens x C
 
-    def forward(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:
+    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         # Input projections
         q = self.q_proj(q)
         k = self.k_proj(k)

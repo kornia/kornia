@@ -26,7 +26,6 @@ from typing import Optional
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor, concatenate
 from kornia.models.common import MLP, ConvNormAct
 from kornia.utils._compat import torch_meshgrid
 
@@ -47,8 +46,11 @@ def _inverse_sigmoid(x: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
 
 
 def _deformable_attention_kernel(
-    value: Tensor, value_spatial_shapes: list[tuple[int, int]], sampling_locations: Tensor, attention_weights: Tensor
-) -> Tensor:
+    value: torch.Tensor,
+    value_spatial_shapes: list[tuple[int, int]],
+    sampling_locations: torch.Tensor,
+    attention_weights: torch.Tensor,
+) -> torch.Tensor:
     """Deformable Attention Kernel used in Deformable DETR.
 
     Described in https://arxiv.org/abs/2010.04159.
@@ -70,7 +72,7 @@ def _deformable_attention_kernel(
     value_list = value.split(split_shape, dim=1)
     sampling_grids = 2 * sampling_locations - 1
 
-    sampling_value_list: list[Tensor] = []
+    sampling_value_list: list[torch.Tensor] = []
     for level, (h, w) in enumerate(value_spatial_shapes):
         # N_, H_*W_, M_, D_ -> N_, H_*W_, M_*D_ -> N_, M_*D_, H_*W_ -> N_*M_, D_, H_, W_
         value_l_ = value_list[level].flatten(2).permute(0, 2, 1).reshape(bs * n_head, c, h, w)
@@ -93,7 +95,7 @@ def _deformable_attention_kernel(
     return output.permute(0, 2, 1)
 
 
-class MultiScaleDeformableAttention(Module):
+class MultiScaleDeformableAttention(nn.Module):
     """Multi-scale Deformable Attention used in Deformable DETR.
 
     Described in https://arxiv.org/abs/2010.04159.
@@ -116,8 +118,12 @@ class MultiScaleDeformableAttention(Module):
         self.output_proj = nn.Linear(embed_dim, embed_dim)
 
     def forward(
-        self, query: Tensor, reference_points: Tensor, value: Tensor, value_spatial_shapes: list[tuple[int, int]]
-    ) -> Tensor:
+        self,
+        query: torch.Tensor,
+        reference_points: torch.Tensor,
+        value: torch.Tensor,
+        value_spatial_shapes: list[tuple[int, int]],
+    ) -> torch.Tensor:
         """Run forward.
 
         Args:
@@ -158,7 +164,7 @@ class MultiScaleDeformableAttention(Module):
         return out
 
 
-class TransformerDecoderLayer(Module):
+class TransformerDecoderLayer(nn.Module):
     """Deformable Transformer Decoder layer used in Deformable DETR.
 
     Described in: https://arxiv.org/abs/2010.04159.
@@ -184,20 +190,20 @@ class TransformerDecoderLayer(Module):
         self.dropout4 = nn.Dropout(dropout)
         self.norm3 = nn.LayerNorm(embed_dim)
 
-    def _ffn(self, x: Tensor) -> Tensor:
+    def _ffn(self, x: torch.Tensor) -> torch.Tensor:
         return self.linear2(self.dropout3(self.activation(self.linear1(x))))
 
     def forward(
         self,
-        tgt: Tensor,
-        ref_points: Tensor,
-        memory: Tensor,
+        tgt: torch.Tensor,
+        ref_points: torch.Tensor,
+        memory: torch.Tensor,
         memory_spatial_shapes: list[tuple[int, int]],
         memory_level_start_index: Optional[list[int]] = None,
-        attn_mask: Optional[Tensor] = None,
-        memory_mask: Optional[Tensor] = None,
-        query_pos_embed: Optional[Tensor] = None,
-    ) -> Tensor:
+        attn_mask: Optional[torch.Tensor] = None,
+        memory_mask: Optional[torch.Tensor] = None,
+        query_pos_embed: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         # TODO: rename variables because is confusing
         # self attention
         q = k = tgt + query_pos_embed
@@ -214,7 +220,7 @@ class TransformerDecoderLayer(Module):
         return out
 
 
-class TransformerDecoder(Module):
+class TransformerDecoder(nn.Module):
     def __init__(self, hidden_dim: int, decoder_layer: nn.Module, num_layers: int, eval_idx: int = -1) -> None:
         super().__init__()
         self.layers = nn.ModuleList([copy.deepcopy(decoder_layer) for _ in range(num_layers)])
@@ -224,25 +230,25 @@ class TransformerDecoder(Module):
 
     def forward(
         self,
-        tgt: Tensor,
-        ref_points_unact: Tensor,
-        memory: Tensor,
+        tgt: torch.Tensor,
+        ref_points_unact: torch.Tensor,
+        memory: torch.Tensor,
         memory_spatial_shapes: list[tuple[int, int]],
         memory_level_start_index: list[int],
         bbox_head: nn.ModuleList,
         score_head: nn.ModuleList,
         query_pos_head: nn.Module,
-        attn_mask: Optional[Tensor] = None,
-        memory_mask: Optional[Tensor] = None,
-    ) -> tuple[Tensor, Tensor]:
-        output: Tensor = tgt
-        dec_out_bboxes: list[Tensor] = []
-        dec_out_logits: list[Tensor] = []
+        attn_mask: Optional[torch.Tensor] = None,
+        memory_mask: Optional[torch.Tensor] = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        output: torch.Tensor = tgt
+        dec_out_bboxes: list[torch.Tensor] = []
+        dec_out_logits: list[torch.Tensor] = []
         ref_points_detach = torch.sigmoid(ref_points_unact)
 
         for i, layer in enumerate(self.layers):
             ref_points_input = ref_points_detach.unsqueeze(2)
-            query_pos_embed: Tensor = query_pos_head(ref_points_detach)
+            query_pos_embed: torch.Tensor = query_pos_head(ref_points_detach)
 
             output = layer(
                 output,
@@ -280,7 +286,7 @@ class TransformerDecoder(Module):
         return torch.stack(dec_out_bboxes), torch.stack(dec_out_logits)
 
 
-class RTDETRHead(Module):
+class RTDETRHead(nn.Module):
     def __init__(
         self,
         num_classes: int,
@@ -342,7 +348,7 @@ class RTDETRHead(Module):
             [MLP(hidden_dim, hidden_dim, 4, num_layers=3) for _ in range(num_decoder_layers)]
         )
 
-    def forward(self, feats: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, feats: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         # input projection and embedding
         memory, spatial_shapes, level_start_index = self._get_encoder_input(feats)
 
@@ -368,9 +374,9 @@ class RTDETRHead(Module):
 
         return out_logits[-1], out_bboxes[-1]
 
-    def _get_encoder_input(self, feats: Tensor) -> tuple[Tensor, list[tuple[int, int]], list[int]]:
+    def _get_encoder_input(self, feats: torch.Tensor) -> tuple[torch.Tensor, list[tuple[int, int]], list[int]]:
         # get projection features
-        proj_feats: list[Tensor] = [self.input_proj[i](feat) for i, feat in enumerate(feats)]
+        proj_feats: list[torch.Tensor] = [self.input_proj[i](feat) for i, feat in enumerate(feats)]
 
         if self.num_levels > len(proj_feats):
             len_srcs = len(proj_feats)
@@ -381,7 +387,7 @@ class RTDETRHead(Module):
                     proj_feats.append(self.input_proj[i](proj_feats[-1]))
 
         # get encoder inputs
-        feat_flatten_list: list[Tensor] = []
+        feat_flatten_list: list[torch.Tensor] = []
         spatial_shapes: list[tuple[int, int]] = []
         level_start_index: list[int] = [0]
 
@@ -395,18 +401,18 @@ class RTDETRHead(Module):
             level_start_index.append(h * w + level_start_index[-1])
 
         # [b, l, c]
-        feat_flatten: Tensor = concatenate(feat_flatten_list, 1)
+        feat_flatten: torch.Tensor = torch.cat(feat_flatten_list, 1)
 
         level_start_index.pop()
         return feat_flatten, spatial_shapes, level_start_index
 
     def _get_decoder_input(
         self,
-        memory: Tensor,
+        memory: torch.Tensor,
         spatial_shapes: list[tuple[int, int]],
-        denoising_class: Optional[Tensor] = None,
-        denoising_bbox_unact: Optional[Tensor] = None,
-    ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        denoising_class: Optional[torch.Tensor] = None,
+        denoising_bbox_unact: Optional[torch.Tensor] = None,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # prepare input for decoder
         # TODO: cache anchors and valid_mask as buffers
         anchors, valid_mask = self._generate_anchors(spatial_shapes, device=memory.device, dtype=memory.dtype)
@@ -448,7 +454,7 @@ class RTDETRHead(Module):
         eps: float = 0.01,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
-    ) -> tuple[Tensor, Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Generate anchors for RT-DETR.
 
         Args:
@@ -463,7 +469,7 @@ class RTDETRHead(Module):
 
         """
         # TODO: might make this (or some parts of it) into a separate reusable function
-        anchors_list: list[Tensor] = []
+        anchors_list: list[torch.Tensor] = []
 
         for i, (h, w) in enumerate(spatial_shapes):
             # TODO: fix later kornia.utils.create_meshgrid()
@@ -480,9 +486,9 @@ class RTDETRHead(Module):
 
             grid_xy = (grid_xy + 0.5) / wh  # normalize to [0, 1]
             grid_wh = torch.ones_like(grid_xy) * grid_size * (2.0**i)
-            anchors_list.append(concatenate([grid_xy, grid_wh], -1).reshape(-1, h * w, 4))
+            anchors_list.append(torch.cat([grid_xy, grid_wh], -1).reshape(-1, h * w, 4))
 
-        anchors = concatenate(anchors_list, 1)
+        anchors = torch.cat(anchors_list, 1)
         valid_mask = ((anchors > eps) * (anchors < 1 - eps)).all(-1, keepdim=True)
         anchors = torch.log(anchors / (1 - anchors))  # anchors.logit() fails ONNX export
 

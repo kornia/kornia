@@ -24,14 +24,14 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
+import torch
 from torch import nn
 
-from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK
 from kornia.models.common import ConvNormAct
 
 
-class StemBlock(Module):
+class StemBlock(nn.Module):
     def __init__(self, in_channels: int, mid_channels: int, out_channels: int) -> None:
         super().__init__()
         self.stem1 = ConvNormAct(in_channels, mid_channels, 3, 2)
@@ -41,9 +41,9 @@ class StemBlock(Module):
         self.stem4 = ConvNormAct(mid_channels, out_channels, 1)
         self.pool = nn.Sequential(nn.ZeroPad2d((0, 1, 0, 1)), nn.MaxPool2d(2, 1))
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.stem1(x)
-        x = concatenate([self.pool(x), self.stem2b(self.stem2a(x))], 1)
+        x = torch.cat([self.pool(x), self.stem2b(self.stem2a(x))], 1)
         x = self.stem4(self.stem3(x))
         return x
 
@@ -67,7 +67,7 @@ class StageConfig(NamedTuple):
     layer_num: int
 
 
-class HGBlock(Module):
+class HGBlock(nn.Module):
     def __init__(self, in_channels: int, config: StageConfig, identity: bool) -> None:
         super().__init__()
         self.identity = identity
@@ -82,11 +82,11 @@ class HGBlock(Module):
         self.aggregation_squeeze_conv = ConvNormAct(total_channels, config.out_channels // 2, 1)
         self.aggregation_excitation_conv = ConvNormAct(config.out_channels // 2, config.out_channels, 1)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         feats = [x]
         for layer in self.layers:
             feats.append(layer(feats[-1]))
-        out = concatenate(feats, 1)
+        out = torch.cat(feats, 1)
         out = self.aggregation_squeeze_conv(out)
         out = self.aggregation_excitation_conv(out)
         return x + out if self.identity else out
@@ -103,7 +103,7 @@ class HGStage(nn.Sequential):
         )
 
 
-class PPHGNetV2(Module):
+class PPHGNetV2(nn.Module):
     def __init__(self, stem_channels: list[int], stage_configs: list[StageConfig]) -> None:
         KORNIA_CHECK(len(stem_channels) == 3)
         KORNIA_CHECK(len(stage_configs) == 4)
@@ -114,7 +114,7 @@ class PPHGNetV2(Module):
         for cfg in stage_configs:
             self.stages.append(HGStage(cfg))
 
-    def forward(self, x: Tensor) -> list[Tensor]:
+    def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
         x = self.stem(x)
         s2 = self.stages[0](x)
         s3 = self.stages[1](s2)

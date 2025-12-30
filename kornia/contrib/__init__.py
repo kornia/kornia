@@ -39,7 +39,7 @@ from .histogram_matching import histogram_matching, interp
 from .image_stitching import ImageStitcher
 from .kmeans import KMeans
 from .lambda_module import Lambda
-from .object_detection import ObjectDetector, ObjectDetectorBuilder
+from .object_detection import ObjectDetector, RTDETRDetectorBuilder
 from .super_resolution import RRDBNetBuilder, SmallSRBuilder, SuperResolution
 
 __all__ = [
@@ -53,8 +53,8 @@ __all__ = [
     "KMeans",
     "Lambda",
     "ObjectDetector",
-    "ObjectDetectorBuilder",
     "RRDBNetBuilder",
+    "RTDETRDetectorBuilder",
     "SmallSRBuilder",
     "SuperResolution",
     "TinyViT",

@@ -28,7 +28,6 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils import checkpoint
 
-from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 from kornia.models.common import DropPath, LayerNorm2d, window_partition, window_unpartition
 
@@ -46,7 +45,7 @@ class ConvBN(nn.Sequential):
         stride: int = 1,
         padding: int = 0,
         groups: int = 1,
-        activation: type[Module] = nn.Identity,
+        activation: type[nn.Module] = nn.Identity,
     ) -> None:
         super().__init__()
         self.c = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, groups=groups, bias=False)
@@ -55,20 +54,20 @@ class ConvBN(nn.Sequential):
 
 
 class PatchEmbed(nn.Sequential):
-    def __init__(self, in_channels: int, embed_dim: int, activation: type[Module] = nn.GELU) -> None:
+    def __init__(self, in_channels: int, embed_dim: int, activation: type[nn.Module] = nn.GELU) -> None:
         super().__init__()
         self.seq = nn.Sequential(
             ConvBN(in_channels, embed_dim // 2, 3, 2, 1), activation(), ConvBN(embed_dim // 2, embed_dim, 3, 2, 1)
         )
 
 
-class MBConv(Module):
+class MBConv(nn.Module):
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
         expansion_ratio: float,
-        activation: type[Module] = nn.GELU,
+        activation: type[nn.Module] = nn.GELU,
         drop_path: float = 0.0,
     ) -> None:
         super().__init__()
@@ -79,18 +78,18 @@ class MBConv(Module):
         self.drop_path = DropPath(drop_path)
         self.act = activation()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.act(x + self.drop_path(self.conv3(self.conv2(self.conv1(x)))))
 
 
-class PatchMerging(Module):
+class PatchMerging(nn.Module):
     def __init__(
         self,
         input_resolution: int | tuple[int, int],
         dim: int,
         out_dim: int,
         stride: int,
-        activation: type[Module] = nn.GELU,
+        activation: type[nn.Module] = nn.GELU,
     ) -> None:
         KORNIA_CHECK(stride in (1, 2), "stride must be either 1 or 2")
         super().__init__()
@@ -99,7 +98,7 @@ class PatchMerging(Module):
         self.conv2 = ConvBN(out_dim, out_dim, 3, stride, 1, groups=out_dim, activation=activation)
         self.conv3 = ConvBN(out_dim, out_dim, 1)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.ndim == 3:
             x = x.transpose(1, 2).unflatten(2, self.input_resolution)  # (B, H * W, C) -> (B, C, H, W)
         x = self.conv3(self.conv2(self.conv1(x)))
@@ -107,14 +106,14 @@ class PatchMerging(Module):
         return x
 
 
-class ConvLayer(Module):
+class ConvLayer(nn.Module):
     def __init__(
         self,
         dim: int,
         depth: int,
-        activation: type[Module] = nn.GELU,
+        activation: type[nn.Module] = nn.GELU,
         drop_path: float | list[float] = 0.0,
-        downsample: Optional[Module] = None,
+        downsample: Optional[nn.Module] = None,
         use_checkpoint: bool = False,
         conv_expand_ratio: float = 4.0,
     ) -> None:
@@ -131,7 +130,7 @@ class ConvLayer(Module):
         # patch merging layer
         self.downsample = downsample
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         for blk in self.blocks:
             x = checkpoint.checkpoint(blk, x) if self.use_checkpoint else blk(x)
         if self.downsample is not None:
@@ -145,7 +144,7 @@ class MLP(nn.Sequential):
         in_features: int,
         hidden_features: int,
         out_features: int,
-        activation: type[Module] = nn.GELU,
+        activation: type[nn.Module] = nn.GELU,
         drop: float = 0.0,
     ) -> None:
         super().__init__()
@@ -160,7 +159,7 @@ class MLP(nn.Sequential):
 # NOTE: differences from image_encoder.Attention:
 # - different relative position encoding mechanism (separable/decomposed vs joint)
 # - this impl supports attn_ratio (increase output size for value), though it is not used
-class Attention(Module):
+class Attention(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -186,11 +185,11 @@ class Attention(Module):
         indices, attn_offset_size = self.build_attention_bias(resolution)
         self.attention_biases = nn.Parameter(torch.zeros(num_heads, attn_offset_size))
         self.register_buffer("attention_bias_idxs", indices, persistent=False)
-        self.attention_bias_idxs: Tensor
-        self.ab: Optional[Tensor] = None
+        self.attention_bias_idxs: torch.Tensor
+        self.ab: Optional[torch.Tensor] = None
 
     @staticmethod
-    def build_attention_bias(resolution: tuple[int, int]) -> tuple[Tensor, int]:
+    def build_attention_bias(resolution: tuple[int, int]) -> tuple[torch.Tensor, int]:
         H, W = resolution
         rows = torch.arange(H)
         cols = torch.arange(W)
@@ -211,7 +210,7 @@ class Attention(Module):
         self.ab = None if (mode and self.ab is not None) else self.attention_biases[:, self.attention_bias_idxs]
         return self
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, N, _ = x.shape
         x = self.norm(x)
         qkv = self.qkv(x)
@@ -227,7 +226,7 @@ class Attention(Module):
         return x
 
 
-class TinyViTBlock(Module):
+class TinyViTBlock(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -238,7 +237,7 @@ class TinyViTBlock(Module):
         drop: float = 0.0,
         drop_path: float = 0.0,
         local_conv_size: int = 3,
-        activation: type[Module] = nn.GELU,
+        activation: type[nn.Module] = nn.GELU,
     ) -> None:
         KORNIA_CHECK(dim % num_heads == 0, "dim must be divislbe by num_heads")
         super().__init__()
@@ -252,7 +251,7 @@ class TinyViTBlock(Module):
         self.mlp = MLP(dim, int(dim * mlp_ratio), dim, activation, drop)
         self.drop_path2 = DropPath(drop_path)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         H, W = self.input_resolution
         B, L, C = x.shape
         res_x = x
@@ -273,7 +272,7 @@ class TinyViTBlock(Module):
         return x
 
 
-class BasicLayer(Module):
+class BasicLayer(nn.Module):
     def __init__(
         self,
         dim: int,
@@ -284,10 +283,10 @@ class BasicLayer(Module):
         mlp_ratio: float = 4.0,
         drop: float = 0.0,
         drop_path: float | list[float] = 0.0,
-        downsample: Optional[Module] = None,
+        downsample: Optional[nn.Module] = None,
         use_checkpoint: bool = False,
         local_conv_size: int = 3,
-        activation: type[Module] = nn.GELU,
+        activation: type[nn.Module] = nn.GELU,
     ) -> None:
         super().__init__()
         self.use_checkpoint = use_checkpoint
@@ -312,7 +311,7 @@ class BasicLayer(Module):
         # patch merging layer
         self.downsample = downsample
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         for blk in self.blocks:
             x = checkpoint.checkpoint(blk, x) if self.use_checkpoint else blk(x)
         if self.downsample is not None:
@@ -320,7 +319,7 @@ class BasicLayer(Module):
         return x
 
 
-class TinyViT(Module):
+class TinyViT(nn.Module):
     """TinyViT model, as described in https://arxiv.org/abs/2207.10666.
 
     Args:
@@ -358,13 +357,13 @@ class TinyViT(Module):
         mbconv_expand_ratio: float = 4.0,
         local_conv_size: int = 3,
         # layer_lr_decay: float = 1.0,
-        activation: type[Module] = nn.GELU,
+        activation: type[nn.Module] = nn.GELU,
         mobile_sam: bool = False,
     ) -> None:
         super().__init__()
         self.img_size = img_size
         self.mobile_sam = mobile_sam
-        self.neck: Optional[Module]
+        self.neck: Optional[nn.Module]
         if mobile_sam:
             # MobileSAM adjusts the stride to match the total stride of other ViT backbones
             # used in the original SAM (stride 16)
@@ -431,7 +430,7 @@ class TinyViT(Module):
         self.norm_head = nn.LayerNorm(embed_dims[-1])
         self.head = nn.Linear(embed_dims[-1], num_classes)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Classify images if ``mobile_sam=False``, produce feature maps if ``mobile_sam=True``."""
         x = self.patch_embed(x)
         x = self.layers(x)

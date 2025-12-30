@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from kornia.config import kornia_config
-from kornia.contrib.object_detection import ObjectDetector, ObjectDetectorBuilder
+from kornia.contrib.object_detection import ObjectDetector, RTDETRDetectorBuilder
 from kornia.core import Tensor, tensor
 from kornia.core.external import boxmot
 from kornia.core.external import numpy as np
@@ -98,7 +98,7 @@ class BoxMotTracker:
         super().__init__()
         if isinstance(detector, str):
             if detector.startswith("rtdetr"):
-                detector = ObjectDetectorBuilder.build(model_name=detector)
+                detector = RTDETRDetectorBuilder.build(model_name=detector)
             else:
                 raise ValueError(
                     f"Detector `{detector}` not available. You may pass an ObjectDetector instance instead."

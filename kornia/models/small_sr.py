@@ -20,13 +20,12 @@ from torch import nn
 
 from kornia.color.ycbcr import RgbToYcbcr, YcbcrToRgb
 from kornia.config import kornia_config
-from kornia.core import Module, Tensor, concatenate
 from kornia.utils.download import CachedDownloader
 
 url = "https://s3.amazonaws.com/pytorch/test_data/export/superres_epoch100-44c6958e.pth"
 
 
-class SmallSRNet(Module):
+class SmallSRNet(nn.Module):
     """A small super-resolution model.
 
     This model uses the efficient sub-pixel convolution layer described in
@@ -59,7 +58,7 @@ class SmallSRNet(Module):
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))
@@ -67,7 +66,7 @@ class SmallSRNet(Module):
         return x
 
 
-def weight_init(model: Module) -> None:
+def weight_init(model: nn.Module) -> None:
     """Initialize model weights."""
     torch.nn.init.orthogonal_(model.conv1.weight, torch.nn.init.calculate_gain("relu"))
     torch.nn.init.orthogonal_(model.conv2.weight, torch.nn.init.calculate_gain("relu"))
@@ -75,7 +74,7 @@ def weight_init(model: Module) -> None:
     torch.nn.init.orthogonal_(model.conv4.weight)
 
 
-class SmallSRNetWrapper(Module):
+class SmallSRNetWrapper(nn.Module):
     def __init__(self, upscale_factor: int = 3, pretrained: bool = True) -> None:
         super().__init__()
         self.rgb_to_ycbcr = RgbToYcbcr()
@@ -83,11 +82,11 @@ class SmallSRNetWrapper(Module):
         self.model = SmallSRNet(upscale_factor=upscale_factor, pretrained=pretrained)
         self.upscale_factor = upscale_factor
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         ycbcr = self.rgb_to_ycbcr(input)
         y, cb, cr = ycbcr.split(1, dim=1)
         out_y = self.model(y)
         out_cb = torch.nn.functional.interpolate(cb, scale_factor=self.upscale_factor, mode="bicubic")
         out_cr = torch.nn.functional.interpolate(cr, scale_factor=self.upscale_factor, mode="bicubic")
-        out = concatenate([out_y, out_cb, out_cr], dim=1)
+        out = torch.cat([out_y, out_cb, out_cr], dim=1)
         return self.ycbcr_to_rgb(out)

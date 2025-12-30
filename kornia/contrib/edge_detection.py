@@ -25,6 +25,7 @@ from kornia.color.gray import grayscale_to_rgb
 from kornia.core import Tensor, tensor
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
+from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.enhance.normalize import Normalize
 from kornia.models.base import ModelBase
 from kornia.models.dexined import DexiNed
@@ -33,7 +34,7 @@ from kornia.models.processors import ResizePostProcessor, ResizePreProcessor
 __all__ = ["EdgeDetector", "EdgeDetectorBuilder"]
 
 
-class EdgeDetector(ModelBase):
+class EdgeDetector(ModelBase, ONNXExportMixin):
     """EdgeDetector is a module that wraps an edge detection model.
 
     This is a high-level API that wraps edge detection models like :py:class:`kornia.models.DexiNed`.
@@ -192,7 +193,8 @@ class EdgeDetector(ModelBase):
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}_{image_size}.onnx"
 
-        return super().to_onnx(
+        return ONNXExportMixin.to_onnx(
+            self,
             onnx_name,
             input_shape=[-1, 3, image_size or -1, image_size or -1],
             output_shape=[-1, 1, image_size or -1, image_size or -1],

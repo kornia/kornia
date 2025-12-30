@@ -30,12 +30,11 @@ import torch.nn.functional as F
 from torch import nn
 from torch.nn.utils.fusion import fuse_conv_bn_weights
 
-from kornia.core import Module, Tensor, concatenate, pad
 from kornia.models.common import ConvNormAct
 from kornia.utils._compat import torch_meshgrid
 
 
-class RepVggBlock(Module):
+class RepVggBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 3, act="none")
@@ -43,7 +42,7 @@ class RepVggBlock(Module):
         self.act = nn.SiLU(inplace=True)
         self.conv: Optional[nn.Conv2d] = None
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.conv is not None:
             out = self.act(self.conv(x))
         else:
@@ -68,7 +67,7 @@ class RepVggBlock(Module):
 
         kernel3x3, bias3x3 = _fuse_conv_bn_weights(self.conv1)
         kernel1x1, bias1x1 = _fuse_conv_bn_weights(self.conv2)
-        kernel3x3.add_(pad(kernel1x1, [1, 1, 1, 1]))
+        kernel3x3.add_(F.pad(kernel1x1, [1, 1, 1, 1]))
         bias3x3.add_(bias1x1)
 
         self.conv = nn.Conv2d(kernel3x3.shape[1], kernel3x3.shape[0], 3, 1, 1)
@@ -76,7 +75,7 @@ class RepVggBlock(Module):
         self.conv.bias = bias3x3
 
 
-class CSPRepLayer(Module):
+class CSPRepLayer(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, num_blocks: int, expansion: float = 1.0) -> None:
         super().__init__()
         hidden_channels = int(out_channels * expansion)
@@ -89,13 +88,13 @@ class CSPRepLayer(Module):
             else nn.Identity()
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.conv3(self.bottlenecks(self.conv1(x)) + self.conv2(x))
 
 
 # almost identical to nn.TransformerEncoderLayer
 # but add positional embeddings to q and k
-class AIFI(Module):
+class AIFI(nn.Module):
     def __init__(self, embed_dim: int, num_heads: int, dim_feedforward: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout)  # NOTE: batch_first = False
@@ -110,7 +109,7 @@ class AIFI(Module):
         self.norm2 = nn.LayerNorm(embed_dim)
         self.act = nn.GELU()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # using post-norm
         N, C, H, W = x.shape
         x = x.permute(2, 3, 0, 1).flatten(0, 1)  # (N, C, H, W) -> (H * W, N, C)
@@ -126,7 +125,7 @@ class AIFI(Module):
         x = x.view(H, W, N, C).permute(2, 3, 0, 1)  # (H * W, N, C) -> (N, C, H, W)
         return x
 
-    def ffn(self, x: Tensor) -> Tensor:
+    def ffn(self, x: torch.Tensor) -> torch.Tensor:
         return self.linear2(self.dropout(self.act(self.linear1(x))))
 
     # TODO: make this into a reusable function
@@ -140,7 +139,7 @@ class AIFI(Module):
         temp: float = 10_000.0,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         """Construct 2D sin-cos positional embeddings.
 
         Args:
@@ -166,7 +165,7 @@ class AIFI(Module):
         out_x = grid_x.reshape(-1, 1) * omega.view(1, -1)
         out_y = grid_y.reshape(-1, 1) * omega.view(1, -1)
 
-        pos_emb = concatenate([out_x.sin(), out_x.cos(), out_y.sin(), out_y.cos()], 1)
+        pos_emb = torch.cat([out_x.sin(), out_x.cos(), out_y.sin(), out_y.cos()], 1)
         return pos_emb.unsqueeze(1)  # (H * W, 1, C)
 
 
@@ -176,7 +175,9 @@ class TransformerEncoder(nn.Module):
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(num_layers)])
         self.num_layers = num_layers
 
-    def forward(self, src: Tensor) -> Tensor:  # NOTE: Missing src_mask: Tensor = None, pos_embed: Tensor = None
+    def forward(
+        self, src: torch.Tensor
+    ) -> torch.Tensor:  # NOTE: Missing src_mask: torch.Tensor = None, pos_embed: torch.Tensor = None
         output = src
         for layer in self.layers:
             output = layer(output)
@@ -184,7 +185,7 @@ class TransformerEncoder(nn.Module):
         return output
 
 
-class CCFM(Module):
+class CCFM(nn.Module):
     def __init__(self, num_fmaps: int, hidden_dim: int, expansion: float = 1.0) -> None:
         super().__init__()
         self.lateral_convs = nn.ModuleList()
@@ -199,7 +200,7 @@ class CCFM(Module):
             self.downsample_convs.append(ConvNormAct(hidden_dim, hidden_dim, 3, 2, "silu"))
             self.pan_blocks.append(CSPRepLayer(hidden_dim * 2, hidden_dim, 3, expansion))
 
-    def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
+    def forward(self, fmaps: list[torch.Tensor]) -> list[torch.Tensor]:
         # fmaps is ordered from hi-res to low-res
         fmaps = list(fmaps)  # shallow clone
 
@@ -210,7 +211,7 @@ class CCFM(Module):
             up_lowres_fmap = F.interpolate(new_fmaps[-1], scale_factor=2.0, mode="nearest")
             hires_fmap = fmaps.pop()
 
-            concat_fmap = concatenate([up_lowres_fmap, hires_fmap], 1)
+            concat_fmap = torch.cat([up_lowres_fmap, hires_fmap], 1)
             new_fmaps.append(self.fpn_blocks[len(new_fmaps) - 1](concat_fmap))
 
         fmaps = [new_fmaps.pop()]
@@ -218,13 +219,13 @@ class CCFM(Module):
             down_hires_fmap = self.downsample_convs[len(fmaps) - 1](fmaps[-1])
             lowres_fmap = new_fmaps.pop()
 
-            concat_fmap = concatenate([down_hires_fmap, lowres_fmap], 1)
+            concat_fmap = torch.cat([down_hires_fmap, lowres_fmap], 1)
             fmaps.append(self.pan_blocks[len(fmaps) - 1](concat_fmap))
 
         return fmaps
 
 
-class HybridEncoder(Module):
+class HybridEncoder(nn.Module):
     def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int, expansion: float = 1.0) -> None:
         super().__init__()
         self.input_proj = nn.ModuleList(
@@ -239,7 +240,7 @@ class HybridEncoder(Module):
         self.encoder = nn.Sequential(TransformerEncoder(encoder_layer, 1))
         self.ccfm = CCFM(len(in_channels), hidden_dim, expansion)
 
-    def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
+    def forward(self, fmaps: list[torch.Tensor]) -> list[torch.Tensor]:
         projected_maps = [proj(fmap) for proj, fmap in zip(self.input_proj, fmaps)]
         projected_maps[-1] = self.encoder(projected_maps[-1])
         new_fmaps = self.ccfm(projected_maps)

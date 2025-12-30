@@ -24,6 +24,7 @@ from kornia.config import kornia_config
 from kornia.core import Tensor
 from kornia.core.external import PILImage as Image
 from kornia.core.external import basicsr, onnx
+from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.models.base import ModelBase
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
 from kornia.models.small_sr import SmallSRNetWrapper
@@ -40,7 +41,7 @@ URLs = {
 
 
 # TODO: support patching -> SR -> unpatching pipeline
-class SuperResolution(ModelBase):
+class SuperResolution(ModelBase, ONNXExportMixin):
     """SuperResolution is a module that wraps an super resolution model."""
 
     name: str = "super_resolution"
@@ -149,7 +150,8 @@ class SuperResolution(ModelBase):
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}.onnx"
 
-        return super().to_onnx(
+        return ONNXExportMixin.to_onnx(
+            self,
             onnx_name,
             input_shape=[-1, 3, self.input_image_size or -1, self.input_image_size or -1],
             output_shape=[-1, 3, self.output_image_size or -1, self.output_image_size or -1],

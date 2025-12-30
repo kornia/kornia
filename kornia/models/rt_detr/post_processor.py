@@ -22,12 +22,12 @@ from __future__ import annotations
 from typing import Optional, Union
 
 import torch
+from torch import nn
 
 from kornia.contrib.object_detection import BoxFiltering
-from kornia.core import Module, Tensor, concatenate, tensor
 
 
-def mod(a: Tensor, b: int) -> Tensor:
+def mod(a: torch.Tensor, b: int) -> torch.Tensor:
     """Compute the element-wise remainder of tensor `a` divided by integer `b`.
 
     This function requires `a` to be a `torch.Tensor` and `b` to be an `int`.
@@ -51,7 +51,7 @@ def mod(a: Tensor, b: int) -> Tensor:
 
 
 # TODO: deprecate the confidence threshold and add the num_top_queries as a parameter and num_classes as a parameter
-class DETRPostProcessor(Module):
+class DETRPostProcessor(nn.Module):
     def __init__(
         self,
         confidence_threshold: Optional[float] = None,
@@ -66,10 +66,13 @@ class DETRPostProcessor(Module):
         self.confidence_filtering = confidence_filtering
         self.num_top_queries = num_top_queries
         self.box_filtering = BoxFiltering(
-            tensor(confidence_threshold) if confidence_threshold is not None else None, filter_as_zero=filter_as_zero
+            torch.tensor(confidence_threshold) if confidence_threshold is not None else None,
+            filter_as_zero=filter_as_zero,
         )
 
-    def forward(self, logits: Tensor, boxes: Tensor, original_sizes: Tensor) -> Union[Tensor, list[Tensor]]:
+    def forward(
+        self, logits: torch.Tensor, boxes: torch.Tensor, original_sizes: torch.Tensor
+    ) -> Union[torch.Tensor, list[torch.Tensor]]:
         """Post-process outputs from DETR.
 
         Args:
@@ -94,7 +97,7 @@ class DETRPostProcessor(Module):
         # bboxes[..., :2] -= bboxes[..., 2:] * 0.5  # in-place operation is not torch.compile()-friendly
         # TODO: replace using kornia BoundingBox
         cxcy, wh = boxes[..., :2], boxes[..., 2:]
-        boxes_xy = concatenate([cxcy - wh * 0.5, wh], -1)
+        boxes_xy = torch.cat([cxcy - wh * 0.5, wh], -1)
 
         # Get dynamic size from the input tensor itself
         sizes_wh = original_sizes[0].flip(0).unsqueeze(0).unsqueeze(0).repeat(1, 1, 2)
@@ -109,7 +112,7 @@ class DETRPostProcessor(Module):
         index = index // self.num_classes
         boxes = boxes_xy.gather(dim=1, index=index.unsqueeze(-1).repeat(1, 1, boxes_xy.shape[-1]))
 
-        all_boxes = concatenate([labels[..., None], scores[..., None], boxes], -1)
+        all_boxes = torch.cat([labels[..., None], scores[..., None], boxes], -1)
 
         if not self.confidence_filtering or self.confidence_threshold == 0:
             return all_boxes

@@ -19,10 +19,10 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+import torch
 from torch import nn
 
 import kornia
-from kornia.core import Module, tensor
 from kornia.core.external import segmentation_models_pytorch as smp
 
 from .base import SemanticSegmentation
@@ -84,7 +84,7 @@ class SegmentationModelsBuilder:
     @staticmethod
     def get_preprocessing_pipeline(preproc_params: dict[str, Any]) -> kornia.augmentation.container.ImageSequential:
         # Ensure the color space transformation is ONNX-friendly
-        proc_sequence: list[Module] = []
+        proc_sequence: list[nn.Module] = []
         input_space = preproc_params["input_space"]
         if input_space == "BGR":
             proc_sequence.append(kornia.color.BgrToRgb())
@@ -104,14 +104,14 @@ class SegmentationModelsBuilder:
 
         # Handle mean and std normalization
         if preproc_params["mean"] is not None:
-            mean = tensor([preproc_params["mean"]])
+            mean = torch.tensor([preproc_params["mean"]])
         else:
-            mean = tensor(0.0)
+            mean = torch.tensor(0.0)
 
         if preproc_params["std"] is not None:
-            std = tensor([preproc_params["std"]])
+            std = torch.tensor([preproc_params["std"]])
         else:
-            std = tensor(1.0)
+            std = torch.tensor(1.0)
         proc_sequence.append(kornia.enhance.Normalize(mean=mean, std=std))
 
         return kornia.augmentation.container.ImageSequential(*proc_sequence)

@@ -33,7 +33,7 @@ def decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> t
         variances: (list[float]) Variances of priorboxes.
 
     Return:
-        Tensor containing decoded bounding box predictions.
+        torch.Tensor containing decoded bounding box predictions.
 
     """
     boxes = torch.cat(

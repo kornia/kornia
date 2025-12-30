@@ -20,7 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from kornia.core import Tensor
+import torch
+
 from kornia.core.check import KORNIA_CHECK
 from kornia.geometry.transform import resize
 
@@ -36,12 +37,12 @@ class SegmentationResults:
 
     """
 
-    logits: Tensor
-    scores: Tensor
+    logits: torch.Tensor
+    scores: torch.Tensor
     mask_threshold: float = 0.0
 
     @property
-    def binary_masks(self) -> Tensor:
+    def binary_masks(self) -> torch.Tensor:
         """Binary mask generated from logits considering the mask_threshold.
 
         Shape will be the same of logits :math:`(B, C, H, W)` where :math:`C` is the number masks predicted.
@@ -59,7 +60,7 @@ class SegmentationResults:
 
     def original_res_logits(
         self, input_size: tuple[int, int], original_size: tuple[int, int], image_size_encoder: Optional[tuple[int, int]]
-    ) -> Tensor:
+    ) -> torch.Tensor:
         """Remove padding and upscale the logits to the original image size.
 
         Resize to image encoder input -> remove padding (bottom and right) -> Resize to original size
@@ -91,7 +92,7 @@ class SegmentationResults:
         """Realize a squeeze for the dim given for all properties."""
         self.logits = self.logits.squeeze(dim)
         self.scores = self.scores.squeeze(dim)
-        if isinstance(self._original_res_logits, Tensor):
+        if isinstance(self._original_res_logits, torch.Tensor):
             self._original_res_logits = self._original_res_logits.squeeze(dim)
 
         return self
@@ -109,20 +110,20 @@ class Prompts:
 
     """
 
-    points: Optional[tuple[Tensor, Tensor]] = None
-    boxes: Optional[Tensor] = None
-    masks: Optional[Tensor] = None
+    points: Optional[tuple[torch.Tensor, torch.Tensor]] = None
+    boxes: Optional[torch.Tensor] = None
+    masks: Optional[torch.Tensor] = None
 
     def __post_init__(self) -> None:
-        if isinstance(self.keypoints, Tensor) and isinstance(self.boxes, Tensor):
+        if isinstance(self.keypoints, torch.Tensor) and isinstance(self.boxes, torch.Tensor):
             KORNIA_CHECK(self.keypoints.shape[0] == self.boxes.shape[0], "The prompts should have the same batch size!")
 
     @property
-    def keypoints(self) -> Optional[Tensor]:
+    def keypoints(self) -> Optional[torch.Tensor]:
         """The keypoints from the `points`."""
         return self.points[0] if isinstance(self.points, tuple) else None
 
     @property
-    def keypoints_labels(self) -> Optional[Tensor]:
+    def keypoints_labels(self) -> Optional[torch.Tensor]:
         """The keypoints labels from the `points`."""
         return self.points[1] if isinstance(self.points, tuple) else None

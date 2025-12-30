@@ -25,14 +25,14 @@ from __future__ import annotations
 
 from collections import OrderedDict
 
+import torch
 from torch import nn
 
-from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 from kornia.models.common import ConvNormAct
 
 
-def _make_shortcut(in_channels: int, out_channels: int, stride: int) -> Module:
+def _make_shortcut(in_channels: int, out_channels: int, stride: int) -> nn.Module:
     return (
         nn.Sequential(
             OrderedDict([("pool", nn.AvgPool2d(2, 2)), ("conv", ConvNormAct(in_channels, out_channels, 1, act="none"))])
@@ -42,7 +42,7 @@ def _make_shortcut(in_channels: int, out_channels: int, stride: int) -> Module:
     )
 
 
-class BasicBlockD(Module):
+class BasicBlockD(nn.Module):
     expansion = 1
 
     def __init__(self, in_channels: int, out_channels: int, stride: int, shortcut: bool) -> None:
@@ -59,11 +59,11 @@ class BasicBlockD(Module):
         self.short = nn.Identity() if shortcut else _make_shortcut(in_channels, out_channels, stride)
         self.relu = nn.ReLU(inplace=True)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.relu(self.convs(x) + self.short(x))
 
 
-class BottleneckD(Module):
+class BottleneckD(nn.Module):
     expansion = 4
 
     def __init__(self, in_channels: int, out_channels: int, stride: int, shortcut: bool) -> None:
@@ -82,17 +82,17 @@ class BottleneckD(Module):
         self.short = nn.Identity() if shortcut else _make_shortcut(in_channels, expanded_out_channels, stride)
         self.relu = nn.ReLU(inplace=True)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.relu(self.convs(x) + self.short(x))
 
 
 class Block(nn.Sequential):
-    def __init__(self, blocks: Module) -> None:
+    def __init__(self, blocks: nn.Module) -> None:
         super().__init__()
         self.blocks = blocks
 
 
-class ResNetD(Module):
+class ResNetD(nn.Module):
     def __init__(self, n_blocks: list[int], block: type[BasicBlockD | BottleneckD]) -> None:
         KORNIA_CHECK(len(n_blocks) == 4)
         super().__init__()
@@ -120,7 +120,7 @@ class ResNetD(Module):
     @staticmethod
     def make_stage(
         in_channels: int, out_channels: int, stride: int, n_blocks: int, block: type[BasicBlockD | BottleneckD]
-    ) -> tuple[Module, int]:
+    ) -> tuple[nn.Module, int]:
         stage = Block(
             nn.Sequential(
                 block(in_channels, out_channels, stride, False),
@@ -129,7 +129,7 @@ class ResNetD(Module):
         )
         return stage, out_channels * block.expansion
 
-    def forward(self, x: Tensor) -> list[Tensor]:
+    def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
         x = self.conv1(x)
         res2 = self.res_layers[0](x)
         res3 = self.res_layers[1](res2)

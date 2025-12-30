@@ -22,7 +22,6 @@ from typing import Literal
 
 import torch
 
-from kornia.core import Tensor
 from kornia.models.base import ModelBase
 from kornia.models.efficient_vit import backbone as vit
 
@@ -97,14 +96,14 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
 
         return EfficientViT(backbone=model)
 
-    def forward(self, images: Tensor) -> Tensor:
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
         """Extract features from the input images.
 
         Args:
             images: input images tensor of shape :math:`(B, C, H, W)`.
 
         Returns:
-            Dict[str, Tensor]: a dictionary containing the features.
+            Dict[str, torch.Tensor]: a dictionary containing the features.
 
         """
         feats = self.backbone(images)

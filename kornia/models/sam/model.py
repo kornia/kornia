@@ -33,7 +33,6 @@ from typing import Any, Optional
 
 import torch
 
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.models import SegmentationResults
 from kornia.models.base import ModelBase
@@ -235,7 +234,7 @@ class Sam(ModelBase[SamConfig]):
 
     @torch.no_grad()
     def forward(
-        self, images: Tensor, batched_prompts: list[dict[str, Any]], multimask_output: bool
+        self, images: torch.Tensor, batched_prompts: list[dict[str, Any]], multimask_output: bool
     ) -> list[SegmentationResults]:
         """Predicts masks end-to-end from provided images and prompts.
 
@@ -255,7 +254,8 @@ class Sam(ModelBase[SamConfig]):
                              the following keys. If it does not have the respective prompt, it should not be included
                              in this dictionary. The options are:
 
-                - "points": tuple of (Tensor, Tensor) within the coordinate keypoints and their respective labels.
+                 - "points": tuple of (torch.Tensor, torch.Tensor) within the coordinate keypoints
+                   and their respective labels.
                             the tuple should look like (keypoints, labels), where:
 
                             - The keypoints (a tensor) are a batched point prompts for this image, with shape
@@ -263,9 +263,9 @@ class Sam(ModelBase[SamConfig]):
                             - The labels (a tensor) are a batched labels for point prompts, with shape :math:`(K, N)`.
                               Where 1 indicates a foreground point and 0 indicates a background point.
 
-                - "boxes": (Tensor) Batched box inputs, with shape :math:`(K, 4)`. Already transformed to the input
-                           frame of the model.
-                - "mask_inputs": (Tensor) Batched mask inputs to the model, in the form :math:`(K, 1, H, W)`.
+                 - "boxes": (torch.Tensor) Batched box inputs, with shape :math:`(K, 4)`.
+                   Already transformed to the input frame of the model.
+                - "mask_inputs": (torch.Tensor) Batched mask inputs to the model, in the form :math:`(K, 1, H, W)`.
 
             multimask_output: Whether the model should predict multiple disambiguating masks, or return a single mask.
 

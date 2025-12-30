@@ -8,32 +8,32 @@ Models Overview
 
 This section covers several of Kornia's built-in models for key computer vision tasks. Each model is documented with its respective API and example usage.
 
-.. _ObjectDetectorBuilder:
+.. _RTDETRDetectorBuilder:
 
-ObjectDetectorBuilder
+RTDETRDetectorBuilder
 ---------------------
 
-The `ObjectDetectorBuilder` class is a builder for constructing a detection model based on the RT-DETR architecture, which is designed for real-time object detection. It is capable of detecting multiple objects within an image and provides efficient inference suitable for real-world applications.
+The `RTDETRDetectorBuilder` class is a builder for constructing a detection model based on the RT-DETR architecture, which is designed for real-time object detection. It is capable of detecting multiple objects within an image and provides efficient inference suitable for real-world applications.
 
 **Key Methods:**
 
 - `build`: Constructs and returns an instance of the RTDETR detection model.
 - `save`: Saves the processed image or results after applying the detection model.
 
-.. autoclass:: kornia.contrib.object_detection.ObjectDetectorBuilder
+.. autoclass:: kornia.contrib.object_detection.RTDETRDetectorBuilder
    :members:
    :undoc-members:
    :show-inheritance:
 
    .. rubric:: Example
 
-   The following code demonstrates how to use `ObjectDetectorBuilder` to detect objects in an image:
+   The following code demonstrates how to use `RTDETRDetectorBuilder` to detect objects in an image:
 
    .. code-block:: python
 
        import kornia
        image = kornia.utils.sample.get_sample_images()[0][None]
-       model = kornia.contrib.object_detection.ObjectDetectorBuilder.build()
+       model = kornia.contrib.object_detection.RTDETRDetectorBuilder.build()
        model.save(image)
 
 .. _EdgeDetectorBuilder:
