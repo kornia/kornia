@@ -35,7 +35,7 @@ class TestObjectDetector(BaseTester):
         model = RTDETR.from_config(config).to(device, dtype).eval()
         pre_processor = kornia.models.processors.ResizePreProcessor(32, 32)
         post_processor = DETRPostProcessor(confidence, num_top_queries=3).to(device, dtype).eval()
-        detector = kornia.contrib.detection.ObjectDetector(model, pre_processor, post_processor)
+        detector = kornia.contrib.object_detection.ObjectDetector(model, pre_processor, post_processor)
 
         sizes = torch.randint(5, 10, (batch_size, 2)) * 32
         imgs = [torch.randn(3, h, w, device=device, dtype=dtype) for h, w in sizes]
@@ -58,7 +58,7 @@ class TestObjectDetector(BaseTester):
         model = RTDETR.from_config(config).to(device=device, dtype=dtype).eval()
         pre_processor = kornia.models.processors.ResizePreProcessor(640, 640)
         post_processor = DETRPostProcessor(0.3, num_top_queries=3)
-        detector = kornia.contrib.detection.ObjectDetector(model, pre_processor, post_processor)
+        detector = kornia.contrib.object_detection.ObjectDetector(model, pre_processor, post_processor)
 
         data = torch.rand(1, 3, 400, 640, device=device, dtype=dtype)
 

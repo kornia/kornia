@@ -23,7 +23,7 @@ from typing import Optional, Union
 
 import torch
 
-from kornia.contrib.detection.utils import BoxFiltering
+from kornia.contrib.object_detection import BoxFiltering
 from kornia.core import Module, Tensor, concatenate, tensor
 
 

@@ -24,8 +24,7 @@ from pathlib import Path
 from typing import Any, Optional, Union
 
 from kornia.config import kornia_config
-from kornia.contrib.detection.base import ObjectDetector
-from kornia.contrib.object_detection import ObjectDetectorBuilder
+from kornia.contrib.object_detection import ObjectDetector, ObjectDetectorBuilder
 from kornia.core import Tensor, tensor
 from kornia.core.external import boxmot
 from kornia.core.external import numpy as np

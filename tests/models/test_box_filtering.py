@@ -19,7 +19,7 @@ import pytest
 import torch
 from numpy.testing import assert_almost_equal
 
-from kornia.contrib.detection.utils import BoxFiltering
+from kornia.contrib.object_detection import BoxFiltering
 from kornia.core import tensor
 
 
