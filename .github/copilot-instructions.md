@@ -16,7 +16,7 @@ Follow the coding standards and best practices defined in [CONTRIBUTING.md](../C
 
 - **Code style**: Follow PEP8, use 120 character line length, Ruff linting, and f-strings
 - **Type hints**: Required for all function inputs and outputs
-- **Documentation**: Use Google docstring convention
+- **Documentation**: Follow documentation and docstring guidelines in [CONTRIBUTING.md](../CONTRIBUTING.md#coding-standards) and match the existing codebase style
 - **Testing**: Use `BaseTester` pattern with smoke, exception, cardinality, feature, gradcheck, and dynamo tests
 - **Dependencies**: Only PyTorch is allowed as a dependency
 
