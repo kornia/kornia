@@ -121,7 +121,6 @@ Join the community
    morphology
    onnx
    tracking
-   testing
    utils
 
 .. toctree::
