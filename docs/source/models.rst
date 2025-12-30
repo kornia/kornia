@@ -20,7 +20,7 @@ The `RTDETRDetectorBuilder` class is a builder for constructing a detection mode
 - `build`: Constructs and returns an instance of the RTDETR detection model.
 - `save`: Saves the processed image or results after applying the detection model.
 
-.. autoclass:: kornia.models.detection.rtdetr.RTDETRDetectorBuilder
+.. autoclass:: kornia.contrib.object_detection.RTDETRDetectorBuilder
    :members:
    :undoc-members:
    :show-inheritance:
@@ -33,35 +33,35 @@ The `RTDETRDetectorBuilder` class is a builder for constructing a detection mode
 
        import kornia
        image = kornia.utils.sample.get_sample_images()[0][None]
-       model = kornia.models.detection.rtdetr.RTDETRDetectorBuilder.build()
+       model = kornia.contrib.object_detection.RTDETRDetectorBuilder.build()
        model.save(image)
 
-.. _DexiNedBuilder:
+.. _EdgeDetectorBuilder:
 
-DexiNedBuilder
---------------
+EdgeDetectorBuilder
+-------------------
 
-The `DexiNedBuilder` class implements a state-of-the-art edge detection model based on DexiNed, which excels at detecting fine-grained edges in images. This model is well-suited for tasks like medical imaging, object contour detection, and more.
+The `EdgeDetectorBuilder` class implements a state-of-the-art edge detection model based on DexiNed, which excels at detecting fine-grained edges in images. This model is well-suited for tasks like medical imaging, object contour detection, and more.
 
 **Key Methods:**
 
 - `build`: Builds and returns an instance of the DexiNed edge detection model.
 - `save`: Saves the detected edges for further processing or visualization.
 
-.. autoclass:: kornia.models.edge_detection.dexined.DexiNedBuilder
+.. autoclass:: kornia.contrib.edge_detection.EdgeDetectorBuilder
    :members:
    :undoc-members:
    :show-inheritance:
 
    .. rubric:: Example
 
-   The following code shows how to use the `DexiNedBuilder` to detect edges in an image:
+   The following code shows how to use the `EdgeDetectorBuilder` to detect edges in an image:
 
    .. code-block:: python
 
        import kornia
        image = kornia.utils.sample.get_sample_images()[0][None]
-       model = kornia.models.edge_detection.dexined.DexiNedBuilder.build()
+       model = kornia.contrib.edge_detection.EdgeDetectorBuilder.build()
        model.save(image)
 
 .. _SegmentationModels:
@@ -115,7 +115,7 @@ The `BoxMotTracker` class is used for multi-object tracking in video streams. It
 
 - `max_lost`: (int) The maximum number of frames where an object can be lost before it is removed from the tracker.
 
-.. autoclass:: kornia.models.tracking.boxmot_tracker.BoxMotTracker
+.. autoclass:: kornia.contrib.boxmot_tracker.BoxMotTracker
    :members:
    :undoc-members:
    :show-inheritance:
@@ -128,7 +128,7 @@ The `BoxMotTracker` class is used for multi-object tracking in video streams. It
 
        import kornia
        image = kornia.utils.sample.get_sample_images()[0][None]
-       model = kornia.models.tracking.boxmot_tracker.BoxMotTracker()
+       model = kornia.contrib.boxmot_tracker.BoxMotTracker()
        for i in range(4):
            model.update(image)  # Update the tracker with new frames
        model.save(image)       # Save the tracking result

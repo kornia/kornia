@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.filters import DexiNed, filter2d, filter2d_separable, filter3d
+from kornia.filters import filter2d, filter2d_separable, filter3d
 from kornia.utils._compat import torch_version_le
 
 from testing.base import BaseTester
@@ -738,47 +738,5 @@ class TestFilter3D(BaseTester):
 
         expected = op(data, kernel, normalized=normalized)
         actual = op_optimized(data, kernel, normalized=normalized)
-
-        self.assert_close(actual, expected)
-
-
-class TestDexiNed(BaseTester):
-    def test_smoke(self, device, dtype):
-        img = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
-        net = DexiNed(pretrained=False).to(device, dtype)
-        feat = net.get_features(img)
-        assert len(feat) == 6
-        out = net(img)
-        assert out.shape == (2, 1, 32, 32)
-
-    @pytest.mark.slow
-    @pytest.mark.parametrize("data", ["dexined"], indirect=True)
-    def test_inference(self, device, dtype, data):
-        model = DexiNed(pretrained=False)
-        model.load_state_dict(data, strict=True)
-        model = model.to(device, dtype)
-        model.eval()
-
-        img = torch.tensor([[[[0.0, 255.0, 0.0], [0.0, 255.0, 0.0], [0.0, 255.0, 0.0]]]], device=device, dtype=dtype)
-        img = img.repeat(1, 3, 1, 1)
-
-        expect = torch.tensor(
-            [[[[-0.3709, 0.0519, -0.2839], [0.0627, 0.6587, -0.1276], [-0.1840, -0.3917, -0.8240]]]],
-            device=device,
-            dtype=dtype,
-        )
-
-        out = model(img)
-        self.assert_close(out, expect, atol=3e-4, rtol=3e-4)
-
-    @pytest.mark.skip(reason="DexiNed do not compile with dynamo.")
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        # TODO: update the dexined to be possible to use with dynamo
-        data = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
-        op = DexiNed(pretrained=True).to(device, dtype)
-        op_optimized = torch_optimizer(op)
-
-        expected = op(data)
-        actual = op_optimized(data)
 
         self.assert_close(actual, expected)

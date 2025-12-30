@@ -42,6 +42,7 @@ test-f32 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DTYPE = "float
 test-f64 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DTYPE = "float64" } }
 test-slow = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_RUNSLOW = "true" } }
 test-quick = { cmd = "uv run pytest -v -m 'not (jit or grad or nn)' tests/" }
+test-module = { cmd = "uv run pytest -v", description = "Run tests for a specific module (usage: pixi run test-module tests/<module_path>, e.g., pixi run test-module tests/contrib/)" }
 # Quality
 lint = { cmd = "uv run pre-commit run ruff --all-files" }
 typecheck = { cmd = "uvx ty check" }
