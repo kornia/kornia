@@ -47,7 +47,6 @@ Edge detection
 .. autoclass:: Canny
 .. autoclass:: SpatialGradient
 .. autoclass:: SpatialGradient3d
-.. autoclass:: DexiNed
 
 
 Interactive Demo
