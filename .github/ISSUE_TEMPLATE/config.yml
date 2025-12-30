@@ -3,12 +3,12 @@ contact_links:
   - name: ❓ Ask a question
     url: https://github.com/kornia/kornia/discussions
     about: Please post questions related to the library in discussions.
-  - name: 💬 Slack
-    url: https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA
+  - name: 🆘 Help Wanted Issues
+    url: https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22
+    about: Browse issues looking for contributors
+  - name: 💬 Discord
+    url: https://discord.gg/HfnywwpBnD
     about: Chat with our community
-  - name: LibreCV
-    url: https://librecv.org/
-    about: Interact with the Computer Vision community
-  - name: Twitter
-    url: https://twitter.com/kornia_foss
-    about: Interact with the rest of the world
+  - name: 📖 Contributing Guide
+    url: https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md
+    about: Read our contribution guidelines and policies
