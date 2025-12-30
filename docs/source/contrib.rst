@@ -54,11 +54,11 @@ Structures
 ^^^^^^^^^^
 
 .. _anchor SegmentationResults:
-.. autoclass:: kornia.models.SegmentationResults
+.. autoclass:: kornia.models.structures.SegmentationResults
     :members:
     :undoc-members:
 
-.. autoclass:: kornia.models.Prompts
+.. autoclass:: kornia.models.structures.Prompts
     :members:
     :undoc-members:
 
@@ -177,9 +177,9 @@ Image Patches
 Image Classification
 --------------------
 
-.. autoclass:: kornia.models.VisionTransformer
+.. autoclass:: kornia.models.vit.VisionTransformer
     :members:
-.. autoclass:: kornia.models.MobileViT
+.. autoclass:: kornia.models.vit_mobile.MobileViT
 .. autoclass:: TinyViT
     :members:
 

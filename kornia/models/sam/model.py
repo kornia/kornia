@@ -34,13 +34,13 @@ from typing import Any, Optional
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.models import SegmentationResults
 from kornia.models.base import ModelBase
 from kornia.models.sam.architecture.common import LayerNorm
 from kornia.models.sam.architecture.image_encoder import ImageEncoderViT
 from kornia.models.sam.architecture.mask_decoder import MaskDecoder
 from kornia.models.sam.architecture.prompt_encoder import PromptEncoder
 from kornia.models.sam.architecture.transformer import TwoWayTransformer
+from kornia.models.structures import SegmentationResults
 from kornia.models.tiny_vit import TinyViT
 
 
@@ -254,26 +254,26 @@ class Sam(ModelBase[SamConfig]):
                              the following keys. If it does not have the respective prompt, it should not be included
                              in this dictionary. The options are:
 
-                 - "points": tuple of (torch.Tensor, torch.Tensor) within the coordinate keypoints
-                   and their respective labels.
-                            the tuple should look like (keypoints, labels), where:
+                - "points": tuple of (torch.Tensor, torch.Tensor) within the coordinate keypoints
+                  and their respective labels. The tuple should look like (keypoints, labels), where the keypoints
+                  (a tensor) are a batched point prompts for this image, with shape :math:`(K, N, 2)`. Already
+                  transformed to the input frame of the model. The labels (a tensor) are a batched labels for point
+                  prompts, with shape :math:`(K, N)`. Where 1 indicates a foreground point and 0 indicates a background
+                  point.
 
-                            - The keypoints (a tensor) are a batched point prompts for this image, with shape
-                              :math:`(K, N, 2)`. Already transformed to the input frame of the model.
-                            - The labels (a tensor) are a batched labels for point prompts, with shape :math:`(K, N)`.
-                              Where 1 indicates a foreground point and 0 indicates a background point.
+                - "boxes": (torch.Tensor) Batched box inputs, with shape :math:`(K, 4)`.
+                  Already transformed to the input frame of the model.
 
-                 - "boxes": (torch.Tensor) Batched box inputs, with shape :math:`(K, 4)`.
-                   Already transformed to the input frame of the model.
                 - "mask_inputs": (torch.Tensor) Batched mask inputs to the model, in the form :math:`(K, 1, H, W)`.
 
             multimask_output: Whether the model should predict multiple disambiguating masks, or return a single mask.
 
         Returns:
-            A list over input images, where each element is as SegmentationResults the following.
+            A list over input images, where each element is as SegmentationResults the following:
+
                 - logits: Low resolution logits with shape :math:`(K, C, H, W)`. Can be passed as mask input to
-                          subsequent iterations of prediction. Where :math:`K` is the number of input prompts,
-                          :math:`C` is determined by multimask_output, and :math:`H=W=256` are the model output size.
+                  subsequent iterations of prediction. Where :math:`K` is the number of input prompts,
+                  :math:`C` is determined by multimask_output, and :math:`H=W=256` are the model output size.
                 - scores: The model's predictions of mask quality (iou prediction), in shape BxC.
 
         """

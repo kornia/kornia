@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.models import VisionTransformer
+from kornia.models.vit import VisionTransformer
 
 from testing.base import BaseTester
 

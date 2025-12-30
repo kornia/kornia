@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.models import MobileViT
+from kornia.models.vit_mobile import MobileViT
 
 from testing.base import BaseTester
 

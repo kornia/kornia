@@ -20,7 +20,7 @@
 This subpackage provides community-contributed and experimental features.
 """
 
-from kornia.models import TinyViT
+from kornia.models.tiny_vit import TinyViT
 
 from .boxmot_tracker import BoxMotTracker
 from .connected_components import connected_components

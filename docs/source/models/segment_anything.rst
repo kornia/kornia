@@ -243,7 +243,7 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
 .. code-block:: python
 
     from kornia.models.sam import Sam
-    from kornia.models import SegmentationResults
+    from kornia.models.structures import SegmentationResults
     from kornia.io import load_image, ImageLoadType
     from kornia.utils import get_cuda_or_mps_device_if_available
     from kornia.geometry import resize

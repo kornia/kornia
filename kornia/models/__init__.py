@@ -17,18 +17,6 @@
 
 """Models submodule for Kornia.
 
-This package provides model architectures and utilities for tasks such as depth estimation,
-segmentation, and super-resolution.
+This package provides model architectures and utilities for state-of-the-art models for Visual Language
+Models and Vision Language Action Models.
 """
-
-from . import (
-    depth_estimation,
-    segmentation,
-)
-from .dexined import DexiNed
-from .processors import *
-from .structures import Prompts, SegmentationResults
-from .tiny_vit import TinyViT
-from .vit import VisionTransformer
-from .vit_mobile import MobileViT
-from .yunet import YuNet

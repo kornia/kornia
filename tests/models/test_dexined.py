@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.models import DexiNed
+from kornia.models.dexined import DexiNed
 
 from testing.base import BaseTester
 

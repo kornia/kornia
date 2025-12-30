@@ -46,7 +46,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         name: Optional name for the detector.
 
     Example:
-        >>> from kornia.models import DexiNed
+        >>> from kornia.models.dexined import DexiNed
         >>> from kornia.models.processors import ResizePreProcessor, ResizePostProcessor
         >>> model = DexiNed(pretrained=True)
         >>> detector = EdgeDetector(model, ResizePreProcessor(352, 352), ResizePostProcessor())

@@ -46,7 +46,7 @@ You can easily add your own classification head using standard PyTorch modules.
 .. code:: python
 
     import torch.nn as nn
-    from kornia.models import VisionTransformer
+    from kornia.models.vit import VisionTransformer
 
     classifier = nn.Sequential(
         VisionTransformer(image_size=224, patch_size=16),
@@ -63,7 +63,7 @@ class with two different classification heads:
 
 .. code:: python
 
-    from kornia.models import VisionTransformer
+    from kornia.models.vit import VisionTransformer
 
     class MultiTaskTransfornmer(nn.Module):
         def __init__(self) -> None:

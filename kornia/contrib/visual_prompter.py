@@ -28,8 +28,8 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 from kornia.enhance import normalize
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.models import Prompts, SegmentationResults
 from kornia.models.sam import Sam, SamConfig
+from kornia.models.structures import Prompts, SegmentationResults
 
 
 class VisualPrompter:
