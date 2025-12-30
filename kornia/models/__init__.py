@@ -18,15 +18,13 @@
 """Models submodule for Kornia.
 
 This package provides model architectures and utilities for tasks such as depth estimation,
-detection, segmentation, super-resolution, and tracking.
+segmentation, and super-resolution.
 """
 
 from . import (
     depth_estimation,
-    detection,
     segmentation,
     super_resolution,
-    tracking,
 )
 from .dexined import DexiNed
 from .processors import *

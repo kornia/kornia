@@ -8,32 +8,32 @@ Models Overview
 
 This section covers several of Kornia's built-in models for key computer vision tasks. Each model is documented with its respective API and example usage.
 
-.. _RTDETRDetectorBuilder:
+.. _ObjectDetectorBuilder:
 
-RTDETRDetectorBuilder
+ObjectDetectorBuilder
 ---------------------
 
-The `RTDETRDetectorBuilder` class is a builder for constructing a detection model based on the RT-DETR architecture, which is designed for real-time object detection. It is capable of detecting multiple objects within an image and provides efficient inference suitable for real-world applications.
+The `ObjectDetectorBuilder` class is a builder for constructing a detection model based on the RT-DETR architecture, which is designed for real-time object detection. It is capable of detecting multiple objects within an image and provides efficient inference suitable for real-world applications.
 
 **Key Methods:**
 
 - `build`: Constructs and returns an instance of the RTDETR detection model.
 - `save`: Saves the processed image or results after applying the detection model.
 
-.. autoclass:: kornia.models.detection.rtdetr.RTDETRDetectorBuilder
+.. autoclass:: kornia.contrib.object_detection.ObjectDetectorBuilder
    :members:
    :undoc-members:
    :show-inheritance:
 
    .. rubric:: Example
 
-   The following code demonstrates how to use `RTDETRDetectorBuilder` to detect objects in an image:
+   The following code demonstrates how to use `ObjectDetectorBuilder` to detect objects in an image:
 
    .. code-block:: python
 
        import kornia
        image = kornia.utils.sample.get_sample_images()[0][None]
-       model = kornia.models.detection.rtdetr.RTDETRDetectorBuilder.build()
+       model = kornia.contrib.object_detection.ObjectDetectorBuilder.build()
        model.save(image)
 
 .. _EdgeDetectorBuilder:
@@ -115,7 +115,7 @@ The `BoxMotTracker` class is used for multi-object tracking in video streams. It
 
 - `max_lost`: (int) The maximum number of frames where an object can be lost before it is removed from the tracker.
 
-.. autoclass:: kornia.models.tracking.boxmot_tracker.BoxMotTracker
+.. autoclass:: kornia.contrib.boxmot_tracker.BoxMotTracker
    :members:
    :undoc-members:
    :show-inheritance:
@@ -128,7 +128,7 @@ The `BoxMotTracker` class is used for multi-object tracking in video streams. It
 
        import kornia
        image = kornia.utils.sample.get_sample_images()[0][None]
-       model = kornia.models.tracking.boxmot_tracker.BoxMotTracker()
+       model = kornia.contrib.boxmot_tracker.BoxMotTracker()
        for i in range(4):
            model.update(image)  # Update the tracker with new frames
        model.save(image)       # Save the tracking result

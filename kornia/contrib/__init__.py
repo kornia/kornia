@@ -22,6 +22,7 @@ This subpackage provides community-contributed and experimental features.
 
 from kornia.models import TinyViT
 
+from .boxmot_tracker import BoxMotTracker
 from .connected_components import connected_components
 from .diamond_square import diamond_square
 from .distance_transform import DistanceTransform, distance_transform
@@ -38,9 +39,10 @@ from .histogram_matching import histogram_matching, interp
 from .image_stitching import ImageStitcher
 from .kmeans import KMeans
 from .lambda_module import Lambda
-from .object_detection import ObjectDetector
+from .object_detection import ObjectDetector, ObjectDetectorBuilder
 
 __all__ = [
+    "BoxMotTracker",
     "CombineTensorPatches",
     "DistanceTransform",
     "EdgeDetector",
@@ -49,6 +51,7 @@ __all__ = [
     "KMeans",
     "Lambda",
     "ObjectDetector",
+    "ObjectDetectorBuilder",
     "TinyViT",
     "combine_tensor_patches",
     "compute_padding",

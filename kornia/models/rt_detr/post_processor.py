@@ -23,8 +23,8 @@ from typing import Optional, Union
 
 import torch
 
+from kornia.contrib.detection.utils import BoxFiltering
 from kornia.core import Module, Tensor, concatenate, tensor
-from kornia.models.detection.utils import BoxFiltering
 
 
 def mod(a: Tensor, b: int) -> Tensor:

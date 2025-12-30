@@ -28,7 +28,7 @@ RTDETRDetector for object detection.
 .. code-block:: python
 
       image = kornia.utils.sample.get_sample_images()[0][None]
-      model = RTDETRDetectorBuilder.build()
+      model = ObjectDetectorBuilder.build()
       model.save(image)
 
 BoxMotTracker for object tracking.

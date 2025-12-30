@@ -19,8 +19,8 @@ import pytest
 import torch
 from numpy.testing import assert_almost_equal
 
+from kornia.contrib.detection.utils import BoxFiltering
 from kornia.core import tensor
-from kornia.models.detection.utils import BoxFiltering  # Replace with the actual module path
 
 
 class TestBoxFiltering:

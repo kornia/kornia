@@ -15,7 +15,10 @@
 # limitations under the License.
 #
 
-"""Edge detection models submodule for Kornia.
+"""Detection models submodule for Kornia.
 
-This package provides model architectures and utilities for edge detection tasks.
+This package provides model architectures and utilities for object detection tasks.
 """
+
+from .base import *
+from .utils import *

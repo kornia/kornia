@@ -141,7 +141,7 @@ class ObjectDetector(ModelBase):
         """Build ObjectDetector from config.
 
         This is a placeholder to satisfy the abstract method requirement.
-        Use RTDETRDetectorBuilder.build() or instantiate ObjectDetector directly.
+        Use kornia.contrib.object_detection.ObjectDetectorBuilder.build() or instantiate ObjectDetector directly.
 
         Args:
             config: Configuration object (not used, kept for interface compatibility).
@@ -152,7 +152,7 @@ class ObjectDetector(ModelBase):
         """
         raise NotImplementedError(
             "ObjectDetector.from_config() is not implemented. "
-            "Use RTDETRDetectorBuilder.build() or instantiate ObjectDetector directly."
+            "Use kornia.contrib.object_detection.ObjectDetectorBuilder.build() or instantiate ObjectDetector directly."
         )
 
     @torch.inference_mode()
