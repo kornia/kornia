@@ -50,26 +50,28 @@ class TestCanny(BaseTester):
         assert edges.shape == (batch_size, 1, 4, 4)
 
     def test_exception(self, device, dtype):
-        with pytest.raises(Exception) as errinfo:
+        from kornia.core.exceptions import BaseError, ShapeError, TypeCheckError
+
+        with pytest.raises(BaseError) as errinfo:
             Canny(0.3, 0.2)
-        assert "low_threshold should be smaller than the high_threshold" in str(errinfo)
+        assert "low_threshold should be smaller than the high_threshold" in str(errinfo.value)
 
-        with pytest.raises(Exception) as errinfo:
+        with pytest.raises(BaseError) as errinfo:
             Canny(-2, 0.3)
-        assert "Invalid low threshold." in str(errinfo)
+        assert "Invalid low threshold." in str(errinfo.value)
 
-        with pytest.raises(Exception) as errinfo:
+        with pytest.raises(BaseError) as errinfo:
             Canny(0.1, 3)
-        assert "Invalid high threshold." in str(errinfo)
+        assert "Invalid high threshold." in str(errinfo.value)
 
-        with pytest.raises(Exception) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
             canny(1)
-        assert "Not a Tensor type" in str(errinfo)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
         inp = torch.zeros(3, 4, 4, device=device, dtype=dtype)
-        with pytest.raises(Exception) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             canny(inp)
-        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_noncontiguous(self, batch_size, device, dtype):

@@ -4039,9 +4039,11 @@ class TestRandomSaltAndPepperNoise(BaseTester):
             r"and it should be a tuple\.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.1, 0.2, 0.3))
+        from kornia.core.exceptions import BaseError
+
         with pytest.raises(
-            Exception,
-            match=r"False not true\.\s*Salt_vs_pepper values must be between 0 and 1\.\s+"
+            BaseError,
+            match=r"Salt_vs_pepper values must be between 0 and 1\.\s+"
             r"Recommended value 0\.5\.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.4, 3))
@@ -4054,8 +4056,8 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         ):
             RandomSaltAndPepperNoise(amount=())
         with pytest.raises(
-            Exception,
-            match=r"False not true\.\s*amount of noise values must be between 0 and 1\.\s+"
+            BaseError,
+            match=r"amount of noise values must be between 0 and 1\.\s+"
             r"Recommended values less than 0\.2\.",
         ):
             RandomSaltAndPepperNoise(amount=(0.05, 3))
@@ -4324,16 +4326,18 @@ class TestRandomChannelDropout(BaseTester):
         self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
 
     def test_exception(self, device, dtype):
+        from kornia.core.exceptions import BaseError, TypeCheckError
+
         num_drop_channels = 2.0
-        with pytest.raises(TypeError, match=f"`num_drop_channels` must be an int. Got: {type(num_drop_channels)}"):
-            RandomChannelDropout(num_drop_channels=num_drop_channels)
+        with pytest.raises(TypeCheckError, match=f"`num_drop_channels` must be an int. Got: {type(num_drop_channels)}"):
+            RandomChannelDropout(num_drop_channels=num_drop_channels, fill_value=0.0)
 
         num_drop_channels = 0
         with pytest.raises(
-            Exception,
+            BaseError,
             match=f"Invalid value in `num_drop_channels`. Must be an int greater than 1. Got: {num_drop_channels}",
         ):
-            RandomChannelDropout(num_drop_channels=num_drop_channels)
+            RandomChannelDropout(num_drop_channels=num_drop_channels, fill_value=0.0)
 
         num_drop_channels = 5
         input_tensor = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
@@ -4345,12 +4349,12 @@ class TestRandomChannelDropout(BaseTester):
 
         fill_value = 2.0
         with pytest.raises(
-            Exception, match=f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}"
+            BaseError, match=f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}"
         ):
             RandomChannelDropout(fill_value=fill_value)
 
         fill_value = 1
-        with pytest.raises(TypeError, match=f"`fill_value` must be a float. Got: {type(fill_value)}"):
+        with pytest.raises(TypeCheckError, match=f"`fill_value` must be a float. Got: {type(fill_value)}"):
             RandomChannelDropout(fill_value=fill_value)
 
     @pytest.mark.parametrize("channel_shape, batch_shape", [(3, 1), (1, 1), (5, 5)])

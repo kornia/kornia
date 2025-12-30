@@ -36,24 +36,30 @@ class TestCharbonnierLoss(BaseTester):
         img = torch.rand(3, 3, 3, device=device, dtype=dtype)
 
         # wrong reduction
-        with pytest.raises(Exception) as execinfo:
+        from kornia.core.exceptions import BaseError
+
+        with pytest.raises(BaseError) as execinfo:
             kornia.losses.charbonnier_loss(img, img, reduction="test")
-        assert "Given type of reduction is not supported. Got: test" in str(execinfo)
+        assert "Given type of reduction is not supported. Got: test" in str(execinfo.value)
 
         # Check if both are tensors
-        with pytest.raises(TypeError) as errinfo:
-            kornia.losses.charbonnier_loss(1.0, img)
-        assert "Not a Tensor type. Got:" in str(errinfo)
+        from kornia.core.exceptions import TypeCheckError
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
+            kornia.losses.charbonnier_loss(1.0, img)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(TypeCheckError) as errinfo:
             kornia.losses.charbonnier_loss(img, 1.0)
-        assert "Not a Tensor type. Got:" in str(errinfo)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
         # Check if same shape
+        from kornia.core.exceptions import ShapeError
+
         img_b = torch.rand(1, 1, 3, 3, 4, device=device, dtype=dtype)
-        with pytest.raises(TypeError) as errinfo:
-            kornia.losses.charbonnier_loss(img, img_b, 3)
-        assert "Not same shape for tensors. Got:" in str(errinfo)
+        with pytest.raises(ShapeError) as errinfo:
+            kornia.losses.charbonnier_loss(img, img_b)
+        assert "Shape mismatch" in str(errinfo.value)
 
     @pytest.mark.parametrize("shape", [(1, 3, 5, 5), (2, 5, 5)])
     def test_cardinality(self, shape, device, dtype):

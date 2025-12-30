@@ -34,15 +34,17 @@ class TestLovaszSoftmaxLoss(BaseTester):
         assert criterion(logits, labels) is not None
 
     def test_exception(self):
+        from kornia.core.exceptions import ShapeError
+
         criterion = kornia.losses.LovaszSoftmaxLoss()
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             criterion(torch.rand(1), torch.rand(1))
-        assert "shape must be [['B', 'N', 'H', 'W']]. Got" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             criterion(torch.rand(1, 1, 1, 1), torch.rand(1))
-        assert "shape must be [['B', 'H', 'W']]. Got" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
         with pytest.raises(ValueError) as errinfo:
             criterion(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1))

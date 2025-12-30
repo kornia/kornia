@@ -66,23 +66,27 @@ class TestSSIM3d(BaseTester):
         img = torch.rand(1, 1, 3, 3, 3, device=device, dtype=dtype)
 
         # Check if both are tensors
-        with pytest.raises(TypeError) as errinfo:
-            kornia.metrics.ssim3d(1.0, img, 3)
-        assert "Not a Tensor type. Got:" in str(errinfo)
+        from kornia.core.exceptions import TypeCheckError
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
+            kornia.metrics.ssim3d(1.0, img, 3)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(TypeCheckError) as errinfo:
             kornia.metrics.ssim3d(img, 1.0, 3)
-        assert "Not a Tensor type. Got:" in str(errinfo)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
         # Check both shapes
-        img_wrong_shape = torch.rand(3, 3, device=device, dtype=dtype)
-        with pytest.raises(TypeError) as errinfo:
-            kornia.metrics.ssim3d(img, img_wrong_shape, 3)
-        assert "shape must be [" in str(errinfo)
+        from kornia.core.exceptions import ShapeError
 
-        with pytest.raises(TypeError) as errinfo:
+        img_wrong_shape = torch.rand(3, 3, device=device, dtype=dtype)
+        with pytest.raises(ShapeError) as errinfo:
+            kornia.metrics.ssim3d(img, img_wrong_shape, 3)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
+
+        with pytest.raises(ShapeError) as errinfo:
             kornia.metrics.ssim3d(img_wrong_shape, img, 3)
-        assert "shape must be [" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
         # Check if same shape
         img_b = torch.rand(1, 1, 3, 3, 4, device=device, dtype=dtype)

@@ -63,22 +63,24 @@ class TestKMeans(BaseTester):
         assert out2.shape == (num_clusters, D)
 
     def test_exception(self, device, dtype):
+        from kornia.core.exceptions import BaseError, ShapeError
+
         # case: cluster_center = 0:
-        with pytest.raises(Exception) as errinfo:
+        with pytest.raises(BaseError) as errinfo:
             kornia.contrib.KMeans(0, None, 10e-4, 10, 0)
-        assert "num_clusters can't be 0" in str(errinfo)
+        assert "num_clusters can't be 0" in str(errinfo.value)
 
         # case: cluster centers is not a 2D tensor
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             starting_centers = torch.rand((2, 3, 5), device=device, dtype=dtype)
             kmeans = kornia.contrib.KMeans(None, starting_centers, 10e-4, 100, 0)
-        assert "shape must be [['C', 'D']]. Got torch.Size([2, 3, 5])" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value)
 
         # case: input data is not a 2D tensor
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, 0)
             kmeans.fit(torch.rand((1000, 5, 60), dtype=dtype, device=device))
-        assert "shape must be [['N', 'D']]. Got torch.Size([1000, 5, 60])" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
         # case: column dimensions of cluster centers and data to be predicted do not match
         with pytest.raises(Exception) as errinfo:
