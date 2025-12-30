@@ -80,6 +80,31 @@ class TestFaceDetection(BaseTester):
             _ = kornia.contrib.FaceDetectorResult(data)
 
     @pytest.mark.slow
+    def test_exception_invalid_input_shape(self, device, dtype):
+        """Test that FaceDetector raises appropriate error for invalid input."""
+        img = torch.rand(1, 4, 320, 320, device=device, dtype=dtype)  # Wrong channels
+        face_detection = kornia.contrib.FaceDetector().to(device, dtype)
+
+        with pytest.raises(RuntimeError) as errinfo:
+            face_detection(img)
+        assert "expected" in str(errinfo).lower()
+
+    @pytest.mark.slow
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        """Test FaceDetector with torch dynamo optimizer."""
+        torch.manual_seed(44)
+        img = torch.rand(1, 3, 320, 320, device=device, dtype=dtype)
+
+        op = kornia.contrib.FaceDetector().to(device, dtype)
+        op_optimized = torch_optimizer(op)
+
+        # Compare outputs
+        result_original = op(img)
+        result_optimized = op_optimized(img)
+
+        assert len(result_original) == len(result_optimized)
+
+    @pytest.mark.slow
     def test_model_onnx(self, device, dtype, tmp_path):
         torch.manual_seed(44)
         img = torch.rand(1, 3, 320, 320, device=device, dtype=dtype)
