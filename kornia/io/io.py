@@ -63,11 +63,11 @@ def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
 
 def _to_float32(image: Tensor) -> Tensor:
     """Convert an image tensor to float32."""
-    if image.dtype==torch.uint8:
+    if image.dtype == torch.uint8:
         return image.float() / 255.0
-    elif image.dtype==torch.uint16:
+    elif image.dtype == torch.uint16:
         return image.float() / 65535.0
-    elif image.dtype==torch.float32:
+    elif image.dtype == torch.float32:
         return image
     else:
         raise NotImplementedError(f"Unsupported dtype: {image.dtype}")
@@ -75,11 +75,11 @@ def _to_float32(image: Tensor) -> Tensor:
 
 def _to_uint8(image: Tensor) -> Tensor:
     """Convert an image tensor to uint8."""
-    if image.dtype==torch.float32:
+    if image.dtype == torch.float32:
         return torch.round(image * 255.0).clamp(0, 255).to(torch.uint8)
-    elif image.dtype==torch.uint16:
+    elif image.dtype == torch.uint16:
         return (image >> 8).to(torch.uint8)
-    elif image.dtype==torch.uint8:
+    elif image.dtype == torch.uint8:
         return image
     else:
         raise NotImplementedError(f"Unsupported dtype: {image.dtype}")
