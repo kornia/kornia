@@ -77,8 +77,29 @@ def _to_float32(image: Tensor) -> Tensor:
 
 def _to_uint8(image: Tensor) -> Tensor:
     """Convert an image tensor to uint8."""
-    KORNIA_CHECK(image.dtype == torch.float32)
-    return image.mul(255.0).byte()
+    if image.dtype==torch.float32:
+        return torch.round(image * 255.0).clamp(0, 255).to(torch.uint8)
+    elif image.dtype==torch.uint16:
+        return (image >> 8).to(torch.uint8)
+    elif image.dtype==torch.uint8:
+        return image
+    else:
+        raise NotImplementedError(f"Unsupported dtype: {image.dtype}")
+
+
+def _uint16_to_uint8(image: Tensor) -> Tensor:
+    KORNIA_CHECK(image.dtype==torch.uint16)
+    return (image >> 8).to(torch.uint8)
+
+
+def _uint16_to_float32(image: Tensor) -> Tensor:
+    KORNIA_CHECK(image.dtype==torch.uint16)
+    return image.float() / 65535.0
+
+
+def _float32_to_uint8(image: Tensor) -> Tensor:
+    KORNIA_CHECK(image.dtype==torch.float32)
+    return torch.round(image * 255.0).clamp(0, 255).to(torch.uint8)
 
 
 def load_image(
