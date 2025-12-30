@@ -81,43 +81,98 @@ class TestImage(BaseTester):
         img = Image(data, pixel_format=pixel_format, layout=layout)
         self.assert_close(data, Image.from_dlpack(img.to_dlpack()).data)
 
-    @pytest.mark.parametrize("order", [ChannelsOrder.CHANNELS_FIRST, ChannelsOrder.CHANNELS_LAST])
-    def test_color_space_conversions(self, order):
+    # Channel first
+    def test_rgb_gray_rgb_channels_first(self):
+        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
+        rgb_data = rgb_val.view(3, 1, 1)
+
+        img_rgb = make_image(rgb_data, ColorSpace.RGB, ChannelsOrder.CHANNELS_FIRST)
+
+        gray = img_rgb.to_gray()
+        rgb_back = gray.to_rgb()
+
+        expected_gray = img_rgb.to_gray().data.squeeze()
+        self.assert_close(gray.data.squeeze(), expected_gray)
+
+        # RGB reconstructed from gray should repeat luminance across channels
+        expected_rgb = expected_gray.repeat(3)
+        self.assert_close(rgb_back.data.squeeze(), expected_rgb)
+
+    def test_bgr_gray_bgr_channels_first(self):
+        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
+        bgr_val = rgb_val.flip(0)
+        bgr_data = bgr_val.view(3, 1, 1)
+
+        img_bgr = make_image(bgr_data, ColorSpace.BGR, ChannelsOrder.CHANNELS_FIRST)
+
+        gray = img_bgr.to_gray()
+        bgr_back = gray.to_bgr()
+
+        expected_gray = img_bgr.to_gray().data.squeeze()
+        self.assert_close(gray.data.squeeze(), expected_gray)
+
+        expected_bgr = expected_gray.repeat(3).flip(0)
+        self.assert_close(bgr_back.data.squeeze(), expected_bgr)
+
+    def test_rgb_bgr_swap_channels_first(self):
         rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
         bgr_val = rgb_val.flip(0)
 
-        if order == ChannelsOrder.CHANNELS_FIRST:
-            rgb_data = rgb_val.view(3, 1, 1)
-            bgr_data = bgr_val.view(3, 1, 1)
-        else:
-            rgb_data = rgb_val.view(1, 1, 3)
-            bgr_data = bgr_val.view(1, 1, 3)
+        rgb_data = rgb_val.view(3, 1, 1)
+        bgr_data = bgr_val.view(3, 1, 1)
 
-        # Create images
-        img_rgb = make_image(rgb_data, ColorSpace.RGB, order)
-        img_bgr = make_image(bgr_data, ColorSpace.BGR, order)
+        img_rgb = make_image(rgb_data, ColorSpace.RGB, ChannelsOrder.CHANNELS_FIRST)
+        img_bgr = make_image(bgr_data, ColorSpace.BGR, ChannelsOrder.CHANNELS_FIRST)
 
-        # 1) RGB -> Gray -> RGB
-        gray = img_rgb.to_gray()
-        lum = 0.299 * rgb_val[0] + 0.587 * rgb_val[1] + 0.114 * rgb_val[2]
-        expected_lum = lum.to(gray.data.device)
-        self.assert_close(gray.data.squeeze(), expected_lum)
-
-        rgb_back = gray.to_rgb().data.squeeze()
-        expected = lum.repeat(3)
-        self.assert_close(rgb_back, expected)
-
-        # 2) BGR -> Gray -> BGR
-        gray2 = img_bgr.to_gray()
-        expected_lum = lum.to(gray2.data.device)
-        self.assert_close(gray2.data.squeeze(), expected_lum)
-        bgr_back = gray2.to_bgr().data.squeeze()
-        expected_bgr = expected.flip(0)
-        self.assert_close(bgr_back, expected_bgr)
-
-        # 3) RGB <-> BGR swap
         self.assert_close(img_rgb.to_bgr().data.squeeze(), bgr_val)
         self.assert_close(img_bgr.to_rgb().data.squeeze(), rgb_val)
+
+    # Channel last
+    def test_rgb_gray_rgb_channels_last(self):
+        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
+        rgb_data = rgb_val.view(1, 1, 3)
+
+        img_rgb = make_image(rgb_data, ColorSpace.RGB, ChannelsOrder.CHANNELS_LAST)
+
+        gray = img_rgb.to_gray()
+        rgb_back = gray.to_rgb()
+
+        expected_gray = img_rgb.to_gray().data.squeeze()
+        self.assert_close(gray.data.squeeze(), expected_gray)
+
+        # RGB reconstructed from gray should repeat luminance across channels
+        expected_rgb = expected_gray.repeat(3)
+        self.assert_close(rgb_back.data.squeeze(), expected_rgb)
+
+    def test_bgr_gray_bgr_channels_last(self):
+        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
+        bgr_val = rgb_val.flip(0)
+        bgr_data = bgr_val.view(1, 1, 3)
+
+        img_bgr = make_image(bgr_data, ColorSpace.BGR, ChannelsOrder.CHANNELS_LAST)
+
+        gray = img_bgr.to_gray()
+        bgr_back = gray.to_bgr()
+
+        expected_gray = img_bgr.to_gray().data.squeeze()
+        self.assert_close(gray.data.squeeze(), expected_gray)
+
+        expected_bgr = expected_gray.repeat(3).flip(0)
+        self.assert_close(bgr_back.data.squeeze(), expected_bgr)
+
+    def test_rgb_bgr_swap_channels_last(self):
+        rgb_val = torch.tensor([0.5, 0.2, 0.1], dtype=torch.float32)
+        bgr_val = rgb_val.flip(0)
+
+        rgb_data = rgb_val.view(1, 1, 3)
+        bgr_data = bgr_val.view(1, 1, 3)
+
+        img_rgb = make_image(rgb_data, ColorSpace.RGB, ChannelsOrder.CHANNELS_LAST)
+        img_bgr = make_image(bgr_data, ColorSpace.BGR, ChannelsOrder.CHANNELS_LAST)
+
+        self.assert_close(img_rgb.to_bgr().data.squeeze(), bgr_val)
+        self.assert_close(img_bgr.to_rgb().data.squeeze(), rgb_val)
+
 
 
     @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="dlpack is broken in torch<=1.9.1")
