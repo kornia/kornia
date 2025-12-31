@@ -61,7 +61,7 @@ def _joint_histogram_to_entropies(joint_histogram, eps=1e-8):
     return H_x, H_y, H_xy
 
 
-class EntropyBasedLossFromRef(torch.nn.Module):
+class EntropyBasedLossBase(torch.nn.Module):
     def __init__(
         self,
         reference_signal,
@@ -106,7 +106,7 @@ class EntropyBasedLossFromRef(torch.nn.Module):
         return _joint_histogram_to_entropies(joint_histogram, eps=self.eps)
 
 
-class MILossFromRef(EntropyBasedLossFromRef):
+class MILossFromRef(EntropyBasedLossBase):
     def forward(self, other_signal):
         """Compute differentiable mutual information for self.signal and other_signal.
 
@@ -126,7 +126,7 @@ class MILossFromRef(EntropyBasedLossFromRef):
         return -mi
 
 
-class NMILossFromRef(EntropyBasedLossFromRef):
+class NMILossFromRef(EntropyBasedLossBase):
     def forward(self, other_signal):
         """Compute differentiable normalized mutual information for self.signal and other_signal.
 
