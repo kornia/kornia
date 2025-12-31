@@ -292,7 +292,7 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
     Examples:
         >>> x = torch.tensor([[0,1],[1,0],[-1,0]], dtype = torch.float32)
         >>> zca_whiten(x)
-        torch.tensor([[ 0.0000,  1.1547],
+        tensor([[ 0.0000,  1.1547],
                 [ 1.0000, -0.5773],
                 [-1.0000, -0.5773]])
 
@@ -349,7 +349,7 @@ def linear_transform(
         >>> mean = 2*torch.ones((1,10*3*4))
         >>> out = linear_transform(inp, transform_mat, mean, 3)
         >>> print(out.shape, out.unique())  # Should a be (10,3,4,5) torch.tensor of -120s
-        torch.Size([10, 3, 4, 5]) torch.tensor([-120.])
+        torch.Size([10, 3, 4, 5]) tensor([-120.])
 
         >>> # Example torch.where dim = 0
         >>> inp = torch.ones((10,2))

@@ -21,6 +21,7 @@ import math
 from typing import Any
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from kornia.geometry.subpix import dsnt
@@ -69,7 +70,7 @@ class FineMatching(nn.Module):
         feat_f0_picked = feat_f0[:, WW // 2, :]
         sim_matrix = torch.einsum("mc,mrc->mr", feat_f0_picked, feat_f1)
         softmax_temp = 1.0 / C**0.5
-        heatmap = torch.F.softmax(softmax_temp * sim_matrix, dim=1).view(-1, W, W)
+        heatmap = F.softmax(softmax_temp * sim_matrix, dim=1).view(-1, W, W)
 
         # compute coordinates from heatmap
         coords_normalized = dsnt.spatial_expectation2d(heatmap[None], True)[0]  # [M, 2]

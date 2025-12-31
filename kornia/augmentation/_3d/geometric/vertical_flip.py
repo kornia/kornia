@@ -52,7 +52,7 @@ class RandomVerticalFlip3D(GeometricAugmentationBase3D):
         >>> x = torch.eye(3).repeat(3, 1, 1)
         >>> seq = RandomVerticalFlip3D(p=1.0)
         >>> seq(x), seq.transform_matrix
-        (torch.tensor([[[[[0., 0., 1.],
+        (tensor([[[[[0., 0., 1.],
                    [0., 1., 0.],
                    [1., 0., 0.]],
         <BLANKLINE>
@@ -62,7 +62,7 @@ class RandomVerticalFlip3D(GeometricAugmentationBase3D):
         <BLANKLINE>
                   [[0., 0., 1.],
                    [0., 1., 0.],
-                   [1., 0., 0.]]]]]), torch.tensor([[[ 1.,  0.,  0.,  0.],
+                   [1., 0., 0.]]]]]), tensor([[[ 1.,  0.,  0.,  0.],
                  [ 0., -1.,  0.,  2.],
                  [ 0.,  0.,  1.,  0.],
                  [ 0.,  0.,  0.,  1.]]]))
@@ -71,7 +71,7 @@ class RandomVerticalFlip3D(GeometricAugmentationBase3D):
         >>> input = torch.rand(1, 3, 32, 32, 32)
         >>> aug = RandomVerticalFlip3D(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

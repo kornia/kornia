@@ -298,7 +298,7 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.
         >>> x = torch.rand(1, 5, 3, 3)
         >>> x_norm = normalize_min_max(x, min_val=-1., max_val=1.)
         >>> x_norm.min()
-        torch.tensor(-1.)
+        tensor(-1.)
         >>> x_norm.max()
         torch.tensor(1.0000)
 

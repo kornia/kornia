@@ -562,7 +562,7 @@ def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> 
         >>> rng = torch.manual_seed(0)
         >>> lafs_1 = torch.rand(2, 4, 2, 3)  # BxNx2x3
         >>> lafs_1
-        torch.tensor([[[[0.4963, 0.7682, 0.0885],
+        tensor([[[[0.4963, 0.7682, 0.0885],
                   [0.1320, 0.3074, 0.6341]],
         <BLANKLINE>
                  [[0.4901, 0.8964, 0.4556],
