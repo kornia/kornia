@@ -24,7 +24,7 @@ from kornia.contrib.face_detection import FaceKeypoint
 from testing.base import BaseTester
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def face_detector_model(device, dtype):
     """Fixture to instantiate FaceDetector once and reuse across tests."""
     return kornia.contrib.FaceDetector().to(device, dtype)
