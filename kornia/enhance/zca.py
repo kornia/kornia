@@ -319,9 +319,10 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
 def linear_transform(
     inp: torch.Tensor, transform_matrix: torch.Tensor, mean_vector: torch.Tensor, dim: int = 0
 ) -> torch.Tensor:
-    r"""Given a transformation matrix and a mean vector, this function will flatten the input torch.tensor along the given
-    dimension and subtract the mean vector from it. Then the dot product with the transformation matrix will be
-    computed and then the resulting torch.tensor is reshaped to the original input shape.
+    r"""Given a transformation matrix and a mean vector, this function will flatten the input
+    torch.tensor along the given dimension and subtract the mean vector from it. Then the dot
+    product with the transformation matrix will be computed and then the resulting torch.tensor
+    is reshaped to the original input shape.
 
     .. math::
 

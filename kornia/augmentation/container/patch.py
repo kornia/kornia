@@ -25,7 +25,6 @@ from torch import nn
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.contrib.extract_patches import extract_tensor_patches
-from kornia.core import ImageSequential
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -224,7 +223,7 @@ class PatchSequential(ImageSequential):
 
         """
         if F.pad is not None:
-            input = fpad(input, list(F.pad))
+            input = F.pad(input, list(F.pad))
         if grid_size is None:
             grid_size = self.grid_size
         window_size = (input.size(-2) // grid_size[-2], input.size(-1) // grid_size[-1])
@@ -257,7 +256,7 @@ class PatchSequential(ImageSequential):
         restored_tensor = torch.cat(torch.chunk(restored_tensor, grid_size[1], 1), -1).squeeze(1)
 
         if F.pad is not None:
-            restored_tensor = fpad(restored_tensor, [-i for i in F.pad])
+            restored_tensor = F.pad(restored_tensor, [-i for i in F.pad])
         return restored_tensor
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[PatchParamItem]:  # type: ignore[override]

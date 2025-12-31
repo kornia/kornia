@@ -46,7 +46,8 @@ def gaussian_blur2d(
     Arguments:
         input: the input torch.tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel. Can be an integer or tuple of two integers (height, width).
-        sigma: the standard deviation of the kernel. Can be a tuple of two floats or a torch.tensor with shape :math:`(B, 2)`.
+        sigma: the standard deviation of the kernel. Can be a tuple of two floats or a torch.tensor
+            with shape :math:`(B, 2)`.
           Values must be positive.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,

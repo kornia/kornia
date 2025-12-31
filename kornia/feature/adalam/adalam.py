@@ -181,7 +181,8 @@ class AdalamFilter:
 
         Returns:
             Filtered putative matches.
-            A long torch.tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
+            A long torch.tensor with shape (num_filtered_matches, 2) with indices of corresponding
+            keypoints in k1 and k2.
 
         """
         with torch.no_grad():
@@ -252,7 +253,8 @@ class AdalamFilter:
 
         Returns:
             Filtered putative matches.
-            A long torch.tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
+            A long torch.tensor with shape (num_filtered_matches, 2) with indices of corresponding
+            keypoints in k1 and k2.
 
         """
         if s1 is None or s2 is None:

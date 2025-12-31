@@ -69,7 +69,8 @@ def in_range(
           This bound is then applied uniformly across all batches.
 
         - When provided as a torch.tensor, it allows for different bounds to be applied to each batch.
-          The torch.tensor shape should be (B, C, 1, 1), torch.where B is the batch size and C is the number of channels.
+          The torch.tensor shape should be (B, C, 1, 1), torch.where B is the batch size and C is
+          the number of channels.
 
         - If the torch.tensor has a 1-D shape, same bound will be applied across all batches.
 

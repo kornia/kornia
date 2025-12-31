@@ -188,7 +188,8 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
     elif isinstance(background_color, torch.Tensor):
         if background_color.shape[-3] != 3:
             raise ValueError(
-                f"background_color torch.tensor must have 3 channels in dimension -3. Got shape {background_color.shape}"
+                f"background_color torch.tensor must have 3 channels in dimension -3. "
+                f"Got shape {background_color.shape}"
             )
         background_rgb = background_color
 

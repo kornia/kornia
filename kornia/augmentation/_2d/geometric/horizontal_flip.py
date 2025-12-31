@@ -25,7 +25,9 @@ from kornia.geometry.transform import hflip
 
 
 class RandomHorizontalFlip(GeometricAugmentationBase2D):
-    r"""Apply a random horizontal flip to a torch.tensor image or a batch of torch.tensor images with a given probability.
+    r"""Apply a random horizontal flip to a torch.tensor image or a batch of torch.tensor images.
+
+    The flip is applied with a given probability.
 
     .. image:: _static/img/RandomHorizontalFlip.png
 

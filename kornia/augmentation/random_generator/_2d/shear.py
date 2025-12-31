@@ -35,7 +35,8 @@ class ShearGenerator(RandomGeneratorBase):
             If (a, b), a shear parallel to the x axis in the range (-shear, +shear) will be applied.
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
-            If torch.tensor, shear is a 2x2 torch.tensor, a x-axis shear in (shear[0][0], shear[0][1]) and y-axis shear in
+            If torch.tensor, shear is a 2x2 torch.tensor, a x-axis shear in (shear[0][0], shear[0][1]) and
+            y-axis shear in
             (shear[1][0], shear[1][1]) will be applied. Will not apply shear by default.
 
     Returns:

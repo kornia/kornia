@@ -133,7 +133,7 @@ class ImageModuleMixIn:
             from kornia.io import ImageLoadType, load_image  # pylint: disable=C0415
 
             return load_image(x, ImageLoadType.UNCHANGED) / 255
-        if isinstance(x, (Tensor,)):
+        if isinstance(x, (torch.Tensor,)):
             return x
         if isinstance(x, (np.ndarray,)):  # type: ignore
             from kornia.utils.image import image_to_tensor  # pylint: disable=C0415
@@ -153,7 +153,7 @@ class ImageModuleMixIn:
             np.array: The converted numpy array.
 
         """
-        if isinstance(x, (Tensor,)):
+        if isinstance(x, (torch.Tensor,)):
             return x.cpu().detach().numpy()
         if isinstance(x, (np.ndarray,)):  # type: ignore
             return x
@@ -171,7 +171,7 @@ class ImageModuleMixIn:
             Image.Image: The converted PIL image.
 
         """
-        if isinstance(x, (Tensor,)):
+        if isinstance(x, (torch.Tensor,)):
             x = x.cpu().detach() * 255
             if x.dim() == 3:
                 x = x.permute(1, 2, 0)
@@ -190,7 +190,7 @@ class ImageModuleMixIn:
     def _detach_tensor_to_cpu(
         self, output_image: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]
     ) -> Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]:
-        if isinstance(output_image, (Tensor,)):
+        if isinstance(output_image, (torch.Tensor,)):
             return output_image.detach().cpu()
         if isinstance(
             output_image,

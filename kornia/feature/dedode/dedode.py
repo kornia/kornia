@@ -98,7 +98,8 @@ class DeDoDe(nn.Module):
             keypoints: A torch.tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range,
             unlike `.detect()` function
             scores: A torch.tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
-            descriptions: A torch.tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints.
+            descriptions: A torch.tensor of shape :math:`(B, N, DIM)` containing the descriptions
+                of the detected keypoints.
             DIM is 256 for B and 512 for G.
 
         """
@@ -179,7 +180,8 @@ class DeDoDe(nn.Module):
             crop_w: The width of the crop to be used for description. If None, the full image is used.
 
         Returns:
-            descriptions: A torch.tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints.
+            descriptions: A torch.tensor of shape :math:`(B, N, DIM)` containing the descriptions
+                of the detected keypoints.
             If the dense descriptors are requested, the shape is :math:`(B, DIM, H, W)`.
 
         """

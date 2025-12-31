@@ -23,6 +23,8 @@ import os
 from pathlib import Path
 from typing import Any, Optional, Union
 
+import torch
+
 from kornia.config import kornia_config
 from kornia.contrib.object_detection import ObjectDetector, RTDETRDetectorBuilder
 from kornia.core.external import boxmot

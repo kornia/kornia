@@ -122,7 +122,9 @@ def _tuple_range_reader(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    """Given target_size, it will generate the corresponding (target_size, 2) range torch.tensor for element-wise params.
+    """Given target_size, it will generate the corresponding (target_size, 2) range torch.tensor.
+
+    This is for element-wise params.
 
     Example:
     >>> degree = torch.tensor([0.2, 0.3])

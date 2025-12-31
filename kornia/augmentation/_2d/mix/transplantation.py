@@ -54,8 +54,9 @@ class RandomTransplantation(MixAugmentationBaseV2):
           receive a transplant.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
-        data_keys: the input type sequential for applying augmentations. There must be at least one "mask" torch.tensor. If no
-          data keys are given, the first torch.tensor is assumed to be `DataKey.INPUT` and the second torch.tensor `DataKey.MASK`.
+        data_keys: the input type sequential for applying augmentations. There must be at least one "mask" torch.tensor.
+          If no data keys are given, the first torch.tensor is assumed to be `DataKey.INPUT` and the second
+          torch.tensor `DataKey.MASK`.
           Accepts "input", "mask".
 
     Note:
@@ -282,7 +283,8 @@ class RandomTransplantation(MixAugmentationBaseV2):
             )
             KORNIA_CHECK(
                 len(selected_labels) <= len(params["acceptor_indices"]),
-                f"There cannot be more selected labels ({len(selected_labels)}) than images torch.where this augmentation "
+                f"There cannot be more selected labels ({len(selected_labels)}) than images "
+                f"torch.where this augmentation "
                 f"should be applied ({len(params['acceptor_indices'])}).",
             )
 

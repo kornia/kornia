@@ -317,7 +317,8 @@ def adalam_core(
         return_dist: if True, inverse confidence value is also outputted. Default is False
 
     Returns:
-        idxs: A long torch.tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
+        idxs: A long torch.tensor with shape (num_filtered_matches, 2) with indices of corresponding
+            keypoints in k1 and k2.
         dists: inverse confidence ratio.
 
     """

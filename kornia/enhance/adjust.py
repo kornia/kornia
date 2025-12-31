@@ -749,7 +749,8 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         bits: number of high bits. Must be in range [0, 8].
             If int or one element torch.tensor, input will be posterized by this bits.
             If 1-d torch.tensor, input will be posterized element-wisely, len(bits) == input.shape[-3].
-            If n-d torch.tensor, input will be posterized element-channel-wisely, bits.shape == input.shape[:len(bits.shape)]
+            If n-d torch.tensor, input will be posterized element-channel-wisely,
+            bits.shape == input.shape[:len(bits.shape)]
 
     Returns:
         Image with reduced color channels with shape :math:`(*, C, H, W)`.

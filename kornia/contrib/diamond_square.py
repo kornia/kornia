@@ -103,7 +103,8 @@ def _one_diamond_one_square(
     If this function is run in the usual sense, it is more efficient if it is run in a no_grad()
 
     Args:
-        img: a 4D torch.tensor torch.where dimensions are Batch, Channel, Width, Height. Width and Height must both be 2^N+1 and
+        img: a 4D torch.tensor torch.where dimensions are Batch, Channel, Width, Height.
+            Width and Height must both be 2^N+1 and
             Batch and Channels should in the usual case be 1.
         random_scale: a float  number in [0,1] controlling the randomness created pixels get. I the usual case, it is
             halved at every application of this function.

@@ -335,8 +335,8 @@ def _adapted_uniform(
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
 
-    By default, sampling happens on the default device and dtype. If low/high is a torch.tensor, sampling will happen in the
-    same device/dtype as low/high torch.tensor.
+    By default, sampling happens on the default device and dtype. If low/high is a torch.tensor,
+    sampling will happen in the same device/dtype as low/high torch.tensor.
     """
     device, dtype = _extract_device_dtype(
         [low if isinstance(low, torch.Tensor) else None, high if isinstance(high, torch.Tensor) else None]
@@ -360,8 +360,8 @@ def _adapted_beta(
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
 
-    By default, sampling happens on the default device and dtype. If a/b is a torch.tensor, sampling will happen in the same
-    device/dtype as a/b torch.tensor.
+    By default, sampling happens on the default device and dtype. If a/b is a torch.tensor,
+    sampling will happen in the same device/dtype as a/b torch.tensor.
     """
     device, dtype = _extract_device_dtype(
         [a if isinstance(a, torch.Tensor) else None, b if isinstance(b, torch.Tensor) else None]
@@ -431,7 +431,8 @@ def preprocess_boxes(input: Union[torch.Tensor, Boxes], mode: str = "vertices_pl
             See below for more details.
         mode: The format in which the boxes are provided.
 
-            * 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` torch.where ``width = xmax - xmin``
+            * 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` torch.where
+              ``width = xmax - xmin``
                 and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
             * 'xyxy_plus': similar to 'xyxy' mode but torch.where box width and length are defined as
                 ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
@@ -448,7 +449,8 @@ def preprocess_boxes(input: Union[torch.Tensor, Boxes], mode: str = "vertices_pl
 
     Note:
         **2D boxes format** is defined as a floating data type torch.tensor of shape ``Nx4x2`` or ``BxNx4x2``
-        torch.where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by it's 4 vertices
+        torch.where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by
+        it's 4 vertices
         coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of a box is defined as
         ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
         `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.

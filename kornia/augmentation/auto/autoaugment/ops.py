@@ -17,6 +17,8 @@
 
 """AutoAugment operation wrapper."""
 
+import torch
+
 from kornia.augmentation.auto.operations import (
     AutoContrast,
     Brightness,

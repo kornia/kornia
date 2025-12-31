@@ -39,7 +39,8 @@ class DISK(nn.Module):
         desc_dim: The dimension of the descriptor.
         unet: The U-Net to use. If None, a default U-Net is used. Kornia doesn't provide the training code for DISK
               so this is only useful when using a custom checkpoint trained using the code released with the paper.
-              The unet should take as input a torch.tensor of shape :math:`(B, C, H, W)` and output a torch.tensor of shape
+              The unet should take as input a torch.tensor of shape :math:`(B, C, H, W)` and output
+              a torch.tensor of shape
               :math:`(B, \mathrm{desc\_dim} + 1, H, W)`.
 
     Example:

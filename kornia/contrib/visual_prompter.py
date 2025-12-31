@@ -104,7 +104,8 @@ class VisualPrompter:
     ) -> torch.Tensor:
         """Normalize and F.pad a torch.tensor.
 
-        For F.normalize the tensor: will prioritize the `mean` and `std` passed as argument, if None will use the default
+        For F.normalize the tensor: will prioritize the `mean` and `std` passed as argument,
+        if None will use the default
         Sam Dataset values.
 
         For F.pad the tensor: Will F.pad the torch.tensor into the right and bottom to match with the size of
