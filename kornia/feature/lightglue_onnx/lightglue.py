@@ -160,14 +160,14 @@ class OnnxLightGlue:
         lightglue_outputs = ["matches0", "mscores0"]
         binding = self.session.io_binding()
 
-        for name, torch.tensor in lightglue_inputs.items():
+        for name, tensor in lightglue_inputs.items():
             binding.bind_input(
                 name,
                 device_type=self.device.type,
                 device_id=0,
                 element_type=np.float32,
-                shape=tuple(torch.tensor.shape),
-                buffer_ptr=torch.tensor.data_ptr(),
+                shape=tuple(tensor.shape),
+                buffer_ptr=tensor.data_ptr(),
             )
 
         for name in lightglue_outputs:
