@@ -30,9 +30,11 @@ def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     kernel_val = torch.zeros_like(x)
 
     mask1 = x < 0.5
-    kernel_val[mask1] = -1.8 * (x[mask1] ** 2) - 0.1 * x[mask1] + 1.0
+    x_mask1 = x[mask1]
+    kernel_val[mask1] = -1.8 * (x_mask1**2) - 0.1 * x_mask1 + 1.0
     mask2 = (x >= 0.5) & (x <= 1.0)
-    kernel_val[mask2] = 1.8 * (x[mask2] ** 2) - 3.7 * x[mask2] + 1.9
+    x_mask2 = x[mask2]
+    kernel_val[mask2] = 1.8 * (x_mask2**2) - 3.7 * x_mask2 + 1.9
 
     return kernel_val
 
