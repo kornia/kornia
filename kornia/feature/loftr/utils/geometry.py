@@ -19,13 +19,16 @@ from typing import Tuple
 
 import torch
 
-from kornia.core import Tensor
-
 
 @torch.no_grad()
 def warp_kpts(
-    kpts0: Tensor, depth0: Tensor, depth1: Tensor, T_0to1: Tensor, K0: Tensor, K1: Tensor
-) -> Tuple[Tensor, Tensor]:
+    kpts0: torch.Tensor,
+    depth0: torch.Tensor,
+    depth1: torch.Tensor,
+    T_0to1: torch.Tensor,
+    K0: torch.Tensor,
+    K1: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Warp kpts0 from I0 to I1 with depth, K and Rt Also check covisibility and depth consistency.
 
     Depth is consistent if relative error < 0.2 (hard-coded).

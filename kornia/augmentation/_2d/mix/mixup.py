@@ -17,21 +17,22 @@
 
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, DType
-from kornia.core import Tensor, stack, zeros
 
 
 class RandomMixUpV2(MixAugmentationBaseV2):
-    r"""Apply MixUp augmentation to a batch of tensor images.
+    r"""Apply MixUp augmentation to a batch of torch.tensor images.
 
     .. image:: _static/img/RandomMixUpV2.png
 
     Implementation for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
 
-    The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
-    while the labels is a :math:`(B, 3)` tensor that contains (label_batch, label_permuted_batch, lambda) for
+    The function returns (inputs, labels), in which the inputs is the torch.tensor that contains the mixup images
+    while the labels is a :math:`(B, 3)` torch.tensor that contains (label_batch, label_permuted_batch, lambda) for
     each image.
 
     The implementation is on top of the following repository:
@@ -68,7 +69,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         - Label: raw labels, shape of :math:`(B)`.
 
     Returns:
-        Tuple[Tensor, Tensor]:
+        Tuple[torch.Tensor, torch.Tensor]:
         - Adjusted image, shape of :math:`(B, C, H, W)`.
         - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, 3)`.
 
@@ -95,7 +96,7 @@ class RandomMixUpV2(MixAugmentationBaseV2):
 
     def __init__(
         self,
-        lambda_val: Optional[Union[Tensor, Tuple[float, float]]] = None,
+        lambda_val: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -105,8 +106,8 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         self._param_generator = rg.MixupGenerator(lambda_val, p=p)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         input_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
 
         lam = params["mixup_lambdas"].view(-1, 1, 1, 1).expand_as(input).to(input.device)
@@ -114,24 +115,24 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         return inputs
 
     def apply_non_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
-        out_labels = stack(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
+        out_labels = torch.stack(
             [
                 input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
                 input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
-                zeros((len(input),), device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
+                torch.zeros((len(input),), device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
             ],
             -1,
         )
         return out_labels
 
     def apply_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         labels_permute = input.index_select(dim=0, index=params["mixup_pairs"].to(input.device))
 
-        out_labels = stack(
+        out_labels = torch.stack(
             [
                 input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
                 labels_permute.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),

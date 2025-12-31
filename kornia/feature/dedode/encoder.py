@@ -20,12 +20,10 @@ from typing import Any, Optional, Tuple
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor
-
 from .vgg import vgg19_bn
 
 
-class VGG19(Module):
+class VGG19(nn.Module):
     def __init__(self, amp: bool = False, amp_dtype: torch.dtype = torch.float16) -> None:
         super().__init__()
         self.layers = nn.ModuleList(vgg19_bn().features[:40])  # type: ignore
@@ -33,7 +31,7 @@ class VGG19(Module):
         self.amp = amp
         self.amp_dtype = amp_dtype
 
-    def forward(self, x: Tensor, **kwargs):  # type: ignore[no-untyped-def]
+    def forward(self, x: torch.Tensor, **kwargs):  # type: ignore[no-untyped-def]
         with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
             feats = []
             sizes = []
@@ -45,7 +43,7 @@ class VGG19(Module):
             return feats, sizes
 
 
-class FrozenDINOv2(Module):
+class FrozenDINOv2(nn.Module):
     def __init__(self, amp: bool = True, amp_dtype: torch.dtype = torch.float16, dinov2_weights: Optional[Any] = None):
         super().__init__()
         if dinov2_weights is None:
@@ -69,7 +67,7 @@ class FrozenDINOv2(Module):
             dinov2_vitl14 = dinov2_vitl14.to(self.amp_dtype)
         self.dinov2_vitl14 = [dinov2_vitl14]  # ugly hack to not show parameters to DDP
 
-    def forward(self, x: Tensor):  # type: ignore[no-untyped-def]
+    def forward(self, x: torch.Tensor):  # type: ignore[no-untyped-def]
         B, _C, H, W = x.shape
         if self.dinov2_vitl14[0].device != x.device:
             self.dinov2_vitl14[0] = self.dinov2_vitl14[0].to(x.device).to(self.amp_dtype)
@@ -79,7 +77,7 @@ class FrozenDINOv2(Module):
         return [features_16.clone()], [(H // 14, W // 14)]  # clone from inference mode to use in autograd
 
 
-class VGG_DINOv2(Module):
+class VGG_DINOv2(nn.Module):
     def __init__(self, vgg_kwargs=None, dinov2_kwargs=None):  # type: ignore[no-untyped-def]
         if (vgg_kwargs is None) or (dinov2_kwargs is None):
             raise ValueError("Input kwargs please")
@@ -87,7 +85,7 @@ class VGG_DINOv2(Module):
         self.vgg = VGG19(**vgg_kwargs)
         self.frozen_dinov2 = FrozenDINOv2(**dinov2_kwargs)
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tuple[int, int]]:
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Tuple[int, int]]:
         feats_vgg, sizes_vgg = self.vgg(x)
         feat_dinov2, size_dinov2 = self.frozen_dinov2(x)
         return feats_vgg + feat_dinov2, sizes_vgg + size_dinov2

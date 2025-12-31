@@ -26,8 +26,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK
 
 url: str = "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"
@@ -57,7 +55,7 @@ def weight_init(m: nn.Module) -> None:
             torch.nn.init.zeros_(m.bias)
 
 
-class CoFusion(Module):
+class CoFusion(nn.Module):
     def __init__(self, in_ch: int, out_ch: int) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(in_ch, 64, kernel_size=3, stride=1, padding=1)
@@ -67,7 +65,7 @@ class CoFusion(Module):
         self.norm_layer1 = nn.GroupNorm(4, 64)
         self.norm_layer2 = nn.GroupNorm(4, 64)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # fusecat = torch.cat(x, dim=1)
         attn = self.relu(self.norm_layer1(self.conv1(x)))
         attn = self.relu(self.norm_layer2(self.conv2(attn)))
@@ -92,9 +90,9 @@ class _DenseLayer(nn.Sequential):
             )
         )
 
-    def forward(self, x: list[Tensor]) -> list[Tensor]:
+    def forward(self, x: list[torch.Tensor]) -> list[torch.Tensor]:
         x1, x2 = x[0], x[1]
-        x3: Tensor = x1
+        x3: torch.Tensor = x1
         for mod in self:
             x3 = mod(x3)
         return [0.5 * (x3 + x2), x2]
@@ -108,14 +106,14 @@ class _DenseBlock(nn.Sequential):
             self.add_module(f"denselayer{(i + 1)}", layer)
             input_features = out_features
 
-    def forward(self, x: list[Tensor]) -> list[Tensor]:
+    def forward(self, x: list[torch.Tensor]) -> list[torch.Tensor]:
         x_out = x
         for mod in self:
             x_out = mod(x_out)
         return x_out
 
 
-class UpConvBlock(Module):
+class UpConvBlock(nn.Module):
     def __init__(self, in_features: int, up_scale: int) -> None:
         super().__init__()
         self.up_factor = 2
@@ -141,20 +139,20 @@ class UpConvBlock(Module):
     def compute_out_features(self, idx: int, up_scale: int) -> int:
         return 1 if idx == up_scale - 1 else self.constant_features
 
-    def forward(self, x: Tensor, out_shape: list[int]) -> Tensor:
+    def forward(self, x: torch.Tensor, out_shape: list[int]) -> torch.Tensor:
         out = self.features(x)
         out = F.interpolate(out, out_shape, mode="bilinear")
         return out
 
 
-class SingleConvBlock(Module):
+class SingleConvBlock(nn.Module):
     def __init__(self, in_features: int, out_features: int, stride: int, use_bs: bool = True) -> None:
         super().__init__()
         self.use_bn = use_bs
         self.conv = nn.Conv2d(in_features, out_features, 1, stride=stride, bias=True)
         self.bn = nn.BatchNorm2d(out_features)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv(x)
         if self.use_bn:
             x = self.bn(x)
@@ -182,11 +180,11 @@ class DoubleConvBlock(nn.Sequential):
             self.add_module("relu2", nn.ReLU(inplace=True))
 
 
-class DexiNed(Module):
+class DexiNed(nn.Module):
     r"""Definition of the DXtrem network from :cite:`xsoria2020dexined`.
 
     Return:
-        A list of tensor with the intermediate features which the last element
+        A list of torch.tensor with the intermediate features which the last element
         is the edges map with shape :math:`(B,1,H,W)`.
 
     Example:
@@ -246,7 +244,7 @@ class DexiNed(Module):
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def get_features(self, x: Tensor) -> list[Tensor]:
+    def get_features(self, x: torch.Tensor) -> list[torch.Tensor]:
         # Block 1
         block_1 = self.block_1(x)
         block_1_side = self.side_1(block_1)
@@ -292,11 +290,11 @@ class DexiNed(Module):
         results = [out_1, out_2, out_3, out_4, out_5, out_6]
         return results
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         features = self.get_features(x)
 
-        # concatenate multiscale outputs
-        block_cat = concatenate(features, 1)  # Bx6xHxW
+        # torch.cat multiscale outputs
+        block_cat = torch.cat(features, 1)  # Bx6xHxW
         block_cat = self.block_cat(block_cat)  # Bx1xHxW
 
         return block_cat

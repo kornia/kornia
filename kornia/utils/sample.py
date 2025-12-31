@@ -20,8 +20,9 @@ import logging
 import os
 from typing import Any, List, Optional, Tuple, Union
 
+import torch
+
 import kornia
-from kornia.core import Tensor, stack
 from kornia.core.external import PILImage as Image
 from kornia.core.external import requests
 from kornia.io import load_image
@@ -60,7 +61,7 @@ def get_sample_images(
     as_list: Optional[bool] = None,
     divisible_factor: Optional[int] = None,
     **kwargs: Any,
-) -> Union[Tensor, List[Tensor]]:
+) -> Union[torch.Tensor, List[torch.Tensor]]:
     """Load multiple images from the given URLs.
 
     Optionally download them, resize them if specified, and return them as a batch of tensors or a list of tensors.
@@ -110,6 +111,6 @@ def get_sample_images(
         tensors.append(img_tensor)
 
     if not as_list and resize is not None:
-        return stack(tensors)
+        return torch.stack(tensors)
 
     return tensors

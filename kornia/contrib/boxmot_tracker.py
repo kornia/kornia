@@ -23,9 +23,10 @@ import os
 from pathlib import Path
 from typing import Any, Optional, Union
 
+import torch
+
 from kornia.config import kornia_config
 from kornia.contrib.object_detection import ObjectDetector, RTDETRDetectorBuilder
-from kornia.core import Tensor, tensor
 from kornia.core.external import boxmot
 from kornia.core.external import numpy as np
 from kornia.io import write_image
@@ -42,7 +43,7 @@ class BoxMotTracker:
     This module uses BoxMot library for tracking.
 
     Args:
-        detector: ObjectDetector: The detector model.
+        detector: The detector model.
         tracker_model_name: The name of the tracker model. Valid options are:
             - "BoTSORT"
             - "DeepOCSORT"
@@ -52,9 +53,9 @@ class BoxMotTracker:
             - "StrongSORT"
             - "ImprAssoc"
         tracker_model_weights: Path to the model weights for ReID (Re-Identification).
-        device: Device on which to run the model (e.g., 'cpu' or 'cuda').
+        device: Union[str, torch.device, None] on which to run the model (e.g., 'cpu' or 'cuda').
         fp16: Whether to use half-precision (fp16) for faster inference on compatible devices.
-        per_class: Whether to perform per-class tracking
+        per_class: Whether to perform per-class tracking.
         track_high_thresh: High threshold for detection confidence.
             Detections above this threshold are used in the first association round.
         track_low_thresh: Low threshold for detection confidence.
@@ -73,6 +74,7 @@ class BoxMotTracker:
     .. code-block:: python
 
         import kornia
+        import torch
         image = kornia.utils.sample.get_sample_images()[0][None]
         model = BoxMotTracker()
         for i in range(4):  # At least 4 frames are needed to initialize the tracking position
@@ -112,7 +114,7 @@ class BoxMotTracker:
             **kwargs,
         )
 
-    def update(self, image: Tensor) -> None:
+    def update(self, image: torch.Tensor) -> None:
         """Update the tracker with a new image.
 
         Args:
@@ -120,12 +122,12 @@ class BoxMotTracker:
 
         """
         if not (image.ndim == 4 and image.shape[0] == 1) and not image.ndim == 3:
-            raise ValueError(f"Input tensor must be of shape (1, 3, H, W) or (3, H, W). Got {image.shape}")
+            raise ValueError(f"Input torch.tensor must be of shape (1, 3, H, W) or (3, H, W). Got {image.shape}")
 
         if image.ndim == 3:
             image = image.unsqueeze(0)
 
-        detections_raw: Union[Tensor, list[Tensor]] = self.detector(image)
+        detections_raw: Union[torch.Tensor, list[torch.Tensor]] = self.detector(image)
 
         detections = detections_raw[0].cpu().numpy()  # Batch size is 1
 
@@ -148,7 +150,7 @@ class BoxMotTracker:
         # --> M X (x, y, x, y, id, conf, cls, ind)
         return self.tracker.update(detections, frame_raw)
 
-    def visualize(self, image: Tensor, show_trajectories: bool = True) -> Tensor:
+    def visualize(self, image: torch.Tensor, show_trajectories: bool = True) -> torch.Tensor:
         """Visualize the results of the tracker.
 
         Args:
@@ -162,9 +164,9 @@ class BoxMotTracker:
         frame_raw = (tensor_to_image(image) * 255).astype(np.uint8)
         self.tracker.plot_results(frame_raw, show_trajectories=show_trajectories)
 
-        return tensor(frame_raw).permute(2, 0, 1)
+        return torch.tensor(frame_raw).permute(2, 0, 1)
 
-    def save(self, image: Tensor, show_trajectories: bool = True, directory: Optional[str] = None) -> None:
+    def save(self, image: torch.Tensor, show_trajectories: bool = True, directory: Optional[str] = None) -> None:
         """Save the model to ONNX format.
 
         Args:

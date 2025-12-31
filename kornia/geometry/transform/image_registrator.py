@@ -22,7 +22,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 
-from kornia.core import Module, Tensor
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affinematrix_to_homography
 
 from .homography_warper import BaseWarper, HomographyWarper
@@ -31,15 +30,15 @@ from .pyramid import build_pyramid
 __all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 
 
-class BaseModel(Module):
+class BaseModel(nn.Module):
     @abstractmethod
     def reset_model(self) -> None: ...
 
     @abstractmethod
-    def forward(self) -> Tensor: ...
+    def forward(self) -> torch.Tensor: ...
 
     @abstractmethod
-    def forward_inverse(self) -> Tensor: ...
+    def forward_inverse(self) -> torch.Tensor: ...
 
 
 class Homography(BaseModel):
@@ -57,7 +56,7 @@ class Homography(BaseModel):
         """Initialize the model with identity transform."""
         torch.nn.init.eye_(self.model)
 
-    def forward(self) -> Tensor:
+    def forward(self) -> torch.Tensor:
         r"""Single-batch homography".
 
         Returns:
@@ -66,7 +65,7 @@ class Homography(BaseModel):
         """
         return torch.unsqueeze(self.model / self.model[2, 2], dim=0)  # 1x3x3
 
-    def forward_inverse(self) -> Tensor:
+    def forward_inverse(self) -> torch.Tensor:
         r"""Interted Single-batch homography".
 
         Returns:
@@ -113,7 +112,7 @@ class Similarity(BaseModel):
         torch.nn.init.zeros_(self.shift)
         torch.nn.init.ones_(self.scale)
 
-    def forward(self) -> Tensor:
+    def forward(self) -> torch.Tensor:
         r"""Single-batch similarity transform".
 
         Returns:
@@ -124,7 +123,7 @@ class Similarity(BaseModel):
         out = convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
         return out
 
-    def forward_inverse(self) -> Tensor:
+    def forward_inverse(self) -> torch.Tensor:
         r"""Single-batch inverse similarity transform".
 
         Returns:
@@ -134,11 +133,11 @@ class Similarity(BaseModel):
         return torch.inverse(self.forward())
 
 
-class ImageRegistrator(Module):
-    r"""Module, which performs optimization-based image registration.
+class ImageRegistrator(nn.Module):
+    r"""nn.Module, which performs optimization-based image registration.
 
     Args:
-        model_type: Geometrical model for registration. Can be string or Module.
+        model_type: Geometrical model for registration. Can be string or nn.Module.
         optimizer: optimizer class used for the optimization.
         loss_fn: torch loss function.
         pyramid_levels: number of scale pyramid levels.
@@ -161,7 +160,7 @@ class ImageRegistrator(Module):
         self,
         model_type: Union[str, BaseModel] = "homography",
         optimizer: Type[optim.Optimizer] = optim.Adam,
-        loss_fn: Callable[..., Tensor] = F.l1_loss,
+        loss_fn: Callable[..., torch.Tensor] = F.l1_loss,
         pyramid_levels: int = 5,
         lr: float = 1e-3,
         num_iterations: int = 100,
@@ -201,7 +200,9 @@ class ImageRegistrator(Module):
         self.num_iterations = num_iterations
         self.tolerance = tolerance
 
-    def get_single_level_loss(self, img_src: Tensor, img_dst: Tensor, transform_model: Tensor) -> Tensor:
+    def get_single_level_loss(
+        self, img_src: torch.Tensor, img_dst: torch.Tensor, transform_model: torch.Tensor
+    ) -> torch.Tensor:
         """Warp img_src into img_dst with transform_model and returns loss."""
         # ToDo: Make possible registration of images of different shape
         if img_src.shape != img_dst.shape:
@@ -214,8 +215,8 @@ class ImageRegistrator(Module):
         img_src_to_dst = warper(img_src, transform_model)
         # compute and mask loss
         loss = self.loss_fn(img_src_to_dst, img_dst, reduction="none")  # 1xCxHxW
-        ones = warper(torch.ones_like(img_src), transform_model)
-        loss = loss.masked_select(ones > 0.9).mean()
+        ones_tensor = warper(torch.ones_like(img_src), transform_model)
+        loss = loss.masked_select(ones_tensor > 0.9).mean()
         return loss
 
     def reset_model(self) -> None:
@@ -223,21 +224,25 @@ class ImageRegistrator(Module):
         self.model.reset_model()
 
     def register(
-        self, src_img: Tensor, dst_img: Tensor, verbose: bool = False, output_intermediate_models: bool = False
-    ) -> Union[Tensor, Tuple[Tensor, List[Tensor]]]:
+        self,
+        src_img: torch.Tensor,
+        dst_img: torch.Tensor,
+        verbose: bool = False,
+        output_intermediate_models: bool = False,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
         r"""Estimate the transformation which warps src_img into dst_img by gradient descent.
 
         The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration.
 
         Args:
-            src_img: Input image tensor.
-            dst_img: Input image tensor.
+            src_img: Input image torch.tensor.
+            dst_img: Input image torch.tensor.
             verbose: if True, outputs loss every 10 iterations.
             output_intermediate_models: if True with intermediate models
 
         Returns:
             the transformation between two images, shape depends on the model,
-            typically [1x3x3] tensor for string model_types.
+            typically [1x3x3] torch.tensor for string model_types.
 
         """
         self.reset_model()
@@ -274,14 +279,14 @@ class ImageRegistrator(Module):
             return self.model(), aux_models
         return self.model()
 
-    def warp_src_into_dst(self, src_img: Tensor) -> Tensor:
+    def warp_src_into_dst(self, src_img: torch.Tensor) -> torch.Tensor:
         r"""Warp src_img with estimated model."""
         _height, _width = src_img.shape[-2:]
         warper = self.warper(_height, _width)
         img_src_to_dst = warper(src_img, self.model())
         return img_src_to_dst
 
-    def warp_dst_inro_src(self, dst_img: Tensor) -> Tensor:
+    def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:
         r"""Warp src_img with inverted estimated model."""
         _height, _width = dst_img.shape[-2:]
         warper = self.warper(_height, _width)

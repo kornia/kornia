@@ -27,7 +27,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Ty
 import torch
 from torch.linalg import inv_ex
 
-from kornia.core import Tensor
 from kornia.utils._compat import torch_version_ge
 
 
@@ -38,7 +37,7 @@ def xla_is_available() -> bool:
     return False
 
 
-def is_mps_tensor_safe(x: Tensor) -> bool:
+def is_mps_tensor_safe(x: torch.Tensor) -> bool:
     """Return whether tensor is on MPS device."""
     return "mps" in str(x.device)
 
@@ -87,14 +86,14 @@ def get_cuda_or_mps_device_if_available() -> torch.device:
 
 
 @overload
-def map_location_to_cpu(storage: Tensor, location: str) -> Tensor: ...
+def map_location_to_cpu(storage: torch.Tensor, location: str) -> torch.Tensor: ...
 
 
 @overload
 def map_location_to_cpu(storage: str) -> str: ...
 
 
-def map_location_to_cpu(storage: Union[str, Tensor], *args: Any, **kwargs: Any) -> Union[str, Tensor]:
+def map_location_to_cpu(storage: Union[str, torch.Tensor], *args: Any, **kwargs: Any) -> Union[str, torch.Tensor]:
     """Map location of device to CPU, util for loading things from HUB."""
     return storage
 
@@ -136,7 +135,7 @@ def deprecated(
 
 
 def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
-    """Check if all the input are in the same device (only if when they are Tensor).
+    """Check if all the input are in the same device (only if when they are torch.Tensor).
 
     If so, it would return a tuple of (device, dtype). Default: (cpu, ``get_default_dtype()``).
 
@@ -147,7 +146,7 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
     device, dtype = None, None
     for tensor in tensor_list:
         if tensor is not None:
-            if not isinstance(tensor, (Tensor,)):
+            if not isinstance(tensor, (torch.Tensor,)):
                 continue
             _device = tensor.device
             _dtype = tensor.dtype
@@ -167,35 +166,35 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
     return (device, dtype)
 
 
-def _torch_inverse_cast(input: Tensor) -> Tensor:
+def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     """Make torch.inverse work with other than fp32/64.
 
     The function torch.inverse is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
     """
-    if not isinstance(input, Tensor):
-        raise AssertionError(f"Input must be Tensor. Got: {type(input)}.")
+    if not isinstance(input, torch.Tensor):
+        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
     dtype: torch.dtype = input.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
     return torch.linalg.inv(input.to(dtype)).to(input.dtype)
 
 
-def _torch_histc_cast(input: Tensor, bins: int, min: Union[float, bool], max: Union[float, bool]) -> Tensor:
+def _torch_histc_cast(input: torch.Tensor, bins: int, min: Union[float, bool], max: Union[float, bool]) -> torch.Tensor:
     """Make torch.histc work with other than fp32/64.
 
     The function torch.histc is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
     """
-    if not isinstance(input, Tensor):
-        raise AssertionError(f"Input must be Tensor. Got: {type(input)}.")
+    if not isinstance(input, torch.Tensor):
+        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
     dtype: torch.dtype = input.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
     return torch.histc(input.to(dtype), bins, min, max).to(input.dtype)
 
 
-def _torch_svd_cast(input: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Make torch.svd work with other than fp32/64.
 
     The function torch.svd is only implemented for fp32/64 which makes
@@ -218,7 +217,7 @@ def _torch_svd_cast(input: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
 
 
-def _torch_linalg_svdvals(input: Tensor) -> Tensor:
+def _torch_linalg_svdvals(input: torch.Tensor) -> torch.Tensor:
     """Make torch.linalg.svdvals work with other than fp32/64.
 
     The function torch.svd is only implemented for fp32/64 which makes
@@ -227,15 +226,15 @@ def _torch_linalg_svdvals(input: Tensor) -> Tensor:
 
     NOTE: in torch 1.8.1 this function is recommended to use as torch.linalg.svd
     """
-    if not isinstance(input, Tensor):
-        raise AssertionError(f"Input must be Tensor. Got: {type(input)}.")
+    if not isinstance(input, torch.Tensor):
+        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
     dtype: torch.dtype = input.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
     if TYPE_CHECKING:
         # TODO: remove this branch when kornia relies on torch >= 1.10
-        out: Tensor
+        out: torch.Tensor
     elif torch_version_ge(1, 10):
         out = torch.linalg.svdvals(input.to(dtype))
     else:
@@ -244,8 +243,8 @@ def _torch_linalg_svdvals(input: Tensor) -> Tensor:
     return out.to(input.dtype)
 
 
-# TODO: return only `Tensor` and review all the calls to adjust
-def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
+# TODO: return only `torch.Tensor` and review all the calls to adjust
+def _torch_solve_cast(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """Make torch.solve work with other than fp32/64.
 
     For stable operation, the input matrices should be cast to fp64, and the output will
@@ -262,7 +261,7 @@ def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
     return out.to(A.dtype)
 
 
-def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Solves the system of equations.
 
     Avoids crashing because of singular matrix input and outputs the mask of valid solution.
@@ -272,24 +271,24 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         warnings.warn("PyTorch version < 1.10, solve validness mask maybe not correct", RuntimeWarning, stacklevel=1)
         return sol, sol, torch.ones(len(A), dtype=torch.bool, device=A.device)
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
-    if not isinstance(B, Tensor):
-        raise AssertionError(f"B must be Tensor. Got: {type(B)}.")
+    if not isinstance(B, torch.Tensor):
+        raise AssertionError(f"B must be torch.Tensor. Got: {type(B)}.")
     dtype: torch.dtype = B.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
     if TYPE_CHECKING:
         # TODO: remove this branch when kornia relies on torch >= 1.13
-        A_LU: Tensor
-        pivots: Tensor
-        info: Tensor
+        A_LU: torch.Tensor
+        pivots: torch.Tensor
+        info: torch.Tensor
     elif torch_version_ge(1, 13):
         A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
     else:
         # TODO: remove this branch when kornia relies on torch >= 1.13
         A_LU, pivots, info = torch.lu(A.to(dtype), True, get_infos=True)
 
-    valid_mask: Tensor = info == 0
+    valid_mask: torch.Tensor = info == 0
     n_dim_B = len(B.shape)
     n_dim_A = len(A.shape)
     if n_dim_A - n_dim_B == 1:
@@ -297,7 +296,7 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
 
     if TYPE_CHECKING:
         # TODO: remove this branch when kornia relies on torch >= 1.13
-        X: Tensor
+        X: torch.Tensor
     elif torch_version_ge(1, 13):
         X = torch.linalg.lu_solve(A_LU, pivots, B.to(dtype))
     else:
@@ -307,13 +306,13 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     return X.to(B.dtype), A_LU.to(A.dtype), valid_mask
 
 
-def safe_inverse_with_mask(A: Tensor) -> Tuple[Tensor, Tensor]:
+def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Perform inverse.
 
     Avoids crashing because of non-invertable matrix input and outputs the mask of valid solution.
     """
-    if not isinstance(A, Tensor):
-        raise AssertionError(f"A must be Tensor. Got: {type(A)}.")
+    if not isinstance(A, torch.Tensor):
+        raise AssertionError(f"A must be torch.Tensor. Got: {type(A)}.")
 
     dtype_original = A.dtype
     if dtype_original not in (torch.float32, torch.float64):

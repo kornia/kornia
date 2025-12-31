@@ -15,11 +15,9 @@
 # limitations under the License.
 #
 
-"""Module containing numerical functionalities for SfM."""
-
 import torch
 
-from kornia.core import stack, zeros_like
+"""nn.Module containing numerical functionalities for SfM."""
 
 
 def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
@@ -40,8 +38,8 @@ def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
     x2 = x[..., 2]
 
     # construct the matrix, reshape to 3x3 and return
-    zeros = zeros_like(x0)
-    cross_product_matrix_flat = stack([zeros, -x2, x1, x2, zeros, -x0, -x1, x0, zeros], dim=-1)
+    zeros = torch.zeros_like(x0)
+    cross_product_matrix_flat = torch.stack([zeros, -x2, x1, x2, zeros, -x0, -x1, x0, zeros], dim=-1)
     shape_ = x.shape[:-1] + (3, 3)
     return cross_product_matrix_flat.view(*shape_)
 

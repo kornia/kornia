@@ -22,8 +22,8 @@ from enum import Enum
 from typing import Any, ClassVar, List, Optional, Tuple, Union
 
 import torch
+from torch import nn
 
-from kornia.core import Module, Tensor, rand, tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
@@ -90,11 +90,14 @@ class ObjectDetectorResult:
     bbox: BoundingBox
 
 
-def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFormat) -> list[ObjectDetectorResult]:
-    """Convert a detection tensor to a list of :py:class:`ObjectDetectorResult`.
+def results_from_detections(
+    detections: torch.Tensor, format: str | BoundingBoxDataFormat
+) -> list[ObjectDetectorResult]:
+    """Convert a detection torch.tensor to a list of :py:class:`ObjectDetectorResult`.
 
     Args:
-        detections: tensor with shape :math:`(D, 6)`, where :math:`D` is the number of detections in the given image,
+        detections: torch.tensor with shape :math:`(D, 6)`, torch.where :math:`D` is the number of
+            detections in the given image,
             :math:`6` represents class id, score, and `xywh` bounding box.
         format: detection format.
 
@@ -127,7 +130,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
 
     name: str = "detection"
 
-    def __init__(self, model: Module, pre_processor: Module, post_processor: Module) -> None:
+    def __init__(self, model: nn.Module, pre_processor: nn.Module, post_processor: nn.Module) -> None:
         """Initialize ObjectDetector.
 
         Args:
@@ -160,15 +163,16 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         )
 
     @torch.inference_mode()
-    def forward(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:
+    def forward(self, images: Union[torch.Tensor, list[torch.Tensor]]) -> Union[torch.Tensor, list[torch.Tensor]]:
         """Detect objects in a given list of images.
 
         Args:
-            images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
-                If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
+                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
-            list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`, where :math:`D` is the
+            list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`,
+            torch.where :math:`D` is the
             number of detections in the given image, :math:`6` represents class id, score, and `xywh` bounding box.
 
         """
@@ -178,8 +182,11 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         return detections
 
     def visualize(
-        self, images: Union[Tensor, list[Tensor]], detections: Optional[Tensor] = None, output_type: str = "torch"
-    ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
+        self,
+        images: Union[torch.Tensor, list[torch.Tensor]],
+        detections: Optional[torch.Tensor] = None,
+        output_type: str = "torch",
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
         """Very simple drawing.
 
         Needs to be more fancy later.
@@ -195,16 +202,19 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
                 )
             output.append(out_img[0])
 
-        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, Tensor))
+        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, torch.Tensor))
 
     def save(
-        self, images: Union[Tensor, list[Tensor]], detections: Optional[Tensor] = None, directory: Optional[str] = None
+        self,
+        images: Union[torch.Tensor, list[torch.Tensor]],
+        detections: Optional[torch.Tensor] = None,
+        directory: Optional[str] = None,
     ) -> None:
         """Save the output image(s) to a directory.
 
         Args:
-            images: input tensor.
-            detections: detection tensor.
+            images: input torch.tensor.
+            detections: detection torch.tensor.
             directory: directory to save the images.
 
         """
@@ -279,7 +289,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         )
 
 
-class BoxFiltering(Module, ONNXExportMixin):
+class BoxFiltering(nn.Module, ONNXExportMixin):
     """Filter boxes according to the desired threshold.
 
     Args:
@@ -295,8 +305,8 @@ class BoxFiltering(Module, ONNXExportMixin):
 
     def __init__(
         self,
-        confidence_threshold: Optional[Union[Tensor, float]] = None,
-        classes_to_keep: Optional[Union[Tensor, List[int]]] = None,
+        confidence_threshold: Optional[Union[torch.Tensor, float]] = None,
+        classes_to_keep: Optional[Union[torch.Tensor, List[int]]] = None,
         filter_as_zero: bool = False,
     ) -> None:
         super().__init__()
@@ -304,37 +314,42 @@ class BoxFiltering(Module, ONNXExportMixin):
         self.classes_to_keep = None
         self.confidence_threshold = None
         if classes_to_keep is not None:
-            self.classes_to_keep = classes_to_keep if isinstance(classes_to_keep, Tensor) else tensor(classes_to_keep)
+            self.classes_to_keep = (
+                classes_to_keep if isinstance(classes_to_keep, torch.Tensor) else torch.tensor(classes_to_keep)
+            )
         if confidence_threshold is not None:
             self.confidence_threshold = (
                 confidence_threshold or confidence_threshold
-                if isinstance(confidence_threshold, Tensor)
-                else tensor(confidence_threshold)
+                if isinstance(confidence_threshold, torch.Tensor)
+                else torch.tensor(confidence_threshold)
             )
 
     def forward(
-        self, boxes: Tensor, confidence_threshold: Optional[Tensor] = None, classes_to_keep: Optional[Tensor] = None
-    ) -> Union[Tensor, List[Tensor]]:
+        self,
+        boxes: torch.Tensor,
+        confidence_threshold: Optional[torch.Tensor] = None,
+        classes_to_keep: Optional[torch.Tensor] = None,
+    ) -> Union[torch.Tensor, List[torch.Tensor]]:
         """Filter boxes according to the desired threshold.
 
         To be ONNX-friendly, the inputs for direct forwarding need to be all tensors.
 
         Args:
-            boxes: [B, D, 6], where B is the batchsize,  D is the number of detections in the image,
+            boxes: [B, D, 6], torch.where B is the batchsize,  D is the number of detections in the image,
                 6 represent (class_id, confidence_score, x, y, w, h).
             confidence_threshold: an 0-d scalar that represents the desired threshold.
-            classes_to_keep: a 1-d tensor of classes to keep. If None, keep all classes.
+            classes_to_keep: a 1-d torch.tensor of classes to keep. If None, keep all classes.
 
         Returns:
-            Union[Tensor, List[Tensor]]
-                If `filter_as_zero` is True, return a tensor of shape [D, 6], where D is the total number of
+            Union[torch.Tensor, List[torch.Tensor]]
+                If `filter_as_zero` is True, return a torch.tensor of shape [D, 6], torch.where D is the total number of
                 detections as input.
-                If `filter_as_zero` is False, return a list of tensors of shape [D, 6], where D is the number of
+                If `filter_as_zero` is False, return a list of tensors of shape [D, 6], torch.where D is the number of
                 valid detections for each element in the batch.
 
         """
         # Apply confidence filtering
-        zero_tensor = tensor(0.0, device=boxes.device, dtype=boxes.dtype)
+        zero_tensor = torch.tensor(0.0, device=boxes.device, dtype=boxes.dtype)
         confidence_threshold = (
             confidence_threshold or self.confidence_threshold or zero_tensor
         )  # If None, use 0 as threshold
@@ -368,8 +383,8 @@ class BoxFiltering(Module, ONNXExportMixin):
 
     def _create_dummy_input(
         self, input_shape: List[int], pseudo_shape: Optional[List[int]] = None
-    ) -> Union[Tuple[Any, ...], Tensor]:
-        pseudo_input = rand(
+    ) -> Union[Tuple[Any, ...], torch.Tensor]:
+        pseudo_input = torch.rand(
             *[
                 ((self.ONNX_EXPORT_PSEUDO_SHAPE[i] if pseudo_shape is None else pseudo_shape[i]) if dim == -1 else dim)
                 for i, dim in enumerate(input_shape)

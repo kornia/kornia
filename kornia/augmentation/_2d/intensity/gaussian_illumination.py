@@ -21,7 +21,6 @@ import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
@@ -162,22 +161,22 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         self._param_generator = GaussianIlluminationGenerator(gain, center, sigma, sign)
 
         def _apply_transform(
-            input: Tensor,
-            params: Dict[str, Tensor],
+            input: torch.Tensor,
+            params: Dict[str, torch.Tensor],
             flags: Dict[str, Any],
-            transform: Optional[Tensor] = None,
-        ) -> Tensor:
+            transform: Optional[torch.Tensor] = None,
+        ) -> torch.Tensor:
             return input.add_(params["gradient"]).clamp_(0, 1)
 
         self._fn = _apply_transform
 
     def apply_transform(
         self,
-        input: Tensor,
-        params: Dict[str, Tensor],
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-    ) -> Tensor:
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
         return self._fn(input=input, params=params, flags=flags, transform=transform)
 

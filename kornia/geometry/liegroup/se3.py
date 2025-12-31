@@ -19,22 +19,12 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
-from kornia.core import (
-    Device,
-    Dtype,
-    Module,
-    Parameter,
-    Tensor,
-    concatenate,
-    eye,
-    pad,
-    stack,
-    tensor,
-    where,
-    zeros_like,
-)
+import torch
+import torch.nn.functional as F
+from torch import nn
+
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
@@ -42,7 +32,7 @@ from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
 
-class Se3(Module):
+class Se3(nn.Module):
     r"""Base class to represent the Se3 group.
 
     The SE(3) is the group of rigid body transformations about the origin of three-dimensional Euclidean
@@ -60,14 +50,14 @@ class Se3(Module):
 
     """
 
-    def __init__(self, rotation: Quaternion | So3, translation: Vector3 | Tensor) -> None:
+    def __init__(self, rotation: Quaternion | So3, translation: Vector3 | torch.Tensor) -> None:
         """Construct the base class.
 
         Internally represented by a unit quaternion `q` and a translation 3-vector.
 
         Args:
             rotation: So3 group encompassing a rotation.
-            translation: Vector3 or translation tensor with the shape of :math:`(B, 3)`.
+            translation: Vector3 or translation torch.tensor with the shape of :math:`(B, 3)`.
 
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
@@ -84,14 +74,14 @@ class Se3(Module):
         # KORNIA_CHECK_TYPE(rotation, (Quaternion, So3))
         if not isinstance(rotation, (Quaternion, So3)):
             raise TypeError(f"rotation type is {type(rotation)}")
-        # KORNIA_CHECK_TYPE(translation, (Vector3, Tensor))
-        if not isinstance(translation, (Vector3, Tensor)):
+        # KORNIA_CHECK_TYPE(translation, (Vector3, torch.Tensor))
+        if not isinstance(translation, (Vector3, torch.Tensor)):
             raise TypeError(f"translation type is {type(translation)}")
         # KORNIA_CHECK_SHAPE(t, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
-        self._translation: Vector3 | Parameter
+        self._translation: Vector3 | nn.Parameter
         self._rotation: So3
-        if isinstance(translation, Tensor):
-            self._translation = Parameter(translation)
+        if isinstance(translation, torch.Tensor):
+            self._translation = nn.Parameter(translation)
         else:
             self._translation = translation
         if isinstance(rotation, Quaternion):
@@ -110,7 +100,7 @@ class Se3(Module):
         _t = self.t + self.r * right.t
         return Se3(_r, _t)
 
-    def __mul__(self, right: Se3) -> Se3 | Vector3 | Tensor:
+    def __mul__(self, right: Se3) -> Se3 | Vector3 | torch.Tensor:
         """Compose two Se3 transformations.
 
         Args:
@@ -125,7 +115,7 @@ class Se3(Module):
         if isinstance(right, Se3):
             # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
             return self._mul_se3(right)
-        elif isinstance(right, (Vector3, Tensor)):
+        elif isinstance(right, (Vector3, torch.Tensor)):
             # KORNIA_CHECK_SHAPE(right, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
             return so3 * right + t.data
         else:
@@ -147,7 +137,7 @@ class Se3(Module):
         return self._rotation
 
     @property
-    def t(self) -> Vector3 | Tensor:
+    def t(self) -> Vector3 | torch.Tensor:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
@@ -157,12 +147,12 @@ class Se3(Module):
         return self._rotation
 
     @property
-    def translation(self) -> Vector3 | Tensor:
+    def translation(self) -> Vector3 | torch.Tensor:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
     @staticmethod
-    def exp(v: Tensor) -> Se3:
+    def exp(v: torch.Tensor) -> Se3:
         """Convert elements of lie algebra to elements of lie group.
 
         Args:
@@ -186,14 +176,14 @@ class Se3(Module):
         theta = batched_dot_product(omega, omega).sqrt()
         R = So3.exp(omega)
         V = (
-            eye(3, device=v.device, dtype=v.dtype)
-            + ((1 - theta.cos()) / (theta**2))[..., None, None] * omega_hat
-            + ((theta - theta.sin()) / (theta**3))[..., None, None] * omega_hat_sq
+            torch.eye(3, device=v.device, dtype=v.dtype)
+            + ((1 - torch.cos(theta)) / (theta**2))[..., None, None] * omega_hat
+            + ((theta - torch.sin(theta)) / (theta**3))[..., None, None] * omega_hat_sq
         )
-        U = where(theta[..., None] != 0.0, (upsilon[..., None, :] * V).sum(-1), upsilon)
+        U = torch.where(theta[..., None] != 0.0, (upsilon[..., None, :] * V).sum(-1), upsilon)
         return Se3(R, U)
 
-    def log(self) -> Tensor:
+    def log(self) -> torch.Tensor:
         """Convert elements of lie group  to elements of lie algebra.
 
         Example:
@@ -209,15 +199,16 @@ class Se3(Module):
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
         V_inv = (
-            eye(3, device=omega.device, dtype=omega.dtype)
+            torch.eye(3, device=omega.device, dtype=omega.dtype)
             - 0.5 * omega_hat
-            + ((1 - theta * (theta / 2).cos() / (2 * (theta / 2).sin())) / theta.pow(2))[..., None, None] * omega_hat_sq
+            + ((1 - theta * torch.cos(theta / 2) / (2 * torch.sin(theta / 2))) / theta.pow(2))[..., None, None]
+            * omega_hat_sq
         )
-        t = where(theta[..., None] != 0.0, (t[..., None, :] * V_inv).sum(-1), t)
-        return concatenate((t, omega), -1)
+        t = torch.where(theta[..., None] != 0.0, (t[..., None, :] * V_inv).sum(-1), t)
+        return torch.cat((t, omega), -1)
 
     @staticmethod
-    def hat(v: Tensor) -> Tensor:
+    def hat(v: torch.Tensor) -> torch.Tensor:
         """Convert elements from vector space to lie algebra.
 
         Args:
@@ -238,11 +229,11 @@ class Se3(Module):
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "6"])  # FIXME: resolve shape bugs. @edgarriba
         upsilon, omega = v[..., :3], v[..., 3:]
-        rt = concatenate((So3.hat(omega), upsilon[..., None]), -1)
-        return pad(rt, (0, 0, 0, 1))  # add zeros bottom
+        rt = torch.cat((So3.hat(omega), upsilon[..., None]), -1)
+        return F.pad(rt, (0, 0, 0, 1))  # add torch.zeros bottom
 
     @staticmethod
-    def vee(omega: Tensor) -> Tensor:
+    def vee(omega: torch.Tensor) -> torch.Tensor:
         """Convert elements from lie algebra to vector space.
 
         Args:
@@ -261,10 +252,15 @@ class Se3(Module):
         # KORNIA_CHECK_SHAPE(omega, ["B", "4", "4"])  # FIXME: resolve shape bugs. @edgarriba
         head = omega[..., :3, -1]
         tail = So3.vee(omega[..., :3, :3])
-        return concatenate((head, tail), -1)
+        return torch.cat((head, tail), -1)
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> Se3:
+    def identity(
+        cls,
+        batch_size: Optional[int] = None,
+        device: Optional[Union[str, torch.device, None]] = None,
+        dtype: Union[torch.dtype, None] = None,
+    ) -> Se3:
         """Create a Se3 group representing an identity rotation and zero translation.
 
         Args:
@@ -282,13 +278,13 @@ class Se3(Module):
             z: 0.0
 
         """
-        t = tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
+        t = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
             t = t.repeat(batch_size, 1)
 
         return cls(So3.identity(batch_size, device, dtype), Vector3(t))
 
-    def matrix(self) -> Tensor:
+    def matrix(self) -> torch.Tensor:
         """Return the matrix representation of shape :math:`(B, 4, 4)`.
 
         Example:
@@ -300,17 +296,17 @@ class Se3(Module):
                     [0., 0., 0., 1.]])
 
         """
-        rt = concatenate((self.r.matrix(), self.t.data[..., None]), -1)
-        rt_4x4 = pad(rt, (0, 0, 0, 1))  # add last row zeros
+        rt = torch.cat((self.r.matrix(), self.t.data[..., None]), -1)
+        rt_4x4 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_4x4[..., -1, -1] = 1.0
         return rt_4x4
 
     @classmethod
-    def from_matrix(cls, matrix: Tensor) -> Se3:
+    def from_matrix(cls, matrix: torch.Tensor) -> Se3:
         """Create a Se3 group from a matrix.
 
         Args:
-            matrix: tensor of shape :math:`(B, 4, 4)`.
+            matrix: torch.tensor of shape :math:`(B, 4, 4)`.
 
         Example:
             >>> s = Se3.from_matrix(torch.eye(4))
@@ -327,11 +323,11 @@ class Se3(Module):
         return cls(r, t)
 
     @classmethod
-    def from_qxyz(cls, qxyz: Tensor) -> Se3:
+    def from_qxyz(cls, qxyz: torch.Tensor) -> Se3:
         """Create a Se3 group a quaternion and translation vector.
 
         Args:
-            qxyz: tensor of shape :math:`(B, 7)`.
+            qxyz: torch.tensor of shape :math:`(B, 7)`.
 
         Example:
             >>> qxyz = torch.tensor([1., 2., 3., 0., 0., 0., 1.])
@@ -369,7 +365,12 @@ class Se3(Module):
         return Se3(r_inv, r_inv * _t)
 
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> Se3:
+    def random(
+        cls,
+        batch_size: Optional[int] = None,
+        device: Optional[Union[str, torch.device, None]] = None,
+        dtype: Union[torch.dtype, None] = None,
+    ) -> Se3:
         """Create a Se3 group representing a random transformation.
 
         Args:
@@ -393,40 +394,40 @@ class Se3(Module):
         return cls(r, t)
 
     @classmethod
-    def rot_x(cls, x: Tensor) -> Se3:
+    def rot_x(cls, x: torch.Tensor) -> Se3:
         """Construct a x-axis rotation.
 
         Args:
             x: the x-axis rotation angle.
 
         """
-        zs = zeros_like(x)
-        return cls(So3.rot_x(x), stack((zs, zs, zs), -1))
+        zs = torch.zeros_like(x)
+        return cls(So3.rot_x(x), torch.stack((zs, zs, zs), -1))
 
     @classmethod
-    def rot_y(cls, y: Tensor) -> Se3:
+    def rot_y(cls, y: torch.Tensor) -> Se3:
         """Construct a y-axis rotation.
 
         Args:
             y: the y-axis rotation angle.
 
         """
-        zs = zeros_like(y)
-        return cls(So3.rot_y(y), stack((zs, zs, zs), -1))
+        zs = torch.zeros_like(y)
+        return cls(So3.rot_y(y), torch.stack((zs, zs, zs), -1))
 
     @classmethod
-    def rot_z(cls, z: Tensor) -> Se3:
+    def rot_z(cls, z: torch.Tensor) -> Se3:
         """Construct a z-axis rotation.
 
         Args:
             z: the z-axis rotation angle.
 
         """
-        zs = zeros_like(z)
-        return cls(So3.rot_z(z), stack((zs, zs, zs), -1))
+        zs = torch.zeros_like(z)
+        return cls(So3.rot_z(z), torch.stack((zs, zs, zs), -1))
 
     @classmethod
-    def trans(cls, x: Tensor, y: Tensor, z: Tensor) -> Se3:
+    def trans(cls, x: torch.Tensor, y: torch.Tensor, z: torch.Tensor) -> Se3:
         """Construct a translation only Se3 instance.
 
         Args:
@@ -440,42 +441,42 @@ class Se3(Module):
         KORNIA_CHECK_SAME_DEVICES([x, y, z])
         batch_size = x.shape[0] if len(x.shape) > 0 else None
         rotation = So3.identity(batch_size, x.device, x.dtype)
-        return cls(rotation, stack((x, y, z), -1))
+        return cls(rotation, torch.stack((x, y, z), -1))
 
     @classmethod
-    def trans_x(cls, x: Tensor) -> Se3:
+    def trans_x(cls, x: torch.Tensor) -> Se3:
         """Construct a x-axis translation.
 
         Args:
             x: the x-axis translation.
 
         """
-        zs = zeros_like(x)
+        zs = torch.zeros_like(x)
         return cls.trans(x, zs, zs)
 
     @classmethod
-    def trans_y(cls, y: Tensor) -> Se3:
+    def trans_y(cls, y: torch.Tensor) -> Se3:
         """Construct a y-axis translation.
 
         Args:
             y: the y-axis translation.
 
         """
-        zs = zeros_like(y)
+        zs = torch.zeros_like(y)
         return cls.trans(zs, y, zs)
 
     @classmethod
-    def trans_z(cls, z: Tensor) -> Se3:
+    def trans_z(cls, z: torch.Tensor) -> Se3:
         """Construct a z-axis translation.
 
         Args:
             z: the z-axis translation.
 
         """
-        zs = zeros_like(z)
+        zs = torch.zeros_like(z)
         return cls.trans(zs, zs, z)
 
-    def adjoint(self) -> Tensor:
+    def adjoint(self) -> torch.Tensor:
         """Return the adjoint matrix of shape :math:`(B, 6, 6)`.
 
         Example:
@@ -490,7 +491,7 @@ class Se3(Module):
 
         """
         R = self.so3.matrix()
-        z = zeros_like(R)
-        row0 = concatenate((R, So3.hat(self.t) @ R), -1)
-        row1 = concatenate((z, R), -1)
-        return concatenate((row0, row1), -2)
+        z = torch.zeros_like(R)
+        row0 = torch.cat((R, So3.hat(self.t) @ R), -1)
+        row1 = torch.cat((z, R), -1)
+        return torch.cat((row0, row1), -2)

@@ -20,7 +20,6 @@ from typing import Optional, Tuple
 
 import torch
 
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.utils import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask
 from kornia.utils.helpers import _torch_svd_cast
@@ -29,10 +28,12 @@ from .conversions import convert_points_from_homogeneous, convert_points_to_homo
 from .epipolar import normalize_points
 from .linalg import transform_points
 
-TupleTensor = Tuple[Tensor, Tensor]
+TupleTensor = Tuple[torch.Tensor, torch.Tensor]
 
 
-def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
+def oneway_transfer_error(
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Return transfer error in image 2 for correspondences given the homography matrix.
 
     Args:
@@ -58,14 +59,16 @@ def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool =
 
     # From Hartley and Zisserman, Error in one image (4.6)
     # dist = \sum_{i} ( d(x', Hx)**2)
-    pts1_in_2: Tensor = transform_points(H, pts1)
-    error_squared: Tensor = (pts1_in_2 - pts2).pow(2).sum(dim=-1)
+    pts1_in_2: torch.Tensor = transform_points(H, pts1)
+    error_squared: torch.Tensor = (pts1_in_2 - pts2).pow(2).sum(dim=-1)
     if squared:
         return error_squared
     return (error_squared + eps).sqrt()
 
 
-def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
+def symmetric_transfer_error(
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Return Symmetric transfer error for correspondences given the homography matrix.
 
     Args:
@@ -93,16 +96,18 @@ def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: boo
     # dist = \sum_{i} (d(x, H^-1 x')**2 + d(x', Hx)**2)
     H_inv, good_H = safe_inverse_with_mask(H)
 
-    there: Tensor = oneway_transfer_error(pts1, pts2, H, True, eps)
-    back: Tensor = oneway_transfer_error(pts2, pts1, H_inv, True, eps)
-    good_H_reshape: Tensor = good_H.view(-1, 1).expand_as(there)
+    there: torch.Tensor = oneway_transfer_error(pts1, pts2, H, True, eps)
+    back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv, True, eps)
+    good_H_reshape: torch.Tensor = good_H.view(-1, 1).expand_as(there)
     out = (there + back) * good_H_reshape.to(there.dtype) + max_num * (~good_H_reshape).to(there.dtype)
     if squared:
         return out
     return (out + eps).sqrt()
 
 
-def line_segment_transfer_error_one_way(ls1: Tensor, ls2: Tensor, H: Tensor, squared: bool = False) -> Tensor:
+def line_segment_transfer_error_one_way(
+    ls1: torch.Tensor, ls2: torch.Tensor, H: torch.Tensor, squared: bool = False
+) -> torch.Tensor:
     r"""Return transfer error in image 2 for line segment correspondences given the homography matrix.
 
     Line segment end points are reprojected into image 2, and point-to-line error is calculated w.r.t. line,
@@ -214,8 +219,8 @@ def find_homography_dlt(
 
 
 def find_homography_dlt_iterated(
-    points1: Tensor, points2: Tensor, weights: Tensor, soft_inl_th: float = 3.0, n_iter: int = 5
-) -> Tensor:
+    points1: torch.Tensor, points2: torch.Tensor, weights: torch.Tensor, soft_inl_th: float = 3.0, n_iter: int = 5
+) -> torch.Tensor:
     r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS).
 
     The linear system is solved by using the Reweighted Least Squares Solution for the 4 Points algorithm.
@@ -232,15 +237,15 @@ def find_homography_dlt_iterated(
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
-    H: Tensor = find_homography_dlt(points1, points2, weights)
+    H: torch.Tensor = find_homography_dlt(points1, points2, weights)
     for _ in range(n_iter - 1):
-        errors: Tensor = symmetric_transfer_error(points1, points2, H, False)
-        weights_new: Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
+        errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, False)
+        weights_new: torch.Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
         H = find_homography_dlt(points1, points2, weights_new)
     return H
 
 
-def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
+def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     """Implement oriented constraint check from :cite:`Marquez-Neila2015`.
 
     Analogous to https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/usac/degeneracy.cpp#L88
@@ -277,7 +282,9 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
     return sample_is_valid
 
 
-def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor] = None) -> Tensor:
+def find_homography_lines_dlt(
+    ls1: torch.Tensor, ls2: torch.Tensor, weights: Optional[torch.Tensor] = None
+) -> torch.Tensor:
     """Compute the homography matrix using the DLT formulation for line correspondences.
 
     See :cite:`homolines2001` for details.
@@ -349,8 +356,8 @@ def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor
 
 
 def find_homography_lines_dlt_iterated(
-    ls1: Tensor, ls2: Tensor, weights: Tensor, soft_inl_th: float = 4.0, n_iter: int = 5
-) -> Tensor:
+    ls1: torch.Tensor, ls2: torch.Tensor, weights: torch.Tensor, soft_inl_th: float = 4.0, n_iter: int = 5
+) -> torch.Tensor:
     r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS) from line segments.
 
     The linear system is solved by using the Reweighted Least Squares Solution for the 4 line segments algorithm.
@@ -367,9 +374,9 @@ def find_homography_lines_dlt_iterated(
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
-    H: Tensor = find_homography_lines_dlt(ls1, ls2, weights)
+    H: torch.Tensor = find_homography_lines_dlt(ls1, ls2, weights)
     for _ in range(n_iter - 1):
-        errors: Tensor = line_segment_transfer_error_one_way(ls1, ls2, H, False)
-        weights_new: Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
+        errors: torch.Tensor = line_segment_transfer_error_one_way(ls1, ls2, H, False)
+        weights_new: torch.Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
         H = find_homography_lines_dlt(ls1, ls2, weights_new)
     return H

@@ -241,6 +241,9 @@ markers = [
   "nn: mark a test as module test",
   "slow: mark test as slow to run",
 ]
+filterwarnings = [
+  "ignore::DeprecationWarning:onnxscript.converter",
+]
 # Test configuration via environment variables:
 # KORNIA_TEST_DEVICE: cpu, cuda, mps (default: cpu)
 # KORNIA_TEST_DTYPE: float32, float64, float16, bfloat16 (default: float32)

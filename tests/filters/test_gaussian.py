@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
 
@@ -40,24 +42,24 @@ from testing.base import BaseTester, assert_close
             11,
             5.0,
             None,
-            [[0.0663, 0.0794, 0.0914, 0.1010, 0.1072, 0.1094, 0.1072, 0.1010, 0.0914, 0.0794, 0.0663]],
+            torch.tensor([[0.0663, 0.0794, 0.0914, 0.1010, 0.1072, 0.1094, 0.1072, 0.1010, 0.0914, 0.0794, 0.0663]]),
         ),
         (
             11,
             5.0,
             8.0,
-            [[0.0343, 0.0463, 0.0600, 0.0747, 0.0895, 0.1029, 0.1138, 0.1208, 0.1232, 0.1208, 0.1138]],
+            torch.tensor([[0.0343, 0.0463, 0.0600, 0.0747, 0.0895, 0.1029, 0.1138, 0.1208, 0.1232, 0.1208, 0.1138]]),
         ),
         (
             11,
             11.0,
             3.0,
-            [[0.0926, 0.0946, 0.0957, 0.0961, 0.0957, 0.0946, 0.0926, 0.0900, 0.0867, 0.0828, 0.0785]],
+            torch.tensor([[0.0926, 0.0946, 0.0957, 0.0961, 0.0957, 0.0946, 0.0926, 0.0900, 0.0867, 0.0828, 0.0785]]),
         ),
     ],
 )
 def test_gaussian(window_size, sigma, mean, expected, device, dtype):
-    expected = torch.tensor(expected, device=device, dtype=dtype)
+    expected = expected.to(device=device, dtype=dtype)
     result = gaussian(window_size, sigma, mean=mean, device=device, dtype=dtype)
     assert_close(result, expected, atol=1e-4, rtol=1e-4)
 
@@ -333,18 +335,21 @@ class TestGaussianBlur2d(BaseTester):
             import os
             import tempfile
 
-            with tempfile.TemporaryDirectory() as tmpdir:
-                onnx_path = os.path.join(tmpdir, "gaussian_blur2d.onnx")
-                torch.onnx.export(
-                    model,
-                    sample_input,
-                    onnx_path,
-                    input_names=["input"],
-                    output_names=["output"],
-                    opset_version=17,
-                )
-                # Verify the file was created
-                assert os.path.exists(onnx_path)
+            # Suppress onnxscript deprecation warnings (Python 3.15 compatibility)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=DeprecationWarning, module="onnxscript.converter")
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    onnx_path = os.path.join(tmpdir, "gaussian_blur2d.onnx")
+                    torch.onnx.export(
+                        model,
+                        sample_input,
+                        onnx_path,
+                        input_names=["input"],
+                        output_names=["output"],
+                        opset_version=17,
+                    )
+                    # Verify the file was created
+                    assert os.path.exists(onnx_path)
         except Exception as e:
             pytest.skip(f"ONNX export not supported: {e}")
 

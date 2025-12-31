@@ -19,8 +19,10 @@ from __future__ import annotations
 
 from typing import Optional
 
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor, pad
+import torch
+import torch.nn.functional as F
+from torch import nn
+
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .kernels import _unpack_2d_ks, get_gaussian_kernel2d
@@ -28,14 +30,14 @@ from .median import _compute_zero_padding
 
 
 def _bilateral_blur(
-    input: Tensor,
-    guidance: Optional[Tensor],
+    input: torch.Tensor,
+    guidance: Optional[torch.Tensor],
     kernel_size: tuple[int, int] | int,
-    sigma_color: float | Tensor,
-    sigma_space: tuple[float, float] | Tensor,
+    sigma_color: float | torch.Tensor,
+    sigma_space: tuple[float, float] | torch.Tensor,
     border_type: str = "reflect",
     color_distance_type: str = "l1",
-) -> Tensor:
+) -> torch.Tensor:
     """Single implementation for both Bilateral Filter and Joint Bilateral Filter."""
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -48,21 +50,21 @@ def _bilateral_blur(
             "guidance and input should have the same batch size and spatial dimensions",
         )
 
-    if isinstance(sigma_color, Tensor):
+    if isinstance(sigma_color, torch.Tensor):
         KORNIA_CHECK_SHAPE(sigma_color, ["B"])
         sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1)
 
     ky, kx = _unpack_2d_ks(kernel_size)
     pad_y, pad_x = _compute_zero_padding(kernel_size)
 
-    padded_input = pad(input, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
+    padded_input = F.pad(input, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
     unfolded_input = padded_input.unfold(2, ky, 1).unfold(3, kx, 1).flatten(-2)  # (B, C, H, W, Ky x Kx)
 
     if guidance is None:
         guidance = input
         unfolded_guidance = unfolded_input
     else:
-        padded_guidance = pad(guidance, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
+        padded_guidance = F.pad(guidance, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
         unfolded_guidance = padded_guidance.unfold(2, ky, 1).unfold(3, kx, 1).flatten(-2)  # (B, C, H, W, Ky x Kx)
 
     diff = unfolded_guidance - guidance.unsqueeze(-1)
@@ -83,14 +85,14 @@ def _bilateral_blur(
 
 
 def bilateral_blur(
-    input: Tensor,
+    input: torch.Tensor,
     kernel_size: tuple[int, int] | int,
-    sigma_color: float | Tensor,
-    sigma_space: tuple[float, float] | Tensor,
+    sigma_color: float | torch.Tensor,
+    sigma_space: tuple[float, float] | torch.Tensor,
     border_type: str = "reflect",
     color_distance_type: str = "l1",
-) -> Tensor:
-    r"""Blur a tensor using a Bilateral filter.
+) -> torch.Tensor:
+    r"""Blur a torch.tensor using a Bilateral filter.
 
     .. image:: _static/img/bilateral_blur.png
 
@@ -99,7 +101,7 @@ def bilateral_blur(
     to the center pixel, but also the difference in intensity or color.
 
     Arguments:
-        input: the input tensor with shape :math:`(B,C,H,W)`.
+        input: the input torch.tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges.
@@ -114,7 +116,7 @@ def bilateral_blur(
           Default: ``'l1'``.
 
     Returns:
-        the blurred tensor with shape :math:`(B, C, H, W)`.
+        the blurred torch.tensor with shape :math:`(B, C, H, W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -127,15 +129,15 @@ def bilateral_blur(
 
 
 def joint_bilateral_blur(
-    input: Tensor,
-    guidance: Tensor,
+    input: torch.Tensor,
+    guidance: torch.Tensor,
     kernel_size: tuple[int, int] | int,
-    sigma_color: float | Tensor,
-    sigma_space: tuple[float, float] | Tensor,
+    sigma_color: float | torch.Tensor,
+    sigma_space: tuple[float, float] | torch.Tensor,
     border_type: str = "reflect",
     color_distance_type: str = "l1",
-) -> Tensor:
-    r"""Blur a tensor using a Joint Bilateral filter.
+) -> torch.Tensor:
+    r"""Blur a torch.tensor using a Joint Bilateral filter.
 
     .. image:: _static/img/joint_bilateral_blur.png
 
@@ -144,8 +146,8 @@ def joint_bilateral_blur(
     a guidance image. See :func:`bilateral_blur()` for more information.
 
     Arguments:
-        input: the input tensor with shape :math:`(B,C,H,W)`.
-        guidance: the guidance tensor with shape :math:`(B,C,H,W)`.
+        input: the input torch.tensor with shape :math:`(B,C,H,W)`.
+        guidance: the guidance torch.tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges.
@@ -159,7 +161,7 @@ def joint_bilateral_blur(
           match OpenCV implementation.
 
     Returns:
-        the blurred tensor with shape :math:`(B, C, H, W)`.
+        the blurred torch.tensor with shape :math:`(B, C, H, W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -173,12 +175,12 @@ def joint_bilateral_blur(
 
 
 # trick to make mypy not throw errors about difference in .forward() signatures of subclass and superclass
-class _BilateralBlur(Module):
+class _BilateralBlur(nn.Module):
     def __init__(
         self,
         kernel_size: tuple[int, int] | int,
-        sigma_color: float | Tensor,
-        sigma_space: tuple[float, float] | Tensor,
+        sigma_color: float | torch.Tensor,
+        sigma_space: tuple[float, float] | torch.Tensor,
         border_type: str = "reflect",
         color_distance_type: str = "l1",
     ) -> None:
@@ -201,7 +203,7 @@ class _BilateralBlur(Module):
 
 
 class BilateralBlur(_BilateralBlur):
-    r"""Blur a tensor using a Bilateral filter.
+    r"""Blur a torch.tensor using a Bilateral filter.
 
     The operator is an edge-preserving image smoothing filter. The weight
     for each pixel in a neighborhood is determined not only by its distance
@@ -222,7 +224,7 @@ class BilateralBlur(_BilateralBlur):
           Default: ``'l1'``.
 
     Returns:
-        the blurred input tensor.
+        the blurred input torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -237,14 +239,14 @@ class BilateralBlur(_BilateralBlur):
 
     """
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return bilateral_blur(
             input, self.kernel_size, self.sigma_color, self.sigma_space, self.border_type, self.color_distance_type
         )
 
 
 class JointBilateralBlur(_BilateralBlur):
-    r"""Blur a tensor using a Joint Bilateral filter.
+    r"""Blur a torch.tensor using a Joint Bilateral filter.
 
     This operator is almost identical to a Bilateral filter. The only difference
     is that the color Gaussian kernel is computed based on another image called
@@ -264,7 +266,7 @@ class JointBilateralBlur(_BilateralBlur):
           match OpenCV implementation.
 
     Returns:
-        the blurred input tensor.
+        the blurred input torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`
@@ -280,7 +282,7 @@ class JointBilateralBlur(_BilateralBlur):
 
     """
 
-    def forward(self, input: Tensor, guidance: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor, guidance: torch.Tensor) -> torch.Tensor:
         return joint_bilateral_blur(
             input,
             guidance,

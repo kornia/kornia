@@ -23,10 +23,12 @@ import os
 from functools import wraps
 from typing import Any, Callable, Optional, Union
 
+import torch
+from torch import nn
+
 # TODO: not use top level import
 import kornia
 
-from ._backend import Module, Sequential, Tensor, from_numpy
 from .external import PILImage as Image
 from .external import numpy as np
 from .mixin.onnx import ONNXExportMixin
@@ -56,10 +58,18 @@ class ImageModuleMixIn:
             Callable: Decorated function with converted input and output types.
 
         """
+        # Ensure output_type has a valid default
+        if not output_type or output_type not in ("tensor", "numpy", "pil"):
+            output_type = "tensor"
 
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Union[Any, list[Any]]:
+                # Remove output_type and input_names_to_handle from kwargs if present
+                # (they are handled by the decorator, not the wrapped function)
+                kwargs.pop("output_type", None)
+                kwargs.pop("input_names_to_handle", None)
+
                 # If input_names_to_handle is None, handle all inputs
                 if input_names_to_handle is None:
                     # Convert all args to tensors
@@ -113,7 +123,7 @@ class ImageModuleMixIn:
         """
         if isinstance(arg, (str,)) and os.path.exists(arg):
             return True
-        if isinstance(arg, (Tensor,)):
+        if isinstance(arg, (torch.Tensor,)):
             return True
         # Make sure that the numpy and PIL are not necessarily needed to be imported.
         if isinstance(arg, (np.ndarray,)):  # type: ignore
@@ -122,7 +132,7 @@ class ImageModuleMixIn:
             return True
         return False
 
-    def to_tensor(self, x: Any) -> Tensor:
+    def to_tensor(self, x: Any) -> torch.Tensor:
         """Convert input to tensor.
 
         Supports image path, numpy array, PIL image, and raw tensor.
@@ -136,12 +146,12 @@ class ImageModuleMixIn:
         """
         if isinstance(x, (str,)):
             return kornia.io.load_image(x, kornia.io.ImageLoadType.UNCHANGED) / 255
-        if isinstance(x, (Tensor,)):
+        if isinstance(x, (torch.Tensor,)):
             return x
         if isinstance(x, (np.ndarray,)):  # type: ignore
             return kornia.utils.image.image_to_tensor(x) / 255
         if isinstance(x, (Image.Image,)):  # type: ignore
-            return from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # type: ignore
+            return torch.from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # type: ignore
         raise TypeError("Input type not supported")
 
     def to_numpy(self, x: Any) -> np.array:  # type: ignore
@@ -154,7 +164,7 @@ class ImageModuleMixIn:
             np.array: The converted numpy array.
 
         """
-        if isinstance(x, (Tensor,)):
+        if isinstance(x, (torch.Tensor,)):
             return x.cpu().detach().numpy()
         if isinstance(x, (np.ndarray,)):  # type: ignore
             return x
@@ -172,7 +182,7 @@ class ImageModuleMixIn:
             Image.Image: The converted PIL image.
 
         """
-        if isinstance(x, (Tensor,)):
+        if isinstance(x, (torch.Tensor,)):
             tensor = x.detach().cpu()
             if tensor.ndim == 3:
                 tensor.mul_(255)
@@ -194,8 +204,8 @@ class ImageModuleMixIn:
         raise TypeError("Input type not supported")
 
     def _detach_tensor_to_cpu(
-        self, output_image: Union[Tensor, list[Tensor], tuple[Tensor]]
-    ) -> Union[Tensor, list[Tensor], tuple[Tensor]]:
+        self, output_image: Union[torch.Tensor, list[torch.Tensor], tuple[torch.Tensor]]
+    ) -> Union[torch.Tensor, list[torch.Tensor], tuple[torch.Tensor]]:
         """Detach the input tensor (or list/tuple of tensors) from the GPU and move it to the CPU.
 
         Args:
@@ -205,7 +215,7 @@ class ImageModuleMixIn:
             Union[Tensor, list[Tensor], tuple[Tensor]]: The tensor(s) moved to the CPU and detached from
             the computational graph.
         """
-        if isinstance(output_image, (Tensor,)):
+        if isinstance(output_image, (torch.Tensor,)):
             return output_image.detach().cpu()
         if isinstance(
             output_image,
@@ -264,7 +274,7 @@ class ImageModuleMixIn:
         kornia.io.write_image(name, out_image.mul(255.0).byte())
 
 
-class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
+class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
     """Handles image-based operations.
 
     This modules accepts multiple input and output data types, provides end-to-end
@@ -323,7 +333,7 @@ class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
         return _output_image
 
 
-class ImageSequential(Sequential, ImageModuleMixIn, ONNXExportMixin):
+class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
     """Handles image-based operations as a sequential module.
 
     This modules accepts multiple input and output data types, provides end-to-end

@@ -20,8 +20,6 @@ from typing import Iterator, Type, TypeVar, Union
 
 import torch
 
-from kornia.core import Tensor
-
 __all__ = ["BorderType", "DType", "Resample", "SamplePadding", "TKEnum", "pi"]
 
 pi = torch.tensor(3.14159265358979323846)
@@ -102,11 +100,11 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
     FLOAT64 = 3
 
     @classmethod
-    def get(cls, value: Union[str, int, torch.dtype, Tensor, "DType"]) -> "DType":
+    def get(cls, value: Union[str, int, torch.dtype, torch.Tensor, "DType"]) -> "DType":
         if isinstance(value, torch.dtype):
             return cls[str(value).upper()[6:]]
 
-        elif isinstance(value, Tensor):
+        elif isinstance(value, torch.Tensor):
             return cls(int(value.item()))
 
         elif isinstance(value, str):

@@ -19,10 +19,8 @@ from typing import Optional
 
 import torch
 
-from kornia.core import Tensor, eye, zeros
 
-
-def eye_like(n: int, input: Tensor, shared_memory: bool = False) -> Tensor:
+def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.Tensor:
     r"""Return a 2-D tensor with ones on the diagonal and zeros elsewhere with the same batch size as the input.
 
     Args:
@@ -45,12 +43,12 @@ def eye_like(n: int, input: Tensor, shared_memory: bool = False) -> Tensor:
     if len(input.shape) < 1:
         raise AssertionError(input.shape)
 
-    identity = eye(n, device=input.device).type(input.dtype)
+    identity = torch.eye(n, device=input.device).type(input.dtype)
 
     return identity[None].expand(input.shape[0], n, n) if shared_memory else identity[None].repeat(input.shape[0], 1, 1)
 
 
-def vec_like(n: int, tensor: Tensor, shared_memory: bool = False) -> Tensor:
+def vec_like(n: int, tensor: torch.Tensor, shared_memory: bool = False) -> torch.Tensor:
     r"""Return a 2-D tensor with a vector containing zeros with the same batch size as the input.
 
     Args:
@@ -73,62 +71,62 @@ def vec_like(n: int, tensor: Tensor, shared_memory: bool = False) -> Tensor:
     if len(tensor.shape) < 1:
         raise AssertionError(tensor.shape)
 
-    vec = zeros(n, 1, device=tensor.device, dtype=tensor.dtype)
+    vec = torch.zeros(n, 1, device=tensor.device, dtype=tensor.dtype)
     return vec[None].expand(tensor.shape[0], n, 1) if shared_memory else vec[None].repeat(tensor.shape[0], 1, 1)
 
 
-def differentiable_polynomial_rounding(input: Tensor) -> Tensor:
+def differentiable_polynomial_rounding(input: torch.Tensor) -> torch.Tensor:
     """Differentiable rounding.
 
     Args:
-        input (Tensor): Input tensor of any shape to be rounded.
+        input (torch.Tensor): Input tensor of any shape to be rounded.
 
     Returns:
-        output (Tensor): Pseudo rounded tensor of the same shape as input tensor.
+        output (torch.Tensor): Pseudo rounded tensor of the same shape as input tensor.
 
     """
     # Perform differentiable rounding
     input_round = input.round()
-    output: Tensor = input_round + (input - input_round) ** 3
+    output: torch.Tensor = input_round + (input - input_round) ** 3
     return output
 
 
-def differentiable_polynomial_floor(input: Tensor) -> Tensor:
+def differentiable_polynomial_floor(input: torch.Tensor) -> torch.Tensor:
     """Perform floor via a differentiable operation.
 
     Args:
-        input (Tensor): Input tensor of any shape to be floored.
+        input (torch.Tensor): Input tensor of any shape to be floored.
 
     Returns:
-        output (Tensor): Pseudo rounded tensor of the same shape as input tensor.
+        output (torch.Tensor): Pseudo rounded tensor of the same shape as input tensor.
 
     """
     # Perform differentiable rounding
     input_floor = input.floor()
-    output: Tensor = input_floor + (input - 0.5 - input_floor) ** 3
+    output: torch.Tensor = input_floor + (input - 0.5 - input_floor) ** 3
     return output
 
 
 def differentiable_clipping(
-    input: Tensor,
+    input: torch.Tensor,
     min_val: Optional[float] = None,
     max_val: Optional[float] = None,
     scale: float = 0.02,
-) -> Tensor:
+) -> torch.Tensor:
     """Clip via a differentiable and soft approximation of the clipping operation.
 
     Args:
-        input (Tensor): Input tensor of any shape.
+        input (torch.Tensor): Input tensor of any shape.
         min_val (Optional[float]): Minimum value.
         max_val (Optional[float]): Maximum value.
         scale (float): Scale value. Default 0.02.
 
     Returns:
-        output (Tensor): Clipped output tensor of the same shape as the input tensor.
+        output (torch.Tensor): Clipped output tensor of the same shape as the input tensor.
 
     """
     # Make a copy of the input tensor
-    output: Tensor = input.clone()
+    output: torch.Tensor = input.clone()
     # Perform differentiable soft clipping
     if max_val is not None:
         output[output > max_val] = -scale * (torch.exp(-output[output > max_val] + max_val) - 1.0) + max_val

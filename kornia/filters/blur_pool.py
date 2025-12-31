@@ -17,10 +17,10 @@
 
 from __future__ import annotations
 
+import torch
 import torch.nn.functional as F
+from torch import nn
 
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor, as_tensor, pad, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 from .kernels import get_pascal_kernel_2d
@@ -36,7 +36,7 @@ __all__ = [
 ]
 
 
-class BlurPool2D(Module):
+class BlurPool2D(nn.Module):
     r"""Compute blur (anti-aliasing) and downsample a given feature map.
 
     See :cite:`zhang2019shiftinvar` for more details.
@@ -47,7 +47,7 @@ class BlurPool2D(Module):
 
     Shape:
         - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(N, C, H_{out}, W_{out})`, where
+        - Output: :math:`(N, C, H_{out}, W_{out})`, torch.where
 
           .. math::
               H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{kernel\_size//2}[0] -
@@ -74,12 +74,12 @@ class BlurPool2D(Module):
         self.stride = stride
         self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
 
-    def forward(self, input: Tensor) -> Tensor:
-        self.kernel = as_tensor(self.kernel, device=input.device, dtype=input.dtype)
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _blur_pool_by_kernel2d(input, self.kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
 
 
-class MaxBlurPool2D(Module):
+class MaxBlurPool2D(nn.Module):
     r"""Compute pools and blurs and downsample a given feature map.
 
     Equivalent to ```nn.Sequential(nn.MaxPool2d(...), BlurPool2D(...))```
@@ -97,7 +97,7 @@ class MaxBlurPool2D(Module):
         - Output: :math:`(B, C, H / stride, W / stride)`
 
     Returns:
-        torch.Tensor: the transformed tensor.
+        torch.Tensor: the transformed torch.tensor.
 
     Examples:
         >>> import torch.nn as nn
@@ -124,14 +124,14 @@ class MaxBlurPool2D(Module):
         self.ceil_mode = ceil_mode
         self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
 
-    def forward(self, input: Tensor) -> Tensor:
-        self.kernel = as_tensor(self.kernel, device=input.device, dtype=input.dtype)
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
             input, self.kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode
         )
 
 
-class EdgeAwareBlurPool2D(Module):
+class EdgeAwareBlurPool2D(nn.Module):
     def __init__(
         self, kernel_size: tuple[int, int] | int, edge_threshold: float = 1.25, edge_dilation_kernel_size: int = 3
     ) -> None:
@@ -140,13 +140,13 @@ class EdgeAwareBlurPool2D(Module):
         self.edge_threshold = edge_threshold
         self.edge_dilation_kernel_size = edge_dilation_kernel_size
 
-    def forward(self, input: Tensor, epsilon: float = 1e-6) -> Tensor:
+    def forward(self, input: torch.Tensor, epsilon: float = 1e-6) -> torch.Tensor:
         return edge_aware_blur_pool2d(
             input, self.kernel_size, self.edge_threshold, self.edge_dilation_kernel_size, epsilon
         )
 
 
-def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2) -> Tensor:
+def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride: int = 2) -> torch.Tensor:
     r"""Compute blurs and downsample a given feature map.
 
     .. image:: _static/img/blur_pool2d.png
@@ -156,13 +156,13 @@ def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int =
     See :cite:`zhang2019shiftinvar` for more details.
 
     Args:
-        input: tensor to apply operation to.
+        input: torch.tensor to apply operation to.
         kernel_size: the kernel size for max pooling.
         stride: stride for pooling.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(N, C, H_{out}, W_{out})`, where
+        - Output: :math:`(N, C, H_{out}, W_{out})`, torch.where
 
           .. math::
               H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{kernel\_size//2}[0] -
@@ -173,7 +173,7 @@ def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int =
                 \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
 
     Returns:
-        the transformed tensor.
+        the transformed torch.tensor.
 
     .. note::
         This function is tested against https://github.com/adobe/antialiased-cnns.
@@ -196,8 +196,12 @@ def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int =
 
 
 def max_blur_pool2d(
-    input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
-) -> Tensor:
+    input: torch.Tensor,
+    kernel_size: tuple[int, int] | int,
+    stride: int = 2,
+    max_pool_size: int = 2,
+    ceil_mode: bool = False,
+) -> torch.Tensor:
     r"""Compute pools and blurs and downsample a given feature map.
 
     .. image:: _static/img/max_blur_pool2d.png
@@ -205,7 +209,7 @@ def max_blur_pool2d(
     See :class:`~kornia.filters.MaxBlurPool2D` for details.
 
     Args:
-        input: tensor to apply operation to.
+        input: torch.tensor to apply operation to.
         kernel_size: the kernel size for max pooling.
         stride: stride for pooling.
         max_pool_size: the kernel size for max pooling.
@@ -232,7 +236,7 @@ def max_blur_pool2d(
     return _max_blur_pool_by_kernel2d(input, kernel, stride, max_pool_size, ceil_mode)
 
 
-def _blur_pool_by_kernel2d(input: Tensor, kernel: Tensor, stride: int) -> Tensor:
+def _blur_pool_by_kernel2d(input: torch.Tensor, kernel: torch.Tensor, stride: int) -> torch.Tensor:
     """Compute blur_pool by a given :math:`CxC_{out}xNxN` kernel."""
     KORNIA_CHECK(
         len(kernel.shape) == 4 and kernel.shape[-2] == kernel.shape[-1],
@@ -244,8 +248,8 @@ def _blur_pool_by_kernel2d(input: Tensor, kernel: Tensor, stride: int) -> Tensor
 
 
 def _max_blur_pool_by_kernel2d(
-    input: Tensor, kernel: Tensor, stride: int, max_pool_size: int, ceil_mode: bool
-) -> Tensor:
+    input: torch.Tensor, kernel: torch.Tensor, stride: int, max_pool_size: int, ceil_mode: bool
+) -> torch.Tensor:
     """Compute max_blur_pool by a given :math:`CxC_(out, None)xNxN` kernel."""
     KORNIA_CHECK(
         len(kernel.shape) == 4 and kernel.shape[-2] == kernel.shape[-1],
@@ -259,13 +263,13 @@ def _max_blur_pool_by_kernel2d(
 
 
 def edge_aware_blur_pool2d(
-    input: Tensor,
+    input: torch.Tensor,
     kernel_size: tuple[int, int] | int,
     edge_threshold: float = 1.25,
     edge_dilation_kernel_size: int = 3,
     epsilon: float = 1e-6,
-) -> Tensor:
-    r"""Blur the input tensor while maintaining its edges.
+) -> torch.Tensor:
+    r"""Blur the input torch.tensor while maintaining its edges.
 
     Args:
         input: the input image to blur with shape :math:`(B, C, H, W)`.
@@ -275,17 +279,17 @@ def edge_aware_blur_pool2d(
         epsilon: for numerical stability.
 
     Returns:
-        The blurred tensor of shape :math:`(B, C, H, W)`.
+        The blurred torch.tensor of shape :math:`(B, C, H, W)`.
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(edge_threshold > 0.0, f"edge threshold should be positive, but got '{edge_threshold}'")
 
-    input = pad(input, (2, 2, 2, 2), mode="reflect")  # pad to avoid artifacts near physical edges
+    input = F.pad(input, (2, 2, 2, 2), mode="reflect")  # F.pad to avoid artifacts near physical edges
     blurred_input = blur_pool2d(input, kernel_size=kernel_size, stride=1)  # blurry version of the input
 
     # calculate the edges (add epsilon to avoid taking the log of 0)
-    log_input, log_thresh = (input + epsilon).log2(), (tensor(edge_threshold)).log2()
+    log_input, log_thresh = (input + epsilon).log2(), (torch.tensor(edge_threshold)).log2()
     edges_x = log_input[..., :, 4:] - log_input[..., :, :-4]
     edges_y = log_input[..., 4:, :] - log_input[..., :-4, :]
     edges_x, edges_y = edges_x.mean(dim=-3, keepdim=True), edges_y.mean(dim=-3, keepdim=True)

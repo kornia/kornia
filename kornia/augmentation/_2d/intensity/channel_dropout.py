@@ -17,9 +17,10 @@
 
 from typing import Any, Dict, Optional
 
+import torch
+
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import ChannelDropoutGenerator
-from kornia.core import Tensor, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 
@@ -88,7 +89,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
             0.0 <= fill_value <= 1.0,
             f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}",
         )
-        self.fill_value = tensor(fill_value)
+        self.fill_value = torch.tensor(fill_value)
 
         KORNIA_CHECK_TYPE(num_drop_channels, int, f"`num_drop_channels` must be an int. Got: {type(num_drop_channels)}")
         KORNIA_CHECK(
@@ -100,8 +101,12 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         self._param_generator = ChannelDropoutGenerator(self.num_drop_channels)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
         KORNIA_CHECK(
             self.num_drop_channels <= input.shape[1],

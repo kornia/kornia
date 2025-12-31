@@ -26,10 +26,11 @@
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/layers/drop.py
 from typing import Optional
 
-from kornia.core import Module, Tensor
+import torch
+from torch import nn
 
 
-def drop_path(x: Tensor, drop_prob: Optional[float] = 0.0, training: bool = False) -> Tensor:
+def drop_path(x: torch.Tensor, drop_prob: Optional[float] = 0.0, training: bool = False) -> torch.Tensor:
     """Apply stochastic depth sampling."""
     if drop_prob is None:
         drop_path = 0.0
@@ -44,12 +45,12 @@ def drop_path(x: Tensor, drop_prob: Optional[float] = 0.0, training: bool = Fals
     return output
 
 
-class DropPath(Module):
+class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)."""
 
     def __init__(self, drop_prob: Optional[float] = None) -> None:
         super().__init__()
         self.drop_prob = drop_prob
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return drop_path(x, self.drop_prob, self.training)

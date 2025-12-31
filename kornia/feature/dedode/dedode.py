@@ -19,8 +19,8 @@ from typing import Dict, Literal, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
+from torch import nn
 
-from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.enhance.normalize import Normalize
 from kornia.utils.helpers import map_location_to_cpu
@@ -46,8 +46,8 @@ urls: Dict[str, Dict[str, str]] = {
 }
 
 
-class DeDoDe(Module):
-    r"""Module which detects and/or describes local features in an image using the DeDode method.
+class DeDoDe(nn.Module):
+    r"""nn.Module which detects and/or describes local features in an image using the DeDode method.
 
     See :cite:`edstedt2024dedode` for details.
 
@@ -81,25 +81,27 @@ class DeDoDe(Module):
 
     def forward(
         self,
-        images: Tensor,
+        images: torch.Tensor,
         n: Optional[int] = 10_000,
         apply_imagenet_normalization: bool = True,
         pad_if_not_divisible: bool = True,
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Detect and describe keypoints in the input images.
 
         Args:
-            images: A tensor of shape :math:`(B, 3, H, W)` containing the ImageNet-Normalized input images.
+            images: A torch.tensor of shape :math:`(B, 3, H, W)` containing the ImageNet-Normalized input images.
             n: The number of keypoints to detect.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
-            pad_if_not_divisible: pad image shape if not evenly divisible.
+            pad_if_not_divisible: F.pad image shape if not evenly divisible.
 
         Returns:
-            keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range,
-            unlike `.detect()` function
-            scores: A tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
-            descriptions: A tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints.
-            DIM is 256 for B and 512 for G.
+            keypoints: A torch.tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range,
+                unlike `.detect()` function.
+
+            scores: A torch.tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
+
+            descriptions: A torch.tensor of shape :math:`(B, N, DIM)` containing the descriptions
+                of the detected keypoints. DIM is 256 for B and 512 for G.
 
         """
         if apply_imagenet_normalization:
@@ -109,7 +111,7 @@ class DeDoDe(Module):
         if pad_if_not_divisible:
             pd_h = 14 - h % 14 if h % 14 > 0 else 0
             pd_w = 14 - w % 14 if w % 14 > 0 else 0
-            images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
+            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
         keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
         descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
         return dedode_denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
@@ -117,27 +119,27 @@ class DeDoDe(Module):
     @torch.inference_mode()
     def detect(
         self,
-        images: Tensor,
+        images: torch.Tensor,
         n: Optional[int] = 10_000,
         apply_imagenet_normalization: bool = True,
         pad_if_not_divisible: bool = True,
         crop_h: Optional[int] = None,
         crop_w: Optional[int] = None,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Detect keypoints in the input images.
 
         Args:
-            images: A tensor of shape :math:`(B, 3, H, W)` containing the input images.
+            images: A torch.tensor of shape :math:`(B, 3, H, W)` containing the input images.
             n: The number of keypoints to detect.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
-            pad_if_not_divisible: pad image shape if not evenly divisible.
+            pad_if_not_divisible: F.pad image shape if not evenly divisible.
             crop_h: The height of the crop to be used for detection. If None, the full image is used.
             crop_w: The width of the crop to be used for detection. If None, the full image is used.
 
         Returns:
-            keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints,
+            keypoints: A torch.tensor of shape :math:`(B, N, 2)` containing the detected keypoints,
             normalized to the range :math:`[-1, 1]`.
-            scores: A tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
+            scores: A torch.tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
 
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
@@ -147,7 +149,7 @@ class DeDoDe(Module):
             h, w = images.shape[2:]
             pd_h = 14 - h % 14 if h % 14 > 0 else 0
             pd_w = 14 - w % 14 if w % 14 > 0 else 0
-            images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
+            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
         if apply_imagenet_normalization:
             images = self.normalizer(images)
         logits = self.detector.forward(images)
@@ -163,24 +165,25 @@ class DeDoDe(Module):
     @torch.inference_mode()
     def describe(
         self,
-        images: Tensor,
-        keypoints: Optional[Tensor] = None,
+        images: torch.Tensor,
+        keypoints: Optional[torch.Tensor] = None,
         apply_imagenet_normalization: bool = True,
         crop_h: Optional[int] = None,
         crop_w: Optional[int] = None,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         """Describe keypoints in the input images. If keypoints are not provided, returns the dense descriptors.
 
         Args:
-            images: A tensor of shape :math:`(B, 3, H, W)` containing the input images.
-            keypoints: An optional tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
+            images: A torch.tensor of shape :math:`(B, 3, H, W)` containing the input images.
+            keypoints: An optional torch.tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
             crop_h: The height of the crop to be used for description. If None, the full image is used.
             crop_w: The width of the crop to be used for description. If None, the full image is used.
 
         Returns:
-            descriptions: A tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints.
-            If the dense descriptors are requested, the shape is :math:`(B, DIM, H, W)`.
+            descriptions: A torch.tensor of shape :math:`(B, N, DIM)` containing the descriptions
+                of the detected keypoints.
+                If the dense descriptors are requested, the shape is :math:`(B, DIM, H, W)`.
 
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
@@ -208,7 +211,7 @@ class DeDoDe(Module):
         detector_weights: str = "L-C4-v2",
         descriptor_weights: str = "G-upright",
         amp_dtype: torch.dtype = torch.float16,
-    ) -> Module:
+    ) -> nn.Module:
         r"""Load a pretrained model.
 
         Args:

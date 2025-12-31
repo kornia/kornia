@@ -29,10 +29,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import requests
 import torch
+import torch.nn.functional as F
 from kornia_moons.feature import visualize_LAF
 
 import kornia as K
-from kornia.core import Tensor
 
 mpl.use("Agg")
 
@@ -66,14 +66,14 @@ def read_img_from_url(url: str, resize_to: Optional[tuple[int, int]] = None, **r
     return img_t
 
 
-def transparent_pad(src: Tensor, shape: tuple[int, int]) -> Tensor:
+def transparent_pad(src: torch.Tensor, shape: tuple[int, int]) -> torch.Tensor:
     """Apply a transparent pad to src (centerized) to match with shape (h, w)"""
     w_pad = abs(int(src.shape[-1] - shape[-1]) // 2)
     h_pad = abs(int(src.shape[-2] - shape[-2]) // 2)
-    return torch.nn.functional.pad(K.color.rgb_to_rgba(src, 1.0), (w_pad, w_pad, h_pad, h_pad), "constant", 0.0)
+    return F.pad(K.color.rgb_to_rgba(src, 1.0), (w_pad, w_pad, h_pad, h_pad), "constant", 0.0)
 
 
-def draw_bbox_kpts(imgs, bboxes, keypoints):
+def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Tensor) -> torch.Tensor:
     rectangle = torch.zeros(imgs.shape[0], imgs.shape[1], 4)
     rectangle[..., 0] = bboxes[..., 0]  # x1
     rectangle[..., 1] = bboxes[..., 1]  # y1

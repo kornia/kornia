@@ -20,12 +20,12 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import torch
+import torch.nn.functional as F
 
 from kornia.augmentation import LongestMaxSize
 from kornia.augmentation.container.augment import AugmentationSequential
-from kornia.core import Tensor, pad, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.enhance import normalize
+from kornia.enhance import normalize as kornia_normalize
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.models.sam import Sam, SamConfig
@@ -39,7 +39,7 @@ class VisualPrompter:
 
     For default the images are transformed to have their long side with size of the `image_encoder.img_size`. This
     Prompter class ensure to transform the images and the prompts before prediction. Also, the image is passed
-    automatically for the method `preprocess_image`, which is responsible for normalize the image and pad it to have
+    automatically for the method `preprocess_image`, which is responsible for F.normalize the image and F.pad it to have
     the right size for the SAM model :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`. For
     default the image is normalized by the mean and standard deviation of the SAM dataset values.
 
@@ -81,8 +81,12 @@ class VisualPrompter:
         if isinstance(config, SamConfig):
             self.model = Sam.from_config(config)
             transforms = (LongestMaxSize(self.model.image_encoder.img_size, p=1.0),)
-            self.pixel_mean: Optional[Tensor] = tensor([123.675, 116.28, 103.53], device=device, dtype=dtype) / 255
-            self.pixel_std: Optional[Tensor] = tensor([58.395, 57.12, 57.375], device=device, dtype=dtype) / 255
+            self.pixel_mean: Optional[torch.Tensor] = (
+                torch.tensor([123.675, 116.28, 103.53], device=device, dtype=dtype) / 255
+            )
+            self.pixel_std: Optional[torch.Tensor] = (
+                torch.tensor([58.395, 57.12, 57.375], device=device, dtype=dtype) / 255
+            )
         else:
             raise NotImplementedError
 
@@ -96,13 +100,16 @@ class VisualPrompter:
         self._input_encoder_size: None | tuple[int, int] = None
         self.reset_image()
 
-    def preprocess_image(self, x: Tensor, mean: Optional[Tensor] = None, std: Optional[Tensor] = None) -> Tensor:
-        """Normalize and pad a tensor.
+    def preprocess_image(
+        self, x: torch.Tensor, mean: Optional[torch.Tensor] = None, std: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """Normalize and F.pad a torch.tensor.
 
-        For normalize the tensor: will prioritize the `mean` and `std` passed as argument, if None will use the default
+        For F.normalize the tensor: will prioritize the `mean` and `std` passed as argument,
+        if None will use the default
         Sam Dataset values.
 
-        For pad the tensor: Will pad the tensor into the right and bottom to match with the size of
+        For F.pad the tensor: Will F.pad the torch.tensor into the right and bottom to match with the size of
         `self.model.image_encoder.img_size`
 
         Args:
@@ -114,26 +121,28 @@ class VisualPrompter:
             The image preprocessed (normalized if has mean and str available and padded to encoder size)
 
         """
-        if isinstance(mean, Tensor) and isinstance(std, Tensor):
-            x = normalize(x, mean, std)
-        elif isinstance(self.pixel_mean, Tensor) and isinstance(self.pixel_std, Tensor):
-            x = normalize(x, self.pixel_mean, self.pixel_std)
+        if isinstance(mean, torch.Tensor) and isinstance(std, torch.Tensor):
+            x = kornia_normalize(x, mean, std)
+        elif isinstance(self.pixel_mean, torch.Tensor) and isinstance(self.pixel_std, torch.Tensor):
+            x = kornia_normalize(x, self.pixel_mean, self.pixel_std)
 
         encoder_im_size = self.model.image_encoder.img_size
         pad_h = encoder_im_size - x.shape[-2]
         pad_w = encoder_im_size - x.shape[-1]
-        x = pad(x, (0, pad_w, 0, pad_h))
+        x = F.pad(x, (0, pad_w, 0, pad_h))
 
         return x
 
     @torch.no_grad()
-    def set_image(self, image: Tensor, mean: Optional[Tensor] = None, std: Optional[Tensor] = None) -> None:
+    def set_image(
+        self, image: torch.Tensor, mean: Optional[torch.Tensor] = None, std: Optional[torch.Tensor] = None
+    ) -> None:
         """Set the embeddings from the given image with `image_decoder` of the model.
 
         Prepare the given image with the selected transforms and the preprocess method.
 
         Args:
-            image: RGB image. Normally images with range of [0-1], the model preprocess normalize the
+            image: RGB image. Normally images with range of [0-1], the model preprocess F.normalize the
                    pixel values with the mean and std defined in its initialization. Expected to be into a float32
                    dtype. Shape :math:`(3, H, W)`.
             mean: mean value of dataset for normalization.
@@ -157,20 +166,20 @@ class VisualPrompter:
         self.image_embeddings = self.model.image_encoder(image)
         self.is_image_set = True
 
-    def _valid_keypoints(self, keypoints: Keypoints | Tensor, labels: Tensor) -> Keypoints:
+    def _valid_keypoints(self, keypoints: Keypoints | torch.Tensor, labels: torch.Tensor) -> Keypoints:
         """Validate the keypoints shape and ensure to be a Keypoints."""
         KORNIA_CHECK_SHAPE(keypoints.data, ["K", "N", "2"])
         KORNIA_CHECK_SHAPE(labels.data, ["K", "N"])
         KORNIA_CHECK(keypoints.shape[0] == labels.shape[0], "The keypoints and labels should have the same batch size")
 
-        if isinstance(keypoints, Tensor):
+        if isinstance(keypoints, torch.Tensor):
             keypoints = Keypoints.from_tensor(keypoints)
 
         return keypoints
 
-    def _valid_boxes(self, boxes: Boxes | Tensor) -> Boxes:
+    def _valid_boxes(self, boxes: Boxes | torch.Tensor) -> Boxes:
         """Validate the boxes shape and ensure to be a Boxes into xyxy mode."""
-        if isinstance(boxes, Tensor):
+        if isinstance(boxes, torch.Tensor):
             KORNIA_CHECK_SHAPE(boxes.data, ["K", "4"])
             boxes = Boxes(boxes, mode="xyxy")
 
@@ -181,45 +190,45 @@ class VisualPrompter:
 
         return boxes_xyxy
 
-    def _valid_masks(self, masks: Tensor) -> Tensor:
+    def _valid_masks(self, masks: torch.Tensor) -> torch.Tensor:
         """Validate the input masks shape."""
         KORNIA_CHECK_SHAPE(masks, ["K", "1", "256", "256"])
         return masks
 
     def _transform_prompts(
-        self, *prompts: Tensor | Boxes | Keypoints, data_keys: Optional[list[str]] = None
-    ) -> dict[str, Tensor | Boxes | Keypoints]:
+        self, *prompts: torch.Tensor | Boxes | Keypoints, data_keys: Optional[list[str]] = None
+    ) -> dict[str, torch.Tensor | Boxes | Keypoints]:
         transformed_prompts = self.transforms(*prompts, data_keys=data_keys, params=self._tfs_params)
         if data_keys is None:
             data_keys = []
 
-        # prevent unpacking tensor when creating the output dict (issue #2627)
+        # prevent unpacking torch.tensor when creating the output dict (issue #2627)
         if not isinstance(transformed_prompts, (list, tuple)):
             transformed_prompts = [transformed_prompts]
         return {key: transformed_prompts[idx] for idx, key in enumerate(data_keys)}
 
     def preprocess_prompts(
         self,
-        keypoints: Optional[Keypoints | Tensor] = None,
-        keypoints_labels: Optional[Tensor] = None,
-        boxes: Optional[Boxes | Tensor] = None,
-        masks: Optional[Tensor] = None,
+        keypoints: Optional[Keypoints | torch.Tensor] = None,
+        keypoints_labels: Optional[torch.Tensor] = None,
+        boxes: Optional[Boxes | torch.Tensor] = None,
+        masks: Optional[torch.Tensor] = None,
     ) -> Prompts:
         """Validate and preprocess the given prompts to be aligned with the input image."""
         data_keys = []
-        to_transform: list[Keypoints | Boxes | Tensor] = []
+        to_transform: list[Keypoints | Boxes | torch.Tensor] = []
 
-        if isinstance(keypoints, (Keypoints, Tensor)) and isinstance(keypoints_labels, Tensor):
+        if isinstance(keypoints, (Keypoints, torch.Tensor)) and isinstance(keypoints_labels, torch.Tensor):
             keypoints = self._valid_keypoints(keypoints, keypoints_labels)
             data_keys.append("keypoints")
             to_transform.append(keypoints)
 
-        if isinstance(boxes, (Boxes, Tensor)):
+        if isinstance(boxes, (Boxes, torch.Tensor)):
             self._valid_boxes(boxes)
             data_keys.append("bbox_xyxy")
             to_transform.append(boxes)
 
-        if isinstance(masks, Tensor):
+        if isinstance(masks, torch.Tensor):
             self._valid_masks(masks)
 
         data = self._transform_prompts(*to_transform, data_keys=data_keys)
@@ -243,10 +252,10 @@ class VisualPrompter:
     @torch.no_grad()
     def predict(
         self,
-        keypoints: Optional[Keypoints | Tensor] = None,
-        keypoints_labels: Optional[Tensor] = None,
-        boxes: Optional[Boxes | Tensor] = None,
-        masks: Optional[Tensor] = None,
+        keypoints: Optional[Keypoints | torch.Tensor] = None,
+        keypoints_labels: Optional[torch.Tensor] = None,
+        boxes: Optional[Boxes | torch.Tensor] = None,
+        masks: Optional[torch.Tensor] = None,
         multimask_output: bool = True,
         output_original_size: bool = True,
     ) -> SegmentationResults:
@@ -258,9 +267,9 @@ class VisualPrompter:
             keypoints_labels: Labels for the point prompts. 1 indicates a foreground point and 0 indicates a background
                              point. Shape :math:`(K, N)`. Where `N` is the number of points, and `K` the number of
                              prompts.
-            boxes: A box prompt to the model. If a tensor, should be in a xyxy mode. Shape :math:`(K, 4)`
+            boxes: A box prompt to the model. If a torch.tensor, should be in a xyxy mode. Shape :math:`(K, 4)`
             masks: A low resolution mask input to the model, typically coming from a previous prediction
-                   iteration. Has shape :math:`(K, 1, H, W)`, where for SAM, H=W=256.
+                   iteration. Has shape :math:`(K, 1, H, W)`, torch.where for SAM, H=W=256.
             multimask_output: If true, the model will return three masks. For ambiguous input prompts (such as a
                               single click), this will often produce better masks than a single prediction. If only
                               a single mask is needed, the model's predicted quality score can be used to select the

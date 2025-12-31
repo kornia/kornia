@@ -15,14 +15,19 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict
+from typing import Any, Dict, Union
 
-from kornia.core import Device, Module, Tensor, concatenate
+import torch
+from torch import nn
 
 
 def batched_forward(
-    model: Module, data: Tensor, device: Device, batch_size: int = 128, **kwargs: Dict[str, Any]
-) -> Tensor:
+    model: nn.Module,
+    data: torch.Tensor,
+    device: Union[str, torch.device, None],
+    batch_size: int = 128,
+    **kwargs: Dict[str, Any],
+) -> torch.Tensor:
     r"""Run the forward in micro-batches.
 
     When the just model.forward(data) does not fit into device memory, e.g. on laptop GPU.
@@ -65,6 +70,6 @@ def batched_forward(
             if st >= end:
                 continue
             out_list.append(model_dev(data[st:end].to(device), **kwargs))
-        out = concatenate(out_list, 0)
+        out = torch.cat(out_list, 0)
         return out.to(data.device)
     return model(data, **kwargs)

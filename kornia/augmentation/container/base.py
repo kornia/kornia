@@ -24,7 +24,6 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
-from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -42,17 +41,17 @@ class BasicSequentialBase(nn.Sequential):
 
     """
 
-    def __init__(self, *args: Module) -> None:
+    def __init__(self, *args: nn.Module) -> None:
         # To name the modules properly
         _args = OrderedDict()
         for idx, mod in enumerate(args):
-            if not isinstance(mod, Module):
-                raise NotImplementedError(f"Only Module are supported at this moment. Got {mod}.")
+            if not isinstance(mod, nn.Module):
+                raise NotImplementedError(f"Only nn.Module are supported at this moment. Got {mod}.")
             _args.update({f"{mod.__class__.__name__}_{idx}": mod})
         super().__init__(_args)
         self._params: Optional[List[ParamItem]] = None
 
-    def get_submodule(self, target: str) -> Module:
+    def get_submodule(self, target: str) -> nn.Module:
         """Get submodule.
 
         This code is taken from torch 1.9.0 since it is not introduced
@@ -65,12 +64,12 @@ class BasicSequentialBase(nn.Sequential):
                 fully-qualified string.)
 
         Returns:
-            Module: The submodule referenced by ``target``
+            nn.Module: The submodule referenced by ``target``
 
         Raises:
             AttributeError: If the target string references an invalid
                 path or resolves to something that is not an
-                ``Module``
+                ``nn.Module``
 
         """
         if len(target) == 0:
@@ -85,8 +84,8 @@ class BasicSequentialBase(nn.Sequential):
 
             mod = getattr(mod, item)
 
-            if not isinstance(mod, Module):
-                raise AttributeError("`" + item + "` is not an Module")
+            if not isinstance(mod, nn.Module):
+                raise AttributeError("`" + item + "` is not an nn.Module")
 
         return mod
 
@@ -98,18 +97,18 @@ class BasicSequentialBase(nn.Sequential):
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         raise NotImplementedError
 
-    def get_children_by_indices(self, indices: Tensor) -> Iterator[Tuple[str, Module]]:
+    def get_children_by_indices(self, indices: torch.Tensor) -> Iterator[Tuple[str, nn.Module]]:
         modules = list(self.named_children())
         for idx in indices:
             yield modules[idx]
 
-    def get_children_by_params(self, params: List[ParamItem]) -> Iterator[Tuple[str, Module]]:
+    def get_children_by_params(self, params: List[ParamItem]) -> Iterator[Tuple[str, nn.Module]]:
         modules = list(self.named_children())
         # TODO: Wrong params passed here when nested ImageSequential
         for param in params:
             yield modules[list(dict(self.named_children()).keys()).index(param.name)]
 
-    def get_params_by_module(self, named_modules: Iterator[Tuple[str, Module]]) -> Iterator[ParamItem]:
+    def get_params_by_module(self, named_modules: Iterator[Tuple[str, nn.Module]]) -> Iterator[ParamItem]:
         # This will not take module._params
         for name, _ in named_modules:
             yield ParamItem(name, None)
@@ -129,7 +128,7 @@ class SequentialBase(BasicSequentialBase):
 
     """
 
-    def __init__(self, *args: Module, same_on_batch: Optional[bool] = None, keepdim: Optional[bool] = None) -> None:
+    def __init__(self, *args: nn.Module, same_on_batch: Optional[bool] = None, keepdim: Optional[bool] = None) -> None:
         # To name the modules properly
         super().__init__(*args)
         self._same_on_batch = same_on_batch
@@ -170,10 +169,10 @@ class SequentialBase(BasicSequentialBase):
         self._keepdim = keepdim
         self.update_attribute(keepdim=keepdim)
 
-    def autofill_dim(self, input: Tensor, dim_range: Tuple[int, int] = (2, 4)) -> Tuple[torch.Size, torch.Size]:
-        """Fill tensor dim to the upper bound of dim_range.
+    def autofill_dim(self, input: torch.Tensor, dim_range: Tuple[int, int] = (2, 4)) -> Tuple[torch.Size, torch.Size]:
+        """Fill torch.tensor dim to the upper bound of dim_range.
 
-        If input tensor dim is smaller than the lower bound of dim_range, an error will be thrown out.
+        If input torch.tensor dim is smaller than the lower bound of dim_range, an error will be thrown out.
         """
         ori_shape = input.shape
         if len(ori_shape) < dim_range[0] or len(ori_shape) > dim_range[1]:
@@ -184,21 +183,21 @@ class SequentialBase(BasicSequentialBase):
 
 
 class ImageSequentialBase(SequentialBase):
-    def identity_matrix(self, input: Tensor) -> Tensor:
+    def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return identity matrix."""
         raise NotImplementedError
 
     def get_transformation_matrix(
         self,
-        input: Tensor,
+        input: torch.Tensor,
         params: Optional[List[ParamItem]] = None,
         recompute: bool = False,
         extra_args: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Tensor]:
+    ) -> Optional[torch.Tensor]:
         """Compute the transformation matrix according to the provided parameters.
 
         Args:
-            input: the input tensor.
+            input: the input torch.tensor.
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
@@ -209,36 +208,36 @@ class ImageSequentialBase(SequentialBase):
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         raise NotImplementedError
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
         """Get module sequence by input params."""
         raise NotImplementedError
 
     def transform_inputs(
-        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
     def inverse_inputs(
-        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
     def transform_masks(
-        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         for param in params:
             module = self.get_submodule(param.name)
             input = MaskSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
     def inverse_masks(
-        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
@@ -274,11 +273,11 @@ class ImageSequentialBase(SequentialBase):
         return input
 
     def inverse(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         """Inverse transformation.
 
-        Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
+        Used to inverse a torch.tensor according to the performed transformation by a forward pass, or with respect to
         provided parameters.
         """
         if params is None:
@@ -294,8 +293,8 @@ class ImageSequentialBase(SequentialBase):
         return input
 
     def forward(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         self.clear_state()
 
         if params is None:
@@ -317,8 +316,8 @@ class TransformMatrixMinIn:
 
     def __init__(self, *args, **kwargs) -> None:  # type:ignore
         super().__init__(*args, **kwargs)
-        self._transform_matrix: Optional[Tensor] = None
-        self._transform_matrices: List[Optional[Tensor]] = []
+        self._transform_matrix: Optional[torch.Tensor] = None
+        self._transform_matrices: List[Optional[torch.Tensor]] = []
 
     def _parse_transformation_matrix_mode(self, transformation_matrix_mode: str) -> None:
         _valid_transformation_matrix_args = {"silence", "silent", "rigid", "skip"}
@@ -330,7 +329,7 @@ class TransformMatrixMinIn:
         self._transformation_matrix_arg = transformation_matrix_mode
 
     @property
-    def transform_matrix(self) -> Optional[Tensor]:
+    def transform_matrix(self) -> Optional[torch.Tensor]:
         # In AugmentationSequential, the parent class is accessed first.
         # So that it was None in the beginning. We hereby use lazy computation here.
         if self._transform_matrix is None and len(self._transform_matrices) != 0:
@@ -339,10 +338,10 @@ class TransformMatrixMinIn:
                 self._update_transform_matrix(mat)
         return self._transform_matrix
 
-    def _update_transform_matrix_for_valid_op(self, module: Module) -> None:
+    def _update_transform_matrix_for_valid_op(self, module: nn.Module) -> None:
         raise NotImplementedError(module)
 
-    def _update_transform_matrix_by_module(self, module: Module) -> None:
+    def _update_transform_matrix_by_module(self, module: nn.Module) -> None:
         if self._transformation_matrix_arg == "skip":
             return
         if isinstance(module, self._valid_ops_for_transform_computation):
@@ -353,7 +352,7 @@ class TransformMatrixMinIn:
                 "Please either update the module or change the `transformation_matrix` argument."
             )
 
-    def _update_transform_matrix(self, transform_matrix: Optional[Tensor]) -> None:
+    def _update_transform_matrix(self, transform_matrix: Optional[torch.Tensor]) -> None:
         if self._transform_matrix is None:
             self._transform_matrix = transform_matrix
         else:

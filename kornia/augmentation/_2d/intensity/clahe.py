@@ -19,14 +19,15 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor
 from kornia.enhance import equalize_clahe
 
 
 class RandomClahe(IntensityAugmentationBase2D):
-    r"""Apply CLAHE equalization on the input tensor randomly.
+    r"""Apply CLAHE equalization on the input torch.tensor randomly.
 
     .. image:: _static/img/equalize_clahe.png
 
@@ -77,7 +78,11 @@ class RandomClahe(IntensityAugmentationBase2D):
         self.flags = {"grid_size": grid_size, "slow_and_differentiable": slow_and_differentiable}
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: dict[str, torch.Tensor],
+        flags: dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         clip_limit = float(params["clip_limit_factor"][0])
         return equalize_clahe(input, clip_limit, flags["grid_size"], flags["slow_and_differentiable"])

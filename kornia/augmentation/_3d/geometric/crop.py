@@ -17,15 +17,17 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
+import torch.nn.functional as F
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
-from kornia.core import Tensor, pad
 from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
 
 
 class RandomCrop3D(GeometricAugmentationBase3D):
-    r"""Apply random crop on 3D volumes (5D tensor).
+    r"""Apply random crop on 3D volumes (5D torch.tensor).
 
     Crops random sub-volumes on a given size.
 
@@ -34,11 +36,11 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         size: Desired output size (out_d, out_h, out_w) of the crop.
             Must be Tuple[int, int, int], then out_d = size[0], out_h = size[1], out_w = size[2].
         padding: Optional padding on each border of the image.
-            Default is None, i.e no padding. If a sequence of length 6 is provided, it is used to pad
+            Default is None, i.e no padding. If a sequence of length 6 is provided, it is used to F.pad
             left, top, right, bottom, front, back borders respectively.
-            If a sequence of length 3 is provided, it is used to pad left/right,
+            If a sequence of length 3 is provided, it is used to F.pad left/right,
             top/bottom, front/back borders, respectively.
-        pad_if_needed: It will pad the image if smaller than the
+        pad_if_needed: It will F.pad the image if smaller than the
             desired size to avoid raising an exception. Since cropping is done
             after padding, the padding seems to be done at a random offset.
         fill: Pixel fill value for constant fill. Default is 0. If a tuple of
@@ -56,9 +58,9 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         - Output: :math:`(B, C, , out_d, out_h, out_w)`
 
     Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+        Input torch.tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation torch.tensor and returned.
 
     Examples:
         >>> import torch
@@ -93,7 +95,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
-        # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
+        # Since PyTorch does not support ragged torch.tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         self.flags = {
             "size": size,
@@ -106,7 +108,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         }
         self._param_generator = rg.CropGenerator3D(size, None)
 
-    def precrop_padding(self, input: Tensor, flags: Optional[Dict[str, Any]] = None) -> Tensor:
+    def precrop_padding(self, input: torch.Tensor, flags: Optional[Dict[str, Any]] = None) -> torch.Tensor:
         flags = self.flags if flags is None else flags
         padding = flags["padding"]
         if padding is not None:
@@ -118,38 +120,46 @@ class RandomCrop3D(GeometricAugmentationBase3D):
                 padding = [padding[0], padding[1], padding[2], padding[3], padding[4], padding[5]]
             else:
                 raise ValueError(f"`padding` must be an integer, 3-element-list or 6-element-list. Got {padding}.")
-            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
         if flags["pad_if_needed"] and input.shape[-3] < flags["size"][0]:
             padding = [0, 0, 0, 0, flags["size"][0] - input.shape[-3], flags["size"][0] - input.shape[-3]]
-            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
         if flags["pad_if_needed"] and input.shape[-2] < flags["size"][1]:
             padding = [0, 0, (flags["size"][1] - input.shape[-2]), flags["size"][1] - input.shape[-2], 0, 0]
-            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
         if flags["pad_if_needed"] and input.shape[-1] < flags["size"][2]:
             padding = [flags["size"][2] - input.shape[-1], flags["size"][2] - input.shape[-1], 0, 0, 0, 0]
-            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
         return input
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        transform: Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
+        transform: torch.Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
-        if not isinstance(transform, Tensor):
-            raise TypeError(f"Expected the transform to be a Tensor. Gotcha {type(transform)}")
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if not isinstance(transform, torch.Tensor):
+            raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
 
         return crop_by_transform_mat3d(
             input, transform, flags["size"], mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )
 
-    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
+    def forward(
+        self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None, **kwargs: Any
+    ) -> torch.Tensor:
         # TODO: need to align 2D implementations
         input = self.precrop_padding(input)
         return super().forward(input, params)

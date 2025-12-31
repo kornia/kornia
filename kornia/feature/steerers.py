@@ -18,17 +18,17 @@
 import math
 
 import torch
+import torch.nn.functional as F
+from torch import nn
 
-from kornia.core import Module, Tensor
 
-
-class DiscreteSteerer(Module):
-    """Module for discrete rotation steerers.
+class DiscreteSteerer(nn.Module):
+    """nn.Module for discrete rotation steerers.
 
     A steerer rotates keypoint descriptions in latent space as if they were obtained from rotated images.
 
     Args:
-        generator: [N, N] tensor where N is the descriptor dimension.
+        generator: [N, N] torch.tensor torch.where N is the descriptor dimension.
 
     Example:
         >>> desc = torch.randn(512, 128)
@@ -39,23 +39,23 @@ class DiscreteSteerer(Module):
 
     """
 
-    def __init__(self, generator: Tensor) -> None:
+    def __init__(self, generator: torch.Tensor) -> None:
         super().__init__()
         self.generator = torch.nn.Parameter(generator)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.nn.functional.linear(x, self.generator)
 
     def steer_descriptions(
         self,
-        descriptions: Tensor,
+        descriptions: torch.Tensor,
         steerer_power: int = 1,
         normalize: bool = False,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         for _ in range(steerer_power):
             descriptions = self.forward(descriptions)
         if normalize:
-            descriptions = torch.nn.functional.normalize(descriptions, dim=-1)
+            descriptions = F.normalize(descriptions, dim=-1)
         return descriptions
 
     @classmethod
@@ -63,9 +63,9 @@ class DiscreteSteerer(Module):
         cls,
         generator_type: str = "C4",
         steerer_order: int = 8,
-    ) -> Module:
+    ) -> nn.Module:
         r"""Create a steerer for pretrained DeDoDe descriptors int the "C-setting"
-            from the paper https://arxiv.org/abs/2312.02152, where descriptors were
+            from the paper https://arxiv.org/abs/2312.02152, torch.where descriptors were
             trained for fixed steerers.
 
         Args:

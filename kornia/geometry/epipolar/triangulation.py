@@ -15,11 +15,10 @@
 # limitations under the License.
 #
 
-"""Module with the functionalities for triangulation."""
+"""nn.Module with the functionalities for triangulation."""
 
 import torch
 
-from kornia.core import zeros
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous
 from kornia.utils.helpers import _torch_svd_cast
@@ -57,7 +56,7 @@ def triangulate_points(
 
     # allocate and construct the equations matrix with shape (*, 4, 4)
     points_shape = max(points1.shape, points2.shape)  # this allows broadcasting
-    X = zeros(points_shape[:-1] + (4, 4)).type_as(points1)
+    X = torch.zeros(points_shape[:-1] + (4, 4)).type_as(points1)
 
     for i in range(4):
         X[..., 0, i] = points1[..., 0] * P1[..., 2:3, i] - P1[..., 0:1, i]

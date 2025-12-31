@@ -20,15 +20,13 @@ from typing import Dict
 import torch
 from torch import nn
 
-from kornia.core import Module, Parameter, Tensor, tensor, zeros
-
 urls: Dict[str, str] = {}
 urls["liberty"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth"  # pylint: disable
 urls["notredame"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_ND.pth"  # pylint: disable
 urls["yosemite"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_YOS.pth"  # pylint: disable
 
 
-class FilterResponseNorm2d(Module):
+class FilterResponseNorm2d(nn.Module):
     r"""Feature Response Normalization layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence
     in the Training of Deep Neural Networks', see :cite:`FRN2019` for more details.
 
@@ -69,12 +67,12 @@ class FilterResponseNorm2d(Module):
         self.is_bias = is_bias
         self.is_scale = is_scale
 
-        self.weight = Parameter(torch.ones(1, num_features, 1, 1), requires_grad=True)
-        self.bias = Parameter(zeros(1, num_features, 1, 1), requires_grad=True)
+        self.weight = nn.Parameter(torch.ones(1, num_features, 1, 1), requires_grad=True)
+        self.bias = nn.Parameter(torch.zeros(1, num_features, 1, 1), requires_grad=True)
         if is_eps_leanable:
-            self.eps = Parameter(tensor(1), requires_grad=True)
+            self.eps = nn.Parameter(torch.tensor(1), requires_grad=True)
         else:
-            self.register_buffer("eps", tensor([eps]))
+            self.register_buffer("eps", torch.tensor([eps]))
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
@@ -86,7 +84,7 @@ class FilterResponseNorm2d(Module):
     def extra_repr(self) -> str:
         return "num_features={num_features}, eps={init_eps}".format(**self.__dict__)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Compute the mean norm of activations per channel.
         nu2 = x.pow(2).mean(dim=[2, 3], keepdim=True)
 
@@ -101,7 +99,7 @@ class FilterResponseNorm2d(Module):
         return x
 
 
-class TLU(Module):
+class TLU(nn.Module):
     r"""TLU layer from 'Filter Response Normalization Layer: Eliminating Batch Dependence in the Training of Deep
     Neural Networks, see :cite:`FRN2019` for more details. :math:`{\tau}` is learnable per channel.
 
@@ -124,7 +122,7 @@ class TLU(Module):
         """max(y, tau) = max(y - tau, 0) + tau = ReLU(y - tau) + tau."""
         super().__init__()
         self.num_features = num_features
-        self.tau = Parameter(-torch.ones(1, num_features, 1, 1), requires_grad=True)
+        self.tau = nn.Parameter(-torch.ones(1, num_features, 1, 1), requires_grad=True)
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
@@ -134,12 +132,12 @@ class TLU(Module):
     def extra_repr(self) -> str:
         return "num_features={num_features}".format(**self.__dict__)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.max(x, self.tau)
 
 
-class HyNet(Module):
-    r"""Module, which computes HyNet descriptors of given grayscale patches of 32x32.
+class HyNet(nn.Module):
+    r"""nn.Module, which computes HyNet descriptors of given grayscale patches of 32x32.
 
     This is based on the original code from paper
     "HyNet: Learning Local Descriptor with Hybrid Similarity Measure and Triplet Loss".
@@ -232,7 +230,7 @@ class HyNet(Module):
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)

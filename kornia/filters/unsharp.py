@@ -18,22 +18,23 @@
 from __future__ import annotations
 
 import torch
-
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor
+from torch import nn
 
 from .gaussian import gaussian_blur2d
 
 
 def unsharp_mask(
-    input: Tensor, kernel_size: tuple[int, int] | int, sigma: tuple[float, float] | Tensor, border_type: str = "reflect"
-) -> Tensor:
-    r"""Create an operator that sharpens a tensor by applying operation out = 2 * image - gaussian_blur2d(image).
+    input: torch.Tensor,
+    kernel_size: tuple[int, int] | int,
+    sigma: tuple[float, float] | torch.Tensor,
+    border_type: str = "reflect",
+) -> torch.Tensor:
+    r"""Create an operator that sharpens a torch.tensor by applying operation out = 2 * image - gaussian_blur2d(image).
 
     .. image:: _static/img/unsharp_mask.png
 
     Args:
-        input: the input tensor with shape :math:`(B,C,H,W)`.
+        input: the input torch.tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel.
         sigma: the standard deviation of the kernel.
         border_type: the padding mode to be applied before convolving.
@@ -41,7 +42,7 @@ def unsharp_mask(
           ``'replicate'`` or ``'circular'``.
 
     Returns:
-        the blurred tensor with shape :math:`(B,C,H,W)`.
+        the blurred torch.tensor with shape :math:`(B,C,H,W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -50,11 +51,11 @@ def unsharp_mask(
         torch.Size([2, 4, 5, 5])
 
     """
-    data_blur: Tensor = gaussian_blur2d(input, kernel_size, sigma, border_type)
+    data_blur: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma, border_type)
     return torch.lerp(data_blur, input, weight=2.0)
 
 
-class UnsharpMask(Module):
+class UnsharpMask(nn.Module):
     r"""Create an operator that sharpens image with: out = 2 * image - gaussian_blur2d(image).
 
     Args:
@@ -65,7 +66,7 @@ class UnsharpMask(Module):
           ``'replicate'`` or ``'circular'``.
 
     Returns:
-        the sharpened tensor with shape :math:`(B,C,H,W)`.
+        the sharpened torch.tensor with shape :math:`(B,C,H,W)`.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -84,12 +85,15 @@ class UnsharpMask(Module):
     """
 
     def __init__(
-        self, kernel_size: tuple[int, int] | int, sigma: tuple[float, float] | Tensor, border_type: str = "reflect"
+        self,
+        kernel_size: tuple[int, int] | int,
+        sigma: tuple[float, float] | torch.Tensor,
+        border_type: str = "reflect",
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
         self.sigma = sigma
         self.border_type = border_type
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return unsharp_mask(input, self.kernel_size, self.sigma, self.border_type)

@@ -23,12 +23,11 @@ from torch.distributions import Bernoulli, RelaxedBernoulli
 from typing_extensions import Self
 
 from kornia.augmentation.base import _AugmentationBase
-from kornia.core import Module, Tensor
 
 T = TypeVar("T", bound="OperationBase")
 
 
-class OperationBase(Module):
+class OperationBase(nn.Module):
     """Base class of differentiable augmentation operations.
 
     Args:
@@ -49,7 +48,7 @@ class OperationBase(Module):
         initial_magnitude: Optional[List[Tuple[str, Optional[float]]]] = None,
         temperature: float = 0.1,
         is_batch_operation: bool = False,
-        magnitude_fn: Optional[Callable[[Tensor], Tensor]] = None,
+        magnitude_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__()
@@ -75,12 +74,14 @@ class OperationBase(Module):
         self.symmetric_megnitude = symmetric_megnitude
         self._magnitude_fn = self._init_magnitude_fn(magnitude_fn)
 
-    def _init_magnitude_fn(self, magnitude_fn: Optional[Callable[[Tensor], Tensor]]) -> Callable[[Tensor], Tensor]:
-        def _identity(x: Tensor) -> Tensor:
+    def _init_magnitude_fn(
+        self, magnitude_fn: Optional[Callable[[torch.Tensor], torch.Tensor]]
+    ) -> Callable[[torch.Tensor], torch.Tensor]:
+        def _identity(x: torch.Tensor) -> torch.Tensor:
             return x
 
-        def _random_flip(fn: Callable[[Tensor], Tensor]) -> Callable[[Tensor], Tensor]:
-            def f(x: Tensor) -> Tensor:
+        def _random_flip(fn: Callable[[torch.Tensor], torch.Tensor]) -> Callable[[torch.Tensor], torch.Tensor]:
+            def f(x: torch.Tensor) -> torch.Tensor:
                 flip = torch.rand((x.shape[0],), device=x.device) > 0.5
                 return fn(x) * flip
 
@@ -135,7 +136,9 @@ class OperationBase(Module):
     def eval(self) -> Self:
         return self.train(False)
 
-    def forward_parameters(self, batch_shape: torch.Size, mag: Optional[Tensor] = None) -> Dict[str, Tensor]:
+    def forward_parameters(
+        self, batch_shape: torch.Size, mag: Optional[torch.Tensor] = None
+    ) -> Dict[str, torch.Tensor]:
         if mag is None:
             mag = self.magnitude
         # Need to setup the sampler again for each update.
@@ -154,7 +157,7 @@ class OperationBase(Module):
 
         return params
 
-    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None) -> Tensor:
+    def forward(self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
         if params is None:
             params = self.forward_parameters(input.shape)
 
@@ -163,13 +166,13 @@ class OperationBase(Module):
         return batch_prob * self.op(input, params=params) + (1 - batch_prob) * input
 
     @property
-    def transform_matrix(self) -> Optional[Tensor]:
+    def transform_matrix(self) -> Optional[torch.Tensor]:
         if hasattr(self.op, "transform_matrix"):
             return self.op.transform_matrix
         return None
 
     @property
-    def magnitude(self) -> Optional[Tensor]:
+    def magnitude(self) -> Optional[torch.Tensor]:
         if self._magnitude is None:
             return None
         mag = self._magnitude
@@ -178,6 +181,6 @@ class OperationBase(Module):
         return mag
 
     @property
-    def probability(self) -> Tensor:
+    def probability(self) -> torch.Tensor:
         p = self._probability.clamp(*self.probability_range)
         return p

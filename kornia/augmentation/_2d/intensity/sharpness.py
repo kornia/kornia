@@ -17,14 +17,15 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor
 from kornia.enhance import sharpness
 
 
 class RandomSharpness(IntensityAugmentationBase2D):
-    r"""Sharpen given tensor image or a batch of tensor images randomly.
+    r"""Sharpen given torch.tensor image or a batch of torch.tensor images randomly.
 
     .. image:: _static/img/RandomSharpness.png
 
@@ -63,7 +64,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        sharpness: Union[Tensor, float, Tuple[float, float]] = 0.5,
+        sharpness: Union[torch.Tensor, float, Tuple[float, float]] = 0.5,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -72,7 +73,11 @@ class RandomSharpness(IntensityAugmentationBase2D):
         self._param_generator = rg.PlainUniformGenerator((sharpness, "sharpness", 0.0, (0, float("inf"))))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         factor = params["sharpness"]
         return sharpness(input, factor)

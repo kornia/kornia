@@ -18,33 +18,32 @@
 import pytest
 import torch
 
-from kornia.color import AUTUMN, ApplyColorMap, ColorMap, ColorMapType, apply_colormap
-from kornia.core import tensor
+from kornia.color import ApplyColorMap, ColorMap, ColorMapType, apply_colormap
 
 from testing.base import BaseTester, assert_close
 
 
 def test_autumn(device, dtype):
-    cm = AUTUMN(num_colors=64, device=device, dtype=dtype)
+    cm = ColorMap(base="autumn", num_colors=64, device=device, dtype=dtype)
     colors = cm.colors
 
     actual = colors[..., 0]
-    expected = tensor([1, 0, 0], device=device, dtype=dtype)
+    expected = torch.tensor([1, 0, 0], device=device, dtype=dtype)
     assert_close(actual, expected)
 
     actual = colors[..., 32]
-    expected = tensor([1.0, 0.5079365079365079, 0.0], device=device, dtype=dtype)
+    expected = torch.tensor([1.0, 0.5079365079365079, 0.0], device=device, dtype=dtype)
     assert_close(actual, expected)
 
     actual = colors[..., -1]
-    expected = tensor([1, 1, 0], device=device, dtype=dtype)
+    expected = torch.tensor([1, 1, 0], device=device, dtype=dtype)
     assert_close(actual, expected)
 
 
 class TestApplyColorMap(BaseTester):
     def test_smoke(self, device, dtype):
-        input_tensor = tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]], device=device, dtype=dtype)
-        expected_tensor = tensor(
+        input_tensor = torch.tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]], device=device, dtype=dtype)
+        expected_tensor = torch.tensor(
             [
                 [
                     [

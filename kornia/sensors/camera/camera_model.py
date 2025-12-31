@@ -21,7 +21,8 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Union
 
-from kornia.core import Tensor, stack, zeros_like
+import torch
+
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.image import ImageSize
 from kornia.sensors.camera.distortion_model import AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform
@@ -35,7 +36,9 @@ class CameraModelType(Enum):
     ORTHOGRAPHIC = 3
 
 
-def get_model_from_type(model_type: CameraModelType, image_size: ImageSize, params: Tensor) -> CameraModelVariants:
+def get_model_from_type(
+    model_type: CameraModelType, image_size: ImageSize, params: torch.Tensor
+) -> CameraModelVariants:
     """Get camera model from model type."""
     if model_type == CameraModelType.PINHOLE:
         return PinholeModel(image_size, params)
@@ -73,7 +76,11 @@ class CameraModelBase:
     """
 
     def __init__(
-        self, distortion: CameraDistortionType, projection: CameraProjectionType, image_size: ImageSize, params: Tensor
+        self,
+        distortion: CameraDistortionType,
+        projection: CameraProjectionType,
+        image_size: ImageSize,
+        params: torch.Tensor,
     ) -> None:
         """Construct CameraModelBase class.
 
@@ -100,45 +107,45 @@ class CameraModelBase:
         return self._image_size
 
     @property
-    def height(self) -> int | Tensor:
+    def height(self) -> int | torch.Tensor:
         """Returns the height of the image."""
         return self._height
 
     @property
-    def width(self) -> int | Tensor:
+    def width(self) -> int | torch.Tensor:
         """Returns the width of the image."""
         return self._width
 
     @property
-    def params(self) -> Tensor:
+    def params(self) -> torch.Tensor:
         """Returns the camera parameters."""
         return self._params
 
     @property
-    def fx(self) -> Tensor:
+    def fx(self) -> torch.Tensor:
         """Returns the focal length in x direction."""
         return self._params[..., 0]
 
     @property
-    def fy(self) -> Tensor:
+    def fy(self) -> torch.Tensor:
         """Returns the focal length in y direction."""
         return self._params[..., 1]
 
     @property
-    def cx(self) -> Tensor:
+    def cx(self) -> torch.Tensor:
         """Returns the principal point in x direction."""
         return self._params[..., 2]
 
     @property
-    def cy(self) -> Tensor:
+    def cy(self) -> torch.Tensor:
         """Returns the principal point in y direction."""
         return self._params[..., 3]
 
-    def matrix(self) -> Tensor:
+    def matrix(self) -> torch.Tensor:
         """Return the camera matrix."""
         raise NotImplementedError
 
-    def K(self) -> Tensor:
+    def K(self) -> torch.Tensor:
         """Return the camera matrix."""
         return self.matrix()
 
@@ -161,7 +168,7 @@ class CameraModelBase:
         """
         return self.distortion.distort(self.params, self.projection.project(points))
 
-    def unproject(self, points: Vector2, depth: Tensor) -> Vector3:
+    def unproject(self, points: Vector2, depth: torch.Tensor) -> Vector3:
         """Unprojects 2D points from camera plane to 3D.
 
         Args:
@@ -199,7 +206,7 @@ class PinholeModel(CameraModelBase):
 
     """
 
-    def __init__(self, image_size: ImageSize, params: Tensor) -> None:
+    def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct PinholeModel class.
 
         Args:
@@ -211,7 +218,7 @@ class PinholeModel(CameraModelBase):
             raise ValueError("params must be of shape (B, 4) for PINHOLE Camera")
         super().__init__(AffineTransform(), Z1Projection(), image_size, params)
 
-    def matrix(self) -> Tensor:
+    def matrix(self) -> torch.Tensor:
         r"""Return the camera matrix.
 
         The matrix is of the form:
@@ -229,15 +236,15 @@ class PinholeModel(CameraModelBase):
                     [0., 0., 1.]])
 
         """
-        z = zeros_like(self.fx)
-        row1 = stack((self.fx, z, self.cx), -1)
-        row2 = stack((z, self.fy, self.cy), -1)
-        row3 = stack((z, z, z), -1)
-        K = stack((row1, row2, row3), -2)
+        z = torch.zeros_like(self.fx)
+        row1 = torch.stack((self.fx, z, self.cx), -1)
+        row2 = torch.stack((z, self.fy, self.cy), -1)
+        row3 = torch.stack((z, z, z), -1)
+        K = torch.stack((row1, row2, row3), -2)
         K[..., -1, -1] = 1.0
         return K
 
-    def scale(self, scale_factor: Tensor) -> PinholeModel:
+    def scale(self, scale_factor: torch.Tensor) -> PinholeModel:
         """Scales the camera model by a scale factor.
 
         Args:
@@ -257,7 +264,7 @@ class PinholeModel(CameraModelBase):
         fy = self.fy * scale_factor
         cx = self.cx * scale_factor
         cy = self.cy * scale_factor
-        params = stack((fx, fy, cx, cy), -1)
+        params = torch.stack((fx, fy, cx, cy), -1)
         image_size = ImageSize(self.image_size.height * scale_factor, self.image_size.width * scale_factor)
         return PinholeModel(image_size, params)
 
@@ -265,7 +272,7 @@ class PinholeModel(CameraModelBase):
 class BrownConradyModel(CameraModelBase):
     """Brown Conrady Camera Model."""
 
-    def __init__(self, image_size: ImageSize, params: Tensor) -> None:
+    def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct BrownConradyModel class.
 
         Args:
@@ -282,7 +289,7 @@ class BrownConradyModel(CameraModelBase):
 class KannalaBrandtK3(CameraModelBase):
     """Kannala Brandt K3 Camera Model."""
 
-    def __init__(self, image_size: ImageSize, params: Tensor) -> None:
+    def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct KannalaBrandtK3 class.
 
         Args:
@@ -298,7 +305,7 @@ class KannalaBrandtK3(CameraModelBase):
 class Orthographic(CameraModelBase):
     """Orthographic Camera Model."""
 
-    def __init__(self, image_size: ImageSize, params: Tensor) -> None:
+    def __init__(self, image_size: ImageSize, params: torch.Tensor) -> None:
         """Construct Orthographic class.
 
         Args:
@@ -333,7 +340,7 @@ class CameraModel:
 
     """
 
-    def __init__(self, image_size: ImageSize, model_type: CameraModelType, params: Tensor) -> None:
+    def __init__(self, image_size: ImageSize, model_type: CameraModelType, params: torch.Tensor) -> None:
         """Construct CameraModel class.
 
         Args:

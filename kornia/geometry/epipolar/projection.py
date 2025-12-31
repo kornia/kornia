@@ -15,14 +15,14 @@
 # limitations under the License.
 #
 
-"""Module for image projections."""
+"""nn.Module for image projections."""
 
 from typing import Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from torch.linalg import qr as linalg_qr
 
-from kornia.core import Tensor, concatenate, pad, stack
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.utils import eye_like, vec_like
 from kornia.utils.helpers import _torch_svd_cast
@@ -30,15 +30,15 @@ from kornia.utils.helpers import _torch_svd_cast
 from .numeric import cross_product_matrix
 
 
-def intrinsics_like(focal: float, input: Tensor) -> Tensor:
+def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
     r"""Return a 3x3 intrinsics matrix, with same size as the input.
 
     The center of projection will be based in the input image size.
 
     Args:
         focal: the focal length for the camera matrix.
-        input: image tensor that will determine the batch size and image height
-          and width. It is assumed to be a tensor in the shape of :math:`(B, C, H, W)`.
+        input: image torch.tensor that will determine the batch size and image height
+          and width. It is assumed to be a torch.tensor in the shape of :math:`(B, C, H, W)`.
 
     Returns:
         The camera matrix with the shape of :math:`(B, 3, 3)`.
@@ -59,7 +59,7 @@ def intrinsics_like(focal: float, input: Tensor) -> Tensor:
     return intrinsics
 
 
-def random_intrinsics(low: Union[float, Tensor], high: Union[float, Tensor]) -> Tensor:
+def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Generate a random camera matrix based on a given uniform distribution.
 
     Args:
@@ -77,14 +77,14 @@ def random_intrinsics(low: Union[float, Tensor], high: Union[float, Tensor]) -> 
     return camera_matrix.unsqueeze(0)
 
 
-def scale_intrinsics(camera_matrix: Tensor, scale_factor: Union[float, Tensor]) -> Tensor:
+def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Scale a camera matrix containing the intrinsics.
 
     Applies the scaling factor to the focal length and center of projection.
 
     Args:
         camera_matrix: the camera calibration matrix containing the intrinsic
-          parameters. The expected shape for the tensor is :math:`(B, 3, 3)`.
+          parameters. The expected shape for the torch.tensor is :math:`(B, 3, 3)`.
         scale_factor: the scaling factor to be applied.
 
     Returns:
@@ -99,7 +99,7 @@ def scale_intrinsics(camera_matrix: Tensor, scale_factor: Union[float, Tensor]) 
     return K_scale
 
 
-def projection_from_KRt(K: Tensor, R: Tensor, t: Tensor) -> Tensor:
+def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
     r"""Get the projection matrix P from K, R and t.
 
     This function estimate the projection matrix by solving the following equation: :math:`P = K * [R|t]`.
@@ -119,17 +119,17 @@ def projection_from_KRt(K: Tensor, R: Tensor, t: Tensor) -> Tensor:
     if not len(K.shape) == len(R.shape) == len(t.shape):
         raise AssertionError
 
-    Rt = concatenate([R, t], dim=-1)  # 3x4
-    Rt_h = pad(Rt, [0, 0, 0, 1], "constant", 0.0)  # 4x4
+    Rt = torch.cat([R, t], dim=-1)  # 3x4
+    Rt_h = F.pad(Rt, [0, 0, 0, 1], "constant", 0.0)  # 4x4
     Rt_h[..., -1, -1] += 1.0
 
-    K_h = pad(K, [0, 1, 0, 1], "constant", 0.0)  # 4x4
+    K_h = F.pad(K, [0, 1, 0, 1], "constant", 0.0)  # 4x4
     K_h[..., -1, -1] += 1.0
 
     return K @ Rt
 
 
-def KRt_from_projection(P: Tensor, eps: float = 1e-6) -> Tuple[Tensor, Tensor, Tensor]:
+def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""Decompose the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
 
     Args:
@@ -165,7 +165,7 @@ def KRt_from_projection(P: Tensor, eps: float = 1e-6) -> Tuple[Tensor, Tensor, T
     return K, R, t
 
 
-def depth_from_point(R: Tensor, t: Tensor, X: Tensor) -> Tensor:
+def depth_from_point(R: torch.Tensor, t: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
     r"""Return the depth of a point transformed by a rigid transform.
 
     Args:
@@ -185,7 +185,7 @@ def depth_from_point(R: Tensor, t: Tensor, X: Tensor) -> Tensor:
 # adapted from:
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/fundamental.cpp#L61
 # https://github.com/mapillary/OpenSfM/blob/master/opensfm/multiview.py#L14
-def _nullspace(A: Tensor) -> Tuple[Tensor, Tensor]:
+def _nullspace(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Compute the null space of A.
 
     Return the smallest singular value and the corresponding vector.
@@ -194,7 +194,7 @@ def _nullspace(A: Tensor) -> Tuple[Tensor, Tensor]:
     return s[..., -1], v[..., -1]
 
 
-def projections_from_fundamental(F_mat: Tensor) -> Tensor:
+def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:
     r"""Get the projection matrices from the Fundamental Matrix.
 
     Args:
@@ -219,4 +219,4 @@ def projections_from_fundamental(F_mat: Tensor) -> Tensor:
     P1 = torch.cat([R1, t1], dim=-1)  # Bx3x4
     P2 = torch.cat([R2, t2], dim=-1)  # Bx3x4
 
-    return stack([P1, P2], dim=-1)
+    return torch.stack([P1, P2], dim=-1)

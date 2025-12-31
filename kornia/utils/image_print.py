@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""Convert an image tensor to an ANSI text string (xterm-256color).
+"""Convert an image torch.tensor to an ANSI text string (xterm-256color).
 
 Nice long listing of all 256 colors and their codes.
 
@@ -29,7 +29,6 @@ import torch
 from torch import float16, float32, float64
 
 import kornia
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_IS_IMAGE, KORNIA_CHECK_SHAPE
 from kornia.io import ImageLoadType
 
@@ -357,9 +356,9 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
 
 
 def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
-    """Obtain the closest xterm-256 approximation string from an image tensor.
+    """Obtain the closest xterm-256 approximation string from an image torch.tensor.
 
-    The tensor shall be either 0~1 float type or 0~255 long type.
+    The torch.tensor shall be either 0~1 float type or 0~255 long type.
 
     Args:
         image: an RGB image with shape :math:`3HW`.
@@ -397,13 +396,13 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
     return "".join(lines)
 
 
-def print_image(image: Union[str, Tensor], max_width: int = 96) -> None:
+def print_image(image: Union[str, torch.Tensor], max_width: int = 96) -> None:
     """Print an image to the terminal.
 
     .. image:: https://github.com/kornia/data/blob/main/print_image.png?raw=true
 
     Args:
-        image: path to a valid image file or a tensor.
+        image: path to a valid image file or a torch.tensor.
         max_width: maximum width to print to terminal.
 
     Note:
@@ -412,8 +411,8 @@ def print_image(image: Union[str, Tensor], max_width: int = 96) -> None:
     """
     if isinstance(image, str):
         img = kornia.io.load_image(image, ImageLoadType.RGB8)
-    elif isinstance(image, Tensor):
+    elif isinstance(image, torch.Tensor):
         img = image
     else:
-        raise RuntimeError(f"Expect image type to be either Tensor or str. Got {type(image)}.")
+        raise RuntimeError(f"Expect image type to be either torch.Tensor or str. Got {type(image)}.")
     print(image_to_string(img, max_width))

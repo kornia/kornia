@@ -18,10 +18,9 @@
 from __future__ import annotations
 
 import torch
+from torch import nn
 from torch.nn.functional import interpolate
 
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .blur import box_blur
@@ -29,8 +28,8 @@ from .kernels import _unpack_2d_ks
 
 
 def _preprocess_fast_guided_blur(
-    guidance: Tensor, input: Tensor, kernel_size: tuple[int, int] | int, subsample: int = 1
-) -> tuple[Tensor, Tensor, tuple[int, int]]:
+    guidance: torch.Tensor, input: torch.Tensor, kernel_size: tuple[int, int] | int, subsample: int = 1
+) -> tuple[torch.Tensor, torch.Tensor, tuple[int, int]]:
     ky, kx = _unpack_2d_ks(kernel_size)
     if subsample > 1:
         s = 1 / subsample
@@ -44,13 +43,13 @@ def _preprocess_fast_guided_blur(
 
 
 def _guided_blur_grayscale_guidance(
-    guidance: Tensor,
-    input: Tensor,
+    guidance: torch.Tensor,
+    input: torch.Tensor,
     kernel_size: tuple[int, int] | int,
-    eps: float | Tensor,
+    eps: float | torch.Tensor,
     border_type: str = "reflect",
     subsample: int = 1,
-) -> Tensor:
+) -> torch.Tensor:
     guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
 
     mean_I = box_blur(guidance_sub, kernel_size, border_type)
@@ -66,7 +65,7 @@ def _guided_blur_grayscale_guidance(
         corr_Ip = box_blur(guidance_sub * input_sub, kernel_size, border_type)
         cov_Ip = corr_Ip - mean_I * mean_p
 
-    if isinstance(eps, Tensor):
+    if isinstance(eps, torch.Tensor):
         eps = eps.view(-1, 1, 1, 1)  # N -> NCHW
 
     a = cov_Ip / (var_I + eps)
@@ -83,13 +82,13 @@ def _guided_blur_grayscale_guidance(
 
 
 def _guided_blur_multichannel_guidance(
-    guidance: Tensor,
-    input: Tensor,
+    guidance: torch.Tensor,
+    input: torch.Tensor,
     kernel_size: tuple[int, int] | int,
-    eps: float | Tensor,
+    eps: float | torch.Tensor,
     border_type: str = "reflect",
     subsample: int = 1,
-) -> Tensor:
+) -> torch.Tensor:
     guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
     B, C, H, W = guidance_sub.shape
 
@@ -108,7 +107,7 @@ def _guided_blur_multichannel_guidance(
         corr_Ip = box_blur(Ip, kernel_size, border_type).permute(0, 2, 3, 1)
         cov_Ip = corr_Ip.reshape(B, H, W, C, -1) - mean_p.unsqueeze(-2) * mean_I.unsqueeze(-1)
 
-    if isinstance(eps, Tensor):
+    if isinstance(eps, torch.Tensor):
         _eps = torch.eye(C, device=guidance.device, dtype=guidance.dtype).view(1, 1, 1, C, C) * eps.view(-1, 1, 1, 1, 1)
     else:
         _eps = guidance.new_full((C,), eps).diag().view(1, 1, 1, C, C)
@@ -123,19 +122,19 @@ def _guided_blur_multichannel_guidance(
         mean_b = interpolate(mean_b, scale_factor=subsample, mode="bilinear")
     mean_a = mean_a.view(B, C, -1, H * subsample, W * subsample)
 
-    # einsum might not be contiguous, thus mean_b is the first argument
+    # torch.einsum might not be contiguous, thus mean_b is the first argument
     return mean_b + torch.einsum("BCHW,BCcHW->BcHW", guidance, mean_a)
 
 
 def guided_blur(
-    guidance: Tensor,
-    input: Tensor,
+    guidance: torch.Tensor,
+    input: torch.Tensor,
     kernel_size: tuple[int, int] | int,
-    eps: float | Tensor,
+    eps: float | torch.Tensor,
     border_type: str = "reflect",
     subsample: int = 1,
-) -> Tensor:
-    r"""Blur a tensor using a Guided filter.
+) -> torch.Tensor:
+    r"""Blur a torch.tensor using a Guided filter.
 
     .. image:: _static/img/guided_blur.png
 
@@ -143,8 +142,8 @@ def guided_blur(
     and :cite:`he2015fast` for details. Guidance and input can have different number of channels.
 
     Arguments:
-        guidance: the guidance tensor with shape :math:`(B,C,H,W)`.
-        input: the input tensor with shape :math:`(B,C,H,W)`.
+        guidance: the guidance torch.tensor with shape :math:`(B,C,H,W)`.
+        input: the input torch.tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel.
         eps: regularization parameter. Smaller values preserve more edges.
         border_type: the padding mode to be applied before convolving.
@@ -153,7 +152,7 @@ def guided_blur(
         subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
 
     Returns:
-        the blurred tensor with same shape as `input` :math:`(B, C, H, W)`.
+        the blurred torch.tensor with same shape as `input` :math:`(B, C, H, W)`.
 
     Examples:
         >>> guidance = torch.rand(2, 3, 5, 5)
@@ -179,8 +178,8 @@ def guided_blur(
         return _guided_blur_multichannel_guidance(guidance, input, kernel_size, eps, border_type, subsample)
 
 
-class GuidedBlur(Module):
-    r"""Blur a tensor using a Guided filter.
+class GuidedBlur(nn.Module):
+    r"""Blur a torch.tensor using a Guided filter.
 
     The operator is an edge-preserving image smoothing filter. See :cite:`he2010guided`
     and :cite:`he2015fast` for details. Guidance and input can have different number of channels.
@@ -194,7 +193,7 @@ class GuidedBlur(Module):
         subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
 
     Returns:
-        the blurred input tensor.
+        the blurred input torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`
@@ -228,5 +227,5 @@ class GuidedBlur(Module):
             f"subsample={self.subsample})"
         )
 
-    def forward(self, guidance: Tensor, input: Tensor) -> Tensor:
+    def forward(self, guidance: torch.Tensor, input: torch.Tensor) -> torch.Tensor:
         return guided_blur(guidance, input, self.kernel_size, self.eps, self.border_type, self.subsample)

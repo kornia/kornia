@@ -19,12 +19,12 @@ from itertools import cycle, islice
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
+from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.contrib.extract_patches import extract_tensor_patches
-from kornia.core import Module, Tensor, concatenate
-from kornia.core import pad as fpad
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -50,8 +50,8 @@ class PatchSequential(ImageSequential):
     Args:
         *args: a list of processing modules.
         grid_size: controls the grid board separation.
-        padding: same or valid padding. If same padding, it will pad to include all pixels if the input
-            tensor cannot be divisible by grid_size. If valid padding, the redundant border will be removed.
+        padding: same or valid padding. If same padding, it will F.pad to include all pixels if the input
+            torch.tensor cannot be divisible by grid_size. If valid padding, the redundant border will be removed.
         same_on_batch: apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -129,7 +129,7 @@ class PatchSequential(ImageSequential):
 
     def __init__(
         self,
-        *args: Module,
+        *args: nn.Module,
         grid_size: Tuple[int, int] = (4, 4),
         padding: str = "same",
         same_on_batch: Optional[bool] = None,
@@ -170,7 +170,7 @@ class PatchSequential(ImageSequential):
         self._params: Optional[List[PatchParamItem]]  # type: ignore[assignment]
 
     def compute_padding(
-        self, input: Tensor, padding: str, grid_size: Optional[Tuple[int, int]] = None
+        self, input: torch.Tensor, padding: str, grid_size: Optional[Tuple[int, int]] = None
     ) -> Tuple[int, int, int, int]:
         if grid_size is None:
             grid_size = self.grid_size
@@ -185,11 +185,11 @@ class PatchSequential(ImageSequential):
 
     def extract_patches(
         self,
-        input: Tensor,
+        input: torch.Tensor,
         grid_size: Optional[Tuple[int, int]] = None,
         pad: Optional[Tuple[int, int, int, int]] = None,
-    ) -> Tensor:
-        """Extract patches from tensor.
+    ) -> torch.Tensor:
+        """Extract patches from torch.tensor.
 
         Example:
             >>> import kornia.augmentation as K
@@ -223,7 +223,7 @@ class PatchSequential(ImageSequential):
 
         """
         if pad is not None:
-            input = fpad(input, list(pad))
+            input = F.pad(input, list(pad))
         if grid_size is None:
             grid_size = self.grid_size
         window_size = (input.size(-2) // grid_size[-2], input.size(-1) // grid_size[-1])
@@ -231,8 +231,11 @@ class PatchSequential(ImageSequential):
         return extract_tensor_patches(input, window_size, stride)
 
     def restore_from_patches(
-        self, patches: Tensor, grid_size: Tuple[int, int] = (4, 4), pad: Optional[Tuple[int, int, int, int]] = None
-    ) -> Tensor:
+        self,
+        patches: torch.Tensor,
+        grid_size: Tuple[int, int] = (4, 4),
+        pad: Optional[Tuple[int, int, int, int]] = None,
+    ) -> torch.Tensor:
         """Restore input from patches.
 
         Example:
@@ -249,11 +252,11 @@ class PatchSequential(ImageSequential):
         if grid_size is None:
             grid_size = self.grid_size
         patches_tensor = patches.view(-1, grid_size[0], grid_size[1], *patches.shape[-3:])
-        restored_tensor = concatenate(torch.chunk(patches_tensor, grid_size[0], 1), -2).squeeze(1)
-        restored_tensor = concatenate(torch.chunk(restored_tensor, grid_size[1], 1), -1).squeeze(1)
+        restored_tensor = torch.cat(torch.chunk(patches_tensor, grid_size[0], 1), -2).squeeze(1)
+        restored_tensor = torch.cat(torch.chunk(restored_tensor, grid_size[1], 1), -1).squeeze(1)
 
         if pad is not None:
-            restored_tensor = fpad(restored_tensor, [-i for i in pad])
+            restored_tensor = F.pad(restored_tensor, [-i for i in pad])
         return restored_tensor
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[PatchParamItem]:  # type: ignore[override]
@@ -318,7 +321,7 @@ class PatchSequential(ImageSequential):
                     else:
                         yield ParamItem(s[0], None), i
 
-    def forward_by_params(self, input: Tensor, params: List[PatchParamItem]) -> Tensor:
+    def forward_by_params(self, input: torch.Tensor, params: List[PatchParamItem]) -> torch.Tensor:
         in_shape = input.shape
         input = input.reshape(-1, *in_shape[-3:])
 
@@ -332,8 +335,8 @@ class PatchSequential(ImageSequential):
         return input.reshape(in_shape)
 
     def transform_inputs(  # type: ignore[override]
-        self, input: Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         pad = self.compute_padding(input, self.padding)
         input = self.extract_patches(input, self.grid_size, pad)
         input = self.forward_by_params(input, params)
@@ -342,24 +345,24 @@ class PatchSequential(ImageSequential):
         return input
 
     def inverse_inputs(  # type: ignore[override]
-        self, input: Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         if self.is_intensity_only():
             return input
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
     def transform_masks(  # type: ignore[override]
-        self, input: Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         if self.is_intensity_only():
             return input
 
         raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
 
     def inverse_masks(  # type: ignore[override]
-        self, input: Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         if self.is_intensity_only():
             return input
 
@@ -398,11 +401,14 @@ class PatchSequential(ImageSequential):
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
     def inverse(  # type: ignore[override]
-        self, input: Tensor, params: Optional[List[PatchParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Optional[List[PatchParamItem]] = None,
+        extra_args: Optional[Dict[str, Any]] = None,
+    ) -> torch.Tensor:
         """Inverse transformation.
 
-        Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
+        Used to inverse a torch.tensor according to the performed transformation by a forward pass, or with respect to
         provided parameters.
         """
         if self.is_intensity_only():
@@ -410,7 +416,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def forward(self, input: Tensor, params: Optional[List[PatchParamItem]] = None) -> Tensor:  # type: ignore[override]
+    def forward(self, input: torch.Tensor, params: Optional[List[PatchParamItem]] = None) -> torch.Tensor:  # type: ignore[override]
         """Input transformation will be returned if input is a tuple."""
         # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):

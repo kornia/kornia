@@ -36,11 +36,12 @@ Example:
 from __future__ import annotations
 
 import warnings
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 import torch
 
-from kornia.core import Dtype, Tensor
+Dtype = Union[torch.dtype, None]
+Tensor = torch.Tensor
 
 
 def parametrized_test(

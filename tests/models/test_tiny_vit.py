@@ -20,7 +20,6 @@ import sys
 import pytest
 import torch
 
-from kornia.core import Tensor
 from kornia.models.tiny_vit import TinyViT
 
 from testing.base import BaseTester
@@ -33,7 +32,7 @@ class TestTinyViT(BaseTester):
         data = torch.randn(1, 3, img_size, img_size, device=device, dtype=dtype)
 
         out = model(data)
-        assert isinstance(out, Tensor)
+        assert isinstance(out, torch.Tensor)
 
     @pytest.mark.slow
     @pytest.mark.parametrize("num_classes", [10, 100])

@@ -4,8 +4,9 @@ Welcome! This guide will help you contribute to Kornia.
 
 ## Policies and Guidelines
 
+- **AI-Assisted Development**: AI tools (e.g., GitHub Copilot, ChatGPT, Cursor) may be used to assist with coding, but all contributions must be authored and reviewed by humans. PRs that are fully AI-generated without human understanding, oversight, or ability to explain the code will be rejected. Contributors must understand all code they submit and be able to respond to review feedback.
+  - **Automated Detection**: Automated review systems (including GitHub Copilot) analyze PRs for AI-generated content. PRs flagged as having excessive AI-generated content without sufficient human authorship will be rejected. Ensure your contributions reflect genuine human understanding and modification of any AI-assisted code.
 - **15-Day Rule**: PRs with no activity for 15+ days will be automatically closed.
-- **Quality Control**: AI-generated PRs without human oversight will be flagged. If a PR doesn't improve after review iterations, it will be closed.
 - **Transparency**: All discussions must be public.
 
 We're all volunteers. These policies help us focus on high-impact work.
@@ -143,7 +144,7 @@ We're all volunteers. These policies help us focus on high-impact work.
 5. **Develop and test:**
 
     **Requirements:**
-    - No AI-generated code without human oversight
+    - AI tools may assist with coding, but you must understand and review all code before submission
     - **All local tests must pass before submitting PRs**
 
     Create test cases for your code. Run tests with:
@@ -249,21 +250,32 @@ We're all volunteers. These policies help us focus on high-impact work.
 
 - **Type hints** (Python >= 3.11):
   - Use typing when it improves readability
-  - Import from `kornia.core`, e.g. `from kornia.core import Tensor`
+  - **Use `torch.Tensor` directly** for type hints (preferred) or import from `kornia.core` for backward compatibility
+  - Use `torch.nn.Module` directly for module classes (preferred) or import from `kornia.core` for backward compatibility
   - For non-JIT modules, use `from __future__ import annotations`
   - **Always** type function inputs and outputs:
   - Run type checking with `pixi run typecheck` (uses `ty`)
     ```python
     from __future__ import annotations
-    from kornia.core import Tensor
+    import torch
 
     def homography_warp(
-      patch_src: Tensor,
-      dst_homo_src: Tensor,
+      patch_src: torch.Tensor,
+      dst_homo_src: torch.Tensor,
       dsize: tuple[int, int],
       mode: str = 'bilinear',
       padding_mode: str = 'zeros'
-    ) -> Tensor:
+    ) -> torch.Tensor:
+    ```
+
+    For module classes:
+    ```python
+    from __future__ import annotations
+    import torch.nn as nn
+
+    class MyModule(nn.Module):
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return x
     ```
 
 - **Code style:**
@@ -285,7 +297,7 @@ We're all volunteers. These policies help us focus on high-impact work.
 - Link PR to an issue (use "Closes #123" or "Fixes #123")
 - Pass all local tests before submission
 - 15-Day Rule: Inactive PRs (>15 days) will be closed
-- Quality: AI-generated PRs without oversight will be flagged/closed
+- AI-Assisted Development: AI tools may assist, but PRs must be human-authored and reviewed. Fully AI-generated PRs without human understanding will be rejected. Automated systems (including GitHub Copilot) detect excessive AI-generated content and may reject PRs.
 - Transparency: Keep discussions public
 
 **Note:** Tickets may be closed during cleanup. Feel free to reopen if you plan to finish the work.

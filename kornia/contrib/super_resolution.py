@@ -21,7 +21,6 @@ import torch
 from torch import nn
 
 from kornia.config import kornia_config
-from kornia.core import Tensor
 from kornia.core.external import PILImage as Image
 from kornia.core.external import basicsr, onnx
 from kornia.core.mixin.onnx import ONNXExportMixin
@@ -50,15 +49,15 @@ class SuperResolution(ModelBase, ONNXExportMixin):
     pseudo_image_size: Optional[int]
 
     @torch.inference_mode()
-    def forward(self, images: Union[Tensor, List[Tensor]]) -> Union[Tensor, List[Tensor]]:
+    def forward(self, images: Union[torch.Tensor, List[torch.Tensor]]) -> Union[torch.Tensor, List[torch.Tensor]]:
         """Forward pass of the super resolution model.
 
         Args:
-            images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
-                If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
+                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
-            output tensor.
+            output torch.tensor.
 
         """
         output = self.pre_processor(images)
@@ -74,19 +73,19 @@ class SuperResolution(ModelBase, ONNXExportMixin):
 
     def visualize(
         self,
-        images: Union[Tensor, List[Tensor]],
-        edge_maps: Optional[Union[Tensor, List[Tensor]]] = None,
+        images: Union[torch.Tensor, List[torch.Tensor]],
+        edge_maps: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         output_type: str = "torch",
-    ) -> Union[Tensor, List[Tensor], List["Image.Image"]]:  # type: ignore
+    ) -> Union[torch.Tensor, List[torch.Tensor], List["Image.Image"]]:  # type: ignore
         """Draw the super resolution results.
 
         Args:
-            images: input tensor.
+            images: input torch.tensor.
             edge_maps: detected edges.
             output_type: type of the output.
 
         Returns:
-            output tensor.
+            output torch.tensor.
 
         """
         if edge_maps is None:
@@ -95,26 +94,26 @@ class SuperResolution(ModelBase, ONNXExportMixin):
         for edge_map in edge_maps:
             output.append(edge_map)
 
-        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, Tensor))
+        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, torch.Tensor))
 
     def save(
         self,
-        images: Union[Tensor, List[Tensor]],
-        edge_maps: Optional[Union[Tensor, List[Tensor]]] = None,
+        images: Union[torch.Tensor, List[torch.Tensor]],
+        edge_maps: Optional[Union[torch.Tensor, List[torch.Tensor]]] = None,
         directory: Optional[str] = None,
         output_type: str = "torch",
     ) -> None:
         """Save the super resolution results.
 
         Args:
-            images: input tensor.
+            images: input torch.tensor.
             edge_maps: detected edges.
             output_type: type of the output.
-            directory: where to save outputs.
+            directory: torch.where to save outputs.
             output_type: backend used to generate outputs.
 
         Returns:
-            output tensor.
+            output torch.tensor.
 
         """
         outputs = self.visualize(images, edge_maps, output_type)

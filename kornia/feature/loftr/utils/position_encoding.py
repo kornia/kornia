@@ -19,14 +19,13 @@ import math
 from typing import Tuple
 
 import torch
+from torch import nn
 
-from kornia.core import Module, Tensor, cos, sin, zeros
 
-
-class PositionEncodingSine(Module):
+class PositionEncodingSine(nn.Module):
     """A sinusoidal position encoding that generalized to 2-dimensional images."""
 
-    pe: Tensor
+    pe: torch.Tensor
 
     def __init__(self, d_model: int, max_shape: Tuple[int, int] = (256, 256), temp_bug_fix: bool = True) -> None:
         """Construct sinusoidal positional encoding.
@@ -47,13 +46,13 @@ class PositionEncodingSine(Module):
         pe = self._create_position_encoding(max_shape)
         self.register_buffer("pe", pe, persistent=False)  # [1, C, H, W]
 
-    def _create_position_encoding(self, max_shape: Tuple[int, int]) -> Tensor:
+    def _create_position_encoding(self, max_shape: Tuple[int, int]) -> torch.Tensor:
         """Create a position encoding from scratch.
 
         For 1/8 feature map (which is standard): If the input image size is H, W (both divisible by 8), the max_shape
         should be (H//8, W//8).
         """
-        pe = zeros((self.d_model, *max_shape))
+        pe = torch.zeros((self.d_model, *max_shape))
         y_position = torch.ones(max_shape).cumsum(0).float().unsqueeze(0)
         x_position = torch.ones(max_shape).cumsum(1).float().unsqueeze(0)
         if self.temp_bug_fix:
@@ -65,10 +64,10 @@ class PositionEncodingSine(Module):
                 torch.arange(0, self.d_model // 2, 2).float() * (-math.log(10000.0) / self.d_model // 2)
             )
         div_term = div_term[:, None, None]  # [C//4, 1, 1]
-        pe[0::4, :, :] = sin(x_position * div_term)
-        pe[1::4, :, :] = cos(x_position * div_term)
-        pe[2::4, :, :] = sin(y_position * div_term)
-        pe[3::4, :, :] = cos(y_position * div_term)
+        pe[0::4, :, :] = torch.sin(x_position * div_term)
+        pe[1::4, :, :] = torch.cos(x_position * div_term)
+        pe[2::4, :, :] = torch.sin(y_position * div_term)
+        pe[3::4, :, :] = torch.cos(y_position * div_term)
         return pe.unsqueeze(0)
 
     def update_position_encoding_size(self, max_shape: Tuple[int, int]) -> None:
@@ -79,7 +78,7 @@ class PositionEncodingSine(Module):
         """
         self.pe = self._create_position_encoding(max_shape).to(self.pe.device)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Run forward.
 
         Args:

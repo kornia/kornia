@@ -15,16 +15,17 @@
 # limitations under the License.
 #
 
-"""Module containing operators to work on RGB-Depth images."""
+"""nn.Module containing operators to work on RGB-Depth images."""
 
 from __future__ import annotations
 
 from typing import Optional
 
 import torch
+import torch.nn.functional as F
+from torch import nn
 
 import kornia.core as kornia_ops
-from kornia.core import Module, Tensor, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters.sobel import spatial_gradient
 from kornia.utils import create_meshgrid
@@ -33,7 +34,7 @@ from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproje
 from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
 from .linalg import convert_points_to_homogeneous, transform_points
 
-"""Module containing operators to work on RGB-Depth images."""
+"""nn.Module containing operators to work on RGB-Depth images."""
 
 __all__ = [
     "DepthWarper",
@@ -51,11 +52,11 @@ __all__ = [
 def unproject_meshgrid(
     height: int,
     width: int,
-    camera_matrix: Tensor,
+    camera_matrix: torch.Tensor,
     normalize_points: bool = False,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
-) -> Tensor:
+) -> torch.Tensor:
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 
     .. tip::
@@ -79,12 +80,12 @@ def unproject_meshgrid(
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
 
     # create base coordinates grid
-    points_uv: Tensor = create_meshgrid(
+    points_uv: torch.Tensor = create_meshgrid(
         height, width, normalized_coordinates=False, device=device, dtype=dtype
     ).squeeze()  # HxWx2
 
     # project pixels to camera frame
-    camera_matrix_tmp: Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
+    camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
 
     points_xy = normalize_points_with_intrinsics(points_uv, camera_matrix_tmp)  # HxWx2
 
@@ -98,8 +99,11 @@ def unproject_meshgrid(
 
 
 def depth_to_3d_v2(
-    depth: Tensor, camera_matrix: Tensor, normalize_points: bool = False, xyz_grid: Optional[Tensor] = None
-) -> Tensor:
+    depth: torch.Tensor,
+    camera_matrix: torch.Tensor,
+    normalize_points: bool = False,
+    xyz_grid: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
     # NOTE: when this replaces the `depth_to_3d` behaviour, a deprecated function should be added here, instead
     # of just replace the other function.
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
@@ -131,7 +135,7 @@ def depth_to_3d_v2(
 
     # create base grid if not provided
     height, width = depth.shape[-2:]
-    points_xyz: Tensor = xyz_grid or unproject_meshgrid(
+    points_xyz: torch.Tensor = xyz_grid or unproject_meshgrid(
         height, width, camera_matrix, normalize_points, depth.device, depth.dtype
     )
 
@@ -140,7 +144,7 @@ def depth_to_3d_v2(
     return points_xyz * depth[..., None]  # HxWx3
 
 
-def depth_to_3d(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = False) -> Tensor:
+def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_points: bool = False) -> torch.Tensor:
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 
     .. note::
@@ -171,23 +175,23 @@ def depth_to_3d(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = F
 
     # create base coordinates grid
     _, _, height, width = depth.shape
-    points_2d: Tensor = create_meshgrid(
+    points_2d: torch.Tensor = create_meshgrid(
         height, width, normalized_coordinates=False, device=depth.device, dtype=depth.dtype
     )  # 1xHxWx2
 
     # depth should come in Bx1xHxW
-    points_depth: Tensor = depth.permute(0, 2, 3, 1)  # 1xHxWx1
+    points_depth: torch.Tensor = depth.permute(0, 2, 3, 1)  # 1xHxWx1
 
     # project pixels to camera frame
-    camera_matrix_tmp: Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
-    points_3d: Tensor = unproject_points(
+    camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1x3x3
+    points_3d: torch.Tensor = unproject_points(
         points_2d, points_depth, camera_matrix_tmp, normalize=normalize_points
     )  # BxHxWx3
 
     return points_3d.permute(0, 3, 1, 2)  # Bx3xHxW
 
 
-def depth_to_normals(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = False) -> Tensor:
+def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_points: bool = False) -> torch.Tensor:
     """Compute the normal surface per pixel.
 
     Args:
@@ -212,32 +216,36 @@ def depth_to_normals(depth: Tensor, camera_matrix: Tensor, normalize_points: boo
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
     # compute the 3d points from depth
-    xyz: Tensor = depth_to_3d(depth, camera_matrix, normalize_points)  # Bx3xHxW
+    xyz: torch.Tensor = depth_to_3d(depth, camera_matrix, normalize_points)  # Bx3xHxW
 
     # compute the pointcloud spatial gradients
-    gradients: Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
+    gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
 
     # compute normals
     a, b = gradients[:, :, 0], gradients[:, :, 1]  # Bx3xHxW
 
-    normals: Tensor = torch.linalg.cross(a, b, dim=1)
-    return kornia_ops.normalize(normals, dim=1, p=2)
+    normals: torch.Tensor = torch.linalg.cross(a, b, dim=1)
+    return F.normalize(normals, dim=1, p=2)
 
 
 def depth_from_plane_equation(
-    plane_normals: Tensor, plane_offsets: Tensor, points_uv: Tensor, camera_matrix: Tensor, eps: float = 1e-8
-) -> Tensor:
+    plane_normals: torch.Tensor,
+    plane_offsets: torch.Tensor,
+    points_uv: torch.Tensor,
+    camera_matrix: torch.Tensor,
+    eps: float = 1e-8,
+) -> torch.Tensor:
     """Compute depth values from plane equations and pixel coordinates.
 
     Args:
-        plane_normals (Tensor): Plane normal vectors of shape (B, 3).
-        plane_offsets (Tensor): Plane offsets of shape (B, 1).
-        points_uv (Tensor): Pixel coordinates of shape (B, N, 2).
-        camera_matrix (Tensor): Camera intrinsic matrix of shape (B, 3, 3).
+        plane_normals (torch.Tensor): Plane normal vectors of shape (B, 3).
+        plane_offsets (torch.Tensor): Plane offsets of shape (B, 1).
+        points_uv (torch.Tensor): Pixel coordinates of shape (B, N, 2).
+        camera_matrix (torch.Tensor): Camera intrinsic matrix of shape (B, 3, 3).
         eps: epsilon for numerical stability.
 
     Returns:
-        Tensor: Computed depth values at the given pixels, shape (B, N).
+        torch.Tensor: Computed depth values at the given pixels, shape (B, N).
 
     """
     KORNIA_CHECK_SHAPE(plane_normals, ["B", "3"])
@@ -265,8 +273,12 @@ def depth_from_plane_equation(
 
 
 def warp_frame_depth(
-    image_src: Tensor, depth_dst: Tensor, src_trans_dst: Tensor, camera_matrix: Tensor, normalize_points: bool = False
-) -> Tensor:
+    image_src: torch.Tensor,
+    depth_dst: torch.Tensor,
+    src_trans_dst: torch.Tensor,
+    camera_matrix: torch.Tensor,
+    normalize_points: bool = False,
+) -> torch.Tensor:
     """Warp a tensor from a source to destination frame by the depth in the destination.
 
     Compute 3d points from the depth, transform them using given transformation, then project the point cloud to an
@@ -290,7 +302,7 @@ def warp_frame_depth(
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
     # unproject source points to camera frame
-    points_3d_dst: Tensor = depth_to_3d(depth_dst, camera_matrix, normalize_points)  # Bx3xHxW
+    points_3d_dst: torch.Tensor = depth_to_3d(depth_dst, camera_matrix, normalize_points)  # Bx3xHxW
 
     # transform points from source to destination
     points_3d_dst = points_3d_dst.permute(0, 2, 3, 1)  # BxHxWx3
@@ -299,17 +311,17 @@ def warp_frame_depth(
     points_3d_src = transform_points(src_trans_dst[:, None], points_3d_dst)  # BxHxWx3
 
     # project back to pixels
-    camera_matrix_tmp: Tensor = camera_matrix[:, None, None]  # Bx1x1xHxW
-    points_2d_src: Tensor = project_points(points_3d_src, camera_matrix_tmp)  # BxHxWx2
+    camera_matrix_tmp: torch.Tensor = camera_matrix[:, None, None]  # Bx1x1xHxW
+    points_2d_src: torch.Tensor = project_points(points_3d_src, camera_matrix_tmp)  # BxHxWx2
 
     # normalize points between [-1 / 1]
     height, width = depth_dst.shape[-2:]
-    points_2d_src_norm: Tensor = normalize_pixel_coordinates(points_2d_src, height, width)  # BxHxWx2
+    points_2d_src_norm: torch.Tensor = normalize_pixel_coordinates(points_2d_src, height, width)  # BxHxWx2
 
-    return kornia_ops.map_coordinates(image_src, points_2d_src_norm, align_corners=True)
+    return F.grid_sample(image_src, points_2d_src_norm, align_corners=True)
 
 
-class DepthWarper(Module):
+class DepthWarper(nn.Module):
     r"""Warp a patch by depth.
 
     .. math::
@@ -351,14 +363,14 @@ class DepthWarper(Module):
             raise TypeError(f"Expected pinhole_dst as PinholeCamera, got {type(pinhole_dst)}")
         self._pinhole_dst: PinholeCamera = pinhole_dst
         self._pinhole_src: None | PinholeCamera = None
-        self._dst_proj_src: None | Tensor = None
+        self._dst_proj_src: None | torch.Tensor = None
 
         # Meshgrid only depends on (height, width), can be staticmethod cached
-        self.grid: Tensor = self._create_meshgrid(height, width)
+        self.grid: torch.Tensor = self._create_meshgrid(height, width)
 
     @staticmethod
-    def _create_meshgrid(height: int, width: int) -> Tensor:
-        grid: Tensor = create_meshgrid(height, width, normalized_coordinates=False)  # 1xHxWx2
+    def _create_meshgrid(height: int, width: int) -> torch.Tensor:
+        grid: torch.Tensor = create_meshgrid(height, width, normalized_coordinates=False)  # 1xHxWx2
         return convert_points_to_homogeneous(grid)  # append ones to last dim
 
     def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> DepthWarper:
@@ -405,25 +417,27 @@ class DepthWarper(Module):
         self._dst_proj_src = dst_proj_src
         return self
 
-    def _compute_projection(self, x: float, y: float, invd: float) -> Tensor:
+    def _compute_projection(self, x: float, y: float, invd: float) -> torch.Tensor:
         if self._dst_proj_src is None or self._pinhole_src is None:
             raise ValueError("Please, call compute_projection_matrix.")
 
-        point = tensor([[[x], [y], [invd], [1.0]]], device=self._dst_proj_src.device, dtype=self._dst_proj_src.dtype)
+        point = torch.tensor(
+            [[[x], [y], [invd], [1.0]]], device=self._dst_proj_src.device, dtype=self._dst_proj_src.dtype
+        )
         flow = torch.matmul(self._dst_proj_src, point)
         z = 1.0 / flow[:, 2]
         _x = flow[:, 0] * z
         _y = flow[:, 1] * z
-        return kornia_ops.concatenate([_x, _y], 1)
+        return torch.cat([_x, _y], 1)
 
-    def compute_subpixel_step(self) -> Tensor:
+    def compute_subpixel_step(self) -> torch.Tensor:
         """Compute the inverse depth step for sub pixel accurate sampling of the depth cost volume, per camera.
 
         Szeliski, Richard, and Daniel Scharstein. "Symmetric sub-pixel stereo matching." European Conference on Computer
         Vision. Springer Berlin Heidelberg, 2002.
         """
         if self._dst_proj_src is None:
-            raise RuntimeError("Expected Tensor, but got None Type from the projection matrix")
+            raise RuntimeError("Expected torch.Tensor, but got None Type from the projection matrix")
 
         delta_d = 0.01
         center_x = self.width / 2
@@ -453,7 +467,7 @@ class DepthWarper(Module):
         # half pixel sampling, min for all cameras
         return torch.min(0.5 / dxdd)
 
-    def warp_grid(self, depth_src: Tensor) -> Tensor:
+    def warp_grid(self, depth_src: torch.Tensor) -> torch.Tensor:
         """Compute a grid for warping a given the depth from the reference pinhole camera.
 
         The function `compute_projection_matrix` has to be called beforehand in order to have precomputed the relative
@@ -473,23 +487,23 @@ class DepthWarper(Module):
         dtype: torch.dtype = depth_src.dtype
 
         # expand the base coordinate grid according to the input batch size
-        pixel_coords: Tensor = self.grid.to(device=device, dtype=dtype).expand(batch_size, -1, -1, -1)  # BxHxWx3
+        pixel_coords: torch.Tensor = self.grid.to(device=device, dtype=dtype).expand(batch_size, -1, -1, -1)  # BxHxWx3
 
         # reproject the pixel coordinates to the camera frame
-        cam_coords_src: Tensor = pixel2cam(
+        cam_coords_src: torch.Tensor = pixel2cam(
             depth_src, self._pinhole_src.intrinsics_inverse().to(device=device, dtype=dtype), pixel_coords
         )  # BxHxWx3
 
         # reproject the camera coordinates to the pixel
-        pixel_coords_src: Tensor = cam2pixel(
+        pixel_coords_src: torch.Tensor = cam2pixel(
             cam_coords_src, self._dst_proj_src.to(device=device, dtype=dtype)
         )  # (B*N)xHxWx2
 
         # normalize between -1 and 1 the coordinates
-        pixel_coords_src_norm: Tensor = normalize_pixel_coordinates(pixel_coords_src, self.height, self.width)
+        pixel_coords_src_norm: torch.Tensor = normalize_pixel_coordinates(pixel_coords_src, self.height, self.width)
         return pixel_coords_src_norm
 
-    def forward(self, depth_src: Tensor, patch_dst: Tensor) -> Tensor:
+    def forward(self, depth_src: torch.Tensor, patch_dst: torch.Tensor) -> torch.Tensor:
         """Warp a tensor from destination frame to reference given the depth in the reference frame.
 
         Args:
@@ -517,7 +531,7 @@ class DepthWarper(Module):
             >>> image_src = warper(depth_src, image_dst)  # NxCxHxW
 
         """
-        return kornia_ops.map_coordinates(
+        return F.grid_sample(
             patch_dst,
             self.warp_grid(depth_src),
             mode=self.mode,
@@ -529,12 +543,12 @@ class DepthWarper(Module):
 def depth_warp(
     pinhole_dst: PinholeCamera,
     pinhole_src: PinholeCamera,
-    depth_src: Tensor,
-    patch_dst: Tensor,
+    depth_src: torch.Tensor,
+    patch_dst: torch.Tensor,
     height: int,
     width: int,
     align_corners: bool = True,
-) -> Tensor:
+) -> torch.Tensor:
     """Warp a tensor from destination frame to reference given the depth in the reference frame.
 
     See :class:`~kornia.geometry.warp.DepthWarper` for details.
@@ -557,11 +571,13 @@ def depth_warp(
     warper = DepthWarper(pinhole_dst, height, width, align_corners=align_corners)
     # projection matrix is required for each call, avoid double checking in class
     warper.compute_projection_matrix(pinhole_src)
-    # __call__ implemented by Module (likely calls forward, not shown).
+    # __call__ implemented by nn.Module (likely calls forward, not shown).
     return warper(depth_src, patch_dst)
 
 
-def depth_from_disparity(disparity: Tensor, baseline: float | Tensor, focal: float | Tensor) -> Tensor:
+def depth_from_disparity(
+    disparity: torch.Tensor, baseline: float | torch.Tensor, focal: float | torch.Tensor
+) -> torch.Tensor:
     """Compute depth from disparity.
 
     Args:
@@ -580,20 +596,21 @@ def depth_from_disparity(disparity: Tensor, baseline: float | Tensor, focal: flo
         torch.Size([4, 1, 4, 4])
 
     """
-    KORNIA_CHECK_IS_TENSOR(disparity, f"Input disparity type is not a Tensor. Got {type(disparity)}.")
+    KORNIA_CHECK_IS_TENSOR(disparity, f"Input disparity type is not a torch.Tensor. Got {type(disparity)}.")
     KORNIA_CHECK_SHAPE(disparity, ["*", "H", "W"])
     KORNIA_CHECK(
-        isinstance(baseline, (float, Tensor)),
-        f"Input baseline should be either a float or Tensor. Got {type(baseline)}",
+        isinstance(baseline, (float, torch.Tensor)),
+        f"Input baseline should be either a float or torch.Tensor. Got {type(baseline)}",
     )
     KORNIA_CHECK(
-        isinstance(focal, (float, Tensor)), f"Input focal should be either a float or Tensor. Got {type(focal)}"
+        isinstance(focal, (float, torch.Tensor)),
+        f"Input focal should be either a float or torch.Tensor. Got {type(focal)}",
     )
 
-    if isinstance(baseline, Tensor):
+    if isinstance(baseline, torch.Tensor):
         KORNIA_CHECK_SHAPE(baseline, ["1"])
 
-    if isinstance(focal, Tensor):
+    if isinstance(focal, torch.Tensor):
         KORNIA_CHECK_SHAPE(focal, ["1"])
 
     return baseline * focal / (disparity + 1e-8)

@@ -17,9 +17,10 @@
 
 from typing import Any, Dict, Optional
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import AugmentationBase2D
-from kornia.core import Tensor
 from kornia.geometry.transform import remap
 from kornia.utils import create_meshgrid
 
@@ -58,9 +59,9 @@ class RandomFisheye(AugmentationBase2D):
 
     def __init__(
         self,
-        center_x: Tensor,
-        center_y: Tensor,
-        gamma: Tensor,
+        center_x: torch.Tensor,
+        center_y: torch.Tensor,
+        gamma: torch.Tensor,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -75,16 +76,20 @@ class RandomFisheye(AugmentationBase2D):
             (gamma[:, None], "gamma", None, None),
         )
 
-    def _check_tensor(self, data: Tensor) -> None:
-        if not isinstance(data, Tensor):
-            raise TypeError(f"Invalid input type. Expected Tensor - got: {type(data)}")
+    def _check_tensor(self, data: torch.Tensor) -> None:
+        if not isinstance(data, torch.Tensor):
+            raise TypeError(f"Invalid input type. Expected torch.Tensor - got: {type(data)}")
 
         if len(data.shape) != 1 and data.shape[0] != 2:
-            raise ValueError(f"Tensor must be of shape (2,). Got: {data.shape}.")
+            raise ValueError(f"torch.Tensor must be of shape (2,). Got: {data.shape}.")
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         # create the initial sampling fields
         B, _, H, W = input.shape
         grid = create_meshgrid(H, W, normalized_coordinates=True)

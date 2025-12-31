@@ -20,7 +20,6 @@ from typing import Optional, Tuple
 import torch
 from torch.linalg import qr as linalg_qr
 
-from kornia.core import arange, ones_like, where, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_to_homogeneous, normalize_points_with_intrinsics
 from kornia.geometry.linalg import transform_points
@@ -32,7 +31,7 @@ def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> 
     r"""Normalize points.
 
     Args:
-       points : Tensor containing the points to be normalized with shape :math:`(B, N, D)`.
+       points : torch.Tensor containing the points to be normalized with shape :math:`(B, N, D)`.
        eps : Small value to avoid division by zero error.
 
     Returns:
@@ -49,7 +48,7 @@ def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> 
     scale = torch.sqrt(D_float) / (scale + eps)  # B
     transform = eye_like(D_int + 1, points)  # (B, D+1, D+1)
 
-    idxs = arange(D_int, dtype=torch.int64, device=points.device)
+    idxs = torch.arange(D_int, dtype=torch.int64, device=points.device)
     transform[:, idxs, idxs] = transform[:, idxs, idxs] * scale[:, None]
     transform[:, idxs, D_int] = transform[:, idxs, D_int] + (-scale[:, None] * x_mean[:, 0, idxs])
 
@@ -67,8 +66,8 @@ def solve_pnp_dlt(
 ) -> torch.Tensor:
     r"""Attempt to solve the Perspective-n-Point (PnP) problem using Direct Linear Transform (DLT).
 
-    Given a batch (where batch size is :math:`B`) of :math:`N` 3D points
-    (where :math:`N \geq 6`) in the world space, a batch of :math:`N`
+    Given a batch (torch.where batch size is :math:`B`) of :math:`N` 3D points
+    (torch.where :math:`N \geq 6`) in the world space, a batch of :math:`N`
     corresponding 2D points in the image space and a batch of
     intrinsic matrices, this function tries to estimate a batch of
     world to camera transformation matrices.
@@ -86,18 +85,18 @@ def solve_pnp_dlt(
     twisted cubic. However, this function does not check for this condition.
 
     Args:
-        world_points : A tensor with shape :math:`(B, N, 3)` representing
+        world_points : A torch.tensor with shape :math:`(B, N, 3)` representing
           the points in the world space.
-        img_points : A tensor with shape :math:`(B, N, 2)` representing
+        img_points : A torch.tensor with shape :math:`(B, N, 2)` representing
           the points in the image space.
-        intrinsics : A tensor with shape :math:`(B, 3, 3)` representing
+        intrinsics : A torch.tensor with shape :math:`(B, 3, 3)` representing
           the intrinsic matrices.
-        weights : A tensor with shape :math:`(B, N)` representing the
+        weights : A torch.tensor with shape :math:`(B, N)` representing the
             weights for each point. If None, all points are considered to be equally important.
         svd_eps : A small float value to avoid numerical precision issues.
 
     Returns:
-        A tensor with shape :math:`(B, 3, 4)` representing the estimated world to
+        A torch.tensor with shape :math:`(B, 3, 4)` representing the estimated world to
         camera transformation matrices (also known as the extrinsic matrices).
 
     Example:
@@ -182,7 +181,7 @@ def solve_pnp_dlt(
     inv_img_transform_norm = torch.inverse(img_transform_norm)
 
     # Setting up the system (the matrix A in Ax=0)
-    system = zeros((B, 2 * N, 12), dtype=world_points.dtype, device=world_points.device)
+    system = torch.zeros((B, 2 * N, 12), dtype=world_points.dtype, device=world_points.device)
     system[:, 0::2, 0:4] = world_points_norm_h
     system[:, 1::2, 4:8] = world_points_norm_h
     system[:, 0::2, 8:12] = world_points_norm_h * (-1) * img_points_norm[..., 0:1]
@@ -221,8 +220,8 @@ def solve_pnp_dlt(
     # the all the rotation matrices are non-negative (since determinant
     # of a rotation matrix should be 1).
     det = torch.det(solution[:, :3, :3])
-    ones = ones_like(det)
-    sign_fix = where(det < 0, ones * -1, ones)
+    ones_tensor = torch.ones_like(det)
+    sign_fix = torch.where(det < 0, ones_tensor * -1, ones_tensor)
     solution = solution * sign_fix[:, None, None]
 
     # Then, we make sure that norm of the 0th columns of the rotation

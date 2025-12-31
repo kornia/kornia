@@ -20,10 +20,9 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor
 
 
-def _randn_like(input: Tensor, mean: float, std: float) -> Tensor:
+def _randn_like(input: torch.Tensor, mean: float, std: float) -> torch.Tensor:
     x = torch.randn_like(input)  # Generating on GPU is fastest with `torch.randn_like(...)`
     if std != 1.0:  # `if` is cheaper than multiplication
         x *= std
@@ -66,12 +65,16 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = {"mean": mean, "std": std}
 
-    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         return {}
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         if "gaussian_noise" in params:
             gaussian_noise = params["gaussian_noise"]
         else:

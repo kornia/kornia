@@ -20,16 +20,16 @@ from __future__ import annotations
 from typing import Optional
 
 import torch
-
-from kornia.core import Module, Tensor
+import torch.nn.functional as F
+from torch import nn
 
 from ._unets import Unet
 from .detector import heatmap_to_keypoints
 from .structs import DISKFeatures
 
 
-class DISK(Module):
-    r"""Module which detects and described local features in an image using the DISK method.
+class DISK(nn.Module):
+    r"""nn.Module which detects and described local features in an image using the DISK method.
 
     See :cite:`tyszkiewicz2020disk` for details.
 
@@ -39,7 +39,8 @@ class DISK(Module):
         desc_dim: The dimension of the descriptor.
         unet: The U-Net to use. If None, a default U-Net is used. Kornia doesn't provide the training code for DISK
               so this is only useful when using a custom checkpoint trained using the code released with the paper.
-              The unet should take as input a tensor of shape :math:`(B, C, H, W)` and output a tensor of shape
+              The unet should take as input a torch.tensor of shape :math:`(B, C, H, W)` and output
+              a torch.tensor of shape
               :math:`(B, \mathrm{desc\_dim} + 1, H, W)`.
 
     Example:
@@ -49,7 +50,7 @@ class DISK(Module):
 
     """
 
-    def __init__(self, desc_dim: int = 128, unet: None | Module = None) -> None:
+    def __init__(self, desc_dim: int = 128, unet: None | nn.Module = None) -> None:
         super().__init__()
 
         self.desc_dim = desc_dim
@@ -58,7 +59,7 @@ class DISK(Module):
             unet = Unet(in_features=3, size=5, down=[16, 32, 64, 64, 64], up=[64, 64, 64, desc_dim + 1])
         self.unet = unet
 
-    def heatmap_and_dense_descriptors(self, images: Tensor) -> tuple[Tensor, Tensor]:
+    def heatmap_and_dense_descriptors(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Return the heatmap and the dense descriptors.
 
         .. image:: _static/img/DISK.png
@@ -68,7 +69,7 @@ class DISK(Module):
 
         Returns:
             A tuple of dense detection scores and descriptors.
-            Shapes are :math:`(B, 1, H, W)` and :math:`(B, D, H, W)`, where
+            Shapes are :math:`(B, 1, H, W)` and :math:`(B, D, H, W)`, torch.where
             :math:`D` is the descriptor dimension.
 
         """
@@ -86,7 +87,7 @@ class DISK(Module):
 
     def forward(
         self,
-        images: Tensor,
+        images: torch.Tensor,
         n: Optional[int] = None,
         window_size: int = 5,
         score_threshold: float = 0.0,
@@ -111,7 +112,7 @@ class DISK(Module):
             h, w = images.shape[2:]
             pd_h = 16 - h % 16 if h % 16 > 0 else 0
             pd_w = 16 - w % 16 if w % 16 > 0 else 0
-            images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
+            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
 
         heatmaps, descriptors = self.heatmap_and_dense_descriptors(images)
         if pad_if_not_divisible:
@@ -131,8 +132,8 @@ class DISK(Module):
         r"""Load a pretrained model.
 
         Depth model was trained using depth map supervision and is slightly more precise but biased to detect keypoints
-        only where SfM depth is available. Epipolar model was trained using epipolar geometry supervision and
-        is less precise but detects keypoints everywhere where they are matchable. The difference is especially
+        only torch.where SfM depth is available. Epipolar model was trained using epipolar geometry supervision and
+        is less precise but detects keypoints everywhere torch.where they are matchable. The difference is especially
         pronounced on thin structures and on edges of objects.
 
         Args:

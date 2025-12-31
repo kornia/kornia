@@ -44,7 +44,7 @@ class TestConnectedComponents(BaseTester):
 
         with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components("not a tensor", 0)
-        assert "Input imagetype is not a Tensor. Got:" in str(errinf)
+        assert "Input imagetype is not a torch.Tensor" in str(errinf)
 
         with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components(img, 0)

@@ -17,9 +17,9 @@
 
 from __future__ import annotations
 
+import torch
 import torch.nn.functional as F
 
-from kornia.core import Tensor, pad
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .kernels import normalize_kernel2d
@@ -53,13 +53,13 @@ def _compute_padding(kernel_size: list[int]) -> list[int]:
 
 
 def filter2d(
-    input: Tensor,
-    kernel: Tensor,
+    input: torch.Tensor,
+    kernel: torch.Tensor,
     border_type: str = "reflect",
     normalized: bool = False,
     padding: str = "same",
     behaviour: str = "corr",
-) -> Tensor:
+) -> torch.Tensor:
     r"""Convolve a tensor with a 2d kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -137,7 +137,7 @@ def filter2d(
     # pad the input tensor
     if padding == "same":
         padding_shape: list[int] = _compute_padding([height, width])
-        input = pad(input, padding_shape, mode=border_type)
+        input = F.pad(input, padding_shape, mode=border_type)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, height, width)
@@ -155,13 +155,13 @@ def filter2d(
 
 
 def filter2d_separable(
-    input: Tensor,
-    kernel_x: Tensor,
-    kernel_y: Tensor,
+    input: torch.Tensor,
+    kernel_x: torch.Tensor,
+    kernel_y: torch.Tensor,
     border_type: str = "reflect",
     normalized: bool = False,
     padding: str = "same",
-) -> Tensor:
+) -> torch.Tensor:
     r"""Convolve a tensor with two 1d kernels, in x and y directions.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -209,7 +209,9 @@ def filter2d_separable(
     return out
 
 
-def filter3d(input: Tensor, kernel: Tensor, border_type: str = "replicate", normalized: bool = False) -> Tensor:
+def filter3d(
+    input: torch.Tensor, kernel: torch.Tensor, border_type: str = "replicate", normalized: bool = False
+) -> torch.Tensor:
     r"""Convolve a tensor with a 3d kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -293,7 +295,7 @@ def filter3d(input: Tensor, kernel: Tensor, border_type: str = "replicate", norm
     # pad the input tensor
     depth, height, width = tmp_kernel.shape[-3:]
     padding_shape: list[int] = _compute_padding([depth, height, width])
-    input_pad = pad(input, padding_shape, mode=border_type)
+    input_pad = F.pad(input, padding_shape, mode=border_type)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, depth, height, width)
