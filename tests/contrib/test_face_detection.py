@@ -24,6 +24,12 @@ from kornia.contrib.face_detection import FaceKeypoint
 from testing.base import BaseTester
 
 
+@pytest.fixture(scope="class")
+def face_detector_model(device, dtype):
+    """Fixture to instantiate FaceDetector once and reuse across tests."""
+    return kornia.contrib.FaceDetector().to(device, dtype)
+
+
 class TestFaceDetection(BaseTester):
     @pytest.mark.slow
     def test_smoke(self, device, dtype):
@@ -79,14 +85,12 @@ class TestFaceDetection(BaseTester):
         with pytest.raises(ValueError):
             _ = kornia.contrib.FaceDetectorResult(data)
 
-    @pytest.mark.slow
-    def test_exception_invalid_input_shape(self, device, dtype):
+    def test_exception_invalid_input_shape(self, face_detector_model, device, dtype):
         """Test that FaceDetector raises appropriate error for invalid input."""
         img = torch.rand(1, 4, 320, 320, device=device, dtype=dtype)  # Wrong channels
-        face_detection = kornia.contrib.FaceDetector().to(device, dtype)
 
         with pytest.raises(RuntimeError) as errinfo:
-            face_detection(img)
+            face_detector_model(img)
         assert "expected" in str(errinfo).lower()
 
     @pytest.mark.slow
