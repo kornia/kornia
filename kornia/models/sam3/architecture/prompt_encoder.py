@@ -127,9 +127,9 @@ class PromptEncoder(nn.Module):
         # Dense embedding (for masks)
         self.mask_downscaling = nn.Sequential(
             nn.Conv2d(1, mask_in_chans // 4, kernel_size=2, stride=2),
-            nn.LayerNorm((mask_in_chans // 4, input_image_size // 2, input_image_size // 2)),
+            nn.GroupNorm(1, mask_in_chans // 4),
             nn.Conv2d(mask_in_chans // 4, mask_in_chans, kernel_size=2, stride=2),
-            nn.LayerNorm((mask_in_chans, input_image_size // 4, input_image_size // 4)),
+            nn.GroupNorm(1, mask_in_chans),
         )
         self.no_mask_embed = nn.Embedding(1, embed_dim)
 

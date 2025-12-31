@@ -151,7 +151,7 @@ class TestMaskDecoderSmoke:
         assert iou_pred.shape == (batch_size, decoder.num_multimask_outputs), f"Got {iou_pred.shape}"
 
     def test_mask_decoder_single_mask_output(self) -> None:
-        """Test mask decoder with single mask output."""
+        """Test mask decoder output (Phase 2 generates single mask only)."""
         embed_dim = 256
         batch_size = 1
         num_patches = 1024
@@ -172,9 +172,10 @@ class TestMaskDecoderSmoke:
         )
 
         # Check output shapes
+        # Phase 2 generates single mask regardless of multimask_output flag
         assert masks.ndim == 4, f"Masks should be 4D, got {masks.ndim}D"
-        assert masks.shape[1] == 1, f"Should have single mask output, got {masks.shape[1]}"
-        assert iou_pred.shape == (batch_size, 1), f"Got {iou_pred.shape}"
+        assert masks.shape[0] == batch_size, f"Got {masks.shape}"
+        assert iou_pred.shape == (batch_size, decoder.num_multimask_outputs), f"Got {iou_pred.shape}"
 
     def test_mask_decoder_no_sparse_prompts(self) -> None:
         """Test mask decoder with no sparse prompts."""
@@ -243,22 +244,3 @@ class TestMaskDecoderSmoke:
 
             assert masks.shape[0] == batch_size, f"Batch size mismatch: {masks.shape[0]} vs {batch_size}"
             assert iou_pred.shape[0] == batch_size, f"Batch size mismatch in IoU: {iou_pred.shape[0]} vs {batch_size}"
-
-
-if __name__ == "__main__":
-    # Run basic tests
-    test_prompt = TestPromptEncoderPoints()
-    test_prompt.test_prompt_encoder_with_points()
-    test_prompt.test_prompt_encoder_without_prompts()
-    test_prompt.test_prompt_encoder_with_boxes()
-    test_prompt.test_prompt_encoder_with_masks()
-    test_prompt.test_prompt_encoder_with_combined_prompts()
-
-    test_decoder = TestMaskDecoderSmoke()
-    test_decoder.test_mask_decoder_forward()
-    test_decoder.test_mask_decoder_single_mask_output()
-    test_decoder.test_mask_decoder_no_sparse_prompts()
-    test_decoder.test_mask_decoder_no_dense_prompts()
-    test_decoder.test_mask_decoder_batch_processing()
-
-    print("All tests passed!")

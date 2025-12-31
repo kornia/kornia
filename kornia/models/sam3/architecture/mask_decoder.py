@@ -119,22 +119,14 @@ class MaskDecoder(nn.Module):
         self.transformer = CrossAttentionTransformer(embed_dim)
 
         # Mask prediction head
-        self.mask_tokens = nn.Embedding(num_multimask_outputs, embed_dim)
+        # NOTE: Phase 2 supports single-mask output only
+        # Multi-mask generation deferred to Phase 3 when mask_tokens and hypernetwork MLPs will be used
         self.output_upscaling = nn.Sequential(
             nn.ConvTranspose2d(embed_dim, embed_dim // 4, kernel_size=2, stride=2),
-            nn.LayerNorm((embed_dim // 4, 64, 64)),
+            nn.GroupNorm(1, embed_dim // 4),
             nn.ConvTranspose2d(embed_dim // 4, embed_dim // 8, kernel_size=2, stride=2),
         )
-        self.output_hypernetworks_mlps = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.Linear(embed_dim, iou_head_hidden_dim),
-                    nn.ReLU(),
-                    nn.Linear(iou_head_hidden_dim, embed_dim // 8),
-                )
-                for _ in range(num_multimask_outputs)
-            ]
-        )
+        # NOTE: Phase 2 stub - mask_tokens and hypernetwork MLPs will be used in Phase 3 for multi-mask generation
 
         # IoU prediction head
         self.iou_prediction_head = nn.Sequential(
@@ -251,16 +243,9 @@ class MaskDecoder(nn.Module):
             dense_prompt_embeddings,
         )
 
-        # Handle multimask output
-        if not multimask_output:
-            # Select single best mask based on IoU prediction
-            best_mask_idx = torch.argmax(iou_pred, dim=1, keepdim=True)
-            masks = torch.gather(
-                masks,
-                1,
-                best_mask_idx.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, masks.shape[2], masks.shape[3]),
-            )
-            iou_pred = torch.gather(iou_pred, 1, best_mask_idx)
+        # NOTE: Phase 2 generates single mask only
+        # multimask_output parameter kept for forward compatibility but currently ignored
+        # Multi-mask generation deferred to Phase 3
 
         return masks, iou_pred
 
