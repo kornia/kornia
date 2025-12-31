@@ -234,9 +234,8 @@ class ResizedCropGenerator(CropGenerator):
         rand_tensor = _adapted_rsampling((batch_size, 10), self.rand_sampler, same_on_batch).to(
             device=_device, dtype=_dtype
         )
-        # Clamp scale to [0, 1] to ensure it represents a fraction of the area
-        scale_clamped = torch.clamp(torch.as_tensor(self.scale, device=_device, dtype=_dtype), min=0.0, max=1.0)
-        area = (rand_tensor * (scale_clamped[1] - scale_clamped[0]) + scale_clamped[0]) * size[0] * size[1]
+        scale_tensor = torch.as_tensor(self.scale, device=_device, dtype=_dtype)
+        area = (rand_tensor * (scale_tensor[1] - scale_tensor[0]) + scale_tensor[0]) * size[0] * size[1]
         log_ratio = _adapted_rsampling((batch_size, 10), self.log_ratio_sampler, same_on_batch).to(
             device=_device, dtype=_dtype
         )
@@ -269,8 +268,8 @@ class ResizedCropGenerator(CropGenerator):
             h_ct = h_ct.floor()
             w_ct = w_ct.floor()
 
-            h_out = torch.where(cond_bool, h_ct, h_out)
-            w_out = torch.where(cond_bool, w_ct, w_out)
+            h_out = torch.where(cond_bool, h_out, h_ct)
+            w_out = torch.where(cond_bool, w_out, w_ct)
 
         # Clamp crop size to input size to prevent out-of-bounds crops
         h_out = torch.clamp(h_out, min=1, max=size[0])
