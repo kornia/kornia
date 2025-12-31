@@ -65,6 +65,11 @@ class ImageModuleMixIn:
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Union[Any, list[Any]]:
+                # Remove output_type and input_names_to_handle from kwargs if present
+                # (they are handled by the decorator, not the wrapped function)
+                kwargs.pop("output_type", None)
+                kwargs.pop("input_names_to_handle", None)
+
                 # If input_names_to_handle is None, handle all inputs
                 if input_names_to_handle is None:
                     # Convert all args to tensors
