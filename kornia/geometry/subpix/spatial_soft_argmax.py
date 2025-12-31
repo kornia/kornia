@@ -521,7 +521,7 @@ def spatial_soft_argmax2d(
         ... [0., 10., 0.],
         ... [0., 0., 0.]]]])
         >>> spatial_soft_argmax2d(input, normalized_coordinates=False)
-        torch.tensor([[[1.0000, 1.0000]]])
+        tensor([[[1.0000, 1.0000]]])
 
     """
     if temperature is None:

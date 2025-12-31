@@ -434,7 +434,7 @@ def get_rotation_matrix2d(center: torch.Tensor, angle: torch.Tensor, scale: torc
         >>> scale = torch.ones((1, 2))
         >>> angle = 45. * torch.ones(1)
         >>> get_rotation_matrix2d(center, angle, scale)
-        torch.tensor([[[ 0.7071,  0.7071,  0.0000],
+        tensor([[[ 0.7071,  0.7071,  0.0000],
                  [-0.7071,  0.7071,  0.0000]]])
 
     .. note::
@@ -531,7 +531,7 @@ def remap(
         >>> grid += 1  # apply offset in both directions
         >>> input = torch.ones(1, 1, 2, 2)
         >>> remap(input, grid[..., 0], grid[..., 1], align_corners=True)   # 1x1x2x2
-        torch.tensor([[[[1., 0.],
+        tensor([[[[1., 0.],
                   [0., 0.]]]])
 
     .. note::
@@ -684,10 +684,10 @@ def get_shear_matrix2d(
         >>> rng = torch.manual_seed(0)
         >>> sx = torch.randn(1)
         >>> sx
-        torch.tensor([1.5410])
+        tensor([1.5410])
         >>> center = torch.tensor([[0., 0.]])  # Bx2
         >>> get_shear_matrix2d(center, sx=sx)
-        torch.tensor([[[  1.0000, -33.5468,   0.0000],
+        tensor([[[  1.0000, -33.5468,   0.0000],
                  [ -0.0000,   1.0000,   0.0000],
                  [  0.0000,   0.0000,   1.0000]]])
 
@@ -805,10 +805,10 @@ def get_shear_matrix3d(
         >>> rng = torch.manual_seed(0)
         >>> sxy, sxz, syx, syz = torch.randn(4, 1)
         >>> sxy, sxz, syx, syz
-        (torch.tensor([1.5410]), torch.tensor([-0.2934]), torch.tensor([-2.1788]), torch.tensor([0.5684]))
+        (tensor([1.5410]), tensor([-0.2934]), tensor([-2.1788]), tensor([0.5684]))
         >>> center = torch.tensor([[0., 0., 0.]])  # Bx3
         >>> get_shear_matrix3d(center, sxy=sxy, sxz=sxz, syx=syx, syz=syz)
-        torch.tensor([[[  1.0000,  -1.4369,   0.0000,   0.0000],
+        tensor([[[  1.0000,  -1.4369,   0.0000,   0.0000],
                  [-33.5468,  49.2039,   0.0000,   0.0000],
                  [  0.3022,  -1.0729,   1.0000,   0.0000],
                  [  0.0000,   0.0000,   0.0000,   1.0000]]])

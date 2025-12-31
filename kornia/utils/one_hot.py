@@ -37,7 +37,7 @@ def one_hot(
     Examples:
         >>> labels = torch.LongTensor([[[0, 1], [2, 0]]])
         >>> one_hot(labels, num_classes=3, device=torch.device('cpu'), dtype=torch.float32)
-        torch.tensor([[[[1.0000e+00, 1.0000e-06],
+        tensor([[[[1.0000e+00, 1.0000e-06],
                   [1.0000e-06, 1.0000e+00]],
         <BLANKLINE>
                  [[1.0000e-06, 1.0000e+00],

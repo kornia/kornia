@@ -37,7 +37,7 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
 
     Examples:
         >>> total_variation(torch.ones(4, 4))
-        torch.tensor(0.)
+        tensor(0.)
         >>> total_variation(torch.ones(2, 5, 3, 4, 4)).shape
         torch.Size([2, 5, 3])
 
@@ -91,7 +91,7 @@ class TotalVariation(nn.Module):
         >>> tv = TotalVariation()
         >>> output = tv(torch.ones((2, 3, 4, 4), requires_grad=True))
         >>> output.data
-        torch.tensor([[0., 0., 0.],
+        tensor([[0., 0., 0.],
                 [0., 0., 0.]])
         >>> output.sum().backward()  # grad can be implicitly created only for scalar outputs
 

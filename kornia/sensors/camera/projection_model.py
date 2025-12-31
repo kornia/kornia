@@ -61,9 +61,9 @@ class Z1Projection:
         Example:
             >>> points = Vector2.from_coords(1., 2.)
             >>> Z1Projection().unproject(points, 3)
-            x: torch.tensor([3.])
-            y: torch.tensor([6.])
-            z: torch.tensor([3.])
+            x: tensor([3.])
+            y: tensor([6.])
+            z: tensor([3.])
 
         """
         if isinstance(depth, (float, int)):

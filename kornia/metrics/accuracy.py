@@ -32,7 +32,7 @@ def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (
         >>> logits = torch.tensor([[0, 1, 0]])
         >>> target = torch.tensor([[1]])
         >>> accuracy(logits, target)
-        [torch.tensor(100.)]
+        [tensor(100.)]
 
     """
     maxk = min(max(topk), pred.size()[1])

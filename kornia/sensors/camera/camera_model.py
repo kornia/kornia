@@ -71,7 +71,7 @@ class CameraModelBase:
         >>> params = torch.Tensor([328., 328., 320., 240.])
         >>> cam = CameraModelBase(BrownConradyTransform(), Z1Projection(), ImageSize(480, 640), params)
         >>> cam.params
-        torch.tensor([328., 328., 320., 240.])
+        tensor([328., 328., 320., 240.])
 
     """
 
@@ -182,9 +182,9 @@ class CameraModelBase:
             >>> points = Vector2(torch.Tensor([1.0, 1.0]))
             >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, torch.Tensor([328., 328., 320., 240.]))
             >>> cam.unproject(points, torch.Tensor([1.0]))
-            x: torch.tensor([-0.9726])
-            y: torch.tensor([-0.7287])
-            z: torch.tensor([1.])
+            x: tensor([-0.9726])
+            y: tensor([-0.7287])
+            z: tensor([1.])
 
         """
         return self.projection.unproject(self.distortion.undistort(self.params, points), depth)
@@ -196,13 +196,13 @@ class PinholeModel(CameraModelBase):
     The pinhole camera model describes the mathematical relationship between
     the coordinates of a point in three-dimensional space and its projection
     onto the image plane of an ideal pinhole camera,
-    torch.where the camera aperture is described as a point and no lenses are used to focus light.
+    where the camera aperture is described as a point and no lenses are used to focus light.
     See more: https://en.wikipedia.org/wiki/Pinhole_camera_model
 
     Example:
         >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, torch.Tensor([328., 328., 320., 240.]))
         >>> cam
-        CameraModel(ImageSize(height=480, width=640), PinholeModel, torch.tensor([328., 328., 320., 240.]))
+        CameraModel(ImageSize(height=480, width=640), PinholeModel, tensor([328., 328., 320., 240.]))
 
     """
 
@@ -231,7 +231,7 @@ class PinholeModel(CameraModelBase):
         Example:
             >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, torch.Tensor([1.0, 2.0, 3.0, 4.0]))
             >>> cam.matrix()
-            torch.tensor([[1., 0., 3.],
+            tensor([[1., 0., 3.],
                     [0., 2., 4.],
                     [0., 0., 1.]])
 
@@ -257,7 +257,7 @@ class PinholeModel(CameraModelBase):
             >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, torch.Tensor([328., 328., 320., 240.]))
             >>> cam_scaled = cam.scale(2)
             >>> cam_scaled.params
-            torch.tensor([656., 656., 640., 480.])
+            tensor([656., 656., 640., 480.])
 
         """
         fx = self.fx * scale_factor
@@ -336,7 +336,7 @@ class CameraModel:
         >>> # Orthographic Camera Model
         >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.ORTHOGRAPHIC, torch.Tensor([328., 328., 320., 240.]))
         >>> cam.params
-        torch.tensor([328., 328., 320., 240.])
+        tensor([328., 328., 320., 240.])
 
     """
 

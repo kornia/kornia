@@ -268,7 +268,7 @@ def pyrdown(
     Examples:
         >>> input = torch.arange(16, dtype=torch.float32).reshape(1, 1, 4, 4)
         >>> pyrdown(input, align_corners=True)
-        torch.tensor([[[[ 3.7500,  5.2500],
+        tensor([[[[ 3.7500,  5.2500],
                   [ 9.7500, 11.2500]]]])
 
     """
@@ -307,7 +307,7 @@ def pyrup(input: torch.Tensor, border_type: str = "reflect", align_corners: bool
     Examples:
         >>> input = torch.arange(4, dtype=torch.float32).reshape(1, 1, 2, 2)
         >>> pyrup(input, align_corners=True)
-        torch.tensor([[[[0.7500, 0.8750, 1.1250, 1.2500],
+        tensor([[[[0.7500, 0.8750, 1.1250, 1.2500],
                   [1.0000, 1.1250, 1.3750, 1.5000],
                   [1.5000, 1.6250, 1.8750, 2.0000],
                   [1.7500, 1.8750, 2.1250, 2.2500]]]])
