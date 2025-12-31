@@ -5,6 +5,7 @@ Welcome! This guide will help you contribute to Kornia.
 ## Policies and Guidelines
 
 - **AI-Assisted Development**: AI tools (e.g., GitHub Copilot, ChatGPT, Cursor) may be used to assist with coding, but all contributions must be authored and reviewed by humans. PRs that are fully AI-generated without human understanding, oversight, or ability to explain the code will be rejected. Contributors must understand all code they submit and be able to respond to review feedback.
+  - **Automated Detection**: Automated review systems (including GitHub Copilot) analyze PRs for AI-generated content. PRs flagged as having excessive AI-generated content without sufficient human authorship will be rejected. Ensure your contributions reflect genuine human understanding and modification of any AI-assisted code.
 - **15-Day Rule**: PRs with no activity for 15+ days will be automatically closed.
 - **Transparency**: All discussions must be public.
 
