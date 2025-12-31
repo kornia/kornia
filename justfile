@@ -24,49 +24,49 @@ _ensure-venv:
 
 # Run all tests with coverage
 test-all: _ensure-venv
-    .venv/bin/pytest -v --device all --dtype all --cov=kornia tests/
+    ./venv/bin/pytest -v --device all --dtype all --cov=kornia tests/
 
 # Run CPU-only tests
 test-cpu: _ensure-venv
-    .venv/bin/pytest -v --device cpu --dtype all --cov=kornia tests/
+    ./venv/bin/pytest -v --device cpu --dtype all --cov=kornia tests/
 
 test-cpu-f32: _ensure-venv
-    .venv/bin/pytest -v --device cpu --dtype float32 --cov=kornia tests/
+    ./venv/bin/pytest -v --device cpu --dtype float32 --cov=kornia tests/
 
 # Run CUDA tests
 test-cuda: _ensure-venv
-    .venv/bin/pytest -v --device cuda --dtype all --cov=kornia tests/
+    ./venv/bin/pytest -v --device cuda --dtype all --cov=kornia tests/
 
 test-cuda-f32: _ensure-venv
-    .venv/bin/pytest -v --device cuda --dtype float32 --cov=kornia tests/
+    ./venv/bin/pytest -v --device cuda --dtype float32 --cov=kornia tests/
 
 # Run MPS tests (Apple Silicon)
 test-mps: _ensure-venv
-    .venv/bin/pytest -v --device mps --dtype float32 -k "not (grad or exception or jit or dynamo)" tests/
+    ./venv/bin/pytest -v --device mps --dtype float32 -k "not (grad or exception or jit or dynamo)" tests/
 
 # Run tests for a specific module (usage: just test-module tests/test_color.py)
 test-module module: _ensure-venv
-    .venv/bin/pytest -v --device all --dtype all tests/{{module}}
+    ./venv/bin/pytest -v --device all --dtype all tests/{{module}}
 
 # Run JIT compilation tests
 test-jit: _ensure-venv
-    .venv/bin/pytest -v --device all --dtype all -m jit
+    ./venv/bin/pytest -v --device all --dtype all -m jit
 
 # Run gradient check tests
 test-gradcheck: _ensure-venv
-    .venv/bin/pytest -v --device all --dtype all -m grad
+    ./venv/bin/pytest -v --device all --dtype all -m grad
 
 # Run neural network tests
 test-nn: _ensure-venv
-    .venv/bin/pytest -v --device all --dtype all -m nn
+    ./venv/bin/pytest -v --device all --dtype all -m nn
 
 # Run quick tests (excludes slow jit, grad, nn tests)
 test-quick: _ensure-venv
-    .venv/bin/pytest -v --device all --dtype all -m "not (jit or grad or nn)"
+    ./venv/bin/pytest -v --device all --dtype all -m "not (jit or grad or nn)"
 
 # Run slow tests (jit, grad, nn)
 test-slow: _ensure-venv
-    .venv/bin/pytest -v --device all --dtype all -m "(jit or grad or nn)"
+    ./venv/bin/pytest -v --device all --dtype all -m "(jit or grad or nn)"
 
 # Run tests with coverage report
 test-coverage: _ensure-venv
@@ -76,15 +76,15 @@ test-coverage: _ensure-venv
 
 # Run linting with ruff
 lint: _ensure-venv
-    .venv/bin/pre-commit run ruff --all-files
+    ./venv/bin/pre-commit run ruff --all-files
 
 # Run type checking with mypy
 mypy: _ensure-venv
-    .venv/bin/mypy
+    ./venv/bin/mypy
 
 # Run doctests (local dev)
 doctest: _ensure-venv
-    .venv/bin/pytest -v --doctest-modules kornia/
+    ./venv/bin/pytest -v --doctest-modules kornia/
 
 # CI doctests (no venv, uses system/uv environment)
 ci-doctest:
@@ -100,7 +100,7 @@ ci-build-docs:
 
 # Install package in development mode
 install-dev: _ensure-venv
-    .venv/bin/uv pip install -e .
+    ./venv/bin/uv pip install -e .
 
 # Update dependencies and regenerate lock file
 lock-update:
@@ -112,7 +112,7 @@ sync: _ensure-venv
 
 # Run benchmarks
 benchmark *args: _ensure-venv
-    .venv/bin/pytest {{benchmark_source}} --benchmark-warmup=on --benchmark-warmup-iterations=100 --benchmark-calibration-precision=10 --benchmark-group-by=func --optimizer={{benchmark_backends}} {{benchmark_opts}} {{args}}
+    ./venv/bin/pytest {{benchmark_source}} --benchmark-warmup=on --benchmark-warmup-iterations=100 --benchmark-calibration-precision=10 --benchmark-group-by=func --optimizer={{benchmark_backends}} {{benchmark_opts}} {{args}}
 
 # Build and run benchmark Docker container
 benchmark-docker:
