@@ -25,6 +25,12 @@ from kornia.utils._compat import torch_version
 from testing.base import BaseTester
 
 
+@pytest.fixture(scope="function")
+def visual_prompter():
+    """Fixture to instantiate VisualPrompter once and reuse across tests."""
+    return VisualPrompter(SamConfig("vit_b"))
+
+
 class TestVisualPrompter(BaseTester):
     @pytest.mark.slow
     def test_smoke(self, device, dtype):
@@ -58,42 +64,40 @@ class TestVisualPrompter(BaseTester):
         assert out.logits.shape == (batch_size, C, 256, 256)
         assert out.scores.shape == (batch_size, C)
 
-    def test_exception(self):
-        prompter = VisualPrompter(SamConfig("vit_b"))
-
+    def test_exception(self, visual_prompter):
         data = torch.rand(1, 3, 1, 2)
 
         # Wrong shape for the image
         with pytest.raises(TypeError) as errinfo:
-            prompter.set_image(data, [], False)
+            visual_prompter.set_image(data, [], False)
         assert "shape must be [['3', 'H', 'W']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
 
         # predict without set an image
         with pytest.raises(Exception) as errinfo:
-            prompter.predict()
+            visual_prompter.predict()
         assert "An image must be set with `self.set_image(...)`" in str(errinfo)
 
         # Valid masks
         with pytest.raises(TypeError) as errinfo:
-            prompter._valid_masks(data)
+            visual_prompter._valid_masks(data)
         assert "shape must be [['K', '1', '256', '256']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
 
         # Valid boxes
         with pytest.raises(TypeError) as errinfo:
-            prompter._valid_boxes(data)
+            visual_prompter._valid_boxes(data)
         assert "shape must be [['K', '4']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
 
         # Valid keypoints
         with pytest.raises(TypeError) as errinfo:
-            prompter._valid_keypoints(data, None)
+            visual_prompter._valid_keypoints(data, None)
         assert "shape must be [['K', 'N', '2']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
-            prompter._valid_keypoints(torch.rand(1, 1, 2), data)
+            visual_prompter._valid_keypoints(torch.rand(1, 1, 2), data)
         assert "shape must be [['K', 'N']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
-            prompter._valid_keypoints(torch.rand(1, 1, 2), torch.rand(2, 1))
+            visual_prompter._valid_keypoints(torch.rand(1, 1, 2), torch.rand(2, 1))
         assert "The keypoints and labels should have the same batch size" in str(errinfo)
 
     @pytest.mark.skip(reason="Unnecessary test")

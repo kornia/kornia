@@ -25,6 +25,12 @@ import kornia
 from testing.base import BaseTester
 
 
+@pytest.fixture(scope="function")
+def loftr_matcher():
+    """Fixture to instantiate LoFTR matcher once and reuse across tests."""
+    return kornia.feature.LoFTR(None)
+
+
 class TestImageStitcher(BaseTester):
     @pytest.mark.parametrize("estimator", ["ransac", "vanilla"])
     def test_smoke(self, estimator, device, dtype):
@@ -133,17 +139,14 @@ class TestImageStitcher(BaseTester):
             assert out.shape[:-1] == torch.Size([1, 3, 6])
             assert out.shape[-1] <= 12
 
-    @pytest.mark.slow
-    def test_exception(self, device, dtype):
+    def test_exception(self, loftr_matcher, device, dtype):
         B, C, H, W = 1, 3, 224, 224
         sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
         sample2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        # NOTE: This will need to download the pretrained weights.
-        matcher = kornia.feature.LoFTR(None)
 
         with pytest.raises(NotImplementedError):
-            stitcher = kornia.contrib.ImageStitcher(matcher, estimator="random").to(device=device, dtype=dtype)
+            stitcher = kornia.contrib.ImageStitcher(loftr_matcher, estimator="random").to(device=device, dtype=dtype)
 
-        stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
+        stitcher = kornia.contrib.ImageStitcher(loftr_matcher).to(device=device, dtype=dtype)
         with pytest.raises(RuntimeError):
             stitcher(sample1, sample2)

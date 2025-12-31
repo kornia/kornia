@@ -24,6 +24,12 @@ from kornia.core import pad
 from testing.base import BaseTester
 
 
+@pytest.fixture(scope="function")
+def sam_model():
+    """Fixture to instantiate SAM model once and reuse across tests."""
+    return Sam.from_config(SamConfig("mobile_sam"))
+
+
 def _pad_rb(x, size):
     """Pads right bottom."""
     pad_h = size - x.shape[-2]
@@ -65,17 +71,15 @@ class TestSam(BaseTester):
         assert len(out) == data.size(0)
         assert out[0].logits.shape == (batch_size, C, 256, 256)
 
-    def test_exception(self):
-        model = Sam.from_config(SamConfig("mobile_sam"))
-
+    def test_exception(self, sam_model):
         with pytest.raises(TypeError) as errinfo:
             data = torch.rand(3, 1, 2)
-            model(data, [], False)
+            sam_model(data, [], False)
         assert "shape must be [['B', '3', 'H', 'W']]. Got torch.Size([3, 1, 2])" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
             data = torch.rand(2, 3, 1, 2)
-            model(data, [{}], False)
+            sam_model(data, [{}], False)
         assert "The number of images (`B`) should match with the length of prompts!" in str(errinfo)
 
     @pytest.mark.slow
