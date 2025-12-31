@@ -21,6 +21,7 @@ import torch
 from kornia.feature.dedode import DeDoDe
 
 
+@pytest.mark.skip(reason="DeDoDe is ummaintained")
 class TestDeDoDe:
     @pytest.mark.slow
     @pytest.mark.parametrize("descriptor_model", ["B", "G"])
