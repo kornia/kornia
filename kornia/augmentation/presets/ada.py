@@ -20,8 +20,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 
-from kornia.core import ImageSequential
-
 from .. import (  # noqa: TID252
     AugmentationSequential,
     ColorJitter,

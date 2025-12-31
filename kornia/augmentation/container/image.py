@@ -23,7 +23,7 @@ from torch import nn
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import override_parameters
-from kornia.core import ImageModule, ImageSequential
+from kornia.core import ImageModule
 from kornia.core.module import ImageModuleMixIn
 from kornia.utils import eye_like
 
@@ -46,7 +46,7 @@ class ImageModuleForSequentialMixIn(ImageModuleMixIn):
 
     def disable_item_features(self, *args: nn.Module) -> None:
         for arg in args:
-            if isinstance(arg, (ImageModule,)):
+            if isinstance(arg, ImageModule):
                 arg.disable_features = True
 
 
@@ -144,28 +144,28 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int
     ) -> Union[Tuple[int, int], bool]:
         """Process the scenarios for random apply."""
-        if isinstance(random_apply, (bool,)) and random_apply is False:
+        if isinstance(random_apply, bool) and random_apply is False:
             random_apply = False
-        elif isinstance(random_apply, (bool,)) and random_apply is True:
+        elif isinstance(random_apply, bool) and random_apply is True:
             random_apply = (max_length, max_length + 1)
-        elif isinstance(random_apply, (int,)):
+        elif isinstance(random_apply, int):
             random_apply = (random_apply, random_apply + 1)
         elif (
-            isinstance(random_apply, (tuple,))
+            isinstance(random_apply, tuple)
             and len(random_apply) == 2
-            and isinstance(random_apply[0], (int,))
-            and isinstance(random_apply[1], (int,))
+            and isinstance(random_apply[0], int)
+            and isinstance(random_apply[1], int)
         ):
             random_apply = (random_apply[0], random_apply[1] + 1)
-        elif isinstance(random_apply, (tuple,)) and len(random_apply) == 1 and isinstance(random_apply[0], (int,)):
+        elif isinstance(random_apply, tuple) and len(random_apply) == 1 and isinstance(random_apply[0], int):
             random_apply = (random_apply[0], max_length + 1)
         else:
             raise ValueError(f"Non-readable random_apply. Got {random_apply}.")
         if random_apply is not False and not (
-            isinstance(random_apply, (tuple,))
+            isinstance(random_apply, tuple)
             and len(random_apply) == 2
-            and isinstance(random_apply[0], (int,))
-            and isinstance(random_apply[0], (int,))
+            and isinstance(random_apply[0], int)
+            and isinstance(random_apply[1], int)
         ):
             raise AssertionError(f"Expect a tuple of (int, int). Got {random_apply}.")
         return random_apply
@@ -239,7 +239,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
         for name, module in named_modules:
-            if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2, ImageSequentialBase)):
+            if isinstance(module, (_AugmentationBase | K.MixAugmentationBaseV2 | ImageSequentialBase)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:
@@ -277,7 +277,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         # Define as 1 for broadcasting
         res_mat: Optional[torch.Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
-            if isinstance(module, (K.GeometricAugmentationBase2D,)) and isinstance(param.data, dict):
+            if isinstance(module, K.GeometricAugmentationBase2D) and isinstance(param.data, dict):
                 ori_shape = input.shape
                 try:
                     input = module.transform_tensor(input)
@@ -296,9 +296,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 input = module.transform_output_tensor(input, ori_shape)
                 if module.keepdim and ori_shape != input.shape:
                     res_mat = res_mat.squeeze()
-            elif isinstance(module, (ImageSequentialBase,)):
+            elif isinstance(module, ImageSequentialBase):
                 # If not augmentationSequential
-                if isinstance(module, (K.AugmentationSequential,)) and not recompute:
+                if isinstance(module, K.AugmentationSequential) and not recompute:
                     mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 else:
                     maybe_param_data = cast(Optional[List[ParamItem]], param.data)
@@ -322,9 +322,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         """
         for arg in self.children():
-            if isinstance(arg, (ImageSequential,)) and not arg.is_intensity_only(strict):
+            if isinstance(arg, ImageSequential) and not arg.is_intensity_only(strict):
                 return False
-            elif isinstance(arg, (ImageSequential,)):
+            elif isinstance(arg, ImageSequential):
                 pass
             elif isinstance(arg, K.IntensityAugmentationBase2D):
                 pass

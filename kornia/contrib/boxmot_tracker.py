@@ -43,7 +43,7 @@ class BoxMotTracker:
     This module uses BoxMot library for tracking.
 
     Args:
-        detector: ObjectDetector: The detector model.
+        detector: The detector model.
         tracker_model_name: The name of the tracker model. Valid options are:
             - "BoTSORT"
             - "DeepOCSORT"
@@ -55,7 +55,7 @@ class BoxMotTracker:
         tracker_model_weights: Path to the model weights for ReID (Re-Identification).
         device: Union[str, torch.device, None] on which to run the model (e.g., 'cpu' or 'cuda').
         fp16: Whether to use half-precision (fp16) for faster inference on compatible devices.
-        per_class: Whether to perform per-class tracking
+        per_class: Whether to perform per-class tracking.
         track_high_thresh: High threshold for detection confidence.
             Detections above this threshold are used in the first association round.
         track_low_thresh: Low threshold for detection confidence.
@@ -74,7 +74,7 @@ class BoxMotTracker:
     .. code-block:: python
 
         import kornia
-    import torch
+        import torch
         image = kornia.utils.sample.get_sample_images()[0][None]
         model = BoxMotTracker()
         for i in range(4):  # At least 4 frames are needed to initialize the tracking position

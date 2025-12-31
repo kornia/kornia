@@ -96,11 +96,11 @@ class DeDoDe(nn.Module):
 
         Returns:
             keypoints: A torch.tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range,
-            unlike `.detect()` function
+                unlike `.detect()` function.
             scores: A torch.tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
             descriptions: A torch.tensor of shape :math:`(B, N, DIM)` containing the descriptions
                 of the detected keypoints.
-            DIM is 256 for B and 512 for G.
+                DIM is 256 for B and 512 for G.
 
         """
         if apply_imagenet_normalization:
@@ -182,7 +182,7 @@ class DeDoDe(nn.Module):
         Returns:
             descriptions: A torch.tensor of shape :math:`(B, N, DIM)` containing the descriptions
                 of the detected keypoints.
-            If the dense descriptors are requested, the shape is :math:`(B, DIM, H, W)`.
+                If the dense descriptors are requested, the shape is :math:`(B, DIM, H, W)`.
 
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
