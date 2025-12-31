@@ -243,13 +243,13 @@ class ResizedCropGenerator(CropGenerator):
         w = torch.sqrt(area * aspect_ratio).round().floor()
         h = torch.sqrt(area / aspect_ratio).round().floor()
         # Element-wise w, h condition
-        cond = ((0 < w) * (w < size[0]) * (0 < h) * (h < size[1])).int()
+        cond = ((0 < w) * (w < size[1]) * (0 < h) * (h < size[0])).int()
 
         # torch.argmax is not reproducible across devices: https://github.com/pytorch/pytorch/issues/17738
         # Here, we will select the first occurrence of the duplicated elements.
         cond_bool, argmax_dim1 = ((cond.cumsum(1) == 1) & cond.bool()).max(1)
-        h_out = w[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
-        w_out = h[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
+        h_out = h[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
+        w_out = w[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
 
         if not cond_bool.all():
             # Fallback to center crop
