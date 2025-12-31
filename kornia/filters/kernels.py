@@ -571,11 +571,11 @@ def get_gaussian_kernel1d(
 
     Examples:
         >>> get_gaussian_kernel1d(3, 2.5)
-        torch.tensor([[0.3243, 0.3513, 0.3243]])
+        tensor([[0.3243, 0.3513, 0.3243]])
         >>> get_gaussian_kernel1d(5, 1.5)
-        torch.tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201]])
+        tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201]])
         >>> get_gaussian_kernel1d(5, torch.tensor([[1.5], [0.7]]))
-        torch.tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201],
+        tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201],
                 [0.0096, 0.2054, 0.5699, 0.2054, 0.0096]])
 
     """
@@ -608,11 +608,11 @@ def get_gaussian_discrete_kernel1d(
 
     Examples:
         >>> get_gaussian_discrete_kernel1d(3, 2.5)
-        torch.tensor([[0.3235, 0.3531, 0.3235]])
+        tensor([[0.3235, 0.3531, 0.3235]])
         >>> get_gaussian_discrete_kernel1d(5, 1.5)
-        torch.tensor([[0.1096, 0.2323, 0.3161, 0.2323, 0.1096]])
+        tensor([[0.1096, 0.2323, 0.3161, 0.2323, 0.1096]])
         >>> get_gaussian_discrete_kernel1d(5, torch.tensor([[1.5],[2.4]]))
-        torch.tensor([[0.1096, 0.2323, 0.3161, 0.2323, 0.1096],
+        tensor([[0.1096, 0.2323, 0.3161, 0.2323, 0.1096],
                 [0.1635, 0.2170, 0.2389, 0.2170, 0.1635]])
 
     """
@@ -645,11 +645,11 @@ def get_gaussian_erf_kernel1d(
 
     Examples:
         >>> get_gaussian_erf_kernel1d(3, 2.5)
-        torch.tensor([[0.3245, 0.3511, 0.3245]])
+        tensor([[0.3245, 0.3511, 0.3245]])
         >>> get_gaussian_erf_kernel1d(5, 1.5)
-        torch.tensor([[0.1226, 0.2331, 0.2887, 0.2331, 0.1226]])
+        tensor([[0.1226, 0.2331, 0.2887, 0.2331, 0.1226]])
         >>> get_gaussian_erf_kernel1d(5, torch.tensor([[1.5], [2.1]]))
-        torch.tensor([[0.1226, 0.2331, 0.2887, 0.2331, 0.1226],
+        tensor([[0.1226, 0.2331, 0.2887, 0.2331, 0.1226],
                 [0.1574, 0.2198, 0.2456, 0.2198, 0.1574]])
 
     """
@@ -683,17 +683,17 @@ def get_gaussian_kernel2d(
 
     Examples:
         >>> get_gaussian_kernel2d((5, 5), (1.5, 1.5))
-        torch.tensor([[[0.0144, 0.0281, 0.0351, 0.0281, 0.0144],
+        tensor([[[0.0144, 0.0281, 0.0351, 0.0281, 0.0144],
                  [0.0281, 0.0547, 0.0683, 0.0547, 0.0281],
                  [0.0351, 0.0683, 0.0853, 0.0683, 0.0351],
                  [0.0281, 0.0547, 0.0683, 0.0547, 0.0281],
                  [0.0144, 0.0281, 0.0351, 0.0281, 0.0144]]])
         >>> get_gaussian_kernel2d((3, 5), (1.5, 1.5))
-        torch.tensor([[[0.0370, 0.0720, 0.0899, 0.0720, 0.0370],
+        tensor([[[0.0370, 0.0720, 0.0899, 0.0720, 0.0370],
                  [0.0462, 0.0899, 0.1123, 0.0899, 0.0462],
                  [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]]])
         >>> get_gaussian_kernel2d((5, 5), torch.tensor([[1.5, 1.5]]))
-        torch.tensor([[[0.0144, 0.0281, 0.0351, 0.0281, 0.0144],
+        tensor([[[0.0144, 0.0281, 0.0351, 0.0281, 0.0144],
                  [0.0281, 0.0547, 0.0683, 0.0547, 0.0281],
                  [0.0351, 0.0683, 0.0853, 0.0683, 0.0351],
                  [0.0281, 0.0547, 0.0683, 0.0547, 0.0281],
@@ -740,7 +740,7 @@ def get_gaussian_kernel3d(
 
     Examples:
         >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5))
-        torch.tensor([[[[0.0292, 0.0364, 0.0292],
+        tensor([[[[0.0292, 0.0364, 0.0292],
                   [0.0364, 0.0455, 0.0364],
                   [0.0292, 0.0364, 0.0292]],
         <BLANKLINE>
@@ -752,7 +752,7 @@ def get_gaussian_kernel3d(
                   [0.0364, 0.0455, 0.0364],
                   [0.0292, 0.0364, 0.0292]]]])
         >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5)).sum()
-        torch.tensor(1.)
+        tensor(1.)
         >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5)).shape
         torch.Size([1, 3, 3, 3])
         >>> get_gaussian_kernel3d((3, 7, 5), torch.tensor([[1.5, 1.5, 1.5]])).shape
@@ -793,9 +793,9 @@ def get_laplacian_kernel1d(
 
     Examples:
         >>> get_laplacian_kernel1d(3)
-        torch.tensor([ 1., -2.,  1.])
+        tensor([ 1., -2.,  1.])
         >>> get_laplacian_kernel1d(5)
-        torch.tensor([ 1.,  1., -4.,  1.,  1.])
+        tensor([ 1.,  1., -4.,  1.,  1.])
 
     """
     # TODO: add default dtype as None when kornia relies on torch > 1.12
@@ -823,11 +823,11 @@ def get_laplacian_kernel2d(
 
     Examples:
         >>> get_laplacian_kernel2d(3)
-        torch.tensor([[ 1.,  1.,  1.],
+        tensor([[ 1.,  1.,  1.],
                 [ 1., -8.,  1.],
                 [ 1.,  1.,  1.]])
         >>> get_laplacian_kernel2d(5)
-        torch.tensor([[  1.,   1.,   1.,   1.,   1.],
+        tensor([[  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1., -24.,   1.,   1.],
                 [  1.,   1.,   1.,   1.,   1.],
@@ -868,14 +868,14 @@ def get_pascal_kernel_2d(
 
     Examples:
     >>> get_pascal_kernel_2d(1)
-    torch.tensor([[1.]])
+    tensor([[1.]])
     >>> get_pascal_kernel_2d(4)
-    torch.tensor([[0.0156, 0.0469, 0.0469, 0.0156],
+    tensor([[0.0156, 0.0469, 0.0469, 0.0156],
             [0.0469, 0.1406, 0.1406, 0.0469],
             [0.0469, 0.1406, 0.1406, 0.0469],
             [0.0156, 0.0469, 0.0469, 0.0156]])
     >>> get_pascal_kernel_2d(4, norm=False)
-    torch.tensor([[1., 3., 3., 1.],
+    tensor([[1., 3., 3., 1.],
             [3., 9., 9., 3.],
             [3., 9., 9., 3.],
             [1., 3., 3., 1.]])
@@ -907,17 +907,17 @@ def get_pascal_kernel_1d(
 
     Examples:
     >>> get_pascal_kernel_1d(1)
-    torch.tensor([1.])
+    tensor([1.])
     >>> get_pascal_kernel_1d(2)
-    torch.tensor([1., 1.])
+    tensor([1., 1.])
     >>> get_pascal_kernel_1d(3)
-    torch.tensor([1., 2., 1.])
+    tensor([1., 2., 1.])
     >>> get_pascal_kernel_1d(4)
-    torch.tensor([1., 3., 3., 1.])
+    tensor([1., 3., 3., 1.])
     >>> get_pascal_kernel_1d(5)
-    torch.tensor([1., 4., 6., 4., 1.])
+    tensor([1., 4., 6., 4., 1.])
     >>> get_pascal_kernel_1d(6)
-    torch.tensor([ 1.,  5., 10., 10.,  5.,  1.])
+    tensor([ 1.,  5., 10., 10.,  5.,  1.])
 
     """
     pre: list[float] = []
@@ -997,7 +997,7 @@ def get_hanning_kernel1d(
 
     Examples:
         >>> get_hanning_kernel1d(4)
-        torch.tensor([0.0000, 0.7500, 0.7500, 0.0000])
+        tensor([0.0000, 0.7500, 0.7500, 0.0000])
 
     """
     _check_kernel_size(kernel_size, 2, allow_even=True)

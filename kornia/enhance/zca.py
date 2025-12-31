@@ -357,7 +357,7 @@ def linear_transform(
         >>> mean = torch.zeros((1,2))
         >>> out = linear_transform(inp, transform_mat, mean)
         >>> print(out.shape, out.unique()) # Should a be (10,2) torch.tensor of 2s
-        torch.Size([10, 2]) torch.tensor([2.])
+        torch.Size([10, 2]) tensor([2.])
 
     """  # noqa: D205
     inp_size = inp.size()

@@ -88,7 +88,7 @@ def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
     Example:
         >>> input = torch.tensor(3.1415926535)
         >>> rad2deg(input)
-        torch.tensor(180.)
+        tensor(180.)
 
     """
     if not isinstance(tensor, torch.Tensor):
@@ -109,7 +109,7 @@ def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
     Examples:
         >>> input = torch.tensor(180.)
         >>> deg2rad(input)
-        torch.tensor(3.1416)
+        tensor(3.1416)
 
     """
     if not isinstance(tensor, torch.Tensor):
@@ -182,7 +182,7 @@ def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> 
     Examples:
         >>> input = torch.tensor([[0., 0., 1.]])
         >>> convert_points_from_homogeneous(input)
-        torch.tensor([[0., 0.]])
+        tensor([[0., 0.]])
 
     """
     if not isinstance(points, torch.Tensor):
@@ -215,7 +215,7 @@ def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
     Examples:
         >>> input = torch.tensor([[0., 0.]])
         >>> convert_points_to_homogeneous(input)
-        torch.tensor([[0., 0., 1.]])
+        tensor([[0., 0., 1.]])
 
     """
     if not isinstance(points, torch.Tensor):
@@ -245,7 +245,7 @@ def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
         >>> A = torch.tensor([[[1., 0., 0.],
         ...                    [0., 1., 0.]]])
         >>> convert_affinematrix_to_homography(A)
-        torch.tensor([[[1., 0., 0.],
+        tensor([[[1., 0., 0.],
                  [0., 1., 0.],
                  [0., 0., 1.]]])
 
@@ -273,7 +273,7 @@ def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
         ...                    [0., 1., 0., 0.],
         ...                    [0., 0., 1., 0.]]])
         >>> convert_affinematrix_to_homography3d(A)
-        torch.tensor([[[1., 0., 0., 0.],
+        tensor([[[1., 0., 0., 0.],
                  [0., 1., 0., 0.],
                  [0., 0., 1., 0.],
                  [0., 0., 0., 1.]]])
@@ -300,13 +300,13 @@ def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
     Example:
         >>> input = torch.tensor([[0., 0., 0.]])
         >>> axis_angle_to_rotation_matrix(input)  # doctest: +ELLIPSIS
-        torch.tensor([[[1., ...0., 0.],
+        tensor([[[1., ...0., 0.],
                  [0., 1., ...0.],
                  [...0., 0., 1.]]])
 
         >>> input = torch.tensor([[1.5708, 0., 0.]])
         >>> axis_angle_to_rotation_matrix(input)
-        torch.tensor([[[ 1.0000e+00,  0.0000e+00,  0.0000e+00],
+        tensor([[[ 1.0000e+00,  0.0000e+00,  0.0000e+00],
                  [ 0.0000e+00, -3.6200e-06, -1.0000e+00],
                  [ 0.0000e+00,  1.0000e+00, -3.6200e-06]]])
 
@@ -405,13 +405,13 @@ def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor) -> torch.Tensor
         ...                       [0., 1., 0.],
         ...                       [0., 0., 1.]])
         >>> rotation_matrix_to_axis_angle(input)
-        torch.tensor([0., 0., 0.])
+        tensor([0., 0., 0.])
 
         >>> input = torch.tensor([[1., 0., 0.],
         ...                       [0., 0., -1.],
         ...                       [0., 1., 0.]])
         >>> rotation_matrix_to_axis_angle(input)
-        torch.tensor([1.5708, 0.0000, 0.0000])
+        tensor([1.5708, 0.0000, 0.0000])
 
     """
     if not isinstance(rotation_matrix, torch.Tensor):
@@ -445,7 +445,7 @@ def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.
         ...                       [0., 1., 0.],
         ...                       [0., 0., 1.]])
         >>> rotation_matrix_to_quaternion(input, eps=torch.finfo(input.dtype).eps)
-        torch.tensor([1., 0., 0., 0.])
+        tensor([1., 0., 0., 0.])
 
     """
     if not isinstance(rotation_matrix, torch.Tensor):
@@ -519,7 +519,7 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
     Example:
         >>> quaternion = torch.tensor((1., 0., 1., 0.))
         >>> normalize_quaternion(quaternion)
-        torch.tensor([0.7071, 0.0000, 0.7071, 0.0000])
+        tensor([0.7071, 0.0000, 0.7071, 0.0000])
 
     """
     if not isinstance(quaternion, torch.Tensor):
@@ -550,7 +550,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
     Example:
         >>> quaternion = torch.tensor((0., 0., 0., 1.))
         >>> quaternion_to_rotation_matrix(quaternion)
-        torch.tensor([[-1.,  0.,  0.],
+        tensor([[-1.,  0.,  0.],
                 [ 0., -1.,  0.],
                 [ 0.,  0.,  1.]])
 
@@ -627,7 +627,7 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
     Example:
         >>> quaternion = torch.tensor((1., 0., 0., 0.))
         >>> quaternion_to_axis_angle(quaternion)
-        torch.tensor([0., 0., 0.])
+        tensor([0., 0., 0.])
 
     """
     if not isinstance(quaternion, torch.Tensor):
@@ -686,7 +686,7 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     Example:
         >>> quaternion = torch.tensor((0., 0., 0.))
         >>> quaternion_log_to_exp(quaternion, eps=torch.finfo(quaternion.dtype).eps)
-        torch.tensor([1., 0., 0., 0.])
+        tensor([1., 0., 0., 0.])
 
     """
     if not isinstance(quaternion, torch.Tensor):
@@ -725,7 +725,7 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     Example:
         >>> quaternion = torch.tensor((1., 0., 0., 0.))
         >>> quaternion_exp_to_log(quaternion, eps=torch.finfo(quaternion.dtype).eps)
-        torch.tensor([0., 0., 0.])
+        tensor([0., 0., 0.])
 
     """
     if not isinstance(quaternion, torch.Tensor):
@@ -776,7 +776,7 @@ def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
     Example:
         >>> axis_angle = torch.tensor((0., 1., 0.))
         >>> axis_angle_to_quaternion(axis_angle)
-        torch.tensor([0.8776, 0.0000, 0.4794, 0.0000])
+        tensor([0.8776, 0.0000, 0.4794, 0.0000])
 
     """
     if not isinstance(axis_angle, torch.Tensor):
@@ -919,7 +919,7 @@ def normalize_pixel_coordinates(
     Examples:
         >>> coords = torch.tensor([[50., 100.]])
         >>> normalize_pixel_coordinates(coords, 100, 50)
-        torch.tensor([[1.0408, 1.0202]])
+        tensor([[1.0408, 1.0202]])
 
     """
     if pixel_coordinates.shape[-1] != 2:
@@ -959,7 +959,7 @@ def denormalize_pixel_coordinates(
     Examples:
         >>> coords = torch.tensor([[-1., -1.]])
         >>> denormalize_pixel_coordinates(coords, 100, 50)
-        torch.tensor([[0., 0.]])
+        tensor([[0., 0.]])
 
     """
     if pixel_coordinates.shape[-1] != 2:
@@ -1256,7 +1256,7 @@ def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torc
         >>> X = torch.rand(1, 2)
         >>> K = torch.eye(3)[None]
         >>> normalize_points_with_intrinsics(X, K)
-        torch.tensor([[0.4963, 0.7682]])
+        tensor([[0.4963, 0.7682]])
 
     """
     KORNIA_CHECK_SHAPE(point_2d, ["*", "2"])
@@ -1290,7 +1290,7 @@ def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matri
         >>> X = torch.rand(1, 2)
         >>> K = torch.eye(3)[None]
         >>> denormalize_points_with_intrinsics(X, K)
-        torch.tensor([[0.4963, 0.7682]])
+        tensor([[0.4963, 0.7682]])
 
     """
     KORNIA_CHECK_SHAPE(point_2d_norm, ["*", "2"])
@@ -1332,7 +1332,7 @@ def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
     Example:
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> Rt_to_matrix4x4(R, t)
-        torch.tensor([[[1., 0., 0., 1.],
+        tensor([[[1., 0., 0., 1.],
                  [0., 1., 0., 1.],
                  [0., 0., 1., 1.],
                  [0., 0., 0., 1.]]])
@@ -1357,9 +1357,9 @@ def matrix4x4_to_Rt(extrinsics: torch.Tensor) -> tuple[torch.Tensor, torch.Tenso
     Example:
         >>> ext = torch.eye(4)[None]
         >>> matrix4x4_to_Rt(ext)
-        (torch.tensor([[[1., 0., 0.],
+        (tensor([[[1., 0., 0.],
                  [0., 1., 0.],
-                 [0., 0., 1.]]]), torch.tensor([[[0.],
+                 [0., 0., 1.]]]), tensor([[[0.],
                  [0.],
                  [0.]]]))
 
@@ -1384,7 +1384,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torc
     Example:
         >>> ext = torch.eye(4)[None]
         >>> camtoworld_graphics_to_vision_4x4(ext)
-        torch.tensor([[[ 1.,  0.,  0.,  0.],
+        tensor([[[ 1.,  0.,  0.,  0.],
                  [ 0., -1.,  0.,  0.],
                  [ 0.,  0., -1.,  0.],
                  [ 0.,  0.,  0.,  1.]]])
@@ -1416,9 +1416,9 @@ def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
     Example:
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> camtoworld_graphics_to_vision_Rt(R, t)
-        (torch.tensor([[[ 1.,  0.,  0.],
+        (tensor([[[ 1.,  0.,  0.],
                  [ 0., -1.,  0.],
-                 [ 0.,  0., -1.]]]), torch.tensor([[[1.],
+                 [ 0.,  0., -1.]]]), tensor([[[1.],
                  [1.],
                  [1.]]]))
 
@@ -1444,7 +1444,7 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.
     Example:
         >>> ext = torch.eye(4)[None]
         >>> camtoworld_vision_to_graphics_4x4(ext)
-        torch.tensor([[[ 1.,  0.,  0.,  0.],
+        tensor([[[ 1.,  0.,  0.,  0.],
                  [ 0., -1.,  0.,  0.],
                  [ 0.,  0., -1.,  0.],
                  [ 0.,  0.,  0.,  1.]]])
@@ -1476,9 +1476,9 @@ def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[
     Example:
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> camtoworld_vision_to_graphics_Rt(R, t)
-        (torch.tensor([[[ 1.,  0.,  0.],
+        (tensor([[[ 1.,  0.,  0.],
                  [ 0., -1.,  0.],
-                 [ 0.,  0., -1.]]]), torch.tensor([[[1.],
+                 [ 0.,  0., -1.]]]), tensor([[[1.],
                  [1.],
                  [1.]]]))
 
@@ -1506,9 +1506,9 @@ def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
     Example:
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> camtoworld_to_worldtocam_Rt(R, t)
-        (torch.tensor([[[1., 0., 0.],
+        (tensor([[[1., 0., 0.],
                  [0., 1., 0.],
-                 [0., 0., 1.]]]), torch.tensor([[[-1.],
+                 [0., 0., 1.]]]), tensor([[[-1.],
                  [-1.],
                  [-1.]]]))
 
@@ -1536,9 +1536,9 @@ def worldtocam_to_camtoworld_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch
     Example:
         >>> R, t = torch.eye(3)[None], torch.ones(3).reshape(1, 3, 1)
         >>> worldtocam_to_camtoworld_Rt(R, t)
-        (torch.tensor([[[1., 0., 0.],
+        (tensor([[[1., 0., 0.],
                  [0., 1., 0.],
-                 [0., 0., 1.]]]), torch.tensor([[[-1.],
+                 [0., 0., 1.]]]), tensor([[[-1.],
                  [-1.],
                  [-1.]]]))
 
@@ -1568,7 +1568,7 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple
     Example:
         >>> q, t = torch.tensor([0, 1, 0, 1.])[None], torch.ones(3).reshape(1, 3, 1)
         >>> ARKitQTVecs_to_ColmapQTVecs(q, t)
-        (torch.tensor([[0.7071, 0.0000, 0.7071, 0.0000]]), torch.tensor([[[-1.0000],
+        (tensor([[0.7071, 0.0000, 0.7071, 0.0000]]), tensor([[[-1.0000],
                  [-1.0000],
                  [ 1.0000]]]))
 
@@ -1602,7 +1602,7 @@ def vector_to_skew_symmetric_matrix(vec: torch.Tensor) -> torch.Tensor:
     Example:
         >>> vec = torch.tensor([1.0, 2.0, 3.0])
         >>> vector_to_skew_symmetric_matrix(vec)
-        torch.tensor([[ 0., -3.,  2.],
+        tensor([[ 0., -3.,  2.],
                 [ 3.,  0., -1.],
                 [-2.,  1.,  0.]])
 

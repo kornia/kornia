@@ -300,7 +300,7 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.
         >>> x_norm.min()
         tensor(-1.)
         >>> x_norm.max()
-        torch.tensor(1.0000)
+        tensor(1.0000)
 
     """
     if not isinstance(x, torch.Tensor):
