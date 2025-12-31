@@ -297,7 +297,7 @@ We're all volunteers. These policies help us focus on high-impact work.
 - Link PR to an issue (use "Closes #123" or "Fixes #123")
 - Pass all local tests before submission
 - 15-Day Rule: Inactive PRs (>15 days) will be closed
-- AI-Assisted Development: AI tools may assist, but PRs must be human-authored and reviewed. Fully AI-generated PRs without human understanding will be rejected.
+- AI-Assisted Development: AI tools may assist, but PRs must be human-authored and reviewed. Fully AI-generated PRs without human understanding will be rejected. Automated systems (including GitHub Copilot) detect excessive AI-generated content and may reject PRs.
 - Transparency: Keep discussions public
 
 **Note:** Tickets may be closed during cleanup. Feel free to reopen if you plan to finish the work.
