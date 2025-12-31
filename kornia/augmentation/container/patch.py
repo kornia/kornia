@@ -222,8 +222,8 @@ class PatchSequential(ImageSequential):
                      [[[31, 32, 33]]]]])
 
         """
-        if F.pad is not None:
-            input = F.pad(input, list(F.pad))
+        if pad is not None:
+            input = F.pad(input, list(pad))
         if grid_size is None:
             grid_size = self.grid_size
         window_size = (input.size(-2) // grid_size[-2], input.size(-1) // grid_size[-1])
@@ -255,8 +255,8 @@ class PatchSequential(ImageSequential):
         restored_tensor = torch.cat(torch.chunk(patches_tensor, grid_size[0], 1), -2).squeeze(1)
         restored_tensor = torch.cat(torch.chunk(restored_tensor, grid_size[1], 1), -1).squeeze(1)
 
-        if F.pad is not None:
-            restored_tensor = F.pad(restored_tensor, [-i for i in F.pad])
+        if pad is not None:
+            restored_tensor = F.pad(restored_tensor, [-i for i in pad])
         return restored_tensor
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[PatchParamItem]:  # type: ignore[override]

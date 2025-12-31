@@ -623,7 +623,7 @@ class TestRandomTransplantation(BaseTester):
             f = RandomTransplantation(p=1.0)
             f(image, mask, data_keys=["input", "mask", "mask"])
 
-        with pytest.raises(Exception, match="selected_labels must be a 1-dimensional tensor"):
+        with pytest.raises(Exception, match=r"selected_labels must be a 1-dimensional torch\.tensor"):
             params_copy = copy.deepcopy(params)
             params_copy["selected_labels"] = torch.tensor([[0, 1]], device=device, dtype=dtype)
             del params_copy["selection"]
