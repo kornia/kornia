@@ -45,9 +45,8 @@ def _normalize_signal(data: torch.Tensor, num_bins: int):
     return (data - min_val.unsqueeze(-1)) / (max_val - min_val).unsqueeze(-1) * num_bins
 
 
-def _joint_histogram_to_entropies(joint_histogram):
+def _joint_histogram_to_entropies(joint_histogram, eps=1e-8):
     P_xy = joint_histogram
-    eps = torch.finfo(P_xy.dtype).eps
     # clamp for numerical stability
     P_xy = P_xy.clamp(eps)
     # divide by sum to get a density
@@ -55,7 +54,6 @@ def _joint_histogram_to_entropies(joint_histogram):
 
     P_x = P_xy.sum(dim=-2)
     P_y = P_xy.sum(dim=-1)
-    eps = torch.finfo(P_xy.dtype).eps
     H_xy = torch.sum(-P_xy * torch.log(P_xy), dim=(-1, -2))
     H_x = torch.sum(-P_x * torch.log(P_x), dim=-1)
     H_y = torch.sum(-P_y * torch.log(P_y), dim=-1)
@@ -76,6 +74,7 @@ class EntropyBasedLossFromRef(torch.nn.Module):
         self.num_bins = num_bins
         self.kernel_function = kernel_function
         self.window_radius = window_radius
+        self.eps = torch.finfo(self.signal.dtype).eps
 
     def _compute_joint_histogram(
         self,
@@ -104,7 +103,7 @@ class EntropyBasedLossFromRef(torch.nn.Module):
 
     def entropies(self, other_signal):
         joint_histogram = self._compute_joint_histogram(other_signal)
-        return _joint_histogram_to_entropies(joint_histogram)
+        return _joint_histogram_to_entropies(joint_histogram, eps=self.eps)
 
 
 class MILossFromRef(EntropyBasedLossFromRef):
