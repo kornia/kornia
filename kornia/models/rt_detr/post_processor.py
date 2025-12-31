@@ -43,9 +43,9 @@ def mod(a: torch.Tensor, b: int) -> torch.Tensor:
 
     Examples:
         >>> mod(torch.tensor(7), 3)
-        torch.tensor(1)
+        tensor(1)
         >>> mod(torch.tensor([7, -1, 2]), 3)
-        torch.tensor([1, 2, 2])
+        tensor([1, 2, 2])
     """
     return a % b
 

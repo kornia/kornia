@@ -60,14 +60,14 @@ class Quaternion(nn.Module):
     Example:
         >>> q = Quaternion.identity(batch_size=4)
         >>> q.data
-        torch.tensor([[1., 0., 0., 0.],
+        tensor([[1., 0., 0., 0.],
                 [1., 0., 0., 0.],
                 [1., 0., 0., 0.],
                 [1., 0., 0., 0.]])
         >>> q.real
-        torch.tensor([1., 1., 1., 1.])
+        tensor([1., 1., 1., 1.])
         >>> q.vec
-        torch.tensor([[0., 0., 0.],
+        tensor([[0., 0., 0.],
                 [0., 0., 0.],
                 [0., 0., 0.],
                 [0., 0., 0.]])
@@ -161,7 +161,7 @@ class Quaternion(nn.Module):
         Example:
             >>> q = Quaternion.identity()
             >>> -q.data
-            torch.tensor([-1., -0., -0., -0.])
+            tensor([-1., -0., -0., -0.])
 
         """
         return Quaternion(-self.data)
@@ -177,7 +177,7 @@ class Quaternion(nn.Module):
             >>> q2 = Quaternion(torch.tensor([2., 0., 1., 1.]))
             >>> q3 = q1 + q2
             >>> q3.data
-            torch.tensor([3., 0., 1., 1.])
+            tensor([3., 0., 1., 1.])
 
         """
         if isinstance(right, Quaternion):
@@ -197,7 +197,7 @@ class Quaternion(nn.Module):
             >>> q2 = Quaternion.identity()
             >>> q3 = q1 - q2
             >>> q3.data
-            torch.tensor([1., 0., 1., 1.])
+            tensor([1., 0., 1., 1.])
 
         """
         if isinstance(right, Quaternion):
@@ -379,7 +379,7 @@ class Quaternion(nn.Module):
         Example:
             >>> q = Quaternion.identity()
             >>> q.polar_angle
-            torch.tensor(0.)
+            tensor(0.)
 
         """
         return (self.scalar / self.norm()).acos()
@@ -391,7 +391,7 @@ class Quaternion(nn.Module):
             >>> q = Quaternion.identity()
             >>> m = q.matrix()
             >>> m
-            torch.tensor([[1., 0., 0.],
+            tensor([[1., 0., 0.],
                     [0., 1., 0.],
                     [0., 0., 1.]])
 
@@ -409,7 +409,7 @@ class Quaternion(nn.Module):
             >>> m = torch.eye(3)[None]
             >>> q = Quaternion.from_matrix(m)
             >>> q.data
-            torch.tensor([[1., 0., 0., 0.]])
+            tensor([[1., 0., 0., 0.]])
 
         """
         return cls(rotation_matrix_to_quaternion(matrix))
@@ -427,7 +427,7 @@ class Quaternion(nn.Module):
             >>> roll, pitch, yaw = torch.tensor(0), torch.tensor(1), torch.tensor(0)
             >>> q = Quaternion.from_euler(roll, pitch, yaw)
             >>> q.data
-            torch.tensor([0.8776, 0.0000, 0.4794, 0.0000])
+            tensor([0.8776, 0.0000, 0.4794, 0.0000])
 
         """
         w, x, y, z = quaternion_from_euler(roll=roll, pitch=pitch, yaw=yaw)
@@ -441,11 +441,11 @@ class Quaternion(nn.Module):
             >>> q = Quaternion(torch.tensor([2., 0., 1., 1.]))
             >>> roll, pitch, yaw = q.to_euler()
             >>> roll
-            torch.tensor(2.0344)
+            tensor(2.0344)
             >>> pitch
-            torch.tensor(1.5708)
+            tensor(1.5708)
             >>> yaw
-            torch.tensor(2.2143)
+            tensor(2.2143)
 
         """
         return euler_from_quaternion(self.w, self.x, self.y, self.z)
@@ -461,7 +461,7 @@ class Quaternion(nn.Module):
             >>> axis_angle = torch.tensor([[1., 0., 0.]])
             >>> q = Quaternion.from_axis_angle(axis_angle)
             >>> q.data
-            torch.tensor([[0.8776, 0.4794, 0.0000, 0.0000]])
+            tensor([[0.8776, 0.4794, 0.0000, 0.0000]])
 
         """
         return cls(axis_angle_to_quaternion(axis_angle))
@@ -473,7 +473,7 @@ class Quaternion(nn.Module):
             >>> q = Quaternion.identity()
             >>> axis_angle = q.to_axis_angle()
             >>> axis_angle
-            torch.tensor([0., 0., 0.])
+            tensor([0., 0., 0.])
 
         """
         return quaternion_to_axis_angle(self.data)
@@ -495,7 +495,7 @@ class Quaternion(nn.Module):
         Example:
             >>> q = Quaternion.identity()
             >>> q.data
-            torch.tensor([1., 0., 0., 0.])
+            tensor([1., 0., 0., 0.])
 
         """
         data = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
@@ -516,7 +516,7 @@ class Quaternion(nn.Module):
         Example:
             >>> q = Quaternion.from_coeffs(1., 0., 0., 0.)
             >>> q.data
-            torch.tensor([1., 0., 0., 0.])
+            tensor([1., 0., 0., 0.])
 
         """
         return cls(torch.tensor([w, x, y, z]))
@@ -585,7 +585,7 @@ class Quaternion(nn.Module):
         Example:
             >>> q = Quaternion.identity()
             >>> q.norm()
-            torch.tensor(1.)
+            tensor(1.)
 
         """
         # p==2, dim|axis==-1, keepdim
@@ -639,7 +639,7 @@ class Quaternion(nn.Module):
         Example:
             >>> q = Quaternion.identity()
             >>> q.squared_norm()
-            torch.tensor(1.)
+            tensor(1.)
 
         """
         return batched_dot_product(self.vec, self.vec) + self.real**2

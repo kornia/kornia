@@ -53,9 +53,9 @@ class Se2(nn.Module):
         >>> t = torch.ones((1, 2))
         >>> se2 = Se2(so2, t)
         >>> se2
-        rotation: nn.Parameter containing:
+        rotation: Parameter containing:
         tensor([1.+0.j], requires_grad=True)
-        translation: nn.Parameter containing:
+        translation: Parameter containing:
         tensor([[1., 1.]], requires_grad=True)
 
     """
@@ -74,9 +74,9 @@ class Se2(nn.Module):
             >>> t = torch.ones((1, 2))
             >>> se2 = Se2(so2, t)
             >>> se2
-            rotation: nn.Parameter containing:
+            rotation: Parameter containing:
             tensor([1.+0.j], requires_grad=True)
-            translation: nn.Parameter containing:
+            translation: Parameter containing:
             tensor([[1., 1.]], requires_grad=True)
 
         """
@@ -171,10 +171,10 @@ class Se2(nn.Module):
             >>> v = torch.ones((1, 3))
             >>> s = Se2.exp(v)
             >>> s.r
-            nn.Parameter containing:
+            Parameter containing:
             tensor([0.5403+0.8415j], requires_grad=True)
             >>> s.t
-            nn.Parameter containing:
+            Parameter containing:
             tensor([[0.3818, 1.3012]], requires_grad=True)
 
         """
@@ -275,7 +275,7 @@ class Se2(nn.Module):
         Example:
             >>> s = Se2.identity(1)
             >>> s.r
-            nn.Parameter containing:
+            Parameter containing:
             tensor([1.+0.j], requires_grad=True)
             >>> s.t
             x: tensor([0.])
@@ -314,10 +314,10 @@ class Se2(nn.Module):
         Example:
             >>> s = Se2.from_matrix(torch.eye(3).repeat(2, 1, 1))
             >>> s.r
-            nn.Parameter containing:
+            Parameter containing:
             tensor([1.+0.j, 1.+0.j], requires_grad=True)
             >>> s.t
-            nn.Parameter containing:
+            Parameter containing:
             tensor([[0., 0.],
                     [0., 0.]], requires_grad=True)
 
@@ -334,10 +334,10 @@ class Se2(nn.Module):
             >>> s = Se2(So2.identity(1), torch.ones(1,2))
             >>> s_inv = s.inverse()
             >>> s_inv.r
-            nn.Parameter containing:
+            Parameter containing:
             tensor([1.+0.j], requires_grad=True)
             >>> s_inv.t
-            nn.Parameter containing:
+            Parameter containing:
             tensor([[-1., -1.]], requires_grad=True)
 
         """

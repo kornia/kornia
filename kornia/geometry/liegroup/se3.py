@@ -43,10 +43,10 @@ class Se3(nn.Module):
         >>> q = Quaternion.identity()
         >>> s = Se3(q, torch.ones(3))
         >>> s.r
-        torch.tensor([1., 0., 0., 0.])
+        tensor([1., 0., 0., 0.])
         >>> s.t
-        nn.Parameter containing:
-        torch.tensor([1., 1., 1.], requires_grad=True)
+        Parameter containing:
+        tensor([1., 1., 1.], requires_grad=True)
 
     """
 
@@ -64,10 +64,10 @@ class Se3(nn.Module):
             >>> q = Quaternion.identity(batch_size=1)
             >>> s = Se3(q, torch.ones((1, 3)))
             >>> s.r
-            torch.tensor([[1., 0., 0., 0.]])
+            tensor([[1., 0., 0., 0.]])
             >>> s.t
-            nn.Parameter containing:
-            torch.tensor([[1., 1., 1.]], requires_grad=True)
+            Parameter containing:
+            tensor([[1., 1., 1.]], requires_grad=True)
 
         """
         super().__init__()
@@ -162,10 +162,10 @@ class Se3(nn.Module):
             >>> v = torch.zeros((1, 6))
             >>> s = Se3.exp(v)
             >>> s.r
-            torch.tensor([[1., 0., 0., 0.]])
+            tensor([[1., 0., 0., 0.]])
             >>> s.t
-            nn.Parameter containing:
-            torch.tensor([[0., 0., 0.]], requires_grad=True)
+            Parameter containing:
+            tensor([[0., 0., 0.]], requires_grad=True)
 
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "6"])  # FIXME: resolve shape bugs. @edgarriba
@@ -190,7 +190,7 @@ class Se3(nn.Module):
             >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity()
             >>> Se3(q, torch.zeros(3)).log()
-            torch.tensor([0., 0., 0., 0., 0., 0.])
+            tensor([0., 0., 0., 0., 0., 0.])
 
         """
         omega = self.r.log()
@@ -221,7 +221,7 @@ class Se3(nn.Module):
             >>> v = torch.ones((1, 6))
             >>> m = Se3.hat(v)
             >>> m
-            torch.tensor([[[ 0., -1.,  1.,  1.],
+            tensor([[[ 0., -1.,  1.,  1.],
                      [ 1.,  0., -1.,  1.],
                      [-1.,  1.,  0.,  1.],
                      [ 0.,  0.,  0.,  0.]]])
@@ -246,7 +246,7 @@ class Se3(nn.Module):
             >>> v = torch.ones((1, 6))
             >>> omega_hat = Se3.hat(v)
             >>> Se3.vee(omega_hat)
-            torch.tensor([[1., 1., 1., 1., 1., 1.]])
+            tensor([[1., 1., 1., 1., 1., 1.]])
 
         """
         # KORNIA_CHECK_SHAPE(omega, ["B", "4", "4"])  # FIXME: resolve shape bugs. @edgarriba
@@ -271,7 +271,7 @@ class Se3(nn.Module):
         Example:
             >>> s = Se3.identity()
             >>> s.r
-            torch.tensor([1., 0., 0., 0.])
+            tensor([1., 0., 0., 0.])
             >>> s.t
             x: 0.0
             y: 0.0
@@ -290,7 +290,7 @@ class Se3(nn.Module):
         Example:
             >>> s = Se3(So3.identity(), torch.ones(3))
             >>> s.matrix()
-            torch.tensor([[1., 0., 0., 1.],
+            tensor([[1., 0., 0., 1.],
                     [0., 1., 0., 1.],
                     [0., 0., 1., 1.],
                     [0., 0., 0., 1.]])
@@ -311,10 +311,10 @@ class Se3(nn.Module):
         Example:
             >>> s = Se3.from_matrix(torch.eye(4))
             >>> s.r
-            torch.tensor([1., 0., 0., 0.])
+            tensor([1., 0., 0., 0.])
             >>> s.t
-            nn.Parameter containing:
-            torch.tensor([0., 0., 0.], requires_grad=True)
+            Parameter containing:
+            tensor([0., 0., 0.], requires_grad=True)
 
         """
         # KORNIA_CHECK_SHAPE(matrix, ["B", "4", "4"])  # FIXME: resolve shape bugs. @edgarriba
@@ -333,7 +333,7 @@ class Se3(nn.Module):
             >>> qxyz = torch.tensor([1., 2., 3., 0., 0., 0., 1.])
             >>> s = Se3.from_qxyz(qxyz)
             >>> s.r
-            torch.tensor([1., 2., 3., 0.])
+            tensor([1., 2., 3., 0.])
             >>> s.t
             x: 0.0
             y: 0.0
@@ -351,10 +351,10 @@ class Se3(nn.Module):
             >>> s = Se3(So3.identity(), torch.ones(3))
             >>> s_inv = s.inverse()
             >>> s_inv.r
-            torch.tensor([1., -0., -0., -0.])
+            tensor([1., -0., -0., -0.])
             >>> s_inv.t
-            nn.Parameter containing:
-            torch.tensor([-1., -1., -1.], requires_grad=True)
+            Parameter containing:
+            tensor([-1., -1., -1.], requires_grad=True)
 
         """
         r_inv = self.r.inverse()
@@ -482,7 +482,7 @@ class Se3(nn.Module):
         Example:
             >>> s = Se3.identity()
             >>> s.adjoint()
-            torch.tensor([[1., 0., 0., 0., 0., 0.],
+            tensor([[1., 0., 0., 0., 0., 0.],
                     [0., 1., 0., 0., 0., 0.],
                     [0., 0., 1., 0., 0., 0.],
                     [0., 0., 0., 1., 0., 0.],

@@ -48,7 +48,7 @@ class So2(nn.Module):
         >>> real = torch.tensor([1.0])
         >>> imag = torch.tensor([2.0])
         >>> So2(torch.complex(real, imag))
-        nn.Parameter containing:
+        Parameter containing:
         tensor([1.+2.j], requires_grad=True)
 
     """
@@ -65,7 +65,7 @@ class So2(nn.Module):
             >>> real = torch.tensor(1.0)
             >>> imag = torch.tensor(2.0)
             >>> So2(torch.complex(real, imag)).z
-            nn.Parameter containing:
+            Parameter containing:
             tensor(1.+2.j, requires_grad=True)
 
         """
@@ -132,7 +132,7 @@ class So2(nn.Module):
             >>> v = torch.tensor([3.1415/2])
             >>> s = So2.exp(v)
             >>> s
-            nn.Parameter containing:
+            Parameter containing:
             tensor([4.6329e-05+1.j], requires_grad=True)
 
         """
@@ -217,7 +217,7 @@ class So2(nn.Module):
             >>> m = torch.eye(2)
             >>> s = So2.from_matrix(m)
             >>> s.z
-            nn.Parameter containing:
+            Parameter containing:
             tensor(1.+0.j, requires_grad=True)
 
         """
@@ -244,7 +244,7 @@ class So2(nn.Module):
         Example:
             >>> s = So2.identity(batch_size=2)
             >>> s
-            nn.Parameter containing:
+            Parameter containing:
             tensor([1.+0.j, 1.+0.j], requires_grad=True)
 
         """
@@ -262,7 +262,7 @@ class So2(nn.Module):
         Example:
             >>> s = So2.identity()
             >>> s.inverse().z
-            nn.Parameter containing:
+            Parameter containing:
             tensor(1.+0.j, requires_grad=True)
 
         """
