@@ -17,9 +17,10 @@
 
 from typing import Optional, Tuple
 
+import torch
+
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations.base import OperationBase
-from kornia.core import Tensor
 
 __all__ = [
     "AutoContrast",
@@ -257,7 +258,7 @@ class Posterize(OperationBase):
     """
 
     @staticmethod
-    def _process_magnitude(magnitude: Tensor) -> Tensor:
+    def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
         return magnitude.long()
 
     def __init__(
@@ -449,7 +450,7 @@ class ShearX(OperationBase):
     """
 
     @staticmethod
-    def _process_magnitude(magnitude: Tensor) -> Tensor:
+    def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
         # make it sign-agnostic
         return magnitude * 180
 
@@ -489,7 +490,7 @@ class ShearY(OperationBase):
     """
 
     @staticmethod
-    def _process_magnitude(magnitude: Tensor) -> Tensor:
+    def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
         # make it sign-agnostic
         return magnitude * 180
 

@@ -17,15 +17,16 @@
 
 from typing import Any, Dict, Optional, Tuple
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.utils import _range_bound
-from kornia.core import Tensor
 from kornia.enhance.adjust import adjust_brightness
 
 
 class RandomBrightness(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness of a tensor image.
+    r"""Apply a random transformation to the brightness of a torch.tensor image.
 
     This implementation aligns PIL. Hence, the output is close to TorchVision.
 
@@ -51,7 +52,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomBrightness(brightness = (0.5,2.),p=1.)
         >>> aug(inputs)
-        tensor([[[[0.0505, 0.3225, 0.0000],
+        torch.tensor([[[[0.0505, 0.3225, 0.0000],
                   [0.0000, 0.0000, 0.1883],
                   [0.0443, 0.4507, 0.0099]],
         <BLANKLINE>
@@ -68,7 +69,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomBrightness((0.8,1.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
@@ -81,13 +82,17 @@ class RandomBrightness(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.brightness: Tensor = _range_bound(brightness, "brightness", center=1.0, bounds=(0.0, 2.0))
+        self.brightness: torch.Tensor = _range_bound(brightness, "brightness", center=1.0, bounds=(0.0, 2.0))
         self._param_generator = rg.PlainUniformGenerator((self.brightness, "brightness_factor", None, None))
 
         self.clip_output = clip_output
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         brightness_factor = params["brightness_factor"].to(input)
         return adjust_brightness(input, brightness_factor - 1, self.clip_output)

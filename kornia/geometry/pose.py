@@ -19,12 +19,13 @@ from __future__ import annotations
 
 import uuid
 
-from kornia.core import Tensor, eye
+import torch
+
 from kornia.geometry.liegroup import Se2, Se3, So2, So3
 from kornia.geometry.quaternion import Quaternion
 
 
-def check_matrix_shape(matrix: Tensor, matrix_type: str = "R") -> None:
+def check_matrix_shape(matrix: torch.Tensor, matrix_type: str = "R") -> None:
     """Verify matrix shape based on type."""
     target_shapes = []
     if matrix_type == "R":
@@ -113,7 +114,7 @@ class NamedPose:
         return self._dst_from_src.rotation
 
     @property
-    def translation(self) -> Tensor:
+    def translation(self) -> torch.Tensor:
         """Translation part of the pose."""
         return self._dst_from_src.translation
 
@@ -130,8 +131,8 @@ class NamedPose:
     @classmethod
     def from_rt(
         cls,
-        rotation: So3 | So2 | Tensor | Quaternion,
-        translation: Tensor,
+        rotation: So3 | So2 | torch.Tensor | Quaternion,
+        translation: torch.Tensor,
         frame_src: str | None = None,
         frame_dst: str | None = None,
     ) -> NamedPose | None:
@@ -161,10 +162,10 @@ class NamedPose:
             return cls(Se3(rotation, translation), frame_src, frame_dst)
         elif isinstance(rotation, So2):
             return cls(Se2(rotation, translation), frame_src, frame_dst)
-        elif isinstance(rotation, Tensor):
+        elif isinstance(rotation, torch.Tensor):
             check_matrix_shape(rotation)
             dim = rotation.shape[-1]
-            RT = eye(dim + 1, device=rotation.device, dtype=rotation.dtype)
+            RT = torch.eye(dim + 1, device=rotation.device, dtype=rotation.dtype)
             RT[..., :dim, :dim] = rotation
             RT[..., :dim, dim] = translation
             if dim == 2:
@@ -177,7 +178,7 @@ class NamedPose:
 
     @classmethod
     def from_matrix(
-        cls, matrix: Tensor, frame_src: str | None = None, frame_dst: str | None = None
+        cls, matrix: torch.Tensor, frame_src: str | None = None, frame_dst: str | None = None
     ) -> NamedPose | None:
         """Construct NamedPose from a matrix.
 
@@ -225,7 +226,7 @@ class NamedPose:
         """
         return NamedPose(self._dst_from_src.inverse(), self._frame_dst, self._frame_src)
 
-    def transform_points(self, points_in_src: Tensor) -> Tensor:
+    def transform_points(self, points_in_src: torch.Tensor) -> torch.Tensor:
         """Transform points from source frame to destination frame.
 
         Args:

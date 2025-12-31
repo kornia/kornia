@@ -22,12 +22,11 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.color import hls_to_rgb, rgb_to_hls
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
 class RandomSnow(IntensityAugmentationBase2D):
-    r"""Generates snow effect on given tensor image or a batch tensor images.
+    r"""Generates snow effect on given torch.tensor image or a batch torch.tensor images.
 
     Args:
         snow_coefficient: A tuple of floats (lower and upper bound) between 0 and 1 that control
@@ -36,7 +35,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         brightness of the snow.
         same_on_batch: If True, apply the same transformation to each image in a batch. Default: False.
         p: Probability of applying the transformation. Default: 0.5.
-        keepdim: Keep the output tensor with the same shape as input. Default: False.
+        keepdim: Keep the output torch.tensor with the same shape as input. Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
@@ -68,8 +67,12 @@ class RandomSnow(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         KORNIA_CHECK(input.shape[1] == 3, "Number of color channels should be 3.")
         KORNIA_CHECK(len(input.shape) in (3, 4), "Wrong input dimension.")
 

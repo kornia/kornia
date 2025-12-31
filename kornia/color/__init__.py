@@ -20,7 +20,7 @@
 This subpackage provides modules for color transformations, colormaps, and conversions.
 """
 
-from .colormap import AUTUMN, ApplyColorMap, ColorMap, ColorMapType, RGBColor, apply_colormap
+from .colormap import ApplyColorMap, ColorMap, ColorMapType, RGBColor, apply_colormap
 from .gray import BgrToGrayscale, GrayscaleToRgb, RgbToGrayscale, bgr_to_grayscale, grayscale_to_rgb, rgb_to_grayscale
 from .hls import HlsToRgb, RgbToHls, hls_to_rgb, rgb_to_hls
 from .hsv import HsvToRgb, RgbToHsv, hsv_to_rgb, rgb_to_hsv

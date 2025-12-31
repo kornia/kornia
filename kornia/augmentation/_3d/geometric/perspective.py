@@ -17,15 +17,16 @@
 
 from typing import Any, Dict, Optional, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
-from kornia.core import Tensor
 from kornia.geometry import get_perspective_transform3d, warp_perspective3d
 
 
 class RandomPerspective3D(GeometricAugmentationBase3D):
-    r"""Apply andom perspective transformation to 3D volumes (5D tensor).
+    r"""Apply andom perspective transformation to 3D volumes (5D torch.tensor).
 
     Args:
         p: probability of the image being perspectively transformed.
@@ -41,9 +42,9 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+        Input torch.tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation torch.tensor and returned.
 
     Examples:
         >>> import torch
@@ -61,7 +62,7 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         ... ]]])
         >>> aug = RandomPerspective3D(0.5, p=1., align_corners=True)
         >>> aug(inputs)
-        tensor([[[[[0.3976, 0.5507, 0.0000],
+        torch.tensor([[[[[0.3976, 0.5507, 0.0000],
                    [0.0901, 0.3668, 0.0000],
                    [0.0000, 0.0000, 0.0000]],
         <BLANKLINE>
@@ -77,13 +78,13 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         >>> input = torch.rand(1, 3, 32, 32, 32)
         >>> aug = RandomPerspective3D(0.5, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
     def __init__(
         self,
-        distortion_scale: Union[Tensor, float] = 0.5,
+        distortion_scale: Union[torch.Tensor, float] = 0.5,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = False,
@@ -94,14 +95,20 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
         self._param_generator = rg.PerspectiveGenerator3D(distortion_scale)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         return get_perspective_transform3d(params["start_points"], params["end_points"]).to(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
-        if not isinstance(transform, Tensor):
-            raise TypeError(f"Expected the transform to be a Tensor. Gotcha {type(transform)}")
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if not isinstance(transform, torch.Tensor):
+            raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
 
         return warp_perspective3d(
             input,

@@ -20,12 +20,10 @@ from typing import Any, Dict, List, Optional, Union, cast
 import torch
 from torch import nn
 
-from kornia.core import Module
-
 
 class VGG(nn.Module):
     def __init__(
-        self, features: Module, num_classes: int = 1000, init_weights: bool = True, dropout: float = 0.5
+        self, features: nn.Module, num_classes: int = 1000, init_weights: bool = True, dropout: float = 0.5
     ) -> None:
         super().__init__()
         self.features = features

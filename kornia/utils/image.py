@@ -22,10 +22,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from kornia.core import Tensor
 
-
-def image_to_tensor(image: Any, keepdim: bool = True) -> Tensor:
+def image_to_tensor(image: Any, keepdim: bool = True) -> torch.Tensor:
     """Convert a numpy image to a PyTorch 4d tensor image.
 
     Args:
@@ -56,7 +54,7 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> Tensor:
         raise ValueError("Input size must be a two, three or four dimensional array")
 
     input_shape = image.shape
-    tensor: Tensor = torch.from_numpy(image)
+    tensor: torch.Tensor = torch.from_numpy(image)
 
     if len(input_shape) == 2:
         # (H, W) -> (1, H, W)
@@ -74,7 +72,7 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> Tensor:
     return tensor.unsqueeze(0) if not keepdim else tensor
 
 
-def image_list_to_tensor(images: List[Any]) -> Tensor:
+def image_list_to_tensor(images: List[Any]) -> torch.Tensor:
     """Convert a list of numpy images to a PyTorch 4d tensor image.
 
     Args:
@@ -109,7 +107,7 @@ def image_list_to_tensor(images: List[Any]) -> Tensor:
     return torch.stack(images_t, dim=0).permute(0, 3, 1, 2)
 
 
-def _to_bchw(tensor: Tensor) -> Tensor:
+def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
     """Convert a PyTorch tensor image to BCHW format.
 
     Args:
@@ -119,8 +117,8 @@ def _to_bchw(tensor: Tensor) -> Tensor:
         input tensor of the form :math:`(B, C, H, W)`.
 
     """
-    if not isinstance(tensor, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
+    if not isinstance(tensor, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
     if len(tensor.shape) < 2:
         raise ValueError(f"Input size must be a two, three or four dimensional tensor. Got {tensor.shape}")
@@ -137,7 +135,7 @@ def _to_bchw(tensor: Tensor) -> Tensor:
     return tensor
 
 
-def _to_bcdhw(tensor: Tensor) -> Tensor:
+def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
     """Convert a PyTorch tensor image to BCDHW format.
 
     Args:
@@ -147,8 +145,8 @@ def _to_bcdhw(tensor: Tensor) -> Tensor:
         input tensor of the form :math:`(B, C, D, H, W)`.
 
     """
-    if not isinstance(tensor, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
+    if not isinstance(tensor, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
     if len(tensor.shape) < 3:
         raise ValueError(f"Input size must be a three, four or five dimensional tensor. Got {tensor.shape}")
@@ -165,7 +163,7 @@ def _to_bcdhw(tensor: Tensor) -> Tensor:
     return tensor
 
 
-def tensor_to_image(tensor: Tensor, keepdim: bool = False, force_contiguous: bool = False) -> Any:
+def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False, force_contiguous: bool = False) -> Any:
     """Convert a PyTorch tensor image to a numpy image.
 
     In case the tensor is in the GPU, it will be copied back to CPU.
@@ -190,8 +188,8 @@ def tensor_to_image(tensor: Tensor, keepdim: bool = False, force_contiguous: boo
         (4, 4, 3)
 
     """
-    if not isinstance(tensor, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
+    if not isinstance(tensor, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
     if len(tensor.shape) > 4 or len(tensor.shape) < 2:
         raise ValueError("Input size must be a two, three or four dimensional tensor")
@@ -238,11 +236,11 @@ class ImageToTensor(nn.Module):
         super().__init__()
         self.keepdim = keepdim
 
-    def forward(self, x: Any) -> Tensor:
+    def forward(self, x: Any) -> torch.Tensor:
         return image_to_tensor(x, keepdim=self.keepdim)
 
 
-def make_grid(tensor: Tensor, n_row: Optional[int] = None, padding: int = 2) -> Tensor:
+def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 2) -> torch.Tensor:
     """Convert a batched tensor to one image with padding in between.
 
     Args:
@@ -251,7 +249,7 @@ def make_grid(tensor: Tensor, n_row: Optional[int] = None, padding: int = 2) -> 
         padding: The amount of padding to add between images.
 
     Returns:
-        Tensor: The combined image grid.
+        torch.Tensor: The combined image grid.
 
     """
     if not isinstance(tensor, torch.Tensor):
@@ -291,7 +289,7 @@ def make_grid(tensor: Tensor, n_row: Optional[int] = None, padding: int = 2) -> 
     return combined
 
 
-def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
+def perform_keep_shape_image(f: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:
     """Apply `f` to an image of arbitrary leading dimensions `(*, C, H, W)`.
 
     It works by first viewing the image as `(B, C, H, W)`, applying the function and re-viewing the image as original
@@ -299,9 +297,9 @@ def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
     """
 
     @wraps(f)
-    def _wrapper(input: Tensor, *args: Any, **kwargs: Any) -> Tensor:
-        if not isinstance(input, Tensor):
-            raise TypeError(f"Input input type is not a Tensor. Got {type(input)}")
+    def _wrapper(input: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+        if not isinstance(input, torch.Tensor):
+            raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
 
         if input.shape.numel() == 0:
             raise ValueError("Invalid input tensor, it is empty.")
@@ -323,7 +321,7 @@ def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
     return _wrapper
 
 
-def perform_keep_shape_video(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
+def perform_keep_shape_video(f: Callable[..., torch.Tensor]) -> Callable[..., torch.Tensor]:
     """Apply `f` to an image of arbitrary leading dimensions `(*, C, D, H, W)`.
 
     It works by first viewing the image as `(B, C, D, H, W)`, applying the function and re-viewing the image as original
@@ -331,9 +329,9 @@ def perform_keep_shape_video(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
     """
 
     @wraps(f)
-    def _wrapper(input: Tensor, *args: Any, **kwargs: Any) -> Tensor:
-        if not isinstance(input, Tensor):
-            raise TypeError(f"Input input type is not a Tensor. Got {type(input)}")
+    def _wrapper(input: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+        if not isinstance(input, torch.Tensor):
+            raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
 
         if input.numel() == 0:
             raise ValueError("Invalid input tensor, it is empty.")

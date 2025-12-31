@@ -22,10 +22,8 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Tensor
 
-
-def _kl_div_2d(p: Tensor, q: Tensor) -> Tensor:
+def _kl_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     # D_KL(P || Q)
     batch, chans, height, width = p.shape
     unsummed_kl = F.kl_div(
@@ -35,25 +33,25 @@ def _kl_div_2d(p: Tensor, q: Tensor) -> Tensor:
     return kl_values
 
 
-def _js_div_2d(p: Tensor, q: Tensor) -> Tensor:
+def _js_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     # JSD(P || Q)
     m = 0.5 * (p + q)
     return 0.5 * _kl_div_2d(p, m) + 0.5 * _kl_div_2d(q, m)
 
 
 # TODO: add this to the main module
-def _reduce_loss(losses: Tensor, reduction: str) -> Tensor:
+def _reduce_loss(losses: torch.Tensor, reduction: str) -> torch.Tensor:
     if reduction == "none":
         return losses
     return torch.mean(losses) if reduction == "mean" else torch.sum(losses)
 
 
-def js_div_loss_2d(pred: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
+def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
     r"""Calculate the Jensen-Shannon divergence loss between heatmaps.
 
     Args:
-        pred: the input tensor with shape :math:`(B, N, H, W)`.
-        target: the target tensor with shape :math:`(B, N, H, W)`.
+        pred: the input torch.tensor with shape :math:`(B, N, H, W)`.
+        target: the target torch.tensor with shape :math:`(B, N, H, W)`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by
@@ -70,12 +68,12 @@ def js_div_loss_2d(pred: Tensor, target: Tensor, reduction: str = "mean") -> Ten
     return _reduce_loss(_js_div_2d(target, pred), reduction)
 
 
-def kl_div_loss_2d(pred: Tensor, target: Tensor, reduction: str = "mean") -> Tensor:
+def kl_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
     r"""Calculate the Kullback-Leibler divergence loss between heatmaps.
 
     Args:
-        pred: the input tensor with shape :math:`(B, N, H, W)`.
-        target: the target tensor with shape :math:`(B, N, H, W)`.
+        pred: the input torch.tensor with shape :math:`(B, N, H, W)`.
+        target: the target torch.tensor with shape :math:`(B, N, H, W)`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by

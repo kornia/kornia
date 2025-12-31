@@ -19,21 +19,22 @@ import copy
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar, Union
 
+import torch
+from torch import nn
 from typing_extensions import ParamSpec
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.constants import DataKey
-from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
 from .params import ParamItem
 
-DataType = Union[Tensor, List[Tensor], Boxes, Keypoints]
+DataType = Union[torch.Tensor, List[torch.Tensor], Boxes, Keypoints]
 
 # NOTE: shouldn't this SequenceDataType alias be equals to List[DataType]?
-SequenceDataType = Union[List[Tensor], List[List[Tensor]], List[Boxes], List[Keypoints]]
+SequenceDataType = Union[List[torch.Tensor], List[List[torch.Tensor]], List[Boxes], List[Keypoints]]
 
 T = TypeVar("T")
 
@@ -42,7 +43,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
     """Abstract interface for applying and inversing transformations."""
 
     @classmethod
-    def get_instance_module_param(cls, param: ParamItem) -> Dict[str, Tensor]:
+    def get_instance_module_param(cls, param: ParamItem) -> Dict[str, torch.Tensor]:
         if isinstance(param, ParamItem) and isinstance(param.data, dict):
             _params = param.data
         else:
@@ -59,12 +60,12 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def transform(cls, input: T, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:
+    def transform(cls, input: T, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:
         """Apply a transformation with respect to the parameters.
 
         Args:
-            input: the input tensor.
-            module: any torch Module but only kornia augmentation modules will count
+            input: the input torch.tensor.
+            module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -73,12 +74,12 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def inverse(cls, input: T, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:
+    def inverse(cls, input: T, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:
         """Inverse a transformation with respect to the parameters.
 
         Args:
-            input: the input tensor.
-            module: any torch Module but only kornia augmentation modules will count
+            input: the input torch.tensor.
+            module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -105,7 +106,7 @@ class AugmentationSequentialOps:
         if data_keys is None:
             if isinstance(self.data_keys, list):
                 return self.data_keys
-            raise ValueError("Sequential ops needs data keys to be able to process.")
+            raise ValueError("nn.Sequential ops needs data keys to be able to process.")
         else:
             return [DataKey.get(inp) for inp in data_keys]
 
@@ -126,7 +127,7 @@ class AugmentationSequentialOps:
     def transform(
         self,
         *arg: DataType,
-        module: Module,
+        module: nn.Module,
         param: ParamItem,
         extra_args: Dict[DataKey, Dict[str, Any]],
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
@@ -160,7 +161,7 @@ class AugmentationSequentialOps:
     def inverse(
         self,
         *arg: DataType,
-        module: Module,
+        module: nn.Module,
         param: ParamItem,
         extra_args: Dict[DataKey, Dict[str, Any]],
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
@@ -179,10 +180,10 @@ class AugmentationSequentialOps:
 P = ParamSpec("P")
 
 
-def make_input_only_sequential(module: "K.container.ImageSequentialBase") -> Callable[P, Tensor]:
+def make_input_only_sequential(module: "K.container.ImageSequentialBase") -> Callable[P, torch.Tensor]:
     """Disable all other additional inputs (e.g. ) for ImageSequential."""
 
-    def f(*args: P.args, **kwargs: P.kwargs) -> Tensor:
+    def f(*args: P.args, **kwargs: P.kwargs) -> torch.Tensor:
         return module(*args, **kwargs)
 
     return f
@@ -199,11 +200,11 @@ def get_geometric_only_param(module: "K.container.ImageSequentialBase", param: L
     return res
 
 
-class InputSequentialOps(SequentialOpsInterface[Tensor]):
+class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
     @classmethod
     def transform(
-        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         if extra_args is None:
             extra_args = {}
         if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
@@ -220,8 +221,8 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
 
     @classmethod
     def inverse(
-        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         if extra_args is None:
             extra_args = {}
         if isinstance(module, K.GeometricAugmentationBase2D):
@@ -239,13 +240,13 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
         return input
 
 
-class ClassSequentialOps(SequentialOpsInterface[Tensor]):
+class ClassSequentialOps(SequentialOpsInterface[torch.Tensor]):
     """Apply and inverse transformations for class labels if needed."""
 
     @classmethod
     def transform(
-        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         if isinstance(module, K.MixAugmentationBaseV2):
             raise NotImplementedError(
                 "The support for class labels for mix augmentations that change the class label is not yet supported."
@@ -254,23 +255,23 @@ class ClassSequentialOps(SequentialOpsInterface[Tensor]):
 
     @classmethod
     def inverse(
-        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         return input
 
 
-class MaskSequentialOps(SequentialOpsInterface[Tensor]):
+class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
     """Apply and inverse transformations for mask tensors."""
 
     @classmethod
     def transform(
-        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         """Apply a transformation with respect to the parameters.
 
         Args:
-            input: the input tensor.
-            module: any torch Module but only kornia augmentation modules will count
+            input: the input torch.tensor.
+            module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -313,13 +314,13 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
 
     @classmethod
     def transform_list(
-        cls, input: List[Tensor], module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
-    ) -> List[Tensor]:
+        cls, input: List[torch.Tensor], module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> List[torch.Tensor]:
         """Apply a transformation with respect to the parameters.
 
         Args:
             input: list of input tensors.
-            module: any torch Module but only kornia augmentation modules will count
+            module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -378,13 +379,13 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
 
     @classmethod
     def inverse(
-        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         """Inverse a transformation with respect to the parameters.
 
         Args:
-            input: the input tensor.
-            module: any torch Module but only kornia augmentation modules will count
+            input: the input torch.tensor.
+            module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -426,13 +427,13 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
 
     @classmethod
     def transform(
-        cls, input: Boxes, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+        cls, input: Boxes, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         """Apply a transformation with respect to the parameters.
 
         Args:
-            input: the input tensor, (B, N, 4, 2) or (B, 4, 2).
-            module: any torch Module but only kornia augmentation modules will count
+            input: the input torch.tensor, (B, N, 4, 2) or (B, 4, 2).
+            module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -472,13 +473,13 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
 
     @classmethod
     def inverse(
-        cls, input: Boxes, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+        cls, input: Boxes, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         """Inverse a transformation with respect to the parameters.
 
         Args:
-            input: the input tensor.
-            module: any torch Module but only kornia augmentation modules will count
+            input: the input torch.tensor.
+            module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -523,13 +524,13 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
 
     @classmethod
     def transform(
-        cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+        cls, input: Keypoints, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         """Apply a transformation with respect to the parameters.
 
         Args:
-            input: the input tensor, (B, N, 4, 2) or (B, 4, 2).
-            module: any torch Module but only kornia augmentation modules will count
+            input: the input torch.tensor, (B, N, 4, 2) or (B, 4, 2).
+            module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -570,13 +571,13 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
 
     @classmethod
     def inverse(
-        cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+        cls, input: Keypoints, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         """Inverse a transformation with respect to the parameters.
 
         Args:
-            input: the input tensor.
-            module: any torch Module but only kornia augmentation modules will count
+            input: the input torch.tensor.
+            module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.

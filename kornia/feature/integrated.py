@@ -16,13 +16,13 @@
 #
 
 import warnings
-from typing import ClassVar, Dict, List, Optional, Tuple
+from typing import ClassVar, Dict, List, Optional, Tuple, Union
 
 import torch
+from torch import nn
 
 from kornia.color import rgb_to_grayscale
 from kornia.constants import pi
-from kornia.core import Device, Module, Tensor, concatenate, deg2rad
 from kornia.core.check import KORNIA_CHECK_LAF
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
@@ -45,8 +45,12 @@ from .siftdesc import SIFTDescriptor
 
 
 def get_laf_descriptors(
-    img: Tensor, lafs: Tensor, patch_descriptor: Module, patch_size: int = 32, grayscale_descriptor: bool = True
-) -> Tensor:
+    img: torch.Tensor,
+    lafs: torch.Tensor,
+    patch_descriptor: nn.Module,
+    patch_size: int = 32,
+    grayscale_descriptor: bool = True,
+) -> torch.Tensor:
     r"""Get local descriptors, corresponding to LAFs (keypoints).
 
     Args:
@@ -58,29 +62,29 @@ def get_laf_descriptors(
         grayscale_descriptor: True if ``patch_descriptor`` expects single-channel image.
 
     Returns:
-        Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
+        Local descriptors of shape :math:`(B,N,D)` torch.where :math:`D` is descriptor size.
 
     """
     KORNIA_CHECK_LAF(lafs)
     patch_descriptor = patch_descriptor.to(img)
     patch_descriptor.eval()
 
-    timg: Tensor = img
+    timg: torch.Tensor = img
     if lafs.shape[1] == 0:
-        warnings.warn(f"LAF contains no keypoints {lafs.shape}, returning empty tensor", stacklevel=1)
+        warnings.warn(f"LAF contains no keypoints {lafs.shape}, returning empty torch.tensor", stacklevel=1)
         return torch.empty(lafs.shape[0], lafs.shape[1], 128, dtype=lafs.dtype, device=lafs.device)
     if grayscale_descriptor and img.size(1) == 3:
         timg = rgb_to_grayscale(img)
 
-    patches: Tensor = extract_patches_from_pyramid(timg, lafs, patch_size)
-    # Descriptor accepts standard tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
+    patches: torch.Tensor = extract_patches_from_pyramid(timg, lafs, patch_size)
+    # Descriptor accepts standard torch.tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
     # So we need to reshape a bit :)
     B, N, CH, H, W = patches.size()
     return patch_descriptor(patches.view(B * N, CH, H, W)).view(B, N, -1)
 
 
-class LAFDescriptor(Module):
-    r"""Module to get local descriptors, corresponding to LAFs (keypoints).
+class LAFDescriptor(nn.Module):
+    r"""nn.Module to get local descriptors, corresponding to LAFs (keypoints).
 
     Internally uses :func:`~kornia.feature.get_laf_descriptors`.
 
@@ -93,7 +97,10 @@ class LAFDescriptor(Module):
     """
 
     def __init__(
-        self, patch_descriptor_module: Optional[Module] = None, patch_size: int = 32, grayscale_descriptor: bool = True
+        self,
+        patch_descriptor_module: Optional[nn.Module] = None,
+        patch_size: int = 32,
+        grayscale_descriptor: bool = True,
     ) -> None:
         super().__init__()
         if patch_descriptor_module is None:
@@ -110,7 +117,7 @@ class LAFDescriptor(Module):
             f"grayscale_descriptor='{self.grayscale_descriptor})"
         )
 
-    def forward(self, img: Tensor, lafs: Tensor) -> Tensor:
+    def forward(self, img: torch.Tensor, lafs: torch.Tensor) -> torch.Tensor:
         r"""Three stage local feature detection.
 
         First the location and scale of interest points are determined by
@@ -121,14 +128,14 @@ class LAFDescriptor(Module):
             lafs: local affine frames :math:`(B,N,2,3)`.
 
         Returns:
-            Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
+            Local descriptors of shape :math:`(B,N,D)` torch.where :math:`D` is descriptor size.
 
         """
         return get_laf_descriptors(img, lafs, self.descriptor, self.patch_size, self.grayscale_descriptor)
 
 
-class LocalFeature(Module):
-    """Module, which combines local feature detector and descriptor.
+class LocalFeature(nn.Module):
+    """nn.Module, which combines local feature detector and descriptor.
 
     Args:
         detector: the detection module.
@@ -137,7 +144,7 @@ class LocalFeature(Module):
 
     """
 
-    def __init__(self, detector: Module, descriptor: LAFDescriptor, scaling_coef: float = 1.0) -> None:
+    def __init__(self, detector: nn.Module, descriptor: LAFDescriptor, scaling_coef: float = 1.0) -> None:
         super().__init__()
         self.detector = detector
         self.descriptor = descriptor
@@ -145,18 +152,20 @@ class LocalFeature(Module):
             raise ValueError(f"Scaling coef should be >= 0, got {scaling_coef}")
         self.scaling_coef = scaling_coef
 
-    def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor, Tensor]:
+    def forward(
+        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Run forward.
 
         Args:
             img: image to extract features with shape :math:`(B,C,H,W)`.
-            mask: a mask with weights where to apply the response function.
+            mask: a mask with weights torch.where to apply the response function.
                 The shape must be the same as the input image.
 
         Returns:
             - Detected local affine frames with shape :math:`(B,N,2,3)`.
             - Response function values for corresponding lafs with shape :math:`(B,N,1)`.
-            - Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
+            - Local descriptors of shape :math:`(B,N,D)` torch.where :math:`D` is descriptor size.
 
         """
         lafs, responses = self.detector(img, mask)
@@ -178,7 +187,7 @@ class SIFTFeature(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Optional[Device] = None,
+        device: Optional[Union[str, torch.device, None]] = None,
         config: Optional[Detector_config] = None,
     ) -> None:
         patch_size: int = 41
@@ -212,7 +221,7 @@ class SIFTFeatureScaleSpace(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Optional[Device] = None,
+        device: Optional[Union[str, torch.device, None]] = None,
     ) -> None:
         if device is None:
             device = torch.device("cpu")
@@ -240,7 +249,7 @@ class GFTTAffNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Optional[Device] = None,
+        device: Optional[Union[str, torch.device, None]] = None,
         config: Optional[Detector_config] = None,
     ) -> None:
         if device is None:
@@ -265,7 +274,7 @@ class HesAffNetHardNet(LocalFeature):
         self,
         num_features: int = 2048,
         upright: bool = False,
-        device: Optional[Device] = None,
+        device: Optional[Union[str, torch.device, None]] = None,
         config: Optional[Detector_config] = None,
     ) -> None:
         if device is None:
@@ -290,7 +299,7 @@ class KeyNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Optional[Device] = None,
+        device: Optional[Union[str, torch.device, None]] = None,
         scale_laf: float = 1.0,
     ) -> None:
         if device is None:
@@ -311,7 +320,7 @@ class KeyNetAffNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Optional[Device] = None,
+        device: Optional[Union[str, torch.device, None]] = None,
         scale_laf: float = 1.0,
     ) -> None:
         if device is None:
@@ -327,15 +336,15 @@ class KeyNetAffNetHardNet(LocalFeature):
         super().__init__(detector, descriptor, scale_laf)
 
 
-class LocalFeatureMatcher(Module):
-    r"""Module, which finds correspondences between two images based on local features.
+class LocalFeatureMatcher(nn.Module):
+    r"""nn.Module, which finds correspondences between two images based on local features.
 
     Args:
         local_feature: Local feature detector. See :class:`~kornia.feature.GFTTAffNetHardNet`.
         matcher: Descriptor matcher, see :class:`~kornia.feature.DescriptorMatcher`.
 
     Returns:
-        Dict[str, Tensor]: Dictionary with image correspondences and confidence scores.
+        Dict[str, torch.Tensor]: Dictionary with image correspondences and confidence scores.
 
     Example:
         >>> img1 = torch.rand(1, 1, 320, 200)
@@ -348,18 +357,18 @@ class LocalFeatureMatcher(Module):
 
     """
 
-    def __init__(self, local_feature: Module, matcher: Module) -> None:
+    def __init__(self, local_feature: nn.Module, matcher: nn.Module) -> None:
         super().__init__()
         self.local_feature = local_feature
         self.matcher = matcher
         self.eval()
 
-    def extract_features(self, image: Tensor, mask: Optional[Tensor] = None) -> Dict[str, Tensor]:
+    def extract_features(self, image: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
         """Extract features from simple image."""
         lafs0, resps0, descs0 = self.local_feature(image, mask)
         return {"lafs": lafs0, "responses": resps0, "descriptors": descs0}
 
-    def no_match_output(self, device: Device, dtype: torch.dtype) -> Dict[str, Tensor]:
+    def no_match_output(self, device: Union[str, torch.device, None], dtype: torch.dtype) -> Dict[str, torch.Tensor]:
         return {
             "keypoints0": torch.empty(0, 2, device=device, dtype=dtype),
             "keypoints1": torch.empty(0, 2, device=device, dtype=dtype),
@@ -369,7 +378,7 @@ class LocalFeatureMatcher(Module):
             "batch_indexes": torch.empty(0, device=device, dtype=torch.long),
         }
 
-    def forward(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
+    def forward(self, data: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Run forward.
 
         Args:
@@ -394,26 +403,26 @@ class LocalFeatureMatcher(Module):
 
         if ("lafs0" not in data.keys()) or ("descriptors0" not in data.keys()):
             # One can supply pre-extracted local features
-            feats_dict0: Dict[str, Tensor] = self.extract_features(data["image0"])
+            feats_dict0: Dict[str, torch.Tensor] = self.extract_features(data["image0"])
             lafs0, descs0 = feats_dict0["lafs"], feats_dict0["descriptors"]
         else:
             lafs0, descs0 = data["lafs0"], data["descriptors0"]
 
         if ("lafs1" not in data.keys()) or ("descriptors1" not in data.keys()):
-            feats_dict1: Dict[str, Tensor] = self.extract_features(data["image1"])
+            feats_dict1: Dict[str, torch.Tensor] = self.extract_features(data["image1"])
             lafs1, descs1 = feats_dict1["lafs"], feats_dict1["descriptors"]
         else:
             lafs1, descs1 = data["lafs1"], data["descriptors1"]
 
-        keypoints0: Tensor = get_laf_center(lafs0)
-        keypoints1: Tensor = get_laf_center(lafs1)
+        keypoints0: torch.Tensor = get_laf_center(lafs0)
+        keypoints1: torch.Tensor = get_laf_center(lafs1)
 
-        out_keypoints0: List[Tensor] = []
-        out_keypoints1: List[Tensor] = []
-        out_confidence: List[Tensor] = []
-        out_batch_indexes: List[Tensor] = []
-        out_lafs0: List[Tensor] = []
-        out_lafs1: List[Tensor] = []
+        out_keypoints0: List[torch.Tensor] = []
+        out_keypoints1: List[torch.Tensor] = []
+        out_confidence: List[torch.Tensor] = []
+        out_batch_indexes: List[torch.Tensor] = []
+        out_lafs0: List[torch.Tensor] = []
+        out_lafs1: List[torch.Tensor] = []
 
         for batch_idx in range(num_image_pairs):
             dists, idxs = self.matcher(descs0[batch_idx], descs1[batch_idx])
@@ -437,12 +446,12 @@ class LocalFeatureMatcher(Module):
             return self.no_match_output(data["image0"].device, data["image0"].dtype)
 
         return {
-            "keypoints0": concatenate(out_keypoints0, dim=0).view(-1, 2),
-            "keypoints1": concatenate(out_keypoints1, dim=0).view(-1, 2),
-            "lafs0": concatenate(out_lafs0, dim=0).view(1, -1, 2, 3),
-            "lafs1": concatenate(out_lafs1, dim=0).view(1, -1, 2, 3),
-            "confidence": concatenate(out_confidence, dim=0).view(-1),
-            "batch_indexes": concatenate(out_batch_indexes, dim=0).view(-1),
+            "keypoints0": torch.cat(out_keypoints0, dim=0).view(-1, 2),
+            "keypoints1": torch.cat(out_keypoints1, dim=0).view(-1, 2),
+            "lafs0": torch.cat(out_lafs0, dim=0).view(1, -1, 2, 3),
+            "lafs1": torch.cat(out_lafs1, dim=0).view(1, -1, 2, 3),
+            "confidence": torch.cat(out_confidence, dim=0).view(-1),
+            "batch_indexes": torch.cat(out_batch_indexes, dim=0).view(-1),
         }
 
 
@@ -481,13 +490,13 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
 
     def forward(
         self,
-        desc1: Tensor,
-        desc2: Tensor,
-        lafs1: Tensor,
-        lafs2: Tensor,
+        desc1: torch.Tensor,
+        desc2: torch.Tensor,
+        lafs1: torch.Tensor,
+        lafs2: torch.Tensor,
         hw1: Optional[Tuple[int, int]] = None,
         hw2: Optional[Tuple[int, int]] = None,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Run forward.
 
         Args:
@@ -500,8 +509,8 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
 
         Return:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
-            - Long tensor indexes of matching descriptors in desc1 and desc2,
-                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+            - Long torch.tensor indexes of matching descriptors in desc1 and desc2,
+                shape of :math:`(B3, 2)` torch.where :math:`0 <= B3 <= B1`.
 
         """
         if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
@@ -521,9 +530,9 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             hw2_ = keypoints2.max(dim=1)[0].squeeze().flip(0)
         else:
             hw2_ = torch.tensor(hw2, device=dev)
-        ori0 = deg2rad(get_laf_orientation(lafs1).reshape(1, -1))
+        ori0 = torch.deg2rad(get_laf_orientation(lafs1).reshape(1, -1))
         ori0[ori0 < 0] += 2.0 * pi
-        ori1 = deg2rad(get_laf_orientation(lafs2).reshape(1, -1))
+        ori1 = torch.deg2rad(get_laf_orientation(lafs2).reshape(1, -1))
         ori1[ori1 < 0] += 2.0 * pi
         input_dict = {
             "image0": {

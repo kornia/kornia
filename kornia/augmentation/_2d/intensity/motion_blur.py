@@ -22,12 +22,11 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import BorderType, Resample
-from kornia.core import Tensor, tensor
 from kornia.filters import motion_blur
 
 
 class RandomMotionBlur(IntensityAugmentationBase2D):
-    r"""Perform motion blur on 2D images (4D tensor).
+    r"""Perform motion blur on 2D images (4D torch.tensor).
 
     .. image:: _static/img/RandomMotionBlur.png
 
@@ -55,9 +54,9 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+        Input torch.tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation torch.tensor and returned.
 
         Please set ``resample`` to ``'bilinear'`` if more meaningful gradients wanted.
 
@@ -69,7 +68,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         >>> input = torch.ones(1, 1, 5, 5)
         >>> motion_blur = RandomMotionBlur(3, 35., 0.5, p=1.)
         >>> motion_blur(input)
-        tensor([[[[0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
+        torch.tensor([[[[0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
                   [0.5773, 1.0000, 1.0000, 1.0000, 0.7561],
@@ -79,15 +78,15 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomMotionBlur(3, 35., 0.5, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
     def __init__(
         self,
         kernel_size: Union[int, Tuple[int, int]],
-        angle: Union[Tensor, float, Tuple[float, float]],
-        direction: Union[Tensor, float, Tuple[float, float]],
+        angle: Union[torch.Tensor, float, Tuple[float, float]],
+        direction: Union[torch.Tensor, float, Tuple[float, float]],
         border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
         resample: Union[str, int, Resample] = Resample.NEAREST.name,
         same_on_batch: bool = False,
@@ -98,14 +97,18 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         self._param_generator = rg.MotionBlurGenerator(kernel_size, angle, direction)
         self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
 
-    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         params = super().generate_parameters(batch_shape)
-        params["idx"] = tensor([0]) if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,))
+        params["idx"] = torch.tensor([0]) if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,))
         return params
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         # sample a kernel size
         kernel_size_list: List[int] = params["ksize_factor"].tolist()
 
@@ -113,7 +116,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         # selected random index --- `params["idx"][0]` --- to determine the applied kernel size.
         # 2. The `VideoSequential` flattens the first two dimensions, effectively creating a larger batch.
         # Its method `VideoSequential.__repeat_param_across_channels__` repeats the previously selected index,
-        # creating a tensor with equal values. Hence, taking the first one (`params["idx"][0]`) is legit.
+        # creating a torch.tensor with equal values. Hence, taking the first one (`params["idx"][0]`) is legit.
         idx: int = cast(int, params["idx"][0])
         return motion_blur(
             input,

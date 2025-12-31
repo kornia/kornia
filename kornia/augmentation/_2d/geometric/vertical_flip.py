@@ -17,13 +17,14 @@
 
 from typing import Any, Dict, Optional, Tuple
 
+import torch
+
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.core import Tensor, as_tensor, tensor
 from kornia.geometry.transform import vflip
 
 
 class RandomVerticalFlip(GeometricAugmentationBase2D):
-    r"""Apply a random vertical flip to a tensor image or a batch of tensor images with a given probability.
+    r"""Apply a random vertical flip to a torch.tensor image or a batch of torch.tensor images with a given probability.
 
     .. image:: _static/img/RandomVerticalFlip.png
 
@@ -47,9 +48,9 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         ...                         [0., 1., 1.]]]])
         >>> seq = RandomVerticalFlip(p=1.0)
         >>> seq(input), seq.transform_matrix
-        (tensor([[[[0., 1., 1.],
+        (torch.tensor([[[[0., 1., 1.],
                   [0., 0., 0.],
-                  [0., 0., 0.]]]]), tensor([[[ 1.,  0.,  0.],
+                  [0., 0., 0.]]]]), torch.tensor([[[ 1.,  0.,  0.],
                  [ 0., -1.,  2.],
                  [ 0.,  0.,  1.]]]))
         >>> seq.inverse(seq(input)).equal(input)
@@ -59,33 +60,41 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> seq = RandomVerticalFlip(p=1.0)
         >>> (seq(input) == seq(input, params=seq._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         h: int = int(params["forward_input_shape"][-2])
-        flip_mat: Tensor = tensor([[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype)
+        flip_mat: torch.Tensor = torch.tensor(
+            [[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype
+        )
 
         return flip_mat.expand(input.shape[0], 3, 3)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         return vflip(input)
 
     def inverse_transform(
         self,
-        input: Tensor,
+        input: torch.Tensor,
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-    ) -> Tensor:
-        if not isinstance(transform, Tensor):
-            raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
+    ) -> torch.Tensor:
+        if not isinstance(transform, torch.Tensor):
+            raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
         return self.apply_transform(
             input,
             params=self._params,
-            transform=as_tensor(transform, device=input.device, dtype=input.dtype),
+            transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
             flags=flags,
         )

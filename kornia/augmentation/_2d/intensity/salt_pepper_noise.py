@@ -17,9 +17,10 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import SaltAndPepperGenerator
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
@@ -56,7 +57,7 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomSaltAndPepperNoise(amount=0.5, salt_vs_pepper=0.5, p=1.)
         >>> aug(inputs)
-        tensor([[[[1.0000, 0.0000, 0.0000],
+        torch.tensor([[[[1.0000, 0.0000, 0.0000],
                   [1.0000, 1.0000, 0.1166],
                   [0.1644, 0.7379, 0.0000]],
         <BLANKLINE>
@@ -72,7 +73,7 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomSaltAndPepperNoise(amount=0.05, salt_vs_pepper=0.5, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
@@ -128,11 +129,11 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
 
     def apply_transform(
         self,
-        input: Tensor,
-        params: Dict[str, Tensor],
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-    ) -> Tensor:
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         r"""Apply random Salt and Pepper noise transformation to the input image."""
         KORNIA_CHECK(len(input.shape) in (3, 4), "Wrong input dimension.")
         if len(input.shape) == 3:

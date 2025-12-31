@@ -17,22 +17,23 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
+
 import kornia
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
-from kornia.core import Tensor
 from kornia.geometry import affine3d
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
 
 
 class RandomRotation3D(GeometricAugmentationBase3D):
-    r"""Apply random rotations to 3D volumes (5D tensor).
+    r"""Apply random rotations to 3D volumes (5D torch.tensor).
 
-    Input should be a tensor of shape (C, D, H, W) or a batch of tensors :math:`(B, C, D, H, W)`.
+    Input should be a torch.tensor of shape (C, D, H, W) or a batch of tensors :math:`(B, C, D, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
-    will rotate the tensors and concatenate the corresponding transformation matrix to the
+    will rotate the tensors and torch.cat the corresponding transformation matrix to the
     previous one. This is especially useful when using this functionality as part of an ``nn.Sequential`` module.
 
     Args:
@@ -55,9 +56,9 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+        Input torch.tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation torch.tensor and returned.
 
     Examples:
         >>> import torch
@@ -65,7 +66,7 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         >>> input = torch.rand(1, 1, 3, 3, 3)
         >>> aug = RandomRotation3D((15., 20., 20.), p=1.0)
         >>> aug(input), aug.transform_matrix
-        (tensor([[[[[0.3819, 0.4886, 0.2111],
+        (torch.tensor([[[[[0.3819, 0.4886, 0.2111],
                    [0.1196, 0.3833, 0.4722],
                    [0.3432, 0.5951, 0.4223]],
         <BLANKLINE>
@@ -75,7 +76,7 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         <BLANKLINE>
                   [[0.1605, 0.3112, 0.3673],
                    [0.4931, 0.4620, 0.5700],
-                   [0.3505, 0.4685, 0.8092]]]]]), tensor([[[ 0.9722,  0.1131, -0.2049,  0.1196],
+                   [0.3505, 0.4685, 0.8092]]]]]), torch.tensor([[[ 0.9722,  0.1131, -0.2049,  0.1196],
                  [-0.0603,  0.9669,  0.2478, -0.1545],
                  [ 0.2262, -0.2286,  0.9469,  0.0556],
                  [ 0.0000,  0.0000,  0.0000,  1.0000]]]))
@@ -84,14 +85,14 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         >>> input = torch.rand(1, 3, 32, 32, 32)
         >>> aug = RandomRotation3D((15., 20., 20.), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
     def __init__(
         self,
         degrees: Union[
-            Tensor,
+            torch.Tensor,
             float,
             Tuple[float, float, float],
             Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
@@ -106,16 +107,18 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
         self._param_generator = rg.RotationGenerator3D(degrees)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        yaw: Tensor = params["yaw"].to(input)
-        pitch: Tensor = params["pitch"].to(input)
-        roll: Tensor = params["roll"].to(input)
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
+        yaw: torch.Tensor = params["yaw"].to(input)
+        pitch: torch.Tensor = params["pitch"].to(input)
+        roll: torch.Tensor = params["roll"].to(input)
 
-        center: Tensor = _compute_tensor_center3d(input)
-        rotation_mat: Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center.expand(yaw.shape[0], -1))
+        center: torch.Tensor = _compute_tensor_center3d(input)
+        rotation_mat: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center.expand(yaw.shape[0], -1))
 
         # rotation_mat is B x 3 x 4 and we need a B x 4 x 4 matrix
-        trans_mat: Tensor = kornia.eye_like(4, input)
+        trans_mat: torch.Tensor = kornia.eye_like(4, input)
         trans_mat[:, 0] = rotation_mat[:, 0]
         trans_mat[:, 1] = rotation_mat[:, 1]
         trans_mat[:, 2] = rotation_mat[:, 2]
@@ -123,9 +126,13 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         return trans_mat
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
-        if not isinstance(transform, Tensor):
-            raise TypeError(f"Expected the transform to be a Tensor. Gotcha {type(transform)}")
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if not isinstance(transform, torch.Tensor):
+            raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
 
         return affine3d(input, transform[..., :3, :4], flags["resample"].name.lower(), "zeros", flags["align_corners"])

@@ -17,15 +17,16 @@
 
 from typing import Any, Dict, Optional, Tuple
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.utils import _range_bound
-from kornia.core import Tensor
 from kornia.enhance.adjust import adjust_contrast
 
 
 class RandomContrast(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the contrast of a tensor image.
+    r"""Apply a random transformation to the contrast of a torch.tensor image.
 
     This implementation aligns PIL. Hence, the output is close to TorchVision.
 
@@ -50,7 +51,7 @@ class RandomContrast(IntensityAugmentationBase2D):
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomContrast(contrast = (0.5, 2.), p = 1.)
         >>> aug(inputs)
-        tensor([[[[0.2750, 0.4258, 0.0490],
+        torch.tensor([[[[0.2750, 0.4258, 0.0490],
                   [0.0732, 0.1704, 0.3514],
                   [0.2716, 0.4969, 0.2525]],
         <BLANKLINE>
@@ -67,7 +68,7 @@ class RandomContrast(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomContrast((0.8,1.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
@@ -80,13 +81,17 @@ class RandomContrast(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.contrast: Tensor = _range_bound(contrast, "contrast", center=1.0)
+        self.contrast: torch.Tensor = _range_bound(contrast, "contrast", center=1.0)
         self._param_generator = rg.PlainUniformGenerator((self.contrast, "contrast_factor", None, None))
 
         self.clip_output = clip_output
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         contrast_factor = params["contrast_factor"].to(input)
         return adjust_contrast(input, contrast_factor, self.clip_output)

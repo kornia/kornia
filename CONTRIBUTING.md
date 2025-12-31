@@ -249,21 +249,32 @@ We're all volunteers. These policies help us focus on high-impact work.
 
 - **Type hints** (Python >= 3.11):
   - Use typing when it improves readability
-  - Import from `kornia.core`, e.g. `from kornia.core import Tensor`
+  - **Use `torch.Tensor` directly** for type hints (preferred) or import from `kornia.core` for backward compatibility
+  - Use `torch.nn.Module` directly for module classes (preferred) or import from `kornia.core` for backward compatibility
   - For non-JIT modules, use `from __future__ import annotations`
   - **Always** type function inputs and outputs:
   - Run type checking with `pixi run typecheck` (uses `ty`)
     ```python
     from __future__ import annotations
-    from kornia.core import Tensor
+    import torch
 
     def homography_warp(
-      patch_src: Tensor,
-      dst_homo_src: Tensor,
+      patch_src: torch.Tensor,
+      dst_homo_src: torch.Tensor,
       dsize: tuple[int, int],
       mode: str = 'bilinear',
       padding_mode: str = 'zeros'
-    ) -> Tensor:
+    ) -> torch.Tensor:
+    ```
+
+    For module classes:
+    ```python
+    from __future__ import annotations
+    import torch.nn as nn
+
+    class MyModule(nn.Module):
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return x
     ```
 
 - **Code style:**

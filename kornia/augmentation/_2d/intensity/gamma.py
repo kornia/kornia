@@ -17,14 +17,15 @@
 
 from typing import Any, Dict, Optional, Tuple
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor
 from kornia.enhance.adjust import adjust_gamma
 
 
 class RandomGamma(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the gamma of a tensor image.
+    r"""Apply a random transformation to the gamma of a torch.tensor image.
 
     This implementation aligns PIL. Hence, the output is close to TorchVision.
 
@@ -49,7 +50,7 @@ class RandomGamma(IntensityAugmentationBase2D):
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomGamma((0.5,2.),(1.5,1.5),p=1.)
         >>> aug(inputs)
-        tensor([[[[1.0000, 1.0000, 0.3912],
+        torch.tensor([[[[1.0000, 1.0000, 0.3912],
                   [0.4883, 0.7801, 1.0000],
                   [1.0000, 1.0000, 0.9702]],
         <BLANKLINE>
@@ -65,7 +66,7 @@ class RandomGamma(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomGamma((0.8,1.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
@@ -83,8 +84,12 @@ class RandomGamma(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         gamma_factor = params["gamma_factor"].to(input)
         gain_factor = params["gain_factor"].to(input)
         return adjust_gamma(input, gamma_factor, gain_factor)

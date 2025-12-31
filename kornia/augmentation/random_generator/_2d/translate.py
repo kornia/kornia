@@ -21,7 +21,6 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
-from kornia.core import Tensor
 from kornia.utils.helpers import _extract_device_dtype
 
 __all__ = ["TranslateGenerator"]
@@ -38,7 +37,7 @@ class TranslateGenerator(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - translations (Tensor): element-wise translations with a shape of (B, 2).
+            - translations (torch.Tensor): element-wise translations with a shape of (B, 2).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -49,8 +48,8 @@ class TranslateGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        translate_x: Optional[Union[Tensor, Tuple[float, float]]] = None,
-        translate_y: Optional[Union[Tensor, Tuple[float, float]]] = None,
+        translate_x: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+        translate_y: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
     ) -> None:
         super().__init__()
         self.translate_x = translate_x
@@ -82,7 +81,7 @@ class TranslateGenerator(RandomGeneratorBase):
                 _translate_y[..., 0], _translate_y[..., 1], validate_args=False
             )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]

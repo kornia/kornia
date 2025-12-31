@@ -20,8 +20,8 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import torch
+from torch import nn
 
-from kornia.core import Module, Tensor
 from kornia.geometry import resize
 
 from .backbone import build_backbone
@@ -67,8 +67,8 @@ default_cfg = {
 }
 
 
-class LoFTR(Module):
-    r"""Module, which finds correspondences between two images.
+class LoFTR(nn.Module):
+    r"""nn.Module, which finds correspondences between two images.
 
     This is based on the original code from paper "LoFTR: Detector-Free Local
     Feature Matching with Transformers". See :cite:`LoFTR2021` for more details.
@@ -118,7 +118,7 @@ class LoFTR(Module):
             self.load_state_dict(pretrained_dict["state_dict"])
         self.eval()
 
-    def forward(self, data: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, data: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """Run forward.
 
         Args:
@@ -138,7 +138,7 @@ class LoFTR(Module):
 
         """
         # 1. Local Feature CNN
-        _data: dict[str, Tensor | int | torch.Size] = {
+        _data: dict[str, torch.Tensor | int | torch.Size] = {
             "bs": data["image0"].size(0),
             "hw0_i": data["image0"].shape[2:],
             "hw1_i": data["image1"].shape[2:],
@@ -196,13 +196,13 @@ class LoFTR(Module):
             "mconf": "confidence",
             "b_ids": "batch_indexes",
         }
-        out: dict[str, Tensor] = {}
+        out: dict[str, torch.Tensor] = {}
         for k, v in rename_keys.items():
             _d = _data[k]
-            if isinstance(_d, Tensor):
+            if isinstance(_d, torch.Tensor):
                 out[v] = _d
             else:
-                raise TypeError(f"Expected Tensor for item `{k}`. Gotcha {type(_d)}")
+                raise TypeError(f"Expected torch.Tensor for item `{k}`. Gotcha {type(_d)}")
         return out
 
     def load_state_dict(self, state_dict: dict[str, Any], *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]

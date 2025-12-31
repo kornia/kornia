@@ -17,10 +17,10 @@
 
 from __future__ import annotations
 
+import torch
 import torch.nn.functional as F
+from torch import nn
 
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .kernels import _unpack_2d_ks, get_binary_kernel2d
@@ -32,7 +32,7 @@ def _compute_zero_padding(kernel_size: tuple[int, int] | int) -> tuple[int, int]
     return (ky - 1) // 2, (kx - 1) // 2
 
 
-def median_blur(input: Tensor, kernel_size: tuple[int, int] | int) -> Tensor:
+def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torch.Tensor:
     r"""Blur an image using the median filter.
 
     .. image:: _static/img/median_blur.png
@@ -42,7 +42,7 @@ def median_blur(input: Tensor, kernel_size: tuple[int, int] | int) -> Tensor:
         kernel_size: the blurring kernel size.
 
     Returns:
-        the blurred input tensor with shape :math:`(B,C,H,W)`.
+        the blurred input torch.tensor with shape :math:`(B,C,H,W)`.
 
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_operators.html>`__.
@@ -60,25 +60,25 @@ def median_blur(input: Tensor, kernel_size: tuple[int, int] | int) -> Tensor:
     padding = _compute_zero_padding(kernel_size)
 
     # prepare kernel
-    kernel: Tensor = get_binary_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
+    kernel: torch.Tensor = get_binary_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
     b, c, h, w = input.shape
 
     # map the local window to single vector
-    features: Tensor = F.conv2d(input.reshape(b * c, 1, h, w), kernel, padding=padding, stride=1)
+    features: torch.Tensor = F.conv2d(input.reshape(b * c, 1, h, w), kernel, padding=padding, stride=1)
     features = features.view(b, c, -1, h, w)  # BxCx(K_h * K_w)xHxW
 
     # compute the median along the feature axis
     return features.median(dim=2)[0]
 
 
-class MedianBlur(Module):
+class MedianBlur(nn.Module):
     r"""Blur an image using the median filter.
 
     Args:
         kernel_size: the blurring kernel size.
 
     Returns:
-        the blurred input tensor.
+        the blurred input torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -97,5 +97,5 @@ class MedianBlur(Module):
         super().__init__()
         self.kernel_size = kernel_size
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return median_blur(input, self.kernel_size)

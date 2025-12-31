@@ -18,7 +18,6 @@
 import pytest
 import torch
 
-from kornia.core import Tensor
 from kornia.core.tensor_wrapper import TensorWrapper, unwrap, wrap
 
 from testing.base import BaseTester
@@ -29,7 +28,7 @@ class TestTensorWrapper(BaseTester):
         data = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         tensor = wrap(data, TensorWrapper)
         assert isinstance(tensor, TensorWrapper)
-        assert isinstance(tensor.data, Tensor)
+        assert isinstance(tensor.data, torch.Tensor)
         assert tensor.shape == (1, 2, 3, 4)
         assert tensor.device == device
         assert tensor.dtype == dtype

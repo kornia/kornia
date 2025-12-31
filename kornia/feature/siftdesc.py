@@ -19,15 +19,15 @@ import math
 from typing import Tuple
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, Tensor, concatenate, eye, normalize
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
 from kornia.geometry.conversions import pi
 
 
-def _get_reshape_kernel(kd: int, ky: int, kx: int) -> Tensor:
+def _get_reshape_kernel(kd: int, ky: int, kx: int) -> torch.Tensor:
     """Return neigh2channels conv kernel."""
     numel: int = kd * ky * kx
 
@@ -42,15 +42,15 @@ def _get_reshape_kernel(kd: int, ky: int, kx: int) -> Tensor:
         cache = _get_reshape_kernel._eye_cache  # type: ignore[attr-defined]
         res = cache.get(numel)
         if res is None:
-            res = eye(numel)
+            res = torch.eye(numel)
             cache[numel] = res
         return res.view(numel, kd, ky, kx)
     else:
         # fallback to normal allocation for big kernels
-        return eye(numel).view(numel, kd, ky, kx)
+        return torch.eye(numel).view(numel, kd, ky, kx)
 
 
-def get_sift_pooling_kernel(ksize: int = 25) -> Tensor:
+def get_sift_pooling_kernel(ksize: int = 25) -> torch.Tensor:
     r"""Return a weighted pooling kernel for SIFT descriptor.
 
     Args:
@@ -90,8 +90,8 @@ def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tup
     return ksize, stride, pad
 
 
-class SIFTDescriptor(Module):
-    r"""Module which computes SIFT descriptors of given patches.
+class SIFTDescriptor(nn.Module):
+    r"""nn.Module which computes SIFT descriptors of given patches.
 
     Args:
         patch_size: Input patch size in pixels.
@@ -157,13 +157,13 @@ class SIFTDescriptor(Module):
         )
         self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))
 
-    def get_pooling_kernel(self) -> Tensor:
+    def get_pooling_kernel(self) -> torch.Tensor:
         return self.pk.weight.detach()
 
-    def get_weighting_kernel(self) -> Tensor:
+    def get_weighting_kernel(self) -> torch.Tensor:
         return self.gk.detach()
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         KORNIA_CHECK_SHAPE(input, ["B", "1", f"{self.patch_size}", f"{self.patch_size}"])
         B: int = input.shape[0]
         self.pk = self.pk.to(input.dtype).to(input.device)
@@ -185,7 +185,7 @@ class SIFTDescriptor(Module):
         wo0_big = (1.0 - wo1_big_) * mag
         wo1_big = wo1_big_ * mag
 
-        ang_bins = concatenate(
+        ang_bins = torch.cat(
             [
                 self.pk((bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big)
                 for i in range(0, self.num_ang_bins)
@@ -193,22 +193,22 @@ class SIFTDescriptor(Module):
             1,
         )
         ang_bins = ang_bins.view(B, -1)
-        ang_bins = normalize(ang_bins, p=2)
+        ang_bins = F.normalize(ang_bins, p=2)
         ang_bins = torch.clamp(ang_bins, 0.0, float(self.clipval))
-        ang_bins = normalize(ang_bins, p=2)
+        ang_bins = F.normalize(ang_bins, p=2)
         if self.rootsift:
-            ang_bins = torch.sqrt(normalize(ang_bins, p=1) + self.eps)
+            ang_bins = torch.sqrt(F.normalize(ang_bins, p=1) + self.eps)
         return ang_bins
 
 
 def sift_describe(
-    input: Tensor,
+    input: torch.Tensor,
     patch_size: int = 41,
     num_ang_bins: int = 8,
     num_spatial_bins: int = 4,
     rootsift: bool = True,
     clipval: float = 0.2,
-) -> Tensor:
+) -> torch.Tensor:
     r"""Compute the sift descriptor.
 
     See
@@ -217,8 +217,8 @@ def sift_describe(
     return SIFTDescriptor(patch_size, num_ang_bins, num_spatial_bins, rootsift, clipval)(input)
 
 
-class DenseSIFTDescriptor(Module):
-    """Module, which computes SIFT descriptor densely over the image.
+class DenseSIFTDescriptor(nn.Module):
+    """nn.Module, which computes SIFT descriptor densely over the image.
 
     Args:
         num_ang_bins: Number of angular bins. (8 is default)
@@ -231,7 +231,7 @@ class DenseSIFTDescriptor(Module):
         padding: default 0
 
     Returns:
-        Tensor: DenseSIFT descriptor of the image
+        torch.Tensor: DenseSIFT descriptor of the image
 
     Shape:
         - Input: (B, 1, H, W)
@@ -302,14 +302,14 @@ class DenseSIFTDescriptor(Module):
         PoolingConv.weight.data.copy_(self._poolingconv_weight)
         self.PoolingConv = PoolingConv
 
-        # Cache pooling kernel tensor for fast return in get_pooling_kernel
+        # Cache pooling kernel torch.tensor for fast return in get_pooling_kernel
         self._pooling_kernel = self._bin_pooling_kernel_weight.detach()
 
-    def get_pooling_kernel(self) -> Tensor:
+    def get_pooling_kernel(self) -> torch.Tensor:
         # Return the cached detached pooling kernel directly for optimal speed
         return self._pooling_kernel
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         KORNIA_CHECK_SHAPE(input, ["B", "1", "H", "W"])
 
         _B, _CH, _W, _H = input.size()
@@ -329,7 +329,7 @@ class DenseSIFTDescriptor(Module):
         bo1_big = (bo0_big + 1) % self.num_ang_bins
         wo0_big = (1.0 - wo1_big_) * mag
         wo1_big = wo1_big_ * mag
-        ang_bins = concatenate(
+        ang_bins = torch.cat(
             [
                 self.bin_pooling_kernel(
                     (bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big
@@ -340,8 +340,8 @@ class DenseSIFTDescriptor(Module):
         )
 
         out_no_norm = self.PoolingConv(ang_bins)
-        out = normalize(out_no_norm, dim=1, p=2).clamp_(0, float(self.clipval))
-        out = normalize(out, dim=1, p=2)
+        out = F.normalize(out_no_norm, dim=1, p=2).clamp_(0, float(self.clipval))
+        out = F.normalize(out, dim=1, p=2)
         if self.rootsift:
-            out = torch.sqrt(normalize(out, p=1) + self.eps)
+            out = torch.sqrt(F.normalize(out, p=1) + self.eps)
         return out

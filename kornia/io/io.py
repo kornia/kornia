@@ -19,13 +19,12 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 import kornia_rs
 import torch
 
 import kornia
-from kornia.core import Device, Tensor
 from kornia.core.check import KORNIA_CHECK
 from kornia.utils import image_to_tensor, tensor_to_image
 
@@ -41,17 +40,17 @@ class ImageLoadType(Enum):
     RGB32 = 5
 
 
-def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
+def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None]) -> torch.Tensor:
     """Read an image file and decode using the Kornia Rust backend.
 
     The decoded image is returned as numpy array with shape HxWxC.
 
     Args:
         path_file: Path to a valid image file.
-        device: the device where you want to get your image placed.
+        device: the device torch.where you want to get your image placed.
 
     Return:
-        Image tensor with shape :math:`(3,H,W)`.
+        Image torch.tensor with shape :math:`(3,H,W)`.
 
     """
     # read image and return as `np.ndarray` with shape HxWxC
@@ -60,46 +59,48 @@ def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
     else:
         img = kornia_rs.read_image_any(str(path_file))
 
-    # convert the image to tensor with shape CxHxW
+    # convert the image to torch.tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)
 
-    # move the tensor to the desired device,
+    # move the torch.tensor to the desired device,
     dev = device if isinstance(device, torch.device) or device is None else torch.device(device)
 
     return img_t.to(device=dev)
 
 
-def _to_float32(image: Tensor) -> Tensor:
-    """Convert an image tensor to float32."""
+def _to_float32(image: torch.Tensor) -> torch.Tensor:
+    """Convert an image torch.tensor to float32."""
     KORNIA_CHECK(image.dtype == torch.uint8)
     return image.float() / 255.0
 
 
-def _to_uint8(image: Tensor) -> Tensor:
-    """Convert an image tensor to uint8."""
+def _to_uint8(image: torch.Tensor) -> torch.Tensor:
+    """Convert an image torch.tensor to uint8."""
     KORNIA_CHECK(image.dtype == torch.float32)
     return image.mul(255.0).byte()
 
 
 def load_image(
-    path_file: str | Path, desired_type: ImageLoadType = ImageLoadType.RGB32, device: Device = "cpu"
-) -> Tensor:
+    path_file: str | Path,
+    desired_type: ImageLoadType = ImageLoadType.RGB32,
+    device: Union[str, torch.device, None] = "cpu",
+) -> torch.Tensor:
     """Read an image file and decode using the Kornia Rust backend.
 
     Args:
         path_file: Path to a valid image file.
         desired_type: the desired image type, defined by color space and dtype.
-        device: the device where you want to get your image placed.
+        device: the device torch.where you want to get your image placed.
 
     Return:
-        Image tensor with shape :math:`(3,H,W)`.
+        Image torch.tensor with shape :math:`(3,H,W)`.
 
     """
     if not isinstance(path_file, Path):
         path_file = Path(path_file)
 
     # read the image using the kornia_rs package
-    image: Tensor = _load_image_to_tensor(path_file, device)  # CxHxW
+    image: torch.Tensor = _load_image_to_tensor(path_file, device)  # CxHxW
 
     if desired_type == ImageLoadType.UNCHANGED:
         return image
@@ -180,12 +181,12 @@ def _write_float32_image(path_file: Path, img_np: Any) -> None:
         raise NotImplementedError(f"Unsupported file extension: {path_file.suffix} for float32 image")
 
 
-def write_image(path_file: str | Path, image: Tensor, quality: int = 80) -> None:
+def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -> None:
     """Save an image file using the Kornia Rust backend.
 
     Args:
         path_file: Path to a valid image file.
-        image: Image tensor with shape :math:`(3,H,W)`, `(1,H,W)` and `(H,W)`.
+        image: Image torch.tensor with shape :math:`(3,H,W)`, `(1,H,W)` and `(H,W)`.
         quality: The quality of the JPEG encoding. If the file extension is .png or .tiff, the quality is ignored.
 
     Return:

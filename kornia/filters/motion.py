@@ -19,8 +19,9 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor
+import torch
+from torch import nn
+
 from kornia.core.check import KORNIA_CHECK
 
 from .filter import filter2d, filter3d
@@ -29,8 +30,8 @@ from .kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
 _VALID_BORDER = {"constant", "reflect", "replicate", "circular"}
 
 
-class MotionBlur(Module):
-    r"""Blur 2D images (4D tensor) using the motion filter.
+class MotionBlur(nn.Module):
+    r"""Blur 2D images (4D torch.tensor) using the motion filter.
 
     Args:
         kernel_size: motion kernel width and height. It should be odd and positive.
@@ -44,7 +45,7 @@ class MotionBlur(Module):
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Returns:
-        the blurred input tensor.
+        the blurred input torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -73,12 +74,12 @@ class MotionBlur(Module):
             f"angle={self.angle}, direction={self.direction}, border_type={self.border_type})"
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return motion_blur(x, self.kernel_size, self.angle, self.direction, self.border_type)
 
 
-class MotionBlur3D(Module):
-    r"""Blur 3D volumes (5D tensor) using the motion filter.
+class MotionBlur3D(nn.Module):
+    r"""Blur 3D volumes (5D torch.tensor) using the motion filter.
 
     Args:
         kernel_size: motion kernel width and height. It should be odd and positive.
@@ -92,7 +93,7 @@ class MotionBlur3D(Module):
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Returns:
-        the blurred input tensor.
+        the blurred input torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, D, H, W)`
@@ -112,16 +113,16 @@ class MotionBlur3D(Module):
     def __init__(
         self,
         kernel_size: int,
-        angle: float | tuple[float, float, float] | Tensor,
-        direction: float | Tensor,
+        angle: float | tuple[float, float, float] | torch.Tensor,
+        direction: float | torch.Tensor,
         border_type: str = "constant",
         mode: str = "nearest",
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
         KORNIA_CHECK(
-            isinstance(angle, (Tensor, float, list, tuple)),
-            f"Angle should be a Tensor, float or a sequence of floats. Got {angle}",
+            isinstance(angle, (torch.Tensor, float, list, tuple)),
+            f"Angle should be a torch.Tensor, float or a sequence of floats. Got {angle}",
         )
         if isinstance(angle, float):
             self.angle = (angle, angle, angle)
@@ -138,32 +139,32 @@ class MotionBlur3D(Module):
             f"angle={self.angle}, direction={self.direction}, border_type={self.border_type})"
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return motion_blur3d(x, self.kernel_size, self.angle, self.direction, self.border_type)
 
 
 def motion_blur(
-    input: Tensor,
+    input: torch.Tensor,
     kernel_size: int,
-    angle: float | Tensor,
-    direction: float | Tensor,
+    angle: float | torch.Tensor,
+    direction: float | torch.Tensor,
     border_type: str = "constant",
     mode: str = "nearest",
-) -> Tensor:
-    r"""Perform motion blur on tensor images.
+) -> torch.Tensor:
+    r"""Perform motion blur on torch.tensor images.
 
     .. image:: _static/img/motion_blur.png
 
     Args:
-        input: the input tensor with shape :math:`(B, C, H, W)`.
+        input: the input torch.tensor with shape :math:`(B, C, H, W)`.
         kernel_size: motion kernel width and height. It should be odd and positive.
         angle (Union[torch.Tensor, float]): angle of the motion blur in degrees (anti-clockwise rotation).
-            If tensor, it must be :math:`(B,)`.
+            If torch.tensor, it must be :math:`(B,)`.
         direction : forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
-            If tensor, it must be :math:`(B,)`.
+            If torch.tensor, it must be :math:`(B,)`.
         border_type: the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'constant'``.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
@@ -188,25 +189,25 @@ def motion_blur(
 
 
 def motion_blur3d(
-    input: Tensor,
+    input: torch.Tensor,
     kernel_size: int,
-    angle: tuple[float, float, float] | Tensor,
-    direction: float | Tensor,
+    angle: tuple[float, float, float] | torch.Tensor,
+    direction: float | torch.Tensor,
     border_type: str = "constant",
     mode: str = "nearest",
-) -> Tensor:
-    r"""Perform motion blur on 3D volumes (5D tensor).
+) -> torch.Tensor:
+    r"""Perform motion blur on 3D volumes (5D torch.tensor).
 
     Args:
-        input: the input tensor with shape :math:`(B, C, D, H, W)`.
+        input: the input torch.tensor with shape :math:`(B, C, D, H, W)`.
         kernel_size: motion kernel width, height and depth. It should be odd and positive.
         angle: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
-            If tensor, it must be :math:`(B, 3)`.
+            If torch.tensor, it must be :math:`(B, 3)`.
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
-            If tensor, it must be :math:`(B,)`.
+            If torch.tensor, it must be :math:`(B,)`.
         border_type: the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'constant'``.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.

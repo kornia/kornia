@@ -20,7 +20,6 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor
 
 
 class RandomChannelShuffle(IntensityAugmentationBase2D):
@@ -38,7 +37,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         >>> rng = torch.manual_seed(0)
         >>> img = torch.arange(1*2*2*2.).view(1,2,2,2)
         >>> RandomChannelShuffle()(img)
-        tensor([[[[4., 5.],
+        torch.tensor([[[[4., 5.],
                   [6., 7.]],
         <BLANKLINE>
                  [[0., 1.],
@@ -48,21 +47,25 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomChannelShuffle(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
     def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
-    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         B, C, _, _ = shape
         channels = torch.rand(B, C).argsort(dim=1)
         return {"channels": channels}
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         out = torch.empty_like(input)
         for i in range(out.shape[0]):
             out[i] = input[i, params["channels"][i]]

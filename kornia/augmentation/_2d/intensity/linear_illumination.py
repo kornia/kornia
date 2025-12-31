@@ -17,9 +17,10 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import LinearCornerIlluminationGenerator, LinearIlluminationGenerator
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
@@ -51,7 +52,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         >>> input = torch.ones(1, 3, 3, 3) * 0.5
         >>> aug = RandomLinearIllumination(gain=0.25, p=1.)
         >>> aug(input)
-        tensor([[[[0.2500, 0.2500, 0.2500],
+        torch.tensor([[[[0.2500, 0.2500, 0.2500],
                   [0.3750, 0.3750, 0.3750],
                   [0.5000, 0.5000, 0.5000]],
         <BLANKLINE>
@@ -67,7 +68,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomLinearIllumination(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
@@ -121,11 +122,11 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
 
     def apply_transform(
         self,
-        input: Tensor,
-        params: Dict[str, Tensor],
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-    ) -> Tensor:
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
         return input.add(params["gradient"].to(input)).clamp(0, 1)
 
@@ -158,7 +159,7 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         >>> input = torch.ones(1, 3, 3, 3) * 0.5
         >>> aug = RandomLinearCornerIllumination(gain=0.25, p=1.)
         >>> aug(input)
-        tensor([[[[0.3750, 0.4375, 0.5000],
+        torch.tensor([[[[0.3750, 0.4375, 0.5000],
                   [0.3125, 0.3750, 0.4375],
                   [0.2500, 0.3125, 0.3750]],
         <BLANKLINE>
@@ -174,7 +175,7 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomLinearCornerIllumination(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
@@ -228,10 +229,10 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
 
     def apply_transform(
         self,
-        input: Tensor,
-        params: Dict[str, Tensor],
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-    ) -> Tensor:
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
         return input.add(params["gradient"].to(input)).clamp(0, 1)

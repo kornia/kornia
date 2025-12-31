@@ -17,15 +17,16 @@
 
 from __future__ import annotations
 
-from kornia.core import Module, Tensor
+import torch
+from torch import nn
 
 from .filter import filter2d
 from .kernels import get_laplacian_kernel2d, normalize_kernel2d
 
 
 def laplacian(
-    input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", normalized: bool = True
-) -> Tensor:
+    input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", normalized: bool = True
+) -> torch.Tensor:
     r"""Create an operator that returns a tensor using a Laplacian filter.
 
     .. image:: _static/img/laplacian.png
@@ -62,7 +63,7 @@ def laplacian(
     return filter2d(input, kernel, border_type)
 
 
-class Laplacian(Module):
+class Laplacian(nn.Module):
     r"""Create an operator that returns a tensor using a Laplacian filter.
 
     The operator smooths the given tensor with a laplacian kernel by convolving
@@ -104,5 +105,5 @@ class Laplacian(Module):
             f"border_type={self.border_type})"
         )
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return laplacian(input, self.kernel_size, self.border_type, self.normalized)

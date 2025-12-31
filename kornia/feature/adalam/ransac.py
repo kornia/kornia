@@ -19,12 +19,10 @@ from typing import Any, Dict, Tuple, Union
 
 import torch
 
-from kornia.core import Tensor
-
 from .utils import arange_sequence, batch_2x2_ellipse, batch_2x2_inv, draw_first_k_couples, piecewise_arange
 
 
-def stable_sort_residuals(residuals: Tensor, ransidx: Tensor) -> Tuple[Tensor, Tensor]:
+def stable_sort_residuals(residuals: torch.Tensor, ransidx: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Sort residuals."""
     logres = torch.log(residuals + 1e-10)
     minlogres = torch.min(logres)
@@ -40,8 +38,8 @@ def stable_sort_residuals(residuals: Tensor, ransidx: Tensor) -> Tuple[Tensor, T
 
 
 def group_sum_and_cumsum(
-    scores_mat: Tensor, end_group_idx: Tensor, group_idx: Union[Tensor, slice, None] = None
-) -> Tuple[Tensor, Union[Tensor, None]]:
+    scores_mat: torch.Tensor, end_group_idx: torch.Tensor, group_idx: Union[torch.Tensor, slice, None] = None
+) -> Tuple[torch.Tensor, Union[torch.Tensor, None]]:
     """Calculate cumulative sum over group."""
     cumulative_scores = torch.cumsum(scores_mat, dim=1)
     ending_cumusums = cumulative_scores[:, end_group_idx]
@@ -61,8 +59,13 @@ def group_sum_and_cumsum(
 
 
 def confidence_based_inlier_selection(
-    residuals: Tensor, ransidx: Tensor, rdims: Tensor, idxoffsets: Tensor, dv: torch.device, min_confidence: Tensor
-) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    residuals: torch.Tensor,
+    ransidx: torch.Tensor,
+    rdims: torch.Tensor,
+    idxoffsets: torch.Tensor,
+    dv: torch.device,
+    min_confidence: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Select inliers from confidence scores."""
     numransacs = rdims.shape[0]
     numiters = residuals.shape[0]
@@ -82,8 +85,8 @@ def confidence_based_inlier_selection(
     inlier_weights[too_perfect_fits] = 0.0
 
     balanced_rdims, weights_cumsums = group_sum_and_cumsum(inlier_weights, end_rans_indexing, ransidx)
-    if not isinstance(weights_cumsums, Tensor):
-        raise TypeError("Expected the `weights_cumsums` to be a Tensor!")
+    if not isinstance(weights_cumsums, torch.Tensor):
+        raise TypeError("Expected the `weights_cumsums` to be a torch.Tensor!")
 
     progressive_inl_rates = weights_cumsums.float() / (balanced_rdims.repeat_interleave(rdims, dim=1)).float()
 
@@ -105,14 +108,14 @@ def confidence_based_inlier_selection(
 
 
 def sample_padded_inliers(
-    xsamples: Tensor,
-    ysamples: Tensor,
-    inlier_counts: Tensor,
-    inl_ransidx: Tensor,
-    inl_sampleidx: Tensor,
+    xsamples: torch.Tensor,
+    ysamples: torch.Tensor,
+    inlier_counts: torch.Tensor,
+    inl_ransidx: torch.Tensor,
+    inl_sampleidx: torch.Tensor,
     numransacs: int,
     dv: torch.device,
-) -> Tuple[Tensor, Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Sample from padded inliers."""
     maxinliers = int(torch.max(inlier_counts).item())
     dtype = xsamples.dtype
@@ -126,8 +129,13 @@ def sample_padded_inliers(
 
 
 def ransac(
-    xsamples: Tensor, ysamples: Tensor, rdims: Tensor, config: Dict[str, Any], iters: int = 128, refit: bool = True
-) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    xsamples: torch.Tensor,
+    ysamples: torch.Tensor,
+    rdims: torch.Tensor,
+    config: Dict[str, Any],
+    iters: int = 128,
+    refit: bool = True,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Run ransac."""
     DET_THR = config["detected_scale_rate_threshold"]
     MIN_CONFIDENCE = config["min_confidence"]
@@ -171,7 +179,7 @@ def ransac(
         )
 
     # Organize inliers found into a matrix for efficient GPU re-fitting.
-    # Cope with the irregular number of inliers per sample by padding with zeros
+    # Cope with the irregular number of inliers per sample by padding with torch.zeros
     padded_inlier_x, padded_inlier_y = sample_padded_inliers(
         xsamples, ysamples, inl_counts, inl_ransidx, inl_sampleidx, numransacs, dv
     )

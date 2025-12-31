@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+import warnings
+
 import pytest
 import torch
 
@@ -89,13 +91,16 @@ class TestFaceDetection(BaseTester):
         model_path = tmp_path / "facedetector_model.onnx"
 
         dynamic_axes = {"images": {0: "B"}}
-        torch.onnx.export(
-            model,
-            img,
-            model_path,
-            input_names=["images"],
-            output_names=["loc", "conf", "iou"],
-            dynamic_axes=dynamic_axes,
-        )
+        # Suppress onnxscript deprecation warnings (Python 3.15 compatibility)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning, module="onnxscript.converter")
+            torch.onnx.export(
+                model,
+                img,
+                model_path,
+                input_names=["images"],
+                output_names=["loc", "conf", "iou"],
+                dynamic_axes=dynamic_axes,
+            )
 
         assert model_path.is_file()

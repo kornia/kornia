@@ -20,14 +20,13 @@ import torch
 from numpy.testing import assert_almost_equal
 
 from kornia.contrib.object_detection import BoxFiltering
-from kornia.core import tensor
 
 
 class TestBoxFiltering:
     @pytest.fixture
     def sample_boxes(self):
         # Setup some sample boxes with the format [class_id, confidence_score, x, y, w, h]
-        return tensor(
+        return torch.tensor(
             [
                 [
                     [1, 0.9, 10, 10, 20, 20],  # High confidence, class 1
@@ -66,7 +65,7 @@ class TestBoxFiltering:
     def test_class_filtering(self, sample_boxes):
         """Test filtering based on class IDs."""
         # Set classes_to_keep to [1, 2]
-        filter = BoxFiltering(classes_to_keep=tensor([1, 2]))
+        filter = BoxFiltering(classes_to_keep=torch.tensor([1, 2]))
         filtered_boxes = filter(sample_boxes)
 
         # Expected output: only boxes with class_id 1 and 2 should be kept
@@ -83,7 +82,7 @@ class TestBoxFiltering:
     def test_combined_confidence_and_class_filtering(self, sample_boxes):
         """Test filtering based on both confidence and class IDs."""
         # Set confidence threshold to 0.6 and classes_to_keep to [1, 3]
-        filter = BoxFiltering(confidence_threshold=0.6, classes_to_keep=tensor([1, 3]))
+        filter = BoxFiltering(confidence_threshold=0.6, classes_to_keep=torch.tensor([1, 3]))
         filtered_boxes = filter(sample_boxes)
 
         # Expected output: only boxes with confidence > 0.6 and class_id in [1, 3] should be kept

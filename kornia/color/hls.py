@@ -21,12 +21,10 @@ import math
 from typing import ClassVar
 
 import torch
-
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor, stack, tensor, where
+from torch import nn
 
 
-def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
+def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Convert an RGB image to HLS.
 
     .. image:: _static/img/rgb_to_hls.png
@@ -47,30 +45,30 @@ def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
         >>> output = rgb_to_hls(input)  # 2x3x4x5
 
     """
-    if not isinstance(image, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    _RGB2HSL_IDX = tensor([[[0.0]], [[1.0]], [[2.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
+    _RGB2HSL_IDX = torch.tensor([[[0.0]], [[1.0]], [[2.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
-    _img_max: tuple[Tensor, Tensor] = image.max(-3)
+    _img_max: tuple[torch.Tensor, torch.Tensor] = image.max(-3)
     maxc = _img_max[0]
     imax = _img_max[1]
-    minc: Tensor = image.min(-3)[0]
+    minc: torch.Tensor = image.min(-3)[0]
 
     if image.requires_grad:
         l_ = maxc + minc
         s = maxc - minc
         # weird behaviour with undefined vars in JIT...
         # scripting requires image_hls be defined even if it is not used :S
-        h = l_  # assign to any tensor...
-        image_hls = l_  # assign to any tensor...
+        h = l_  # assign to any torch.tensor...
+        image_hls = l_  # assign to any torch.tensor...
     else:
         # define the resulting image to avoid the torch.stack([h, l, s])
         # so, h, l and s require inplace operations
-        # NOTE: stack() increases in a 10% the cost in colab
+        # NOTE: torch.stack() increases in a 10% the cost in colab
         image_hls = torch.empty_like(image)
         h, l_, s = (
             image_hls[..., 0, :, :],
@@ -84,7 +82,7 @@ def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
     im = image / (s + eps).unsqueeze(-3)
 
     # epsilon cannot be inside the torch.where to avoid precision issues
-    s /= where(l_ < 1.0, l_, 2.0 - l_) + eps  # saturation
+    s /= torch.where(l_ < 1.0, l_, 2.0 - l_) + eps  # saturation
     l_ /= 2  # luminance
 
     # note that r,g and b were previously div by (max - min)
@@ -104,11 +102,11 @@ def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
     h *= math.pi / 3.0  # hue [0, 2*pi]
 
     if image.requires_grad:
-        return stack([h, l_, s], -3)
+        return torch.stack([h, l_, s], -3)
     return image_hls
 
 
-def hls_to_rgb(image: Tensor) -> Tensor:
+def hls_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a HLS image to RGB.
 
     The image data is assumed to be in the range of (0, 1).
@@ -124,32 +122,32 @@ def hls_to_rgb(image: Tensor) -> Tensor:
         >>> output = hls_to_rgb(input)  # 2x3x4x5
 
     """
-    if not isinstance(image, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    _HLS2RGB = tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
+    _HLS2RGB = torch.tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
-    im: Tensor = image.unsqueeze(-4)
-    h_ch: Tensor = im[..., 0, :, :]
-    l_ch: Tensor = im[..., 1, :, :]
-    s_ch: Tensor = im[..., 2, :, :]
+    im: torch.Tensor = image.unsqueeze(-4)
+    h_ch: torch.Tensor = im[..., 0, :, :]
+    l_ch: torch.Tensor = im[..., 1, :, :]
+    s_ch: torch.Tensor = im[..., 2, :, :]
     h_ch = h_ch * (6 / math.pi)  # h * 360 / (2 * math.pi) / 30
     a = s_ch * torch.min(l_ch, 1.0 - l_ch)
 
     # kr = (0 + h) % 12
     # kg = (8 + h) % 12
     # kb = (4 + h) % 12
-    k: Tensor = (h_ch + _HLS2RGB) % 12
+    k: torch.Tensor = (h_ch + _HLS2RGB) % 12
 
     # l - a * max(min(min(k - 3.0, 9.0 - k), 1), -1)
     mink = torch.min(k - 3.0, 9.0 - k)
     return torch.addcmul(l_ch, a, mink.clamp_(min=-1.0, max=1.0), value=-1)
 
 
-class RgbToHls(Module):
+class RgbToHls(nn.Module):
     r"""Convert an image from RGB to HLS.
 
     The image data is assumed to be in the range of (0, 1).
@@ -171,11 +169,11 @@ class RgbToHls(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_hls(image)
 
 
-class HlsToRgb(Module):
+class HlsToRgb(nn.Module):
     r"""Convert an image from HLS to RGB.
 
     The image data is assumed to be in the range of (0, 1).
@@ -200,5 +198,5 @@ class HlsToRgb(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return hls_to_rgb(image)

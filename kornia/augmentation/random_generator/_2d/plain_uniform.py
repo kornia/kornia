@@ -22,7 +22,6 @@ from torch.distributions import Distribution
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
-from kornia.core import Tensor, as_tensor
 from kornia.utils.helpers import _extract_device_dtype
 
 __all__ = ["ParameterBound", "PlainUniformGenerator"]
@@ -36,7 +35,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
 
     Args:
         *samplers: a list of tuple in a pattern of ``(factor, name, center, range)``, in which
-            the factor can be a two-numbered tuple, or a ``(2,)`` shaped torch tensor. The name
+            the factor can be a two-numbered tuple, or a ``(2,)`` shaped torch torch.tensor. The name
             will be the corresponding key of the returning dict. The center and range must be
             both provided worked as a validator to the given factor.
 
@@ -56,7 +55,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
         ...     ((0., 1.), "factor_1", None, None),
         ...     (torch.tensor([-0.5, 0.5]), "factor_2", 0.1, (-1., 1.)),
         ... )(torch.Size([2]))
-        {'factor_1': tensor([0.7196, 0.7307]), 'factor_2': tensor([ 0.3278, -0.3657])}
+        {'factor_1': torch.tensor([0.7196, 0.7307]), 'factor_2': torch.tensor([ 0.3278, -0.3657])}
 
     """
 
@@ -70,7 +69,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
             names.append(name)
             if isinstance(factor, torch.nn.Parameter):
                 self.register_parameter(name, factor)
-            elif isinstance(factor, Tensor):
+            elif isinstance(factor, torch.Tensor):
                 self.register_buffer(name, factor)
             else:
                 factor = _range_bound(factor, name, center=center, bounds=bound)
@@ -84,14 +83,14 @@ class PlainUniformGenerator(RandomGeneratorBase):
         self.sampler_dict: Dict[str, Distribution] = {}
         for factor, name, center, bound in self.samplers:
             if center is None and bound is None:
-                factor = as_tensor(factor, device=device, dtype=dtype)
+                factor = torch.as_tensor(factor, device=device, dtype=dtype)
             elif center is None or bound is None:
                 raise ValueError(f"`center` and `bound` should be both None or provided. Got {center} and {bound}.")
             else:
                 factor = _range_bound(factor, name, center=center, bounds=bound, device=device, dtype=dtype)
             self.sampler_dict.update({name: UniformDistribution(factor[0], factor[1], validate_args=False)})
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])

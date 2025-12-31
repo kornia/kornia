@@ -18,12 +18,12 @@
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
+from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, _get_new_batch_shape
-from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -70,11 +70,11 @@ class VideoSequential(ImageSequential):
         ...     same_on_frame=True)
         >>> output = aug_list(input)
         >>> (output[0, :, 0] == output[0, :, 1]).all()
-        tensor(True)
+        torch.tensor(True)
         >>> (output[0, :, 1] == output[0, :, 2]).all()
-        tensor(True)
+        torch.tensor(True)
         >>> (output[0, :, 2] == output[0, :, 3]).all()
-        tensor(True)
+        torch.tensor(True)
 
         If set `same_on_frame` to False:
 
@@ -88,7 +88,7 @@ class VideoSequential(ImageSequential):
         >>> output.shape
         torch.Size([2, 3, 4, 5, 6])
         >>> (output[0, :, 0] == output[0, :, 1]).all()
-        tensor(False)
+        torch.tensor(False)
 
         Reproduce with provided params.
         >>> out2 = aug_list(input, params=aug_list._params)
@@ -118,7 +118,7 @@ class VideoSequential(ImageSequential):
 
     def __init__(
         self,
-        *args: Module,
+        *args: nn.Module,
         data_format: str = "BTCHW",
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
@@ -145,7 +145,7 @@ class VideoSequential(ImageSequential):
         # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
         return cast(torch.Size, batch_shape[:chennel_index] + batch_shape[chennel_index + 1 :])
 
-    def __repeat_param_across_channels__(self, param: Tensor, frame_num: int) -> Tensor:
+    def __repeat_param_across_channels__(self, param: torch.Tensor, frame_num: int) -> torch.Tensor:
         """Repeat parameters across channels.
 
         The input is shaped as (B, ...), while to output (B * same_on_frame, ...), which
@@ -158,8 +158,8 @@ class VideoSequential(ImageSequential):
         return repeated.reshape(-1, *list(param.shape[1:]))
 
     def __broadcast_param__(
-        self, v: Tensor, batch_shape: torch.Size, frame_num: int, same_on_frame: bool, same_on_batch: bool
-    ) -> Tensor:
+        self, v: torch.Tensor, batch_shape: torch.Size, frame_num: int, same_on_frame: bool, same_on_batch: bool
+    ) -> torch.Tensor:
         if not v.numel():
             return v
 
@@ -171,7 +171,7 @@ class VideoSequential(ImageSequential):
             return v.unsqueeze(1).repeat(1, batch_shape[0], *([1] * (v.ndim - 1))).reshape(-1, *v.shape[1:])
         return v
 
-    def _input_shape_convert_in(self, input: Tensor, frame_num: int) -> Tensor:
+    def _input_shape_convert_in(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
         # Convert any shape to (B, T, C, H, W)
         if self.data_format == "BCTHW":
             # Convert (B, C, T, H, W) to (B, T, C, H, W)
@@ -182,7 +182,7 @@ class VideoSequential(ImageSequential):
         input = input.reshape(-1, *input.shape[2:])
         return input
 
-    def _input_shape_convert_back(self, input: Tensor, frame_num: int) -> Tensor:
+    def _input_shape_convert_back(self, input: torch.Tensor, frame_num: int) -> torch.Tensor:
         input = input.view(-1, frame_num, *input.shape[1:])
         if self.data_format == "BCTHW":
             input = input.transpose(1, 2)
@@ -230,7 +230,7 @@ class VideoSequential(ImageSequential):
             elif isinstance(module, (SequentialBase,)):
                 seq_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
-                    raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
+                    raise ValueError("nn.Sequential is currently unsupported for ``same_on_frame``.")
                 param = ParamItem(name, seq_param)
 
             else:
@@ -242,8 +242,8 @@ class VideoSequential(ImageSequential):
         return params
 
     def transform_inputs(
-        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
@@ -253,8 +253,8 @@ class VideoSequential(ImageSequential):
         return input
 
     def inverse_inputs(
-        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
@@ -264,8 +264,8 @@ class VideoSequential(ImageSequential):
         return input
 
     def transform_masks(
-        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
@@ -275,8 +275,8 @@ class VideoSequential(ImageSequential):
         return input
 
     def inverse_masks(
-        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
@@ -286,17 +286,17 @@ class VideoSequential(ImageSequential):
         return input
 
     def transform_boxes(  # type: ignore[override]
-        self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Union[Tensor, Boxes]:
+        self, input: Union[torch.Tensor, Boxes], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Union[torch.Tensor, Boxes]:
         """Transform bounding boxes.
 
         Args:
-            input: tensor with shape :math:`(B, T, N, 4, 2)`.
+            input: torch.tensor with shape :math:`(B, T, N, 4, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if isinstance(input, Tensor):
+        if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
             input = Boxes.from_tensor(input.view(-1, input.size(2), input.size(3), input.size(4)), mode="vertices_plus")
             input = super().transform_boxes(input, params, extra_args=extra_args)
@@ -306,17 +306,17 @@ class VideoSequential(ImageSequential):
         return input
 
     def inverse_boxes(  # type: ignore[override]
-        self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Union[Tensor, Boxes]:
+        self, input: Union[torch.Tensor, Boxes], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Union[torch.Tensor, Boxes]:
         """Transform bounding boxes.
 
         Args:
-            input: tensor with shape :math:`(B, T, N, 4, 2)`.
+            input: torch.tensor with shape :math:`(B, T, N, 4, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if isinstance(input, Tensor):
+        if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
             input = Boxes.from_tensor(input.view(-1, input.size(2), input.size(3), input.size(4)), mode="vertices_plus")
             input = super().inverse_boxes(input, params, extra_args=extra_args)
@@ -326,17 +326,20 @@ class VideoSequential(ImageSequential):
         return input
 
     def transform_keypoints(  # type: ignore[override]
-        self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Union[Tensor, Keypoints]:
+        self,
+        input: Union[torch.Tensor, Keypoints],
+        params: List[ParamItem],
+        extra_args: Optional[Dict[str, Any]] = None,
+    ) -> Union[torch.Tensor, Keypoints]:
         """Transform bounding boxes.
 
         Args:
-            input: tensor with shape :math:`(B, T, N, 2)`.
+            input: torch.tensor with shape :math:`(B, T, N, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if isinstance(input, Tensor):
+        if isinstance(input, torch.Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
             input = Keypoints(input.view(-1, input.size(2), input.size(3)))
             input = super().transform_keypoints(input, params, extra_args=extra_args)
@@ -346,17 +349,20 @@ class VideoSequential(ImageSequential):
         return input
 
     def inverse_keypoints(  # type: ignore[override]
-        self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
-    ) -> Union[Tensor, Keypoints]:
+        self,
+        input: Union[torch.Tensor, Keypoints],
+        params: List[ParamItem],
+        extra_args: Optional[Dict[str, Any]] = None,
+    ) -> Union[torch.Tensor, Keypoints]:
         """Transform bounding boxes.
 
         Args:
-            input: tensor with shape :math:`(B, T, N, 2)`.
+            input: torch.tensor with shape :math:`(B, T, N, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
         """
-        if isinstance(input, Tensor):
+        if isinstance(input, torch.Tensor):
             frame_num, batchsize = input.size(0), input.size(1)
             input = Keypoints(input.view(-1, input.size(2), input.size(3)))
             input = super().inverse_keypoints(input, params, extra_args=extra_args)
@@ -366,11 +372,11 @@ class VideoSequential(ImageSequential):
         return input
 
     def inverse(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         """Inverse transformation.
 
-        Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
+        Used to inverse a torch.tensor according to the performed transformation by a forward pass, or with respect to
         provided parameters.
         """
         if params is None:
@@ -382,11 +388,11 @@ class VideoSequential(ImageSequential):
         return self.inverse_inputs(input, params, extra_args=extra_args)
 
     def forward(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         """Define the video computation performed."""
         if len(input.shape) != 5:
-            raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")
+            raise AssertionError(f"Input must be a 5-dim torch.tensor. Got {input.shape}.")
 
         if params is None:
             self._params = self.forward_parameters(input.shape)

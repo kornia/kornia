@@ -17,15 +17,16 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
 from kornia.constants import BorderType, Resample
-from kornia.core import Tensor
 from kornia.filters import motion_blur3d
 
 
 class RandomMotionBlur3D(IntensityAugmentationBase3D):
-    r"""Apply random motion blur on 3D volumes (5D tensor).
+    r"""Apply random motion blur on 3D volumes (5D torch.tensor).
 
     Args:
         p: probability of applying the transformation.
@@ -56,9 +57,9 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+        Input torch.tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation torch.tensor and returned.
 
     Examples:
         >>> import torch
@@ -66,7 +67,7 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         >>> input = torch.rand(1, 1, 3, 5, 5)
         >>> motion_blur = RandomMotionBlur3D(3, 35., 0.5, p=1.)
         >>> motion_blur(input)
-        tensor([[[[[0.1654, 0.4772, 0.2004, 0.3566, 0.2613],
+        torch.tensor([[[[[0.1654, 0.4772, 0.2004, 0.3566, 0.2613],
                    [0.4557, 0.3131, 0.4809, 0.2574, 0.2696],
                    [0.2721, 0.5998, 0.3956, 0.5363, 0.1541],
                    [0.3006, 0.4773, 0.6395, 0.2856, 0.3989],
@@ -88,7 +89,7 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         >>> input = torch.rand(1, 3, 32, 32, 32)
         >>> aug = RandomMotionBlur3D(3, 35., 0.5, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
@@ -96,12 +97,12 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         self,
         kernel_size: Union[int, Tuple[int, int]],
         angle: Union[
-            Tensor,
+            torch.Tensor,
             float,
             Tuple[float, float, float],
             Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
         ],
-        direction: Union[Tensor, float, Tuple[float, float]],
+        direction: Union[torch.Tensor, float, Tuple[float, float]],
         border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
         resample: Union[str, int, Resample] = Resample.NEAREST.name,
         same_on_batch: bool = False,
@@ -112,12 +113,18 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
         self._param_generator = rg.MotionBlurGenerator3D(kernel_size, angle, direction)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         kernel_size = int(params["ksize_factor"].unique().item())
         angle = params["angle_factor"]
         direction = params["direction_factor"]

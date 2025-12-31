@@ -17,10 +17,11 @@
 
 from typing import Any, Dict, Optional, Tuple
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.contrib import diamond_square
-from kornia.core import Tensor
 
 
 class RandomPlasmaBrightness(IntensityAugmentationBase2D):
@@ -46,7 +47,7 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 3, 4)
         >>> RandomPlasmaBrightness(roughness=(0.1, 0.7), p=1.)(img)
-        tensor([[[[0.6415, 1.0000, 0.3142, 0.6836],
+        torch.tensor([[[[0.6415, 1.0000, 0.3142, 0.6836],
                   [1.0000, 0.5593, 0.5556, 0.4566],
                   [0.5809, 1.0000, 0.7005, 1.0000]]]])
 
@@ -66,8 +67,12 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        image: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         B, C, H, W = image.shape
         roughness = params["roughness"].to(image)
         intensity = params["intensity"].to(image).view(-1, 1, 1, 1)
@@ -98,7 +103,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 3, 4)
         >>> RandomPlasmaContrast(roughness=(0.1, 0.7), p=1.)(img)
-        tensor([[[[0.9651, 1.0000, 1.0000, 1.0000],
+        torch.tensor([[[[0.9651, 1.0000, 1.0000, 1.0000],
                   [1.0000, 0.9103, 0.8038, 0.9263],
                   [0.6882, 1.0000, 0.9544, 1.0000]]]])
 
@@ -115,8 +120,12 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         self._param_generator = rg.PlainUniformGenerator((roughness, "roughness", None, None))
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        image: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         B, C, H, W = image.shape
         roughness = params["roughness"].to(image)
         contrast_map = 4 * diamond_square((B, C, H, W), roughness, device=image.device, dtype=image.dtype)
@@ -147,7 +156,7 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 3, 4)
         >>> RandomPlasmaShadow(roughness=(0.1, 0.7), p=1.)(img)
-        tensor([[[[0.7682, 1.0000, 1.0000, 1.0000],
+        torch.tensor([[[[0.7682, 1.0000, 1.0000, 1.0000],
                   [1.0000, 1.0000, 1.0000, 1.0000],
                   [1.0000, 1.0000, 1.0000, 1.0000]]]])
 
@@ -170,8 +179,12 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        image: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         B, _, H, W = image.shape
         roughness = params["roughness"].to(image)
         shade_intensity = params["shade_intensity"].to(image).view(-1, 1, 1, 1)

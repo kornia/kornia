@@ -22,7 +22,6 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey
-from kornia.core import Tensor
 
 __all__ = ["RandomJigsaw"]
 
@@ -71,8 +70,8 @@ class RandomJigsaw(MixAugmentationBaseV2):
         self.flags = {"grid": grid}
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         # different from the Base class routine. This function will not refer to any non-transformation images.
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.

@@ -21,7 +21,8 @@ import os
 from functools import wraps
 from typing import Any, Callable, List, Optional, Tuple, Union
 
-from kornia.core._backend import Tensor, from_numpy
+import torch
+
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
 
@@ -107,7 +108,7 @@ class ImageModuleMixIn:
         """
         if isinstance(arg, (str,)) and os.path.exists(arg):
             return True
-        if isinstance(arg, (Tensor,)):
+        if isinstance(arg, (torch.Tensor,)):
             return True
         # Make sure that the numpy and PIL are not necessarily needed to be imported.
         if isinstance(arg, (np.ndarray,)):  # type: ignore
@@ -116,7 +117,7 @@ class ImageModuleMixIn:
             return True
         return False
 
-    def to_tensor(self, x: Any) -> Tensor:
+    def to_tensor(self, x: Any) -> torch.Tensor:
         """Convert input to tensor.
 
         Supports image path, numpy array, PIL image, and raw tensor.
@@ -139,7 +140,7 @@ class ImageModuleMixIn:
 
             return image_to_tensor(x) / 255
         if isinstance(x, (Image.Image,)):  # type: ignore
-            return from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # type: ignore
+            return torch.from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # type: ignore
         raise TypeError("Input type not supported")
 
     def to_numpy(self, x: Any) -> "np.array":  # type: ignore
@@ -187,8 +188,8 @@ class ImageModuleMixIn:
         raise TypeError("Input type not supported")
 
     def _detach_tensor_to_cpu(
-        self, output_image: Union[Tensor, List[Tensor], Tuple[Tensor]]
-    ) -> Union[Tensor, List[Tensor], Tuple[Tensor]]:
+        self, output_image: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]
+    ) -> Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]:
         if isinstance(output_image, (Tensor,)):
             return output_image.detach().cpu()
         if isinstance(

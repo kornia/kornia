@@ -17,14 +17,15 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor
 from kornia.enhance import posterize
 
 
 class RandomPosterize(IntensityAugmentationBase2D):
-    r"""Posterize given tensor image or a batch of tensor images randomly.
+    r"""Posterize given torch.tensor image or a batch of torch.tensor images randomly.
 
     .. image:: _static/img/RandomPosterize.png
 
@@ -49,7 +50,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> posterize = RandomPosterize(3., p=1.)
         >>> posterize(input)
-        tensor([[[[0.4863, 0.7529, 0.0784, 0.1255, 0.2980],
+        torch.tensor([[[[0.4863, 0.7529, 0.0784, 0.1255, 0.2980],
                   [0.6275, 0.4863, 0.8941, 0.4549, 0.6275],
                   [0.3451, 0.3922, 0.0157, 0.1569, 0.2824],
                   [0.5176, 0.6902, 0.8000, 0.1569, 0.2667],
@@ -59,13 +60,13 @@ class RandomPosterize(IntensityAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomPosterize(3., p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
     def __init__(
         self,
-        bits: Union[float, Tuple[float, float], Tensor] = 3,
+        bits: Union[float, Tuple[float, float], torch.Tensor] = 3,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -75,6 +76,10 @@ class RandomPosterize(IntensityAugmentationBase2D):
         self._param_generator = rg.PosterizeGenerator(bits)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         return posterize(input, params["bits_factor"].to(input.device))

@@ -22,12 +22,10 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Tensor
-
 from .structs import Keypoints
 
 
-def nms(signal: Tensor, window_size: int = 5, cutoff: float = 0.0) -> Tensor:
+def nms(signal: torch.Tensor, window_size: int = 5, cutoff: float = 0.0) -> torch.Tensor:
     """Apply non-maximum suppression."""
     if window_size % 2 != 1:
         raise ValueError(f"window_size has to be odd, got {window_size}")
@@ -45,7 +43,7 @@ def nms(signal: Tensor, window_size: int = 5, cutoff: float = 0.0) -> Tensor:
 
 
 def heatmap_to_keypoints(
-    heatmap: Tensor, n: Optional[int] = None, window_size: int = 5, score_threshold: float = 0.0
+    heatmap: torch.Tensor, n: Optional[int] = None, window_size: int = 5, score_threshold: float = 0.0
 ) -> list[Keypoints]:
     """Inference-time nms-based detection protocol."""
     heatmap = heatmap.squeeze(1)

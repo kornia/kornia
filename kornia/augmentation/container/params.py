@@ -17,14 +17,14 @@
 
 from typing import Dict, List, NamedTuple, Optional, Union
 
-from kornia.core import Tensor
+import torch
 
 __all__ = ["ParamItem", "PatchParamItem"]
 
 
 class ParamItem(NamedTuple):
     name: str
-    data: Optional[Union[Dict[str, Tensor], List["ParamItem"]]]
+    data: Optional[Union[Dict[str, torch.Tensor], List["ParamItem"]]]
 
 
 class PatchParamItem(NamedTuple):

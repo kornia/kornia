@@ -17,13 +17,14 @@
 
 from __future__ import annotations
 
-from torch import Tensor
+import torch
+from torch import nn
 
-from kornia.core import Module
+# from torch import Tensor (use torch.Tensor instead)
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
 
 
-def welsch_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
+def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none") -> torch.Tensor:
     r"""Criterion that computes the Welsch [2] (aka. Leclerc [3]) loss.
 
     According to [1], we compute the Welsch loss as follows:
@@ -42,8 +43,8 @@ def welsch_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
         [3] https://link.springer.com/article/10.1007/BF00054839
 
     Args:
-        img1: the predicted tensor with shape :math:`(*)`.
-        img2: the target tensor with the same shape as img1.
+        img1: the predicted torch.tensor with shape :math:`(*)`.
+        img2: the target torch.tensor with the same shape as img1.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied (default), ``'mean'``: the sum of the output will be divided
@@ -86,7 +87,7 @@ def welsch_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
     return loss
 
 
-class WelschLoss(Module):
+class WelschLoss(nn.Module):
     r"""Criterion that computes the Welsch [2] (aka. Leclerc [3]) loss.
 
     According to [1], we compute the Welsch loss as follows:
@@ -112,8 +113,8 @@ class WelschLoss(Module):
           summed.
 
     Shape:
-        - img1: the predicted tensor with shape :math:`(*)`.
-        - img2: the target tensor with the same shape as img1.
+        - img1: the predicted torch.tensor with shape :math:`(*)`.
+        - img2: the target torch.tensor with the same shape as img1.
 
     Example:
         >>> criterion = WelschLoss(reduction="mean")
@@ -128,5 +129,5 @@ class WelschLoss(Module):
         super().__init__()
         self.reduction = reduction
 
-    def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
+    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
         return welsch_loss(img1=img1, img2=img2, reduction=self.reduction)

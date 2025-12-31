@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import warnings
 from pathlib import Path
 
 import pytest
@@ -65,15 +66,18 @@ class TestObjectDetector(BaseTester):
         model_path = tmp_path / "rtdetr.onnx"
 
         dynamic_axes = {"images": {0: "N"}}
-        torch.onnx.export(
-            detector,
-            data,
-            model_path,
-            input_names=["images"],
-            output_names=["detections"],
-            dynamic_axes=dynamic_axes,
-            opset_version=17,
-        )
+        # Suppress onnxscript deprecation warnings (Python 3.15 compatibility)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning, module="onnxscript.converter")
+            torch.onnx.export(
+                detector,
+                data,
+                model_path,
+                input_names=["images"],
+                output_names=["detections"],
+                dynamic_axes=dynamic_axes,
+                opset_version=17,
+            )
 
         assert model_path.is_file()
 

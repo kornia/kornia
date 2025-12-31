@@ -17,27 +17,27 @@
 
 import torch
 
-from kornia.core import Tensor
 
-
-def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch.dtype, eps: float = 1e-6) -> Tensor:
-    r"""Convert an integer label x-D tensor to a one-hot (x+1)-D tensor.
+def one_hot(
+    labels: torch.Tensor, num_classes: int, device: torch.device, dtype: torch.dtype, eps: float = 1e-6
+) -> torch.Tensor:
+    r"""Convert an integer label x-D torch.tensor to a one-hot (x+1)-D torch.tensor.
 
     Args:
-        labels: tensor with labels of shape :math:`(N, *)`, where N is batch size.
+        labels: torch.tensor with labels of shape :math:`(N, *)`, torch.where N is batch size.
           Each value is an integer representing correct classification.
         num_classes: number of classes in labels.
-        device: the desired device of returned tensor.
-        dtype: the desired data type of returned tensor.
+        device: the desired device of returned torch.tensor.
+        dtype: the desired data type of returned torch.tensor.
         eps: epsilon for numerical stability.
 
     Returns:
-        the labels in one hot tensor of shape :math:`(N, C, *)`,
+        the labels in one hot torch.tensor of shape :math:`(N, C, *)`,
 
     Examples:
         >>> labels = torch.LongTensor([[[0, 1], [2, 0]]])
         >>> one_hot(labels, num_classes=3, device=torch.device('cpu'), dtype=torch.float32)
-        tensor([[[[1.0000e+00, 1.0000e-06],
+        torch.tensor([[[[1.0000e+00, 1.0000e-06],
                   [1.0000e-06, 1.0000e+00]],
         <BLANKLINE>
                  [[1.0000e-06, 1.0000e+00],
@@ -47,8 +47,8 @@ def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch
                   [1.0000e+00, 1.0000e-06]]]])
 
     """
-    if not isinstance(labels, Tensor):
-        raise TypeError(f"Input labels type is not a Tensor. Got {type(labels)}")
+    if not isinstance(labels, torch.Tensor):
+        raise TypeError(f"Input labels type is not a torch.Tensor. Got {type(labels)}")
 
     if not labels.dtype == torch.int64:
         raise ValueError(f"labels must be of the same dtype torch.int64. Got: {labels.dtype}")

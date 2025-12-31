@@ -20,14 +20,13 @@ from __future__ import annotations
 from typing import ClassVar, Optional
 
 import torch
+from torch import nn
 
 from kornia.color.rgb import bgr_to_rgb
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
 
-def grayscale_to_rgb(image: Tensor) -> Tensor:
+def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a grayscale image to RGB version of image.
 
     .. image:: _static/img/grayscale_to_rgb.png
@@ -35,7 +34,7 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        image: grayscale image tensor to be converted to RGB with shape :math:`(*,1,H,W)`.
+        image: grayscale image torch.tensor to be converted to RGB with shape :math:`(*,1,H,W)`.
 
     Returns:
         RGB version of the image with shape :math:`(*,3,H,W)`.
@@ -56,7 +55,7 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     return image.expand(*shape)
 
 
-def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Tensor:
+def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = None) -> torch.Tensor:
     r"""Convert a RGB image to grayscale version of image.
 
     .. image:: _static/img/rgb_to_grayscale.png
@@ -94,19 +93,19 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Ten
         else:
             raise TypeError(f"Unknown data type: {image.dtype}")
     else:
-        # is tensor that we make sure is in the same device/dtype
+        # is torch.tensor that we make sure is in the same device/dtype
         rgb_weights = rgb_weights.to(image)
 
     # unpack the color image channels with RGB order
-    r: Tensor = image[..., 0:1, :, :]
-    g: Tensor = image[..., 1:2, :, :]
-    b: Tensor = image[..., 2:3, :, :]
+    r: torch.Tensor = image[..., 0:1, :, :]
+    g: torch.Tensor = image[..., 1:2, :, :]
+    b: torch.Tensor = image[..., 2:3, :, :]
 
     w_r, w_g, w_b = rgb_weights.unbind()
     return w_r * r + w_g * g + w_b * b
 
 
-def bgr_to_grayscale(image: Tensor) -> Tensor:
+def bgr_to_grayscale(image: torch.Tensor) -> torch.Tensor:
     r"""Convert a BGR image to grayscale.
 
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
@@ -127,12 +126,12 @@ def bgr_to_grayscale(image: Tensor) -> Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    image_rgb: Tensor = bgr_to_rgb(image)
+    image_rgb: torch.Tensor = bgr_to_rgb(image)
     return rgb_to_grayscale(image_rgb)
 
 
-class GrayscaleToRgb(Module):
-    r"""Module to convert a grayscale image to RGB version of image.
+class GrayscaleToRgb(nn.Module):
+    r"""nn.Module to convert a grayscale image to RGB version of image.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -153,12 +152,12 @@ class GrayscaleToRgb(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return grayscale_to_rgb(image)
 
 
-class RgbToGrayscale(Module):
-    r"""Module to convert a RGB image to grayscale version of image.
+class RgbToGrayscale(nn.Module):
+    r"""nn.Module to convert a RGB image to grayscale version of image.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -179,18 +178,18 @@ class RgbToGrayscale(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
-    def __init__(self, rgb_weights: Optional[Tensor] = None) -> None:
+    def __init__(self, rgb_weights: Optional[torch.Tensor] = None) -> None:
         super().__init__()
         if rgb_weights is None:
-            rgb_weights = Tensor([0.299, 0.587, 0.114])
+            rgb_weights = torch.Tensor([0.299, 0.587, 0.114])
         self.rgb_weights = rgb_weights
 
-    def forward(self, image: Tensor) -> Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
 
 
-class BgrToGrayscale(Module):
-    r"""Module to convert a BGR image to grayscale version of image.
+class BgrToGrayscale(nn.Module):
+    r"""nn.Module to convert a BGR image to grayscale version of image.
 
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
 
@@ -211,5 +210,5 @@ class BgrToGrayscale(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
-    def forward(self, image: Tensor) -> Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return bgr_to_grayscale(image)

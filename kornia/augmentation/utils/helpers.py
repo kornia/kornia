@@ -21,7 +21,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 from torch.distributions import Beta, Uniform
 
-from kornia.core import Tensor, as_tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.utils import _extract_device_dtype
@@ -31,7 +30,7 @@ def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
     r"""Validate the 2D input of the wrapped function.
 
     Args:
-        f: a function that takes the first argument as tensor.
+        f: a function that takes the first argument as torch.tensor.
 
     Returns:
         the wrapped function after input is validated.
@@ -39,9 +38,9 @@ def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
     """
 
     @wraps(f)
-    def wrapper(input: Tensor, *args: Any, **kwargs: Any) -> Any:
+    def wrapper(input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
         if not torch.is_tensor(input):
-            raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
         _validate_shape(input.shape, required_shapes=("BCHW",))
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
@@ -55,7 +54,7 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
     r"""Validate the 3D input of the wrapped function.
 
     Args:
-        f: a function that takes the first argument as tensor.
+        f: a function that takes the first argument as torch.tensor.
 
     Returns:
         the wrapped function after input is validated.
@@ -63,9 +62,9 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
     """
 
     @wraps(f)
-    def wrapper(input: Tensor, *args: Any, **kwargs: Any) -> Any:
+    def wrapper(input: torch.Tensor, *args: Any, **kwargs: Any) -> Any:
         if not torch.is_tensor(input):
-            raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
         input_shape = len(input.shape)
         if input_shape != 5:
@@ -77,35 +76,37 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-def _infer_batch_shape(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Size:
+def _infer_batch_shape(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
     r"""Infer input shape.
 
-    Input may be either (tensor,) or (tensor, transform_matrix)
+    Input may be either (torch.tensor,) or (torch.tensor, transform_matrix)
     """
     if isinstance(input, tuple):
-        tensor = _transform_input(input[0])
+        tensor_var = _transform_input(input[0])
     else:
-        tensor = _transform_input(input)
-    return tensor.shape
+        tensor_var = _transform_input(input)
+    return tensor_var.shape
 
 
-def _infer_batch_shape3d(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Size:
+def _infer_batch_shape3d(input: Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]) -> torch.Size:
     r"""Infer input shape.
 
-    Input may be either (tensor,) or (tensor, transform_matrix)
+    Input may be either (torch.tensor,) or (torch.tensor, transform_matrix)
     """
     if isinstance(input, tuple):
-        tensor = _transform_input3d(input[0])
+        tensor_var = _transform_input3d(input[0])
     else:
-        tensor = _transform_input3d(input)
-    return tensor.shape
+        tensor_var = _transform_input3d(input)
+    return tensor_var.shape
 
 
-def _transform_input_by_shape(input: Tensor, reference_shape: Tensor, match_channel: bool = True) -> Tensor:
-    """Reshape an input tensor to have the same dimensions as the reference_shape.
+def _transform_input_by_shape(
+    input: torch.Tensor, reference_shape: torch.Tensor, match_channel: bool = True
+) -> torch.Tensor:
+    """Reshape an input torch.tensor to have the same dimensions as the reference_shape.
 
     Arguments:
-        input: tensor to be transformed
+        input: torch.tensor to be transformed
         reference_shape: shape used as reference
         match_channel: if True, C_{src} == C_{ref}. otherwise, no constrain. C =1 by default
 
@@ -123,18 +124,20 @@ def _transform_input_by_shape(input: Tensor, reference_shape: Tensor, match_chan
 
     if match_channel and C:
         if not input.shape[-3] == C:
-            raise ValueError("The C dimension of tensor did not match with the reference tensor.")
+            raise ValueError("The C dimension of torch.tensor did not match with the reference torch.tensor.")
     elif match_channel and C is None:
-        raise ValueError("The reference tensor do not have a C dimension!")
+        raise ValueError("The reference torch.tensor do not have a C dimension!")
 
     return input
 
 
-def _transform_input3d_by_shape(input: Tensor, reference_shape: Tensor, match_channel: bool = True) -> Tensor:
-    """Reshape an input tensor to have the same dimensions as the reference_shape.
+def _transform_input3d_by_shape(
+    input: torch.Tensor, reference_shape: torch.Tensor, match_channel: bool = True
+) -> torch.Tensor:
+    """Reshape an input torch.tensor to have the same dimensions as the reference_shape.
 
     Arguments:
-        input: tensor to be transformed
+        input: torch.tensor to be transformed
         reference_shape: shape used as reference
         match_channel: if True, C_{src} == C_{ref}. otherwise, no constrain. C =1 by default
 
@@ -152,25 +155,25 @@ def _transform_input3d_by_shape(input: Tensor, reference_shape: Tensor, match_ch
 
     if match_channel and C:
         if not input.shape[-4] == C:
-            raise ValueError("The C dimension of tensor did not match with the reference tensor.")
+            raise ValueError("The C dimension of torch.tensor did not match with the reference torch.tensor.")
     elif match_channel and C is None:
-        raise ValueError("The reference tensor do not have a C dimension!")
+        raise ValueError("The reference torch.tensor do not have a C dimension!")
 
     return input
 
 
-def _transform_input(input: Tensor) -> Tensor:
-    r"""Reshape an input tensor to be (*, C, H, W). Accept either (H, W), (C, H, W) or (*, C, H, W).
+def _transform_input(input: torch.Tensor) -> torch.Tensor:
+    r"""Reshape an input torch.tensor to be (*, C, H, W). Accept either (H, W), (C, H, W) or (*, C, H, W).
 
     Args:
-        input: Tensor
+        input: torch.Tensor
 
     Returns:
-        Tensor
+        torch.Tensor
 
     """
     if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if len(input.shape) not in [2, 3, 4]:
         raise ValueError(f"Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W). Got {input.shape}")
@@ -184,18 +187,18 @@ def _transform_input(input: Tensor) -> Tensor:
     return input
 
 
-def _transform_input3d(input: Tensor) -> Tensor:
-    r"""Reshape an input tensor to be (*, C, D, H, W). Accept either (D, H, W), (C, D, H, W) or (*, C, D, H, W).
+def _transform_input3d(input: torch.Tensor) -> torch.Tensor:
+    r"""Reshape an input torch.tensor to be (*, C, D, H, W). Accept either (D, H, W), (C, D, H, W) or (*, C, D, H, W).
 
     Args:
-        input: Tensor
+        input: torch.Tensor
 
     Returns:
-        Tensor
+        torch.Tensor
 
     """
     if not torch.is_tensor(input):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if len(input.shape) not in [3, 4, 5]:
         raise ValueError(
@@ -211,11 +214,11 @@ def _transform_input3d(input: Tensor) -> Tensor:
     return input
 
 
-def _validate_input_dtype(input: Tensor, accepted_dtypes: List[torch.dtype]) -> None:
-    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes.
+def _validate_input_dtype(input: torch.Tensor, accepted_dtypes: List[torch.dtype]) -> None:
+    r"""Check if the dtype of the input torch.tensor is in the range of accepted_dtypes.
 
     Args:
-        input: Tensor
+        input: torch.Tensor
         accepted_dtypes: List. e.g. [torch.float32, torch.float64]
     """
     if input.dtype not in accepted_dtypes:
@@ -223,17 +226,17 @@ def _validate_input_dtype(input: Tensor, accepted_dtypes: List[torch.dtype]) -> 
 
 
 def _transform_output_shape(
-    output: Tensor, shape: Tuple[int, ...], *, reference_shape: Optional[Tensor] = None
-) -> Tensor:
-    r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
+    output: torch.Tensor, shape: Tuple[int, ...], *, reference_shape: Optional[torch.Tensor] = None
+) -> torch.Tensor:
+    r"""Collapse the broadcasted batch dimensions an input torch.tensor to be the specified shape.
 
     Args:
-        output: Tensor
+        output: torch.Tensor
         shape: List/tuple of int
-        reference_shape: Tensor representation of shape to control which dimensions are collapsed.
+        reference_shape: torch.Tensor representation of shape to control which dimensions are collapsed.
 
     Returns:
-        Tensor
+        torch.Tensor
 
     """
     out_tensor = output.clone()
@@ -250,10 +253,10 @@ def _transform_output_shape(
 
 
 def _validate_shape(shape: Union[Tuple[int, ...], torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
-    r"""Check if the dtype of the input tensor is in the range of accepted_dtypes.
+    r"""Check if the dtype of the input torch.tensor is in the range of accepted_dtypes.
 
     Args:
-        shape: tensor shape
+        shape: torch.tensor shape
         required_shapes: List. e.g. ["BCHW", "BCDHW"]
     """
     passed = False
@@ -265,7 +268,7 @@ def _validate_shape(shape: Union[Tuple[int, ...], torch.Size], required_shapes: 
         raise TypeError(f"Expected input shape in {required_shape}. Got {shape}.")
 
 
-def _validate_input_shape(input: Tensor, channel_index: int, number: int) -> bool:
+def _validate_input_shape(input: torch.Tensor, channel_index: int, number: int) -> bool:
     r"""Validate if an input has the right shape.
 
     e.g. to check if an input is channel first.
@@ -273,7 +276,7 @@ def _validate_input_shape(input: Tensor, channel_index: int, number: int) -> boo
         _validate_input_shape(input, 1, 3)
 
     Args:
-        input: Tensor
+        input: torch.Tensor
         channel_index: int
         number: int
     Returns:
@@ -287,7 +290,7 @@ def _adapted_rsampling(
     shape: Union[Tuple[int, ...], torch.Size],
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
-) -> Tensor:
+) -> torch.Tensor:
     r"""Sample from a uniform reparameterized sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
@@ -307,7 +310,7 @@ def _adapted_sampling(
     shape: Union[Tuple[int, ...], torch.Size],
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
-) -> Tensor:
+) -> torch.Tensor:
     r"""Sample from a uniform sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
@@ -323,23 +326,23 @@ def _adapted_sampling(
 
 def _adapted_uniform(
     shape: Union[Tuple[int, ...], torch.Size],
-    low: Union[float, Tensor],
-    high: Union[float, Tensor],
+    low: Union[float, torch.Tensor],
+    high: Union[float, torch.Tensor],
     same_on_batch: bool = False,
-) -> Tensor:
+) -> torch.Tensor:
     r"""Sample from a uniform sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
 
-    By default, sampling happens on the default device and dtype. If low/high is a tensor, sampling will happen in the
-    same device/dtype as low/high tensor.
+    By default, sampling happens on the default device and dtype. If low/high is a torch.tensor, sampling will happen in the
+    same device/dtype as low/high torch.tensor.
     """
     device, dtype = _extract_device_dtype(
-        [low if isinstance(low, Tensor) else None, high if isinstance(high, Tensor) else None]
+        [low if isinstance(low, torch.Tensor) else None, high if isinstance(high, torch.Tensor) else None]
     )
-    low = as_tensor(low, device=device, dtype=dtype)
-    high = as_tensor(high, device=device, dtype=dtype)
+    low = torch.as_tensor(low, device=device, dtype=dtype)
+    high = torch.as_tensor(high, device=device, dtype=dtype)
     # validate_args=False to fix pytorch 1.7.1 error:
     #     ValueError: Uniform is not defined when low>= high.
     dist = Uniform(low, high, validate_args=False)
@@ -348,26 +351,28 @@ def _adapted_uniform(
 
 def _adapted_beta(
     shape: Union[Tuple[int, ...], torch.Size],
-    a: Union[float, Tensor],
-    b: Union[float, Tensor],
+    a: Union[float, torch.Tensor],
+    b: Union[float, torch.Tensor],
     same_on_batch: bool = False,
-) -> Tensor:
+) -> torch.Tensor:
     r"""Sample from a beta sampling function that accepts 'same_on_batch'.
 
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
 
-    By default, sampling happens on the default device and dtype. If a/b is a tensor, sampling will happen in the same
-    device/dtype as a/b tensor.
+    By default, sampling happens on the default device and dtype. If a/b is a torch.tensor, sampling will happen in the same
+    device/dtype as a/b torch.tensor.
     """
-    device, dtype = _extract_device_dtype([a if isinstance(a, Tensor) else None, b if isinstance(b, Tensor) else None])
-    a = as_tensor(a, device=device, dtype=dtype)
-    b = as_tensor(b, device=device, dtype=dtype)
+    device, dtype = _extract_device_dtype(
+        [a if isinstance(a, torch.Tensor) else None, b if isinstance(b, torch.Tensor) else None]
+    )
+    a = torch.as_tensor(a, device=device, dtype=dtype)
+    b = torch.as_tensor(b, device=device, dtype=dtype)
     dist = Beta(a, b, validate_args=False)
     return _adapted_rsampling(shape, dist, same_on_batch)
 
 
-def _shape_validation(param: Tensor, shape: Union[Tuple[int, ...], List[int]], name: str) -> None:
+def _shape_validation(param: torch.Tensor, shape: Union[Tuple[int, ...], List[int]], name: str) -> None:
     if param.shape != torch.Size(shape):
         raise AssertionError(f"Invalid shape for {name}. Expected {shape}. Got {param.shape}")
 
@@ -375,12 +380,12 @@ def _shape_validation(param: Tensor, shape: Union[Tuple[int, ...], List[int]], n
 def deepcopy_dict(params: Dict[str, Any]) -> Dict[str, Any]:
     """Perform deep copy on any dict.
 
-    Support tensor copying here.
+    Support torch.tensor copying here.
     """
     out = {}
     for k, v in params.items():
         # NOTE: Only Tensors created explicitly by the user (graph leaves) support the deepcopy protocol
-        if isinstance(v, Tensor):
+        if isinstance(v, torch.Tensor):
             out.update({k: v.clone()})
         else:
             out.update({k: v})
@@ -418,7 +423,7 @@ def override_parameters(
     return out
 
 
-def preprocess_boxes(input: Union[Tensor, Boxes], mode: str = "vertices_plus") -> Boxes:
+def preprocess_boxes(input: Union[torch.Tensor, Boxes], mode: str = "vertices_plus") -> Boxes:
     r"""Preprocess input boxes.
 
     Args:
@@ -426,24 +431,24 @@ def preprocess_boxes(input: Union[Tensor, Boxes], mode: str = "vertices_plus") -
             See below for more details.
         mode: The format in which the boxes are provided.
 
-            * 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` where ``width = xmax - xmin``
+            * 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` torch.where ``width = xmax - xmin``
                 and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
-            * 'xyxy_plus': similar to 'xyxy' mode but where box width and length are defined as
+            * 'xyxy_plus': similar to 'xyxy' mode but torch.where box width and length are defined as
                 ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
                 With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
-            * 'xywh': boxes are assumed to be in the format ``xmin, ymin, width, height`` where
+            * 'xywh': boxes are assumed to be in the format ``xmin, ymin, width, height`` torch.where
                 ``width = xmax - xmin`` and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
             * 'vertices': boxes are defined by their vertices points in the following ``clockwise`` order:
                 *top-left, top-right, bottom-right, bottom-left*. Vertices coordinates are in (x,y) order. Finally,
                 box width and height are defined as ``width = xmax - xmin`` and ``height = ymax - ymin``.
                 With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
-            * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
+            * 'vertices_plus': similar to 'vertices' mode but torch.where box width and length are defined as
                 ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
                 With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
 
     Note:
-        **2D boxes format** is defined as a floating data type tensor of shape ``Nx4x2`` or ``BxNx4x2``
-        where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by it's 4 vertices
+        **2D boxes format** is defined as a floating data type torch.tensor of shape ``Nx4x2`` or ``BxNx4x2``
+        torch.where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by it's 4 vertices
         coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of a box is defined as
         ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
         `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
@@ -451,28 +456,28 @@ def preprocess_boxes(input: Union[Tensor, Boxes], mode: str = "vertices_plus") -
     """
     # TODO: We may allow list here.
     # input is BxNx4x2 or Boxes.
-    if isinstance(input, Tensor):
+    if isinstance(input, torch.Tensor):
         if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
-            raise RuntimeError(f"Only BxNx4x2 tensor is supported. Got {input.shape}.")
+            raise RuntimeError(f"Only BxNx4x2 torch.tensor is supported. Got {input.shape}.")
         input = Boxes.from_tensor(input, mode=mode)
     if not isinstance(input, Boxes):
         raise RuntimeError(f"Expect `Boxes` type. Got {type(input)}.")
     return input
 
 
-def preprocess_keypoints(input: Union[Tensor, Keypoints]) -> Keypoints:
+def preprocess_keypoints(input: Union[torch.Tensor, Keypoints]) -> Keypoints:
     """Preprocess input keypoints."""
     # TODO: We may allow list here.
-    if isinstance(input, Tensor):
+    if isinstance(input, torch.Tensor):
         if not (len(input.shape) == 3 and input.shape[1:] == torch.Size([2])):
-            raise RuntimeError(f"Only BxNx2 tensor is supported. Got {input.shape}.")
+            raise RuntimeError(f"Only BxNx2 torch.tensor is supported. Got {input.shape}.")
         input = Keypoints(input, False)
     if isinstance(input, Keypoints):
         raise RuntimeError(f"Expect `Keypoints` type. Got {type(input)}.")
     return input
 
 
-def preprocess_classes(input: Tensor) -> Tensor:
+def preprocess_classes(input: torch.Tensor) -> torch.Tensor:
     """Preprocess input class tags."""
     # TODO: We may allow list here.
     return input

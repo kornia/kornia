@@ -26,7 +26,6 @@ import torch
 from torch import float16, float32, float64
 from typing_extensions import TypeGuard
 
-from kornia.core import Tensor
 from kornia.core.exceptions import (
     BaseError,
     DeviceError,
@@ -144,7 +143,7 @@ def enable_checks() -> None:
 # Logger api
 
 
-def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str], msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_SHAPE(x: torch.Tensor, shape: list[str], msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check whether a tensor has a specified shape.
 
     The shape can be specified with a implicit or explicit list of strings.
@@ -329,7 +328,7 @@ def KORNIA_CHECK_TYPE(
     return True
 
 
-def KORNIA_CHECK_IS_TENSOR(x: object, msg: Optional[str] = None, raises: bool = True) -> TypeGuard[Tensor]:
+def KORNIA_CHECK_IS_TENSOR(x: object, msg: Optional[str] = None, raises: bool = True) -> TypeGuard[torch.Tensor]:
     """Check the input variable is a Tensor.
 
     Args:
@@ -356,7 +355,7 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: Optional[str] = None, raises: bool = 
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
-    if not isinstance(x, Tensor):
+    if not isinstance(x, torch.Tensor):
         if raises:
             error_msg = f"Type mismatch: expected Tensor, got {type(x).__name__}."
             if msg is not None:
@@ -364,13 +363,13 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: Optional[str] = None, raises: bool = 
             raise TypeCheckError(
                 error_msg,
                 actual_type=type(x),
-                expected_type=Tensor,
+                expected_type=torch.Tensor,
             )
         return False
     return True
 
 
-def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[object]], raises: bool = True) -> TypeGuard[list[Tensor]]:
+def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[object]], raises: bool = True) -> TypeGuard[list[torch.Tensor]]:
     """Check the input variable is a List of Tensors.
 
     Args:
@@ -401,20 +400,20 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[object]], raises: bool =
         if not _KORNIA_CHECKS_ENABLED:
             return True
 
-    are_tensors = isinstance(x, list) and all(isinstance(d, Tensor) for d in x)
+    are_tensors = isinstance(x, list) and all(isinstance(d, torch.Tensor) for d in x)
     if not are_tensors:
         if raises:
             error_msg = f"Type mismatch: expected list[Tensor], got {type(x).__name__}."
             raise TypeCheckError(
                 error_msg,
                 actual_type=type(x),
-                expected_type=list[Tensor],
+                expected_type=list[torch.Tensor],
             )
         return False
     return True
 
 
-def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
+def KORNIA_CHECK_SAME_DEVICE(x: torch.Tensor, y: torch.Tensor, raises: bool = True) -> bool:
     """Check whether two tensor in the same device.
 
     Args:
@@ -456,7 +455,7 @@ def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
     return True
 
 
-def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_SAME_DEVICES(tensors: list[torch.Tensor], msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check whether a list provided tensors live in the same device.
 
     Args:
@@ -502,7 +501,7 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: Optional[str] = None, 
     return True
 
 
-def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
+def KORNIA_CHECK_SAME_SHAPE(x: torch.Tensor, y: torch.Tensor, raises: bool = True) -> bool:
     """Check whether two tensor have the same shape.
 
     Args:
@@ -546,7 +545,7 @@ def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
     return True
 
 
-def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_IS_COLOR(x: torch.Tensor, msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check whether an image tensor is a color images.
 
     Args:
@@ -583,7 +582,7 @@ def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None, raises: bool = T
     return True
 
 
-def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_IS_GRAY(x: torch.Tensor, msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check whether an image tensor is grayscale.
 
     Args:
@@ -620,7 +619,7 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None, raises: bool = Tr
     return True
 
 
-def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: torch.Tensor, msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check whether an image tensor is grayscale or color.
 
     Args:
@@ -657,7 +656,7 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None, raises: 
     return True
 
 
-def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: Optional[str] = None, raises: bool = True, bits: int = 8) -> bool:
+def KORNIA_CHECK_IS_IMAGE(x: torch.Tensor, msg: Optional[str] = None, raises: bool = True, bits: int = 8) -> bool:
     """Check whether an image tensor is ranged properly [0, 1] for float or [0, 2 ** bits] for int.
 
     Args:
@@ -705,7 +704,7 @@ def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: Optional[str] = None, raises: bool = T
     return True
 
 
-def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor, raises: bool = True) -> bool:
+def KORNIA_CHECK_DM_DESC(desc1: torch.Tensor, desc2: torch.Tensor, dm: torch.Tensor, raises: bool = True) -> bool:
     """Check whether the provided descriptors match with a distance matrix.
 
     Args:
@@ -759,7 +758,7 @@ def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor, raises: bool 
     return True
 
 
-def KORNIA_CHECK_LAF(laf: Tensor, raises: bool = True) -> bool:
+def KORNIA_CHECK_LAF(laf: torch.Tensor, raises: bool = True) -> bool:
     """Check whether a Local Affine Frame (laf) has a valid shape.
 
     Args:
@@ -784,11 +783,13 @@ def KORNIA_CHECK_LAF(laf: Tensor, raises: bool = True) -> bool:
     return KORNIA_CHECK_SHAPE(laf, ["B", "N", "2", "3"], raises=raises)
 
 
-def _handle_invalid_range(msg: Optional[str], raises: bool, min_val: float | Tensor, max_val: float | Tensor) -> bool:
+def _handle_invalid_range(
+    msg: Optional[str], raises: bool, min_val: float | torch.Tensor, max_val: float | torch.Tensor
+) -> bool:
     """Handle invalid range cases."""
     # Extract scalar values if tensors
-    min_scalar = min_val.item() if isinstance(min_val, Tensor) else min_val
-    max_scalar = max_val.item() if isinstance(max_val, Tensor) else max_val
+    min_scalar = min_val.item() if isinstance(min_val, torch.Tensor) else min_val
+    max_scalar = max_val.item() if isinstance(max_val, torch.Tensor) else max_val
 
     err_msg = f"Value range mismatch: expected [0, 1], got [{min_scalar}, {max_scalar}]."
     if msg is not None:

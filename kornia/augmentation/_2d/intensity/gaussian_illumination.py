@@ -21,7 +21,6 @@ import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
@@ -57,7 +56,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         >>> input = torch.ones(1, 3, 3, 3) * 0.5
         >>> aug = RandomGaussianIllumination(gain=0.5, p=1.)
         >>> aug(input)
-        tensor([[[[0.7266, 1.0000, 0.7266],
+        torch.tensor([[[[0.7266, 1.0000, 0.7266],
                   [0.6621, 0.9121, 0.6621],
                   [0.5000, 0.6911, 0.5000]],
         <BLANKLINE>
@@ -73,7 +72,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomGaussianIllumination(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
@@ -162,22 +161,22 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         self._param_generator = GaussianIlluminationGenerator(gain, center, sigma, sign)
 
         def _apply_transform(
-            input: Tensor,
-            params: Dict[str, Tensor],
+            input: torch.Tensor,
+            params: Dict[str, torch.Tensor],
             flags: Dict[str, Any],
-            transform: Optional[Tensor] = None,
-        ) -> Tensor:
+            transform: Optional[torch.Tensor] = None,
+        ) -> torch.Tensor:
             return input.add_(params["gradient"]).clamp_(0, 1)
 
         self._fn = _apply_transform
 
     def apply_transform(
         self,
-        input: Tensor,
-        params: Dict[str, Tensor],
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-    ) -> Tensor:
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
         return self._fn(input=input, params=params, flags=flags, transform=transform)
 

@@ -21,7 +21,6 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
-from kornia.core import Tensor, as_tensor, tensor, where
 from kornia.utils.helpers import _extract_device_dtype
 
 __all__ = ["RectangleEraseGenerator"]
@@ -31,17 +30,17 @@ class RectangleEraseGenerator(RandomGeneratorBase):
     r"""Get parameters for ```erasing``` transformation for erasing transform.
 
     Args:
-        scale (Tensor): range of size of the origin size cropped. Shape (2).
-        ratio (Tensor): range of aspect ratio of the origin aspect ratio cropped. Shape (2).
+        scale (torch.Tensor): range of size of the origin size cropped. Shape (2).
+        ratio (torch.Tensor): range of aspect ratio of the origin aspect ratio cropped. Shape (2).
         value (float): value to be filled in the erased area.
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - widths (Tensor): element-wise erasing widths with a shape of (B,).
-            - heights (Tensor): element-wise erasing heights with a shape of (B,).
-            - xs (Tensor): element-wise erasing x coordinates with a shape of (B,).
-            - ys (Tensor): element-wise erasing y coordinates with a shape of (B,).
-            - values (Tensor): element-wise filling values with a shape of (B,).
+            - widths (torch.Tensor): element-wise erasing widths with a shape of (B,).
+            - heights (torch.Tensor): element-wise erasing heights with a shape of (B,).
+            - xs (torch.Tensor): element-wise erasing x coordinates with a shape of (B,).
+            - ys (torch.Tensor): element-wise erasing y coordinates with a shape of (B,).
+            - values (torch.Tensor): element-wise filling values with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -52,8 +51,8 @@ class RectangleEraseGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        scale: Union[Tensor, Tuple[float, float]] = (0.02, 0.33),
-        ratio: Union[Tensor, Tuple[float, float]] = (0.3, 3.3),
+        scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
+        ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
         value: float = 0.0,
     ) -> None:
         super().__init__()
@@ -66,8 +65,8 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        scale = as_tensor(self.scale, device=device, dtype=dtype)
-        ratio = as_tensor(self.ratio, device=device, dtype=dtype)
+        scale = torch.as_tensor(self.scale, device=device, dtype=dtype)
+        ratio = torch.as_tensor(self.ratio, device=device, dtype=dtype)
 
         if not (isinstance(self.value, (int, float)) and self.value >= 0 and self.value <= 1):
             raise AssertionError(f"'value' must be a number between 0 - 1. Got {self.value}.")
@@ -80,15 +79,19 @@ class RectangleEraseGenerator(RandomGeneratorBase):
             self.ratio_sampler1 = UniformDistribution(ratio[0], 1, validate_args=False)
             self.ratio_sampler2 = UniformDistribution(1, ratio[1], validate_args=False)
             self.index_sampler = UniformDistribution(
-                tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), validate_args=False
+                torch.tensor(0, device=device, dtype=dtype),
+                torch.tensor(1, device=device, dtype=dtype),
+                validate_args=False,
             )
         else:
             self.ratio_sampler = UniformDistribution(ratio[0], ratio[1], validate_args=False)
         self.uniform_sampler = UniformDistribution(
-            tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), validate_args=False
+            torch.tensor(0, device=device, dtype=dtype),
+            torch.tensor(1, device=device, dtype=dtype),
+            validate_args=False,
         )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -112,7 +115,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
                 )
             else:
                 rand_idxs = torch.round(_adapted_rsampling((batch_size,), self.index_sampler, same_on_batch)).bool()
-            aspect_ratios = where(rand_idxs, aspect_ratios1, aspect_ratios2)
+            aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
         else:
             aspect_ratios = _adapted_rsampling((batch_size,), self.ratio_sampler, same_on_batch)
 
@@ -121,16 +124,16 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         # based on target areas and aspect ratios, rectangle params are computed
         heights = torch.min(
             torch.max(
-                torch.round((target_areas * aspect_ratios) ** (1 / 2)), tensor(1.0, device=_device, dtype=_dtype)
+                torch.round((target_areas * aspect_ratios) ** (1 / 2)), torch.tensor(1.0, device=_device, dtype=_dtype)
             ),
-            tensor(height, device=_device, dtype=_dtype),
+            torch.tensor(height, device=_device, dtype=_dtype),
         )
 
         widths = torch.min(
             torch.max(
-                torch.round((target_areas / aspect_ratios) ** (1 / 2)), tensor(1.0, device=_device, dtype=_dtype)
+                torch.round((target_areas / aspect_ratios) ** (1 / 2)), torch.tensor(1.0, device=_device, dtype=_dtype)
             ),
-            tensor(width, device=_device, dtype=_dtype),
+            torch.tensor(width, device=_device, dtype=_dtype),
         )
 
         xs_ratio = _adapted_rsampling((batch_size,), self.uniform_sampler, same_on_batch).to(
@@ -148,5 +151,5 @@ class RectangleEraseGenerator(RandomGeneratorBase):
             "heights": heights.floor(),
             "xs": xs.floor(),
             "ys": ys.floor(),
-            "values": tensor([self.value] * batch_size, device=_device, dtype=_dtype),
+            "values": torch.tensor([self.value] * batch_size, device=_device, dtype=_dtype),
         }

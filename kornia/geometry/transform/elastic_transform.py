@@ -17,9 +17,9 @@
 
 from typing import Tuple, Union
 
+import torch
 import torch.nn.functional as F
 
-from kornia.core import Tensor, concatenate, tensor
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d
 from kornia.filters.kernels import get_gaussian_kernel2d
@@ -29,15 +29,15 @@ __all__ = ["elastic_transform2d"]
 
 
 def elastic_transform2d(
-    image: Tensor,
-    noise: Tensor,
+    image: torch.Tensor,
+    noise: torch.Tensor,
     kernel_size: Tuple[int, int] = (63, 63),
-    sigma: Union[Tuple[float, float], Tensor] = (32.0, 32.0),
-    alpha: Union[Tuple[float, float], Tensor] = (1.0, 1.0),
+    sigma: Union[Tuple[float, float], torch.Tensor] = (32.0, 32.0),
+    alpha: Union[Tuple[float, float], torch.Tensor] = (1.0, 1.0),
     align_corners: bool = False,
     mode: str = "bilinear",
     padding_mode: str = "zeros",
-) -> Tensor:
+) -> torch.Tensor:
     r"""Apply elastic transform of images as described in :cite:`Simard2003BestPF`.
 
     .. image:: _static/img/elastic_transform2d.png
@@ -54,7 +54,7 @@ def elastic_transform2d(
           in the y and x directions, respectively.
         align_corners: Interpolation flag used by ```grid_sample```.
         mode: Interpolation mode used by ```grid_sample```. Either ``'bilinear'`` or ``'nearest'``.
-        padding_mode: The padding used by ```grid_sample```. Either ``'zeros'``, ``'border'`` or ``'refection'``.
+        padding_mode: The padding used by ```grid_sample```. Either ``'torch.zeros'``, ``'border'`` or ``'refection'``.
 
     Returns:
         the elastically transformed input image with shape :math:`(B,C,H,W)`.
@@ -85,8 +85,8 @@ def elastic_transform2d(
 
     device, dtype = image.device, image.dtype
     # if isinstance(sigma, tuple):
-    #    sigma_t = tensor(sigma, device=device, dtype=dtype)
-    if isinstance(sigma, Tensor):
+    #    sigma_t = torch.tensor(sigma, device=device, dtype=dtype)
+    if isinstance(sigma, torch.Tensor):
         sigma = sigma.expand(2)[None, ...]
     #        sigma = sigma.to(device=device, dtype=dtype)
 
@@ -94,12 +94,12 @@ def elastic_transform2d(
     kernel_x = get_gaussian_kernel2d(kernel_size, sigma)  # _t[0].expand(2).unsqueeze(0))
     kernel_y = get_gaussian_kernel2d(kernel_size, sigma)  # _t[1].expand(2).unsqueeze(0))
 
-    if isinstance(alpha, Tensor):
+    if isinstance(alpha, torch.Tensor):
         alpha_x = alpha[0]
         alpha_y = alpha[1]
     else:
-        alpha_x = tensor(alpha[0], device=device, dtype=dtype)
-        alpha_y = tensor(alpha[1], device=device, dtype=dtype)
+        alpha_x = torch.tensor(alpha[0], device=device, dtype=dtype)
+        alpha_y = torch.tensor(alpha[1], device=device, dtype=dtype)
 
     # Convolve over a random displacement matrix and scale them with 'alpha'
     disp_x = noise[:, :1]
@@ -108,8 +108,8 @@ def elastic_transform2d(
     disp_x = filter2d(disp_x, kernel=kernel_y, border_type="constant") * alpha_x
     disp_y = filter2d(disp_y, kernel=kernel_x, border_type="constant") * alpha_y
 
-    # stack and normalize displacement
-    disp = concatenate([disp_x, disp_y], 1).permute(0, 2, 3, 1)
+    # torch.stack and F.normalize displacement
+    disp = torch.cat([disp_x, disp_y], 1).permute(0, 2, 3, 1)
 
     # Warp image based on displacement matrix
     _, _, h, w = image.shape

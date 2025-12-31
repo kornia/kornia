@@ -23,7 +23,6 @@ import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import RainGenerator
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
@@ -44,7 +43,7 @@ class RandomRain(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> rain = RandomRain(p=1,drop_height=(1,2),drop_width=(1,2),number_of_drops=(1,1))
         >>> rain(input)
-        tensor([[[[0.4963, 0.7843, 0.0885, 0.1320, 0.3074],
+        torch.tensor([[[[0.4963, 0.7843, 0.0885, 0.1320, 0.3074],
                   [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
                   [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
@@ -65,8 +64,12 @@ class RandomRain(IntensityAugmentationBase2D):
         self._param_generator = RainGenerator(number_of_drops, drop_height, drop_width)
 
     def apply_transform(
-        self, image: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        image: torch.Tensor,
+        params: dict[str, torch.Tensor],
+        flags: dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         # Check array and drops size
         KORNIA_CHECK(image.shape[1] in {3, 1}, "Number of color channels should be 1 or 3.")
         KORNIA_CHECK(
@@ -84,9 +87,9 @@ class RandomRain(IntensityAugmentationBase2D):
         modeified_img = image.clone()
         for i in range(image.shape[0]):
             number_of_drops: int = int(params["number_of_drops_factor"][i])
-            # We generate tensor with maximum number of drops, and then remove unnecessary drops.
+            # We generate torch.tensor with maximum number of drops, and then remove unnecessary drops.
 
-            coordinates_of_drops: Tensor = params["coordinates_factor"][i][:number_of_drops]
+            coordinates_of_drops: torch.Tensor = params["coordinates_factor"][i][:number_of_drops]
             height_of_drop: int = int(params["drop_height_factor"][i])
             width_of_drop: int = int(params["drop_width_factor"][i])
 

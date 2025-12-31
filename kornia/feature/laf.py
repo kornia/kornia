@@ -21,14 +21,13 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Tensor, concatenate, cos, sin, stack, tensor, zeros
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
-from kornia.geometry.conversions import angle_to_rotation_matrix, convert_points_from_homogeneous, rad2deg
+from kornia.geometry.conversions import angle_to_rotation_matrix, convert_points_from_homogeneous
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
 
 
-def get_laf_scale(LAF: Tensor) -> Tensor:
+def get_laf_scale(LAF: torch.Tensor) -> torch.Tensor:
     """Return a scale of the LAFs.
 
     Args:
@@ -48,7 +47,7 @@ def get_laf_scale(LAF: Tensor) -> Tensor:
     return out.abs().sqrt()
 
 
-def get_laf_center(LAF: Tensor) -> Tensor:
+def get_laf_center(LAF: torch.Tensor) -> torch.Tensor:
     """Return a center (keypoint) of the LAFs.
 
     The convention is that center of 5-pixel image (coordinates from 0 to 4) is 2, and not 2.5.
@@ -69,7 +68,7 @@ def get_laf_center(LAF: Tensor) -> Tensor:
     return out
 
 
-def get_laf_orientation(LAF: Tensor) -> Tensor:
+def get_laf_orientation(LAF: torch.Tensor) -> torch.Tensor:
     """Return orientation of the LAFs, in degrees.
 
     Args:
@@ -85,10 +84,10 @@ def get_laf_orientation(LAF: Tensor) -> Tensor:
     """
     KORNIA_CHECK_LAF(LAF)
     angle_rad = torch.atan2(LAF[..., 0, 1], LAF[..., 0, 0])
-    return rad2deg(angle_rad).unsqueeze(-1)
+    return torch.rad2deg(angle_rad).unsqueeze(-1)
 
 
-def rotate_laf(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
+def rotate_laf(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torch.Tensor:
     """Apply additional rotation to the LAFs.
 
     Compared to `set_laf_orientation`, the resulting rotation is original LAF orientation plus angles_degrees.
@@ -109,7 +108,7 @@ def rotate_laf(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
     return out_laf
 
 
-def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
+def set_laf_orientation(LAF: torch.Tensor, angles_degrees: torch.Tensor) -> torch.Tensor:
     """Change the orientation of the LAFs.
 
     Args:
@@ -126,7 +125,9 @@ def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
     return rotate_laf(LAF, angles_degrees - ori)
 
 
-def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: Optional[Tensor] = None) -> Tensor:
+def laf_from_center_scale_ori(
+    xy: torch.Tensor, scale: Optional[torch.Tensor] = None, ori: Optional[torch.Tensor] = None
+) -> torch.Tensor:
     """Create a LAF from keypoint center, scale and orientation.
 
     Useful to create kornia LAFs from OpenCV keypoints.
@@ -147,22 +148,22 @@ def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: O
     if scale is None:
         scale = torch.ones(B, N, 1, 1, device=device, dtype=dtype)
     if ori is None:
-        ori = zeros(B, N, 1, device=device, dtype=dtype)
+        ori = torch.zeros(B, N, 1, device=device, dtype=dtype)
     KORNIA_CHECK_SHAPE(scale, ["B", "N", "1", "1"])
     KORNIA_CHECK_SHAPE(ori, ["B", "N", "1"])
-    unscaled_laf = concatenate([angle_to_rotation_matrix(ori.squeeze(-1)), xy.unsqueeze(-1)], dim=-1)
+    unscaled_laf = torch.cat([angle_to_rotation_matrix(ori.squeeze(-1)), xy.unsqueeze(-1)], dim=-1)
     laf = scale_laf(unscaled_laf, scale)
     return laf
 
 
-def scale_laf(laf: Tensor, scale_coef: Union[float, Tensor]) -> Tensor:
+def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torch.Tensor:
     """Multiplies region part of LAF ([:, :, :2, :2]) by a scale_coefficient.
 
     So the center, shape and orientation of the local feature stays the same, but the region area changes.
 
     Args:
         laf: :math:`(B, N, 2, 3)`
-        scale_coef: broadcastable tensor or float.
+        scale_coef: broadcastable torch.tensor or float.
 
     Returns:
         LAF :math:`(B, N, 2, 3)`
@@ -173,14 +174,14 @@ def scale_laf(laf: Tensor, scale_coef: Union[float, Tensor]) -> Tensor:
         >>> output = scale_laf(input, scale)  # BxNx2x3
 
     """
-    if not isinstance(scale_coef, (float, Tensor)):
-        raise TypeError(f"scale_coef should be float or Tensor. Got {type(scale_coef)}")
+    if not isinstance(scale_coef, (float, torch.Tensor)):
+        raise TypeError(f"scale_coef should be float or torch.Tensor. Got {type(scale_coef)}")
     KORNIA_CHECK_LAF(laf)
     centerless_laf = laf[:, :, :2, :2]
-    return concatenate([scale_coef * centerless_laf, laf[:, :, :, 2:]], dim=3)
+    return torch.cat([scale_coef * centerless_laf, laf[:, :, :, 2:]], dim=3)
 
 
-def make_upright(laf: Tensor, eps: float = 1e-9) -> Tensor:
+def make_upright(laf: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     """Rectify the affine matrix, so that it becomes upright.
 
     Args:
@@ -201,19 +202,19 @@ def make_upright(laf: Tensor, eps: float = 1e-9) -> Tensor:
     # The function is equivalent to doing 2x2 SVD and resetting rotation
     # matrix to an identity: U, S, V = svd(LAF); LAF_upright = U * S.
     b2a2 = torch.sqrt(laf[..., 0:1, 1:2] ** 2 + laf[..., 0:1, 0:1] ** 2) + eps
-    laf1_ell = concatenate([(b2a2 / det).contiguous(), torch.zeros_like(det)], dim=3)
-    laf2_ell = concatenate(
+    laf1_ell = torch.cat([(b2a2 / det).contiguous(), torch.zeros_like(det)], dim=3)
+    laf2_ell = torch.cat(
         [
             ((laf[..., 1:2, 1:2] * laf[..., 0:1, 1:2] + laf[..., 1:2, 0:1] * laf[..., 0:1, 0:1]) / (b2a2 * det)),
             (det / b2a2).contiguous(),
         ],
         dim=3,
     )
-    laf_unit_scale = concatenate([concatenate([laf1_ell, laf2_ell], dim=2), laf[..., :, 2:3]], dim=3)
+    laf_unit_scale = torch.cat([torch.cat([laf1_ell, laf2_ell], dim=2), laf[..., :, 2:3]], dim=3)
     return scale_laf(laf_unit_scale, scale)
 
 
-def ellipse_to_laf(ells: Tensor) -> Tensor:
+def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     """Convert ellipse regions to LAF format.
 
     Ellipse (a, b, c) and upright covariance matrix [a11 a12; 0 a22] are connected
@@ -222,7 +223,7 @@ def ellipse_to_laf(ells: Tensor) -> Tensor:
     See also https://github.com/vlfeat/vlfeat/blob/master/toolbox/sift/vl_frame2oell.m
 
     Args:
-        ells: tensor :math:`(B, N, 5)` of ellipses in Oxford format [x y a b c].
+        ells: torch.tensor :math:`(B, N, 5)` of ellipses in Oxford format [x y a b c].
 
     Returns:
         LAF :math:`(B, N, 2, 3)`
@@ -235,8 +236,8 @@ def ellipse_to_laf(ells: Tensor) -> Tensor:
     KORNIA_CHECK_SHAPE(ells, ["B", "N", "5"])
     B, N, _ = ells.shape
     # Previous implementation was incorrectly using Cholesky decomp as matrix sqrt
-    # ell_shape = concatenate([concatenate([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
-    #                       concatenate([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)], dim=2).view(-1, 2, 2)
+    # ell_shape = torch.cat([torch.cat([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
+    #                       torch.cat([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)], dim=2).view(-1, 2, 2)
     # out = torch.matrix_power(torch.cholesky(ell_shape, False), -1).view(B, N, 2, 2)
 
     # We will calculate 2x2 matrix square root via special case formula
@@ -250,12 +251,12 @@ def ellipse_to_laf(ells: Tensor) -> Tensor:
     a12 = torch.zeros_like(a11)
     a22 = ells[..., 4:5].abs().sqrt()
     a21 = ells[..., 3:4] / (a11 + a22).clamp(1e-9)
-    A = stack([a11, a12, a21, a22], dim=-1).view(B, N, 2, 2).inverse()
-    out = concatenate([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
+    A = torch.stack([a11, a12, a21, a22], dim=-1).view(B, N, 2, 2).inverse()
+    out = torch.cat([A, ells[..., :2].view(B, N, 2, 1)], dim=3)
     return out
 
 
-def laf_to_boundary_points(LAF: Tensor, n_pts: int = 50) -> Tensor:
+def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
     """Convert LAFs to boundary points of the regions + center.
 
     Used for local features visualization, see visualize_laf function.
@@ -265,29 +266,29 @@ def laf_to_boundary_points(LAF: Tensor, n_pts: int = 50) -> Tensor:
         n_pts: number of points to output.
 
     Returns:
-        tensor of boundary points LAF: :math:`(B, N, n_pts, 2)`
+        torch.tensor of boundary points LAF: :math:`(B, N, n_pts, 2)`
 
     """
     KORNIA_CHECK_LAF(LAF)
     B, N, _, _ = LAF.size()
-    pts = concatenate(
+    pts = torch.cat(
         [
-            sin(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
-            cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
+            torch.sin(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
+            torch.cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
             torch.ones(n_pts - 1, 1),
         ],
         dim=1,
     )
     # Add origin to draw also the orientation
-    pts = concatenate([tensor([0.0, 0.0, 1.0]).view(1, 3), pts], dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
+    pts = torch.cat([torch.tensor([0.0, 0.0, 1.0]).view(1, 3), pts], dim=0).unsqueeze(0).expand(B * N, n_pts, 3)
     pts = pts.to(LAF.device).to(LAF.dtype)
-    aux = tensor([0.0, 0.0, 1.0]).view(1, 1, 3).expand(B * N, 1, 3)
-    HLAF = concatenate([LAF.view(-1, 2, 3), aux.to(LAF.device).to(LAF.dtype)], dim=1)
+    aux = torch.tensor([0.0, 0.0, 1.0]).view(1, 1, 3).expand(B * N, 1, 3)
+    HLAF = torch.cat([LAF.view(-1, 2, 3), aux.to(LAF.device).to(LAF.dtype)], dim=1)
     pts_h = torch.bmm(HLAF, pts.permute(0, 2, 1)).permute(0, 2, 1)
     return convert_points_from_homogeneous(pts_h.view(B, N, n_pts, 3))
 
 
-def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[int]]:
+def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0) -> Tuple[List[int], List[int]]:
     """Return list for drawing LAFs (local features).
 
     Args:
@@ -312,8 +313,8 @@ def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[
     return (pts_np[..., 0].tolist(), pts_np[..., 1].tolist())
 
 
-def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
-    """De-normalize LAFs from scale to image scale.
+def denormalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
+    """De-F.normalize LAFs from scale to image scale.
 
     The convention is that center of 5-pixel image (coordinates from 0 to 4) is 2, and not 2.5.
 
@@ -344,7 +345,7 @@ def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
     return coef.expand_as(LAF) * LAF
 
 
-def normalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
+def normalize_laf(LAF: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
     """Normalize LAFs to [0,1] scale from pixel scale.
 
     See below:
@@ -375,11 +376,11 @@ def normalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
     return coef.expand_as(LAF) * LAF
 
 
-def generate_patch_grid_from_normalized_LAF(img: Tensor, LAF: Tensor, PS: int = 32) -> Tensor:
+def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor, PS: int = 32) -> torch.Tensor:
     """Generate affine grid.
 
     Args:
-        img: image tensor of shape :math:`(B, CH, H, W)`.
+        img: image torch.tensor of shape :math:`(B, CH, H, W)`.
         LAF: laf with shape :math:`(B, N, 2, 3)`.
         PS: patch size to be extracted.
 
@@ -402,9 +403,9 @@ def generate_patch_grid_from_normalized_LAF(img: Tensor, LAF: Tensor, PS: int = 
 
 
 def extract_patches_simple(
-    img: Tensor, laf: Tensor, PS: int = 32, normalize_lafs_before_extraction: bool = True
-) -> Tensor:
-    """Extract patches defined by LAFs from image tensor.
+    img: torch.Tensor, laf: torch.Tensor, PS: int = 32, normalize_lafs_before_extraction: bool = True
+) -> torch.Tensor:
+    """Extract patches defined by LAFs from image torch.tensor.
 
     No smoothing applied, huge aliasing (better use extract_patches_from_pyramid).
 
@@ -434,13 +435,13 @@ def extract_patches_simple(
                 img[i : i + 1].expand(grid.size(0), ch, h, w), grid, padding_mode="border", align_corners=False
             )
         )
-    return concatenate(out, dim=0).view(B, N, ch, PS, PS)
+    return torch.cat(out, dim=0).view(B, N, ch, PS, PS)
 
 
 def extract_patches_from_pyramid(
-    img: Tensor, laf: Tensor, PS: int = 32, normalize_lafs_before_extraction: bool = True
-) -> Tensor:
-    """Extract patches defined by LAFs from image tensor.
+    img: torch.Tensor, laf: torch.Tensor, PS: int = 32, normalize_lafs_before_extraction: bool = True
+) -> torch.Tensor:
+    """Extract patches defined by LAFs from image torch.tensor.
 
     Patches are extracted from appropriate pyramid level.
 
@@ -489,7 +490,7 @@ def extract_patches_from_pyramid(
     return out
 
 
-def laf_is_inside_image(laf: Tensor, images: Tensor, border: int = 0) -> Tensor:
+def laf_is_inside_image(laf: torch.Tensor, images: torch.Tensor, border: int = 0) -> torch.Tensor:
     """Check if the LAF is touching or partly outside the image boundary.
 
     Returns the mask of LAFs, which are fully inside the image, i.e. valid.
@@ -513,7 +514,7 @@ def laf_is_inside_image(laf: Tensor, images: Tensor, border: int = 0) -> Tensor:
     return good_lafs_mask
 
 
-def laf_to_three_points(laf: Tensor) -> Tensor:
+def laf_to_three_points(laf: torch.Tensor) -> torch.Tensor:
     """Convert local affine frame(LAF) to alternative representation: coordinates of LAF center, LAF-x unit vector,
     LAF-y unit vector.
 
@@ -525,11 +526,11 @@ def laf_to_three_points(laf: Tensor) -> Tensor:
 
     """  # noqa:D205
     KORNIA_CHECK_LAF(laf)
-    three_pts = stack([laf[..., 2] + laf[..., 0], laf[..., 2] + laf[..., 1], laf[..., 2]], dim=-1)
+    three_pts = torch.stack([laf[..., 2] + laf[..., 0], laf[..., 2] + laf[..., 1], laf[..., 2]], dim=-1)
     return three_pts
 
 
-def laf_from_three_points(threepts: Tensor) -> Tensor:
+def laf_from_three_points(threepts: torch.Tensor) -> torch.Tensor:
     """Convert three points to local affine frame.
 
     Order is (0,0), (0, 1), (1, 0).
@@ -541,25 +542,27 @@ def laf_from_three_points(threepts: Tensor) -> Tensor:
         laf :math:`(B, N, 2, 3)`.
 
     """
-    laf = stack([threepts[..., 0] - threepts[..., 2], threepts[..., 1] - threepts[..., 2], threepts[..., 2]], dim=-1)
+    laf = torch.stack(
+        [threepts[..., 0] - threepts[..., 2], threepts[..., 1] - threepts[..., 2], threepts[..., 2]], dim=-1
+    )
     return laf
 
 
-def perspective_transform_lafs(trans_01: Tensor, lafs_1: Tensor) -> Tensor:
+def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> torch.Tensor:
     r"""Apply perspective transformations to a set of local affine frames (LAFs).
 
     Args:
-        trans_01: tensor for perspective transformations of shape :math:`(B, 3, 3)`.
-        lafs_1: tensor of lafs of shape :math:`(B, N, 2, 3)`.
+        trans_01: torch.tensor for perspective transformations of shape :math:`(B, 3, 3)`.
+        lafs_1: torch.tensor of lafs of shape :math:`(B, N, 2, 3)`.
 
     Returns:
-        tensor of N-dimensional points of shape :math:`(B, N, 2, 3)`.
+        torch.tensor of N-dimensional points of shape :math:`(B, N, 2, 3)`.
 
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> lafs_1 = torch.rand(2, 4, 2, 3)  # BxNx2x3
         >>> lafs_1
-        tensor([[[[0.4963, 0.7682, 0.0885],
+        torch.tensor([[[[0.4963, 0.7682, 0.0885],
                   [0.1320, 0.3074, 0.6341]],
         <BLANKLINE>
                  [[0.4901, 0.8964, 0.4556],
@@ -591,10 +594,10 @@ def perspective_transform_lafs(trans_01: Tensor, lafs_1: Tensor) -> Tensor:
     """
     KORNIA_CHECK_LAF(lafs_1)
     if not torch.is_tensor(trans_01):
-        raise TypeError("Input type is not a Tensor")
+        raise TypeError("Input type is not a torch.Tensor")
 
     if not trans_01.device == lafs_1.device:
-        raise TypeError("Tensor must be in the same device")
+        raise TypeError("torch.Tensor must be in the same device")
 
     if not trans_01.shape[0] == lafs_1.shape[0]:
         raise ValueError("Input batch size must be the same for both tensors")

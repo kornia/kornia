@@ -26,8 +26,6 @@ import torch.nn.functional as F
 from torch import nn
 from torch.nn.functional import pixel_shuffle, softmax
 
-from kornia.core import Module, Tensor
-
 
 class HourglassConfig(NamedTuple):
     depth: int
@@ -35,11 +33,11 @@ class HourglassConfig(NamedTuple):
     num_blocks: int
     num_classes: int
     input_channels: int
-    head: Type[Module]
+    head: Type[nn.Module]
 
 
 # [Hourglass backbone classes]
-class HourglassBackbone(Module):
+class HourglassBackbone(nn.Module):
     """Hourglass network, taken from https://github.com/zhou13/lcnn.
 
     Args:
@@ -58,11 +56,11 @@ class HourglassBackbone(Module):
         self.head = MultitaskHead
         self.net = hg(HourglassConfig(depth, num_stacks, num_blocks, num_classes, input_channel, head=self.head))
 
-    def forward(self, input_images: Tensor) -> Tensor:
+    def forward(self, input_images: torch.Tensor) -> torch.Tensor:
         return self.net(input_images)
 
 
-class MultitaskHead(Module):
+class MultitaskHead(nn.Module):
     def __init__(self, input_channels: int) -> None:
         super().__init__()
 
@@ -80,13 +78,17 @@ class MultitaskHead(Module):
             )
         self.heads = nn.ModuleList(heads)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return torch.cat([head(x) for head in self.heads], dim=1)
 
 
-class Bottleneck2D(Module):
+class Bottleneck2D(nn.Module):
     def __init__(
-        self, inplanes: int, planes: int, stride: Union[int, Tuple[int, int]] = 1, downsample: Optional[Module] = None
+        self,
+        inplanes: int,
+        planes: int,
+        stride: Union[int, Tuple[int, int]] = 1,
+        downsample: Optional[nn.Module] = None,
     ) -> None:
         super().__init__()
 
@@ -100,7 +102,7 @@ class Bottleneck2D(Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x
 
         out = self.bn1(x)
@@ -123,7 +125,7 @@ class Bottleneck2D(Module):
         return out
 
 
-class Hourglass(Module):
+class Hourglass(nn.Module):
     def __init__(self, block: Type[Bottleneck2D], num_blocks: int, planes: int, depth: int, expansion: int = 2) -> None:
         super().__init__()
         self.depth = depth
@@ -131,7 +133,7 @@ class Hourglass(Module):
         self.expansion = expansion
         self.hg = self._make_hour_glass(block, num_blocks, planes, depth)
 
-    def _make_residual(self, block: Type[Bottleneck2D], num_blocks: int, planes: int) -> Module:
+    def _make_residual(self, block: Type[Bottleneck2D], num_blocks: int, planes: int) -> nn.Module:
         layers = []
         for _ in range(0, num_blocks):
             layers.append(block(planes * self.expansion, planes))
@@ -148,7 +150,7 @@ class Hourglass(Module):
             hgl.append(nn.ModuleList(res))
         return nn.ModuleList(hgl)
 
-    def _hour_glass_forward(self, n: int, x: Tensor) -> Tensor:
+    def _hour_glass_forward(self, n: int, x: torch.Tensor) -> torch.Tensor:
         up1 = self.hg[n - 1][0](x)  # type: ignore[index]
         low1 = F.max_pool2d(x, 2, stride=2)
         low1 = self.hg[n - 1][1](low1)  # type: ignore[index]
@@ -162,17 +164,17 @@ class Hourglass(Module):
         out = up1 + up2
         return out
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self._hour_glass_forward(self.depth, x)
 
 
-class HourglassNet(Module):
+class HourglassNet(nn.Module):
     """Hourglass model from Newell et al ECCV 2016."""
 
     def __init__(
         self,
         block: Type[Bottleneck2D],
-        head: Type[Module],
+        head: Type[nn.Module],
         depth: int,
         num_stacks: int,
         num_blocks: int,
@@ -214,7 +216,7 @@ class HourglassNet(Module):
 
     def _make_residual(
         self, block: Type[Bottleneck2D], planes: int, blocks: int, stride: Union[int, Tuple[int, int]] = 1
-    ) -> Module:
+    ) -> nn.Module:
         downsample = None
         if stride != 1 or self.inplanes != planes * self.expansion:
             downsample = nn.Sequential(nn.Conv2d(self.inplanes, planes * self.expansion, kernel_size=1, stride=stride))
@@ -227,12 +229,12 @@ class HourglassNet(Module):
 
         return nn.Sequential(*layers)
 
-    def _make_fc(self, inplanes: int, outplanes: int) -> Module:
+    def _make_fc(self, inplanes: int, outplanes: int) -> nn.Module:
         bn = nn.BatchNorm2d(inplanes)
         conv = nn.Conv2d(inplanes, outplanes, kernel_size=1)
         return nn.Sequential(conv, bn, self.relu)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = []
         x = self.conv1(x)
         x = self.bn1(x)
@@ -271,7 +273,7 @@ def hg(cfg: HourglassConfig) -> HourglassNet:
 
 
 # [Backbone decoders]
-class SuperpointDecoder(Module):
+class SuperpointDecoder(nn.Module):
     """Junction decoder based on the SuperPoint architecture.
 
     Args:
@@ -290,7 +292,7 @@ class SuperpointDecoder(Module):
         self.convPb = nn.Conv2d(256, 65, kernel_size=1, stride=1, padding=0)
         self.grid_size = grid_size
 
-    def forward(self, input_features: Tensor) -> Tensor:
+    def forward(self, input_features: torch.Tensor) -> torch.Tensor:
         feat = self.relu(self.convPa(input_features))
         semi = self.convPb(feat)
 
@@ -300,7 +302,7 @@ class SuperpointDecoder(Module):
         return junc_pred
 
 
-class PixelShuffleDecoder(Module):
+class PixelShuffleDecoder(nn.Module):
     """Pixel shuffle decoder used to predict the line heatmap.
 
     Args:
@@ -354,7 +356,7 @@ class PixelShuffleDecoder(Module):
             return [256, 64, 16]
         return [256, 64, 16, 4]
 
-    def forward(self, input_features: Tensor) -> Tensor:
+    def forward(self, input_features: torch.Tensor) -> torch.Tensor:
         # Iterate til output block
         out = input_features
         for block in self.conv_block_lst[:-1]:
@@ -368,7 +370,7 @@ class PixelShuffleDecoder(Module):
         return heatmap
 
 
-class SuperpointDescriptor(Module):
+class SuperpointDescriptor(nn.Module):
     """Descriptor decoder based on the SuperPoint arcihtecture.
 
     Args:
@@ -385,7 +387,7 @@ class SuperpointDescriptor(Module):
         self.convPa = nn.Conv2d(input_feat_dim, 256, kernel_size=3, stride=1, padding=1)
         self.convPb = nn.Conv2d(256, 128, kernel_size=1, stride=1, padding=0)
 
-    def forward(self, input_features: Tensor) -> Tensor:
+    def forward(self, input_features: torch.Tensor) -> torch.Tensor:
         feat = self.relu(self.convPa(input_features))
         semi = self.convPb(feat)
 
@@ -395,7 +397,7 @@ class SuperpointDescriptor(Module):
 # [Combination of all previous models in one]
 
 
-class SOLD2Net(Module):
+class SOLD2Net(nn.Module):
     """Full network for SOLD².
 
     Args:
@@ -427,7 +429,7 @@ class SOLD2Net(Module):
         if "use_descriptor" in self.cfg:
             self.descriptor_decoder = SuperpointDescriptor(feat_channel)
 
-    def forward(self, input_images: Tensor) -> Dict[str, Tensor]:
+    def forward(self, input_images: torch.Tensor) -> Dict[str, torch.Tensor]:
         # The backbone
         features = self.backbone_net(input_images)
 

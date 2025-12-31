@@ -17,15 +17,16 @@
 
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import pi
-from kornia.core import Tensor
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
 
 
 class ColorJiggle(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a tensor image.
+    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.tensor image.
 
     .. image:: _static/img/ColorJiggle.png
 
@@ -52,7 +53,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
         >>> inputs = torch.ones(1, 3, 3, 3)
         >>> aug = ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.)
         >>> aug(inputs)
-        tensor([[[[0.9993, 0.9993, 0.9993],
+        torch.tensor([[[[0.9993, 0.9993, 0.9993],
                   [0.9993, 0.9993, 0.9993],
                   [0.9993, 0.9993, 0.9993]],
         <BLANKLINE>
@@ -68,16 +69,16 @@ class ColorJiggle(IntensityAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
     def __init__(
         self,
-        brightness: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        contrast: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        saturation: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        hue: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -90,8 +91,12 @@ class ColorJiggle(IntensityAugmentationBase2D):
         self._param_generator = rg.ColorJiggleGenerator(brightness, contrast, saturation, hue)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         transforms = [
             lambda img: adjust_brightness(img, params["brightness_factor"] - 1)
             if (params["brightness_factor"] - 1 != 0).any()

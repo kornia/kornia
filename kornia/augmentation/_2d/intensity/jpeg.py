@@ -17,14 +17,15 @@
 
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor
 from kornia.enhance import jpeg_codec_differentiable
 
 
 class RandomJPEG(IntensityAugmentationBase2D):
-    r"""Applies random (differentiable) JPEG coding to a tensor image.
+    r"""Applies random (differentiable) JPEG coding to a torch.tensor image.
 
     .. image:: _static/img/RandomJPEG.png
 
@@ -53,13 +54,13 @@ class RandomJPEG(IntensityAugmentationBase2D):
         >>> images = 0.1904 * torch.ones(2, 3, 32, 32)
         >>> aug = RandomJPEG(jpeg_quality=20.0, p=1.)  # Samples a JPEG quality from the range [30.0, 70.0]
         >>> (aug(images) == aug(images, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
     def __init__(
         self,
-        jpeg_quality: Union[Tensor, float, Tuple[float, float], List[float]] = 50.0,
+        jpeg_quality: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 50.0,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -69,7 +70,11 @@ class RandomJPEG(IntensityAugmentationBase2D):
         self._param_generator = rg.JPEGGenerator(jpeg_quality)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
-        jpeg_output: Tensor = jpeg_codec_differentiable(input, params["jpeg_quality"])
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        jpeg_output: torch.Tensor = jpeg_codec_differentiable(input, params["jpeg_quality"])
         return jpeg_output

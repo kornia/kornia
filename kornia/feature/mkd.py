@@ -22,7 +22,6 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.constants import pi
-from kornia.core import Tensor, cos, sin, tensor, zeros
 from kornia.filters import GaussianBlur2d, SpatialGradient
 from kornia.geometry.conversions import cart2pol
 from kornia.utils import create_meshgrid
@@ -40,7 +39,7 @@ urls: Dict[str, str] = {
 }
 
 
-def get_grid_dict(patch_size: int = 32) -> Dict[str, Tensor]:
+def get_grid_dict(patch_size: int = 32) -> Dict[str, torch.Tensor]:
     r"""Get cartesian and polar parametrizations of grid."""
     kgrid = create_meshgrid(height=patch_size, width=patch_size, normalized_coordinates=True)
     x = kgrid[0, :, :, 0]
@@ -50,7 +49,7 @@ def get_grid_dict(patch_size: int = 32) -> Dict[str, Tensor]:
     return grid_dict
 
 
-def get_kron_order(d1: int, d2: int) -> Tensor:
+def get_kron_order(d1: int, d2: int) -> torch.Tensor:
     r"""Get order for doing kronecker product."""
     grid_d1, grid_d2 = torch.meshgrid(torch.arange(d1), torch.arange(d2), indexing="ij")
     kron_order = torch.stack([grid_d1, grid_d2], dim=2).reshape(-1, 2)
@@ -58,11 +57,11 @@ def get_kron_order(d1: int, d2: int) -> Tensor:
 
 
 class MKDGradients(nn.Module):
-    r"""Module, which computes gradients of given patches, stacked as [magnitudes, orientations].
+    r"""nn.Module, which computes gradients of given patches, stacked as [magnitudes, orientations].
 
     Given gradients $g_x$, $g_y$ with respect to $x$, $y$ respectively,
       - $\mathbox{mags} = $\sqrt{g_x^2 + g_y^2 + eps}$
-      - $\mathbox{oris} = $\mbox{tan}^{-1}(\nicefrac{g_y}{g_x})$.
+      - $\mathbox{oris} = $\mbox{torch.tan}^{-1}(\nicefrac{g_y}{g_x})$.
 
     Args:
         patch_size: Input patch size in pixels.
@@ -87,9 +86,9 @@ class MKDGradients(nn.Module):
 
         self.grad = SpatialGradient(mode="diff", order=1, normalized=False)
 
-    def forward(self, x: Tensor) -> Tensor:
-        if not isinstance(x, Tensor):
-            raise TypeError(f"Input type is not a Tensor. Got {type(x)}")
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
         if not len(x.shape) == 4:
             raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {x.shape}")
         # Modify 'diff' gradient. Before we had lambda function, but it is not jittable
@@ -104,7 +103,7 @@ class MKDGradients(nn.Module):
 
 
 class VonMisesKernel(nn.Module):
-    r"""Module, which computes parameters of Von Mises kernel given coefficients, and embeds given patches.
+    r"""nn.Module, which computes parameters of Von Mises kernel given coefficients, and embeds given patches.
 
     Args:
         patch_size: Input patch size in pixels.
@@ -131,7 +130,7 @@ class VonMisesKernel(nn.Module):
         super().__init__()
 
         self.patch_size = patch_size
-        b_coeffs = tensor(coeffs)
+        b_coeffs = torch.tensor(coeffs)
         self.register_buffer("coeffs", b_coeffs)
 
         # Compute parameters.
@@ -143,7 +142,7 @@ class VonMisesKernel(nn.Module):
         emb0 = torch.ones([1, 1, patch_size, patch_size])
         frange = torch.arange(n) + 1
         frange = frange.reshape(-1, 1, 1)
-        weights = zeros([2 * n + 1])
+        weights = torch.zeros([2 * n + 1])
         weights[: n + 1] = torch.sqrt(b_coeffs)
         weights[n + 1 :] = torch.sqrt(b_coeffs[1:])
         weights = weights.reshape(-1, 1, 1)
@@ -151,20 +150,20 @@ class VonMisesKernel(nn.Module):
         self.register_buffer("frange", frange)
         self.register_buffer("weights", weights)
 
-    def forward(self, x: Tensor) -> Tensor:
-        if not isinstance(x, Tensor):
-            raise TypeError(f"Input type is not a Tensor. Got {type(x)}")
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
 
         if not len(x.shape) == 4 or x.shape[1] != 1:
             raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {x.shape}")
 
-        if not isinstance(self.emb0, Tensor):
-            raise TypeError(f"Emb0 type is not a Tensor. Got {type(x)}")
+        if not isinstance(self.emb0, torch.Tensor):
+            raise TypeError(f"Emb0 type is not a torch.Tensor. Got {type(x)}")
 
         emb0 = self.emb0.to(x).repeat(x.size(0), 1, 1, 1)
         frange = self.frange.to(x) * x
-        emb1 = cos(frange)
-        emb2 = sin(frange)
+        emb1 = torch.cos(frange)
+        emb2 = torch.sin(frange)
         embedding = torch.cat([emb0, emb1, emb2], dim=1)
         embedding = self.weights * embedding
         return embedding
@@ -174,7 +173,7 @@ class VonMisesKernel(nn.Module):
 
 
 class EmbedGradients(nn.Module):
-    r"""Module that computes gradient embedding, weighted by sqrt of magnitudes of given patches.
+    r"""nn.Module that computes gradient embedding, weighted by sqrt of magnitudes of given patches.
 
     Args:
         patch_size: Input patch size in pixels.
@@ -209,14 +208,14 @@ class EmbedGradients(nn.Module):
         _, phi = cart2pol(kgrid[:, :, :, 0], kgrid[:, :, :, 1])
         self.register_buffer("phi", phi)
 
-    def emb_mags(self, mags: Tensor) -> Tensor:
+    def emb_mags(self, mags: torch.Tensor) -> torch.Tensor:
         """Embed square roots of magnitudes with eps for numerical reasons."""
         mags = torch.sqrt(mags + self.eps)
         return mags
 
-    def forward(self, grads: Tensor) -> Tensor:
-        if not isinstance(grads, Tensor):
-            raise TypeError(f"Input type is not a Tensor. Got {type(grads)}")
+    def forward(self, grads: torch.Tensor) -> torch.Tensor:
+        if not isinstance(grads, torch.Tensor):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(grads)}")
         if not len(grads.shape) == 4:
             raise ValueError(f"Invalid input shape, we expect Bx2xHxW. Got: {grads.shape}")
         mags = grads[:, :1, :, :]
@@ -230,7 +229,7 @@ class EmbedGradients(nn.Module):
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, relative={self.relative})"
 
 
-def spatial_kernel_embedding(kernel_type: str, grids: Dict[str, Tensor]) -> Tensor:
+def spatial_kernel_embedding(kernel_type: str, grids: Dict[str, torch.Tensor]) -> torch.Tensor:
     r"""Compute embeddings for cartesian and polar parametrizations."""
     factors = {"phi": 1.0, "rho": pi / sqrt2, "x": pi / 2, "y": pi / 2}
     if kernel_type == "cart":
@@ -262,7 +261,7 @@ def spatial_kernel_embedding(kernel_type: str, grids: Dict[str, Tensor]) -> Tens
 
 
 class ExplicitSpacialEncoding(nn.Module):
-    r"""Module that computes explicit cartesian or polar embedding.
+    r"""nn.Module that computes explicit cartesian or polar embedding.
 
     Args:
         kernel_type: Parametrization of kernel ``'polar'`` or ``'cart'``.
@@ -329,25 +328,25 @@ class ExplicitSpacialEncoding(nn.Module):
         self.register_buffer("emb2", emb2)
         self.register_buffer("idx1", idx1)
 
-    def get_gmask(self, sigma: float) -> Tensor:
+    def get_gmask(self, sigma: float) -> torch.Tensor:
         """Compute Gaussian mask."""
         norm_rho = self.grid["rho"] / self.grid["rho"].max()
         gmask = torch.exp(-1 * norm_rho**2 / sigma**2)
         return gmask
 
-    def init_kron(self) -> Tuple[Tensor, Tensor]:
+    def init_kron(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Initialize helper variables to calculate kronecker."""
         kron = get_kron_order(self.in_dims, self.d_emb)
-        _emb = torch.jit.annotate(Tensor, self.emb)
+        _emb = torch.jit.annotate(torch.Tensor, self.emb)
         emb2 = torch.index_select(_emb, 1, kron[:, 1])
         return emb2, kron[:, 0]
 
-    def forward(self, x: Tensor) -> Tensor:
-        if not isinstance(x, Tensor):
-            raise TypeError(f"Input type is not a Tensor. Got {type(x)}")
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
         if not ((len(x.shape) == 4) | (x.shape[1] == self.in_dims)):
             raise ValueError(f"Invalid input shape, we expect Bx{self.in_dims}xHxW. Got: {x.shape}")
-        idx1 = torch.jit.annotate(Tensor, self.idx1)
+        idx1 = torch.jit.annotate(torch.Tensor, self.idx1)
         emb1 = torch.index_select(x, 1, idx1)
         output = emb1 * self.emb2
         output = output.sum(dim=(2, 3))
@@ -368,7 +367,7 @@ class ExplicitSpacialEncoding(nn.Module):
 
 
 class Whitening(nn.Module):
-    r"""Module, performs supervised or unsupervised whitening.
+    r"""nn.Module, performs supervised or unsupervised whitening.
 
     This is based on the paper "Understanding and Improving Kernel Local Descriptors".
     See :cite:`mukundan2019understanding` for more details.
@@ -406,7 +405,7 @@ class Whitening(nn.Module):
     def __init__(
         self,
         xform: str,
-        whitening_model: Union[Dict[str, Dict[str, Tensor]], None],
+        whitening_model: Union[Dict[str, Dict[str, torch.Tensor]], None],
         in_dims: int,
         output_dims: int = 128,
         keval: int = 40,
@@ -425,14 +424,14 @@ class Whitening(nn.Module):
         self.output_dims = output_dims
 
         # Initialize identity transform.
-        self.mean = nn.Parameter(zeros(in_dims), requires_grad=True)
+        self.mean = nn.Parameter(torch.zeros(in_dims), requires_grad=True)
         self.evecs = nn.Parameter(torch.eye(in_dims)[:, :output_dims], requires_grad=True)
         self.evals = nn.Parameter(torch.ones(in_dims)[:output_dims], requires_grad=True)
 
         if whitening_model is not None:
             self.load_whitening_parameters(whitening_model)
 
-    def load_whitening_parameters(self, whitening_model: Dict[str, Dict[str, Tensor]]) -> None:
+    def load_whitening_parameters(self, whitening_model: Dict[str, Dict[str, torch.Tensor]]) -> None:
         algo = "lw" if self.xform == "lw" else "pca"
         wh_model = whitening_model[algo]
         self.mean.data = wh_model["mean"]
@@ -467,9 +466,9 @@ class Whitening(nn.Module):
         m = -0.5 * self.t
         self.evecs.data = self.evecs @ torch.diag(torch.pow(self.evals, m))
 
-    def forward(self, x: Tensor) -> Tensor:
-        if not isinstance(x, Tensor):
-            raise TypeError(f"Input type is not a Tensor. Got {type(x)}")
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
         if not len(x.shape) == 2:
             raise ValueError(f"Invalid input shape, we expect NxD. Got: {x.shape}")
         x = x - self.mean  # Center the data.
@@ -482,7 +481,7 @@ class Whitening(nn.Module):
 
 
 class MKDDescriptor(nn.Module):
-    r"""Module that computes Multiple Kernel local descriptors.
+    r"""nn.Module that computes Multiple Kernel local descriptors.
 
     This is based on the paper "Understanding and Improving Kernel Local Descriptors".
     See :cite:`mukundan2019understanding` for more details.
@@ -562,9 +561,9 @@ class MKDDescriptor(nn.Module):
             self.odims = self.output_dims
         self.eval()
 
-    def forward(self, patches: Tensor) -> Tensor:
-        if not isinstance(patches, Tensor):
-            raise TypeError(f"Input type is not a Tensor. Got {type(patches)}")
+    def forward(self, patches: torch.Tensor) -> torch.Tensor:
+        if not isinstance(patches, torch.Tensor):
+            raise TypeError(f"Input type is not a torch.Tensor. Got {type(patches)}")
         if not len(patches.shape) == 4:
             raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {patches.shape}")
         # Extract gradients.
@@ -580,7 +579,7 @@ class MKDDescriptor(nn.Module):
         # Concatenate.
         y = torch.cat(features, dim=1)
 
-        # l2-normalize.
+        # l2-F.normalize.
         y = F.normalize(y, dim=1)
 
         # Whiten descriptors.
@@ -634,5 +633,5 @@ class SimpleKD(nn.Module):
 
         self.features = nn.Sequential(smoothing, gradients, ori, ese, wh)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.features(x)

@@ -16,13 +16,13 @@
 #
 
 import math
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
+from torch import nn
 from typing_extensions import TypedDict
 
-from kornia.core import Device, Module, Tensor, concatenate, eye, tensor, where, zeros
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.subpix import ConvSoftArgmax3d, NonMaximaSuppression2d
 from kornia.geometry.transform import ScalePyramid, pyrdown, resize
@@ -32,19 +32,19 @@ from .orientation import PassLAF
 from .responses import BlobHessian
 
 
-def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -> Tensor:
+def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
     r"""Auxiliary function for ScaleSpaceDetector.
 
     Converts scale level index from ConvSoftArgmax3d to the actual
     scale, using the sigmas from the ScalePyramid output.
 
     Args:
-        max_coords: tensor [BxNx3].
-        sigmas: tensor [BxNxD], D >= 1
+        max_coords: torch.tensor [BxNx3].
+        sigmas: torch.tensor [BxNxD], D >= 1
         num_levels: number of levels in the scale index.
 
     Returns:
-        tensor [BxNx3].
+        torch.tensor [BxNx3].
 
     """
     # depth (scale) in coord_max is represented as (float) index, not the scale yet.
@@ -56,21 +56,21 @@ def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -
     B, N, _ = max_coords.shape
     scale_coords = max_coords[:, :, 0].contiguous().view(-1, 1, 1, 1)
     # Replace the scale_x_y
-    out = concatenate(
+    out = torch.cat(
         [sigmas[0, 0] * torch.pow(2.0, scale_coords / float(num_levels)).view(B, N, 1), max_coords[:, :, 1:]], 2
     )
     return out
 
 
-def _create_octave_mask(mask: Tensor, octave_shape: List[int]) -> Tensor:
+def _create_octave_mask(mask: torch.Tensor, octave_shape: List[int]) -> torch.Tensor:
     r"""Downsample a mask based on the given octave shape."""
     mask_shape = octave_shape[-2:]
     mask_octave = F.interpolate(mask, mask_shape, mode="bilinear", align_corners=False)
     return mask_octave.unsqueeze(1)
 
 
-class ScaleSpaceDetector(Module):
-    r"""Module for differentiable local feature detection.
+class ScaleSpaceDetector(nn.Module):
+    r"""nn.Module for differentiable local feature detection.
 
     As close as possible to classical local feature detectors
     like Harris, Hessian-Affine or SIFT (DoG).
@@ -103,11 +103,11 @@ class ScaleSpaceDetector(Module):
         self,
         num_features: int = 500,
         mr_size: float = 6.0,
-        scale_pyr_module: Optional[Module] = None,
-        resp_module: Optional[Module] = None,
-        nms_module: Optional[Module] = None,
-        ori_module: Optional[Module] = None,
-        aff_module: Optional[Module] = None,
+        scale_pyr_module: Optional[nn.Module] = None,
+        resp_module: Optional[nn.Module] = None,
+        nms_module: Optional[nn.Module] = None,
+        ori_module: Optional[nn.Module] = None,
+        aff_module: Optional[nn.Module] = None,
         minima_are_also_good: bool = False,
         scale_space_response: bool = False,
     ) -> None:
@@ -148,13 +148,15 @@ class ScaleSpaceDetector(Module):
             f"aff={self.aff.__repr__()})"
         )
 
-    def detect(self, img: Tensor, num_feats: int, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
-        dev: Device = img.device
+    def detect(
+        self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        dev: Union[str, torch.device, None] = img.device
         dtype: torch.dtype = img.dtype
-        sigmas: List[Tensor]
+        sigmas: List[torch.Tensor]
         sp, sigmas, _ = self.scale_pyr(img)
-        all_responses: List[Tensor] = []
-        all_lafs: List[Tensor] = []
+        all_responses: List[torch.Tensor] = []
+        all_lafs: List[torch.Tensor] = []
         px_size = 0.5 if self.scale_pyr.double_image else 1.0
         for oct_idx, octave in enumerate(sp):
             sigmas_oct = sigmas[oct_idx]
@@ -169,16 +171,16 @@ class ScaleSpaceDetector(Module):
                 # We want nms for scale responses, so reorder to (B, CH, L, H, W)
                 oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
                 # 3rd extra level is required for DoG only
-                if isinstance(self.scale_pyr.extra_levels, Tensor) and self.scale_pyr.extra_levels % 2 != 0:
+                if isinstance(self.scale_pyr.extra_levels, torch.Tensor) and self.scale_pyr.extra_levels % 2 != 0:
                     oct_resp = oct_resp[:, :, :-1]
 
             if mask is not None:
-                oct_mask: Tensor = _create_octave_mask(mask, oct_resp.shape)
+                oct_mask: torch.Tensor = _create_octave_mask(mask, oct_resp.shape)
                 oct_resp = oct_mask * oct_resp
 
             # Differentiable nms
-            coord_max: Tensor
-            response_max: Tensor
+            coord_max: torch.Tensor
+            response_max: torch.Tensor
             coord_max, response_max = self.nms(oct_resp)
             if self.minima_are_also_good:
                 coord_min, response_min = self.nms(-oct_resp)
@@ -200,21 +202,21 @@ class ScaleSpaceDetector(Module):
 
             # Converts scale level index from ConvSoftArgmax3d to the actual scale, using the sigmas
 
-            if isinstance(self.scale_pyr.n_levels, Tensor):
+            if isinstance(self.scale_pyr.n_levels, torch.Tensor):
                 num_levels = int(self.scale_pyr.n_levels.item())
             elif isinstance(self.scale_pyr.n_levels, int):
                 num_levels = self.scale_pyr.n_levels
             else:
                 raise TypeError(
-                    "Expected the scale pyramid module to have `n_levels` as a Tensor or int."
+                    "Expected the scale pyramid module to have `n_levels` as a torch.Tensor or int."
                     f"Gotcha {type(self.scale_pyr.n_levels)}"
                 )
 
             max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct, num_levels)
 
             # Create local affine frames (LAFs)
-            rotmat = eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
-            current_lafs = concatenate(
+            rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
+            current_lafs = torch.cat(
                 [
                     self.mr_size * max_coords_best[:, :, 0].view(B, N, 1, 1) * rotmat,
                     max_coords_best[:, :, 1:3].view(B, N, 2, 1),
@@ -234,13 +236,13 @@ class ScaleSpaceDetector(Module):
             px_size *= 2
 
         # Sort and keep best n
-        responses = concatenate(all_responses, 1)
-        lafs = concatenate(all_lafs, 1)
+        responses = torch.cat(all_responses, 1)
+        lafs = torch.cat(all_lafs, 1)
         responses, idxs = torch.topk(responses, k=num_feats, dim=1)
         lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, 2, 3))
         return responses, lafs
 
-    def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def forward(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Three stage local feature detection.
 
         First the location and scale of interest points are determined by detect function.
@@ -248,7 +250,7 @@ class ScaleSpaceDetector(Module):
 
         Args:
             img: image to extract features with shape [BxCxHxW]
-            mask: a mask with weights where to apply the response function. The shape must be the same as
+            mask: a mask with weights torch.where to apply the response function. The shape must be the same as
               the input image.
 
         Returns:
@@ -276,7 +278,7 @@ def get_default_detector_config() -> Detector_config:
     return _DEFAULT_DETECTOR_CONFIG.copy()
 
 
-class MultiResolutionDetector(Module):
+class MultiResolutionDetector(nn.Module):
     """Multi-scale feature detector, based on code from KeyNet. Can be used with any response function.
 
     This is based on the original code from paper
@@ -296,11 +298,11 @@ class MultiResolutionDetector(Module):
 
     def __init__(
         self,
-        model: Module,
+        model: nn.Module,
         num_features: int = 2048,
         config: Optional[Detector_config] = None,
-        ori_module: Optional[Module] = None,
-        aff_module: Optional[Module] = None,
+        ori_module: Optional[nn.Module] = None,
+        aff_module: Optional[nn.Module] = None,
     ) -> None:
         super().__init__()
         self.model = model
@@ -316,24 +318,24 @@ class MultiResolutionDetector(Module):
         self.num_features = num_features
 
         if ori_module is None:
-            self.ori: Module = PassLAF()
+            self.ori: nn.Module = PassLAF()
         else:
             self.ori = ori_module
 
         if aff_module is None:
-            self.aff: Module = PassLAF()
+            self.aff: nn.Module = PassLAF()
         else:
             self.aff = aff_module
 
-    def remove_borders(self, score_map: Tensor, borders: int = 15) -> Tensor:
+    def remove_borders(self, score_map: torch.Tensor, borders: int = 15) -> torch.Tensor:
         """Remove the borders of the image to avoid detections on the corners."""
         mask = torch.zeros_like(score_map)
         mask[:, :, borders:-borders, borders:-borders] = 1
         return mask * score_map
 
     def detect_features_on_single_level(
-        self, level_img: Tensor, num_kp: int, factor: Tuple[float, float]
-    ) -> Tuple[Tensor, Tensor]:
+        self, level_img: torch.Tensor, num_kp: int, factor: Tuple[float, float]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         det_map = self.nms(self.remove_borders(self.model(level_img)))
         device = level_img.device
         dtype = level_img.dtype
@@ -342,16 +344,18 @@ class MultiResolutionDetector(Module):
 
         scores_sorted, indices = torch.sort(scores, descending=True)
 
-        indices = indices[where(scores_sorted > 0.0)]
+        indices = indices[torch.where(scores_sorted > 0.0)]
         yx = yx[:, indices[:num_kp]].t()
         current_kp_num = len(yx)
-        xy_projected = yx.view(1, current_kp_num, 2).flip(2) * tensor(factor, device=device, dtype=dtype)
+        xy_projected = yx.view(1, current_kp_num, 2).flip(2) * torch.tensor(factor, device=device, dtype=dtype)
         scale_factor = 0.5 * (factor[0] + factor[1])
         scale = scale_factor * self.mr_size * torch.ones(1, current_kp_num, 1, 1, device=device, dtype=dtype)
-        lafs = laf_from_center_scale_ori(xy_projected, scale, zeros(1, current_kp_num, 1, device=device, dtype=dtype))
+        lafs = laf_from_center_scale_ori(
+            xy_projected, scale, torch.zeros(1, current_kp_num, 1, device=device, dtype=dtype)
+        )
         return scores_sorted[:num_kp], lafs
 
-    def detect(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def detect(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         # Compute points per level
         num_features_per_level: List[float] = []
         tmp = 0.0
@@ -366,8 +370,8 @@ class MultiResolutionDetector(Module):
         _, _, h, w = img.shape
         img_up = img
         cur_img = img
-        all_responses: List[Tensor] = []
-        all_lafs: List[Tensor] = []
+        all_responses: List[torch.Tensor] = []
+        all_lafs: List[torch.Tensor] = []
         # Extract features from the upper levels
         for idx_level in range(self.num_upscale_levels):
             nf = num_features_per_level[len(num_features_per_level) - self.num_pyramid_levels - 1 - (idx_level + 1)]
@@ -396,20 +400,20 @@ class MultiResolutionDetector(Module):
             num_points_level = int(num_features_per_level[idx_level])
             if idx_level > 0 or (self.num_upscale_levels > 0):
                 nf2 = [num_features_per_level[a] for a in range(0, idx_level + 1 + self.num_upscale_levels)]
-                res_points = tensor(nf2).sum().item()
+                res_points = torch.tensor(nf2).sum().item()
                 num_points_level = int(res_points)
 
             cur_scores, cur_lafs = self.detect_features_on_single_level(cur_img, num_points_level, factor)
             all_responses.append(cur_scores.view(1, -1))
             all_lafs.append(cur_lafs)
-        responses = concatenate(all_responses, 1)
-        lafs = concatenate(all_lafs, 1)
+        responses = torch.cat(all_responses, 1)
+        lafs = torch.cat(all_lafs, 1)
         if lafs.shape[1] > self.num_features:
             responses, idxs = torch.topk(responses, k=self.num_features, dim=1)
             lafs = torch.gather(lafs, 1, idxs[..., None, None].expand(-1, -1, 2, 3))
         return responses, lafs
 
-    def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def forward(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Three stage local feature detection.
 
         First the location and scale of interest points are determined by detect function.
@@ -418,7 +422,7 @@ class MultiResolutionDetector(Module):
         Args:
             img: image to extract features with shape [1xCxHxW]. KeyNetDetector does not support batch processing,
         because the number of detections is different on each image.
-            mask: a mask with weights where to apply the response function. The shape must be the same as
+            mask: a mask with weights torch.where to apply the response function. The shape must be the same as
               the input image.
 
         Returns:

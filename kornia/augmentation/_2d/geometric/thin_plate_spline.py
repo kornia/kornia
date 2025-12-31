@@ -21,7 +21,6 @@ import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import SamplePadding
-from kornia.core import Tensor, tensor
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
 
@@ -52,7 +51,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomThinPlateSpline(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
@@ -72,15 +71,19 @@ class RandomThinPlateSpline(AugmentationBase2D):
         }
         self.dist = torch.distributions.Uniform(-scale, scale)
 
-    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         B, _, _, _ = shape
-        src = tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).expand(B, 5, 2)  # Bx5x2
+        src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).expand(B, 5, 2)  # Bx5x2
         dst = src + self.dist.rsample(src.shape)
         return {"src": src, "dst": dst}
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         src = params["src"].to(input)
         dst = params["dst"].to(input)
         # NOTE: warp_image_tps need to use inverse parameters

@@ -17,11 +17,10 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, Union
 
 import torch
 
-from kornia.core import Device, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 
 from .utils import download_onnx_from_url, normalize_keypoints
@@ -49,7 +48,7 @@ class OnnxLightGlue:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
           are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. `Note that FP16 requires CUDA.`
           Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
-        device: Device to run inference on.
+        device: Union[str, torch.device, None] to run inference on.
 
     """
 
@@ -62,7 +61,7 @@ class OnnxLightGlue:
 
     required_data_keys: ClassVar[list[str]] = ["image0", "image1"]
 
-    def __init__(self, weights: str | None = None, device: Device = "cpu") -> None:
+    def __init__(self, weights: str | None = None, device: Union[str, torch.device, None] = "cpu") -> None:
         KORNIA_CHECK(ort is not None, "onnxruntime is not installed.")
         KORNIA_CHECK(np is not None, "numpy is not installed.")
 
@@ -91,10 +90,10 @@ class OnnxLightGlue:
 
         self.session = ort.InferenceSession(weights, providers=providers)
 
-    def __call__(self, data: dict[str, dict[str, Tensor]]) -> dict[str, Tensor]:
+    def __call__(self, data: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
         return self.forward(data)
 
-    def forward(self, data: dict[str, dict[str, Tensor]]) -> dict[str, Tensor]:
+    def forward(self, data: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
         r"""Match keypoints and descriptors between two images.
 
         The output contains the matches (the indices of the matching keypoint pairs between the first and second image)
@@ -161,14 +160,14 @@ class OnnxLightGlue:
         lightglue_outputs = ["matches0", "mscores0"]
         binding = self.session.io_binding()
 
-        for name, tensor in lightglue_inputs.items():
+        for name, torch.tensor in lightglue_inputs.items():
             binding.bind_input(
                 name,
                 device_type=self.device.type,
                 device_id=0,
                 element_type=np.float32,
-                shape=tuple(tensor.shape),
-                buffer_ptr=tensor.data_ptr(),
+                shape=tuple(torch.tensor.shape),
+                buffer_ptr=torch.tensor.data_ptr(),
             )
 
         for name in lightglue_outputs:
@@ -179,7 +178,7 @@ class OnnxLightGlue:
         matches, mscores = binding.get_outputs()
 
         # TODO: The following is an unnecessary copy. Replace with a better solution when torch supports
-        # constructing a tensor from a data pointer, or when ORT supports converting to torch tensor.
+        # constructing a torch.tensor from a data pointer, or when ORT supports converting to torch torch.tensor.
         # https://github.com/microsoft/onnxruntime/issues/15963
         outputs = {
             "matches": torch.from_dlpack(matches.numpy()).to(self.device),

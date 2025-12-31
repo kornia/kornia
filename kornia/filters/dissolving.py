@@ -19,13 +19,14 @@ import os
 from typing import Any
 
 import torch
+from torch import nn
 
-from kornia.core import ImageModule, Module, Tensor
+from kornia.core import ImageModule
 from kornia.core.external import diffusers
 
 
 class _DissolvingWraper_HF:
-    def __init__(self, model: Module, num_ddim_steps: int = 50, is_sdxl: bool = False) -> None:
+    def __init__(self, model: nn.Module, num_ddim_steps: int = 50, is_sdxl: bool = False) -> None:
         self.model = model
         self.num_ddim_steps = num_ddim_steps
         self.is_sdxl = is_sdxl
@@ -33,11 +34,11 @@ class _DissolvingWraper_HF:
         self.model.scheduler.set_timesteps(self.num_ddim_steps)
         self.total_steps = len(self.model.scheduler.timesteps)  # Total number of sampling steps.
         self.prompt: str
-        self.context: Tensor
-        self.pooled_embeddings: Tensor | None = None
-        self.add_time_ids: Tensor | None = None
+        self.context: torch.Tensor
+        self.pooled_embeddings: torch.Tensor | None = None
+        self.add_time_ids: torch.Tensor | None = None
 
-    def predict_start_from_noise(self, noise_pred: Tensor, timestep: int, latent: Tensor) -> Tensor:
+    def predict_start_from_noise(self, noise_pred: torch.Tensor, timestep: int, latent: torch.Tensor) -> torch.Tensor:
         return (
             torch.sqrt(1.0 / self.model.scheduler.alphas_cumprod[timestep]) * latent
             - torch.sqrt(1.0 / self.model.scheduler.alphas_cumprod[timestep] - 1) * noise_pred
@@ -137,7 +138,7 @@ class _DissolvingWraper_HF:
 
     # Encode the image to latent using the VAE.
     @torch.no_grad()
-    def encode_tensor_to_latent(self, image: Tensor) -> Tensor:
+    def encode_tensor_to_latent(self, image: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
             image = (image / 0.5 - 1).to(self.model.device)
             latents = self.model.vae.encode(image)["latent_dist"].sample()
@@ -145,7 +146,7 @@ class _DissolvingWraper_HF:
         return latents
 
     @torch.no_grad()
-    def decode_tensor_to_latent(self, latents: Tensor) -> Tensor:
+    def decode_tensor_to_latent(self, latents: torch.Tensor) -> torch.Tensor:
         # Perform in-place detach to reduce memory usage and copies
         latents = latents.detach()
         latents = latents * (1.0 / 0.18215)  # Fused division as multiplication (faster)
@@ -158,7 +159,7 @@ class _DissolvingWraper_HF:
         return image
 
     @torch.no_grad()
-    def one_step_dissolve(self, latent: Tensor, i: int) -> Tensor:
+    def one_step_dissolve(self, latent: torch.Tensor, i: int) -> torch.Tensor:
         _, cond_embeddings = self.context.chunk(2)
         latent = latent.clone().detach()
         # NOTE: This implementation use a reversed timesteps but can reach to
@@ -193,7 +194,7 @@ class _DissolvingWraper_HF:
         return pred_x0
 
     @torch.no_grad()
-    def dissolve(self, image: Tensor, t: int) -> Tensor:
+    def dissolve(self, image: torch.Tensor, t: int) -> torch.Tensor:
         self.init_prompt("")
         latent = self.encode_tensor_to_latent(image)
         ddim_latents = self.one_step_dissolve(latent, t)
@@ -271,5 +272,5 @@ class StableDiffusionDissolving(ImageModule):
 
         self.model = _DissolvingWraper_HF(self._sdm_model, num_ddim_steps=1000, is_sdxl=is_sdxl)
 
-    def forward(self, input: Tensor, step_number: int) -> Tensor:
+    def forward(self, input: torch.Tensor, step_number: int) -> torch.Tensor:
         return self.model.dissolve(input, step_number)

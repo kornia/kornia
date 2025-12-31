@@ -21,7 +21,6 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
-from kornia.core import Tensor
 
 
 class ChannelDropoutGenerator(RandomGeneratorBase):
@@ -59,7 +58,7 @@ class ChannelDropoutGenerator(RandomGeneratorBase):
         drop = _range_bound((0.0, 1.0), "drop", device=device, dtype=dtype)
         self.drop_sampler = UniformDistribution(drop[0], drop[1], validate_args=False)
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         r"""Generate a mask for dropout channels."""
         batch_size, channels, _, _ = batch_shape
         _common_param_check(batch_size, same_on_batch)

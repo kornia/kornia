@@ -20,9 +20,9 @@ from __future__ import annotations
 from typing import Any, Optional, Union
 
 import torch
+from torch import nn
 
 from kornia.color.gray import grayscale_to_rgb
-from kornia.core import Tensor, tensor
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
 from kornia.core.mixin.onnx import ONNXExportMixin
@@ -100,15 +100,15 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         )
 
     @torch.inference_mode()
-    def forward(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:
+    def forward(self, images: Union[torch.Tensor, list[torch.Tensor]]) -> Union[torch.Tensor, list[torch.Tensor]]:
         """Forward pass of the edge detection model.
 
         Args:
-            images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
-                If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
+                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
-            output tensor.
+            output torch.tensor.
 
         """
         images, image_sizes = self.pre_processor(images)
@@ -117,19 +117,19 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
 
     def visualize(
         self,
-        images: Union[Tensor, list[Tensor]],
-        edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
+        images: Union[torch.Tensor, list[torch.Tensor]],
+        edge_maps: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
         output_type: str = "torch",
-    ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
         """Draw the edge detection results.
 
         Args:
-            images: input tensor.
+            images: input torch.tensor.
             edge_maps: detected edges.
             output_type: type of the output.
 
         Returns:
-            output tensor.
+            output torch.tensor.
 
         """
         if edge_maps is None:
@@ -138,25 +138,25 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         for edge_map in edge_maps:
             output.append(grayscale_to_rgb(edge_map)[0])
 
-        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, Tensor))
+        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, torch.Tensor))
 
     def save(
         self,
-        images: Union[Tensor, list[Tensor]],
-        edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
+        images: Union[torch.Tensor, list[torch.Tensor]],
+        edge_maps: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
         directory: Optional[str] = None,
         output_type: str = "torch",
     ) -> None:
         """Save the edge detection results.
 
         Args:
-            images: input tensor.
+            images: input torch.tensor.
             edge_maps: detected edges.
             output_type: type of the output.
-            directory: where to save outputs.
+            directory: torch.where to save outputs.
 
         Returns:
-            output tensor.
+            output torch.tensor.
 
         """
         outputs = self.visualize(images, edge_maps, output_type)
@@ -239,9 +239,7 @@ class EdgeDetectorBuilder:
         """
         if model_name.lower() == "dexined":
             # Normalize then scale to [0, 255]
-            norm = Normalize(mean=tensor([[0.485, 0.456, 0.406]]), std=tensor([[1.0 / 255.0] * 3]))
-            from torch import nn
-
+            norm = Normalize(mean=torch.tensor([[0.485, 0.456, 0.406]]), std=torch.tensor([[1.0 / 255.0] * 3]))
             model = nn.Sequential(norm, DexiNed(pretrained=pretrained), nn.Sigmoid())
         else:
             raise ValueError(f"Model {model_name} not found. Please choose from 'dexined'.")

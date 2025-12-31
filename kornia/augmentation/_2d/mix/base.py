@@ -27,7 +27,6 @@ from kornia.augmentation.utils import (
     _validate_input_dtype,
 )
 from kornia.constants import DataKey, DType
-from kornia.core import Tensor, tensor
 from kornia.core.check import KORNIA_UNWRAP
 from kornia.geometry.boxes import Boxes
 
@@ -63,7 +62,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         if data_keys is not None:
             self.data_keys = [DataKey.get(inp) for inp in data_keys]
 
-    def transform_tensor(self, input: Tensor, *, shape: Optional[Tensor] = None, match_channel: bool = True) -> Tensor:
+    def transform_tensor(
+        self, input: torch.Tensor, *, shape: Optional[torch.Tensor] = None, match_channel: bool = True
+    ) -> torch.Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
@@ -72,15 +73,21 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         else:
             return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
 
-    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        # NOTE: apply_transform receives the whole tensor, but returns only altered elements.
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
+        # NOTE: apply_transform receives the whole torch.tensor, but returns only altered elements.
         raise NotImplementedError
 
-    def apply_non_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        # For the images where batch_prob == False.
+    def apply_non_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
+        # For the images torch.where batch_prob == False.
         return input
 
-    def transform_input(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def transform_input(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
@@ -95,7 +102,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
 
-    def transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def transform_mask(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
@@ -105,11 +114,13 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_transform_mask(input, params, flags)
         return output
 
-    def transform_boxes(self, input: Union[Tensor, Boxes], params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
+    def transform_boxes(
+        self, input: Union[torch.Tensor, Boxes], params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> Boxes:
         # input is BxNx4x2 or Boxes.
-        if isinstance(input, Tensor):
+        if isinstance(input, torch.Tensor):
             if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
-                raise RuntimeError(f"Only BxNx4x2 tensor is supported. Got {input.shape}.")
+                raise RuntimeError(f"Only BxNx4x2 torch.tensor is supported. Got {input.shape}.")
             input = Boxes(input, False, mode="vertices_plus")
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
@@ -120,7 +131,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_transform_boxes(output, params, flags)
         return output
 
-    def transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def transform_keypoint(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
@@ -130,7 +143,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_transform_keypoint(input, params, flags)
         return output
 
-    def transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def transform_class(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
@@ -140,36 +155,48 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_transform_class(input, params, flags)
         return output
 
-    def apply_non_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_non_transform_mask(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         raise NotImplementedError
 
-    def apply_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform_mask(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         raise NotImplementedError
 
-    def apply_non_transform_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
+    def apply_non_transform_boxes(self, input: Boxes, params: Dict[str, torch.Tensor], flags: Dict[str, Any]) -> Boxes:
         return input
 
-    def apply_transform_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
+    def apply_transform_boxes(self, input: Boxes, params: Dict[str, torch.Tensor], flags: Dict[str, Any]) -> Boxes:
         raise NotImplementedError
 
-    def apply_non_transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_non_transform_keypoint(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         return input
 
-    def apply_transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform_keypoint(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         raise NotImplementedError
 
-    def apply_non_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_non_transform_class(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         return input
 
-    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform_class(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         raise NotImplementedError
 
     def forward(  # type: ignore[override]
         self,
-        *input: Tensor,
-        params: Optional[Dict[str, Tensor]] = None,
+        *input: torch.Tensor,
+        params: Optional[Dict[str, torch.Tensor]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[Tensor, List[Tensor]]:
+    ) -> Union[torch.Tensor, List[torch.Tensor]]:
         keys: List[DataKey]
         if data_keys is None:
             keys = self.data_keys
@@ -178,16 +205,16 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
 
         if params is None:
             in_tensor_idx: int = keys.index(DataKey.INPUT)
-            in_tensor: Tensor = input[in_tensor_idx]
+            in_tensor: torch.Tensor = input[in_tensor_idx]
             in_tensor = self.transform_tensor(in_tensor)
             self._params = self.forward_parameters(in_tensor.shape)
-            self._params.update({"dtype": tensor(DType.get(in_tensor.dtype).value)})
+            self._params.update({"dtype": torch.tensor(DType.get(in_tensor.dtype).value)})
         else:
             self._params = params
 
-        outputs: List[Tensor] = []
+        outputs: List[torch.Tensor] = []
         for dcate, _input in zip(keys, input):
-            output: Tensor
+            output: torch.Tensor
             if dcate == DataKey.INPUT:
                 output = self.transform_input(_input, self._params, self.flags)
             elif dcate == DataKey.MASK:
@@ -195,15 +222,15 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             elif dcate == DataKey.BBOX:
                 box = Boxes.from_tensor(_input, mode="vertices", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = KORNIA_UNWRAP(box.to_tensor("vertices"), Tensor)
+                output = KORNIA_UNWRAP(box.to_tensor("vertices"), torch.Tensor)
             elif dcate == DataKey.BBOX_XYXY:
                 box = Boxes.from_tensor(_input, mode="xyxy", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = KORNIA_UNWRAP(box.to_tensor("xyxy"), Tensor)
+                output = KORNIA_UNWRAP(box.to_tensor("xyxy"), torch.Tensor)
             elif dcate == DataKey.BBOX_XYWH:
                 box = Boxes.from_tensor(_input, mode="xywh", validate_boxes=False)
                 box = self.transform_boxes(box, self._params, self.flags)
-                output = KORNIA_UNWRAP(box.to_tensor("xywh"), Tensor)
+                output = KORNIA_UNWRAP(box.to_tensor("xywh"), torch.Tensor)
             elif dcate == DataKey.KEYPOINTS:
                 output = self.transform_keypoint(_input, self._params, self.flags)
             elif dcate == DataKey.CLASS:
@@ -216,9 +243,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return outputs
 
     @torch.jit.ignore
-    def inverse(self, **kwargs: Any) -> Optional[Tensor]:
+    def inverse(self, **kwargs: Any) -> Optional[torch.Tensor]:
         raise RuntimeError(f"Inverse for {self.__class__.__name__} is not supported.")
 
     @property
-    def transform_matrix(self) -> Optional[Tensor]:
+    def transform_matrix(self) -> Optional[torch.Tensor]:
         raise RuntimeError(f"Transformation matrices for {self.__class__.__name__} is not supported.")

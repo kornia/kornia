@@ -21,8 +21,6 @@ from typing import Optional, Tuple, Union
 import torch
 from typing_extensions import NotRequired, TypedDict
 
-from kornia.core import Tensor, concatenate, tensor, where
-
 from .ransac import ransac
 from .utils import dist_matrix, orientation_diff
 
@@ -48,7 +46,7 @@ class AdalamConfig(TypedDict):
         runtime
     force_seed_mnn: Whether to consider only MNN for the purpose of selecting seeds. Generally improves accuracy
         at the cost of runtime
-    device: Device to be used for running AdaLAM. Use GPU if available.
+    device: Union[str, torch.device, None] to be used for running AdaLAM. Use GPU if available.
     mnn: Default None. You can provide a MNN mask in input to skip MNN computation and still get the improvement.
 
     """
@@ -64,15 +62,15 @@ class AdalamConfig(TypedDict):
     refit: NotRequired[bool]
     force_seed_mnn: NotRequired[bool]
     device: NotRequired[torch.device]
-    mnn: NotRequired[Tensor]
+    mnn: NotRequired[torch.Tensor]
 
 
-def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
+def _no_match(dm: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Output empty tensors.
 
     Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
-            - Long tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
+            - Long torch.tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
 
     """
     dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
@@ -81,8 +79,12 @@ def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
 
 
 def select_seeds(
-    dist1: Tensor, R1: Union[float, Tensor], scores1: Tensor, fnn12: Tensor, mnn: Optional[Tensor]
-) -> Tuple[Tensor, Tensor]:
+    dist1: torch.Tensor,
+    R1: Union[float, torch.Tensor],
+    scores1: torch.Tensor,
+    fnn12: torch.Tensor,
+    mnn: Optional[torch.Tensor],
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Select seed correspondences among the set of available matches.
 
     dist1: Precomputed distance matrix between keypoints in image I_1
@@ -92,7 +94,7 @@ def select_seeds(
            The i-th entry of fnn12 is j if and only if keypoint k_i in image I_1 is matched to keypoint k_j in image I_2
     mnn: A mask indicating which putative matches are also mutual nearest neighbors. See documentation on 'force_seed_mnn' in the DEFAULT_CONFIG.
          If None, it disables the mutual nearest neighbor filtering on seed point selection.
-         Expected a bool tensor with shape (num_keypoints_in_source_image,)
+         Expected a bool torch.tensor with shape (num_keypoints_in_source_image,)
 
     Returns:
         Indices of seed points.
@@ -111,29 +113,29 @@ def select_seeds(
         im1bs = (~torch.any(im1neighmap & im1scorescomp, dim=1)) & (scores1 < 0.8**2)
 
     # collect all seeds in both images and the 1NN of the seeds of the other image
-    im1seeds = where(im1bs)[0]  # (n1bs) index format
+    im1seeds = torch.where(im1bs)[0]  # (n1bs) index format
     im2seeds = fnn12[im1bs]  # (n1bs) index format
     return im1seeds, im2seeds
 
 
 def extract_neighborhood_sets(
-    o1: Optional[Tensor],
-    o2: Optional[Tensor],
-    s1: Optional[Tensor],
-    s2: Optional[Tensor],
-    dist1: Tensor,
-    im1seeds: Tensor,
-    im2seeds: Tensor,
-    k1: Tensor,
-    k2: Tensor,
-    R1: Union[float, Tensor],
-    R2: Union[float, Tensor],
-    fnn12: Tensor,
+    o1: Optional[torch.Tensor],
+    o2: Optional[torch.Tensor],
+    s1: Optional[torch.Tensor],
+    s2: Optional[torch.Tensor],
+    dist1: torch.Tensor,
+    im1seeds: torch.Tensor,
+    im2seeds: torch.Tensor,
+    k1: torch.Tensor,
+    k2: torch.Tensor,
+    R1: Union[float, torch.Tensor],
+    R2: Union[float, torch.Tensor],
+    fnn12: torch.Tensor,
     ORIENTATION_THR: float,
     SCALE_RATE_THR: float,
     SEARCH_EXP: float,
     MIN_INLIERS: float,
-) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Assign keypoints to seed points.
 
     This checks both the distance and the agreement of the local transformation
@@ -190,7 +192,7 @@ def extract_neighborhood_sets(
 
     # count how many keypoints ended up in each neighborhood
     numn1 = torch.sum(local_neighs_mask, dim=1)
-    # and only keep the ones that have enough points
+    # and only keep the torch.ones that have enough points
     valid_seeds = numn1 >= MIN_INLIERS
 
     local_neighs_mask = local_neighs_mask[valid_seeds, :]
@@ -201,14 +203,14 @@ def extract_neighborhood_sets(
 
 
 def extract_local_patterns(
-    fnn12: Tensor,
-    fnn_to_seed_local_consistency_map_corr: Tensor,
-    k1: Tensor,
-    k2: Tensor,
-    im1seeds: Tensor,
-    im2seeds: Tensor,
-    scores: Tensor,
-) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+    fnn12: torch.Tensor,
+    fnn_to_seed_local_consistency_map_corr: torch.Tensor,
+    k1: torch.Tensor,
+    k2: torch.Tensor,
+    im1seeds: torch.Tensor,
+    im2seeds: torch.Tensor,
+    scores: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Prepare local neighborhoods around each seed for the parallel RANSACs.
 
     This involves two steps: 1) Collect
@@ -243,7 +245,7 @@ def extract_local_patterns(
     # first get an indexing representation of the assignments:
     # - ransidx holds the index of the seed for each assignment
     # - tokp1 holds the index of the keypoint in image I_1 for each assignment
-    ransidx, tokp1 = where(fnn_to_seed_local_consistency_map_corr)
+    ransidx, tokp1 = torch.where(fnn_to_seed_local_consistency_map_corr)
     # - and of course tokp2 holds the index of the corresponding keypoint in image I_2
     tokp2 = fnn12[tokp1]
 
@@ -265,39 +267,39 @@ def extract_local_patterns(
 
 
 def adalam_core(
-    k1: Tensor,
-    k2: Tensor,
-    fnn12: Tensor,
-    scores1: Tensor,
+    k1: torch.Tensor,
+    k2: torch.Tensor,
+    fnn12: torch.Tensor,
+    scores1: torch.Tensor,
     config: AdalamConfig,
-    mnn: Optional[Tensor] = None,
+    mnn: Optional[torch.Tensor] = None,
     im1shape: Optional[Tuple[int, int]] = None,
     im2shape: Optional[Tuple[int, int]] = None,
-    o1: Optional[Tensor] = None,
-    o2: Optional[Tensor] = None,
-    s1: Optional[Tensor] = None,
-    s2: Optional[Tensor] = None,
+    o1: Optional[torch.Tensor] = None,
+    o2: Optional[torch.Tensor] = None,
+    s1: Optional[torch.Tensor] = None,
+    s2: Optional[torch.Tensor] = None,
     return_dist: bool = False,
-) -> Union[Tuple[Tensor, Tensor], Tensor]:
+) -> Union[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
     """Call the core functionality of AdaLAM, i.e. just outlier filtering.
 
     No sanity check is performed on the inputs.
 
     Args:
         k1: keypoint locations in the source image, in pixel coordinates.
-            Expected a float32 tensor with shape (num_keypoints_in_source_image, 2).
+            Expected a float32 torch.tensor with shape (num_keypoints_in_source_image, 2).
         k2: keypoint locations in the destination image, in pixel coordinates.
-            Expected a float32 tensor with shape (num_keypoints_in_destination_image, 2).
+            Expected a float32 torch.tensor with shape (num_keypoints_in_destination_image, 2).
         fnn12: Initial set of putative matches to be filtered.
               The current implementation assumes that these are unfiltered nearest neighbor matches,
               so it requires this to be a list of indices a_i such that the source keypoint i is associated to the
               destination keypoint a_i. For now to use AdaLAM on different inputs a workaround on the input format is
-              required. Expected a long tensor with shape (num_keypoints_in_source_image,).
+              required. Expected a long torch.tensor with shape (num_keypoints_in_source_image,).
         scores1: Confidence scores on the putative_matches. Usually holds Lowe's ratio scores.
         config: Adalam configuration.
         mnn: A mask indicating which putative matches are also mutual nearest neighbors. See documentation on
              'force_seed_mnn' in the DEFAULT_CONFIG. If None, it disables the mutual nearest neighbor filtering on seed
-             point selection. Expected a bool tensor with shape (num_keypoints_in_source_image,)
+             point selection. Expected a bool torch.tensor with shape (num_keypoints_in_source_image,)
         im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of wasted
                   runtime. So please provide it. Expected a tuple with (width, height) or (height, width) of source
                   image
@@ -306,16 +308,16 @@ def adalam_core(
                   destination image
         o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config is
                set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
-               Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
+               Expected a float32 torch.tensor with shape (num_keypoints_in_source/destination_image,)
         o2: Same as o1 but for destination.
         s1: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
-               Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
+               Expected a float32 torch.tensor with shape (num_keypoints_in_source/destination_image,)
         s2: Same as s1 but for destination.
         return_dist: if True, inverse confidence value is also outputted. Default is False
 
     Returns:
-        idxs: A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
+        idxs: A long torch.tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
         dists: inverse confidence ratio.
 
     """
@@ -329,14 +331,14 @@ def adalam_core(
     REFIT = config["refit"]
 
     if isinstance(im1shape, tuple):
-        _im1shape = tensor(im1shape, device=k1.device, dtype=k1.dtype)
+        _im1shape = torch.tensor(im1shape, device=k1.device, dtype=k1.dtype)
     else:
         k1mins = k1.min(dim=0).values
         k1maxs = k1.max(dim=0).values
         _im1shape = k1maxs - k1mins
 
     if isinstance(im2shape, tuple):
-        _im2shape = tensor(im2shape, device=k2.device, dtype=k2.dtype)
+        _im2shape = torch.tensor(im2shape, device=k2.device, dtype=k2.dtype)
     else:
         k2mins = k2.min(dim=0).values
         k2maxs = k2.max(dim=0).values
@@ -375,7 +377,7 @@ def adalam_core(
     if rdims.shape[0] == 0:
         # No seed point survived. Just output ratio-test matches. This should happen very rarely.
         score_mask = scores1 <= 0.95
-        absolute_im1idx = where(score_mask)[0]
+        absolute_im1idx = torch.where(score_mask)[0]
         if len(absolute_im1idx) > 0:
             absolute_im2idx = fnn12[absolute_im1idx]
             out_scores = scores1[score_mask].reshape(-1, 1)
@@ -415,7 +417,7 @@ def adalam_core(
         final_matches, idxs, counts = torch.unique(final_matches, dim=0, return_inverse=True, return_counts=True)
         _, ind_sorted = torch.sort(idxs)
         cum_sum = counts.cumsum(0)
-        cum_sum = concatenate((torch.tensor([0], dtype=cum_sum.dtype, device=cum_sum.device), cum_sum[:-1]))
+        cum_sum = torch.cat((torch.tensor([0], dtype=cum_sum.dtype, device=cum_sum.device), cum_sum[:-1]))
         first_indicies = ind_sorted[cum_sum]
         accepted_dist = accepted_dist[first_indicies]
     if return_dist:

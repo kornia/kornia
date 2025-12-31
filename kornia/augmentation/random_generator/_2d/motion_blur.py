@@ -21,7 +21,6 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
-from kornia.core import Tensor
 from kornia.utils.helpers import _extract_device_dtype
 
 __all__ = ["MotionBlurGenerator"]
@@ -45,9 +44,9 @@ class MotionBlurGenerator(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - ksize_factor (Tensor): element-wise kernel size factors with a shape of (B,).
-            - angle_factor (Tensor): element-wise angle factors with a shape of (B,).
-            - direction_factor (Tensor): element-wise direction factors with a shape of (B,).
+            - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
+            - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
+            - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -59,8 +58,8 @@ class MotionBlurGenerator(RandomGeneratorBase):
     def __init__(
         self,
         kernel_size: Union[int, Tuple[int, int]],
-        angle: Union[Tensor, float, Tuple[float, float]],
-        direction: Union[Tensor, float, Tuple[float, float]],
+        angle: Union[torch.Tensor, float, Tuple[float, float]],
+        direction: Union[torch.Tensor, float, Tuple[float, float]],
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
@@ -91,7 +90,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
         self.angle_sampler = UniformDistribution(angle[0], angle[1], validate_args=False)
         self.direction_sampler = UniformDistribution(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))

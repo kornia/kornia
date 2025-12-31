@@ -15,15 +15,15 @@
 # limitations under the License.
 #
 
-"""Module containing RANSAC modules."""
+"""nn.Module containing RANSAC modules."""
 
 import math
 from functools import partial
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Union
 
 import torch
+from torch import nn
 
-from kornia.core import Device, Module, Tensor, zeros
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry import (
     find_fundamental,
@@ -42,8 +42,8 @@ from kornia.geometry.homography import (
 __all__ = ["RANSAC"]
 
 
-class RANSAC(Module):
-    """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
+class RANSAC(nn.Module):
+    """nn.Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
 
     Args:
         model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
@@ -87,9 +87,9 @@ class RANSAC(Module):
         self.max_lo_iters = max_lo_iters
         self.model_type = model_type
 
-        self.error_fn: Callable[..., Tensor]
-        self.minimal_solver: Callable[..., Tensor]
-        self.polisher_solver: Callable[..., Tensor]
+        self.error_fn: Callable[..., torch.Tensor]
+        self.minimal_solver: Callable[..., torch.Tensor]
+        self.polisher_solver: Callable[..., torch.Tensor]
 
         if model_type == "homography":
             self.error_fn = oneway_transfer_error
@@ -114,7 +114,9 @@ class RANSAC(Module):
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
 
-    def sample(self, sample_size: int, pop_size: int, batch_size: int, device: Optional[Device] = None) -> Tensor:
+    def sample(
+        self, sample_size: int, pop_size: int, batch_size: int, device: Optional[Union[str, torch.device, None]] = None
+    ) -> torch.Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches.
 
         Yields the benefit of the parallel processing, esp. on GPU.
@@ -126,13 +128,13 @@ class RANSAC(Module):
             device: device to place the samples on.
 
         Returns:
-            Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
+            torch.Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
 
         """
         if device is None:
             device = torch.device("cpu")
-        rand = torch.rand(batch_size, pop_size, device=device)
-        _, out = rand.topk(k=sample_size, dim=1)
+        rand_tensor = torch.rand(batch_size, pop_size, device=device)
+        _, out = rand_tensor.topk(k=sample_size, dim=1)
         return out
 
     @staticmethod
@@ -156,7 +158,7 @@ class RANSAC(Module):
             return 1.0
         return math.log(1.0 - conf) / min(-eps, math.log(max(eps, 1.0 - math.pow(n_inl / num_tc, sample_size))))
 
-    def estimate_model_from_minsample(self, kp1: Tensor, kp2: Tensor) -> Tensor:
+    def estimate_model_from_minsample(self, kp1: torch.Tensor, kp2: torch.Tensor) -> torch.Tensor:
         """Estimate models from minimal samples.
 
         Args:
@@ -164,14 +166,16 @@ class RANSAC(Module):
             kp2: target keypoints with shape :math:`(batch_size, sample_size, 2)`.
 
         Returns:
-            Estimated models tensor.
+            Estimated models torch.tensor.
 
         """
         batch_size, sample_size = kp1.shape[:2]
         H = self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
         return H
 
-    def verify(self, kp1: Tensor, kp2: Tensor, models: Tensor, inl_th: float) -> Tuple[Tensor, Tensor, float]:
+    def verify(
+        self, kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float
+    ) -> Tuple[torch.Tensor, torch.Tensor, float]:
         """Verify models by computing inliers and selecting the best model.
 
         Args:
@@ -204,7 +208,7 @@ class RANSAC(Module):
         inliers_best = inl[best_model_idx]
         return model_best, inliers_best, best_model_score
 
-    def remove_bad_samples(self, kp1: Tensor, kp2: Tensor) -> Tuple[Tensor, Tensor]:
+    def remove_bad_samples(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Remove degenerate samples based on model-specific constraints.
 
         Args:
@@ -222,14 +226,14 @@ class RANSAC(Module):
             return kp1[mask], kp2[mask]
         return kp1, kp2
 
-    def remove_bad_models(self, models: Tensor) -> Tensor:
+    def remove_bad_models(self, models: torch.Tensor) -> torch.Tensor:
         """Remove degenerate models based on simple heuristics.
 
         Args:
             models: candidate models to filter.
 
         Returns:
-            Filtered models tensor.
+            Filtered models torch.tensor.
 
         """
         # ToDo: add more and better degenerate model rejection
@@ -238,7 +242,7 @@ class RANSAC(Module):
         mask = main_diagonal.abs().min(dim=1)[0] > 1e-4
         return models[mask]
 
-    def polish_model(self, kp1: Tensor, kp2: Tensor, inliers: Tensor) -> Tensor:
+    def polish_model(self, kp1: torch.Tensor, kp2: torch.Tensor, inliers: torch.Tensor) -> torch.Tensor:
         """Polish the model using inliers through local optimization.
 
         Args:
@@ -247,7 +251,7 @@ class RANSAC(Module):
             inliers: boolean mask indicating inlier correspondences.
 
         Returns:
-            Polished model tensor.
+            Polished model torch.tensor.
 
         """
         # TODO: Replace this with MAGSAC++ polisher
@@ -259,7 +263,7 @@ class RANSAC(Module):
         )
         return model
 
-    def validate_inputs(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> None:
+    def validate_inputs(self, kp1: torch.Tensor, kp2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> None:
         """Validate input tensors for shape and size requirements.
 
         Args:
@@ -289,7 +293,9 @@ class RANSAC(Module):
                     f" {kp2.shape}"
                 )
 
-    def forward(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def forward(
+        self, kp1: torch.Tensor, kp2: torch.Tensor, weights: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Call main forward method to execute the RANSAC algorithm.
 
         Args:
@@ -299,14 +305,14 @@ class RANSAC(Module):
 
         Returns:
             - Estimated model, shape of :math:`(1, 3, 3)`.
-            - The inlier/outlier mask, shape of :math:`(1, N)`, where N is number of input correspondences.
+            - The inlier/outlier mask, shape of :math:`(1, N)`, torch.where N is number of input correspondences.
 
         """
         self.validate_inputs(kp1, kp2, weights)
         best_score_total: float = float(self.minimal_sample_size)
         num_tc: int = len(kp1)
-        best_model_total = zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
-        inliers_best_total: Tensor = zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
+        best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
+        inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
         for i in range(self.max_iter):
             # Sample minimal samples in batch to estimate models
             idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, kp1.device)

@@ -17,11 +17,13 @@
 
 from __future__ import annotations
 
-from kornia.core import Module, Tensor
+import torch
+from torch import nn
+
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
-def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
+def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
     r"""Compute Total Variation according to [1].
 
     Args:
@@ -31,11 +33,11 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
          in the output, ``'sum'``: the output will be summed.
 
     Return:
-         a tensor with shape :math:`(*,)`.
+         a torch.tensor with shape :math:`(*,)`.
 
     Examples:
         >>> total_variation(torch.ones(4, 4))
-        tensor(0.)
+        torch.tensor(0.)
         >>> total_variation(torch.ones(2, 5, 3, 4, 4)).shape
         torch.Size([2, 5, 3])
 
@@ -49,8 +51,8 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
 
     """
     # TODO: here torchscript doesn't like KORNIA_CHECK_TYPE
-    if not isinstance(img, Tensor):
-        raise TypeError(f"Not a Tensor type. Got: {type(img)}")
+    if not isinstance(img, torch.Tensor):
+        raise TypeError(f"Not a torch.Tensor type. Got: {type(img)}")
 
     KORNIA_CHECK_SHAPE(img, ["*", "H", "W"])
     KORNIA_CHECK(reduction in ("mean", "sum"), f"Expected reduction to be one of 'mean'/'sum', but got '{reduction}'.")
@@ -78,7 +80,7 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
     return res1 + res2
 
 
-class TotalVariation(Module):
+class TotalVariation(nn.Module):
     r"""Compute the Total Variation according to [1].
 
     Shape:
@@ -89,7 +91,7 @@ class TotalVariation(Module):
         >>> tv = TotalVariation()
         >>> output = tv(torch.ones((2, 3, 4, 4), requires_grad=True))
         >>> output.data
-        tensor([[0., 0., 0.],
+        torch.tensor([[0., 0., 0.],
                 [0., 0., 0.]])
         >>> output.sum().backward()  # grad can be implicitly created only for scalar outputs
 
@@ -98,5 +100,5 @@ class TotalVariation(Module):
 
     """
 
-    def forward(self, img: Tensor) -> Tensor:
+    def forward(self, img: torch.Tensor) -> torch.Tensor:
         return total_variation(img)

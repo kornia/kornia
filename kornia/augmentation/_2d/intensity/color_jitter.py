@@ -22,7 +22,6 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import pi
-from kornia.core import Tensor
 from kornia.enhance import (
     adjust_brightness_accumulative,
     adjust_contrast_with_mean_subtraction,
@@ -32,7 +31,7 @@ from kornia.enhance import (
 
 
 class ColorJitter(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a tensor image.
+    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.tensor image.
 
     This implementation aligns PIL. Hence, the output is close to TorchVision. However, it does not
     follow the color theory and is not be actively maintained. Prefer using
@@ -65,7 +64,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         >>> inputs = torch.ones(1, 3, 3, 3)
         >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)
         >>> aug(inputs)
-        tensor([[[[0.9993, 0.9993, 0.9993],
+        torch.tensor([[[[0.9993, 0.9993, 0.9993],
                   [0.9993, 0.9993, 0.9993],
                   [0.9993, 0.9993, 0.9993]],
         <BLANKLINE>
@@ -82,16 +81,16 @@ class ColorJitter(IntensityAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 
     def __init__(
         self,
-        brightness: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        contrast: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        saturation: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        hue: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        brightness: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        contrast: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        saturation: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        hue: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.0,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -112,11 +111,11 @@ class ColorJitter(IntensityAugmentationBase2D):
 
     def apply_transform(
         self,
-        input: Tensor,
-        params: Dict[str, Tensor],
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-    ) -> Tensor:
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         transforms = [
             lambda img: (
                 self._brightness_fn(img, params["brightness_factor"])

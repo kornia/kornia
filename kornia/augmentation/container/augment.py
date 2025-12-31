@@ -19,12 +19,13 @@ import warnings
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 
 import torch
+from torch import nn
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
 from kornia.constants import DataKey, Resample
-from kornia.core import Module, Tensor
+from kornia.core import ImageSequential
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.utils import eye_like, is_autocast_enabled
@@ -44,7 +45,7 @@ _IMG_OPTIONS = {DataKey.INPUT, DataKey.IMAGE}
 _MSK_OPTIONS = {DataKey.MASK}
 _CLS_OPTIONS = {DataKey.CLASS, DataKey.LABEL}
 
-MaskDataType = Union[Tensor, List[Tensor]]
+MaskDataType = Union[torch.Tensor, List[torch.Tensor]]
 
 
 class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
@@ -113,7 +114,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         >>> # apply the exact augmentation again.
         >>> out_rep = aug_list(input, mask, bbox, points, params=aug_list._params)
         >>> [(o == o_rep).all() for o, o_rep in zip(out, out_rep)]
-        [tensor(True), tensor(True), tensor(True), tensor(True)]
+        [torch.tensor(True), torch.tensor(True), torch.tensor(True), torch.tensor(True)]
         >>> # inverse the augmentations
         >>> out_inv = aug_list.inverse(*out)
         >>> [o.shape for o in out_inv]
@@ -234,8 +235,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         transformation_matrix_mode: str = "silent",
         extra_args: Optional[Dict[DataKey, Dict[str, Any]]] = None,
     ) -> None:
-        self._transform_matrix: Optional[Tensor]
-        self._transform_matrices: List[Optional[Tensor]] = []
+        self._transform_matrix: Optional[torch.Tensor]
+        self._transform_matrices: List[Optional[torch.Tensor]] = []
 
         super().__init__(
             *args,
@@ -287,10 +288,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self._reset_transform_matrix_state()
         return super().clear_state()
 
-    def _update_transform_matrix_for_valid_op(self, module: Module) -> None:
+    def _update_transform_matrix_for_valid_op(self, module: nn.Module) -> None:
         self._transform_matrices.append(module.transform_matrix)
 
-    def identity_matrix(self, input: Tensor) -> Tensor:
+    def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return identity matrix."""
         if self.contains_3d_augmentation:
             return eye_like(4, input)
@@ -364,15 +365,15 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
-                arg = cast(Tensor, arg)
+                arg = cast(torch.Tensor, arg)
                 self.input_dtype = arg.dtype
                 inp.append(arg)
             elif DataKey.get(dcate) in _MSK_OPTIONS:
                 if isinstance(inp, list):
-                    arg = cast(List[Tensor], arg)
+                    arg = cast(List[torch.Tensor], arg)
                     self.mask_dtype = arg[0].dtype
                 else:
-                    arg = cast(Tensor, arg)
+                    arg = cast(torch.Tensor, arg)
                     self.mask_dtype = arg.dtype
                 inp.append(self._preproc_mask(arg))
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
@@ -391,7 +392,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         out: List[DataType] = []
         for in_arg, out_arg, dcate in zip(in_args, out_args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
-                # It is tensor type already.
+                # It is torch.tensor type already.
                 out.append(out_arg)
                 # TODO: may add the float to integer (for masks), etc.
             elif DataKey.get(dcate) in _MSK_OPTIONS:
@@ -400,7 +401,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 _out_k = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
-                if is_autocast_enabled() and isinstance(in_arg, (Tensor, Keypoints)):
+                if is_autocast_enabled() and isinstance(in_arg, (torch.Tensor, Keypoints)):
                     if isinstance(_out_k, list):
                         _out_k = [i.type(in_arg.dtype) for i in _out_k]
                     else:
@@ -409,7 +410,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             elif DataKey.get(dcate) in _BOXES_OPTIONS:
                 _out_b = self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate)
-                if is_autocast_enabled() and isinstance(in_arg, (Tensor, Boxes)):
+                if is_autocast_enabled() and isinstance(in_arg, (torch.Tensor, Boxes)):
                     if isinstance(_out_b, list):
                         _out_b = [i.type(in_arg.dtype) for i in _out_b]
                     else:
@@ -448,8 +449,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             # image data must exist if params is not provided.
             if DataKey.INPUT in self.transform_op.data_keys:
                 inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
-                if not isinstance(inp, (Tensor,)):
-                    raise ValueError(f"`INPUT` should be a tensor but `{type(inp)}` received.")
+                if not isinstance(inp, (torch.Tensor,)):
+                    raise ValueError(f"`INPUT` should be a torch.tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
                 if self.contains_video_sequential or self.contains_3d_augmentation:
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))
@@ -459,7 +460,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
-        outputs: Union[Tensor, List[DataType]] = in_args
+        outputs: Union[torch.Tensor, List[DataType]] = in_args
         for param in params:
             module = self.get_submodule(param.name)
             outputs = self.transform_op.transform(  # type: ignore
@@ -491,7 +492,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self,
         *inputs: Any,
         input_names_to_handle: Optional[List[Any]] = None,
-        output_type: str = "tensor",
+        output_type: str = "torch.tensor",
         **kwargs: Any,
     ) -> Any:
         """Overwrite the __call__ function to handle various inputs.
@@ -499,7 +500,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         Args:
             inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
-            output_type: Desired output type ('tensor', 'numpy', or 'pil').
+            output_type: Desired output type ('torch.tensor', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
         Returns:
@@ -525,7 +526,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if len(data_keys) > 1 and DataKey.INPUT in data_keys:
                 # NOTE: we may update it later for more supports of drawing boxes, etc.
                 idx = data_keys.index(DataKey.INPUT)
-                if output_type == "tensor":
+                if output_type == "torch.tensor":
                     self._output_image = _output_image
                     if isinstance(_output_image, dict):
                         self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
@@ -619,15 +620,17 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if isinstance(arg, (Boxes,)):
             return arg
         elif self.contains_video_sequential:
-            arg = cast(Tensor, arg)
+            arg = cast(torch.Tensor, arg)
             return VideoBoxes.from_tensor(arg)
         elif self.contains_3d_augmentation:
             raise NotImplementedError("3D box handlers are not yet supported.")
         else:
-            arg = cast(Tensor, arg)
+            arg = cast(torch.Tensor, arg)
             return Boxes.from_tensor(arg, mode=mode)
 
-    def _postproc_boxes(self, in_arg: DataType, out_arg: Boxes, dcate: DataKey) -> Union[Tensor, List[Tensor], Boxes]:
+    def _postproc_boxes(
+        self, in_arg: DataType, out_arg: Boxes, dcate: DataKey
+    ) -> Union[torch.Tensor, List[torch.Tensor], Boxes]:
         if DataKey.get(dcate) in [DataKey.BBOX]:
             mode = "vertices_plus"
         elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
@@ -647,7 +650,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         dtype = None
 
         if self.contains_video_sequential:
-            arg = cast(Union[Tensor, List[Tensor]], arg)
+            arg = cast(Union[torch.Tensor, List[torch.Tensor]], arg)
             if isinstance(arg, list):
                 if not torch.is_floating_point(arg[0]):
                     dtype = arg[0].dtype
@@ -662,17 +665,17 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         elif isinstance(arg, (Keypoints,)):
             return arg
         else:
-            arg = cast(Tensor, arg)
+            arg = cast(torch.Tensor, arg)
             if not torch.is_floating_point(arg):
                 dtype = arg.dtype
                 arg = arg.float()
-            # TODO: Add List[Tensor] in the future.
+            # TODO: Add List[torch.Tensor] in the future.
             result = Keypoints.from_tensor(arg)
             return result.type(dtype) if dtype else result
 
     def _postproc_keypoint(
         self, in_arg: DataType, out_arg: Keypoints, dcate: DataKey
-    ) -> Union[Tensor, List[Tensor], Keypoints]:
+    ) -> Union[torch.Tensor, List[torch.Tensor], Keypoints]:
         if isinstance(in_arg, (Keypoints,)):
             return out_arg
         else:

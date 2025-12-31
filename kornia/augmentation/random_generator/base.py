@@ -15,13 +15,13 @@
 # limitations under the License.
 #
 
-from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar
+from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar, Union
 
 import torch
+from torch import nn
 from torch.distributions import Distribution, Uniform
 
 from kornia.augmentation.utils.helpers import MultiprocessWrapper
-from kornia.core import Device, Module, Tensor
 
 T = TypeVar("T")
 
@@ -35,10 +35,10 @@ class _PostInitInjectionMetaClass(type):
         return obj
 
 
-class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
+class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
     """Base class for generating random augmentation parameters."""
 
-    device: Optional[Device] = None
+    device: Optional[Union[str, torch.device, None]] = None
     dtype: torch.dtype
 
     def __init__(self) -> None:
@@ -74,7 +74,7 @@ class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         raise NotImplementedError
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         raise NotImplementedError
 
 
@@ -95,32 +95,32 @@ class DistributionWithMapper(Distribution):
         >>> dist = DistributionWithMapper(Normal(0., 1.,), map_fn=None)
         >>> _ = torch.manual_seed(0)
         >>> dist.rsample((8,))
-        tensor([ 1.5410, -0.2934, -2.1788,  0.5684, -1.0845, -1.3986,  0.4033,  0.8380])
+        torch.tensor([ 1.5410, -0.2934, -2.1788,  0.5684, -1.0845, -1.3986,  0.4033,  0.8380])
         >>> # with sigmoid mapper
         >>> dist = DistributionWithMapper(Normal(0., 1.,), map_fn=nn.Sigmoid())
         >>> _ = torch.manual_seed(0)
         >>> dist.rsample((8,))
-        tensor([0.8236, 0.4272, 0.1017, 0.6384, 0.2527, 0.1980, 0.5995, 0.6980])
+        torch.tensor([0.8236, 0.4272, 0.1017, 0.6384, 0.2527, 0.1980, 0.5995, 0.6980])
 
     """
 
-    def __init__(self, dist: Distribution, map_fn: Optional[Callable[[Tensor], Tensor]] = None) -> None:
+    def __init__(self, dist: Distribution, map_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None) -> None:
         self.dist = dist
         self.map_fn = map_fn
 
-    def rsample(self, sample_shape: Tuple[int, ...]) -> Tensor:  # type: ignore[override]
+    def rsample(self, sample_shape: Tuple[int, ...]) -> torch.Tensor:  # type: ignore[override]
         out = self.dist.rsample(torch.Size(sample_shape))
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
-    def sample(self, sample_shape: Tuple[int, ...]) -> Tensor:  # type: ignore[override]
+    def sample(self, sample_shape: Tuple[int, ...]) -> torch.Tensor:  # type: ignore[override]
         out = self.dist.sample(torch.Size(sample_shape))
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
-    def sample_n(self, n: int) -> Tensor:
+    def sample_n(self, n: int) -> torch.Tensor:
         out = self.dist.sample_n(n)
         if self.map_fn is not None:
             out = self.map_fn(out)

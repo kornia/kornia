@@ -15,13 +15,12 @@
 # limitations under the License.
 #
 
-"""Module containing functionalities for the Essential matrix."""
+"""nn.Module containing functionalities for the Essential matrix."""
 
 from typing import Optional, Tuple
 
 import torch
 
-from kornia.core import eye, ones_like, stack, where, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.geometry import solvers
 from kornia.utils import eye_like, vec_like
@@ -50,9 +49,9 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     and the solver implemented referred to [@barath2020magsac++][@wei2023generalized][@wang2023vggsfm].
 
     Args:
-        points1: A set of carlibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
-        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        points1: A set of carlibrated points in the first image with a torch.tensor shape :math:`(B, N, 2), N>=8`.
+        points2: A set of points in the second image with a torch.tensor shape :math:`(B, N, 2), N>=8`.
+        weights: torch.Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
 
     Returns:
         the computed essential matrix with shape :math:`(B, 3, 3)`.
@@ -67,13 +66,13 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     batch_size, _, _ = points1.shape
     x1, y1 = torch.chunk(points1, dim=-1, chunks=2)  # Bx1xN
     x2, y2 = torch.chunk(points2, dim=-1, chunks=2)  # Bx1xN
-    ones = ones_like(x1)
+    ones_tensor = torch.ones_like(x1)
 
     # build the equation system and find the null space.
     # https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf
     # [x * x', x * y', x, y * x', y * y', y, x', y', 1]
     # BxNx9
-    X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones], dim=-1)
+    X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones_tensor], dim=-1)
 
     # apply the weights to the linear system
     if weights is None:
@@ -115,8 +114,8 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     null_ = V[:, :, -4:]  # the last four rows
     nullSpace = V.transpose(-1, -2)[:, -4:, :]
 
-    coeffs = zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
-    d = zeros(batch_size, 60, device=null_.device, dtype=null_.dtype)
+    coeffs = torch.zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
+    d = torch.zeros(batch_size, 60, device=null_.device, dtype=null_.dtype)
 
     # Determinant constraint
     coeffs[:, 9] = (
@@ -167,7 +166,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
 
     b = coeffs[:, :, 10:]
     singular_filter = torch.linalg.matrix_rank(coeffs[:, :, :10]) >= torch.max(
-        torch.linalg.matrix_rank(coeffs), ones_like(torch.linalg.matrix_rank(coeffs[:, :, :10])) * 10
+        torch.linalg.matrix_rank(coeffs), torch.ones_like(torch.linalg.matrix_rank(coeffs[:, :, :10])) * 10
     )
 
     # check if there is no solution
@@ -181,7 +180,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     # check the batch size after singular filter, for batch operation afterwards
     batch_size_filtered = coeffs_.shape[0]
 
-    A = zeros(coeffs_.shape[0], 3, 13, device=coeffs_.device, dtype=coeffs_.dtype)
+    A = torch.zeros(coeffs_.shape[0], 3, 13, device=coeffs_.device, dtype=coeffs_.dtype)
 
     for i in range(3):
         A[:, i, 0] = 0.0
@@ -200,8 +199,8 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     # A: Bx3x13
     # nullSpace: Bx4x9
     # companion matrices to solve the polynomial, in batch
-    C = zeros((batch_size_filtered, 10, 10), device=cs.device, dtype=cs.dtype)
-    eye_mat = eye(C[0, 0:-1, 0:-1].shape[0], device=cs.device, dtype=cs.dtype)
+    C = torch.zeros((batch_size_filtered, 10, 10), device=cs.device, dtype=cs.dtype)
+    eye_mat = torch.eye(C[0, 0:-1, 0:-1].shape[0], device=cs.device, dtype=cs.dtype)
     C[:, 0:-1, 1:] = eye_mat
 
     cs_de = cs[:, -1].unsqueeze(-1)
@@ -212,7 +211,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
 
     roots_unsqu = roots.unsqueeze(1)
 
-    Bs = stack(
+    Bs = torch.stack(
         (
             A[:, :3, :1] * (roots_unsqu**3)
             + A[:, :3, 1:2] * roots_unsqu.square()
@@ -318,14 +317,14 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     U, _, V = _torch_svd_cast(E_mat)
     Vt = V.transpose(-2, -1)
 
-    mask = ones_like(E_mat)
+    mask = torch.ones_like(E_mat)
     mask[..., -1:] *= -1.0  # fill last column with negative values
 
     maskt = mask.transpose(-2, -1)
 
     # avoid singularities
-    U = where((torch.det(U) < 0.0)[..., None, None], U * mask, U)
-    Vt = where((torch.det(Vt) < 0.0)[..., None, None], Vt * maskt, Vt)
+    U = torch.where((torch.det(U) < 0.0)[..., None, None], U * mask, U)
+    Vt = torch.where((torch.det(Vt) < 0.0)[..., None, None], Vt * maskt, Vt)
 
     W = cross_product_matrix(torch.tensor([[0.0, 0.0, 1.0]]).type_as(E_mat))
     W[..., 2, 2] += 1.0
@@ -459,8 +458,8 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     R1, R2, t = decompose_essential_matrix(E_mat)
 
     # compbine and returns the four possible solutions
-    Rs = stack([R1, R1, R2, R2], dim=-3)
-    Ts = stack([t, -t, t, -t], dim=-3)
+    Rs = torch.stack([R1, R1, R2, R2], dim=-3)
+    Ts = torch.stack([t, -t, t, -t], dim=-3)
 
     return Rs, Ts
 
@@ -610,9 +609,9 @@ def find_essential(
     r"""Find essential matrices.
 
     Args:
-         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
-         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-         weights: Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.
+         points1: A set of points in the first image with a torch.tensor shape :math:`(B, N, 2), N>=5`.
+         points2: A set of points in the second image with a torch.tensor shape :math:`(B, N, 2), N>=5`.
+         weights: torch.Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.
 
     Returns:
          the computed essential matrices with shape :math:`(B, 10, 3, 3)`.

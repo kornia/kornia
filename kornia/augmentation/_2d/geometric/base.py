@@ -17,9 +17,10 @@
 
 from typing import Any, Dict, Optional, Tuple
 
+import torch
+
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.constants import Resample
-from kornia.core import Tensor, as_tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.utils.helpers import _torch_inverse_cast
@@ -41,21 +42,24 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
     def inverse_transform(
         self,
-        input: Tensor,
+        input: torch.Tensor,
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         """By default, the exact transformation as ``apply_transform`` will be used."""
         raise NotImplementedError
 
-    def compute_inverse_transformation(self, transform: Tensor) -> Tensor:
+    def compute_inverse_transformation(self, transform: torch.Tensor) -> torch.Tensor:
         """Compute the inverse transform of given transformation matrices."""
         return _torch_inverse_cast(transform)
 
     def get_transformation_matrix(
-        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, flags: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Optional[Dict[str, torch.Tensor]] = None,
+        flags: Optional[Dict[str, Any]] = None,
+    ) -> torch.Tensor:
         """Obtain transformation matrices.
 
         Return the current transformation matrix if existed. Generate a new one, otherwise.
@@ -68,17 +72,25 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             transform = self.generate_transformation_matrix(input, params, flags)
         else:
             transform = self.transform_matrix
-        return as_tensor(transform, device=input.device, dtype=input.dtype)
+        return torch.as_tensor(transform, device=input.device, dtype=input.dtype)
 
     def apply_non_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Process masks corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Process masks corresponding to the inputs that are transformed.
 
         Note:
@@ -95,13 +107,21 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         return output
 
     def apply_non_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Boxes,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
     ) -> Boxes:
         """Process boxes corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Boxes,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
     ) -> Boxes:
         """Process boxes corresponding to the inputs that are transformed."""
         if transform is None:
@@ -112,13 +132,21 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         return input.transform_boxes_(transform)
 
     def apply_non_transform_keypoint(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Keypoints,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_keypoint(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Keypoints,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are transformed."""
         if transform is None:
@@ -129,25 +157,33 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         return input.transform_keypoints_(transform)
 
     def apply_non_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Process class tags corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Process class tags corresponding to the inputs that are transformed."""
         return input
 
     def inverse_inputs(
         self,
-        input: Tensor,
-        params: Dict[str, Tensor],
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
         batch_prob = params["batch_prob"]
@@ -180,12 +216,12 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
     def inverse_masks(
         self,
-        input: Tensor,
-        params: Dict[str, Tensor],
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         resample_method: Optional[Resample] = None
         if "resample" in flags:
             resample_method = flags["resample"]
@@ -198,9 +234,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     def inverse_boxes(
         self,
         input: Boxes,
-        params: Dict[str, Tensor],
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
     ) -> Boxes:
         output = input.clone()
@@ -208,7 +244,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
-            raise RuntimeError("`transform` has to be a tensor. Got None.")
+            raise RuntimeError("`transform` has to be a torch.tensor. Got None.")
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -228,15 +264,15 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     def inverse_keypoints(
         self,
         input: Keypoints,
-        params: Dict[str, Tensor],
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
     ) -> Keypoints:
         """Inverse the transformation on keypoints.
 
         Args:
-            input: input keypoints tensor or object.
+            input: input keypoints torch.tensor or object.
             params: the corresponding parameters for an operation.
             flags: static parameters.
             transform: the inverse transformation matrix
@@ -248,7 +284,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
-            raise RuntimeError("`transform` has to be a tensor. Got None.")
+            raise RuntimeError("`transform` has to be a torch.tensor. Got None.")
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -267,19 +303,21 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
     def inverse_classes(
         self,
-        input: Tensor,
-        params: Dict[str, Tensor],
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         return input
 
-    def inverse(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
+    def inverse(
+        self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None, **kwargs: Any
+    ) -> torch.Tensor:
         """Perform inverse operations.
 
         Args:
-            input: the input tensor.
+            input: the input torch.tensor.
             params: the corresponding parameters for an operation.
                 If None, a new parameter suite will be generated.
             **kwargs: key-value pairs to override the parameters and flags.

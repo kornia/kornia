@@ -21,8 +21,8 @@
 from typing import Optional
 
 import torch
+from torch import nn
 
-from kornia.core import Module, Tensor, stack, where
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.core.tensor_wrapper import unwrap, wrap  # type: ignore[attr-defined]
 from kornia.geometry.linalg import batched_dot_product
@@ -32,12 +32,12 @@ from kornia.utils.helpers import _torch_svd_cast
 __all__ = ["Hyperplane", "fit_plane"]
 
 
-def normalized(v: Tensor, eps: float = 1e-6) -> Tensor:
+def normalized(v: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     norm_sq = (v * v).sum(dim=-1, keepdim=True) + eps
     return v * norm_sq.rsqrt()
 
 
-class Hyperplane(Module):
+class Hyperplane(nn.Module):
     def __init__(self, n: Vector3, d: Scalar) -> None:
         super().__init__()
         KORNIA_CHECK_TYPE(n, Vector3)
@@ -68,7 +68,7 @@ class Hyperplane(Module):
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L145
     # TODO: tests
     def signed_distance(self, p: Vector3) -> Scalar:
-        KORNIA_CHECK(isinstance(p, (Vector3, Tensor)))
+        KORNIA_CHECK(isinstance(p, (Vector3, torch.Tensor)))
         return self.normal.dot(p) + self.offset
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
@@ -90,7 +90,7 @@ class Hyperplane(Module):
         return Hyperplane(normal, Scalar(offset))
 
     @classmethod
-    def through(cls, p0: Tensor, p1: Tensor, p2: Optional[Tensor] = None) -> "Hyperplane":
+    def through(cls, p0: torch.Tensor, p1: torch.Tensor, p2: Optional[torch.Tensor] = None) -> "Hyperplane":
         # 2d case
         if p2 is None:
             # TODO: improve tests
@@ -109,14 +109,14 @@ class Hyperplane(Module):
         norm = normal.norm(-1)
 
         # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L108
-        def compute_normal_svd(v0: Tensor, v1: Tensor) -> "Vector3":
-            # NOTE: for reason TensorWrapper does not stack well
-            m = stack((unwrap(v0), unwrap(v1)), -2)  # Bx2x3
+        def compute_normal_svd(v0: torch.Tensor, v1: torch.Tensor) -> "Vector3":
+            # NOTE: for reason torch.TensorWrapper does not stack well
+            m = torch.stack((unwrap(v0), unwrap(v1)), -2)  # Bx2x3
             _, _, V = _torch_svd_cast(m)  # kornia solution lies in the last row
             return wrap(V[..., :, -1], Vector3)  # Bx3
 
         normal_mask = norm <= v0.norm(-1) * v1.norm(-1) * 1e-6
-        normal = where(normal_mask, compute_normal_svd(v0, v1).data, normal / (norm + 1e-6))
+        normal = torch.where(normal_mask, compute_normal_svd(v0, v1).data, normal / (norm + 1e-6))
         offset = -batched_dot_product(p0, normal)
 
         return Hyperplane(wrap(normal, Vector3), wrap(offset, Scalar))

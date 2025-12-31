@@ -21,19 +21,19 @@ import math
 from typing import Any
 
 import torch
+from torch import nn
 
-from kornia.core import Module, Tensor
 from kornia.geometry.subpix import dsnt
 from kornia.utils.grid import create_meshgrid
 
 
-class FineMatching(Module):
+class FineMatching(nn.Module):
     """FineMatching with s2d paradigm."""
 
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, feat_f0: Tensor, feat_f1: Tensor, data: dict[str, Any]) -> None:
+    def forward(self, feat_f0: torch.Tensor, feat_f1: torch.Tensor, data: dict[str, Any]) -> None:
         """Run forward.
 
         Args:
@@ -69,7 +69,7 @@ class FineMatching(Module):
         feat_f0_picked = feat_f0[:, WW // 2, :]
         sim_matrix = torch.einsum("mc,mrc->mr", feat_f0_picked, feat_f1)
         softmax_temp = 1.0 / C**0.5
-        heatmap = torch.softmax(softmax_temp * sim_matrix, dim=1).view(-1, W, W)
+        heatmap = torch.F.softmax(softmax_temp * sim_matrix, dim=1).view(-1, W, W)
 
         # compute coordinates from heatmap
         coords_normalized = dsnt.spatial_expectation2d(heatmap[None], True)[0]  # [M, 2]
@@ -88,7 +88,7 @@ class FineMatching(Module):
         self.get_fine_match(coords_normalized, data)
 
     @torch.no_grad()
-    def get_fine_match(self, coords_normed: Tensor, data: dict[str, Any]) -> None:
+    def get_fine_match(self, coords_normed: torch.Tensor, data: dict[str, Any]) -> None:
         W, _, _, scale = self.W, self.WW, self.C, self.scale
 
         # mkpts0_f and mkpts1_f

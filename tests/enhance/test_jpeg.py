@@ -92,7 +92,7 @@ class TestDiffJPEG(BaseTester):
             B = 2
             jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(1904.0, jpeg_quality)
-        assert "Input input type is not a Tensor" in str(errinfo.value)
+        assert "Input input type is not a torch.Tensor" in str(errinfo.value)
 
         from kornia.core.exceptions import TypeCheckError
 
