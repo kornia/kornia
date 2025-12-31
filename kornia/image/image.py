@@ -67,7 +67,7 @@ class Image:
         >>> assert img.channels == 3
 
         >>> # from a numpy array (like opencv)
-        >>> data = np.torch.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
+        >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
         >>> img = Image.from_numpy(data, color_space=ColorSpace.RGB)
         >>> assert img.channels == 3
         >>> assert img.width == 5
@@ -287,7 +287,7 @@ class Image:
             channels_order: what dimension the channels are in the image torch.tensor.
 
         Example:
-            >>> data = np.torch.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
+            >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
             >>> img = Image.from_numpy(data, color_space=ColorSpace.RGB)
             >>> assert img.channels == 3
             >>> assert img.width == 5
@@ -324,7 +324,7 @@ class Image:
             data: a DLPack capsule from numpy, tvm or jax.
 
         Example:
-            >>> x = np.torch.ones((4, 5, 3))
+            >>> x = np.ones((4, 5, 3))
             >>> img = Image.from_dlpack(x.__dlpack__())
 
         """
@@ -374,7 +374,7 @@ class Image:
             file_path: the path to the file to write the image to.
 
         Example:
-            >>> data = np.torch.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
+            >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
             >>> img = Image.from_numpy(data)
             >>> img.write("test.jpg")
 

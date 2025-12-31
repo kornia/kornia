@@ -279,7 +279,7 @@ def rotate(
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
-        >>> angle = tensor([90.])
+        >>> angle = torch.tensor([90.])
         >>> out = rotate(img, angle)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
@@ -405,7 +405,7 @@ def translate(
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
-        >>> translation = tensor([[1., 0.]])
+        >>> translation = torch.tensor([[1., 0.]])
         >>> out = translate(img, translation)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
@@ -459,7 +459,7 @@ def scale(
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
-        >>> scale_factor = tensor([[2., 2.]])
+        >>> scale_factor = torch.tensor([[2., 2.]])
         >>> out = scale(img, scale_factor)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
@@ -516,7 +516,7 @@ def shear(
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
-        >>> shear_factor = tensor([[0.5, 0.0]])
+        >>> shear_factor = torch.tensor([[0.5, 0.0]])
         >>> out = shear(img, shear_factor)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
@@ -932,7 +932,7 @@ class Rotate(nn.Module):
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
-        >>> angle = tensor([90.])
+        >>> angle = torch.tensor([90.])
         >>> out = Rotate(angle)(img)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
@@ -976,7 +976,7 @@ class Translate(nn.Module):
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
-        >>> translation = tensor([[1., 0.]])
+        >>> translation = torch.tensor([[1., 0.]])
         >>> out = Translate(translation)(img)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
@@ -1022,7 +1022,7 @@ class Scale(nn.Module):
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
-        >>> scale_factor = tensor([[2., 2.]])
+        >>> scale_factor = torch.tensor([[2., 2.]])
         >>> out = Scale(scale_factor)(img)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
@@ -1066,7 +1066,7 @@ class Shear(nn.Module):
 
     Example:
         >>> img = torch.rand(1, 3, 4, 4)
-        >>> shear_factor = tensor([[0.5, 0.0]])
+        >>> shear_factor = torch.tensor([[0.5, 0.0]])
         >>> out = Shear(shear_factor)(img)
         >>> print(out.shape)
         torch.Size([1, 3, 4, 4])
