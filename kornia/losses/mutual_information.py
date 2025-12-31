@@ -74,6 +74,8 @@ class EntropyBasedLossFromRef(torch.nn.Module):
         self.num_bins = num_bins
         self.kernel_function = kernel_function
         self.window_radius = window_radius
+        self.bin_centers = torch.arange(self.num_bins, device=self.signal.device)
+
         self.eps = torch.finfo(self.signal.dtype).eps
 
     def _compute_joint_histogram(
@@ -89,10 +91,8 @@ class EntropyBasedLossFromRef(torch.nn.Module):
             raise ValueError(f"The two signals have incompatible shapes: {other_signal.shape} and {self.signal}.")
         other_signal = _normalize_signal(other_signal, num_bins=self.num_bins)
 
-        bin_centers = torch.arange(self.num_bins, device=self.signal.device)
-
-        diff_1 = bin_centers.unsqueeze(-1) - self.signal.unsqueeze(-2)
-        diff_2 = bin_centers.unsqueeze(-1) - other_signal.unsqueeze(-2)
+        diff_1 = self.bin_centers.unsqueeze(-1) - self.signal.unsqueeze(-2)
+        diff_2 = self.bin_centers.unsqueeze(-1) - other_signal.unsqueeze(-2)
 
         vals_1 = self.kernel_function(diff_1, window_radius=self.window_radius)
         vals_2 = self.kernel_function(diff_2, window_radius=self.window_radius)
