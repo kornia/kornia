@@ -106,7 +106,8 @@ class Attention(nn.Module):
         qkv = self.to_qkv(x).chunk(3, dim=-1)
         q, k, v = tuple(t.view(t.shape[0], t.shape[1], self.heads, -1).transpose(1, 2) for t in qkv)
 
-        out = F.scaled_dot_product_attention(q, k, v, dropout_p=self.dropout.p if self.training else 0.0)
+        dropout_p = self.dropout.p if self.training and self.dropout.p > 0.0 else 0.0
+        out = F.scaled_dot_product_attention(q, k, v, dropout_p=dropout_p)
         out = out.transpose(1, 2).contiguous().view(x.shape[0], x.shape[1], -1)
         return self.to_out(out)
 

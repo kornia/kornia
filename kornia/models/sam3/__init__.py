@@ -24,6 +24,6 @@ capability.
 
 from __future__ import annotations
 
-from kornia.models.sam3.architecture import ImageEncoderHiera
+from .architecture import ImageEncoderHiera
 
 __all__ = ["ImageEncoderHiera"]

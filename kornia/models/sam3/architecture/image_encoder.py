@@ -26,7 +26,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 from .common import Attention, MLPBlock
 
@@ -62,8 +62,15 @@ class PatchEmbedding(nn.Module):
 
         Returns:
             Tensor of shape (B, num_patches, embed_dim).
+
+        Raises:
+            ValueError: If image dimensions are not divisible by patch_size.
         """
         KORNIA_CHECK_SHAPE(x, ["B", "C", "H", "W"])
+        KORNIA_CHECK(
+            x.shape[2] % self.patch_size == 0 and x.shape[3] % self.patch_size == 0,
+            f"Image dimensions must be divisible by patch_size={self.patch_size}, got H={x.shape[2]}, W={x.shape[3]}",
+        )
         x = self.proj(x)  # (B, embed_dim, H//patch_size, W//patch_size)
         x = x.flatten(2).transpose(1, 2)  # (B, H*W, embed_dim)
         x = self.norm(x)
@@ -161,10 +168,13 @@ class ImageEncoderHiera(nn.Module):
         """Forward pass of the image encoder.
 
         Args:
-            x: Input tensor of shape (B, 3, H, W) where H, W should match img_size.
+            x: Input tensor of shape (B, C, H, W) where C should match in_channels and H, W should match img_size.
 
         Returns:
             Tensor of shape (B, num_patches, embed_dim) containing the encoded features.
+
+        Raises:
+            ValueError: If input channels don't match in_channels or image size doesn't match img_size.
 
         Example:
             >>> encoder = ImageEncoderHiera(img_size=1024, patch_size=16, embed_dim=768)
@@ -173,7 +183,12 @@ class ImageEncoderHiera(nn.Module):
             >>> features.shape
             torch.Size([1, 4096, 768])
         """
-        KORNIA_CHECK_SHAPE(x, ["B", "3", "H", "W"])
+        expected_channels = self.patch_embed.proj.in_channels
+        KORNIA_CHECK_SHAPE(x, ["B", str(expected_channels), "H", "W"])
+        KORNIA_CHECK(
+            x.shape[2] == self.img_size and x.shape[3] == self.img_size,
+            f"Input image size must be {self.img_size}x{self.img_size}, got {x.shape[2]}x{x.shape[3]}",
+        )
 
         # Patch embedding
         x = self.patch_embed(x)  # (B, num_patches, embed_dim)
@@ -198,8 +213,19 @@ class ImageEncoderHiera(nn.Module):
 
         Returns:
             Output tensor shape (B, num_patches, embed_dim).
+
+        Raises:
+            ValueError: If input_shape doesn't have 4 dimensions or dimensions are not divisible by patch_size.
         """
+        KORNIA_CHECK(
+            len(input_shape) == 4,
+            f"Input shape must have 4 dimensions (B, C, H, W), got {len(input_shape)}",
+        )
         B, _, H, W = input_shape
+        KORNIA_CHECK(
+            H % self.patch_size == 0 and W % self.patch_size == 0,
+            f"Image dimensions must be divisible by patch_size={self.patch_size}, got H={H}, W={W}",
+        )
         num_patches = (H // self.patch_size) * (W // self.patch_size)
         return (B, num_patches, self.embed_dim)
 
