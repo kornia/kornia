@@ -106,8 +106,8 @@ class TestParamValidation:
             ((-10, 2), {}, ValueError, None),
             (("invalid", 2), {}, TypeError, None),
             ((torch.rand(2, 3), 2), {}, ValueError, "Degrees must be a"),
-            (([1, 2, 3], 2), {}, TypeError, "If not pass a tensor"),
-            ((["a", 1.0], 2), {}, TypeError, "If not pass a tensor"),
+            (([1, 2, 3], 2), {}, TypeError, "If not pass a torch.tensor"),
+            ((["a", 1.0], 2), {}, TypeError, "If not pass a torch.tensor"),
         ],
     )
     def test_tuple_range_reader_errors(self, args, kwargs, expected_exception, match_msg):

@@ -58,6 +58,9 @@ class ImageModuleMixIn:
             Callable: Decorated function with converted input and output types.
 
         """
+        # Ensure output_type has a valid default
+        if not output_type or output_type not in ("tensor", "numpy", "pil"):
+            output_type = "tensor"
 
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
