@@ -44,7 +44,7 @@ class RandomDepthicalFlip3D(GeometricAugmentationBase3D):
 
     Note:
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
+        Additionally, this function accepts another transformation torch.tensor(:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
@@ -52,7 +52,7 @@ class RandomDepthicalFlip3D(GeometricAugmentationBase3D):
         >>> x = torch.eye(3).repeat(3, 1, 1)
         >>> seq = RandomDepthicalFlip3D(p=1.0)
         >>> seq(x), seq.transform_matrix
-        (tensor([[[[[1., 0., 0.],
+        (torch.tensor([[[[[1., 0., 0.],
                    [0., 1., 0.],
                    [0., 0., 1.]],
         <BLANKLINE>
@@ -62,7 +62,7 @@ class RandomDepthicalFlip3D(GeometricAugmentationBase3D):
         <BLANKLINE>
                   [[1., 0., 0.],
                    [0., 1., 0.],
-                   [0., 0., 1.]]]]]), tensor([[[ 1.,  0.,  0.,  0.],
+                   [0., 0., 1.]]]]]), torch.tensor([[[ 1.,  0.,  0.,  0.],
                  [ 0.,  1.,  0.,  0.],
                  [ 0.,  0., -1.,  2.],
                  [ 0.,  0.,  0.,  1.]]]))
@@ -71,7 +71,7 @@ class RandomDepthicalFlip3D(GeometricAugmentationBase3D):
         >>> input = torch.rand(1, 3, 32, 32, 32)
         >>> aug = RandomDepthicalFlip3D(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        tensor(True)
+        torch.tensor(True)
 
     """
 

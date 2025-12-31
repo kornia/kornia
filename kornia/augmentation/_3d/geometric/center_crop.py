@@ -52,7 +52,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn(1, 1, 2, 4, 6)
         >>> inputs
-        torch.tensor([[[[[-1.1258, -1.1524, -0.2506, -0.4339,  0.8487,  0.6920],
+        tensor([[[[[-1.1258, -1.1524, -0.2506, -0.4339,  0.8487,  0.6920],
                    [-0.3160, -2.1152,  0.3223, -1.2633,  0.3500,  0.3081],
                    [ 0.1198,  1.2377,  1.1168, -0.2473, -1.3527, -1.6959],
                    [ 0.5667,  0.7935,  0.5988, -1.5551, -0.3414,  1.8530]],
@@ -63,7 +63,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
                    [-0.2897,  0.0525,  0.5229,  2.3022, -1.4689, -1.5867]]]]])
         >>> aug = CenterCrop3D(2, p=1.)
         >>> aug(inputs)
-        torch.tensor([[[[[ 0.3223, -1.2633],
+        tensor([[[[[ 0.3223, -1.2633],
                    [ 1.1168, -0.2473]],
         <BLANKLINE>
                   [[-0.6136,  0.0316],
@@ -73,7 +73,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         >>> input = torch.rand(1, 3, 32, 32, 32)
         >>> aug = CenterCrop3D(24, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

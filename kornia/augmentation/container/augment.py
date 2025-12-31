@@ -113,7 +113,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         >>> # apply the exact augmentation again.
         >>> out_rep = aug_list(input, mask, bbox, points, params=aug_list._params)
         >>> [(o == o_rep).all() for o, o_rep in zip(out, out_rep)]
-        [torch.tensor(True), torch.tensor(True), torch.tensor(True), torch.tensor(True)]
+        [tensor(True), tensor(True), tensor(True), tensor(True)]
         >>> # inverse the augmentations
         >>> out_inv = aug_list.inverse(*out)
         >>> [o.shape for o in out_inv]

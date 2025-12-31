@@ -58,7 +58,7 @@ class RandomElasticTransform(AugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomElasticTransform(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

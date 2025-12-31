@@ -59,13 +59,13 @@ class RandomShear(GeometricAugmentationBase2D):
         >>> aug = RandomShear((-5., 2., 5., 10.), p=1.)
         >>> out = aug(input)
         >>> out, aug.transform_matrix
-        (torch.tensor([[[[0.4403, 0.7614, 0.1516],
+        (tensor([[[[0.4403, 0.7614, 0.1516],
                   [0.1753, 0.3074, 0.6127],
-                  [0.4438, 0.8924, 0.4061]]]]), torch.tensor([[[ 1.0000,  0.0100, -0.0100],
+                  [0.4438, 0.8924, 0.4061]]]]), tensor([[[ 1.0000,  0.0100, -0.0100],
                  [-0.1183,  0.9988,  0.1194],
                  [ 0.0000,  0.0000,  1.0000]]]))
         >>> aug.inverse(out)
-        torch.tensor([[[[0.4045, 0.7577, 0.1393],
+        tensor([[[[0.4045, 0.7577, 0.1393],
                   [0.2071, 0.3074, 0.5582],
                   [0.3958, 0.8868, 0.4265]]]])
 
@@ -73,7 +73,7 @@ class RandomShear(GeometricAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomShear((-15., 20.), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

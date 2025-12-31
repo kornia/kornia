@@ -336,7 +336,7 @@ class PinholeCamera:
             >>> w = torch.ones(1)
             >>> pinhole = kornia.geometry.camera.PinholeCamera(K, E, h, w)
             >>> pinhole.project(X)
-            torch.tensor([[5.6088, 8.6827]])
+            tensor([[5.6088, 8.6827]])
 
         """
         P = self.intrinsics @ self.extrinsics
@@ -369,7 +369,7 @@ class PinholeCamera:
             >>> w = torch.ones(1)
             >>> pinhole = kornia.geometry.camera.PinholeCamera(K, E, h, w)
             >>> pinhole.unproject(x, depth)
-            torch.tensor([[0.4963, 0.7682, 1.0000]])
+            tensor([[0.4963, 0.7682, 1.0000]])
 
         """
         P = self.intrinsics @ self.extrinsics
@@ -493,7 +493,7 @@ def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         >>> rng = torch.manual_seed(0)
         >>> pinhole = torch.rand(1, 12)    # Nx12
         >>> pinhole_matrix(pinhole)  # Nx4x4
-        torch.tensor([[[4.9626e-01, 1.0000e-06, 8.8477e-02, 1.0000e-06],
+        tensor([[[4.9626e-01, 1.0000e-06, 8.8477e-02, 1.0000e-06],
                  [1.0000e-06, 7.6822e-01, 1.3203e-01, 1.0000e-06],
                  [1.0000e-06, 1.0000e-06, 1.0000e+00, 1.0000e-06],
                  [1.0000e-06, 1.0000e-06, 1.0000e-06, 1.0000e+00]]])
@@ -539,7 +539,7 @@ def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Te
         >>> rng = torch.manual_seed(0)
         >>> pinhole = torch.rand(1, 12)  # Nx12
         >>> inverse_pinhole_matrix(pinhole)  # Nx4x4
-        torch.tensor([[[ 2.0151,  0.0000, -0.1783,  0.0000],
+        tensor([[[ 2.0151,  0.0000, -0.1783,  0.0000],
                  [ 0.0000,  1.3017, -0.1719,  0.0000],
                  [ 0.0000,  0.0000,  1.0000,  0.0000],
                  [ 0.0000,  0.0000,  0.0000,  1.0000]]])
@@ -586,7 +586,7 @@ def scale_pinhole(pinholes: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
         >>> pinhole_i = torch.rand(1, 12)  # Nx12
         >>> scales = 2.0 * torch.ones(1)   # N
         >>> scale_pinhole(pinhole_i, scales)  # Nx12
-        torch.tensor([[0.9925, 1.5364, 0.1770, 0.2641, 0.6148, 1.2682, 0.4901, 0.8964, 0.4556,
+        tensor([[0.9925, 1.5364, 0.1770, 0.2641, 0.6148, 1.2682, 0.4901, 0.8964, 0.4556,
                  0.6323, 0.3489, 0.4017]])
 
     """

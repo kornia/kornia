@@ -50,7 +50,7 @@ class RandomSaturation(IntensityAugmentationBase2D):
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomSaturation(saturation = (0.5,2.),p=1.)
         >>> aug(inputs)
-        torch.tensor([[[[0.5569, 0.7682, 0.3529],
+        tensor([[[[0.5569, 0.7682, 0.3529],
                   [0.4811, 0.3474, 0.7411],
                   [0.5028, 0.8964, 0.6772]],
         <BLANKLINE>
@@ -67,7 +67,7 @@ class RandomSaturation(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomSaturation((0.8,1.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

@@ -68,7 +68,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         >>> inputs = torch.randn(1, 1, 3, 3, 3)
         >>> aug = RandomCrop3D((2, 2, 2), p=1.)
         >>> aug(inputs)
-        torch.tensor([[[[[-1.1258, -1.1524],
+        tensor([[[[[-1.1258, -1.1524],
                    [-0.4339,  0.8487]],
         <BLANKLINE>
                   [[-1.2633,  0.3500],
@@ -78,7 +78,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         >>> input = torch.rand(1, 3, 32, 32, 32)
         >>> aug = RandomCrop3D((24, 24, 24), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

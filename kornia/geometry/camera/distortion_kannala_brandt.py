@@ -75,7 +75,7 @@ def distort_points_kannala_brandt(
         >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
         >>> params = torch.tensor([1000.0, 1000.0, 320.0, 280.0, 0.1, 0.01, 0.001, 0.0001])
         >>> distort_points_kannala_brandt(points, params)
-        torch.tensor([1982.6832, 1526.3619])
+        tensor([1982.6832, 1526.3619])
 
     """
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
@@ -185,7 +185,7 @@ def dx_distort_points_kannala_brandt(
         >>> points = torch.tensor([1., 2.])
         >>> params = torch.tensor([1000.0, 1000.0, 320.0, 280.0, 0.1, 0.01, 0.001, 0.0001])
         >>> dx_distort_points_kannala_brandt(points, params)
-        torch.tensor([[ 486.0507, -213.5573],
+        tensor([[ 486.0507, -213.5573],
                 [-213.5573,  165.7147]])
 
     """

@@ -51,7 +51,7 @@ class RandomHue(IntensityAugmentationBase2D):
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomHue(hue = (-0.5,0.5),p=1.)
         >>> aug(inputs)
-        torch.tensor([[[[0.3993, 0.2823, 0.6816],
+        tensor([[[[0.3993, 0.2823, 0.6816],
                   [0.6117, 0.2090, 0.4081],
                   [0.4693, 0.5529, 0.9527]],
         <BLANKLINE>
@@ -68,7 +68,7 @@ class RandomHue(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomHue((-0.2,0.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

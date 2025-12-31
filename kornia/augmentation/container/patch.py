@@ -195,7 +195,7 @@ class PatchSequential(ImageSequential):
             >>> import kornia.augmentation as K
             >>> pas = PatchSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), patchwise_apply=False)
             >>> pas.extract_patches(torch.arange(16).view(1, 1, 4, 4), grid_size=(2, 2))
-            torch.tensor([[[[[ 0,  1],
+            tensor([[[[[ 0,  1],
                        [ 4,  5]]],
             <BLANKLINE>
             <BLANKLINE>
@@ -210,7 +210,7 @@ class PatchSequential(ImageSequential):
                      [[[10, 11],
                        [14, 15]]]]])
             >>> pas.extract_patches(torch.arange(54).view(1, 1, 6, 9), grid_size=(2, 2), pad=(-1, -1, -2, -2))
-            torch.tensor([[[[[19, 20, 21]]],
+            tensor([[[[[19, 20, 21]]],
             <BLANKLINE>
             <BLANKLINE>
                      [[[22, 23, 24]]],
@@ -243,7 +243,7 @@ class PatchSequential(ImageSequential):
             >>> pas = PatchSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), patchwise_apply=False)
             >>> out = pas.extract_patches(torch.arange(16).view(1, 1, 4, 4), grid_size=(2, 2))
             >>> pas.restore_from_patches(out, grid_size=(2, 2))
-            torch.tensor([[[[ 0,  1,  2,  3],
+            tensor([[[[ 0,  1,  2,  3],
                       [ 4,  5,  6,  7],
                       [ 8,  9, 10, 11],
                       [12, 13, 14, 15]]]])

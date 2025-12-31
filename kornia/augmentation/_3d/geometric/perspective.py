@@ -62,7 +62,7 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         ... ]]])
         >>> aug = RandomPerspective3D(0.5, p=1., align_corners=True)
         >>> aug(inputs)
-        torch.tensor([[[[[0.3976, 0.5507, 0.0000],
+        tensor([[[[[0.3976, 0.5507, 0.0000],
                    [0.0901, 0.3668, 0.0000],
                    [0.0000, 0.0000, 0.0000]],
         <BLANKLINE>
@@ -78,7 +78,7 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         >>> input = torch.rand(1, 3, 32, 32, 32)
         >>> aug = RandomPerspective3D(0.5, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

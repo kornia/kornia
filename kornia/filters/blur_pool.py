@@ -62,7 +62,7 @@ class BlurPool2D(nn.Module):
         >>> input = torch.eye(5)[None, None]
         >>> bp = BlurPool2D(kernel_size=3, stride=2)
         >>> bp(input)
-        torch.tensor([[[[0.3125, 0.0625, 0.0000],
+        tensor([[[[0.3125, 0.0625, 0.0000],
                   [0.0625, 0.3750, 0.0625],
                   [0.0000, 0.0625, 0.3125]]]])
 
@@ -105,11 +105,11 @@ class MaxBlurPool2D(nn.Module):
         >>> input = torch.eye(5)[None, None]
         >>> mbp = MaxBlurPool2D(kernel_size=3, stride=2, max_pool_size=2, ceil_mode=False)
         >>> mbp(input)
-        torch.tensor([[[[0.5625, 0.3125],
+        tensor([[[[0.5625, 0.3125],
                   [0.3125, 0.8750]]]])
         >>> seq = nn.Sequential(nn.MaxPool2d(kernel_size=2, stride=1), BlurPool2D(kernel_size=3, stride=2))
         >>> seq(input)
-        torch.tensor([[[[0.5625, 0.3125],
+        tensor([[[[0.5625, 0.3125],
                   [0.3125, 0.8750]]]])
 
     """
@@ -184,7 +184,7 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
     Examples:
         >>> input = torch.eye(5)[None, None]
         >>> blur_pool2d(input, 3)
-        torch.tensor([[[[0.3125, 0.0625, 0.0000],
+        tensor([[[[0.3125, 0.0625, 0.0000],
                   [0.0625, 0.3750, 0.0625],
                   [0.0000, 0.0625, 0.3125]]]])
 
@@ -224,7 +224,7 @@ def max_blur_pool2d(
     Examples:
         >>> input = torch.eye(5)[None, None]
         >>> max_blur_pool2d(input, 3)
-        torch.tensor([[[[0.5625, 0.3125],
+        tensor([[[[0.5625, 0.3125],
                   [0.3125, 0.8750]]]])
 
     """

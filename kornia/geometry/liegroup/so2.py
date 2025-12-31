@@ -49,7 +49,7 @@ class So2(nn.Module):
         >>> imag = torch.tensor([2.0])
         >>> So2(torch.complex(real, imag))
         nn.Parameter containing:
-        torch.tensor([1.+2.j], requires_grad=True)
+        tensor([1.+2.j], requires_grad=True)
 
     """
 
@@ -66,7 +66,7 @@ class So2(nn.Module):
             >>> imag = torch.tensor(2.0)
             >>> So2(torch.complex(real, imag)).z
             nn.Parameter containing:
-            torch.tensor(1.+2.j, requires_grad=True)
+            tensor(1.+2.j, requires_grad=True)
 
         """
         super().__init__()
@@ -133,7 +133,7 @@ class So2(nn.Module):
             >>> s = So2.exp(v)
             >>> s
             nn.Parameter containing:
-            torch.tensor([4.6329e-05+1.j], requires_grad=True)
+            tensor([4.6329e-05+1.j], requires_grad=True)
 
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
@@ -147,7 +147,7 @@ class So2(nn.Module):
             >>> real = torch.tensor([1.0])
             >>> imag = torch.tensor([3.0])
             >>> So2(torch.complex(real, imag)).log()
-            torch.tensor([1.2490], grad_fn=<Atan2Backward0>)
+            tensor([1.2490], grad_fn=<Atan2Backward0>)
 
         """
         return self.z.imag.atan2(self.z.real)
@@ -162,7 +162,7 @@ class So2(nn.Module):
         Example:
             >>> theta = torch.tensor(3.1415/2)
             >>> So2.hat(theta)
-            torch.tensor([[0.0000, 1.5707],
+            tensor([[0.0000, 1.5707],
                     [1.5707, 0.0000]])
 
         """
@@ -184,7 +184,7 @@ class So2(nn.Module):
             >>> v = torch.ones(3)
             >>> omega = So2.hat(v)
             >>> So2.vee(omega)
-            torch.tensor([1., 1., 1.])
+            tensor([1., 1., 1.])
 
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
@@ -198,7 +198,7 @@ class So2(nn.Module):
             >>> s = So2.identity()
             >>> m = s.matrix()
             >>> m
-            torch.tensor([[1., -0.],
+            tensor([[1., -0.],
                     [0., 1.]], grad_fn=<StackBackward0>)
 
         """
@@ -218,7 +218,7 @@ class So2(nn.Module):
             >>> s = So2.from_matrix(m)
             >>> s.z
             nn.Parameter containing:
-            torch.tensor(1.+0.j, requires_grad=True)
+            tensor(1.+0.j, requires_grad=True)
 
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
@@ -245,7 +245,7 @@ class So2(nn.Module):
             >>> s = So2.identity(batch_size=2)
             >>> s
             nn.Parameter containing:
-            torch.tensor([1.+0.j, 1.+0.j], requires_grad=True)
+            tensor([1.+0.j, 1.+0.j], requires_grad=True)
 
         """
         real_data = torch.tensor(1.0, device=device, dtype=dtype)
@@ -263,7 +263,7 @@ class So2(nn.Module):
             >>> s = So2.identity()
             >>> s.inverse().z
             nn.Parameter containing:
-            torch.tensor(1.+0.j, requires_grad=True)
+            tensor(1.+0.j, requires_grad=True)
 
         """
         return So2(1 / self.z)
@@ -302,7 +302,7 @@ class So2(nn.Module):
         Example:
             >>> s = So2.identity()
             >>> s.adjoint()
-            torch.tensor([[1., -0.],
+            tensor([[1., -0.],
                     [0., 1.]], grad_fn=<StackBackward0>)
 
         """

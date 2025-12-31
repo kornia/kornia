@@ -52,7 +52,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         >>> input = torch.ones(1, 3, 3, 3) * 0.5
         >>> aug = RandomLinearIllumination(gain=0.25, p=1.)
         >>> aug(input)
-        torch.tensor([[[[0.2500, 0.2500, 0.2500],
+        tensor([[[[0.2500, 0.2500, 0.2500],
                   [0.3750, 0.3750, 0.3750],
                   [0.5000, 0.5000, 0.5000]],
         <BLANKLINE>
@@ -68,7 +68,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomLinearIllumination(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 
@@ -159,7 +159,7 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         >>> input = torch.ones(1, 3, 3, 3) * 0.5
         >>> aug = RandomLinearCornerIllumination(gain=0.25, p=1.)
         >>> aug(input)
-        torch.tensor([[[[0.3750, 0.4375, 0.5000],
+        tensor([[[[0.3750, 0.4375, 0.5000],
                   [0.3125, 0.3750, 0.4375],
                   [0.2500, 0.3125, 0.3750]],
         <BLANKLINE>
@@ -175,7 +175,7 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomLinearCornerIllumination(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

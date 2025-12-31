@@ -63,11 +63,11 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), p=1., cropping_mode="resample")
         >>> out = aug(inputs)
         >>> out
-        torch.tensor([[[[1.0000, 1.5000, 2.0000],
+        tensor([[[[1.0000, 1.5000, 2.0000],
                   [4.0000, 4.5000, 5.0000],
                   [7.0000, 7.5000, 8.0000]]]])
         >>> aug.inverse(out, padding_mode="border")
-        torch.tensor([[[[1., 1., 2.],
+        tensor([[[[1., 1., 2.],
                   [4., 4., 5.],
                   [7., 7., 8.]]]])
 
@@ -75,7 +75,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomResizedCrop(size=(3, 3), scale=(3., 3.), ratio=(2., 2.), p=1., cropping_mode="resample")
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

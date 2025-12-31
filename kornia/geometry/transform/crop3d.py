@@ -108,7 +108,7 @@ def crop_and_resize3d(
     # [x, y, z] destination
     # from front to back
     # top-left, top-right, bottom-right, bottom-left
-    points_dst: torch.Tensor = torch.tensor(
+    points_dst: torch.Tensor = tensor(
         [
             [
                 [0, 0, 0],
@@ -204,7 +204,7 @@ def center_crop3d(
     # [x, y, z] origin
     # top-left-front, top-right-front, bottom-right-front, bottom-left-front
     # top-left-back, top-right-back, bottom-right-back, bottom-left-back
-    points_src: torch.Tensor = torch.tensor(
+    points_src: torch.Tensor = tensor(
         [
             [
                 [start_x, start_y, start_z],

@@ -53,7 +53,7 @@ class RandomSolarize(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> solarize = RandomSolarize(0.1, 0.1, p=1.)
         >>> solarize(input)
-        torch.tensor([[[[0.4132, 0.1412, 0.1790, 0.2226, 0.3980],
+        tensor([[[[0.4132, 0.1412, 0.1790, 0.2226, 0.3980],
                   [0.2754, 0.4194, 0.0130, 0.4538, 0.2771],
                   [0.4394, 0.4923, 0.1129, 0.2594, 0.3844],
                   [0.3909, 0.2118, 0.1094, 0.2516, 0.3728],
@@ -63,7 +63,7 @@ class RandomSolarize(IntensityAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomSolarize(0.1, 0.1, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

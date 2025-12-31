@@ -66,7 +66,7 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         >>> input = torch.rand(1, 1, 3, 3, 3)
         >>> aug = RandomRotation3D((15., 20., 20.), p=1.0)
         >>> aug(input), aug.transform_matrix
-        (torch.tensor([[[[[0.3819, 0.4886, 0.2111],
+        (tensor([[[[[0.3819, 0.4886, 0.2111],
                    [0.1196, 0.3833, 0.4722],
                    [0.3432, 0.5951, 0.4223]],
         <BLANKLINE>
@@ -76,7 +76,7 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         <BLANKLINE>
                   [[0.1605, 0.3112, 0.3673],
                    [0.4931, 0.4620, 0.5700],
-                   [0.3505, 0.4685, 0.8092]]]]]), torch.tensor([[[ 0.9722,  0.1131, -0.2049,  0.1196],
+                   [0.3505, 0.4685, 0.8092]]]]]), tensor([[[ 0.9722,  0.1131, -0.2049,  0.1196],
                  [-0.0603,  0.9669,  0.2478, -0.1545],
                  [ 0.2262, -0.2286,  0.9469,  0.0556],
                  [ 0.0000,  0.0000,  0.0000,  1.0000]]]))
@@ -85,7 +85,7 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         >>> input = torch.rand(1, 3, 32, 32, 32)
         >>> aug = RandomRotation3D((15., 20., 20.), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

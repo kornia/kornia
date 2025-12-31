@@ -72,17 +72,17 @@ class RandomAffine(GeometricAugmentationBase2D):
         >>> aug = RandomAffine((-15., 20.), p=1.)
         >>> out = aug(input)
         >>> out, aug.transform_matrix
-        (torch.tensor([[[[0.3961, 0.7310, 0.1574],
+        (tensor([[[[0.3961, 0.7310, 0.1574],
                   [0.1781, 0.3074, 0.5648],
-                  [0.4804, 0.8379, 0.4234]]]]), torch.tensor([[[ 0.9923, -0.1241,  0.1319],
+                  [0.4804, 0.8379, 0.4234]]]]), tensor([[[ 0.9923, -0.1241,  0.1319],
                  [ 0.1241,  0.9923, -0.1164],
                  [ 0.0000,  0.0000,  1.0000]]]))
         >>> aug.inverse(out)
-        torch.tensor([[[[0.3890, 0.6573, 0.1865],
+        tensor([[[[0.3890, 0.6573, 0.1865],
                   [0.2063, 0.3074, 0.5459],
                   [0.3892, 0.7896, 0.4224]]]])
         >>> input
-        torch.tensor([[[[0.4963, 0.7682, 0.0885],
+        tensor([[[[0.4963, 0.7682, 0.0885],
                   [0.1320, 0.3074, 0.6341],
                   [0.4901, 0.8964, 0.4556]]]])
 
@@ -90,7 +90,7 @@ class RandomAffine(GeometricAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomAffine((-15., 20.), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

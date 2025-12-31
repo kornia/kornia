@@ -40,7 +40,7 @@ def project_points_orthographic(points_in_camera: torch.Tensor) -> torch.Tensor:
     Example:
         >>> points = torch.tensor([1., 2., 3.])
         >>> project_points_orthographic(points)
-        torch.tensor([1., 2.])
+        tensor([1., 2.])
 
     """
     KORNIA_CHECK_SHAPE(points_in_camera, ["*", "3"])
@@ -65,7 +65,7 @@ def unproject_points_orthographic(points_in_camera: torch.Tensor, extension: tor
         >>> points = torch.tensor([1., 2.])
         >>> extension = torch.tensor([3.])
         >>> unproject_points_orthographic(points, extension)
-        torch.tensor([1., 2., 3.])
+        tensor([1., 2., 3.])
 
     """
     KORNIA_CHECK_SHAPE(points_in_camera, ["*", "2"])
@@ -91,7 +91,7 @@ def dx_project_points_orthographic(points_in_camera: torch.Tensor) -> torch.Tens
     Example:
         >>> points = torch.tensor([1., 2., 3.])
         >>> dx_project_points_orthographic(points)
-        torch.tensor([1.])
+        tensor([1.])
 
     """
     KORNIA_CHECK_SHAPE(points_in_camera, ["*", "3"])

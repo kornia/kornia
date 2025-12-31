@@ -48,14 +48,14 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 2, 2)
         >>> RandomGaussianNoise(mean=0., std=1., p=1.)(img)
-        torch.tensor([[[[ 2.5410,  0.7066],
+        tensor([[[[ 2.5410,  0.7066],
                   [-1.1788,  1.5684]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomGaussianNoise(mean=0., std=1., p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

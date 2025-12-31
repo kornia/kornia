@@ -44,7 +44,7 @@ class So3(nn.Module):
         >>> q = Quaternion.identity()
         >>> s = So3(q)
         >>> s.q
-        torch.tensor([1., 0., 0., 0.])
+        tensor([1., 0., 0., 0.])
 
     """
 
@@ -60,7 +60,7 @@ class So3(nn.Module):
             >>> data = torch.ones((2, 4))
             >>> q = Quaternion(data)
             >>> So3(q)
-            torch.tensor([[1., 1., 1., 1.],
+            tensor([[1., 1., 1., 1.],
                     [1., 1., 1., 1.]])
 
         """
@@ -117,7 +117,7 @@ class So3(nn.Module):
             >>> v = torch.zeros((2, 3))
             >>> s = So3.exp(v)
             >>> s
-            torch.tensor([[1., 0., 0., 0.],
+            tensor([[1., 0., 0., 0.],
                     [1., 0., 0., 0.]])
 
         """
@@ -141,7 +141,7 @@ class So3(nn.Module):
             >>> data = torch.ones((2, 4))
             >>> q = Quaternion(data)
             >>> So3(q).log()
-            torch.tensor([[0., 0., 0.],
+            tensor([[0., 0., 0.],
                     [0., 0., 0.]])
 
         """
@@ -165,7 +165,7 @@ class So3(nn.Module):
             >>> v = torch.ones((1,3))
             >>> m = So3.hat(v)
             >>> m
-            torch.tensor([[[ 0., -1.,  1.],
+            tensor([[[ 0., -1.,  1.],
                      [ 1.,  0., -1.],
                      [-1.,  1.,  0.]]])
 
@@ -198,7 +198,7 @@ class So3(nn.Module):
             >>> v = torch.ones((1,3))
             >>> omega = So3.hat(v)
             >>> So3.vee(omega)
-            torch.tensor([[1., 1., 1.]])
+            tensor([[1., 1., 1.]])
 
         """
         # KORNIA_CHECK_SHAPE(omega, ["B", "3", "3"])  # FIXME: resolve shape bugs. @edgarriba
@@ -219,7 +219,7 @@ class So3(nn.Module):
             >>> s = So3.identity()
             >>> m = s.matrix()
             >>> m
-            torch.tensor([[1., 0., 0.],
+            tensor([[1., 0., 0.],
                     [0., 1., 0.],
                     [0., 0., 1.]])
 
@@ -251,7 +251,7 @@ class So3(nn.Module):
             >>> m = torch.eye(3)
             >>> s = So3.from_matrix(m)
             >>> s
-            torch.tensor([1., 0., 0., 0.])
+            tensor([1., 0., 0., 0.])
 
         """
         return cls(Quaternion.from_matrix(matrix))
@@ -267,7 +267,7 @@ class So3(nn.Module):
             >>> q = torch.tensor([1., 0., 0., 0.])
             >>> s = So3.from_wxyz(q)
             >>> s
-            torch.tensor([1., 0., 0., 0.])
+            tensor([1., 0., 0., 0.])
 
         """
         # KORNIA_CHECK_SHAPE(wxyz, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
@@ -290,11 +290,11 @@ class So3(nn.Module):
         Example:
             >>> s = So3.identity()
             >>> s
-            torch.tensor([1., 0., 0., 0.])
+            tensor([1., 0., 0., 0.])
 
             >>> s = So3.identity(batch_size=2)
             >>> s
-            torch.tensor([[1., 0., 0., 0.],
+            tensor([[1., 0., 0., 0.],
                     [1., 0., 0., 0.]])
 
         """
@@ -306,7 +306,7 @@ class So3(nn.Module):
         Example:
             >>> s = So3.identity()
             >>> s.inverse()
-            torch.tensor([1., -0., -0., -0.])
+            tensor([1., -0., -0., -0.])
 
         """
         return So3(self.q.conj())
@@ -371,7 +371,7 @@ class So3(nn.Module):
         Example:
             >>> s = So3.identity()
             >>> s.adjoint()
-            torch.tensor([[1., 0., 0.],
+            tensor([[1., 0., 0.],
                     [0., 1., 0.],
                     [0., 0., 1.]])
 
@@ -388,7 +388,7 @@ class So3(nn.Module):
         Example:
             >>> vec = torch.tensor([1., 2., 3.])
             >>> So3.right_jacobian(vec)
-            torch.tensor([[-0.0687,  0.5556, -0.0141],
+            tensor([[-0.0687,  0.5556, -0.0141],
                     [-0.2267,  0.1779,  0.6236],
                     [ 0.5074,  0.3629,  0.5890]])
 
@@ -424,7 +424,7 @@ class So3(nn.Module):
         Example:
             >>> vec = torch.tensor([1., 2., 3.])
             >>> So3.left_jacobian(vec)
-            torch.tensor([[-0.0687, -0.2267,  0.5074],
+            tensor([[-0.0687, -0.2267,  0.5074],
                     [ 0.5556,  0.1779,  0.3629],
                     [-0.0141,  0.6236,  0.5890]])
 

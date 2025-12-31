@@ -55,7 +55,7 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] =
         ... [0., 0., 0.],
         ... [0., 1., 2.]]]])
         >>> spatial_softmax2d(heatmaps)
-        tensor([[[[0.0585, 0.0585, 0.0585],
+        torch.tensor([[[[0.0585, 0.0585, 0.0585],
                   [0.0585, 0.0585, 0.0585],
                   [0.0585, 0.1589, 0.4319]]]])
 
@@ -93,7 +93,7 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
         ... [0., 0., 0.],
         ... [0., 1., 0.]]]])
         >>> spatial_expectation2d(heatmaps, False)
-        tensor([[[1., 2.]]])
+        torch.tensor([[[1., 2.]]])
 
     """
     _validate_batched_image_tensor_input(input)

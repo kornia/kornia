@@ -95,12 +95,12 @@ class DistributionWithMapper(Distribution):
         >>> dist = DistributionWithMapper(Normal(0., 1.,), map_fn=None)
         >>> _ = torch.manual_seed(0)
         >>> dist.rsample((8,))
-        torch.tensor([ 1.5410, -0.2934, -2.1788,  0.5684, -1.0845, -1.3986,  0.4033,  0.8380])
+        tensor([ 1.5410, -0.2934, -2.1788,  0.5684, -1.0845, -1.3986,  0.4033,  0.8380])
         >>> # with sigmoid mapper
         >>> dist = DistributionWithMapper(Normal(0., 1.,), map_fn=nn.Sigmoid())
         >>> _ = torch.manual_seed(0)
         >>> dist.rsample((8,))
-        torch.tensor([0.8236, 0.4272, 0.1017, 0.6384, 0.2527, 0.1980, 0.5995, 0.6980])
+        tensor([0.8236, 0.4272, 0.1017, 0.6384, 0.2527, 0.1980, 0.5995, 0.6980])
 
     """
 

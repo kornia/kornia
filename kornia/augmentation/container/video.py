@@ -70,11 +70,11 @@ class VideoSequential(ImageSequential):
         ...     same_on_frame=True)
         >>> output = aug_list(input)
         >>> (output[0, :, 0] == output[0, :, 1]).all()
-        torch.tensor(True)
+        tensor(True)
         >>> (output[0, :, 1] == output[0, :, 2]).all()
-        torch.tensor(True)
+        tensor(True)
         >>> (output[0, :, 2] == output[0, :, 3]).all()
-        torch.tensor(True)
+        tensor(True)
 
         If set `same_on_frame` to False:
 
@@ -88,7 +88,7 @@ class VideoSequential(ImageSequential):
         >>> output.shape
         torch.Size([2, 3, 4, 5, 6])
         >>> (output[0, :, 0] == output[0, :, 1]).all()
-        torch.tensor(False)
+        tensor(False)
 
         Reproduce with provided params.
         >>> out2 = aug_list(input, params=aug_list._params)

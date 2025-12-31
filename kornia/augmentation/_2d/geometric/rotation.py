@@ -58,12 +58,12 @@ class RandomRotation(GeometricAugmentationBase2D):
         >>> aug = RandomRotation(degrees=45.0, p=1.)
         >>> out = aug(input)
         >>> out
-        torch.tensor([[[[0.9824, 0.0088, 0.0000, 1.9649],
+        tensor([[[[0.9824, 0.0088, 0.0000, 1.9649],
                   [0.0000, 0.0029, 0.0000, 0.0176],
                   [0.0029, 1.0000, 1.9883, 0.0000],
                   [0.0000, 0.0088, 1.0117, 1.9649]]]])
         >>> aug.transform_matrix
-        torch.tensor([[[ 1.0000, -0.0059,  0.0088],
+        tensor([[[ 1.0000, -0.0059,  0.0088],
                  [ 0.0059,  1.0000, -0.0088],
                  [ 0.0000,  0.0000,  1.0000]]])
         >>> inv = aug.inverse(out)
@@ -72,7 +72,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomRotation(degrees=45.0, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 
@@ -166,12 +166,12 @@ class RandomRotation90(GeometricAugmentationBase2D):
         >>> aug = RandomRotation90(times=(1, 1), p=1.)
         >>> out = aug(input)
         >>> out
-        torch.tensor([[[[2.0000e+00, 0.0000e+00, 0.0000e+00, 2.0000e+00],
+        tensor([[[[2.0000e+00, 0.0000e+00, 0.0000e+00, 2.0000e+00],
                   [0.0000e+00, 0.0000e+00, 2.0000e+00, 1.0000e+00],
                   [5.9605e-08, 0.0000e+00, 1.0000e+00, 0.0000e+00],
                   [1.0000e+00, 5.9605e-08, 0.0000e+00, 0.0000e+00]]]])
         >>> aug.transform_matrix
-        torch.tensor([[[-4.3711e-08,  1.0000e+00,  1.1921e-07],
+        tensor([[[-4.3711e-08,  1.0000e+00,  1.1921e-07],
                  [-1.0000e+00, -4.3711e-08,  3.0000e+00],
                  [ 0.0000e+00,  0.0000e+00,  1.0000e+00]]])
         >>> inv = aug.inverse(out)
@@ -180,7 +180,7 @@ class RandomRotation90(GeometricAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomRotation90(times=(-1, 1), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

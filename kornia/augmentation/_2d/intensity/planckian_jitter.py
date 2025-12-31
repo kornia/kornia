@@ -123,7 +123,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         >>> input = torch.randn(1, 3, 2, 2)
         >>> aug = RandomPlanckianJitter(mode='CIED')
         >>> aug(input)
-        torch.tensor([[[[ 1.0000, -0.2389],
+        tensor([[[[ 1.0000, -0.2389],
                   [-1.7740,  0.4628]],
         <BLANKLINE>
                  [[-1.0845, -1.3986],
@@ -138,7 +138,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         >>> input = torch.randn(2, 3, 2, 2)
         >>> aug = RandomPlanckianJitter(mode='blackbody', select_from=[23, 24, 1, 2])
         >>> aug(input)
-        torch.tensor([[[[-1.1258, -1.1524],
+        tensor([[[[-1.1258, -1.1524],
                   [-0.2506, -0.4339]],
         <BLANKLINE>
                  [[ 0.8487,  0.6920],

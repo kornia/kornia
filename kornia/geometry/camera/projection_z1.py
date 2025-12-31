@@ -50,7 +50,7 @@ def project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
     Example:
         >>> points = torch.tensor([1., 2., 3.])
         >>> project_points_z1(points)
-        torch.tensor([0.3333, 0.6667])
+        tensor([0.3333, 0.6667])
 
     """
     KORNIA_CHECK_SHAPE(points_in_camera, ["*", "3"])
@@ -77,7 +77,7 @@ def unproject_points_z1(
         >>> points = torch.tensor([1., 2.])
         >>> extension = torch.tensor([3.])
         >>> unproject_points_z1(points, extension)
-        torch.tensor([3., 6., 3.])
+        tensor([3., 6., 3.])
 
     """
     KORNIA_CHECK_SHAPE(points_in_cam_canonical, ["*", "2"])
@@ -121,7 +121,7 @@ def dx_project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
     Example:
         >>> points = torch.tensor([1., 2., 3.])
         >>> dx_project_points_z1(points)
-        torch.tensor([[ 0.3333,  0.0000, -0.1111],
+        tensor([[ 0.3333,  0.0000, -0.1111],
                 [ 0.0000,  0.3333, -0.2222]])
 
     """

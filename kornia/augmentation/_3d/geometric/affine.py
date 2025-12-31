@@ -77,7 +77,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         >>> input = torch.rand(1, 1, 3, 3, 3)
         >>> aug = RandomAffine3D((15., 20., 20.), p=1.)
         >>> aug(input), aug.transform_matrix
-        (torch.tensor([[[[[0.4503, 0.4763, 0.1680],
+        (tensor([[[[[0.4503, 0.4763, 0.1680],
                    [0.2029, 0.4267, 0.3515],
                    [0.3195, 0.5436, 0.3706]],
         <BLANKLINE>
@@ -87,7 +87,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         <BLANKLINE>
                   [[0.2971, 0.2746, 0.3471],
                    [0.4924, 0.4960, 0.6460],
-                   [0.3187, 0.4556, 0.7596]]]]]), torch.tensor([[[ 0.9722, -0.0603,  0.2262, -0.1381],
+                   [0.3187, 0.4556, 0.7596]]]]]), tensor([[[ 0.9722, -0.0603,  0.2262, -0.1381],
                  [ 0.1131,  0.9669, -0.2286,  0.1486],
                  [-0.2049,  0.2478,  0.9469,  0.0102],
                  [ 0.0000,  0.0000,  0.0000,  1.0000]]]))
@@ -96,7 +96,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         >>> input = torch.rand(1, 3, 32, 32, 32)
         >>> aug = RandomAffine3D((15., 20., 20.), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

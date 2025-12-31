@@ -52,7 +52,7 @@ def mean_average_precision(
         >>> boxes, labels, scores = torch.tensor([[100, 50, 150, 100.]]), torch.tensor([1]), torch.tensor([.7])
         >>> gt_boxes, gt_labels = torch.tensor([[100, 50, 150, 100.]]), torch.tensor([1])
         >>> mean_average_precision([boxes], [labels], [scores], [gt_boxes], [gt_labels], 2)
-        (tensor(1.), {1: 1.0})
+        (torch.tensor(1.), {1: 1.0})
 
     """
     # these are all lists of tensors of the same length, i.e. number of images

@@ -54,7 +54,7 @@ class RandomJPEG(IntensityAugmentationBase2D):
         >>> images = 0.1904 * torch.ones(2, 3, 32, 32)
         >>> aug = RandomJPEG(jpeg_quality=20.0, p=1.)  # Samples a JPEG quality from the range [30.0, 70.0]
         >>> (aug(images) == aug(images, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

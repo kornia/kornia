@@ -58,11 +58,11 @@ class RandomPerspective(GeometricAugmentationBase2D):
         >>> aug = RandomPerspective(0.5, p=0.5)
         >>> out = aug(inputs)
         >>> out
-        torch.tensor([[[[0.0000, 0.2289, 0.0000],
+        tensor([[[[0.0000, 0.2289, 0.0000],
                   [0.0000, 0.4800, 0.0000],
                   [0.0000, 0.0000, 0.0000]]]])
         >>> aug.inverse(out)
-        torch.tensor([[[[0.0500, 0.0961, 0.0000],
+        tensor([[[[0.0500, 0.0961, 0.0000],
                   [0.2011, 0.3144, 0.0000],
                   [0.0031, 0.0130, 0.0053]]]])
 
@@ -70,7 +70,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomPerspective(0.5, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

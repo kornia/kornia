@@ -57,7 +57,7 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomSaltAndPepperNoise(amount=0.5, salt_vs_pepper=0.5, p=1.)
         >>> aug(inputs)
-        torch.tensor([[[[1.0000, 0.0000, 0.0000],
+        tensor([[[[1.0000, 0.0000, 0.0000],
                   [1.0000, 1.0000, 0.1166],
                   [0.1644, 0.7379, 0.0000]],
         <BLANKLINE>
@@ -73,7 +73,7 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomSaltAndPepperNoise(amount=0.05, salt_vs_pepper=0.5, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

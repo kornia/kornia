@@ -48,9 +48,9 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         ...                         [0., 1., 1.]]]])
         >>> seq = RandomVerticalFlip(p=1.0)
         >>> seq(input), seq.transform_matrix
-        (torch.tensor([[[[0., 1., 1.],
+        (tensor([[[[0., 1., 1.],
                   [0., 0., 0.],
-                  [0., 0., 0.]]]]), torch.tensor([[[ 1.,  0.,  0.],
+                  [0., 0., 0.]]]]), tensor([[[ 1.,  0.,  0.],
                  [ 0., -1.,  2.],
                  [ 0.,  0.,  1.]]]))
         >>> seq.inverse(seq(input)).equal(input)
@@ -60,7 +60,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> seq = RandomVerticalFlip(p=1.0)
         >>> (seq(input) == seq(input, params=seq._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

@@ -51,7 +51,7 @@ class RandomContrast(IntensityAugmentationBase2D):
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomContrast(contrast = (0.5, 2.), p = 1.)
         >>> aug(inputs)
-        torch.tensor([[[[0.2750, 0.4258, 0.0490],
+        tensor([[[[0.2750, 0.4258, 0.0490],
                   [0.0732, 0.1704, 0.3514],
                   [0.2716, 0.4969, 0.2525]],
         <BLANKLINE>
@@ -68,7 +68,7 @@ class RandomContrast(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomContrast((0.8,1.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

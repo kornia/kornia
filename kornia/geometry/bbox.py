@@ -135,7 +135,7 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         ...     [1., 2.],
         ... ]])  # 2x4x2
         >>> infer_bbox_shape(boxes)
-        (tensor([2., 2.]), tensor([2., 3.]))
+        (torch.tensor([2., 2.]), torch.tensor([2., 3.]))
 
     """
     validate_bbox(boxes)
@@ -176,7 +176,7 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor,
         ...         [43, 54, 65],
         ...         [ 3, 54, 65]]]) # 2x8x3
         >>> infer_bbox_shape3d(boxes)
-        (tensor([31, 61]), tensor([21, 51]), tensor([11, 41]))
+        (torch.tensor([31, 61]), torch.tensor([21, 51]), torch.tensor([11, 41]))
 
     """
     validate_bbox3d(boxes)
@@ -217,7 +217,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
         ...        [1., 2.],
         ...   ]])  # 1x4x2
         >>> bbox_to_mask(boxes, 5, 5)
-        tensor([[[0., 0., 0., 0., 0.],
+        torch.tensor([[[0., 0., 0., 0., 0.],
                  [0., 1., 1., 1., 0.],
                  [0., 1., 1., 1., 0.],
                  [0., 0., 0., 0., 0.],
@@ -261,7 +261,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
         ...     [1., 2., 2.],
         ... ]])  # 1x8x3
         >>> bbox_to_mask3d(boxes, (4, 5, 5))
-        tensor([[[[[0., 0., 0., 0., 0.],
+        torch.tensor([[[[[0., 0., 0., 0., 0.],
                    [0., 0., 0., 0., 0.],
                    [0., 0., 0., 0., 0.],
                    [0., 0., 0., 0., 0.],
@@ -338,7 +338,7 @@ def bbox_generator(
         >>> width = torch.tensor([5, 3])
         >>> height = torch.tensor([7, 4])
         >>> bbox_generator(x_start, y_start, width, height)
-        tensor([[[0, 1],
+        torch.tensor([[[0, 1],
                  [4, 1],
                  [4, 7],
                  [0, 7]],
@@ -411,7 +411,7 @@ def bbox_generator3d(
         >>> height = torch.tensor([20, 50])
         >>> depth = torch.tensor([30, 60])
         >>> bbox_generator3d(x_start, y_start, z_start, width, height, depth)
-        tensor([[[ 0,  1,  2],
+        torch.tensor([[[ 0,  1,  2],
                  [10,  1,  2],
                  [10, 21,  2],
                  [ 0, 21,  2],
@@ -549,7 +549,7 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         ...     [100., 100., 200., 200.]])
         >>> scores = torch.tensor([0.9, 0.8, 0.7, 0.9])
         >>> nms(boxes, scores, iou_threshold=0.8)
-        tensor([0, 3, 1])
+        torch.tensor([0, 3, 1])
 
     """
     if len(boxes.shape) != 2 and boxes.shape[-1] != 4:

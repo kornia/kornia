@@ -79,7 +79,7 @@ def crop_and_resize(
         ...     [1., 2.],
         ... ]])  # 1x4x2
         >>> crop_and_resize(input, boxes, (2, 2), mode='nearest', align_corners=True)
-        tensor([[[[ 6.,  7.],
+        torch.tensor([[[[ 6.,  7.],
                   [10., 11.]]]])
 
     """
@@ -143,7 +143,7 @@ def center_crop(
         ...     [13., 14., 15., 16.],
         ...  ]]])
         >>> center_crop(input, (2, 4), mode='nearest', align_corners=True)
-        tensor([[[[ 5.,  6.,  7.,  8.],
+        torch.tensor([[[[ 5.,  6.,  7.,  8.],
                   [ 9., 10., 11., 12.]]]])
 
     """
@@ -242,7 +242,7 @@ def crop_by_boxes(
         ...     [0., 1.],
         ... ]])  # 1x4x2
         >>> crop_by_boxes(input, src_box, dst_box, align_corners=True)
-        tensor([[[[ 5.0000,  6.0000],
+        torch.tensor([[[[ 5.0000,  6.0000],
                   [ 9.0000, 10.0000]]]])
 
     Note:

@@ -43,7 +43,7 @@ def distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, par
         >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
         >>> params = torch.tensor([600., 600., 319.5, 239.5])
         >>> distort_points_affine(points, params)
-        torch.tensor([192019.5000, 143939.5000])
+        tensor([192019.5000, 143939.5000])
 
     """
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
@@ -81,7 +81,7 @@ def undistort_points_affine(distorted_points_in_camera: torch.Tensor, params: to
         >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
         >>> params = torch.tensor([600., 600., 319.5, 239.5])
         >>> undistort_points_affine(points, params)
-        torch.tensor([0., 0.])
+        tensor([0., 0.])
 
     """
     KORNIA_CHECK_SHAPE(distorted_points_in_camera, ["*", "2"])
@@ -118,7 +118,7 @@ def dx_distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, 
         >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
         >>> params = torch.tensor([600., 600., 319.5, 239.5])
         >>> dx_distort_points_affine(points, params)
-        torch.tensor([[600.,   0.],
+        tensor([[600.,   0.],
                 [  0., 600.]])
 
     """

@@ -48,12 +48,12 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         >>> inp = torch.rand(1, 3, 5, 5)
         >>> aug = RandomRGBShift(0, 0, 0)
         >>> ((inp == aug(inp)).double()).all()
-        torch.tensor(True)
+        tensor(True)
 
         >>> rng = torch.manual_seed(0)
         >>> inp = torch.rand(1, 3, 5, 5)
         >>> inp
-        torch.tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+        tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
                   [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
                   [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
@@ -72,7 +72,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
                   [0.1147, 0.3168, 0.6965, 0.9143, 0.9351]]]])
         >>> aug = RandomRGBShift(p=1.)
         >>> aug(inp)
-        torch.tensor([[[[0.9374, 1.0000, 0.5297, 0.5732, 0.7486],
+        tensor([[[[0.9374, 1.0000, 0.5297, 0.5732, 0.7486],
                   [1.0000, 0.9313, 1.0000, 0.8968, 1.0000],
                   [0.7901, 0.8429, 0.4635, 0.6100, 0.7351],
                   [0.9597, 1.0000, 1.0000, 0.6022, 0.7234],

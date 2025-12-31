@@ -85,7 +85,7 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     Examples:
         >>> image = torch.zeros(1, 8, 8)
         >>> draw_line(image, torch.tensor([6, 4]), torch.tensor([1, 4]), torch.tensor([255]))
-        tensor([[[  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
+        torch.tensor([[[  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],

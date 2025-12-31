@@ -52,7 +52,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomBrightness(brightness = (0.5,2.),p=1.)
         >>> aug(inputs)
-        torch.tensor([[[[0.0505, 0.3225, 0.0000],
+        tensor([[[[0.0505, 0.3225, 0.0000],
                   [0.0000, 0.0000, 0.1883],
                   [0.0443, 0.4507, 0.0099]],
         <BLANKLINE>
@@ -69,7 +69,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomBrightness((0.8,1.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

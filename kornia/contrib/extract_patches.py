@@ -70,7 +70,7 @@ def compute_padding(
         >>> padding = compute_padding((4,3), (3,3))
         >>> out = extract_tensor_patches(image, window_size=(3, 3), stride=(3, 3), padding=padding)
         >>> combine_tensor_patches(out, original_size=(4, 3), window_size=(3, 3), stride=(3, 3), unpadding=padding)
-        torch.tensor([[[[ 0,  1,  2],
+        tensor([[[[ 0,  1,  2],
                   [ 3,  4,  5],
                   [ 6,  7,  8],
                   [ 9, 10, 11]]]])
@@ -171,11 +171,11 @@ class ExtractTensorPatches(nn.Module):
         >>> input = torch.arange(9.).view(1, 1, 3, 3)
         >>> patches = extract_tensor_patches(input, (2, 3))
         >>> input
-        torch.tensor([[[[0., 1., 2.],
+        tensor([[[[0., 1., 2.],
                   [3., 4., 5.],
                   [6., 7., 8.]]]])
         >>> patches[:, -1]
-        torch.tensor([[[[3., 4., 5.],
+        tensor([[[[3., 4., 5.],
                   [6., 7., 8.]]]])
 
     """
@@ -261,7 +261,7 @@ class CombineTensorPatches(nn.Module):
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
         >>> combine_tensor_patches(out, original_size=(4, 4), window_size=(2, 2), stride=(2, 2))
-        torch.tensor([[[[ 0,  1,  2,  3],
+        tensor([[[[ 0,  1,  2,  3],
                   [ 4,  5,  6,  7],
                   [ 8,  9, 10, 11],
                   [12, 13, 14, 15]]]])
@@ -339,7 +339,7 @@ def combine_tensor_patches(
     Example:
         >>> out = extract_tensor_patches(torch.arange(16).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2))
         >>> combine_tensor_patches(out, original_size=(4, 4), window_size=(2, 2), stride=(2, 2))
-        torch.tensor([[[[ 0,  1,  2,  3],
+        tensor([[[[ 0,  1,  2,  3],
                   [ 4,  5,  6,  7],
                   [ 8,  9, 10, 11],
                   [12, 13, 14, 15]]]])
@@ -457,11 +457,11 @@ def extract_tensor_patches(
         >>> input = torch.arange(9.).view(1, 1, 3, 3)
         >>> patches = extract_tensor_patches(input, (2, 3))
         >>> input
-        torch.tensor([[[[0., 1., 2.],
+        tensor([[[[0., 1., 2.],
                   [3., 4., 5.],
                   [6., 7., 8.]]]])
         >>> patches[:, -1]
-        torch.tensor([[[[3., 4., 5.],
+        tensor([[[[3., 4., 5.],
                   [6., 7., 8.]]]])
 
     """

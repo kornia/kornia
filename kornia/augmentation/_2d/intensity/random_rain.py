@@ -43,7 +43,7 @@ class RandomRain(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> rain = RandomRain(p=1,drop_height=(1,2),drop_width=(1,2),number_of_drops=(1,1))
         >>> rain(input)
-        torch.tensor([[[[0.4963, 0.7843, 0.0885, 0.1320, 0.3074],
+        tensor([[[[0.4963, 0.7843, 0.0885, 0.1320, 0.3074],
                   [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
                   [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],

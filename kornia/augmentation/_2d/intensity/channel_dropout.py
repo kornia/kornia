@@ -54,7 +54,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         >>> img = torch.ones(1, 3, 3, 3)
         >>> aug = RandomChannelDropout(num_drop_channels=1, fill_value=0.0, p=1.0)
         >>> aug(img)
-        torch.tensor([[[[1., 1., 1.],
+        tensor([[[[1., 1., 1.],
                   [1., 1., 1.],
                   [1., 1., 1.]],
         <BLANKLINE>
@@ -70,7 +70,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomChannelDropout(num_drop_channels=1, fill_value=0.0, p=1.0)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

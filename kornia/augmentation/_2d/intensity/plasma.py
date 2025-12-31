@@ -47,7 +47,7 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 3, 4)
         >>> RandomPlasmaBrightness(roughness=(0.1, 0.7), p=1.)(img)
-        torch.tensor([[[[0.6415, 1.0000, 0.3142, 0.6836],
+        tensor([[[[0.6415, 1.0000, 0.3142, 0.6836],
                   [1.0000, 0.5593, 0.5556, 0.4566],
                   [0.5809, 1.0000, 0.7005, 1.0000]]]])
 
@@ -103,7 +103,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 3, 4)
         >>> RandomPlasmaContrast(roughness=(0.1, 0.7), p=1.)(img)
-        torch.tensor([[[[0.9651, 1.0000, 1.0000, 1.0000],
+        tensor([[[[0.9651, 1.0000, 1.0000, 1.0000],
                   [1.0000, 0.9103, 0.8038, 0.9263],
                   [0.6882, 1.0000, 0.9544, 1.0000]]]])
 
@@ -156,7 +156,7 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 3, 4)
         >>> RandomPlasmaShadow(roughness=(0.1, 0.7), p=1.)(img)
-        torch.tensor([[[[0.7682, 1.0000, 1.0000, 1.0000],
+        tensor([[[[0.7682, 1.0000, 1.0000, 1.0000],
                   [1.0000, 1.0000, 1.0000, 1.0000],
                   [1.0000, 1.0000, 1.0000, 1.0000]]]])
 

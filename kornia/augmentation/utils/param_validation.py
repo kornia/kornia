@@ -129,7 +129,7 @@ def _tuple_range_reader(
     Example:
     >>> degree = torch.tensor([0.2, 0.3])
     >>> _tuple_range_reader(degree, 3)  # read degree for yaw, pitch and roll.
-    torch.tensor([[0.2000, 0.3000],
+    tensor([[0.2000, 0.3000],
             [0.2000, 0.3000],
             [0.2000, 0.3000]])
 

@@ -48,7 +48,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> sharpness = RandomSharpness(1., p=1.)
         >>> sharpness(input)
-        torch.tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+        tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
                   [0.6341, 0.4810, 0.7367, 0.4177, 0.6323],
                   [0.3489, 0.4428, 0.1562, 0.2443, 0.2939],
                   [0.5185, 0.6462, 0.7050, 0.2288, 0.2823],
@@ -58,7 +58,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomSharpness(1., p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

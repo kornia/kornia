@@ -56,13 +56,13 @@ class RandomTranslate(GeometricAugmentationBase2D):
         >>> aug = RandomTranslate((-0.2, 0.2), (-0.1, 0.1), p=1.)
         >>> out = aug(input)
         >>> out, aug.transform_matrix
-        (torch.tensor([[[[0.3403, 0.6439, 0.2920],
+        (tensor([[[[0.3403, 0.6439, 0.2920],
                   [0.1377, 0.3383, 0.5569],
-                  [0.3226, 0.6909, 0.4844]]]]), torch.tensor([[[ 1.0000,  0.0000,  0.1588],
+                  [0.3226, 0.6909, 0.4844]]]]), tensor([[[ 1.0000,  0.0000,  0.1588],
                  [ 0.0000,  1.0000, -0.0907],
                  [ 0.0000,  0.0000,  1.0000]]]))
         >>> aug.inverse(out)
-        torch.tensor([[[[0.3565, 0.4839, 0.1922],
+        tensor([[[[0.3565, 0.4839, 0.1922],
                   [0.2164, 0.4134, 0.3968],
                   [0.3797, 0.6075, 0.3765]]]])
 
@@ -70,7 +70,7 @@ class RandomTranslate(GeometricAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomTranslate((-0.2, 0.2), (-0.1, 0.1), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

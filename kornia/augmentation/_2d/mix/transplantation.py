@@ -89,7 +89,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
         >>> image = torch.randn(2, 3, 5, 5)
         >>> mask = torch.randint(0, 3, (2, 5, 5))
         >>> mask
-        torch.tensor([[[0, 0, 1, 1, 0],
+        tensor([[[0, 0, 1, 1, 0],
                  [1, 2, 0, 0, 0],
                  [1, 2, 1, 1, 0],
                  [0, 0, 0, 0, 2],
@@ -106,7 +106,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
         >>> mask_out.shape
         torch.Size([2, 5, 5])
         >>> mask_out
-        torch.tensor([[[2, 0, 1, 2, 0],
+        tensor([[[2, 0, 1, 2, 0],
                  [2, 2, 0, 2, 0],
                  [2, 2, 1, 1, 2],
                  [2, 2, 2, 0, 2],
@@ -118,12 +118,12 @@ class RandomTransplantation(MixAugmentationBaseV2):
                  [0, 0, 0, 0, 2],
                  [2, 1, 0, 0, 0]]])
         >>> aug._params["selected_labels"]  # Image 0 received label 2 from image 1 and image 1 label 0 from image 0
-        torch.tensor([2, 0])
+        tensor([2, 0])
 
     You can apply the same augmentation again in which case the same objects get transplanted between the images:
 
         >>> aug._params["selection"]  # The pixels (objects) which get transplanted
-        torch.tensor([[[ True, False, False,  True, False],
+        tensor([[[ True, False, False,  True, False],
                  [ True, False, False,  True, False],
                  [ True, False, False, False,  True],
                  [ True,  True,  True, False,  True],
@@ -137,7 +137,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
         >>> image2 = torch.zeros(2, 3, 5, 5)
         >>> image2[1] = 1
         >>> image2[:, 0]
-        torch.tensor([[[0., 0., 0., 0., 0.],
+        tensor([[[0., 0., 0., 0., 0.],
                  [0., 0., 0., 0., 0.],
                  [0., 0., 0., 0., 0.],
                  [0., 0., 0., 0., 0.],
@@ -150,7 +150,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
                  [1., 1., 1., 1., 1.]]])
         >>> image_out2, mask_out2 = aug(image2, mask, params=aug._params)
         >>> image_out2[:, 0]
-        torch.tensor([[[1., 0., 0., 1., 0.],
+        tensor([[[1., 0., 0., 1., 0.],
                  [1., 0., 0., 1., 0.],
                  [1., 0., 0., 0., 1.],
                  [1., 1., 1., 0., 1.],

@@ -54,9 +54,9 @@ class Se2(nn.Module):
         >>> se2 = Se2(so2, t)
         >>> se2
         rotation: nn.Parameter containing:
-        torch.tensor([1.+0.j], requires_grad=True)
+        tensor([1.+0.j], requires_grad=True)
         translation: nn.Parameter containing:
-        torch.tensor([[1., 1.]], requires_grad=True)
+        tensor([[1., 1.]], requires_grad=True)
 
     """
 
@@ -75,9 +75,9 @@ class Se2(nn.Module):
             >>> se2 = Se2(so2, t)
             >>> se2
             rotation: nn.Parameter containing:
-            torch.tensor([1.+0.j], requires_grad=True)
+            tensor([1.+0.j], requires_grad=True)
             translation: nn.Parameter containing:
-            torch.tensor([[1., 1.]], requires_grad=True)
+            tensor([[1., 1.]], requires_grad=True)
 
         """
         super().__init__()
@@ -172,10 +172,10 @@ class Se2(nn.Module):
             >>> s = Se2.exp(v)
             >>> s.r
             nn.Parameter containing:
-            torch.tensor([0.5403+0.8415j], requires_grad=True)
+            tensor([0.5403+0.8415j], requires_grad=True)
             >>> s.t
             nn.Parameter containing:
-            torch.tensor([[0.3818, 1.3012]], requires_grad=True)
+            tensor([[0.3818, 1.3012]], requires_grad=True)
 
         """
         check_v_shape(v)
@@ -197,7 +197,7 @@ class Se2(nn.Module):
             >>> v = torch.ones((1, 3))
             >>> s = Se2.exp(v).log()
             >>> s
-            torch.tensor([[1.0000, 1.0000, 1.0000]], grad_fn=<StackBackward0>)
+            tensor([[1.0000, 1.0000, 1.0000]], grad_fn=<StackBackward0>)
 
         """
         theta = self.so2.log()
@@ -224,7 +224,7 @@ class Se2(nn.Module):
         Example:
             >>> theta = torch.tensor(3.1415/2)
             >>> So2.hat(theta)
-            torch.tensor([[0.0000, 1.5707],
+            tensor([[0.0000, 1.5707],
                     [1.5707, 0.0000]])
 
         """
@@ -249,7 +249,7 @@ class Se2(nn.Module):
             >>> v = torch.ones(3)
             >>> omega_hat = Se2.hat(v)
             >>> Se2.vee(omega_hat)
-            torch.tensor([1., 1., 1.])
+            tensor([1., 1., 1.])
 
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
@@ -276,10 +276,10 @@ class Se2(nn.Module):
             >>> s = Se2.identity(1)
             >>> s.r
             nn.Parameter containing:
-            torch.tensor([1.+0.j], requires_grad=True)
+            tensor([1.+0.j], requires_grad=True)
             >>> s.t
-            x: torch.tensor([0.])
-            y: torch.tensor([0.])
+            x: tensor([0.])
+            y: tensor([0.])
 
         """
         t: torch.Tensor = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
@@ -294,7 +294,7 @@ class Se2(nn.Module):
         Example:
             >>> s = Se2(So2.identity(1), torch.ones(1, 2))
             >>> s.matrix()
-            torch.tensor([[[1., -0., 1.],
+            tensor([[[1., -0., 1.],
                      [0., 1., 1.],
                      [0., 0., 1.]]], grad_fn=<CopySlices>)
 
@@ -315,10 +315,10 @@ class Se2(nn.Module):
             >>> s = Se2.from_matrix(torch.eye(3).repeat(2, 1, 1))
             >>> s.r
             nn.Parameter containing:
-            torch.tensor([1.+0.j, 1.+0.j], requires_grad=True)
+            tensor([1.+0.j, 1.+0.j], requires_grad=True)
             >>> s.t
             nn.Parameter containing:
-            torch.tensor([[0., 0.],
+            tensor([[0., 0.],
                     [0., 0.]], requires_grad=True)
 
         """
@@ -335,10 +335,10 @@ class Se2(nn.Module):
             >>> s_inv = s.inverse()
             >>> s_inv.r
             nn.Parameter containing:
-            torch.tensor([1.+0.j], requires_grad=True)
+            tensor([1.+0.j], requires_grad=True)
             >>> s_inv.t
             nn.Parameter containing:
-            torch.tensor([[-1., -1.]], requires_grad=True)
+            tensor([[-1., -1.]], requires_grad=True)
 
         """
         r_inv: So2 = self.r.inverse()
@@ -419,7 +419,7 @@ class Se2(nn.Module):
         Example:
             >>> s = Se2.identity()
             >>> s.adjoint()
-            torch.tensor([[1., -0., 0.],
+            tensor([[1., -0., 0.],
                     [0., 1., -0.],
                     [0., 0., 1.]], grad_fn=<CopySlices>)
 

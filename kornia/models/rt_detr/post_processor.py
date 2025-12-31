@@ -35,7 +35,7 @@ def mod(a: torch.Tensor, b: int) -> torch.Tensor:
     implementation uses `a % b` (equivalent to `torch.remainder(a, b)`).
 
     Args:
-        a (torch.Tensor): Dividend tensor (any numeric dtype).
+        a (torch.Tensor): Dividend torch.tensor(any numeric dtype).
         b (int): Divisor (must be non-zero).
 
     Returns:
@@ -43,9 +43,9 @@ def mod(a: torch.Tensor, b: int) -> torch.Tensor:
 
     Examples:
         >>> mod(torch.tensor(7), 3)
-        tensor(1)
+        torch.tensor(1)
         >>> mod(torch.tensor([7, -1, 2]), 3)
-        tensor([1, 2, 2])
+        torch.tensor([1, 2, 2])
     """
     return a % b
 

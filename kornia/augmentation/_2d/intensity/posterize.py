@@ -50,7 +50,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> posterize = RandomPosterize(3., p=1.)
         >>> posterize(input)
-        torch.tensor([[[[0.4863, 0.7529, 0.0784, 0.1255, 0.2980],
+        tensor([[[[0.4863, 0.7529, 0.0784, 0.1255, 0.2980],
                   [0.6275, 0.4863, 0.8941, 0.4549, 0.6275],
                   [0.3451, 0.3922, 0.0157, 0.1569, 0.2824],
                   [0.5176, 0.6902, 0.8000, 0.1569, 0.2667],
@@ -60,7 +60,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomPosterize(3., p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

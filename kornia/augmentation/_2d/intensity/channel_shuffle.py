@@ -37,7 +37,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         >>> rng = torch.manual_seed(0)
         >>> img = torch.arange(1*2*2*2.).view(1,2,2,2)
         >>> RandomChannelShuffle()(img)
-        torch.tensor([[[[4., 5.],
+        tensor([[[[4., 5.],
                   [6., 7.]],
         <BLANKLINE>
                  [[0., 1.],
@@ -47,7 +47,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = RandomChannelShuffle(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

@@ -67,7 +67,7 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         >>> input = torch.rand(1, 1, 3, 5, 5)
         >>> motion_blur = RandomMotionBlur3D(3, 35., 0.5, p=1.)
         >>> motion_blur(input)
-        torch.tensor([[[[[0.1654, 0.4772, 0.2004, 0.3566, 0.2613],
+        tensor([[[[[0.1654, 0.4772, 0.2004, 0.3566, 0.2613],
                    [0.4557, 0.3131, 0.4809, 0.2574, 0.2696],
                    [0.2721, 0.5998, 0.3956, 0.5363, 0.1541],
                    [0.3006, 0.4773, 0.6395, 0.2856, 0.3989],
@@ -89,7 +89,7 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         >>> input = torch.rand(1, 3, 32, 32, 32)
         >>> aug = RandomMotionBlur3D(3, 35., 0.5, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

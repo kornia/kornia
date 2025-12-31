@@ -170,19 +170,19 @@ class ResizedCropGenerator(CropGenerator):
         >>> rcg = ResizedCropGenerator((30, 30), scale=torch.tensor([.7, 1.3]), ratio=torch.tensor([.9, 1.]))
         >>> out = rcg(torch.Size([1, 3, 3]))
         >>> out["src"]
-        torch.tensor([[[0., 0.],
+        tensor([[[0., 0.],
                  [2., 0.],
                  [2., 2.],
                  [0., 2.]]])
         >>> out["dst"]
-        torch.tensor([[[ 0.,  0.],
+        tensor([[[ 0.,  0.],
                  [29.,  0.],
                  [29., 29.],
                  [ 0., 29.]]])
         >>> out["input_size"]
-        torch.tensor([[3, 3]])
+        tensor([[3, 3]])
         >>> out["output_size"]
-        torch.tensor([[30, 30]])
+        tensor([[30, 30]])
 
     """
 

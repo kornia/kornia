@@ -64,7 +64,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         >>> inputs = torch.ones(1, 3, 3, 3)
         >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)
         >>> aug(inputs)
-        torch.tensor([[[[0.9993, 0.9993, 0.9993],
+        tensor([[[[0.9993, 0.9993, 0.9993],
                   [0.9993, 0.9993, 0.9993],
                   [0.9993, 0.9993, 0.9993]],
         <BLANKLINE>
@@ -81,7 +81,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

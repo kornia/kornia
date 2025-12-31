@@ -83,7 +83,7 @@ class Quaternion(nn.Module):
             data: torch.tensor or parameter containing the quaternion data with the shape of :math:`(B, 4)`.
 
         Example:
-            >>> # Create with torch.tensor (no gradients tracked by default)
+            >>> # Create with torch.tensor(no gradients tracked by default)
             >>> data = torch.tensor([1., 0., 0., 0.])
             >>> q1 = Quaternion(data)
             >>> # Create with parameter (gradients tracked)

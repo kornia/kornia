@@ -81,7 +81,7 @@ def in_range(
         >>> upper = (0.8, 0.9, 1.0)
         >>> mask = in_range(input, lower, upper, return_mask=True)
         >>> mask
-        torch.tensor([[[[1., 1., 0.],
+        tensor([[[[1., 1., 0.],
                   [0., 0., 0.],
                   [0., 1., 1.]]]])
         >>> mask.shape
@@ -96,7 +96,7 @@ def in_range(
         >>> upper = torch.tensor([[0.6, 0.6, 0.6], [0.8, 0.8, 0.8]]).reshape(input_shape[0], input_shape[1], 1, 1)
         >>> mask = in_range(input_tensor, lower, upper, return_mask=True)
         >>> mask
-        torch.tensor([[[[0., 0., 1.],
+        tensor([[[[0., 0., 1.],
                   [0., 0., 0.],
                   [1., 0., 0.]]],
         <BLANKLINE>
@@ -171,7 +171,7 @@ class InRange(nn.Module):
         >>> upper = (0.8, 0.9, 1.0)
         >>> mask = InRange(lower, upper, return_mask=True)(input)
         >>> mask
-        torch.tensor([[[[1., 1., 0.],
+        tensor([[[[1., 1., 0.],
                   [0., 0., 0.],
                   [0., 1., 1.]]]])
 

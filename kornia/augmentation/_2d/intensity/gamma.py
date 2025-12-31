@@ -50,7 +50,7 @@ class RandomGamma(IntensityAugmentationBase2D):
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomGamma((0.5,2.),(1.5,1.5),p=1.)
         >>> aug(inputs)
-        torch.tensor([[[[1.0000, 1.0000, 0.3912],
+        tensor([[[[1.0000, 1.0000, 0.3912],
                   [0.4883, 0.7801, 1.0000],
                   [1.0000, 1.0000, 0.9702]],
         <BLANKLINE>
@@ -66,7 +66,7 @@ class RandomGamma(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomGamma((0.8,1.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

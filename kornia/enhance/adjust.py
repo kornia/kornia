@@ -264,7 +264,7 @@ def adjust_gamma(
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_gamma(x, 1.0, 2.0)
-        torch.tensor([[[[1., 1.],
+        tensor([[[[1., 1.],
                   [1., 1.]]]])
 
         >>> x = torch.ones(2, 5, 3, 3)
@@ -347,7 +347,7 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
         >>> import torch
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_contrast(x, 0.5)
-        torch.tensor([[[[0.5000, 0.5000],
+        tensor([[[[0.5000, 0.5000],
                   [0.5000, 0.5000]]]])
 
         >>> x = torch.ones(2, 5, 3, 3)
@@ -402,7 +402,7 @@ def adjust_contrast_with_mean_subtraction(image: torch.Tensor, factor: Union[flo
         >>> import torch
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_contrast_with_mean_subtraction(x, 0.5)
-        torch.tensor([[[[1., 1.],
+        tensor([[[[1., 1.],
                   [1., 1.]]]])
 
         >>> x = torch.ones(2, 5, 3, 3)
@@ -476,7 +476,7 @@ def adjust_brightness(
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_brightness(x, 1.)
-        torch.tensor([[[[1., 1.],
+        tensor([[[[1., 1.],
                   [1., 1.]]]])
 
         >>> x = torch.ones(2, 5, 3, 3)
@@ -531,7 +531,7 @@ def adjust_brightness_accumulative(
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_brightness_accumulative(x, 1.)
-        torch.tensor([[[[1., 1.],
+        tensor([[[[1., 1.],
                   [1., 1.]]]])
 
         >>> x = torch.ones(2, 5, 3, 3)
@@ -585,7 +585,7 @@ def adjust_sigmoid(image: torch.Tensor, cutoff: float = 0.5, gain: float = 10, i
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_sigmoid(x, gain=0)
-        torch.tensor([[[[0.5000, 0.5000],
+        tensor([[[[0.5000, 0.5000],
                   [0.5000, 0.5000]]]])
 
     """
@@ -618,7 +618,7 @@ def adjust_log(image: torch.Tensor, gain: float = 1, inv: bool = False, clip_out
     Example:
         >>> x = torch.zeros(1, 1, 2, 2)
         >>> adjust_log(x, inv=True)
-        torch.tensor([[[[0., 0.],
+        tensor([[[[0., 0.],
                   [0., 0.]]]])
 
     """
@@ -1075,7 +1075,7 @@ class AdjustSaturation(nn.Module):
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
         >>> AdjustSaturation(2.)(x)
-        torch.tensor([[[[1., 1., 1.],
+        tensor([[[[1., 1., 1.],
                   [1., 1., 1.],
                   [1., 1., 1.]],
         <BLANKLINE>
@@ -1091,7 +1091,7 @@ class AdjustSaturation(nn.Module):
         >>> y = torch.ones(2)
         >>> out = AdjustSaturation(y)(x)
         >>> torch.nn.functional.mse_loss(x, out)
-        torch.tensor(0.)
+        tensor(0.)
 
     """
 
@@ -1126,7 +1126,7 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
         >>> AdjustSaturationWithGraySubtraction(2.)(x)
-        torch.tensor([[[[1., 1., 1.],
+        tensor([[[[1., 1., 1.],
                   [1., 1., 1.],
                   [1., 1., 1.]],
         <BLANKLINE>
@@ -1142,7 +1142,7 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
         >>> y = torch.ones(2)
         >>> out = AdjustSaturationWithGraySubtraction(y)(x)
         >>> torch.nn.functional.mse_loss(x, out)
-        torch.tensor(0.)
+        tensor(0.)
 
     """
 
@@ -1178,7 +1178,7 @@ class AdjustHue(nn.Module):
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
         >>> AdjustHue(3.141516)(x)
-        torch.tensor([[[[1., 1., 1.],
+        tensor([[[[1., 1., 1.],
                   [1., 1., 1.],
                   [1., 1., 1.]],
         <BLANKLINE>
@@ -1226,7 +1226,7 @@ class AdjustGamma(nn.Module):
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
         >>> AdjustGamma(1.0, 2.0)(x)
-        torch.tensor([[[[1., 1., 1.],
+        tensor([[[[1., 1., 1.],
                   [1., 1., 1.],
                   [1., 1., 1.]]]])
 
@@ -1266,7 +1266,7 @@ class AdjustContrast(nn.Module):
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
         >>> AdjustContrast(0.5)(x)
-        torch.tensor([[[[0.5000, 0.5000, 0.5000],
+        tensor([[[[0.5000, 0.5000, 0.5000],
                   [0.5000, 0.5000, 0.5000],
                   [0.5000, 0.5000, 0.5000]]]])
 
@@ -1305,7 +1305,7 @@ class AdjustContrastWithMeanSubtraction(nn.Module):
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
         >>> AdjustContrastWithMeanSubtraction(0.5)(x)
-        torch.tensor([[[[1., 1., 1.],
+        tensor([[[[1., 1., 1.],
                   [1., 1., 1.],
                   [1., 1., 1.]]]])
 
@@ -1342,7 +1342,7 @@ class AdjustBrightness(nn.Module):
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
         >>> AdjustBrightness(1.)(x)
-        torch.tensor([[[[1., 1., 1.],
+        tensor([[[[1., 1., 1.],
                   [1., 1., 1.],
                   [1., 1., 1.]]]])
 
@@ -1379,7 +1379,7 @@ class AdjustSigmoid(nn.Module):
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
         >>> AdjustSigmoid(gain=0)(x)
-        torch.tensor([[[[0.5000, 0.5000],
+        tensor([[[[0.5000, 0.5000],
                   [0.5000, 0.5000]]]])
 
     """
@@ -1411,7 +1411,7 @@ class AdjustLog(nn.Module):
     Example:
         >>> x = torch.zeros(1, 1, 2, 2)
         >>> AdjustLog(inv=True)(x)
-        torch.tensor([[[[0., 0.],
+        tensor([[[[0., 0.],
                   [0., 0.]]]])
 
     """
@@ -1444,7 +1444,7 @@ class AdjustBrightnessAccumulative(nn.Module):
     Example:
         >>> x = torch.ones(1, 1, 3, 3)
         >>> AdjustBrightnessAccumulative(1.)(x)
-        torch.tensor([[[[1., 1., 1.],
+        tensor([[[[1., 1., 1.],
                   [1., 1., 1.],
                   [1., 1., 1.]]]])
 

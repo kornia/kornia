@@ -56,7 +56,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         >>> input = torch.ones(1, 3, 3, 3) * 0.5
         >>> aug = RandomGaussianIllumination(gain=0.5, p=1.)
         >>> aug(input)
-        torch.tensor([[[[0.7266, 1.0000, 0.7266],
+        tensor([[[[0.7266, 1.0000, 0.7266],
                   [0.6621, 0.9121, 0.6621],
                   [0.5000, 0.6911, 0.5000]],
         <BLANKLINE>
@@ -72,7 +72,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomGaussianIllumination(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
-        torch.tensor(True)
+        tensor(True)
 
     """
 

@@ -34,7 +34,7 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
     Example:
         >>> input = torch.ones(3, 1, 1)
         >>> sepia_from_rgb(input, rescale=False)
-        torch.tensor([[[1.3510]],
+        tensor([[[1.3510]],
         <BLANKLINE>
                 [[1.2030]],
         <BLANKLINE>
@@ -77,7 +77,7 @@ class Sepia(nn.Module):
         >>>
         >>> input = torch.ones(3, 1, 1)
         >>> Sepia(rescale=False)(input)
-        torch.tensor([[[1.3510]],
+        tensor([[[1.3510]],
         <BLANKLINE>
                 [[1.2030]],
         <BLANKLINE>

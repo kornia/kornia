@@ -59,7 +59,7 @@ def undistort_points(
         >>> K = torch.eye(3)[None]
         >>> dist = torch.rand(1, 4)
         >>> undistort_points(x, K, dist)
-        torch.tensor([[[-0.1513, -0.1165],
+        tensor([[[-0.1513, -0.1165],
                  [ 0.0711,  0.1100],
                  [-0.0697,  0.0228],
                  [-0.1843, -0.1606]]])

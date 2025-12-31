@@ -42,7 +42,7 @@ def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) 
         >>> input = torch.ones(3, 5)
         >>> output = integral_tensor(input, (-2, -1))
         >>> output
-        torch.tensor([[ 1.,  2.,  3.,  4.,  5.],
+        tensor([[ 1.,  2.,  3.,  4.,  5.],
                 [ 2.,  4.,  6.,  8., 10.],
                 [ 3.,  6.,  9., 12., 15.]])
 
@@ -76,7 +76,7 @@ def integral_image(image: torch.Tensor) -> torch.Tensor:
         >>> input = torch.ones(1, 5, 5)
         >>> output = integral_image(input)
         >>> output
-        torch.tensor([[[ 1.,  2.,  3.,  4.,  5.],
+        tensor([[[ 1.,  2.,  3.,  4.,  5.],
                  [ 2.,  4.,  6.,  8., 10.],
                  [ 3.,  6.,  9., 12., 15.],
                  [ 4.,  8., 12., 16., 20.],
@@ -106,7 +106,7 @@ class IntegralTensor(nn.Module):
         >>> dim = (-2, -1)
         >>> output = IntegralTensor(dim)(input)
         >>> output
-        torch.tensor([[ 1.,  2.,  3.,  4.,  5.],
+        tensor([[ 1.,  2.,  3.,  4.,  5.],
                 [ 2.,  4.,  6.,  8., 10.],
                 [ 3.,  6.,  9., 12., 15.]])
 
@@ -139,7 +139,7 @@ class IntegralImage(nn.Module):
         >>> input = torch.ones(1, 5, 5)
         >>> output = IntegralImage()(input)
         >>> output
-        torch.tensor([[[ 1.,  2.,  3.,  4.,  5.],
+        tensor([[[ 1.,  2.,  3.,  4.,  5.],
                  [ 2.,  4.,  6.,  8., 10.],
                  [ 3.,  6.,  9., 12., 15.],
                  [ 4.,  8., 12., 16., 20.],
