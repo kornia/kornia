@@ -25,6 +25,7 @@ import torch.nn.functional as F
 from kornia.augmentation import LongestMaxSize
 from kornia.augmentation.container.augment import AugmentationSequential
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.enhance import normalize as kornia_normalize
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.models.sam import Sam, SamConfig
@@ -121,9 +122,9 @@ class VisualPrompter:
 
         """
         if isinstance(mean, torch.Tensor) and isinstance(std, torch.Tensor):
-            x = F.normalize(x, mean, std)
+            x = kornia_normalize(x, mean, std)
         elif isinstance(self.pixel_mean, torch.Tensor) and isinstance(self.pixel_std, torch.Tensor):
-            x = F.normalize(x, self.pixel_mean, self.pixel_std)
+            x = kornia_normalize(x, self.pixel_mean, self.pixel_std)
 
         encoder_im_size = self.model.image_encoder.img_size
         pad_h = encoder_im_size - x.shape[-2]
