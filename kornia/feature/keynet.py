@@ -129,8 +129,6 @@ class KeyNet(nn.Module):
 
     This is based on the original code
     from paper "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters". See :cite:`KeyNet2019` for
-    import torch
-    import torch.nn as nn
     more details.
 
     .. image:: _static/img/KeyNet.png

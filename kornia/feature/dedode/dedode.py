@@ -110,7 +110,7 @@ class DeDoDe(nn.Module):
         if pad_if_not_divisible:
             pd_h = 14 - h % 14 if h % 14 > 0 else 0
             pd_w = 14 - w % 14 if w % 14 > 0 else 0
-            images = torch.nn.functional.F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
+            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
         keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
         descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
         return dedode_denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
@@ -148,7 +148,7 @@ class DeDoDe(nn.Module):
             h, w = images.shape[2:]
             pd_h = 14 - h % 14 if h % 14 > 0 else 0
             pd_w = 14 - w % 14 if w % 14 > 0 else 0
-            images = torch.nn.functional.F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
+            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
         if apply_imagenet_normalization:
             images = self.normalizer(images)
         logits = self.detector.forward(images)
@@ -157,7 +157,7 @@ class DeDoDe(nn.Module):
         if crop_h is not None and crop_w is not None:
             logits = logits[..., :crop_h, :crop_w]
             H, W = crop_h, crop_w
-        scoremap = logits.reshape(B, H * W).F.softmax(dim=-1).reshape(B, H, W)
+        scoremap = logits.reshape(B, H * W).softmax(dim=-1).reshape(B, H, W)
         keypoints, confidence = sample_keypoints(scoremap, num_samples=n)
         return keypoints, confidence
 

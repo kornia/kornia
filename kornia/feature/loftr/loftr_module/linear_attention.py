@@ -24,6 +24,7 @@ transformers/blob/master/fast_transformers/attention/linear_attention.py.
 from typing import Optional
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 from torch.nn import Dropout
 
@@ -113,7 +114,7 @@ class FullAttention(nn.Module):
 
         # Compute the attention and the weighted average
         softmax_temp = 1.0 / queries.size(3) ** 0.5  # sqrt(D)
-        A = torch.F.softmax(softmax_temp * QK, dim=2)
+        A = F.softmax(softmax_temp * QK, dim=2)
         if self.use_dropout:
             A = self.dropout(A)
 
