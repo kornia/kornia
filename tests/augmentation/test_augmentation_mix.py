@@ -125,13 +125,16 @@ class TestRandomMixUpV2(BaseTester):
 
 class TestRandomCutMixV2(BaseTester):
     def test_smoke(self):
-        f = RandomCutMixV2(data_keys=["input", "class"])
-        repr = "RandomCutMixV2(cut_size=None, beta=None, num_mix=1, p=1.0, p_batch=1.0, same_on_batch=False)"
-        assert str(f) == repr
+        f = RandomCutMixV2(data_keys=["input", "class"], use_correct_lambda=True)
+        expected_repr = (
+            "RandomCutMixV2(cut_size=None, beta=None, num_mix=1, p=1.0, "
+            "p_batch=1.0, same_on_batch=False, use_correct_lambda=True)"
+        )
+        assert str(f) == expected_repr
 
     def test_random_mixup_p1(self, device, dtype):
         torch.manual_seed(76)
-        f = RandomCutMixV2(p=1.0, data_keys=["input", "class"])
+        f = RandomCutMixV2(p=1.0, data_keys=["input", "class"], use_correct_lambda=True)
 
         input = torch.stack(
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
@@ -156,7 +159,7 @@ class TestRandomCutMixV2(BaseTester):
 
     def test_random_mixup_p0(self, device, dtype):
         torch.manual_seed(76)
-        f = RandomCutMixV2(p=0.0, data_keys=["input", "class"])
+        f = RandomCutMixV2(p=0.0, data_keys=["input", "class"], use_correct_lambda=True)
 
         input = torch.stack(
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
@@ -175,7 +178,7 @@ class TestRandomCutMixV2(BaseTester):
         torch.manual_seed(76)
         # beta 0 => resample 0.5 area
         # beta cannot be 0 after torch 1.8.0
-        f = RandomCutMixV2(beta=1e-7, p=1.0, data_keys=["input", "class"])
+        f = RandomCutMixV2(beta=1e-7, p=1.0, data_keys=["input", "class"], use_correct_lambda=True)
 
         input = torch.stack(
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
@@ -201,7 +204,7 @@ class TestRandomCutMixV2(BaseTester):
 
     def test_random_mixup_num2(self, device, dtype):
         torch.manual_seed(76)
-        f = RandomCutMixV2(num_mix=5, p=1.0, data_keys=["input", "class"])
+        f = RandomCutMixV2(num_mix=5, p=1.0, data_keys=["input", "class"], use_correct_lambda=True)
 
         input = torch.stack(
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
@@ -237,7 +240,7 @@ class TestRandomCutMixV2(BaseTester):
 
     def test_random_mixup_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
-        f = RandomCutMixV2(same_on_batch=True, p=1.0, data_keys=["input", "class"])
+        f = RandomCutMixV2(same_on_batch=True, p=1.0, data_keys=["input", "class"], use_correct_lambda=True)
 
         input = torch.stack(
             [torch.ones(1, 3, 4, device=device, dtype=dtype), torch.zeros(1, 3, 4, device=device, dtype=dtype)]
