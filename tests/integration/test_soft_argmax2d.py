@@ -23,12 +23,12 @@ from torch import nn, optim
 
 import kornia
 
-from testing.base import assert_close
+from testing.base import BaseTester
 
 logger = logging.getLogger(__name__)
 
 
-class TestIntegrationSoftArgmax2d:
+class TestIntegrationSoftArgmax2d(BaseTester):
     # optimization
     lr = 1e-3
     num_iterations = 500
@@ -78,5 +78,5 @@ class TestIntegrationSoftArgmax2d:
             loss.backward()
             optimizer.step()
 
-        assert_close(pred[..., 0], target[..., 0], rtol=1e-2, atol=1e-2)
-        assert_close(pred[..., 1], target[..., 1], rtol=1e-2, atol=1e-2)
+        self.assert_close(pred[..., 0], target[..., 0], rtol=1e-2, atol=1e-2)
+        self.assert_close(pred[..., 1], target[..., 1], rtol=1e-2, atol=1e-2)
