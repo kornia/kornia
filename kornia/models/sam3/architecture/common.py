@@ -26,10 +26,9 @@ This module provides shared building blocks for SAM-3 including:
 
 from __future__ import annotations
 
+import torch
 import torch.nn.functional as F
 from torch import nn
-
-from kornia.core import Tensor
 
 
 class MLPBlock(nn.Module):
@@ -50,7 +49,7 @@ class MLPBlock(nn.Module):
         self.lin2 = nn.Linear(mlp_dim, embedding_dim)
         self.act = nn.GELU()
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply MLP block.
 
         Args:
@@ -95,7 +94,7 @@ class Attention(nn.Module):
             else nn.Identity()
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply multi-head attention.
 
         Args:

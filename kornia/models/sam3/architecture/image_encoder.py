@@ -26,7 +26,6 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
 from .common import Attention, MLPBlock
@@ -55,7 +54,7 @@ class PatchEmbedding(nn.Module):
         self.proj = nn.Conv2d(in_channels, embed_dim, kernel_size=patch_size, stride=patch_size)
         self.norm = nn.LayerNorm(embed_dim)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply patch embedding.
 
         Args:
@@ -93,7 +92,7 @@ class ViTBlock(nn.Module):
         mlp_dim = int(dim * mlp_ratio)
         self.mlp = MLPBlock(dim, mlp_dim)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply ViT block.
 
         Args:
@@ -158,7 +157,7 @@ class ImageEncoderHiera(nn.Module):
         # Final norm
         self.norm = nn.LayerNorm(embed_dim)
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass of the image encoder.
 
         Args:
