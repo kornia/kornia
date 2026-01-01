@@ -83,7 +83,7 @@ class Qwen2VLVisionAttention(Module):
 
 
 class Qwen2VLMLP(Module):
-    def __init__(self, dim: int, hidden_dim: int = None) -> None:
+    def __init__(self, dim: int, hidden_dim: Optional[int] = None) -> None:
         super().__init__()
         if hidden_dim is None:
             hidden_dim = 4 * dim
