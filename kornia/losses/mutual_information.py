@@ -82,11 +82,6 @@ class EntropyBasedLossBase(torch.nn.Module):
         self,
         other_signal: torch.Tensor,
     ) -> torch.Tensor:
-        """Computes the differentiable Joint Histogram using Parzen Window estimation.
-
-        Input shapes: (B,N) or (N,)
-        Output shape: (num_bins, num_bins)
-        """
         if other_signal.shape != self.signal.shape:
             raise ValueError(f"The two signals have incompatible shapes: {other_signal.shape} and {self.signal}.")
         other_signal = _normalize_signal(other_signal, num_bins=self.num_bins)
