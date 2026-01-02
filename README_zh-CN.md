@@ -141,6 +141,18 @@
 ## 贡献
 我们感谢所有的贡献者为改进和提升 Kornia 所作出的努力。您可以直接修复一个已知的BUG而无需进一步讨论；如果您想要添加一个任何新的或者扩展功能，请务必先通过提交一个Issue来与我们讨论。详情请阅读 [贡献指南](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md)。开源项目的参与者请务必了解如下 [规范](https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md)。
 
+### AI 政策
+
+Kornia 接受 AI 辅助的代码，但严格拒绝提交者仅作为代理的 AI 生成贡献。所有贡献者必须是每一行代码的**唯一责任作者**。在提交 pull request 之前，请查看我们的 [AI 政策](.github/AI_POLICY.md)。主要要求包括：
+
+- **验证证明**：PR 必须包含本地测试日志以证明代码已执行
+- **预先讨论**：所有 PR 在实施前必须在 Discord 或通过 GitHub issue 进行讨论
+- **库引用**：实现必须基于现有库引用（PyTorch、OpenCV 等）
+- **使用现有工具**：使用现有的 `kornia` 工具，而不是重新发明轮子
+- **解释能力**：您必须能够解释您提交的任何代码
+
+自动化 AI 审查工具（例如 @copilot）将根据这些政策检查 PR。完整详情请参阅 [AI_POLICY.md](.github/AI_POLICY.md)。
+
 ## 社区
 - **论坛:** 讨论代码实现，学术研究等。[GitHub Forums](https://github.com/kornia/kornia/discussions)
 - **GitHub Issues:** bug reports, feature requests, install issues, RFCs, thoughts, etc. [OPEN](https://github.com/kornia/kornia/issues/new/choose)

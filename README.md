@@ -255,6 +255,18 @@ If you are using kornia in your research-related documents, it is recommended th
 
 We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider reading the [CONTRIBUTING](./CONTRIBUTING.md) notes. The participation in this open source project is subject to [Code of Conduct](./CODE_OF_CONDUCT.md).
 
+### AI Policy
+
+Kornia accepts AI-assisted code but strictly rejects AI-generated contributions where the submitter acts as a proxy. All contributors must be the **Sole Responsible Author** for every line of code. Please review our [AI Policy](.github/AI_POLICY.md) before submitting pull requests. Key requirements include:
+
+- **Proof of Verification**: PRs must include local test logs proving execution
+- **Pre-Discussion**: All PRs must be discussed in Discord or via a GitHub issue before implementation
+- **Library References**: Implementations must be based on existing library references (PyTorch, OpenCV, etc.)
+- **Use Existing Utilities**: Use existing `kornia` utilities instead of reinventing the wheel
+- **Explain It**: You must be able to explain any code you submit
+
+Automated AI reviewers (e.g., @copilot) will check PRs against these policies. See [AI_POLICY.md](.github/AI_POLICY.md) for complete details.
+
 ## Community
 - **Discord:** Join our workspace to keep in touch with our core contributors, get latest updates on the industry and  be part of our community. [JOIN HERE](https://discord.gg/HfnywwpBnD)
 - **GitHub Issues:** bug reports, feature requests, install issues, RFCs, thoughts, etc. [OPEN](https://github.com/kornia/kornia/issues/new/choose)

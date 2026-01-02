@@ -4,9 +4,15 @@ Welcome! This guide will help you contribute to Kornia.
 
 ## Policies and Guidelines
 
-- **AI-Assisted Development**: AI tools (e.g., GitHub Copilot, ChatGPT, Cursor) may be used to assist with coding, but all contributions must be authored and reviewed by humans. PRs that are fully AI-generated without human understanding, oversight, or ability to explain the code will be rejected. Contributors must understand all code they submit and be able to respond to review feedback.
-  - **Automated Detection**: Automated review systems (including GitHub Copilot) analyze PRs for AI-generated content. PRs flagged as having excessive AI-generated content without sufficient human authorship will be rejected. Ensure your contributions reflect genuine human understanding and modification of any AI-assisted code.
+- **AI Policy & Authorship**: See [AI_POLICY.md](.github/AI_POLICY.md) for the complete policy. Summary:
+    - Kornia accepts AI-assisted code but strictly rejects AI-generated contributions where the submitter acts as a proxy.
+    - **Proof of Verification**: PRs must include local test logs proving execution.
+    - **Hallucination & Redundancy Ban**: Use existing `kornia` utilities and never reinvent the wheel, except for when the utility is not available.
+    - **The "Explain It" Standard**: You must be able to explain any code you submit.
+    - Violations result in immediate closure or rejection.
+
 - **15-Day Rule**: PRs with no activity for 15+ days will be automatically closed.
+
 - **Transparency**: All discussions must be public.
 
 We're all volunteers. These policies help us focus on high-impact work.
@@ -282,6 +288,8 @@ We're all volunteers. These policies help us focus on high-impact work.
   - Follow [PEP8](https://www.python.org/dev/peps/pep-0008/)
   - Use f-strings: [PEP 498](https://peps.python.org/pep-0498/)
   - Line length: 120 characters
+  - Comments must be written in English and verified by a human with a good understanding of the code.
+  - Obvious or redundant comments are not allowed. Example: "This function returns the input tensor".
   - W504 (line break after binary operator) is sometimes acceptable. Example:
 
     ```python
@@ -296,9 +304,19 @@ We're all volunteers. These policies help us focus on high-impact work.
 **Requirements:**
 - Link PR to an issue (use "Closes #123" or "Fixes #123")
 - Pass all local tests before submission
+- For first time contributors, provide proof of local test execution in the PR description
+- Fill the [pull request template](.github/pull_request_template.md)
+- **AI Policy Compliance**: Must comply with [AI_POLICY.md](.github/AI_POLICY.md). This includes:
+  - Using existing `kornia` utilities instead of reinventing
+  - Being able to explain all submitted code
+  - Completing the AI Usage Disclosure in the PR template
 - 15-Day Rule: Inactive PRs (>15 days) will be closed
-- AI-Assisted Development: AI tools may assist, but PRs must be human-authored and reviewed. Fully AI-generated PRs without human understanding will be rejected. Automated systems (including GitHub Copilot) detect excessive AI-generated content and may reject PRs.
 - Transparency: Keep discussions public
+
+**Code review:**
+- By default, @copilot will check the PR against the AI Policy and the coding standards.
+- Code must be reviewed by the repository owner or a senior contributor to finally decide over the quality of the PR.
+- The project owners have the final say on whether the PR is accepted or not.
 
 **Note:** Tickets may be closed during cleanup. Feel free to reopen if you plan to finish the work.
 
