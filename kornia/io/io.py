@@ -21,8 +21,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Union
 
-import numpy as np
 import kornia_rs
+import numpy as np
 import torch
 
 import kornia
@@ -67,35 +67,35 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
 
 
 def _to_float32(image: torch.Tensor) -> torch.Tensor:
-    if image.dtype==torch.uint8:
+    if image.dtype == torch.uint8:
         return image.float() / 255.0
-    elif image.dtype==torch.uint16:
+    elif image.dtype == torch.uint16:
         return image.float() / 65535.0
-    elif image.dtype==torch.float32:
+    elif image.dtype == torch.float32:
         return image
     else:
         raise NotImplementedError(f"Unsupported dtype: {image.dtype}")
 
 
 def _to_float16(image: torch.Tensor) -> torch.Tensor:
-    if image.dtype==torch.uint8:
+    if image.dtype == torch.uint8:
         return (image.float() / 255.0).half()
-    elif image.dtype==torch.uint16:
+    elif image.dtype == torch.uint16:
         return (image.float() / 65535.0).half()
-    elif image.dtype==torch.float32:
+    elif image.dtype == torch.float32:
         return image.half()
-    elif image.dtype==torch.float16:
+    elif image.dtype == torch.float16:
         return image
     else:
         raise NotImplementedError(f"Unsupported dtype: {image.dtype}")
 
 
 def _to_uint8(image: torch.Tensor) -> torch.Tensor:
-    if image.dtype==torch.float32:
+    if image.dtype == torch.float32:
         return torch.round(image * 255.0).clamp(0, 255).to(torch.uint8)
-    elif image.dtype==torch.uint16:
+    elif image.dtype == torch.uint16:
         return (image >> 8).to(torch.uint8)
-    elif image.dtype==torch.uint8:
+    elif image.dtype == torch.uint8:
         return image
     else:
         raise NotImplementedError(f"Unsupported dtype: {image.dtype}")
