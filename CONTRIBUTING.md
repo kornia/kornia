@@ -4,9 +4,15 @@ Welcome! This guide will help you contribute to Kornia.
 
 ## Policies and Guidelines
 
-- **AI-Assisted Development**: AI tools (e.g., GitHub Copilot, ChatGPT, Cursor) may be used to assist with coding, but all contributions must be authored and reviewed by humans. PRs that are fully AI-generated without human understanding, oversight, or ability to explain the code will be rejected. Contributors must understand all code they submit and be able to respond to review feedback.
-  - **Automated Detection**: Automated review systems (including GitHub Copilot) analyze PRs for AI-generated content. PRs flagged as having excessive AI-generated content without sufficient human authorship will be rejected. Ensure your contributions reflect genuine human understanding and modification of any AI-assisted code.
+- **AI Policy & Authorship**: See [AI_POLICY.md](AI_POLICY.md) for the complete policy. Summary:
+    - Kornia accepts AI-assisted code but strictly rejects AI-generated contributions where the submitter acts as a proxy.
+    - **Proof of Verification**: PRs must include local test logs proving execution.
+    - **Hallucination & Redundancy Ban**: Use existing `kornia` utilities and never reinvent the wheel, except for when the utility is not available.
+    - **The "Explain It" Standard**: You must be able to explain any code you submit.
+    - Violations result in immediate closure or rejection.
+
 - **15-Day Rule**: PRs with no activity for 15+ days will be automatically closed.
+
 - **Transparency**: All discussions must be public.
 
 We're all volunteers. These policies help us focus on high-impact work.
@@ -26,9 +32,8 @@ We're all volunteers. These policies help us focus on high-impact work.
 
 3. **Fix bugs or add features:**
    - Check [help wanted issues](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) for starting points.
-   - **PRs must be linked to an issue** (use "Closes #123" or "Fixes #123").
    - Follow the [development setup](#developing-kornia) below.
-   - Run local tests before submitting.
+   - See [Pull Request](#pull-request) section for PR requirements.
 
 4. **Donate resources:**
    - [Open Collective](https://opencollective.com/kornia)
@@ -143,10 +148,6 @@ We're all volunteers. These policies help us focus on high-impact work.
 
 5. **Develop and test:**
 
-    **Requirements:**
-    - AI tools may assist with coding, but you must understand and review all code before submission
-    - **All local tests must pass before submitting PRs**
-
     Create test cases for your code. Run tests with:
     ```bash
     # Run all tests
@@ -173,8 +174,6 @@ We're all volunteers. These policies help us focus on high-impact work.
 5. Submit a PR following the [Pull Request](#pull-request) guidelines
 
 # Coding Standards
-
-- Use meaningful names for variables, functions, and classes.
 
 - **Write small incremental changes:**
   - Commit small, logical changes
@@ -282,6 +281,8 @@ We're all volunteers. These policies help us focus on high-impact work.
   - Follow [PEP8](https://www.python.org/dev/peps/pep-0008/)
   - Use f-strings: [PEP 498](https://peps.python.org/pep-0498/)
   - Line length: 120 characters
+  - Comments must be written in English and verified by a human with a good understanding of the code
+  - Obvious or redundant comments are not allowed (see [Best Practices](#best-practices) for comment guidelines)
   - W504 (line break after binary operator) is sometimes acceptable. Example:
 
     ```python
@@ -291,14 +292,99 @@ We're all volunteers. These policies help us focus on high-impact work.
 
 - **Third-party libraries:** Not allowed. Only PyTorch.
 
+# Best Practices
+
+This section provides guidance for contributing to Kornia, with a focus on Python and PyTorch best practices, performance, and maintainability.
+
+## Before You Start
+
+1. **Discuss First**: Always discuss your proposed changes in Discord or via a GitHub issue before starting implementation. This ensures your work aligns with project goals and avoids duplicate effort.
+
+2. **Start Small**: If you're new to the project, start with small bug fixes or documentation improvements to familiarize yourself with the codebase and contribution process.
+
+3. **Understand the Codebase**: Take time to explore existing code patterns, architecture, and conventions before implementing new features.
+
+4. **Review Existing Utilities**: Before implementing new functionality, search the codebase for existing utilities in `kornia`. This aligns with the AI Policy's Hallucination & Redundancy Ban (see [Policies and Guidelines](#policies-and-guidelines)).
+
+## Development Workflow
+
+1. **Keep PRs Focused**: Each PR should address a single concern. If you're working on multiple features, create separate PRs for each.
+
+2. **Test Locally First**: Always run all relevant tests locally before submitting (see [Pull Request](#pull-request) for requirements):
+   ```bash
+   pixi run lint        # Check formatting and linting
+   pixi run test         # Run all tests
+   pixi run typecheck    # Verify type checking
+   ```
+
+3. **Update Documentation**: When adding new features or changing behavior, update docstrings for public APIs. For documentation contributions, see [Contributing to Documentation](#contributing-to-documentation).
+
+## Code Quality
+
+1. **Performance Considerations**:
+   - Prefer in-place operations when possible (e.g., `tensor.add_(other)` vs `tensor = tensor.add(other)`)
+   - Use tensor views and slicing instead of copying when possible
+   - Leverage PyTorch's vectorized operations over Python loops
+   - Profile before optimizing (use `torch.profiler` or `cProfile`)
+   - Consider memory efficiency for large tensors (use appropriate dtypes, avoid unnecessary copies)
+   - Use `torch.jit.script` or `torch.compile` for performance-critical paths when appropriate
+
+2. **Code Clarity**:
+   - Use descriptive variable and function names that convey intent
+   - Keep functions focused and single-purpose
+   - Prefer clear code over comments; when comments are needed, explain "why" not "what"
+   - Avoid over-engineering; start simple and refactor when needed
+
+3. **Tensor Operations**:
+   - Use `kornia` utilities instead of reimplementing common operations (see [AI Policy](#policies-and-guidelines))
+   - Ensure operations are device-agnostic (work on CPU, CUDA, MPS, etc.)
+   - Support multiple dtypes (float32, float64, float16, bfloat16) when applicable
+   - Handle batched and non-batched inputs consistently
+
+## Testing Best Practices
+
+- Write tests for happy paths, error cases, edge conditions, boundary conditions, and integration scenarios
+- Use `BaseTester` from `testing.base` for consistent test structure (see [Coding Standards](#coding-standards) for examples)
+- Test across different devices and dtypes using pytest parametrization (see [Coding Standards](#coding-standards) for examples)
+- Make tests deterministic, fast, and independent
+- Use descriptive test names; test both forward pass and gradients when applicable
+
+## Review Process
+
+- Review your own PR first: check for typos/formatting, verify tests pass, ensure documentation is updated, and confirm AI policy compliance
+- Respond promptly to review feedback
+- Be open to feedback and explain your decisions when questioned
+- See [Pull Request](#pull-request) section for review requirements
+
+## AI-Assisted Development
+
+- Understand every line of code you submit; you must be able to explain it during review (see [AI Policy](#policies-and-guidelines))
+- Review AI output thoroughly: check for unnecessary complexity, verify it follows project conventions, ensure it uses existing utilities, and test it
+- Be transparent in PR descriptions about what was AI-assisted and what you manually reviewed (see [Pull Request](#pull-request) for AI Usage Disclosure requirements)
+
+## Communication
+
+- Write clear, concise PR descriptions (see [Pull Request](#pull-request) for requirements)
+- Always link to related issues or discussions in your PR description
+- Ask questions in Discord or PR comments if unsure; it's better to clarify early than to rework later
+
 # Pull Request
 
 **Requirements:**
 - Link PR to an issue (use "Closes #123" or "Fixes #123")
 - Pass all local tests before submission
+- Provide proof of local test execution in the PR description (this is especially important for first-time contributors)
+- Fill the [pull request template](.github/pull_request_template.md)
+- **AI Policy Compliance**: Must comply with [AI_POLICY.md](AI_POLICY.md). This includes:
+  - Using existing `kornia` utilities instead of reinventing
+  - Being able to explain all submitted code
+  - Completing the AI Usage Disclosure in the PR template
 - 15-Day Rule: Inactive PRs (>15 days) will be closed
-- AI-Assisted Development: AI tools may assist, but PRs must be human-authored and reviewed. Fully AI-generated PRs without human understanding will be rejected. Automated systems (including GitHub Copilot) detect excessive AI-generated content and may reject PRs.
 - Transparency: Keep discussions public
+
+**Code review:**
+- By default, GitHub Copilot will check the PR against the AI Policy and the coding standards.
+- Code must be reviewed by the repository owner or a senior contributor, who have the final say on the quality and acceptance of the PR.
 
 **Note:** Tickets may be closed during cleanup. Feel free to reopen if you plan to finish the work.
 
