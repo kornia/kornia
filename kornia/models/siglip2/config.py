@@ -127,7 +127,7 @@ class SigLip2Config:
             SigLip2Config instance configured for the specified model.
         """
         # Parse model name
-        is_v1 = "siglip-base" in model_name or ("siglip" in model_name and "siglip2" not in model_name)
+        is_v1 = "google/siglip-base-patch16-224" in model_name
         is_large = "large" in model_name
 
         # Extract image size from model name
