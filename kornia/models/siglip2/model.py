@@ -26,8 +26,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, Tensor
-
 from .config import SigLip2Config
 from .text_encoder import SigLip2TextModel
 from .vision_encoder import SigLip2VisionModel
@@ -48,15 +46,15 @@ class SigLip2Result:
         loss: Contrastive loss or None.
     """
 
-    logit_scale: Tensor
-    image_embeds: Optional[Tensor] = None
-    text_embeds: Optional[Tensor] = None
-    logits_per_image: Optional[Tensor] = None
-    logits_per_text: Optional[Tensor] = None
-    loss: Optional[Tensor] = None
+    logit_scale: torch.Tensor
+    image_embeds: Optional[torch.Tensor] = None
+    text_embeds: Optional[torch.Tensor] = None
+    logits_per_image: Optional[torch.Tensor] = None
+    logits_per_text: Optional[torch.Tensor] = None
+    loss: Optional[torch.Tensor] = None
 
 
-class SigLip2Model(Module):
+class SigLip2Model(nn.Module):
     """SigLip2 vision-language model.
 
     This model combines a vision encoder and text encoder with projection layers
@@ -70,14 +68,15 @@ class SigLip2Model(Module):
 
     Example:
         >>> import torch
-        >>> from kornia.models.siglip2 import SigLip2Model, SigLip2Config
+        >>> from kornia.models.siglip2 import SigLip2Model, SigLip2Config, SigLip2ImagePreprocessor
         >>>
         >>> # Create model
         >>> config = SigLip2Config()
         >>> model = SigLip2Model(config)
         >>>
-        >>> # Create preprocessor
+        >>> # Create preprocessor and process images
         >>> preprocessor = SigLip2ImagePreprocessor(image_size=(224, 224))
+        >>> images = torch.randint(0, 255, (2, 3, 256, 256), dtype=torch.float32)
         >>> pixel_values = preprocessor(images)
         >>>
         >>> # Process image features
@@ -117,15 +116,16 @@ class SigLip2Model(Module):
 
         # logit scale (temperature parameter)
         self.logit_scale = nn.Parameter(torch.tensor(config.logit_scale_init_value))
+
         # logit bias
         self.logit_bias = nn.Parameter(torch.tensor(0.0))
 
     def get_image_features(
         self,
-        pixel_values: Tensor,
-        attention_mask: Optional[Tensor] = None,
+        pixel_values: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
         normalize: bool = True,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         """Get image features.
 
         Args:
@@ -149,11 +149,11 @@ class SigLip2Model(Module):
 
     def get_text_features(
         self,
-        input_ids: Tensor,
-        attention_mask: Optional[Tensor] = None,
-        position_ids: Optional[Tensor] = None,
+        input_ids: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
         normalize: bool = True,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         """Get text features.
 
         Args:
@@ -182,10 +182,10 @@ class SigLip2Model(Module):
 
     def forward(
         self,
-        pixel_values: Optional[Tensor] = None,
-        input_ids: Optional[Tensor] = None,
-        attention_mask: Optional[Tensor] = None,
-        position_ids: Optional[Tensor] = None,
+        pixel_values: Optional[torch.Tensor] = None,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
         return_loss: bool = False,
     ) -> SigLip2Result:
         """Forward pass.

@@ -24,15 +24,13 @@ from typing import Optional
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor
-
 from .attention import SigLip2Attention
 from .config import SigLip2TextConfig
 
 __all__ = ["SigLip2TextEmbeddings", "SigLip2TextEncoder", "SigLip2TextLayer", "SigLip2TextModel"]
 
 
-class SigLip2TextEmbeddings(Module):
+class SigLip2TextEmbeddings(nn.Module):
     """Text embeddings for SigLip2.
 
     Combines token embeddings and position embeddings.
@@ -54,7 +52,7 @@ class SigLip2TextEmbeddings(Module):
         # position embeddings - [max_position_embeddings, hidden_size]
         self.position_embedding = nn.Embedding(config.max_position_embeddings, config.hidden_size)
 
-    def forward(self, input_ids: Tensor, position_ids: Optional[Tensor] = None) -> Tensor:
+    def forward(self, input_ids: torch.Tensor, position_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Forward pass.
 
         Args:
@@ -81,7 +79,7 @@ class SigLip2TextEmbeddings(Module):
         return embeddings
 
 
-class SigLip2TextMLP(Module):
+class SigLip2TextMLP(nn.Module):
     """MLP (feed-forward network) for text encoder.
 
     Args:
@@ -95,7 +93,7 @@ class SigLip2TextMLP(Module):
         self.fc2 = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.dropout) if config.dropout > 0.0 else nn.Identity()
 
-    def forward(self, hidden_states: Tensor) -> Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         # linear transformation - [batch_size, seq_len, intermediate_size]
         hidden_states = self.fc1(hidden_states)
         # activation function - [batch_size, seq_len, intermediate_size]
@@ -106,7 +104,7 @@ class SigLip2TextMLP(Module):
         return hidden_states
 
 
-class SigLip2TextLayer(Module):
+class SigLip2TextLayer(nn.Module):
     """Transformer layer for SigLip2 text encoder.
 
     Implements pre-norm architecture with residual connections.
@@ -126,7 +124,7 @@ class SigLip2TextLayer(Module):
         self.layer_norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.layer_norm2 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
-    def forward(self, hidden_states: Tensor, attention_mask: Optional[Tensor] = None) -> Tensor:
+    def forward(self, hidden_states: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Forward pass.
 
         Args:
@@ -152,7 +150,7 @@ class SigLip2TextLayer(Module):
         return hidden_states
 
 
-class SigLip2TextEncoder(Module):
+class SigLip2TextEncoder(nn.Module):
     """Text encoder stack for SigLip2.
 
     Args:
@@ -165,10 +163,10 @@ class SigLip2TextEncoder(Module):
 
     def forward(
         self,
-        hidden_states: Tensor,
-        attention_mask: Optional[Tensor] = None,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
         output_hidden_states: bool = False,
-    ) -> tuple[Tensor, ...]:
+    ) -> tuple[torch.Tensor, ...]:
         """Forward pass through encoder layers.
 
         Args:
@@ -193,7 +191,7 @@ class SigLip2TextEncoder(Module):
         return (hidden_states,)
 
 
-class SigLip2TextModel(Module):
+class SigLip2TextModel(nn.Module):
     """Complete text encoder model for SigLip2.
 
     Args:
@@ -212,11 +210,11 @@ class SigLip2TextModel(Module):
 
     def forward(
         self,
-        input_ids: Tensor,
-        attention_mask: Optional[Tensor] = None,
-        position_ids: Optional[Tensor] = None,
+        input_ids: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
         output_hidden_states: bool = False,
-    ) -> tuple[Tensor, ...]:
+    ) -> tuple[torch.Tensor, ...]:
         """Forward pass.
 
         Args:

@@ -19,7 +19,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Optional
 
@@ -31,57 +30,6 @@ from .model import SigLip2Model
 logger = logging.getLogger(__name__)
 
 __all__ = ["SigLip2Builder"]
-
-
-def _load_and_update_config(config: SigLip2Config, model_name: str, cache_dir: Optional[str]) -> SigLip2Config:
-    """Load and update config from HuggingFace config.json."""
-    try:
-        from huggingface_hub import hf_hub_download
-
-        config_path = hf_hub_download(repo_id=model_name, filename="config.json", cache_dir=cache_dir)
-        with open(config_path) as f:
-            hf_config = json.load(f)
-
-        # Update vision config
-        if hf_config.get("vision_config"):
-            vision_hf = hf_config["vision_config"]
-            if vision_hf.get("image_size") is not None:
-                config.vision_config.image_size = vision_hf["image_size"]
-            if vision_hf.get("patch_size") is not None:
-                config.vision_config.patch_size = vision_hf["patch_size"]
-            if vision_hf.get("hidden_size") is not None:
-                config.vision_config.hidden_size = vision_hf["hidden_size"]
-            if vision_hf.get("num_hidden_layers") is not None:
-                config.vision_config.num_hidden_layers = vision_hf["num_hidden_layers"]
-            if vision_hf.get("num_attention_heads") is not None:
-                config.vision_config.num_attention_heads = vision_hf["num_attention_heads"]
-            if vision_hf.get("intermediate_size") is not None:
-                config.vision_config.intermediate_size = vision_hf["intermediate_size"]
-
-        # Update text config
-        if hf_config.get("text_config"):
-            text_hf = hf_config["text_config"]
-            if text_hf.get("vocab_size") is not None:
-                config.text_config.vocab_size = text_hf["vocab_size"]
-            if text_hf.get("hidden_size") is not None:
-                config.text_config.hidden_size = text_hf["hidden_size"]
-            if text_hf.get("num_hidden_layers") is not None:
-                config.text_config.num_hidden_layers = text_hf["num_hidden_layers"]
-            if text_hf.get("num_attention_heads") is not None:
-                config.text_config.num_attention_heads = text_hf["num_attention_heads"]
-            if text_hf.get("intermediate_size") is not None:
-                config.text_config.intermediate_size = text_hf["intermediate_size"]
-            if text_hf.get("max_position_embeddings") is not None:
-                config.text_config.max_position_embeddings = text_hf["max_position_embeddings"]
-
-        # Update projection dim
-        if hf_config.get("projection_dim") is not None:
-            config.projection_dim = hf_config["projection_dim"]
-    except (FileNotFoundError, json.JSONDecodeError, KeyError, OSError):
-        # config download failed or incomplete - will infer from weights
-        logger.warning(f"Could not load config from {model_name}. Inferred from weights.")
-
-    return config
 
 
 def _download_weights(model_name: str, cache_dir: Optional[str]) -> dict[str, torch.Tensor]:
@@ -123,19 +71,6 @@ def _infer_max_position_embeddings(config: SigLip2Config, state_dict: dict[str, 
     return config
 
 
-def _set_random_seeds() -> None:
-    """Set random seeds for reproducible initialization."""
-    torch.manual_seed(42)
-    import random
-
-    random.seed(42)
-    import numpy as np
-
-    np.random.default_rng(42)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(42)
-
-
 class SigLip2Builder:
     """Builder for SigLip2 models.
 
@@ -147,17 +82,13 @@ class SigLip2Builder:
     def from_name(model_name: str) -> SigLip2Model:
         """Build model from model name without loading pretrained weights.
 
-        Supports the same models as from_pretrained().
+        Supports the same models as from_pretrained_hf().
 
         Args:
             model_name: HuggingFace model identifier.
 
         Returns:
             SigLip2Model instance with random initialization.
-
-        Example:
-            >>> from kornia.models.siglip2 import SigLip2Builder
-            >>> model = SigLip2Builder.from_name("google/siglip2-base-patch16-224")
         """
         config = SigLip2Config.from_name(model_name)
         return SigLip2Model(config)
@@ -171,11 +102,6 @@ class SigLip2Builder:
 
         Returns:
             SigLip2Model instance.
-
-        Example:
-            >>> from kornia.models.siglip2 import SigLip2Builder, SigLip2Config
-            >>> config = SigLip2Config()
-            >>> model = SigLip2Builder.from_config(config)
         """
         return SigLip2Model(config)
 
@@ -210,10 +136,6 @@ class SigLip2Builder:
             This method requires the `huggingface_hub` library to download files.
             Install it with: ``pip install huggingface_hub``
             For safetensors files, also install: ``pip install safetensors``
-
-        Example:
-            >>> from kornia.models.siglip2 import SigLip2Builder
-            >>> model = SigLip2Builder.from_pretrained("google/siglip2-base-patch16-224")
         """
         # check for huggingface_hub dependency
         try:
@@ -227,34 +149,13 @@ class SigLip2Builder:
         # create config from model name
         config = SigLip2Config.from_name(model_name)
 
-        # download and update config from HF
-        config = _load_and_update_config(config, model_name, cache_dir)
-
         # download model weights
         state_dict = _download_weights(model_name, cache_dir)
 
         # infer max_position_embeddings from checkpoint if not in config
         config = _infer_max_position_embeddings(config, state_dict)
 
-        # set random seeds for reproducible initialization
-        _set_random_seeds()
-
-        # remove 'model.' prefix if present
-        cleaned_state_dict = {}
-        for key, value in state_dict.items():
-            if key.startswith("model."):
-                cleaned_state_dict[key[6:]] = value
-            else:
-                cleaned_state_dict[key] = value
-        state_dict = cleaned_state_dict
-
-        # handle projection layer naming difference (visual_projection -> vision_projection)
-        if "visual_projection.weight" in state_dict:
-            state_dict["vision_projection.weight"] = state_dict.pop("visual_projection.weight")
-        if "visual_projection.bias" in state_dict:
-            state_dict["vision_projection.bias"] = state_dict.pop("visual_projection.bias")
-
-        # handle vision position embedding: HF has position_embedding.weight, we use position_embedding (Parameter)
+        # handle vision position embedding: HF has position_embedding.weight, we use position_embedding
         if "vision_model.embeddings.position_embedding.weight" in state_dict:
             state_dict["vision_model.embeddings.position_embedding"] = state_dict.pop(
                 "vision_model.embeddings.position_embedding.weight"
@@ -262,13 +163,6 @@ class SigLip2Builder:
 
         # create model and load weights directly (no transformation needed)
         model = SigLip2Model(config)
-
-        # handle only shape differences (logit_scale, logit_bias)
-        if "logit_scale" in state_dict and state_dict["logit_scale"].dim() > 0:
-            state_dict["logit_scale"] = state_dict["logit_scale"].squeeze()
-        if "logit_bias" in state_dict and state_dict["logit_bias"].dim() > 0:
-            state_dict["logit_bias"] = state_dict["logit_bias"].squeeze()
-
         model.load_state_dict(state_dict, strict=True)
 
         return model

@@ -19,13 +19,15 @@
 
 from __future__ import annotations
 
-from kornia.core import Module, Sequential, Tensor, tensor
+import torch
+from torch import nn
+
 from kornia.enhance.normalize import Normalize
 from kornia.enhance.rescale import Rescale
 from kornia.geometry.transform import Resize
 
 
-class SigLip2ImagePreprocessor(Module):
+class SigLip2ImagePreprocessor(nn.Module):
     """Image preprocessor for SigLip2 models.
 
     This preprocessor applies the following steps:
@@ -60,12 +62,12 @@ class SigLip2ImagePreprocessor(Module):
     ) -> None:
         super().__init__()
         self.image_size = image_size
-        self.mean = tensor([mean]) if isinstance(mean, list | tuple) else mean
-        self.std = tensor([std]) if isinstance(std, list | tuple) else std
+        self.mean = torch.tensor([mean]) if isinstance(mean, list | tuple) else mean
+        self.std = torch.tensor([std]) if isinstance(std, list | tuple) else std
         self.rescale_factor = rescale_factor
 
         # build preprocessing pipeline
-        preproc_list: list[Module] = []
+        preproc_list: list[nn.Module] = []
 
         # rescale first (convert [0, 255] to [0, 1])
         if rescale_factor != 1.0:
@@ -77,9 +79,9 @@ class SigLip2ImagePreprocessor(Module):
         # normalize (convert [0, 1] to [-1, 1])
         preproc_list.append(Normalize(mean=self.mean, std=self.std))
 
-        self.preprocessor = Sequential(*preproc_list)
+        self.preprocessor = nn.Sequential(*preproc_list)
 
-    def forward(self, images: Tensor) -> Tensor:
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
         # ensure batch dimension
         if images.dim() == 3:
             images = images.unsqueeze(0)

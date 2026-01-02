@@ -24,8 +24,6 @@ from typing import Optional
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor
-
 from .attention import SigLip2Attention
 from .config import SigLip2VisionConfig
 
@@ -38,7 +36,7 @@ __all__ = [
 ]
 
 
-class SigLip2VisionEmbeddings(Module):
+class SigLip2VisionEmbeddings(nn.Module):
     """Vision embeddings for SigLip2.
 
     Combines patch embedding and position embeddings.
@@ -73,7 +71,7 @@ class SigLip2VisionEmbeddings(Module):
         # dropout or identity
         self.dropout = nn.Dropout(config.dropout) if config.dropout > 0.0 else nn.Identity()
 
-    def forward(self, pixel_values: Tensor) -> Tensor:
+    def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         """Forward pass.
 
         Args:
@@ -92,7 +90,7 @@ class SigLip2VisionEmbeddings(Module):
         return embeddings
 
 
-class SigLip2VisionMLP(Module):
+class SigLip2VisionMLP(nn.Module):
     """MLP (feed-forward network) for vision encoder.
 
     Args:
@@ -106,7 +104,7 @@ class SigLip2VisionMLP(Module):
         self.fc2 = nn.Linear(config.intermediate_size, config.hidden_size)
         self.dropout = nn.Dropout(config.dropout) if config.dropout > 0.0 else nn.Identity()
 
-    def forward(self, hidden_states: Tensor) -> Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.fc1(hidden_states)
         hidden_states = self.activation(hidden_states)
         hidden_states = self.fc2(hidden_states)
@@ -114,7 +112,7 @@ class SigLip2VisionMLP(Module):
         return hidden_states
 
 
-class SigLip2VisionLayer(Module):
+class SigLip2VisionLayer(nn.Module):
     """Transformer layer for vision encoder.
 
     Implements pre-norm architecture with residual connections.
@@ -134,7 +132,7 @@ class SigLip2VisionLayer(Module):
         self.layer_norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.layer_norm2 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
-    def forward(self, hidden_states: Tensor, attention_mask: Optional[Tensor] = None) -> Tensor:
+    def forward(self, hidden_states: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Forward pass.
 
         Args:
@@ -159,7 +157,7 @@ class SigLip2VisionLayer(Module):
         return hidden_states
 
 
-class SigLip2MultiheadAttentionPoolingHead(Module):
+class SigLip2MultiheadAttentionPoolingHead(nn.Module):
     """Multi-head attention pooling head for vision encoder.
 
     This implements the pooling mechanism used by HF SigLip vision model.
@@ -182,7 +180,7 @@ class SigLip2MultiheadAttentionPoolingHead(Module):
         self.layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.mlp = SigLip2VisionMLP(config)
 
-    def forward(self, hidden_state: Tensor) -> Tensor:
+    def forward(self, hidden_state: torch.Tensor) -> torch.Tensor:
         # repeat the probe token for the batch size
         batch_size = hidden_state.shape[0]
         probe = self.probe.repeat(batch_size, 1, 1)  # (batch_size, 1, hidden_size)
@@ -199,7 +197,7 @@ class SigLip2MultiheadAttentionPoolingHead(Module):
         return hidden_state[:, 0]
 
 
-class SigLip2VisionEncoder(Module):
+class SigLip2VisionEncoder(nn.Module):
     """Vision encoder stack for SigLip2.
 
     Args:
@@ -212,10 +210,10 @@ class SigLip2VisionEncoder(Module):
 
     def forward(
         self,
-        hidden_states: Tensor,
-        attention_mask: Optional[Tensor] = None,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
         output_hidden_states: bool = False,
-    ) -> tuple[Tensor, ...]:
+    ) -> tuple[torch.Tensor, ...]:
         """Forward pass through encoder layers.
 
         Args:
@@ -240,7 +238,7 @@ class SigLip2VisionEncoder(Module):
         return (hidden_states,)
 
 
-class SigLip2VisionModel(Module):
+class SigLip2VisionModel(nn.Module):
     """Complete vision encoder model for SigLip2.
 
     Args:
@@ -259,10 +257,10 @@ class SigLip2VisionModel(Module):
 
     def forward(
         self,
-        pixel_values: Tensor,
-        attention_mask: Optional[Tensor] = None,
+        pixel_values: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
         output_hidden_states: bool = False,
-    ) -> tuple[Tensor, ...]:
+    ) -> tuple[torch.Tensor, ...]:
         """Forward pass.
 
         Args:

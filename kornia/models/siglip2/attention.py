@@ -25,13 +25,12 @@ from typing import Optional
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 
 __all__ = ["SigLip2Attention"]
 
 
-class SigLip2Attention(Module):
+class SigLip2Attention(nn.Module):
     """Multi-head self-attention mechanism for SigLip2.
 
     This module implements the standard multi-head self-attention used in
@@ -76,9 +75,9 @@ class SigLip2Attention(Module):
 
     def forward(
         self,
-        hidden_states: Tensor,
-        attention_mask: Optional[Tensor] = None,
-    ) -> Tensor:
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Forward pass of attention.
 
         Args:
