@@ -51,3 +51,7 @@ The **canonical and up-to-date instructions for AI reviewers** are maintained in
 Any other document (including this one) should treat `copilot-instructions.md` as the single source of truth for AI reviewer behaviour. When updating reviewer logic, update `copilot-instructions.md` first and, if needed, adjust references here.
 
 This section exists to link AI reviewers to the canonical instructions and to make clear that those instructions must enforce the policies defined in Sections 1 and 2 above.
+
+## 4. Additional Resources
+
+For comprehensive guidance on contributing to Kornia, including development workflows, code quality standards, testing practices, and AI-assisted development best practices, see the [Best Practices section](../CONTRIBUTING.md#best-practices) in `CONTRIBUTING.md`.
