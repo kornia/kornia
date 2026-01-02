@@ -34,7 +34,7 @@ AI models often hallucinate comments or reinvent existing utilities.
 
 ### Law 3: The "Explain It" Standard
 
-**Requirement:** If asked, you must be able to derive the math or explain the logic of any function you submit.
+**Requirement:** If a maintainer or reviewer asks during code review, you must be able to derive the math or explain the logic of any function you submit.
 
 **Failure Condition:** Answering a review question with "That's what the AI outputted" or "I don't know, it works" leads to immediate closure.
 
