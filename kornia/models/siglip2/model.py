@@ -229,7 +229,7 @@ class SigLip2Model(nn.Module):
                 batch_size = image_embeds.shape[0]
                 labels = torch.arange(batch_size, device=image_embeds.device)
                 loss_img = -F.logsigmoid(logits_per_image[labels, labels]).mean()
-                loss_txt = -F.logsigmoid(logits_per_image.t()[labels, labels]).mean()
+                loss_txt = -F.logsigmoid(logits_per_text[labels, labels]).mean()
                 loss = (loss_img + loss_txt) / 2.0
 
         return SigLip2Result(

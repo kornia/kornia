@@ -71,7 +71,7 @@ class SigLip2TextConfig:
         attention_dropout: Attention dropout probability.
     """
 
-    vocab_size: int = 256000  # SigLip2 uses Gemma tokenizer with 256k vocab
+    vocab_size: int = 256000
     hidden_size: int = 768
     num_hidden_layers: int = 12
     num_attention_heads: int = 12

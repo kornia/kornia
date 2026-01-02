@@ -38,12 +38,11 @@ def _download_weights(model_name: str, cache_dir: Optional[str]) -> dict[str, to
         from huggingface_hub import hf_hub_download
         from safetensors import safe_open
     except ImportError as e:
-        logger.error(
+        error_msg = (
             "safetensors library is required for loading model weights. Install it with: pip install safetensors"
         )
-        raise ImportError(
-            "safetensors library is required for loading model weights. Install it with: pip install safetensors"
-        ) from e
+        logger.error(error_msg)
+        raise ImportError(error_msg) from e
 
     try:
         weights_path = hf_hub_download(repo_id=model_name, filename="model.safetensors", cache_dir=cache_dir)
@@ -53,12 +52,11 @@ def _download_weights(model_name: str, cache_dir: Optional[str]) -> dict[str, to
                 state_dict[key] = f.get_tensor(key)
         return state_dict
     except FileNotFoundError as e:
-        logger.error(
+        error_msg = (
             f"Could not find model.safetensors for {model_name}. The model must be available in safetensors format."
         )
-        raise FileNotFoundError(
-            f"Could not find model.safetensors for {model_name}. The model must be available in safetensors format."
-        ) from e
+        logger.error(error_msg)
+        raise FileNotFoundError(error_msg) from e
 
 
 def _infer_max_position_embeddings(config: SigLip2Config, state_dict: dict[str, torch.Tensor]) -> SigLip2Config:

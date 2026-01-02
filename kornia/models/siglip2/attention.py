@@ -23,6 +23,7 @@ import math
 from typing import Optional
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
@@ -71,7 +72,7 @@ class SigLip2Attention(nn.Module):
         self.k_proj = nn.Linear(hidden_size, hidden_size)
         self.v_proj = nn.Linear(hidden_size, hidden_size)
         self.out_proj = nn.Linear(hidden_size, hidden_size)
-        self.dropout_layer = nn.Dropout(dropout) if dropout > 0.0 else nn.Identity()
+        self.dropout = nn.Dropout(dropout)
 
     def forward(
         self,
@@ -107,34 +108,35 @@ class SigLip2Attention(nn.Module):
         key = key.transpose(1, 2)
         value = value.transpose(1, 2)
 
-        # compute attention scores: (batch_size, num_heads, seq_len, seq_len)
-        attention_scores = torch.matmul(query, key.transpose(-2, -1)) * self.scale
-
-        # apply attention mask if provided
+        # Convert attention mask to format expected by scaled_dot_product_attention
+        attn_mask = None
         if attention_mask is not None:
-            # handle different mask formats
+            # Handle different mask formats
             if attention_mask.dim() == 2:
-                # (batch_size, seq_len) -> (batch_size, seq_len, seq_len)
-                attention_mask = attention_mask.unsqueeze(2) * attention_mask.unsqueeze(1)
+                # (batch_size, seq_len) -> (batch_size, 1, seq_len, seq_len)
+                # Create 2D mask: both query and key positions must be valid
+                # Convert to boolean: 1 = attend (False = don't mask), 0 = mask (True = mask out)
+                mask_bool = attention_mask.bool()
+                # Expand to (batch_size, 1, seq_len, seq_len) where True means mask out
+                # We need: if either query or key is masked, then mask that attention
+                attn_mask = ~(mask_bool.unsqueeze(1).unsqueeze(2) & mask_bool.unsqueeze(1).unsqueeze(3))
+            elif attention_mask.dim() == 3:
+                # (batch_size, seq_len, seq_len) -> (batch_size, 1, seq_len, seq_len)
+                attn_mask = ~attention_mask.bool().unsqueeze(1)
+            elif attention_mask.dim() == 4:
+                # Already in correct format (batch_size, 1, seq_len, seq_len)
+                attn_mask = ~attention_mask.bool()
+            else:
+                raise ValueError(f"Unsupported attention_mask dimension: {attention_mask.dim()}")
 
-            # ensure mask has shape (batch_size, 1, seq_len, seq_len) for broadcasting
-            if attention_mask.dim() == 3:
-                attention_mask = attention_mask.unsqueeze(1)
+        dropout_p = self.dropout.p if self.training and self.dropout.p > 0.0 else 0.0
+        attention_output = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            attn_mask=attn_mask,
+            dropout_p=dropout_p,
+        )
 
-            # convert: 1 -> 0 (keep), 0 -> -inf (mask)
-            attention_mask = (1.0 - attention_mask.float()) * -10000.0
-            attention_scores = attention_scores + attention_mask
-
-        # apply softmax and dropout
-        attention_probs = torch.softmax(attention_scores, dim=-1)
-        attention_probs = self.dropout_layer(attention_probs)
-
-        # apply attention to values
-        attention_output = torch.matmul(attention_probs, value)
-
-        # reshape and project output
-        attention_output = attention_output.permute(0, 2, 1, 3).contiguous()
-        attention_output = attention_output.reshape(batch_size, seq_len, self.hidden_size)
-        attention_output = self.out_proj(attention_output)
-
-        return attention_output
+        attention_output = attention_output.transpose(1, 2).contiguous().view(batch_size, seq_len, self.hidden_size)
+        return self.out_proj(attention_output)

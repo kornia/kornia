@@ -66,7 +66,7 @@ class SigLip2VisionEmbeddings(nn.Module):
         self.num_patches = (config.image_size // config.patch_size) ** 2
 
         # position embeddings - [num_patches, hidden_size]
-        self.position_embedding = nn.Parameter(torch.randn(self.num_patches, config.hidden_size) * 0.02)
+        self.position_embedding = nn.Parameter(torch.randn(self.num_patches, config.hidden_size))
 
         # dropout or identity
         self.dropout = nn.Dropout(config.dropout) if config.dropout > 0.0 else nn.Identity()
@@ -171,6 +171,7 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
         super().__init__()
         # Learnable probe (query token)
         self.probe = nn.Parameter(torch.randn(1, 1, config.hidden_size))
+
         # Multi-head attention (using PyTorch's built-in for compatibility)
         self.attention = nn.MultiheadAttention(
             embed_dim=config.hidden_size,
@@ -250,8 +251,10 @@ class SigLip2VisionModel(nn.Module):
         self.config = config
         self.embeddings = SigLip2VisionEmbeddings(config)
         self.encoder = SigLip2VisionEncoder(config)
+
         # post layer norm - [batch_size, hidden_size]
         self.post_layernorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+
         # head: multi-head attention pooling - [batch_size, hidden_size]
         self.head = SigLip2MultiheadAttentionPoolingHead(config)
 
