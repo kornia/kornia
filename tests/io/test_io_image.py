@@ -45,6 +45,14 @@ def create_random_img8_torch(height: int, width: int, channels: int, device=None
     return (torch.rand(channels, height, width, device=device) * 255).to(torch.uint8)
 
 
+def create_random_img16_torch(height: int, width: int, channels: int, device=None) -> torch.Tensor:
+    return (torch.rand(channels, height, width, device=device) * 65535).to(torch.uint16)
+
+
+def create_random_img32_torch(height: int, width: int, channels: int, device=None) -> torch.Tensor:
+    return torch.rand(channels, height, width, device=device, dtype=torch.float32)
+
+
 def _download_image(url: str, filename: str = "") -> Path:
     # TODO: move this to testing
 
@@ -131,7 +139,7 @@ class TestIoImage:
         assert img.shape[0] == expected_channels
         assert img.dtype == expected_type
 
-    @pytest.mark.parametrize("ext", ["jpg"])
+    @pytest.mark.parametrize("ext", ["jpg", "png", "tiff"])
     @pytest.mark.parametrize("channels", [3])
     def test_write_image(self, device, tmp_path, ext, channels):
         height, width = 4, 5
@@ -141,3 +149,35 @@ class TestIoImage:
         write_image(file_path, img_th)
 
         assert file_path.is_file()
+
+    @pytest.mark.parametrize("quality", [None, 50, 80, 95])
+    def test_write_image_uint8(self, device, tmp_path, quality):
+        height, width = 4, 5
+        img_th: torch.Tensor = create_random_img8_torch(height, width, 3, device)
+        file_path = tmp_path / "image.jpg"
+        write_image(file_path, img_th, quality=quality)
+        assert file_path.is_file()
+        img_load = load_image(file_path, ImageLoadType.UNCHANGED)
+        assert img_load.shape == img_th.shape
+
+    @pytest.mark.parametrize("ext", ["png", "tiff"])
+    def test_write_image_uint16(self, device, tmp_path, ext):
+        height, width = 4, 5
+        img_th: torch.Tensor = create_random_img16_torch(height, width, 3, device)
+        file_path = tmp_path / f"image.{ext}"
+        write_image(file_path, img_th)
+        assert file_path.is_file()
+        img_load = load_image(file_path, ImageLoadType.UNCHANGED)
+        assert img_load.shape == img_th.shape
+        assert img_load.dtype == torch.uint16
+
+    @pytest.mark.parametrize("ext", ["tiff"])
+    def test_write_image_float32(self, device, tmp_path, ext):
+        height, width = 4, 5
+        img_th: torch.Tensor = create_random_img32_torch(height, width, 3, device)
+        file_path = tmp_path / f"image.{ext}"
+        write_image(file_path, img_th)
+        assert file_path.is_file()
+        img_load = load_image(file_path, ImageLoadType.UNCHANGED)
+        assert img_load.shape == img_th.shape
+        assert img_load.dtype == torch.float32
