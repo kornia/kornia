@@ -314,7 +314,7 @@ We're all volunteers. These policies help us focus on high-impact work.
 - Transparency: Keep discussions public
 
 **Code review:**
-- By default, @copilot will check the PR against the AI Policy and the coding standards.
+- By default, GitHub Copilot will check the PR against the AI Policy and the coding standards.
 - Code must be reviewed by the repository owner or a senior contributor, who have the final say on the quality and acceptance of the PR.
 
 **Note:** Tickets may be closed during cleanup. Feel free to reopen if you plan to finish the work.
