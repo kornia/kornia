@@ -14,7 +14,7 @@ Kornia accepts AI-assisted code (e.g., using Copilot, Cursor, etc.), but strictl
 
 AI tools frequently write code that looks correct but fails execution. Therefore, "vibe checks" are insufficient.
 
-**Requirement:** Every PR introducing functional changes must include a pasted snippet of the local test logs (e.g., `pixi run test ...`), especially for first time contributors.
+**Requirement:** Every PR introducing functional changes must include a pasted snippet of the local test logs (e.g., `pixi run test ...`). This is mandatory for all contributors and is particularly important for first-time contributors.
 
 **Failure Condition:** If a PR lacks execution proof and contains complex logic, it will be flagged as **Unverified**.
 
