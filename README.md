@@ -265,7 +265,7 @@ Kornia accepts AI-assisted code but strictly rejects AI-generated contributions 
 - **Use Existing Utilities**: Use existing `kornia` utilities instead of reinventing the wheel
 - **Explain It**: You must be able to explain any code you submit
 
-Automated AI reviewers (e.g., @copilot) will check PRs against these policies. See [AI_POLICY.md](.github/AI_POLICY.md) for complete details.
+Automated AI reviewers (e.g., GitHub Copilot) will check PRs against these policies. See [AI_POLICY.md](.github/AI_POLICY.md) for complete details.
 
 ## Community
 - **Discord:** Join our workspace to keep in touch with our core contributors, get latest updates on the industry and  be part of our community. [JOIN HERE](https://discord.gg/HfnywwpBnD)
