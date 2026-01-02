@@ -6,7 +6,7 @@
 
 ## 1. Core Philosophy
 
-Kornia accepts AI-assisted code (e.g., using Copilot, Cursors-AI, etc.), but strictly rejects AI-generated contributions where the submitter acts merely as a proxy. The submitter is the **Sole Responsible Author** for every line of code, comment, and design decision.
+Kornia accepts AI-assisted code (e.g., using Copilot, Cursor, etc.), but strictly rejects AI-generated contributions where the submitter acts merely as a proxy. The submitter is the **Sole Responsible Author** for every line of code, comment, and design decision.
 
 ## 2. The 3 Laws of Contribution
 
