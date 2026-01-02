@@ -304,7 +304,7 @@ We're all volunteers. These policies help us focus on high-impact work.
 **Requirements:**
 - Link PR to an issue (use "Closes #123" or "Fixes #123")
 - Pass all local tests before submission
-- For first time contributors, provide proof of local test execution in the PR description
+- Provide proof of local test execution in the PR description (this is especially important for first-time contributors)
 - Fill the [pull request template](.github/pull_request_template.md)
 - **AI Policy Compliance**: Must comply with [AI_POLICY.md](.github/AI_POLICY.md). This includes:
   - Using existing `kornia` utilities instead of reinventing
