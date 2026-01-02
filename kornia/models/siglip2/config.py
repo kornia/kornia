@@ -37,8 +37,8 @@ class SigLip2VisionConfig:
         intermediate_size: Intermediate size in feed-forward network.
         hidden_act: Activation function (typically 'gelu').
         layer_norm_eps: Epsilon for layer normalization.
-        dropout: Dropout probability.
-        attention_dropout: Attention dropout probability.
+        dropout_p: Dropout probability.
+        attention_dropout_p: Attention dropout probability.
     """
 
     image_size: int = 224
@@ -50,8 +50,8 @@ class SigLip2VisionConfig:
     intermediate_size: int = 3072
     hidden_act: str = "gelu"
     layer_norm_eps: float = 1e-6
-    dropout: float = 0.0
-    attention_dropout: float = 0.0
+    dropout_p: float = 0.0
+    attention_dropout_p: float = 0.0
 
 
 @dataclass
@@ -67,8 +67,8 @@ class SigLip2TextConfig:
         max_position_embeddings: Maximum sequence length.
         hidden_act: Activation function (typically 'gelu').
         layer_norm_eps: Epsilon for layer normalization.
-        dropout: Dropout probability.
-        attention_dropout: Attention dropout probability.
+        dropout_p: Dropout probability.
+        attention_dropout_p: Attention dropout probability.
     """
 
     vocab_size: int = 256000
@@ -79,8 +79,8 @@ class SigLip2TextConfig:
     max_position_embeddings: int = 512
     hidden_act: str = "gelu"
     layer_norm_eps: float = 1e-6
-    dropout: float = 0.0
-    attention_dropout: float = 0.0
+    dropout_p: float = 0.0
+    attention_dropout_p: float = 0.0
 
 
 @dataclass

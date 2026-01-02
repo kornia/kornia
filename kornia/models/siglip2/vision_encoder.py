@@ -69,7 +69,7 @@ class SigLip2VisionEmbeddings(nn.Module):
         self.position_embedding = nn.Parameter(torch.randn(self.num_patches, config.hidden_size))
 
         # dropout or identity
-        self.dropout = nn.Dropout(config.dropout) if config.dropout > 0.0 else nn.Identity()
+        self.dropout = nn.Dropout(config.dropout_p)
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         """Forward pass.
@@ -102,7 +102,7 @@ class SigLip2VisionMLP(nn.Module):
         self.fc1 = nn.Linear(config.hidden_size, config.intermediate_size)
         self.activation = nn.GELU()
         self.fc2 = nn.Linear(config.intermediate_size, config.hidden_size)
-        self.dropout = nn.Dropout(config.dropout) if config.dropout > 0.0 else nn.Identity()
+        self.dropout = nn.Dropout(config.dropout_p)
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         hidden_states = self.fc1(hidden_states)
@@ -126,7 +126,7 @@ class SigLip2VisionLayer(nn.Module):
         self.self_attn = SigLip2Attention(
             hidden_size=config.hidden_size,
             num_heads=config.num_attention_heads,
-            dropout=config.attention_dropout,
+            dropout_p=config.attention_dropout_p,
         )
         self.mlp = SigLip2VisionMLP(config)
         self.layer_norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)

@@ -48,13 +48,12 @@ class SigLip2Attention(nn.Module):
         self,
         hidden_size: int,
         num_heads: int,
-        dropout: float = 0.0,
+        dropout_p: float = 0.0,
         head_dim: Optional[int] = None,
     ) -> None:
         super().__init__()
         self.hidden_size = hidden_size
         self.num_heads = num_heads
-        self.dropout = dropout
 
         if head_dim is None:
             head_dim = hidden_size // num_heads
@@ -72,7 +71,7 @@ class SigLip2Attention(nn.Module):
         self.k_proj = nn.Linear(hidden_size, hidden_size)
         self.v_proj = nn.Linear(hidden_size, hidden_size)
         self.out_proj = nn.Linear(hidden_size, hidden_size)
-        self.dropout = nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout_p)
 
     def forward(
         self,
