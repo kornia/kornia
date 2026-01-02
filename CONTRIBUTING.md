@@ -315,8 +315,7 @@ We're all volunteers. These policies help us focus on high-impact work.
 
 **Code review:**
 - By default, @copilot will check the PR against the AI Policy and the coding standards.
-- Code must be reviewed by the repository owner or a senior contributor to finally decide over the quality of the PR.
-- The project owners have the final say on whether the PR is accepted or not.
+- Code must be reviewed by the repository owner or a senior contributor, who have the final say on the quality and acceptance of the PR.
 
 **Note:** Tickets may be closed during cleanup. Feel free to reopen if you plan to finish the work.
 
