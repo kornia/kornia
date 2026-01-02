@@ -40,9 +40,9 @@ AI models often hallucinate comments or reinvent existing utilities.
 
 ## 3. Instructions for AI Reviewers (Copilot / CodeRabbit)
 
-If you are an AI agent (GitHub Copilot, CodeRabbit, etc.) reviewing a PR for Kornia, you must follow the repository’s dedicated reviewer instructions.
+If you are an AI agent (GitHub Copilot, CodeRabbit, etc.) reviewing a PR for Kornia, you must follow the repository's dedicated reviewer instructions.
 
-The **canonical and up-to-date instructions for AI reviewers** are maintained in [`.github/copilot-instructions.md`](./copilot-instructions.md). That document defines:
+The **canonical and up-to-date instructions for AI reviewers** are maintained in [`.github/copilot-instructions.md`](.github/copilot-instructions.md). That document defines:
 
 - The expected reviewer persona and responsibilities
 - The checks to perform on PR descriptions, code, tests, and comments
@@ -54,4 +54,4 @@ This section exists to link AI reviewers to the canonical instructions and to ma
 
 ## 4. Additional Resources
 
-For comprehensive guidance on contributing to Kornia, including development workflows, code quality standards, testing practices, and AI-assisted development best practices, see the [Best Practices section](../CONTRIBUTING.md#best-practices) in `CONTRIBUTING.md`.
+For comprehensive guidance on contributing to Kornia, including development workflows, code quality standards, testing practices, and AI-assisted development best practices, see the [Best Practices section](CONTRIBUTING.md#best-practices) in `CONTRIBUTING.md`.

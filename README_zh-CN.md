@@ -143,7 +143,7 @@
 
 ### AI 政策
 
-Kornia 接受 AI 辅助的代码，但严格拒绝提交者仅作为代理的 AI 生成贡献。所有贡献者必须是每一行代码的**唯一责任作者**。在提交 pull request 之前，请查看我们的 [AI 政策](.github/AI_POLICY.md)。主要要求包括：
+Kornia 接受 AI 辅助的代码，但严格拒绝提交者仅作为代理的 AI 生成贡献。所有贡献者必须是每一行代码的**唯一责任作者**。在提交 pull request 之前，请查看我们的 [AI 政策](AI_POLICY.md)。主要要求包括：
 
 - **验证证据**：PR 必须包含本地测试日志以证明代码已执行
 - **事前讨论**：所有 PR 在实施前必须在 Discord 或通过 GitHub issue 进行讨论
@@ -151,7 +151,7 @@ Kornia 接受 AI 辅助的代码，但严格拒绝提交者仅作为代理的 AI
 - **使用现有工具**：使用现有的 `kornia` 工具，而不是重新发明轮子
 - **解释能力**：您必须能够解释您提交的任何代码
 
-自动化 AI 审查工具（例如 GitHub Copilot）将根据这些政策检查 PR。完整详情请参阅 [AI_POLICY.md](.github/AI_POLICY.md)。
+自动化 AI 审查工具（例如 GitHub Copilot）将根据这些政策检查 PR。完整详情请参阅 [AI_POLICY.md](AI_POLICY.md)。
 
 ## 社区
 - **论坛:** 讨论代码实现，学术研究等。[GitHub Forums](https://github.com/kornia/kornia/discussions)

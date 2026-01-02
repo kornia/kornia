@@ -257,7 +257,7 @@ We appreciate all contributions. If you are planning to contribute back bug-fixe
 
 ### AI Policy
 
-Kornia accepts AI-assisted code but strictly rejects AI-generated contributions where the submitter acts as a proxy. All contributors must be the **Sole Responsible Author** for every line of code. Please review our [AI Policy](.github/AI_POLICY.md) before submitting pull requests. Key requirements include:
+Kornia accepts AI-assisted code but strictly rejects AI-generated contributions where the submitter acts as a proxy. All contributors must be the **Sole Responsible Author** for every line of code. Please review our [AI Policy](AI_POLICY.md) before submitting pull requests. Key requirements include:
 
 - **Proof of Verification**: PRs must include local test logs proving execution
 - **Pre-Discussion**: All PRs must be discussed in Discord or via a GitHub issue before implementation
@@ -265,7 +265,7 @@ Kornia accepts AI-assisted code but strictly rejects AI-generated contributions 
 - **Use Existing Utilities**: Use existing `kornia` utilities instead of reinventing the wheel
 - **Explain It**: You must be able to explain any code you submit
 
-Automated AI reviewers (e.g., GitHub Copilot) will check PRs against these policies. See [AI_POLICY.md](.github/AI_POLICY.md) for complete details.
+Automated AI reviewers (e.g., GitHub Copilot) will check PRs against these policies. See [AI_POLICY.md](AI_POLICY.md) for complete details.
 
 ## Community
 - **Discord:** Join our workspace to keep in touch with our core contributors, get latest updates on the industry and  be part of our community. [JOIN HERE](https://discord.gg/HfnywwpBnD)

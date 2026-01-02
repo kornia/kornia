@@ -4,7 +4,7 @@ Welcome! This guide will help you contribute to Kornia.
 
 ## Policies and Guidelines
 
-- **AI Policy & Authorship**: See [AI_POLICY.md](.github/AI_POLICY.md) for the complete policy. Summary:
+- **AI Policy & Authorship**: See [AI_POLICY.md](AI_POLICY.md) for the complete policy. Summary:
     - Kornia accepts AI-assisted code but strictly rejects AI-generated contributions where the submitter acts as a proxy.
     - **Proof of Verification**: PRs must include local test logs proving execution.
     - **Hallucination & Redundancy Ban**: Use existing `kornia` utilities and never reinvent the wheel, except for when the utility is not available.
@@ -375,7 +375,7 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
 - Pass all local tests before submission
 - Provide proof of local test execution in the PR description (this is especially important for first-time contributors)
 - Fill the [pull request template](.github/pull_request_template.md)
-- **AI Policy Compliance**: Must comply with [AI_POLICY.md](.github/AI_POLICY.md). This includes:
+- **AI Policy Compliance**: Must comply with [AI_POLICY.md](AI_POLICY.md). This includes:
   - Using existing `kornia` utilities instead of reinventing
   - Being able to explain all submitted code
   - Completing the AI Usage Disclosure in the PR template
