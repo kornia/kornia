@@ -151,7 +151,7 @@ Kornia 接受 AI 辅助的代码，但严格拒绝提交者仅作为代理的 AI
 - **使用现有工具**：使用现有的 `kornia` 工具，而不是重新发明轮子
 - **解释能力**：您必须能够解释您提交的任何代码
 
-自动化 AI 审查工具（例如 @copilot）将根据这些政策检查 PR。完整详情请参阅 [AI_POLICY.md](.github/AI_POLICY.md)。
+自动化 AI 审查工具（例如 GitHub Copilot）将根据这些政策检查 PR。完整详情请参阅 [AI_POLICY.md](.github/AI_POLICY.md)。
 
 ## 社区
 - **论坛:** 讨论代码实现，学术研究等。[GitHub Forums](https://github.com/kornia/kornia/discussions)
