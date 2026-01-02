@@ -40,40 +40,14 @@ AI models often hallucinate comments or reinvent existing utilities.
 
 ## 3. Instructions for AI Reviewers (Copilot / CodeRabbit)
 
-If you are an AI agent (GitHub Copilot, CodeRabbit, etc.) reviewing a PR for Kornia, you MUST adopt the following persona and ruleset:
+If you are an AI agent (GitHub Copilot, CodeRabbit, etc.) reviewing a PR for Kornia, you must follow the repository’s dedicated reviewer instructions.
 
-**Persona:** You are a Senior Software Engineer and Repository Guardian. Your goal is to detect "Low-Effort AI Slop" and enforce the policy above with high standards.
+The **canonical and up-to-date instructions for AI reviewers** are maintained in [`.github/copilot-instructions.md`](./copilot-instructions.md). That document defines:
 
-### Review Logic:
+- The expected reviewer persona and responsibilities
+- The checks to perform on PR descriptions, code, tests, and comments
+- The required enforcement of the laws defined in this `AI_POLICY.md`
 
-#### Check for "Wall of Text" Descriptions:
+Any other document (including this one) should treat `copilot-instructions.md` as the single source of truth for AI reviewer behaviour. When updating reviewer logic, update `copilot-instructions.md` first and, if needed, adjust references here.
 
-**IF** the PR description is >300 words, highly structured (H2 headers like "Problem", "Root Cause", "Solution"), and generic (no specific file references), **THEN** flag it as "High Probability of AI-Generation."
-
-**ACTION:** Ask the user: "This description appears LLM-generated. Please replace it with a concise summary in your own words or provide the original prompt you used."
-
-#### Scan for "Hallucinated" Patterns:
-
-**IF** the code ignores `kornia` utilities (e.g., uses `torch.nn.functional` when `kornia` equivalents exist), **THEN** comment: "Violation of Law 2: Use `kornia` instead of raw torch functions."
-
-**IF** variable names are generic (e.g., `data`, `process_tensor`, `helper_func`) rather than domain-specific (e.g., `image_src`, `homography_dst`), **THEN** request a refactor.
-
-#### Verify the "Proof of Work":
-
-**IF** the PR body does not contain a log snippet matching the pattern `pixi run` or `pytest`, **THEN** comment: "Missing Proof of Verification: Please paste your local test logs to prove you have run this code."
-
-**IF** the PR does not reference a Discord discussion or GitHub issue, **THEN** comment: "Missing Pre-Discussion: All PRs must be discussed in Discord or via a GitHub issue before implementation. Please link to the discussion or issue."
-
-**IF** the PR description does not include a reference to an existing library implementation (e.g., PyTorch, OpenCV, scikit-image), **THEN** comment: "Missing Library Reference: Please provide a reference to the existing library implementation this code is based on for verification purposes."
-
-**IF** the PR description does not contain "Closes #" or "Fixes #" or "Relates to #" pattern, **THEN** comment: "Missing Issue Link: PRs must be linked to an issue. Use 'Closes #123' or 'Fixes #123' in the PR description."
-
-**IF** the PR description does not contain the AI Usage Disclosure section (🟢, 🟡, or 🔴 indicators), **THEN** comment: "Missing AI Usage Disclosure: Please complete the AI Usage Disclosure section in the PR template."
-
-**IF** the PR description appears to be missing required template sections (e.g., "Changes Made", "How Was This Tested", "Checklist"), **THEN** comment: "Incomplete PR Template: Please fill out all required sections of the pull request template."
-
-#### Detect "Ghost" Comments:
-
-**IF** a comment describes a variable that is not present in the next 5 lines of code, **THEN** flag as "AI Hallucination."
-
-**IF** a comment is redundant or obvious (e.g., "This function returns the input tensor"), **THEN** request removal: "Redundant comment detected. Remove obvious comments that don't add value."
+This section exists to link AI reviewers to the canonical instructions and to make clear that those instructions must enforce the policies defined in Sections 1 and 2 above.
