@@ -15,3 +15,6 @@
 # limitations under the License.
 #
 
+from .qwen2_vl import Qwen2VLVisionTransformer
+
+__all__ = ["Qwen2VLVisionTransformer"]
