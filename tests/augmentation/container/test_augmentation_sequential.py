@@ -60,7 +60,7 @@ class TestAugmentationSequential:
         reproducibility_test(inp, aug)
 
     def test_mixup_cutmix_only(self, device, dtype):
-        # Regression test for https://github.com/kornia/kornia/issues/2582
+
         mixup = K.RandomMixUpV2(p=1.0, data_keys=["input"])
         cutmix = K.RandomCutMixV2(p=1.0, data_keys=["input"])
         aug = K.AugmentationSequential(
@@ -71,11 +71,12 @@ class TestAugmentationSequential:
         )
 
         input = torch.randn(2, 3, 224, 224, device=device, dtype=dtype)
-        # label = torch.tensor([0, 1], device=device, dtype=torch.long)
+
 
         out_input = aug(input)
 
         assert out_input.shape == input.shape
+
 
     def test_video(self, device, dtype):
         input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)[None]
