@@ -192,9 +192,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         total_weight = multinomial_weights.sum()
         if total_weight == 0:
-            indices = torch.tensor(
-                [], device=multinomial_weights.device, dtype=torch.long
-            )
+            indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
         else:
             indices = torch.multinomial(
                 multinomial_weights,
