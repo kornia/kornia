@@ -187,16 +187,19 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         multinomial_weights = self.random_apply_weights.clone()
         # Mix augmentation can only be applied once per forward
         mix_indices = self.get_mix_augmentation_indices(self.named_children())
-        # kick out the mix augmentations
+
         multinomial_weights[mix_indices] = 0
-        if multinomial_weights.sum() == 0:
-            indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
+
+        total_weight = multinomial_weights.sum()
+        if total_weight == 0:
+            indices = torch.tensor(
+                [], device=multinomial_weights.device, dtype=torch.long
+            )
         else:
             indices = torch.multinomial(
                 multinomial_weights,
                 num_samples,
-                # enable replacement if non-mix augmentation is less than required
-                replacement=num_samples > multinomial_weights.sum().item(),
+                replacement=num_samples > total_weight.item(),
             )
 
         mix_added = False
