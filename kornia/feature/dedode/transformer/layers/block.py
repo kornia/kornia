@@ -51,6 +51,8 @@ except ImportError:
 
 
 class Block(nn.Module):
+    """Implement a transformer block with attention and feed-forward sublayers."""
+
     def __init__(
         self,
         dim: int,
@@ -221,6 +223,8 @@ def drop_add_residual_stochastic_depth_list(
 
 
 class NestedTensorBlock(Block):
+    """Implement a Transformer block capable of processing :class:`torch.NestedTensor` inputs."""
+
     def forward_nested(self, x_list: List[Tensor]) -> List[Tensor]:
         """x_list contains a list of tensors to nest together and run."""
         KORNIA_CHECK(isinstance(self.attn, MemEffAttention))

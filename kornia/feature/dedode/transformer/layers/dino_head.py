@@ -28,6 +28,8 @@ from torch.nn.utils import weight_norm
 
 
 class DINOHead(nn.Module):
+    """Implement the projection head for DINO-based models."""
+
     def __init__(
         self,
         in_dim,

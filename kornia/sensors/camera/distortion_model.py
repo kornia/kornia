@@ -22,6 +22,12 @@ from kornia.geometry.vector import Vector2
 
 
 class AffineTransform:
+    """Apply an affine transformation to a set of 2D points.
+
+    This class handles the scaling and shifting of coordinates, typically used
+    to map normalized coordinates to pixel coordinates.
+    """
+    
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         """Distort one or more Vector2 points using the affine transform.
 
@@ -70,6 +76,12 @@ class AffineTransform:
 
 
 class BrownConradyTransform:
+    """Apply an affine transformation to a set of 2D points.
+
+    This class handles the scaling and shifting of coordinates, typically used
+    to map normalized coordinates to pixel coordinates.
+    """
+
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError
 
@@ -78,6 +90,12 @@ class BrownConradyTransform:
 
 
 class KannalaBrandtK3Transform:
+    """Apply the Kannala-Brandt (K3) distortion model.
+
+    This model is specifically designed for fisheye lenses with significant 
+    radial distortion, using a polynomial approximation for the projection.
+    """
+
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError
 

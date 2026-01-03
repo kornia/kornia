@@ -35,6 +35,27 @@ from kornia.models.sam.architecture.common import MLPBlock
 
 # This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa
 class ImageEncoderViT(nn.Module):
+    """Implement the Vision Transformer (ViT) based image encoder for SAM.
+
+    Args:
+        img_size: The input image resolution.
+        patch_size: The size of the patches for the embedding.
+        in_chans: The number of input color channels.
+        embed_dim: The dimension of the patch embeddings.
+        depth: The number of transformer blocks.
+        num_heads: The number of attention heads.
+        mlp_ratio: The ratio of MLP hidden dim to embedding dim.
+        out_chans: The number of output feature channels.
+        qkv_bias: Whether to use bias in the QKV projection.
+        norm_layer: The normalization layer class.
+        act_layer: The activation layer class.
+        use_abs_pos: Whether to use absolute position embeddings.
+        use_rel_pos: Whether to use relative position embeddings.
+        rel_pos_zero_init: Whether to zero-initialize relative position.
+        window_size: The window size for windowed attention.
+        global_attn_indexes: Indexes of blocks that use global attention.
+    """
+
     def __init__(
         self,
         img_size: int = 1024,

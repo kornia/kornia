@@ -33,6 +33,20 @@ from kornia.models.sam.architecture.common import MLPBlock
 
 
 class TwoWayTransformer(nn.Module):
+    """Implement a two-way transformer for interaction between image and prompt embeddings.
+
+    This transformer allows for simultaneous attention between the image features
+    and the prompt tokens (e.g., points or boxes).
+
+    Args:
+        depth: The number of transformer layers.
+        embedding_dim: The dimension of the embeddings.
+        num_heads: The number of heads in the multi-head attention.
+        mlp_dim: The dimension of the internal MLP layers.
+        activation: The activation function to use. Default: :class:`nn.GELU`.
+        attention_type: The type of attention mechanism to apply. Default: "unnorm".
+    """
+
     def __init__(
         self,
         depth: int,
@@ -116,6 +130,20 @@ class TwoWayTransformer(nn.Module):
 
 
 class TwoWayAttentionBlock(nn.Module):
+    """Implement a single block for the Two-Way Transformer.
+
+    This block performs self-attention on tokens, cross-attention from tokens to 
+    image features, and cross-attention from image features to tokens.
+
+    Args:
+        embedding_dim: The dimension of the embeddings.
+        num_heads: The number of attention heads.
+        mlp_dim: The dimension of the internal MLP layers. Default: 2048.
+        activation: The activation function to use. Default: :class:`nn.GELU`.
+        attention_type: The type of attention mechanism. Default: "unnorm".
+        skip_first_layer_pe: Whether to skip position encoding in the first layer. Default: False.
+    """
+
     def __init__(
         self,
         embedding_dim: int,

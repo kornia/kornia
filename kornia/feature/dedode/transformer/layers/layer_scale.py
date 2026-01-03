@@ -30,6 +30,8 @@ from torch import Tensor, nn
 
 
 class LayerScale(nn.Module):
+    """Implement the LayerScale mechanism for stabilizing transformer training."""
+
     def __init__(
         self,
         dim: int,

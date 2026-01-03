@@ -22,6 +22,14 @@ from torch import nn
 
 
 class Decoder(nn.Module):
+    """Implement the decoder module for DeDoDe feature extraction.
+
+    Args:
+        layers: The architectural layers for the decoder.
+        super_resolution: Whether to apply super-resolution upsampling.
+        num_prototypes: The number of prototypes for the output head.
+    """
+
     def __init__(self, layers: Any, *args, super_resolution: bool = False, num_prototypes: int = 1, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self.layers = layers
@@ -40,6 +48,20 @@ class Decoder(nn.Module):
 
 
 class ConvRefiner(nn.Module):
+    """Implement a convolutional refiner for DeDoDe feature extraction.
+
+    Args:
+        in_dim: The input dimension for the refiner.
+        hidden_dim: The hidden dimension for the refiner.
+        out_dim: The output dimension for the refiner.
+        dw: Whether to use depthwise convolution.
+        kernel_size: The kernel size for the convolution.
+        hidden_blocks: The number of hidden blocks in the refiner.
+        amp: Whether to use automatic mixed precision.
+        residual: Whether to use residual connections.
+        amp_dtype: The data type for automatic mixed precision.
+    """
+    
     def __init__(  # type: ignore[no-untyped-def]
         self,
         in_dim=6,

@@ -68,6 +68,14 @@ class StageConfig(NamedTuple):
 
 
 class HGBlock(nn.Module):
+    """Implement the High-Performance GPU block for HGNetV2.
+
+    Args:
+        in_channels: The number of input channels.
+        config: The configuration object containing stage details.
+        identity: Whether to use a residual identity connection.
+    """
+
     def __init__(self, in_channels: int, config: StageConfig, identity: bool) -> None:
         super().__init__()
         self.identity = identity
@@ -93,6 +101,12 @@ class HGBlock(nn.Module):
 
 
 class HGStage(nn.Sequential):
+    """Implement a single stage of the HGNetV2 architecture.
+
+    Args:
+        config: The configuration object for the specific stage.
+    """
+
     def __init__(self, config: StageConfig) -> None:
         super().__init__()
         ch_in = config.in_channels
@@ -104,6 +118,13 @@ class HGStage(nn.Sequential):
 
 
 class PPHGNetV2(nn.Module):
+    """Implement the PPHGNetV2 backbone for real-time object detection.
+
+    Args:
+        stem_channels: A list of three integers for the stem convolution channels.
+        stage_configs: A list of StageConfig objects for each of the four stages.
+    """
+
     def __init__(self, stem_channels: list[int], stage_configs: list[StageConfig]) -> None:
         KORNIA_CHECK(len(stem_channels) == 3)
         KORNIA_CHECK(len(stage_configs) == 4)

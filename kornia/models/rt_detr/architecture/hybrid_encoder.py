@@ -35,6 +35,13 @@ from kornia.utils._compat import torch_meshgrid
 
 
 class RepVggBlock(nn.Module):
+    """Implement the re-parameterizable VGG-style block.
+
+    Args:
+        in_channels: The number of input channels.
+        out_channels: The number of output channels.
+    """
+
     def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 3, act="none")
@@ -76,6 +83,15 @@ class RepVggBlock(nn.Module):
 
 
 class CSPRepLayer(nn.Module):
+    """Implement the Cross-Stage Partial Rep-layer.
+
+    Args:
+        in_channels: The number of input channels.
+        out_channels: The number of output channels.
+        num_blocks: The number of RepVggBlocks to include.
+        expansion: The expansion factor for the internal channels. Default: 1.0.
+    """
+
     def __init__(self, in_channels: int, out_channels: int, num_blocks: int, expansion: float = 1.0) -> None:
         super().__init__()
         hidden_channels = int(out_channels * expansion)
@@ -95,6 +111,15 @@ class CSPRepLayer(nn.Module):
 # almost identical to nn.TransformerEncoderLayer
 # but add positional embeddings to q and k
 class AIFI(nn.Module):
+    """Implement the All-scale Indoor/Outdoor Feature Interaction (AIFI) module.
+
+    Args:
+        embed_dim: The dimension of the input embeddings.
+        num_heads: The number of attention heads.
+        dim_feedforward: The dimension of the feed-forward network.
+        dropout: The dropout probability. Default: 0.0.
+    """
+
     def __init__(self, embed_dim: int, num_heads: int, dim_feedforward: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout)  # NOTE: batch_first = False
@@ -186,6 +211,14 @@ class TransformerEncoder(nn.Module):
 
 
 class CCFM(nn.Module):
+    """Implement the Cross-Column Feature Mixing (CCFM) module.
+
+    Args:
+        num_fmaps: The number of input feature maps.
+        hidden_dim: The hidden dimension for the fusion layers.
+        expansion: The expansion ratio for the internal layers. Default: 1.0.
+    """
+
     def __init__(self, num_fmaps: int, hidden_dim: int, expansion: float = 1.0) -> None:
         super().__init__()
         self.lateral_convs = nn.ModuleList()

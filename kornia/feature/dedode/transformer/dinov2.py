@@ -53,6 +53,8 @@ def named_apply(fn: Callable, module: nn.Module, name="", depth_first=True, incl
 
 
 class BlockChunk(nn.ModuleList):
+    """Implement a container for sequential execution of transformer block chunks."""
+
     def forward(self, x):
         for b in self:
             x = b(x)
@@ -60,6 +62,8 @@ class BlockChunk(nn.ModuleList):
 
 
 class DinoVisionTransformer(nn.Module):
+    """Implement the DINOv2 Vision Transformer architecture."""
+
     def __init__(
         self,
         img_size=224,

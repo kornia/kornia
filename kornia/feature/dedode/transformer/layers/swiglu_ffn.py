@@ -28,6 +28,19 @@ from torch import Tensor, nn
 
 
 class SwiGLUFFN(nn.Module):
+    """Implement the SwiGLU Feed-Forward Network.
+
+    This block uses the Gated Linear Unit with Swish activation, common in 
+    modern transformer architectures like DINOv2.
+
+    Args:
+        in_features: The number of input features.
+        hidden_features: The number of hidden features in the gating branch.
+        out_features: The number of output features. Default: None.
+        act_layer: The activation function. Default: :class:`nn.SiLU`.
+        drop: The dropout probability. Default: 0.0.
+    """
+
     def __init__(
         self,
         in_features: int,

@@ -22,6 +22,15 @@ from torch import nn
 
 
 class VGG(nn.Module):
+    """Implement a flexible VGG-style backbone for feature extraction.
+
+    Args:
+        features: The convolutional feature extractor module.
+        num_classes: The number of classes for the classification head. Default: 1000.
+        init_weights: Whether to initialize weights using a predefined scheme. Default: True.
+        dropout: The dropout probability for the classifier. Default: 0.5.
+    """
+
     def __init__(
         self, features: nn.Module, num_classes: int = 1000, init_weights: bool = True, dropout: float = 0.5
     ) -> None:

@@ -41,6 +41,8 @@ except ImportError:
 
 
 class Attention(nn.Module):
+    """Implement the standard Multi-Head Self-Attention mechanism."""
+
     def __init__(
         self,
         dim: int,
@@ -77,6 +79,8 @@ class Attention(nn.Module):
 
 
 class MemEffAttention(Attention):
+    """Implement a memory-efficient version of Multi-Head Self-Attention using xFormers."""
+
     def forward(self, x: Tensor, attn_bias=None) -> Tensor:  # type: ignore[no-untyped-def]
         if not XFORMERS_AVAILABLE:
             if attn_bias is not None:

@@ -32,6 +32,12 @@ def conv_nxn_bn(inp: int, oup: int, kernal_size: int = 3, stride: int = 1) -> nn
 
 
 class PreNorm(nn.Module):
+    """Apply a normalization layer before the functional block.
+
+    Args:
+        dim: The input dimension size.
+        fn: The module or function to be executed after normalization.
+    """
     def __init__(self, dim: int, fn: nn.Module) -> None:
         super().__init__()
         self.norm = nn.LayerNorm(dim)
@@ -42,6 +48,13 @@ class PreNorm(nn.Module):
 
 
 class FeedForward(nn.Module):
+    """Implement the Feed-Forward network block for Vision Transformers.
+
+    Args:
+        dim: The input dimension size.
+        hidden_dim: The dimension of the hidden layer.
+        dropout: The dropout probability. Default: 0.0.
+    """
     def __init__(self, dim: int, hidden_dim: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.net = nn.Sequential(
@@ -53,6 +66,14 @@ class FeedForward(nn.Module):
 
 
 class Attention(nn.Module):
+    """Implement the Multi-Head Attention module.
+
+    Args:
+        dim: The input dimension size.
+        heads: The number of attention heads. Default: 8.
+        dim_head: The dimension of each head. Default: 64.
+        dropout: The dropout probability. Default: 0.0.
+    """
     def __init__(self, dim: int, heads: int = 8, dim_head: int = 64, dropout: float = 0.0) -> None:
         super().__init__()
         inner_dim = dim_head * heads

@@ -30,6 +30,12 @@ from kornia.sensors.camera.projection_model import OrthographicProjection, Z1Pro
 
 
 class CameraModelType(Enum):
+    """Represent the type of camera projection and distortion model.
+
+    Supported types:
+        - PINHOLE: Standard perspective projection.
+        - BROWN_CONRADY: Standard radial and tangential distortion model.
+    """
     PINHOLE = 0
     BROWN_CONRADY = 1
     KANNALA_BRANDT_K3 = 2

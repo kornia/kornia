@@ -163,6 +163,8 @@ class SuperResolution(ModelBase, ONNXExportMixin):
 
 
 class RRDBNetBuilder:
+    """Provide a static factory to build Residual-in-Residual Dense Block (RRDB) networks."""
+
     @staticmethod
     def build(model_name: str = "RealESRNet_x4plus", pretrained: bool = True) -> SuperResolution:
         if model_name == "RealESRGAN_x4plus":
@@ -205,6 +207,8 @@ class RRDBNetBuilder:
 
 
 class SmallSRBuilder:
+    """Provide a static factory to build lightweight Super-Resolution models."""
+
     @staticmethod
     def build(
         model_name: str = "small_sr", pretrained: bool = True, upscale_factor: int = 3, image_size: Optional[int] = None

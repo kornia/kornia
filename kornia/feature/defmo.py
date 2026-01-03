@@ -49,6 +49,22 @@ def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, d
 
 
 class Bottleneck(nn.Module):
+    """Implement the Bottleneck building block for ResNet.
+
+    This block follows the ResNet V1.5 design where the stride is applied to the 3x3 convolution
+    instead of the first 1x1 convolution to better preserve spatial information.
+
+    Args:
+        inplanes: The number of input channels.
+        planes: The number of intermediate channels.
+        stride: The stride size for the convolution. Default: 1.
+        downsample: An optional module to downsample the input identity. Default: None.
+        groups: The number of blocked connections from input channels to output channels. Default: 1.
+        base_width: The width of each group. Default: 64.
+        dilation: The spacing between kernel elements. Default: 1.
+        norm_layer: The normalization layer to use. Default: None.
+    """
+
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
     # while original implementation places the stride at the first 1x1 convolution(self.conv1)
     # according to "Deep residual learning for image recognition"https://arxiv.org/abs/1512.03385.
@@ -107,6 +123,21 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
+    """Implement the ResNet architecture for feature extraction.
+
+    This implementation provides a flexible backbone used as the encoder in the DeFMO framework.
+
+    Args:
+        block: The block type to use, typically :class:`Bottleneck`.
+        layers: A list containing the number of blocks in each of the four stages.
+        num_classes: The number of output classes. Default: 1000.
+        zero_init_residual: Whether to initialize the last batch norm in each residual branch to zero. Default: False.
+        groups: The number of groups for the convolution. Default: 1.
+        width_per_group: The width of each group. Default: 64.
+        replace_stride_with_dilation: A list of booleans indicating if stride should be replaced by dilation in each stage. Default: None.
+        norm_layer: The normalization layer to use. Default: None.
+    """
+
     def __init__(
         self,
         block: Type[Bottleneck],
@@ -219,6 +250,19 @@ class ResNet(nn.Module):
 
 
 class EncoderDeFMO(nn.Module):
+    """Implement the Encoder module for the Deblurring Fast Moving Objects (DeFMO) model.
+
+    The encoder extracts latent features from the concatenation of the blurred input image and 
+    the estimated background. It uses a modified ResNet-50 backbone to accept 6-channel inputs.
+
+    Args:
+        None
+
+    Shape:
+        - Input: (B, 6, H, W) where 6 represents the concatenated blurred image and background.
+        - Output: A list of feature maps from different stages of the ResNet backbone.
+    """
+
     def __init__(self) -> None:
         super().__init__()
         model = ResNet(Bottleneck, [3, 4, 6, 3])  # ResNet50
@@ -232,6 +276,19 @@ class EncoderDeFMO(nn.Module):
 
 
 class RenderingDeFMO(nn.Module):
+    """Implement the Rendering module for the Deblurring Fast Moving Objects (DeFMO) model.
+
+    This module acts as a decoder that transforms the latent features from the encoder into 
+    a temporal sequence of sharp sub-frames, recovering the object's appearance and motion.
+
+    Args:
+        None
+
+    Shape:
+        - Input: Latent feature representation from the :class:`EncoderDeFMO`.
+        - Output: (B, T, 4, H, W) where T is the number of sub-frames and 4 represents RGBA channels.
+    """
+
     def __init__(self) -> None:
         super().__init__()
         self.tsr_steps: int = 24
