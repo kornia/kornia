@@ -21,8 +21,9 @@ from typing import Optional
 
 import torch
 import torch.nn.functional as F
-from kornia.core import Module, Tensor 
 from torch import nn
+
+from kornia.core import Module, Tensor
 
 
 class Qwen2VLPatchMerger(Module):
@@ -60,7 +61,7 @@ class Qwen2VLPatchMerger(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.ln_q(x)
-        x = self.merger(x) 
+        x = self.merger(x)
         return x
 
 
@@ -76,6 +77,7 @@ class Qwen2VLRotaryEmbedding(Module):
         dim: The feature dimension to be rotated.
         theta: The base frequency scaling factor for the rotary embedding.
     """
+
     def __init__(self, dim: int, theta: float = 10000.0) -> None:
         super().__init__()
         self.dim = dim
@@ -115,6 +117,7 @@ class Qwen2VLMLP(Module):
         dim: Input and output feature dimension.
         hidden_dim: Dimension of the hidden layer. If None, defaults to 4 * dim.
     """
+
     def __init__(self, dim: int, hidden_dim: Optional[int] = None) -> None:
         super().__init__()
         if hidden_dim is None:
@@ -130,17 +133,19 @@ class Qwen2VLMLP(Module):
 
 class Qwen2VLVisionBlock(Module):
     """Single transformer block used in the Qwen2-VL vision encoder.
-    
+
     This block follows the standard vision transformer pattern:
     layer-normalized inputs are passed through multi-head self-attention
     and added back via a residual connection, then layer-normalized again
     and processed by an MLP with another residual connection.
+
     Args:
         dim: Embedding dimension of the visual tokens.
         num_heads: Number of attention heads used in the self-attention layer.
         mlp_ratio: Expansion ratio used to compute the hidden dimension of the
             MLP, where ``hidden_dim = int(dim * mlp_ratio)``.
     """
+
     def __init__(self, dim: int, num_heads: int, mlp_ratio: float = 4.0) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(dim, eps=1e-6)
