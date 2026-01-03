@@ -14,16 +14,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+from typing import Callable
 
 import torch
 
 
 def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
-    """Implementation of a 2nd-order polynomial kernel (Xu et al., 2008).
+    """Implementation of a 2nd-order polynomial kernel for Kernel density estimate (Xu et al., 2008).
 
     Support: [-window_radius, window_radius]. Returns 0 outside this range.
-
     Ref: "Parzen-Window Based Normalized Mutual Information for Medical Image Registration", Eq. 22.
+    :param x: signal, any shape
+    :type x: torch.Tensor
+    :param window_radius: radius of window for the kernel
+    :type window_radius: float
+    :return: transformed signal
+    :rtype: torch.Tensor
     """
     x = torch.abs(x) / window_radius
 
@@ -39,13 +45,13 @@ def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     return kernel_val
 
 
-def _normalize_signal(data: torch.Tensor, num_bins: int):
+def _normalize_signal(data: torch.Tensor, num_bins: int) -> torch.Tensor:
     min_val, _ = data.min(axis=-1)
     max_val, _ = data.max(axis=-1)
     return (data - min_val.unsqueeze(-1)) / (max_val - min_val).unsqueeze(-1) * num_bins
 
 
-def _joint_histogram_to_entropies(joint_histogram, eps=1e-8):
+def _joint_histogram_to_entropies(joint_histogram: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     P_xy = joint_histogram
     # clamp for numerical stability
     P_xy = P_xy.clamp(eps)
@@ -64,8 +70,8 @@ def _joint_histogram_to_entropies(joint_histogram, eps=1e-8):
 class EntropyBasedLossBase(torch.nn.Module):
     def __init__(
         self,
-        reference_signal,
-        kernel_function=xu_kernel,
+        reference_signal: torch.Tensor,
+        kernel_function: Callable = xu_kernel,
         num_bins: int = 64,
         window_radius: float = 1.0,
     ):
@@ -78,10 +84,7 @@ class EntropyBasedLossBase(torch.nn.Module):
 
         self.eps = torch.finfo(self.signal.dtype).eps
 
-    def _compute_joint_histogram(
-        self,
-        other_signal: torch.Tensor,
-    ) -> torch.Tensor:
+    def _compute_joint_histogram(self, other_signal: torch.Tensor) -> torch.Tensor:
         if other_signal.shape != self.signal.shape:
             raise ValueError(f"The two signals have incompatible shapes: {other_signal.shape} and {self.signal}.")
         other_signal = _normalize_signal(other_signal, num_bins=self.num_bins)
@@ -96,13 +99,13 @@ class EntropyBasedLossBase(torch.nn.Module):
 
         return joint_histogram
 
-    def entropies(self, other_signal):
+    def entropies(self, other_signal: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         joint_histogram = self._compute_joint_histogram(other_signal)
         return _joint_histogram_to_entropies(joint_histogram, eps=self.eps)
 
 
 class MILossFromRef(EntropyBasedLossBase):
-    def forward(self, other_signal):
+    def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
         """Compute differentiable mutual information for self.signal and other_signal.
 
         mi = (H(X) + H(Y) - H(X,Y))
@@ -122,7 +125,7 @@ class MILossFromRef(EntropyBasedLossBase):
 
 
 class NMILossFromRef(EntropyBasedLossBase):
-    def forward(self, other_signal):
+    def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
         """Compute differentiable normalized mutual information for self.signal and other_signal.
 
         nmi = (H(X) + H(Y)) / H(X,Y)
@@ -142,7 +145,13 @@ class NMILossFromRef(EntropyBasedLossBase):
 
 
 class MILossFromRef2D(MILossFromRef):
-    def __init__(self, reference_signal, kernel_function=xu_kernel, num_bins=64, window_radius=1):
+    def __init__(
+        self,
+        reference_signal: torch.Tensor,
+        kernel_function: Callable = xu_kernel,
+        num_bins: int = 64,
+        window_radius: float = 1,
+    ):
         """MILossFromRef for 2D images. Check details there.
 
         Parameters
@@ -159,10 +168,10 @@ class MILossFromRef2D(MILossFromRef):
         super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
 
     @staticmethod
-    def arrange_shape(tensor):
+    def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
         return tensor.reshape(tensor.shape[:-2] + (-1,))
 
-    def forward(self, other_signal):
+    def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
         """Compute differentiable mutual information for self.signal and other_signal (both supposed 2D).
 
         mi = (H(X) + H(Y) - H(X,Y))
@@ -179,7 +188,13 @@ class MILossFromRef2D(MILossFromRef):
 
 
 class MILossFromRef3D(MILossFromRef):
-    def __init__(self, reference_signal, kernel_function=xu_kernel, num_bins=64, window_radius=1):
+    def __init__(
+        self,
+        reference_signal: torch.Tensor,
+        kernel_function: Callable = xu_kernel,
+        num_bins: int = 64,
+        window_radius: float = 1,
+    ):
         """MILossFromRef for 2D images. Check details there.
 
         Parameters
@@ -196,10 +211,10 @@ class MILossFromRef3D(MILossFromRef):
         super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
 
     @staticmethod
-    def arrange_shape(tensor):
+    def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
         return tensor.reshape(tensor.shape[:-3] + (-1,))
 
-    def forward(self, other_signal):
+    def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
         """Compute differentiable mutual information for self.signal and other_signal (both supposed 3D).
 
         mi = (H(X) + H(Y) - H(X,Y))
@@ -216,7 +231,13 @@ class MILossFromRef3D(MILossFromRef):
 
 
 class NMILossFromRef2D(NMILossFromRef):
-    def __init__(self, reference_signal, kernel_function=xu_kernel, num_bins=64, window_radius=1):
+    def __init__(
+        self,
+        reference_signal: torch.Tensor,
+        kernel_function: Callable = xu_kernel,
+        num_bins: int = 64,
+        window_radius: float = 1,
+    ):
         """NMILossFromRef for 2D images. Check details there.
 
         Parameters
@@ -233,10 +254,10 @@ class NMILossFromRef2D(NMILossFromRef):
         super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
 
     @staticmethod
-    def arrange_shape(tensor):
+    def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
         return tensor.reshape(tensor.shape[:-2] + (-1,))
 
-    def forward(self, other_signal):
+    def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
         """Compute differentiable mutual information for self.signal and other_signal (both supposed 2D).
 
         mi = (H(X) + H(Y) - H(X,Y))
@@ -253,7 +274,13 @@ class NMILossFromRef2D(NMILossFromRef):
 
 
 class NMILossFromRef3D(NMILossFromRef):
-    def __init__(self, reference_signal, kernel_function=xu_kernel, num_bins=64, window_radius=1):
+    def __init__(
+        self,
+        reference_signal: torch.Tensor,
+        kernel_function: Callable = xu_kernel,
+        num_bins: int = 64,
+        window_radius: float = 1,
+    ):
         """NMILossFromRef for 3D images. Check details there.
 
         Parameters
@@ -270,10 +297,10 @@ class NMILossFromRef3D(NMILossFromRef):
         super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
 
     @staticmethod
-    def arrange_shape(tensor):
+    def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
         return tensor.reshape(tensor.shape[:-3] + (-1,))
 
-    def forward(self, other_signal):
+    def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
         """Compute differentiable mutual information for self.signal and other_signal (both supposed 3D).
 
         mi = (H(X) + H(Y) - H(X,Y))
@@ -292,7 +319,7 @@ class NMILossFromRef3D(NMILossFromRef):
 def mutual_information_loss(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function=xu_kernel,
+    kernel_function: Callable = xu_kernel,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
@@ -323,7 +350,7 @@ def mutual_information_loss(
 def mutual_information_loss_2d(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function=xu_kernel,
+    kernel_function: Callable = xu_kernel,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
@@ -354,7 +381,7 @@ def mutual_information_loss_2d(
 def mutual_information_loss_3d(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function=xu_kernel,
+    kernel_function: Callable = xu_kernel,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
@@ -385,7 +412,7 @@ def mutual_information_loss_3d(
 def normalized_mutual_information_loss(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function=xu_kernel,
+    kernel_function: Callable = xu_kernel,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
@@ -419,7 +446,7 @@ def normalized_mutual_information_loss(
 def normalized_mutual_information_loss_2d(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function=xu_kernel,
+    kernel_function: Callable = xu_kernel,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
@@ -450,7 +477,7 @@ def normalized_mutual_information_loss_2d(
 def normalized_mutual_information_loss_3d(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function=xu_kernel,
+    kernel_function: Callable = xu_kernel,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
