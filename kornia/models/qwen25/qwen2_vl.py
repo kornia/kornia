@@ -21,9 +21,8 @@ from typing import Optional
 
 import torch
 import torch.nn.functional as F
+from kornia.core import Module, Tensor 
 from torch import nn
-
-from kornia.core import Module, Tensor
 
 
 class Qwen2VLPatchMerger(Module):
@@ -131,6 +130,7 @@ class Qwen2VLMLP(Module):
 
 class Qwen2VLVisionBlock(Module):
     """Single transformer block used in the Qwen2-VL vision encoder.
+    
     This block follows the standard vision transformer pattern:
     layer-normalized inputs are passed through multi-head self-attention
     and added back via a residual connection, then layer-normalized again
