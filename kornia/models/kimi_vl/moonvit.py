@@ -240,8 +240,6 @@ class MoonViT(nn.Module):
         Returns:
             (B, seq_len, hidden_size)
         """
-        _B, _C, _H, _W = pixel_values.shape
-
         # Patch Embedding
         x = self.patch_embed(pixel_values)  # (B, D, H', W')
         h_patches = x.shape[2]
