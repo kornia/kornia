@@ -136,7 +136,7 @@ class ImageModuleMixIn:
         if isinstance(x, (torch.Tensor,)):
             return x
         if isinstance(x, (np.ndarray,)):  # type: ignore
-            from kornia.utils.image import image_to_tensor  # pylint: disable=C0415
+            from kornia.image.utils import image_to_tensor  # pylint: disable=C0415
 
             return image_to_tensor(x) / 255
         if isinstance(x, (Image.Image,)):  # type: ignore
@@ -217,7 +217,7 @@ class ImageModuleMixIn:
         if len(self._output_image.shape) == 3:
             out_image = self._output_image
         elif len(self._output_image.shape) == 4:
-            from kornia.utils.image import make_grid  # pylint: disable=C0415
+            from kornia.image.utils import make_grid  # pylint: disable=C0415
 
             if n_row is None:
                 n_row = math.ceil(self._output_image.shape[0] ** 0.5)
@@ -240,8 +240,8 @@ class ImageModuleMixIn:
             n_row: Number of images displayed in each row of the grid.
 
         """
+        from kornia.image.utils import make_grid  # pylint: disable=C0415
         from kornia.io import write_image  # pylint: disable=C0415
-        from kornia.utils.image import make_grid  # pylint: disable=C0415
 
         if name is None:
             name = f"Kornia-{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}.jpg"

@@ -32,18 +32,67 @@ from kornia.core.check import (
     KORNIA_CHECK_SHAPE,
 )
 from kornia.geometry.transform.affwarp import rescale
-from kornia.utils.image import perform_keep_shape_image
-from kornia.utils.misc import (
-    differentiable_clipping,
-    differentiable_polynomial_floor,
-    differentiable_polynomial_rounding,
-)
+from kornia.image.utils import perform_keep_shape_image
 
 _DCT8_CACHE: dict[
     tuple[Union[torch.dtype, None], Union[str, torch.device, None]], tuple[torch.Tensor, torch.Tensor]
 ] = {}
 
 __all__ = ["JPEGCodecDifferentiable", "jpeg_codec_differentiable"]
+
+
+def _differentiable_polynomial_rounding(input: torch.Tensor) -> torch.Tensor:
+    """Differentiable rounding.
+
+    Args:
+        input: Input tensor of any shape to be rounded.
+
+    Returns:
+        Pseudo rounded tensor of the same shape as input tensor.
+
+    """
+    input_round = input.round()
+    return input_round + (input - input_round) ** 3
+
+
+def _differentiable_polynomial_floor(input: torch.Tensor) -> torch.Tensor:
+    """Perform floor via a differentiable operation.
+
+    Args:
+        input: Input tensor of any shape to be floored.
+
+    Returns:
+        Pseudo rounded tensor of the same shape as input tensor.
+
+    """
+    input_floor = input.floor()
+    return input_floor + (input - 0.5 - input_floor) ** 3
+
+
+def _differentiable_clipping(
+    input: torch.Tensor,
+    min_val: Union[float, None] = None,
+    max_val: Union[float, None] = None,
+    scale: float = 0.02,
+) -> torch.Tensor:
+    """Clip via a differentiable and soft approximation of the clipping operation.
+
+    Args:
+        input: Input tensor of any shape.
+        min_val: Minimum value.
+        max_val: Maximum value.
+        scale: Scale value. Default 0.02.
+
+    Returns:
+        Clipped output tensor of the same shape as the input tensor.
+
+    """
+    output: torch.Tensor = input.clone()
+    if max_val is not None:
+        output[output > max_val] = -scale * (torch.exp(-output[output > max_val] + max_val) - 1.0) + max_val
+    if min_val is not None:
+        output[output < min_val] = scale * (torch.exp(output[output < min_val] - min_val) - 1.0) + min_val
+    return output
 
 
 def _get_default_qt_y(device: Union[str, torch.device, None], dtype: Union[torch.dtype, None]) -> torch.Tensor:
@@ -180,7 +229,7 @@ def _jpeg_quality_to_scale(
 
     """
     # Get scale
-    scale: torch.Tensor = differentiable_polynomial_floor(
+    scale: torch.Tensor = _differentiable_polynomial_floor(
         torch.where(
             compression_strength < 50,
             5000.0 / compression_strength,
@@ -211,12 +260,12 @@ def _quantize(
         quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
     )
     # Perform scaling
-    quantization_table = differentiable_polynomial_floor(
-        differentiable_clipping((quantization_table_scaled + 50.0) / 100.0, 1, 255)
+    quantization_table = _differentiable_polynomial_floor(
+        _differentiable_clipping((quantization_table_scaled + 50.0) / 100.0, 1, 255)
     )
     output: torch.Tensor = input / quantization_table
     # Perform rounding
-    output = differentiable_polynomial_rounding(output)
+    output = _differentiable_polynomial_rounding(output)
     return output
 
 
@@ -241,8 +290,8 @@ def _dequantize(
         quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
     )
     # Perform scaling
-    output: torch.Tensor = input * differentiable_polynomial_floor(
-        differentiable_clipping((quantization_table_scaled + 50.0) / 100.0, 1, 255)
+    output: torch.Tensor = input * _differentiable_polynomial_floor(
+        _differentiable_clipping((quantization_table_scaled + 50.0) / 100.0, 1, 255)
     )
     return output
 
@@ -579,7 +628,7 @@ def jpeg_codec_differentiable(
         quantization_table_y=quantization_table_y,
     )
     # Clip coded image
-    image_rgb_jpeg = differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
+    image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
     # Crop the image again to the original shape
     image_rgb_jpeg = image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
     return image_rgb_jpeg

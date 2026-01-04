@@ -22,9 +22,9 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_mps_tensor_safe
 from kornia.feature.laf import get_laf_center
 from kornia.feature.steerers import DiscreteSteerer
-from kornia.utils.helpers import is_mps_tensor_safe
 
 from .adalam import get_adalam_default_config, match_adalam
 

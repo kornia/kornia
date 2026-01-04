@@ -57,7 +57,7 @@ def read_img_from_url(url: str, resize_to: Optional[tuple[int, int]] = None, **r
     # convert to image array and resize
     img: np.ndarray = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)[..., :3]
     # convert the image to a tensor
-    img_t: torch.Tensor = K.utils.image_to_tensor(img, keepdim=False)  # 1xCxHXW
+    img_t: torch.Tensor = K.image.image_to_tensor(img, keepdim=False)  # 1xCxHXW
     img_t = img_t.float() / 255.0
     if resize_to is None:
         img_t = K.geometry.resize(img_t, 184, **resize_kwargs)
@@ -80,7 +80,7 @@ def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Te
     rectangle[..., 2] = bboxes[..., 0] + bboxes[..., -2]  # x2
     rectangle[..., 3] = bboxes[..., 1] + bboxes[..., -1]  # y2
     color = torch.tensor([1, 0, 0]).repeat(imgs.shape[0], imgs.shape[1], 1)
-    imgs_draw = K.utils.draw_rectangle(imgs, rectangle, color=color)
+    imgs_draw = K.image.draw_rectangle(imgs, rectangle, color=color)
 
     rectangle2 = torch.zeros(imgs.shape[0], imgs.shape[1], 4)
     for n in range(keypoints.shape[-2]):
@@ -219,7 +219,7 @@ def main():
 
         out = torch.cat([ori, *(out[i] for i in range(out.size(0)))], dim=-1)
         # save the output image
-        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        out_np = K.image.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
@@ -373,7 +373,7 @@ def main():
             )
         else:
             out = torch.cat([img2[0], *(out[i] for i in range(out.size(0)))], dim=-1)
-        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        out_np = K.image.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
@@ -389,7 +389,7 @@ def main():
 
         out = torch.cat([bar_img, out], dim=-1)
 
-        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        out_np = K.image.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{colormap_name}.png"), out_np)
         sig = f"{colormap_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {colormap_name}. {sig}")
@@ -454,7 +454,7 @@ def main():
         out = fn(*args_in)
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
-        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        out_np = K.image.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
@@ -481,7 +481,7 @@ def main():
         out = fn(*args_in)
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
-        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        out_np = K.image.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
@@ -532,7 +532,7 @@ def main():
             out = torch.cat([args_in[1], out], dim=-1)
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
-        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        out_np = K.image.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
@@ -555,7 +555,7 @@ def main():
         mask = mask.repeat(1, img1.shape[1], 1, 1)
         # save the output image
         out = torch.cat([img1[0], mask[0], filtered[0]], dim=-1)
-        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        out_np = K.image.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
@@ -585,7 +585,7 @@ def main():
         ),
         "remap": (
             (
-                *(K.utils.create_meshgrid(h, w, normalized_coordinates=True) - 0.25).unbind(-1),
+                *(K.geometry.create_meshgrid(h, w, normalized_coordinates=True) - 0.25).unbind(-1),
                 "bilinear",
                 "zeros",
                 True,
@@ -642,7 +642,7 @@ def main():
             out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         else:
             out = torch.cat([*(out[i] for i in range(out.size(0)))], dim=-1)
-        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        out_np = K.image.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
@@ -713,7 +713,7 @@ def main():
 
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
-        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        out_np = K.image.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for response function {fn_name}")

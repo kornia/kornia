@@ -15,19 +15,19 @@
 # limitations under the License.
 #
 
+
 import importlib.util
 import platform
 import sys
-import warnings
 from dataclasses import asdict, fields, is_dataclass
-from functools import wraps
-from inspect import isclass, isfunction
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union, overload
+from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
 
 import torch
 from torch.linalg import inv_ex
 
-from kornia.utils._compat import torch_version_ge
+from kornia.core._compat import torch_version_ge
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_TYPE
+from kornia.core.exceptions import DeviceError
 
 
 def xla_is_available() -> bool:
@@ -85,59 +85,11 @@ def get_cuda_or_mps_device_if_available() -> torch.device:
         return get_cuda_device_if_available()
 
 
-@overload
-def map_location_to_cpu(storage: torch.Tensor, location: str) -> torch.Tensor: ...
-
-
-@overload
-def map_location_to_cpu(storage: str) -> str: ...
-
-
-def map_location_to_cpu(storage: Union[str, torch.Tensor], *args: Any, **kwargs: Any) -> Union[str, torch.Tensor]:
-    """Map location of device to CPU, util for loading things from HUB."""
-    return storage
-
-
-def deprecated(
-    replace_with: Optional[str] = None, version: Optional[str] = None, extra_reason: Optional[str] = None
-) -> Any:
-    """Mark methods as deprecated."""
-
-    def _deprecated(func: Callable[..., Any]) -> Any:
-        @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            name = ""
-            beginning = f"Since kornia {version} the " if version is not None else ""
-
-            if isclass(func):
-                name = func.__class__.__name__
-            if isfunction(func):
-                name = func.__name__
-            warnings.simplefilter("always", DeprecationWarning)
-            if replace_with is not None:
-                warnings.warn(
-                    f"{beginning}`{name}` is deprecated in favor of `{replace_with}`.{extra_reason}",
-                    category=DeprecationWarning,
-                    stacklevel=2,
-                )
-            else:
-                warnings.warn(
-                    f"{beginning}`{name}` is deprecated and will be removed in the future versions.{extra_reason}",
-                    category=DeprecationWarning,
-                    stacklevel=2,
-                )
-            warnings.simplefilter("default", DeprecationWarning)
-            return func(*args, **kwargs)
-
-        return wrapper
-
-    return _deprecated
-
-
 def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
     """Check if all the input are in the same device (only if when they are torch.Tensor).
 
-    If so, it would return a tuple of (device, dtype). Default: (cpu, ``get_default_dtype()``).
+    If so, it would return a tuple of (device, dtype).
+    Default: (``torch.get_default_device()``, ``torch.get_default_dtype()``).
 
     Returns:
         [torch.device, torch.dtype]
@@ -146,7 +98,7 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
     device, dtype = None, None
     for tensor in tensor_list:
         if tensor is not None:
-            if not isinstance(tensor, (torch.Tensor,)):
+            if not isinstance(tensor, torch.Tensor):
                 continue
             _device = tensor.device
             _dtype = tensor.dtype
@@ -154,16 +106,29 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
                 device = _device
                 dtype = _dtype
             elif device != _device or dtype != _dtype:
-                raise ValueError(
-                    "Passed values are not in the same device and dtype."
-                    f"Got ({device}, {dtype}) and ({_device}, {_dtype})."
+                raise DeviceError(
+                    f"Passed values are not in the same device and dtype. "
+                    f"Got ({device}, {dtype}) and ({_device}, {_dtype}).",
+                    actual_devices=[device, _device],
+                    expected_device=device,
                 )
     if device is None:
-        # TODO: update this when having torch.get_default_device()
-        device = torch.device("cpu")
+        device = torch.get_default_device()
     if dtype is None:
         dtype = torch.get_default_dtype()
     return (device, dtype)
+
+
+def _normalize_to_float32_or_float64(dtype: torch.dtype) -> torch.dtype:
+    """Normalize dtype to float32 or float64 for operations that require full precision.
+
+    Args:
+        dtype: The input dtype to normalize.
+
+    Returns:
+        torch.float32 if dtype is not float32 or float64, otherwise returns the original dtype.
+    """
+    return dtype if dtype in (torch.float32, torch.float64) else torch.float32
 
 
 def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
@@ -172,11 +137,8 @@ def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     The function torch.inverse is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
     """
-    if not isinstance(input, torch.Tensor):
-        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
-    dtype: torch.dtype = input.dtype
-    if dtype not in (torch.float32, torch.float64):
-        dtype = torch.float32
+    KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
+    dtype = _normalize_to_float32_or_float64(input.dtype)
     return torch.linalg.inv(input.to(dtype)).to(input.dtype)
 
 
@@ -186,11 +148,8 @@ def _torch_histc_cast(input: torch.Tensor, bins: int, min: Union[float, bool], m
     The function torch.histc is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
     """
-    if not isinstance(input, torch.Tensor):
-        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
-    dtype: torch.dtype = input.dtype
-    if dtype not in (torch.float32, torch.float64):
-        dtype = torch.float32
+    KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
+    dtype = _normalize_to_float32_or_float64(input.dtype)
     return torch.histc(input.to(dtype), bins, min, max).to(input.dtype)
 
 
@@ -203,17 +162,11 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
 
     NOTE: in torch 1.8.1 this function is recommended to use as torch.linalg.svd
     """
-    # if not isinstance(input, torch.Tensor):
-    #    raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
-    dtype = input.dtype
-    if dtype not in (torch.float32, torch.float64):
-        dtype = torch.float32
+    dtype = _normalize_to_float32_or_float64(input.dtype)
 
     out1, out2, out3H = torch.linalg.svd(input.to(dtype))
-    if torch_version_ge(1, 11):
-        out3 = out3H.mH
-    else:
-        out3 = out3H.transpose(-1, -2)
+    # Since kornia requires torch>=2.0.0, we can always use .mH
+    out3 = out3H.mH
     return (out1.to(input.dtype), out2.to(input.dtype), out3.to(input.dtype))
 
 
@@ -226,29 +179,24 @@ def _torch_linalg_svdvals(input: torch.Tensor) -> torch.Tensor:
 
     NOTE: in torch 1.8.1 this function is recommended to use as torch.linalg.svd
     """
-    if not isinstance(input, torch.Tensor):
-        raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
-    dtype: torch.dtype = input.dtype
-    if dtype not in (torch.float32, torch.float64):
-        dtype = torch.float32
+    KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
+    dtype = _normalize_to_float32_or_float64(input.dtype)
 
-    if TYPE_CHECKING:
-        # TODO: remove this branch when kornia relies on torch >= 1.10
-        out: torch.Tensor
-    elif torch_version_ge(1, 10):
-        out = torch.linalg.svdvals(input.to(dtype))
-    else:
-        # TODO: remove this branch when kornia relies on torch >= 1.10
-        _, out, _ = torch.linalg.svd(input.to(dtype))
+    # Since kornia requires torch>=2.0.0, we can always use torch.linalg.svdvals
+    out = torch.linalg.svdvals(input.to(dtype))
     return out.to(input.dtype)
 
 
-# TODO: return only `torch.Tensor` and review all the calls to adjust
 def _torch_solve_cast(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     """Make torch.solve work with other than fp32/64.
 
     For stable operation, the input matrices should be cast to fp64, and the output will
     be cast back to the input dtype. However, fp64 is not yet supported on MPS.
+
+    This function is actively used in:
+    - kornia.geometry.transform.imgwarp
+    - kornia.geometry.transform.thin_plate_spline
+    - kornia.geometry.epipolar.essential
     """
     if is_mps_tensor_safe(A):
         dtype = torch.float32
@@ -266,27 +214,14 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
 
     Avoids crashing because of singular matrix input and outputs the mask of valid solution.
     """
-    if not torch_version_ge(1, 10):
-        sol = _torch_solve_cast(A, B)
-        warnings.warn("PyTorch version < 1.10, solve validness mask maybe not correct", RuntimeWarning, stacklevel=1)
-        return sol, sol, torch.ones(len(A), dtype=torch.bool, device=A.device)
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
-    if not isinstance(B, torch.Tensor):
-        raise AssertionError(f"B must be torch.Tensor. Got: {type(B)}.")
+    KORNIA_CHECK_IS_TENSOR(B, "B must be torch.Tensor")
     dtype: torch.dtype = B.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 
-    if TYPE_CHECKING:
-        # TODO: remove this branch when kornia relies on torch >= 1.13
-        A_LU: torch.Tensor
-        pivots: torch.Tensor
-        info: torch.Tensor
-    elif torch_version_ge(1, 13):
-        A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
-    else:
-        # TODO: remove this branch when kornia relies on torch >= 1.13
-        A_LU, pivots, info = torch.lu(A.to(dtype), True, get_infos=True)
+    # Since kornia requires torch>=2.0.0, we can always use torch.linalg.lu_factor_ex and torch.linalg.lu_solve
+    A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
 
     valid_mask: torch.Tensor = info == 0
     n_dim_B = len(B.shape)
@@ -294,14 +229,7 @@ def safe_solve_with_mask(B: torch.Tensor, A: torch.Tensor) -> Tuple[torch.Tensor
     if n_dim_A - n_dim_B == 1:
         B = B.unsqueeze(-1)
 
-    if TYPE_CHECKING:
-        # TODO: remove this branch when kornia relies on torch >= 1.13
-        X: torch.Tensor
-    elif torch_version_ge(1, 13):
-        X = torch.linalg.lu_solve(A_LU, pivots, B.to(dtype))
-    else:
-        # TODO: remove this branch when kornia relies on torch >= 1.13
-        X = torch.lu_solve(B.to(dtype), A_LU, pivots)
+    X = torch.linalg.lu_solve(A_LU, pivots, B.to(dtype))
 
     return X.to(B.dtype), A_LU.to(A.dtype), valid_mask
 
@@ -311,14 +239,10 @@ def safe_inverse_with_mask(A: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
 
     Avoids crashing because of non-invertable matrix input and outputs the mask of valid solution.
     """
-    if not isinstance(A, torch.Tensor):
-        raise AssertionError(f"A must be torch.Tensor. Got: {type(A)}.")
+    KORNIA_CHECK_IS_TENSOR(A, "A must be torch.Tensor")
 
     dtype_original = A.dtype
-    if dtype_original not in (torch.float32, torch.float64):
-        dtype = torch.float32
-    else:
-        dtype = dtype_original
+    dtype = _normalize_to_float32_or_float64(dtype_original)
 
     inverse, info = inv_ex(A.to(dtype))
     mask = info == 0
@@ -338,13 +262,7 @@ def is_autocast_enabled(both: bool = True) -> bool:
         `torch.is_autocast_enabled()`.
 
     """
-    if TYPE_CHECKING:
-        # TODO: remove this branch when kornia relies on torch >= 1.10.2
-        return False
-
-    if not torch_version_ge(1, 10, 2):
-        return False
-
+    # Since kornia requires torch>=2.0.0, autocast is always available
     if both:
         if torch_version_ge(2, 4):
             return torch.is_autocast_enabled() or torch.is_autocast_enabled("cpu")
@@ -358,7 +276,7 @@ def dataclass_to_dict(obj: Any) -> Any:
     """Recursively convert dataclass instances to dictionaries."""
     if is_dataclass(obj) and not isinstance(obj, type):
         return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
-    elif isinstance(obj, (list, tuple)):
+    elif isinstance(obj, list | tuple):
         return type(obj)(dataclass_to_dict(item) for item in obj)
     elif isinstance(obj, dict):
         return {key: dataclass_to_dict(value) for key, value in obj.items()}
@@ -371,10 +289,8 @@ T = TypeVar("T")
 
 def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
     """Recursively convert dictionaries to dataclass instances."""
-    if not isinstance(dict_obj, dict):
-        raise TypeError("Input conf must be dict")
-    if not is_dataclass(dataclass_type):
-        raise TypeError("dataclass_type must be a dataclass")
+    KORNIA_CHECK_TYPE(dict_obj, dict, "Input conf must be dict")
+    KORNIA_CHECK(is_dataclass(dataclass_type), "dataclass_type must be a dataclass")
     field_types: dict[str, Any] = {f.name: f.type for f in fields(dataclass_type)}
     constructor_args = {}
     for key, value in dict_obj.items():

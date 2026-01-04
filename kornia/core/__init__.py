@@ -28,7 +28,7 @@ from .mixin import (
     ONNXRuntimeMixin,
 )
 from .module import ImageModule, ImageSequential
-from .tensor_wrapper import TensorWrapper  # type: ignore
+from .tensor_wrapper import TensorWrapper
 
 __all__ = [
     "ImageModule",
@@ -39,4 +39,6 @@ __all__ = [
     "ONNXRuntimeMixin",
     "TensorWrapper",
     "external",
+    "eye_like",
+    "vec_like",
 ]

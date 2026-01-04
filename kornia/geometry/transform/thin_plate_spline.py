@@ -20,8 +20,8 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from kornia.utils import create_meshgrid
-from kornia.utils.helpers import _torch_solve_cast
+from kornia.core.utils import _torch_solve_cast
+from kornia.geometry.grid import create_meshgrid
 
 __all__ = ["get_tps_transform", "warp_image_tps", "warp_points_tps"]
 

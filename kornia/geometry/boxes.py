@@ -22,9 +22,9 @@ from typing import Optional, Tuple, cast
 import torch
 from torch import Size
 
+from kornia.core.ops import eye_like
 from kornia.geometry.bbox import validate_bbox
 from kornia.geometry.linalg import transform_points
-from kornia.utils import eye_like
 
 __all__ = ["Boxes", "Boxes3D"]
 

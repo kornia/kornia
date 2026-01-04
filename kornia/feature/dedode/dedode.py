@@ -23,7 +23,6 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.enhance.normalize import Normalize
-from kornia.utils.helpers import map_location_to_cpu
 
 from .dedode_models import DeDoDeDescriptor, DeDoDeDetector, get_descriptor, get_detector
 from .utils import dedode_denormalize_pixel_coordinates, sample_keypoints

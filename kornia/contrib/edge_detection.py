@@ -212,11 +212,8 @@ class EdgeDetectorBuilder:
     This is a high-level API that builds edge detection models like :py:class:`kornia.models.DexiNed`
     and wraps them with :py:class:`EdgeDetector`.
 
-    .. code-block:: python
-
-        images = kornia.utils.sample.get_sample_images()
-        model = EdgeDetectorBuilder.build()
-        model.save(images)
+    Note:
+        To use this model, load image tensors and call ``model.save(images)``.
     """
 
     @staticmethod

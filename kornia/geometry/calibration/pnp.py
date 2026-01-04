@@ -21,10 +21,10 @@ import torch
 from torch.linalg import qr as linalg_qr
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
+from kornia.core.ops import eye_like
+from kornia.core.utils import _torch_linalg_svdvals, _torch_svd_cast
 from kornia.geometry.conversions import convert_points_to_homogeneous, normalize_points_with_intrinsics
 from kornia.geometry.linalg import transform_points
-from kornia.utils import eye_like
-from kornia.utils.helpers import _torch_linalg_svdvals, _torch_svd_cast
 
 
 def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:

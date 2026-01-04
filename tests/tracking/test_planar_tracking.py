@@ -18,10 +18,10 @@
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_le
 from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, SIFTFeature
 from kornia.geometry import rescale, transform_points
 from kornia.tracking import HomographyTracker
-from kornia.utils._compat import torch_version_le
 
 from testing.base import assert_close
 

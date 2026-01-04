@@ -27,7 +27,6 @@ import torch
 from torch import nn
 
 from kornia.models.common import MLP, ConvNormAct
-from kornia.utils._compat import torch_meshgrid
 
 
 def _inverse_sigmoid(x: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
@@ -476,8 +475,8 @@ class RTDETRHead(nn.Module):
         anchors_list: list[torch.Tensor] = []
 
         for i, (h, w) in enumerate(spatial_shapes):
-            # TODO: fix later kornia.utils.create_meshgrid()
-            grid_y, grid_x = torch_meshgrid(
+            # TODO: fix later kornia.geometry.create_meshgrid()
+            grid_y, grid_x = torch.meshgrid(
                 [torch.arange(h, device=device, dtype=dtype), torch.arange(w, device=device, dtype=dtype)],
                 indexing="ij",
             )

@@ -128,7 +128,7 @@ class TestExtractTensorPatches(BaseTester):
             return kornia.geometry.denormalize_pixel_coordinates(img, height, width)
 
         height, width = 3, 4
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True).to(device)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=True).to(device)
 
         actual = op_script(grid, height, width)
         expected = kornia.denormalize_pixel_coordinates(grid, height, width)

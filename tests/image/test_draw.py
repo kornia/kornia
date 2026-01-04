@@ -20,8 +20,9 @@ import math
 import pytest
 import torch
 
-from kornia.utils import create_meshgrid, draw_convex_polygon, draw_rectangle
-from kornia.utils.draw import draw_line, draw_point2d
+from kornia.geometry import create_meshgrid
+from kornia.image import draw_convex_polygon, draw_rectangle
+from kornia.image.draw import draw_line, draw_point2d
 
 from testing.base import assert_close
 

@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+
 """Convert an image torch.tensor to an ANSI text string (xterm-256color).
 
 Nice long listing of all 256 colors and their codes.
@@ -30,7 +31,6 @@ from torch import float16, float32, float64
 
 import kornia
 from kornia.core.check import KORNIA_CHECK_IS_IMAGE, KORNIA_CHECK_SHAPE
-from kornia.io import ImageLoadType
 
 # color look-up table
 # 8-bit, RGB hex
@@ -410,6 +410,8 @@ def print_image(image: Union[str, torch.Tensor], max_width: int = 96) -> None:
 
     """
     if isinstance(image, str):
+        from kornia.io import ImageLoadType  # pylint: disable=C0415
+
         img = kornia.io.load_image(image, ImageLoadType.RGB8)
     elif isinstance(image, torch.Tensor):
         img = image

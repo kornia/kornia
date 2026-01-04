@@ -21,9 +21,9 @@ import torch
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.utils.helpers import _torch_inverse_cast
 
 
 class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):

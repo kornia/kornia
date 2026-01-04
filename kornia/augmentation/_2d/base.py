@@ -22,9 +22,10 @@ from torch import float16, float32, float64
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_input_by_shape, _validate_input_dtype
+from kornia.core.ops import eye_like
+from kornia.core.utils import is_autocast_enabled
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.utils import eye_like, is_autocast_enabled
 
 
 class AugmentationBase2D(_AugmentationBase):

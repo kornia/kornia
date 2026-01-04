@@ -182,8 +182,8 @@ class TestRelativeCameraMotion(BaseTester):
 
         t1 = torch.tensor([[[10.0], [0.0], [0.0]]]).type_as(R1)
 
-        R2 = kornia.eye_like(3, R1)
-        t2 = kornia.vec_like(3, t1)
+        R2 = kornia.core.ops.eye_like(3, R1)
+        t2 = kornia.core.ops.vec_like(3, t1)
 
         R_expected = R1.clone()
         t_expected = -t1
@@ -197,8 +197,8 @@ class TestRelativeCameraMotion(BaseTester):
 
         R2 = torch.tensor([[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
-        t1 = kornia.vec_like(3, R1)
-        t2 = kornia.vec_like(3, R2)
+        t1 = kornia.core.ops.vec_like(3, R1)
+        t2 = kornia.core.ops.vec_like(3, R2)
 
         R_expected = R2.clone()
         t_expected = t1

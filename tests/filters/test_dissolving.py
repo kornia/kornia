@@ -18,8 +18,8 @@
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_le
 from kornia.filters.dissolving import StableDiffusionDissolving
-from kornia.utils._compat import torch_version_le
 
 WEIGHTS_CACHE_DIR = "weights/"
 

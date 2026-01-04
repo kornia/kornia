@@ -20,9 +20,9 @@ from typing import Iterable, List, Union
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
+from kornia.core.utils import _torch_inverse_cast
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
-from kornia.utils.helpers import _torch_inverse_cast
 
 
 class PinholeCamera:

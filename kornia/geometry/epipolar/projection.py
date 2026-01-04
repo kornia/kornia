@@ -24,8 +24,8 @@ import torch.nn.functional as F
 from torch.linalg import qr as linalg_qr
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.utils import eye_like, vec_like
-from kornia.utils.helpers import _torch_svd_cast
+from kornia.core.ops import eye_like, vec_like
+from kornia.core.utils import _torch_svd_cast
 
 from .numeric import cross_product_matrix
 

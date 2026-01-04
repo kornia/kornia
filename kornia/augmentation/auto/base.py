@@ -25,7 +25,7 @@ from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
 from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
-from kornia.utils import eye_like
+from kornia.core.ops import eye_like
 
 NUMBER = Union[float, int]
 OP_CONFIG = Tuple[str, NUMBER, Optional[NUMBER]]

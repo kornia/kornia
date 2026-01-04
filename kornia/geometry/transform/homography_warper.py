@@ -24,7 +24,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.utils import create_meshgrid
+from kornia.geometry.grid import create_meshgrid
 
 from .imgwarp import homography_warp, warp_grid
 

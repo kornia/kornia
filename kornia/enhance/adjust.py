@@ -30,8 +30,8 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
     KORNIA_CHECK_IS_TENSOR,
 )
-from kornia.utils.helpers import _torch_histc_cast
-from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
+from kornia.core.utils import _torch_histc_cast
+from kornia.image.utils import perform_keep_shape_image, perform_keep_shape_video
 
 
 def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:

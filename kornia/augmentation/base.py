@@ -29,9 +29,9 @@ from kornia.augmentation.utils import (
     _transform_output_shape,
     override_parameters,
 )
+from kornia.core.utils import is_autocast_enabled
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.utils import is_autocast_enabled
 
 TensorWithTransformMat = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 

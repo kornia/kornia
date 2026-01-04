@@ -149,7 +149,7 @@ class ImageModuleMixIn:
         if isinstance(x, (torch.Tensor,)):
             return x
         if isinstance(x, (np.ndarray,)):  # type: ignore
-            return kornia.utils.image.image_to_tensor(x) / 255
+            return kornia.image.utils.image_to_tensor(x) / 255
         if isinstance(x, (Image.Image,)):  # type: ignore
             return torch.from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # type: ignore
         raise TypeError("Input type not supported")
@@ -244,7 +244,7 @@ class ImageModuleMixIn:
         elif len(self._output_image.shape) == 4:
             if n_row is None:
                 n_row = math.ceil(self._output_image.shape[0] ** 0.5)
-            out_image = kornia.utils.image.make_grid(self._output_image, n_row, padding=2)
+            out_image = kornia.image.utils.make_grid(self._output_image, n_row, padding=2)
         else:
             raise ValueError
 
@@ -270,7 +270,7 @@ class ImageModuleMixIn:
         if len(self._output_image.shape) == 4:
             if n_row is None:
                 n_row = math.ceil(self._output_image.shape[0] ** 0.5)
-            out_image = kornia.utils.image.make_grid(self._output_image, n_row, padding=2)
+            out_image = kornia.image.utils.make_grid(self._output_image, n_row, padding=2)
         kornia.io.write_image(name, out_image.mul(255.0).byte())
 
 

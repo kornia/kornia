@@ -24,9 +24,9 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _torch_svd_cast
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
-from kornia.utils.helpers import _torch_svd_cast
 
 __all__ = ["ParametrizedLine", "fit_line"]
 

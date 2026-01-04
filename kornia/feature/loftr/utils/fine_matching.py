@@ -24,8 +24,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.subpix import dsnt
-from kornia.utils.grid import create_meshgrid
 
 
 class FineMatching(nn.Module):

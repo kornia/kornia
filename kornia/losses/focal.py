@@ -24,7 +24,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.losses._utils import mask_ignore_pixels
-from kornia.utils.one_hot import one_hot
+from kornia.losses.one_hot import one_hot
 
 # based on:
 # https://github.com/zhezh/focalloss/blob/master/focalloss.py

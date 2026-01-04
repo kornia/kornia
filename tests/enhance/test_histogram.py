@@ -146,7 +146,7 @@ class TestHistogram2d(BaseTester):
         bandwidth = torch.tensor(2 * 0.4**2, device=device, dtype=dtype)
 
         pdf = TestHistogram2d.fcn(sample1, sample2, bins, bandwidth)
-        ans = 0.1 * kornia.eye_like(10, pdf)
+        ans = 0.1 * kornia.core.ops.eye_like(10, pdf)
         self.assert_close(ans, pdf)
 
 

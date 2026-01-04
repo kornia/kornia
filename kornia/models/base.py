@@ -27,8 +27,8 @@ import torch
 from torch import nn
 
 from kornia.core.external import PILImage as Image
+from kornia.image.utils import tensor_to_image
 from kornia.io import write_image
-from kornia.utils.image import tensor_to_image
 
 logger = logging.getLogger(__name__)
 

@@ -28,7 +28,7 @@ from torch import nn
 import kornia.core as kornia_ops
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters.sobel import spatial_gradient
-from kornia.utils import create_meshgrid
+from kornia.geometry.grid import create_meshgrid
 
 from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
 from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics

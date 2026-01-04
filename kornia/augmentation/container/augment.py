@@ -25,9 +25,10 @@ from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
 from kornia.constants import DataKey, Resample
+from kornia.core.ops import eye_like
+from kornia.core.utils import is_autocast_enabled
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
-from kornia.utils import eye_like, is_autocast_enabled
 
 from .base import TransformMatrixMinIn
 from .image import ImageSequential

@@ -34,6 +34,7 @@ Reconstruction
 Semantic Segmentation
 ---------------------
 
+.. autofunction:: one_hot
 .. autofunction:: binary_focal_loss_with_logits
 .. autofunction:: focal_loss
 .. autofunction:: dice_loss

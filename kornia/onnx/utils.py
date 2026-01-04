@@ -27,7 +27,7 @@ import kornia
 from kornia.config import kornia_config
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx, requests
-from kornia.utils.download import CachedDownloader
+from kornia.onnx.download import CachedDownloader
 
 __all__ = ["ONNXLoader", "add_metadata", "io_name_conversion"]
 

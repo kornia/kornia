@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.utils._compat import torch_version
+from kornia.core._compat import torch_version
 
 from testing.base import BaseTester
 

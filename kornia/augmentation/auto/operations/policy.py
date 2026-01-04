@@ -26,7 +26,7 @@ from kornia.augmentation.container.base import ImageSequentialBase, TransformMat
 from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
 from kornia.augmentation.utils import _transform_input, override_parameters
-from kornia.utils import eye_like
+from kornia.core.ops import eye_like
 
 
 class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):

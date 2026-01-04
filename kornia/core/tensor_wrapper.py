@@ -25,7 +25,6 @@ import torch
 from torch import Tensor
 
 
-# TODO: promote to KORNIA_WRAP
 def wrap(v, cls):
     """Wrap type."""
     # wrap inputs if necessary
@@ -35,7 +34,6 @@ def wrap(v, cls):
     return cls(v) if isinstance(v, Tensor) else v
 
 
-# TODO: promote to KORNIA_UNWRAP
 def unwrap(v):
     """Unwrap nested type."""
     if type(v) in {tuple, list}:
@@ -44,6 +42,7 @@ def unwrap(v):
     return v._data if isinstance(v, TensorWrapper) else v
 
 
+# TODO: improve this class to be more efficient and less memory-intensive
 class TensorWrapper:
     """Wrap a PyTorch Tensor to provide additional metadata and specialized methods.
 

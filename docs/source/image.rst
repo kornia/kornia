@@ -28,3 +28,32 @@ Module to provide a high level API to process images.
 .. autoclass:: Image
     :members:
     :undoc-members:
+
+Drawing
+-------
+
+.. autofunction:: draw_line
+.. autofunction:: draw_rectangle
+.. autofunction:: draw_convex_polygon
+.. autofunction:: draw_point2d
+
+Image Conversion
+----------------
+
+.. autofunction:: tensor_to_image
+.. autofunction:: image_to_tensor
+.. autofunction:: image_list_to_tensor
+.. autoclass:: ImageToTensor
+
+Image Printing
+--------------
+
+.. autofunction:: image_to_string
+.. autofunction:: print_image
+
+Utilities
+---------
+
+.. autofunction:: make_grid
+.. autofunction:: perform_keep_shape_image
+.. autofunction:: perform_keep_shape_video

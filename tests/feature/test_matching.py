@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_le
 from kornia.feature.integrated import LightGlueMatcher
 from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.matching import (
@@ -32,7 +33,6 @@ from kornia.feature.matching import (
     match_snn,
 )
 from kornia.feature.steerers import DiscreteSteerer
-from kornia.utils._compat import torch_version_le
 
 from testing.base import BaseTester
 from testing.casts import dict_to
