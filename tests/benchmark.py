@@ -23,7 +23,7 @@ from torch.utils import benchmark
 # Compare takes a list of measurements which we'll save in results.
 results = []
 
-sizes = [1, 64, 1024]
+sizes = [1, 64, 102]
 for b, _ in product(sizes, sizes):
     # label and sub_label are the rows
     # description is the column
