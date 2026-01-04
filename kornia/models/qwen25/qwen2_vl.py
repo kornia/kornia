@@ -21,49 +21,31 @@ from typing import Optional
 
 import torch
 import torch.nn.functional as F
-from kornia.core import Module, Tensor 
-from torch import nn
-
+from torch import nn, Tensor
+from torch.nn import Module
 
 class Qwen2VLPatchMerger(Module):
     """Patch merger block used in the Qwen2-VL vision encoder.
 
-    This module normalizes per-token visual features and applies a 3D convolution
-    to merge local spatial patches over time into higher-dimensional tokens. It is
-    typically used to reduce the spatial resolution of video or image feature maps
-    while preserving temporal structure before feeding them into a language or
-    multimodal backbone.
-
     Args:
-        dim: Input feature dimension for each visual token/channel.
-        context_window: Maximum temporal context (number of frames or time steps)
-            the merger is expected to handle.
-        spatial_merge_size: Spatial downsampling factor for both height and width.
-            A value of ``k`` merges non-overlapping ``k x k`` spatial patches.
+        dim: The output embedding dimension (e.g., 1280).
+        context_window: The context window size (unused in this skeleton but kept for API).
+        spatial_merge_size: The spatial merge size (unused in this skeleton).
     """
 
-    def __init__(self, dim: int, context_window: int, spatial_merge_size: int = 2) -> None:
+    def __init__(self, dim: int, context_window: int = 224, spatial_merge_size: int = 2) -> None:
         super().__init__()
-        self.hidden_size = dim * (spatial_merge_size**2)
-        self.spatial_merge_size = spatial_merge_size
-
+        self.conv = nn.Conv2d(3, dim, kernel_size=14, stride=14)
         self.ln_q = nn.LayerNorm(dim, eps=1e-6)
 
-        # 3D Convolution to merge temporal and spatial dimensions
-        self.merger = nn.Conv3d(
-            dim,
-            self.hidden_size,
-            kernel_size=(1, spatial_merge_size, spatial_merge_size),
-            stride=(1, spatial_merge_size, spatial_merge_size),
-            bias=False,
-        )
-
     def forward(self, x: Tensor) -> Tensor:
+    
+        x = self.conv(x)
+        x = x.flatten(2)
+        x = x.transpose(1, 2)
         x = self.ln_q(x)
-        x = self.merger(x) 
         return x
-
-
+    
 class Qwen2VLRotaryEmbedding(Module):
     """Rotary positional embedding module used in Qwen2-VL vision-language layers.
 
@@ -80,13 +62,21 @@ class Qwen2VLRotaryEmbedding(Module):
         super().__init__()
         self.dim = dim
         self.theta = theta
-        self.register_buffer("inv_freq", 1.0 / (theta ** (torch.arange(0, dim, 2).float() / dim)))
 
-    def forward(self, x: Tensor, cu_seqlens: Tensor) -> Tensor:
+        inv_freq = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=torch.float) / dim))
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+    def forward(self, x: Tensor, cu_seqlens: Optional[Tensor] = None) -> Tensor:
         return x
 
 
 class Qwen2VLVisionAttention(Module):
+    """Multi-head self-attention module used in the Qwen2-VL vision encoder.
+
+    Args:
+        dim: Input feature dimension.
+        num_heads: Number of attention heads.
+    """
     def __init__(self, dim: int, num_heads: int = 16) -> None:
         super().__init__()
         self.num_heads = num_heads
@@ -129,18 +119,18 @@ class Qwen2VLMLP(Module):
 
 
 class Qwen2VLVisionBlock(Module):
-    """Single transformer block used in the Qwen2-VL vision encoder.
-    
-    This block follows the standard vision transformer pattern:
-    layer-normalized inputs are passed through multi-head self-attention
-    and added back via a residual connection, then layer-normalized again
-    and processed by an MLP with another residual connection.
-    Args:
-        dim: Embedding dimension of the visual tokens.
-        num_heads: Number of attention heads used in the self-attention layer.
-        mlp_ratio: Expansion ratio used to compute the hidden dimension of the
-            MLP, where ``hidden_dim = int(dim * mlp_ratio)``.
     """
+    Single transformer block for the Qwen2-VL vision encoder.
+
+    Applies layer-normalized self-attention followed by an MLP, each with
+    residual connections.
+
+    Args:
+        dim: Token embedding dimension.
+        num_heads: Number of attention heads.
+        mlp_ratio: MLP hidden dimension multiplier.
+    """
+
     def __init__(self, dim: int, num_heads: int, mlp_ratio: float = 4.0) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(dim, eps=1e-6)
@@ -156,25 +146,19 @@ class Qwen2VLVisionBlock(Module):
 
 
 class Qwen2VLVisionTransformer(Module):
-    """Native PyTorch implementation of the Qwen2-VL vision encoder.
+    """
+    PyTorch implementation of the Qwen2-VL vision encoder.
 
-    This module implements the vision backbone used in Qwen2-VL as a stack of
-    transformer blocks operating on patch embeddings produced by a patch
-    merger. It follows a standard ViT-style architecture composed of:
-
-    * A :class:`Qwen2VLPatchMerger` that converts an input image tensor into a
-      sequence of patch tokens.
-    * A sequence of :class:`Qwen2VLVisionBlock` modules, each containing
-      multi-head self-attention and an MLP with residual connections.
-    * Rotary positional embeddings applied to the attention mechanism.
+    A ViT-style backbone composed of a patch merger followed by stacked
+    transformer blocks with rotary positional embeddings.
 
     Args:
-        embed_dim: The dimension of the embedding vectors.
-        depth: The number of transformer blocks in the encoder.
-        num_heads: The number of attention heads.
-        mlp_ratio: Ratio of MLP hidden dimension to embedding dimension.
-        patch_size: The size of the patches to be merged.
-        in_channels: Number of input channels (default: 3 for RGB).
+        embed_dim: Embedding dimension.
+        depth: Number of transformer blocks.
+        num_heads: Number of attention heads.
+        mlp_ratio: MLP expansion ratio.
+        patch_size: Patch size.
+        in_channels: Input channel count.
     """
 
     def __init__(
@@ -182,15 +166,22 @@ class Qwen2VLVisionTransformer(Module):
         embed_dim: int = 1280,
         depth: int = 32,
         num_heads: int = 16,
-        patch_size: int = 14,
-        context_window: int = 224,
+        mlp_ratio: float = 4.0,
+        in_channels: int = 3,
     ) -> None:
         super().__init__()
-        self.patch_embed = Qwen2VLPatchMerger(embed_dim, context_window=context_window, spatial_merge_size=2)
-        self.blocks = nn.Sequential(*[Qwen2VLVisionBlock(embed_dim, num_heads) for _ in range(depth)])
+        self.patch_embed = Qwen2VLPatchMerger(embed_dim, context_window=224, spatial_merge_size=2)
+        self.blocks = nn.ModuleList([
+            Qwen2VLVisionBlock(embed_dim, num_heads, mlp_ratio) 
+            for _ in range(depth)
+        ])    
         self.rotary_pos_emb = Qwen2VLRotaryEmbedding(embed_dim // num_heads)
 
     def forward(self, x: Tensor) -> Tensor:
+      
         x = self.patch_embed(x)
-        x = self.blocks(x)
+        rot_pos_emb = self.rotary_pos_emb(x)
+        for block in self.blocks:
+            x = block(x, rot_pos_emb=rot_pos_emb)
+            
         return x
