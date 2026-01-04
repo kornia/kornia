@@ -78,12 +78,12 @@ class AffineTransform:
 class BrownConradyTransform:
     """Implement the Brown-Conrady model for lens distortion and undistortion.
 
-    The model accounts for radial distortion (due to lens shape) and tangential 
-    distortion (due to lens misalignment). It is commonly used to transform 
+    The model accounts for radial distortion (due to lens shape) and tangential
+    distortion (due to lens misalignment). It is commonly used to transform
     points between ideal pinhole projections and distorted image coordinates.
 
     Args:
-        params: A tensor containing the distortion coefficients 
+        params: A tensor containing the distortion coefficients
             (usually k1, k2, p1, p2, k3).
         points: A :class:`Vector2` representing the 2D coordinates to be transformed.
     """
