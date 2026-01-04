@@ -184,17 +184,25 @@ class TestKimiVLComponents(BaseTester):
         assert output.shape == (batch_size, 16, config.projector_config.output_dim)
 
 
-@pytest.mark.skipif(not os.path.exists("weights/model.safetensors.index.json"), reason="Weights not found")
 def test_kimi_vl_official_weights():
+    """Integration test for loading official KimiVL vision weights.
+
+    To run this test, set the environment variable ``KIMI_VL_WEIGHTS_DIR`` to a directory
+    containing the file ``model.safetensors.index.json`` and the referenced shard files.
+    If this variable is not set or the files are missing, the test is skipped.
+    """
     import json
 
     from safetensors.torch import load_file
 
-    weights_dir = "weights"
+    weights_dir = os.environ.get("KIMI_VL_WEIGHTS_DIR")
+    if not weights_dir:
+        pytest.skip("KIMI_VL_WEIGHTS_DIR is not set; skipping test_kimi_vl_official_weights")
+
     index_path = os.path.join(weights_dir, "model.safetensors.index.json")
 
     if not os.path.exists(index_path):
-        pytest.skip("Weights not found")
+        pytest.skip(f"Weights index not found at {index_path}; skipping test_kimi_vl_official_weights")
 
     with open(index_path) as f:
         index = json.load(f)
