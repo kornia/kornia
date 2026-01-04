@@ -259,6 +259,7 @@ class FusedMBConv(nn.Module):
         act_func: Activation functions for the fused and pointwise stages.
             Default: ("relu6", None).
     """
+
     def __init__(
         self,
         in_channels: int,
@@ -540,7 +541,7 @@ class ResidualBlock(nn.Module):
         main: nn.Module | None,
         shortcut: nn.Module | None,
         post_act: nn.Module | None = None,
-        pre_norm: nn.Module | None = None
+        pre_norm: nn.Module | None = None,
     ) -> None:
         super().__init__()
 
