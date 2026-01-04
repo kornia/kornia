@@ -1,4 +1,9 @@
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '*.rst'
   workflow_call:
     inputs:
       python-version:
@@ -39,7 +44,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.event.pull_request.head.sha || inputs.ref }}
 
       - name: Restore cache
         if: inputs.cache-path != ''

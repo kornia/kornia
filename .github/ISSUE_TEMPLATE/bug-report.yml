@@ -14,6 +14,18 @@ body:
         - [ ] I have checked the [help wanted issues](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) list
         - [ ] I have read the [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md)
 
+        ---
+
+        **⚠️ Important: Before submitting a PR**
+
+        If you plan to fix this bug yourself:
+
+        1. **Wait for maintainer approval**: A maintainer must review and approve this issue first
+        2. **Wait for assignment**: You must be assigned to this issue by a maintainer before submitting a PR
+        3. **Do not start work until assigned**: PRs submitted without prior issue approval and assignment may be closed
+
+        This helps us ensure the issue aligns with project goals, avoid duplicate work, and coordinate contributions effectively. See the [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#pull-request) for more details.
+
   - type: textarea
     id: describe-bug
     attributes:
