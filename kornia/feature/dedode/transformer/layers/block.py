@@ -72,6 +72,7 @@ class Block(nn.Module):
         attn_class: Callable that constructs the attention module.
         ffn_layer: Callable that constructs the feed-forward network module.
     """
+
     def __init__(
         self,
         dim: int,

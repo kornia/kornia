@@ -51,6 +51,7 @@ class Attention(nn.Module):
         attn_drop: Dropout probability applied to the attention weights.
         proj_drop: Dropout probability applied to the output projection.
     """
+
     def __init__(
         self,
         dim: int,

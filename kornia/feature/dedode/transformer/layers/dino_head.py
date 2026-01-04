@@ -39,6 +39,7 @@ class DINOHead(nn.Module):
         bottleneck_dim: Dimensionality of the bottleneck output of the MLP before the final normalized layer.
         mlp_bias: Whether to include bias terms in the MLP linear layers.
     """
+
     def __init__(
         self,
         in_dim,
