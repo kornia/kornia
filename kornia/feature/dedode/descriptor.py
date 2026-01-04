@@ -21,6 +21,13 @@ from torch import nn
 
 
 class DeDoDeDescriptor(nn.Module):
+    """Implement the DeDoDe descriptor for learning local feature representations.
+
+    Args:
+        encoder: The backbone encoder module.
+        decoder: The decoder module for descriptor generation.
+    """
+
     def __init__(self, encoder: nn.Module, decoder: nn.Module, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self.encoder = encoder

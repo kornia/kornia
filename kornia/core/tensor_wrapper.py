@@ -45,6 +45,12 @@ def unwrap(v):
 
 
 class TensorWrapper:
+    """Wrap a PyTorch Tensor to provide additional metadata and specialized methods.
+
+    Args:
+        data: The underlying :class:`torch.Tensor` to be wrapped.
+    """
+
     def __init__(self, data: Tensor) -> None:
         self.__dict__["_data"] = data
         self.__dict__["used_attrs"] = set()

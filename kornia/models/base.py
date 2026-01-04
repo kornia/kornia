@@ -36,6 +36,8 @@ ModelConfig = TypeVar("ModelConfig")
 
 
 class ModelBaseMixin:
+    """Provide common properties and utilities for Kornia model classes."""
+
     name: str = "model"
 
     def _tensor_to_type(

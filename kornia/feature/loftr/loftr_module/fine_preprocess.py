@@ -23,6 +23,12 @@ from torch import nn
 
 
 class FinePreprocess(nn.Module):
+    """Preprocess feature maps for fine-level matching in LoFTR.
+
+    Args:
+        config: A dictionary containing configuration parameters for fine-level processing.
+    """
+
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
 

@@ -265,6 +265,13 @@ class ScaleSpaceDetector(nn.Module):
 
 
 class Detector_config(TypedDict):
+    """Configuration for the Scale Space Detector.
+
+    Attributes:
+        nms_size: The size of the Non-Maximum Suppression window.
+        pyramid_levels: The number of levels in the image pyramid.
+    """
+
     nms_size: int
     pyramid_levels: int
     up_levels: int

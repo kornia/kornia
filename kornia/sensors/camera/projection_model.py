@@ -23,6 +23,12 @@ from kornia.geometry.vector import Vector2, Vector3
 
 
 class Z1Projection:
+    """Project 3D points from the camera frame into the canonical $z=1$ plane.
+
+    This performs perspective division by dividing the $x$ and $y$ coordinates
+    by the depth $z$.
+    """
+
     def project(self, points: Vector3) -> Vector2:
         """Project one or more Vector3 from the camera frame into the canonical z=1 plane through perspective division.
 
@@ -72,6 +78,12 @@ class Z1Projection:
 
 
 class OrthographicProjection:
+    """Project 3D points using an orthographic projection model.
+
+    This model assumes parallel projection where the $z$ coordinate is
+    discarded and no perspective scaling is applied.
+    """
+
     def project(self, points: Vector3) -> Vector2:
         raise NotImplementedError
 

@@ -29,6 +29,13 @@ from .scale_space_detector import Detector_config, MultiResolutionDetector, get_
 
 
 class KeyNet_conf(TypedDict):
+    """Define the configuration schema for the KeyNet feature detector.
+
+    Attributes:
+        num_filters: The number of filters in the convolutional layers.
+        num_levels: The number of levels in the image pyramid.
+    """
+
     num_filters: int
     num_levels: int
     kernel_size: int
