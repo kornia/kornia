@@ -252,7 +252,10 @@ class MoonViT(nn.Module):
         if x.shape[1] != pos_embed.shape[1]:
             # Interpolate pos_embed to match current resolution
             # pos_embed is (1, N_ref, D) -> (1, D, H_ref, W_ref)
-            h_ref = w_ref = int(pos_embed.shape[1] ** 0.5)
+            h_ref = int(pos_embed.shape[1] ** 0.5)
+            if h_ref * h_ref != pos_embed.shape[1]:
+                raise ValueError("pos_embed shape is not a perfect square, cannot reshape to 2D grid.")
+            w_ref = h_ref
             pos_embed = pos_embed.permute(0, 2, 1).view(1, -1, h_ref, w_ref)
 
             pos_embed = F.interpolate(pos_embed, size=(h_patches, w_patches), mode="bicubic", align_corners=False)
