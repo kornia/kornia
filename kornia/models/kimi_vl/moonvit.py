@@ -152,6 +152,17 @@ class MoonViTMLP(nn.Module):
 
 
 class MoonViTLayer(nn.Module):
+    """Single MoonViT transformer layer with pre-normalization, RoPE attention, and an MLP block.
+
+    This layer applies layer normalization before both the self-attention and MLP submodules
+    (pre-norm transformer). The self-attention block uses rotary positional embeddings (RoPE)
+    via the provided cosine and sine tensors, and the output of each sub-block is added back
+    to the input (residual connections).
+
+    Args:
+        config: Model configuration specifying hidden sizes, number of heads, dropout, and
+            normalization parameters.
+    """
     def __init__(self, config: MoonViTConfig) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
