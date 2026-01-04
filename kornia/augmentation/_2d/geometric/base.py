@@ -102,18 +102,29 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         align_corners_was_none: bool = False
         original_align_corners: Optional[bool] = None
 
+        # Check resample mode before modifying it
+        is_nearest_mode = False
         if "resample" in flags:
             resample_method = flags["resample"]
+            # Check if we're setting it to nearest (masks always use nearest)
+            is_nearest_mode = True
             flags["resample"] = Resample.get("nearest")
 
         # When align_corners=None is in flags (from extra_args), use the module's default
         # This ensures masks use the same align_corners value as inputs for consistency
+        # However, for 'nearest' mode, align_corners must be None (PyTorch requirement)
         if "align_corners" in flags and flags["align_corners"] is None:
             align_corners_was_none = True
             original_align_corners = None
-            # Use the module's default align_corners value from self.flags
-            # This ensures masks use the same align_corners as inputs
-            flags["align_corners"] = self.flags.get("align_corners", False)
+            # For 'nearest' resample mode, align_corners must be None
+            # For other modes, use the module's default align_corners value
+            if is_nearest_mode:
+                # Keep align_corners=None for nearest mode (PyTorch requirement)
+                pass
+            else:
+                # Use the module's default align_corners value from self.flags
+                # This ensures masks use the same align_corners as inputs
+                flags["align_corners"] = self.flags.get("align_corners", False)
 
         output = self.apply_transform(input, params, flags, transform)
 
@@ -245,8 +256,12 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         resample_method: Optional[Resample] = None
         align_corners_value: Optional[bool] = None
         align_corners_was_none_in_kwargs: bool = False
+        # Check resample mode before modifying it
+        is_nearest_mode = False
         if "resample" in flags:
             resample_method = flags["resample"]
+            # Check if we're setting it to nearest (masks always use nearest)
+            is_nearest_mode = True
             flags["resample"] = Resample.get("nearest")
         # Preserve align_corners from extra_args (kwargs) if provided
         # This ensures masks use the same align_corners setting in inverse as in forward
@@ -254,14 +269,22 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             align_corners_value = flags.get("align_corners")
             # When align_corners=None is in kwargs, use the module's default
             # This ensures masks use the same align_corners value as inputs for consistency
+            # However, for 'nearest' mode, align_corners must be None (PyTorch requirement)
             # We need to normalize it in kwargs too, because inverse_inputs will call
             # _process_kwargs_to_params_and_flags which merges kwargs into flags
             if kwargs["align_corners"] is None:
                 align_corners_was_none_in_kwargs = True
-                normalized_align_corners = self.flags.get("align_corners", False)
-                flags["align_corners"] = normalized_align_corners
-                # Also update kwargs to prevent _process_kwargs_to_params_and_flags from overwriting
-                kwargs["align_corners"] = normalized_align_corners
+                # For 'nearest' resample mode, align_corners must be None
+                # For other modes, use the module's default align_corners value
+                if is_nearest_mode:
+                    # Keep align_corners=None for nearest mode (PyTorch requirement)
+                    # Don't modify flags or kwargs
+                    pass
+                else:
+                    normalized_align_corners = self.flags.get("align_corners", False)
+                    flags["align_corners"] = normalized_align_corners
+                    # Also update kwargs to prevent _process_kwargs_to_params_and_flags from overwriting
+                    kwargs["align_corners"] = normalized_align_corners
             else:
                 flags["align_corners"] = kwargs["align_corners"]
         output = self.inverse_inputs(input, params, flags, transform, **kwargs)
