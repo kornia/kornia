@@ -20,8 +20,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-skip:
+    # For scheduled runs, check if only documentation files changed
+    # If so, skip the expensive test runs
+    runs-on: ubuntu-latest
+    outputs:
+      should-skip: ${{ steps.check.outputs.should-skip }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need at least 2 commits to compare
+
+      - name: Check if only docs changed
+        id: check
+        run: |
+          # For non-schedule events, always run tests
+          if [[ "${{ github.event_name }}" != "schedule" ]]; then
+            echo "should-skip=false" >> "$GITHUB_OUTPUT"
+            echo "Not a scheduled run, will proceed with tests"
+            exit 0
+          fi
+
+          # For scheduled runs, check if only documentation files changed
+          # Get the last commit on main
+          LAST_COMMIT=$(git rev-parse HEAD)
+
+          # Get list of changed files in the last commit
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r $LAST_COMMIT)
+
+          # Check if all changed files are in paths-ignore patterns
+          SHOULD_SKIP="true"
+          for file in $CHANGED_FILES; do
+            # Check if file matches any ignore pattern
+            if [[ ! "$file" =~ ^docs/ ]] && \
+               [[ ! "$file" =~ \.md$ ]] && \
+               [[ "$file" != "LICENSE" ]] && \
+               [[ "$file" != "COPYRIGHT" ]]; then
+              SHOULD_SKIP="false"
+              break
+            fi
+          done
+
+          echo "should-skip=$SHOULD_SKIP" >> "$GITHUB_OUTPUT"
+          echo "Changed files: $CHANGED_FILES"
+          echo "Should skip: $SHOULD_SKIP"
+
   pre-tests:
     runs-on: ubuntu-latest
+    needs: [check-skip]
+    if: needs.check-skip.outputs.should-skip == 'false'
     outputs:
       hash: ${{ steps.hashid.outputs.weights-hash }}
     steps:
@@ -50,7 +98,8 @@ jobs:
         run: echo "weights-hash=${{ hashFiles('.github/download-models-weights.py') }}" >> "$GITHUB_OUTPUT"
 
   tests-cpu-ubuntu:
-    needs: [pre-tests]
+    needs: [check-skip, pre-tests]
+    if: needs.check-skip.outputs.should-skip == 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -69,7 +118,8 @@ jobs:
         model-weights-
 
   tests-cpu-windows:
-    needs: [pre-tests]
+    needs: [check-skip, pre-tests]
+    if: needs.check-skip.outputs.should-skip == 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -94,7 +144,8 @@ jobs:
         model-weights-
 
   tests-cpu-mac:
-    needs: [pre-tests]
+    needs: [check-skip, pre-tests]
+    if: needs.check-skip.outputs.should-skip == 'false'
     strategy:
       fail-fast: false
       matrix:
@@ -121,7 +172,8 @@ jobs:
         model-weights-
 
   coverage:
-    needs: [pre-tests]
+    needs: [check-skip, pre-tests]
+    if: needs.check-skip.outputs.should-skip == 'false'
     uses: ./.github/workflows/coverage.yml
     with:
       cache-path: weights/
@@ -131,13 +183,18 @@ jobs:
         model-weights-
 
   typing:
+    needs: [check-skip]
+    if: needs.check-skip.outputs.should-skip == 'false'
     uses: ./.github/workflows/typecheck.yml
 
   tutorials:
+    needs: [check-skip]
+    if: needs.check-skip.outputs.should-skip == 'false'
     uses: ./.github/workflows/tutorials.yml
 
   docs:
-    needs: [pre-tests]
+    needs: [check-skip, pre-tests]
+    if: needs.check-skip.outputs.should-skip == 'false'
     uses: ./.github/workflows/docs.yml
     with:
       python-version: '["3.11"]'
