@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from torch import nn
 
@@ -57,7 +57,7 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
         self,
         *inputs: Any,
         input_names_to_handle: Optional[list[Any]] = None,
-        output_type: str = "tensor",
+        output_type: Literal["pt", "numpy", "pil"] = "pt",
         **kwargs: Any,
     ) -> Any:
         """Overwrite the __call__ function to handle various inputs.
@@ -65,7 +65,7 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
         Args:
             inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
-            output_type: Desired output type ('tensor', 'numpy', or 'pil').
+            output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
         Returns:
@@ -78,7 +78,7 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
                 input_names_to_handle=input_names_to_handle, output_type=output_type
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            if output_type == "tensor":
+            if output_type == "pt":
                 self._output_image = self._detach_tensor_to_cpu(_output_image)
             else:
                 self._output_image = _output_image
@@ -116,7 +116,7 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
         self,
         *inputs: Any,
         input_names_to_handle: Optional[list[Any]] = None,
-        output_type: str = "tensor",
+        output_type: Literal["pt", "numpy", "pil"] = "pt",
         **kwargs: Any,
     ) -> Any:
         """Overwrite the __call__ function to handle various inputs.
@@ -124,7 +124,7 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
         Args:
             inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
-            output_type: Desired output type ('tensor', 'numpy', or 'pil').
+            output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
         Returns:
@@ -137,7 +137,7 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
                 input_names_to_handle=input_names_to_handle, output_type=output_type
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            if output_type == "tensor":
+            if output_type == "pt":
                 self._output_image = self._detach_tensor_to_cpu(_output_image)
             else:
                 self._output_image = _output_image

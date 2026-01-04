@@ -16,7 +16,7 @@
 #
 
 import warnings
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -337,7 +337,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             outputs = self.transform_op.inverse(  # type: ignore
                 *outputs, module=module, param=param, extra_args=self.extra_args
             )
-            if not isinstance(outputs, (list, tuple)):
+            if not isinstance(outputs, list | tuple):
                 # Make sure we are unpacking a list whilst post-proc
                 outputs = [outputs]
 
@@ -401,7 +401,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 _out_k = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
-                if is_autocast_enabled() and isinstance(in_arg, (torch.Tensor, Keypoints)):
+                if is_autocast_enabled() and isinstance(in_arg, torch.Tensor | Keypoints):
                     if isinstance(_out_k, list):
                         _out_k = [i.type(in_arg.dtype) for i in _out_k]
                     else:
@@ -410,7 +410,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             elif DataKey.get(dcate) in _BOXES_OPTIONS:
                 _out_b = self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate)
-                if is_autocast_enabled() and isinstance(in_arg, (torch.Tensor, Boxes)):
+                if is_autocast_enabled() and isinstance(in_arg, torch.Tensor | Boxes):
                     if isinstance(_out_b, list):
                         _out_b = [i.type(in_arg.dtype) for i in _out_b]
                     else:
@@ -449,7 +449,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             # image data must exist if params is not provided.
             if DataKey.INPUT in self.transform_op.data_keys:
                 inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
-                if not isinstance(inp, (torch.Tensor,)):
+                if not isinstance(inp, torch.Tensor):
                     raise ValueError(f"`INPUT` should be a torch.tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
                 if self.contains_video_sequential or self.contains_3d_augmentation:
@@ -466,7 +466,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             outputs = self.transform_op.transform(  # type: ignore
                 *outputs, module=module, param=param, extra_args=self.extra_args
             )
-            if not isinstance(outputs, (list, tuple)):
+            if not isinstance(outputs, list | tuple):
                 # Make sure we are unpacking a list whilst post-proc
                 outputs = [outputs]
             self._update_transform_matrix_by_module(module)
@@ -492,7 +492,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self,
         *inputs: Any,
         input_names_to_handle: Optional[List[Any]] = None,
-        output_type: str = "torch.tensor",
+        output_type: Literal["pt", "numpy", "pil"] = "pt",
         **kwargs: Any,
     ) -> Any:
         """Overwrite the __call__ function to handle various inputs.
@@ -500,7 +500,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         Args:
             inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
-            output_type: Desired output type ('torch.tensor', 'numpy', or 'pil').
+            output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
         Returns:
@@ -526,7 +526,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if len(data_keys) > 1 and DataKey.INPUT in data_keys:
                 # NOTE: we may update it later for more supports of drawing boxes, etc.
                 idx = data_keys.index(DataKey.INPUT)
-                if output_type == "torch.tensor":
+                if output_type == "pt":
                     self._output_image = _output_image
                     if isinstance(_output_image, dict):
                         self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
@@ -617,7 +617,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             mode = "xywh"
         else:
             raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
-        if isinstance(arg, (Boxes,)):
+        if isinstance(arg, Boxes):
             return arg
         elif self.contains_video_sequential:
             arg = cast(torch.Tensor, arg)
@@ -641,7 +641,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
 
         # TODO: handle 3d scenarios
-        if isinstance(in_arg, (Boxes,)):
+        if isinstance(in_arg, Boxes):
             return out_arg
         else:
             return out_arg.to_tensor(mode=mode)
@@ -662,7 +662,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             return video_result.type(dtype) if dtype else video_result
         elif self.contains_3d_augmentation:
             raise NotImplementedError("3D keypoint handlers are not yet supported.")
-        elif isinstance(arg, (Keypoints,)):
+        elif isinstance(arg, Keypoints):
             return arg
         else:
             arg = cast(torch.Tensor, arg)
@@ -676,7 +676,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     def _postproc_keypoint(
         self, in_arg: DataType, out_arg: Keypoints, dcate: DataKey
     ) -> Union[torch.Tensor, List[torch.Tensor], Keypoints]:
-        if isinstance(in_arg, (Keypoints,)):
+        if isinstance(in_arg, Keypoints):
             return out_arg
         else:
             return out_arg.to_tensor()
