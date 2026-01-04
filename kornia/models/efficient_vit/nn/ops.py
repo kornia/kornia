@@ -237,7 +237,7 @@ class MBConv(nn.Module):
 
 
 class FusedMBConv(nn.Module):
-   """Implement a fused version of the Inverted Residual Block for efficiency.
+    """Implement a fused version of the Inverted Residual Block for efficiency.
 
     This block improves throughput on certain hardware by replacing the
     separate expansion and depthwise convolutions with a single regular
@@ -259,7 +259,6 @@ class FusedMBConv(nn.Module):
         act_func: Activation functions for the fused and pointwise stages.
             Default: ("relu6", None).
     """
-
     def __init__(
         self,
         in_channels: int,
@@ -536,13 +535,13 @@ class ResidualBlock(nn.Module):
         pre_norm: Normalization to apply before the branches.
     """
 
-   def __init__(
-    self,
-    main: nn.Module | None,
-    shortcut: nn.Module | None,
-    post_act: nn.Module | None = None,
-    pre_norm: nn.Module | None = None
-) -> None:
+    def __init__(
+        self,
+        main: nn.Module | None,
+        shortcut: nn.Module | None,
+        post_act: nn.Module | None = None,
+        pre_norm: nn.Module | None = None
+    ) -> None:
         super().__init__()
 
         self.pre_norm = pre_norm
