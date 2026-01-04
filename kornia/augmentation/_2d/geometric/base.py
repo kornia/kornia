@@ -223,12 +223,20 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         **kwargs: Any,
     ) -> torch.Tensor:
         resample_method: Optional[Resample] = None
+        align_corners_value: Optional[bool] = None
         if "resample" in flags:
             resample_method = flags["resample"]
             flags["resample"] = Resample.get("nearest")
+        # Preserve align_corners from extra_args (kwargs) if provided
+        # This ensures masks use the same align_corners setting in inverse as in forward
+        if "align_corners" in kwargs:
+            align_corners_value = flags.get("align_corners")
+            flags["align_corners"] = kwargs["align_corners"]
         output = self.inverse_inputs(input, params, flags, transform, **kwargs)
         if resample_method is not None:
             flags["resample"] = resample_method
+        if align_corners_value is not None:
+            flags["align_corners"] = align_corners_value
         return output
 
     def inverse_boxes(
