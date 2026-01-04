@@ -115,7 +115,7 @@ class MoonViTAttention(nn.Module):
         key = self.k_proj(hidden_states)
         value = self.v_proj(hidden_states)
 
-        # Reshape Embeddings for multi-head attention
+        # Reshape query, key, and value for multi-head attention
         query = query.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         key = key.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         value = value.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
