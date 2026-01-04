@@ -59,6 +59,22 @@ class TestAugmentationSequential:
         assert out.shape[-3:] == inp.shape[-3:]
         reproducibility_test(inp, aug)
 
+    def test_mixup_cutmix_only(self, device, dtype):
+        mixup = K.RandomMixUpV2(p=1.0, data_keys=["input"])
+        cutmix = K.RandomCutMixV2(p=1.0, data_keys=["input"])
+        aug = K.AugmentationSequential(
+            mixup,
+            cutmix,
+            data_keys=["input"],
+            random_apply=1,
+        )
+
+        input = torch.randn(2, 3, 224, 224, device=device, dtype=dtype)
+
+        out_input = aug(input)
+
+        assert out_input.shape == input.shape
+
     def test_video(self, device, dtype):
         input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)[None]
         bbox = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype).expand(
