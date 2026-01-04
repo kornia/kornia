@@ -24,7 +24,7 @@ import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import override_parameters
 from kornia.core import ImageModule
-from kornia.core.module import ImageModuleMixIn
+from kornia.core.mixin.image_module import ImageModuleMixIn
 from kornia.core.ops import eye_like
 
 from .base import ImageSequentialBase
