@@ -1,20 +1,9 @@
 on:
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'kornia/**'
-      - 'tests/**'
-      - 'testing/**'
-      - 'benchmarks/**'
-      - '*.py'
-      - 'pyproject.toml'
-      - 'pixi.toml'
-      - 'pixi.lock'
-      - 'uv.lock'
-      - '.github/workflows/**'
-      - '*.md'
-      - 'LICENSE'
-      - 'COPYRIGHT'
+    paths:
+      - 'docs/**'
+      - '*.rst'
   workflow_call:
     inputs:
       python-version:
