@@ -23,6 +23,8 @@ from torch import nn
 
 from kornia.geometry.transform import resize
 
+from .naflex import NaFlex
+
 __all__ = ["OutputRangePostProcessor", "ResizePostProcessor", "ResizePreProcessor"]
 
 
@@ -126,3 +128,6 @@ class OutputRangePostProcessor(nn.Module):
         if isinstance(imgs, torch.Tensor):
             return torch.clamp(imgs, self.min_val, self.max_val)
         return [img.clamp_(self.min_val, self.max_val) for img in imgs]
+
+
+__all__ = ["NaFlex"]

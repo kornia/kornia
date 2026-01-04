@@ -19,8 +19,8 @@ import pytest
 import torch
 from torch import Tensor
 
+from kornia.models.processors.naflex import NaFlex
 from kornia.models.siglip2 import SigLip2VisionConfig, SigLip2VisionEmbeddings
-from kornia.models.siglip2.naflex import NaFlex
 
 from testing.base import BaseTester
 

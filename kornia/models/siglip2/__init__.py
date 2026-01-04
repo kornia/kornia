@@ -20,12 +20,10 @@
 from .builder import SigLip2Builder
 from .config import SigLip2Config, SigLip2VisionConfig
 from .model import SigLip2Model, SigLip2Result
-from .naflex import NaFlex
 from .preprocessor import SigLip2ImagePreprocessor
 from .vision_encoder import SigLip2VisionEmbeddings
 
 __all__ = [
-    "NaFlex",
     "SigLip2Builder",
     "SigLip2Config",
     "SigLip2ImagePreprocessor",
