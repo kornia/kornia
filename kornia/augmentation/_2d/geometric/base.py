@@ -235,7 +235,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         output = self.inverse_inputs(input, params, flags, transform, **kwargs)
         if resample_method is not None:
             flags["resample"] = resample_method
-        if align_corners_value is not None:
+        # Restore align_corners if it was modified (mirror the modification condition)
+        # This ensures complete state restoration even if the original value was None
+        if "align_corners" in kwargs:
             flags["align_corners"] = align_corners_value
         return output
 
