@@ -22,7 +22,7 @@ from torch.distributions import Distribution
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
-from kornia.utils.helpers import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["ParameterBound", "PlainUniformGenerator"]
 

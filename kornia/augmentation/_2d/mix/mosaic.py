@@ -24,9 +24,9 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, Resample
 from kornia.core.check import KORNIA_UNWRAP
+from kornia.core.ops import eye_like
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
-from kornia.utils import eye_like
 
 __all__ = ["RandomMosaic"]
 

@@ -49,7 +49,7 @@ def get_test_devices() -> dict[str, torch.device]:
     if torch.cuda.is_available():
         devices["cuda"] = torch.device("cuda:0")
 
-    if kornia.xla_is_available():
+    if kornia.core.utils.xla_is_available():
         import torch_xla.core.xla_model as xm
 
         devices["tpu"] = xm.xla_device()

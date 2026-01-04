@@ -28,7 +28,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.utils.grid import create_meshgrid
+from kornia.geometry.grid import create_meshgrid
 
 
 def _validate_batched_image_tensor_input(tensor: torch.Tensor) -> None:

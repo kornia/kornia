@@ -16,6 +16,9 @@
 #
 
 import torch
+import torch.nn.functional as F
+
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
 def one_hot(
@@ -47,15 +50,23 @@ def one_hot(
                   [1.0000e+00, 1.0000e-06]]]])
 
     """
-    if not isinstance(labels, torch.Tensor):
-        raise TypeError(f"Input labels type is not a torch.Tensor. Got {type(labels)}")
+    KORNIA_CHECK_IS_TENSOR(labels, "Input labels must be a torch.Tensor")
+    KORNIA_CHECK(labels.dtype == torch.int64, f"labels must be of dtype torch.int64. Got: {labels.dtype}")
+    KORNIA_CHECK(num_classes >= 1, f"The number of classes must be >= 1. Got: {num_classes}")
 
-    if not labels.dtype == torch.int64:
-        raise ValueError(f"labels must be of the same dtype torch.int64. Got: {labels.dtype}")
+    # Use PyTorch's built-in one_hot function
+    one_hot_tensor = F.one_hot(labels, num_classes=num_classes)
 
-    if num_classes < 1:
-        raise ValueError(f"The number of classes must be bigger than one. Got: {num_classes}")
+    # PyTorch's one_hot adds the class dimension at the end: (*, num_classes)
+    # We need it at position 1: (N, C, *)
+    # Permute: move the last dimension (num_classes) to position 1
+    ndim = labels.ndim
+    permute_dims = [0] + [ndim] + list(range(1, ndim))
+    one_hot_tensor = one_hot_tensor.permute(*permute_dims)
 
-    shape = labels.shape
-    one_hot = torch.full((shape[0], num_classes) + shape[1:], eps, device=device, dtype=dtype)
-    return one_hot.scatter_(1, labels.unsqueeze(1), 1.0)
+    # Convert to desired dtype and device, then apply eps for numerical stability
+    one_hot_tensor = one_hot_tensor.to(dtype=dtype, device=device)
+    # Apply eps: multiply by (1-eps) and add eps to all elements
+    one_hot_tensor = one_hot_tensor * (1.0 - eps) + eps
+
+    return one_hot_tensor

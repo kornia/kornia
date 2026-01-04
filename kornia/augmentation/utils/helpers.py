@@ -21,9 +21,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 from torch.distributions import Beta, Uniform
 
+from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.utils import _extract_device_dtype
 
 
 def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:

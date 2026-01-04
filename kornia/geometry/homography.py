@@ -21,8 +21,7 @@ from typing import Optional, Tuple
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.utils import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask
-from kornia.utils.helpers import _torch_svd_cast
+from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inverse_with_mask, safe_solve_with_mask
 
 from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from .epipolar import normalize_points

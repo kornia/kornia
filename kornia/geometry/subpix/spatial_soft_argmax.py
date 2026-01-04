@@ -23,11 +23,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core._compat import torch_version_ge
+from kornia.core.utils import safe_solve_with_mask
 from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
-from kornia.utils import create_meshgrid, create_meshgrid3d
-from kornia.utils._compat import torch_version_ge
-from kornia.utils.helpers import safe_solve_with_mask
+from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
 from .dsnt import spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d

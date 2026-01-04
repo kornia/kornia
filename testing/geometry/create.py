@@ -22,7 +22,7 @@ from typing import Optional, Union
 import torch
 
 import kornia.geometry.epipolar as epi
-from kornia.utils.misc import eye_like
+from kornia.core.ops import eye_like
 
 
 def create_random_homography(data: torch.Tensor, eye_size: int, std_val: float = 1e-3) -> torch.Tensor:

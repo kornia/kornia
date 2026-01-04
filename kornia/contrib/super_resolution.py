@@ -27,7 +27,7 @@ from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.models.base import ModelBase
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
 from kornia.models.small_sr import SmallSRNetWrapper
-from kornia.utils.download import CachedDownloader
+from kornia.onnx.download import CachedDownloader
 
 __all__ = ["RRDBNetBuilder", "SmallSRBuilder", "SuperResolution"]
 

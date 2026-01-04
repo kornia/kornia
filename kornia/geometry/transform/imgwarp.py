@@ -23,6 +23,8 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.ops import eye_like
+from kornia.core.utils import _torch_inverse_cast, _torch_solve_cast
 from kornia.geometry.conversions import (
     angle_to_rotation_matrix,
     axis_angle_to_rotation_matrix,
@@ -32,9 +34,8 @@ from kornia.geometry.conversions import (
     normalize_homography3d,
     normalize_pixel_coordinates,
 )
+from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 from kornia.geometry.linalg import transform_points
-from kornia.utils import create_meshgrid, create_meshgrid3d, eye_like
-from kornia.utils.helpers import _torch_inverse_cast, _torch_solve_cast
 
 __all__ = [
     "get_affine_matrix2d",
@@ -526,7 +527,7 @@ def remap(
 
     Example:
         >>> import torch
-        >>> from kornia.utils import create_meshgrid
+        >>> from kornia.geometry import create_meshgrid
         >>> grid = create_meshgrid(2, 2, False)  # 1x2x2x2
         >>> grid += 1  # apply offset in both directions
         >>> input = torch.ones(1, 1, 2, 2)
@@ -535,7 +536,7 @@ def remap(
                   [0., 0.]]]])
 
     .. note::
-        This function is often used in conjunction with :func:`kornia.utils.create_meshgrid`.
+        This function is often used in conjunction with :func:`kornia.geometry.create_meshgrid`.
 
     """
     KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])

@@ -29,7 +29,6 @@ from torch import nn
 from kornia.models.efficient_vit.nn.act import build_act
 from kornia.models.efficient_vit.nn.norm import build_norm
 from kornia.models.efficient_vit.utils import get_same_padding, val2tuple
-from kornia.utils._compat import autocast
 
 __all__ = [
     "ConvLayer",
@@ -430,7 +429,7 @@ class LiteMLA(nn.Module):
             total_dim * (1 + len(scales)), out_channels, 1, use_bias=use_bias[1], norm=norm[1], act_func=act_func[1]
         )
 
-    @autocast(enabled=False)
+    @torch.amp.autocast(device_type="cuda", enabled=False)
     def relu_linear_att(self, qkv: torch.Tensor) -> torch.Tensor:
         B, _, H, W = list(qkv.size())
 

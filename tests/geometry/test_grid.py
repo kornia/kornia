@@ -28,7 +28,7 @@ def test_create_meshgrid(device, dtype):
     normalized_coordinates = False
 
     # create the meshgrid and verify shape
-    grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates, device=device, dtype=dtype)
+    grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates, device=device, dtype=dtype)
 
     assert grid.device == device
     assert grid.dtype == dtype
@@ -47,13 +47,13 @@ def test_normalize_pixel_grid(device, dtype):
     height, width = 2, 4
 
     # create points grid
-    grid_norm = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True, device=device, dtype=dtype)
+    grid_norm = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=True, device=device, dtype=dtype)
 
     assert grid_norm.device == device
     assert grid_norm.dtype == dtype
     grid_norm = torch.unsqueeze(grid_norm, dim=0)
 
-    grid_pix = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype)
+    grid_pix = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype)
 
     assert grid_pix.device == device
     assert grid_pix.dtype == dtype
@@ -76,7 +76,7 @@ def test_create_meshgrid3d(device, dtype):
     normalized_coordinates = False
 
     # create the meshgrid and verify shape
-    grid = kornia.utils.create_meshgrid3d(depth, height, width, normalized_coordinates, device=device, dtype=dtype)
+    grid = kornia.geometry.create_meshgrid3d(depth, height, width, normalized_coordinates, device=device, dtype=dtype)
 
     assert grid.device == device
     assert grid.dtype == dtype

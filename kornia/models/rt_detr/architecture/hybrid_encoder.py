@@ -31,7 +31,6 @@ from torch import nn
 from torch.nn.utils.fusion import fuse_conv_bn_weights
 
 from kornia.models.common import ConvNormAct
-from kornia.utils._compat import torch_meshgrid
 
 
 class RepVggBlock(nn.Module):
@@ -181,7 +180,7 @@ class AIFI(nn.Module):
         """
         xs = torch.arange(w, device=device, dtype=dtype)
         ys = torch.arange(h, device=device, dtype=dtype)
-        grid_x, grid_y = torch_meshgrid([xs, ys], indexing="ij")
+        grid_x, grid_y = torch.meshgrid([xs, ys], indexing="ij")
 
         pos_dim = embed_dim // 4
         omega = torch.arange(pos_dim, device=device, dtype=dtype) / pos_dim

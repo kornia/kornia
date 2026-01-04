@@ -21,8 +21,8 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
+from kornia.core.utils import _extract_device_dtype
 from kornia.enhance.normalize import normalize_min_max
-from kornia.utils import _extract_device_dtype
 
 
 class LinearIlluminationGenerator(RandomGeneratorBase):

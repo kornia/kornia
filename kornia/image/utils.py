@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+
 from functools import wraps
 from typing import Any, Callable, List, Optional
 
@@ -257,7 +258,7 @@ def make_grid(tensor: torch.Tensor, n_row: Optional[int] = None, padding: int = 
 
     B, C, H, W = tensor.shape
     if n_row is None:
-        n_row = int(torch.sqrt(tensor(B, dtype=torch.float32)).ceil().item())
+        n_row = int(torch.sqrt(torch.tensor(B, dtype=torch.float32)).ceil().item())
     n_col = (B + n_row - 1) // n_row
 
     padded_H = H + padding

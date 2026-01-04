@@ -57,7 +57,7 @@ class AugmentationBase3D(_AugmentationBase):
 
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return 4x4 identity matrix."""
-        return kornia.eye_like(4, input)
+        return kornia.core.ops.eye_like(4, input)
 
 
 class RigidAffineAugmentationBase3D(AugmentationBase3D):

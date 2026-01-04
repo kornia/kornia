@@ -17,10 +17,14 @@
 
 import torch
 
-from kornia.utils.misc import (
-    differentiable_clipping,
-    differentiable_polynomial_floor,
-    differentiable_polynomial_rounding,
+from kornia.enhance.jpeg import (
+    _differentiable_clipping as differentiable_clipping,
+)
+from kornia.enhance.jpeg import (
+    _differentiable_polynomial_floor as differentiable_polynomial_floor,
+)
+from kornia.enhance.jpeg import (
+    _differentiable_polynomial_rounding as differentiable_polynomial_rounding,
 )
 
 from testing.base import BaseTester

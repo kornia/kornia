@@ -48,7 +48,7 @@ class TestRandomEqualize3D(BaseTester):
         )
         expected = self.build_input(channels, depth, height, width, bs=1, row=row_expected, device=device, dtype=dtype)
 
-        identity = kornia.eye_like(4, expected)
+        identity = kornia.core.ops.eye_like(4, expected)
 
         self.assert_close(f(inputs3d), expected, rtol=1e-4, atol=1e-4)
         self.assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)
@@ -66,7 +66,7 @@ class TestRandomEqualize3D(BaseTester):
         row_expected = torch.tensor([0.0000, 0.11764, 0.2353, 0.3529, 0.4706, 0.5882, 0.7059, 0.8235, 0.9412, 1.0000])
         expected = self.build_input(channels, depth, height, width, bs, row=row_expected, device=device, dtype=dtype)
 
-        identity = kornia.eye_like(4, expected)  # 2 x 4 x 4
+        identity = kornia.core.ops.eye_like(4, expected)  # 2 x 4 x 4
 
         self.assert_close(f(inputs3d), expected, rtol=1e-4, atol=1e-4)
         self.assert_close(f.transform_matrix, identity, rtol=1e-4, atol=1e-4)

@@ -301,7 +301,7 @@ def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0) -> Tuple[List[int],
     Examples:
         x, y = get_laf_pts_to_draw(LAF, img_idx)
         plt.figure()
-        plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
+        plt.imshow(kornia.image.tensor_to_image(img[img_idx]))
         plt.plot(x, y, 'r')
         plt.show()
 

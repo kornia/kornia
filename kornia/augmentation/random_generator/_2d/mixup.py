@@ -22,7 +22,7 @@ from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_sampling, _common_param_check, _joint_range_check
-from kornia.utils.helpers import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["MixupGenerator"]
 

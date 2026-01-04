@@ -21,9 +21,9 @@ import numpy as np
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_le
 from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
 from kornia.image.image import Image
-from kornia.utils._compat import torch_version_le
 
 from testing.base import BaseTester
 

@@ -28,9 +28,9 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
 from kornia.core.mixin.onnx import ONNXExportMixin
+from kornia.image.draw import draw_rectangle
 from kornia.models.base import ModelBase
 from kornia.models.processors import ResizePreProcessor
-from kornia.utils.draw import draw_rectangle
 
 __all__ = [
     "BoundingBox",
@@ -402,11 +402,8 @@ class RTDETRDetectorBuilder:
         - Build an object detection model from a model name or configuration.
         - Export the model to ONNX format for inference.
 
-    .. code-block:: python
-
-        images = kornia.utils.sample.get_sample_images()
-        model = RTDETRDetectorBuilder.build()
-        model.save(images)
+    Note:
+        To use this model, load image tensors and call ``model.save(images)``.
     """
 
     @staticmethod

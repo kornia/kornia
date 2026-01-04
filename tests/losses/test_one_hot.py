@@ -17,7 +17,7 @@
 
 import torch
 
-import kornia
+from kornia.losses.one_hot import one_hot
 
 from testing.base import assert_close
 
@@ -32,9 +32,9 @@ class TestOneHot:
         labels[1, 1, 0] = 3
 
         # convert labels to one hot tensor
-        one_hot = kornia.utils.one_hot(labels, num_classes, device, dtype)
+        one_hot_tensor = one_hot(labels, num_classes, device, dtype)
 
-        assert_close(one_hot[0, labels[0, 0, 0], 0, 0].item(), 1.0)
-        assert_close(one_hot[0, labels[0, 1, 0], 1, 0].item(), 1.0)
-        assert_close(one_hot[1, labels[1, 0, 0], 0, 0].item(), 1.0)
-        assert_close(one_hot[1, labels[1, 1, 0], 1, 0].item(), 1.0)
+        assert_close(one_hot_tensor[0, labels[0, 0, 0], 0, 0].item(), 1.0)
+        assert_close(one_hot_tensor[0, labels[0, 1, 0], 1, 0].item(), 1.0)
+        assert_close(one_hot_tensor[1, labels[1, 0, 0], 0, 0].item(), 1.0)
+        assert_close(one_hot_tensor[1, labels[1, 1, 0], 1, 0].item(), 1.0)

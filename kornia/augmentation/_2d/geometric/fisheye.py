@@ -21,8 +21,8 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.transform import remap
-from kornia.utils import create_meshgrid
 
 
 class RandomFisheye(AugmentationBase2D):

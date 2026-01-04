@@ -22,7 +22,7 @@ from typing import List, Tuple, Union
 import torch
 from torch import nn
 
-from kornia.utils.image import perform_keep_shape_image
+from kornia.image.utils import perform_keep_shape_image
 
 __all__ = ["Denormalize", "Normalize", "denormalize", "normalize", "normalize_min_max"]
 

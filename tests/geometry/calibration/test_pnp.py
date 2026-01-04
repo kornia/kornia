@@ -154,7 +154,7 @@ class TestSolvePnpDlt(BaseTester):
 
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
 
-        pred_world_to_cam_4x4 = kornia.eye_like(4, pred_world_to_cam)
+        pred_world_to_cam_4x4 = kornia.core.ops.eye_like(4, pred_world_to_cam)
         pred_world_to_cam_4x4[:, :3, :] = pred_world_to_cam
 
         repeated_intrinsics = intrinsics.unsqueeze(1).repeat(1, num_points, 1, 1)

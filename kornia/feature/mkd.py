@@ -24,7 +24,7 @@ from torch import nn
 from kornia.constants import pi
 from kornia.filters import GaussianBlur2d, SpatialGradient
 from kornia.geometry.conversions import cart2pol
-from kornia.utils import create_meshgrid
+from kornia.geometry.grid import create_meshgrid
 
 # Precomputed coefficients for Von Mises kernel, given N and K(appa).
 sqrt2: float = 1.4142135623730951

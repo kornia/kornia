@@ -23,9 +23,9 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
-from kornia.utils import create_meshgrid
 
 from .distort import distort_points, tilt_projection
 

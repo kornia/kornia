@@ -26,8 +26,8 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 import kornia.color
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
+from kornia.image.image_print import image_to_string
 from kornia.io.io import ImageLoadType, load_image, write_image
-from kornia.utils.image_print import image_to_string
 
 # placeholder for numpy
 np_ndarray = Any

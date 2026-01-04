@@ -24,7 +24,6 @@ from typing import Any, Optional, Sequence, TypeVar, cast
 
 import torch
 from torch import float16, float32, float64
-from typing_extensions import TypeGuard
 
 from kornia.core.exceptions import (
     BaseError,
@@ -255,7 +254,7 @@ def KORNIA_CHECK(condition: bool, msg: Optional[str] = None, raises: bool = True
     return True
 
 
-def KORNIA_UNWRAP(maybe_obj: object, typ: Any) -> Any:
+def KORNIA_UNWRAP(maybe_obj: Any, typ: Any) -> Any:
     """Unwrap an optional contained value that may or not be present.
 
     Args:
@@ -270,9 +269,7 @@ def KORNIA_UNWRAP(maybe_obj: object, typ: Any) -> Any:
 T = TypeVar("T", bound=type)
 
 
-def KORNIA_CHECK_TYPE(
-    x: object, typ: T | tuple[T, ...], msg: Optional[str] = None, raises: bool = True
-) -> TypeGuard[T]:
+def KORNIA_CHECK_TYPE(x: Any, typ: T | tuple[T, ...], msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check the type of an aribratry variable.
 
     Args:
@@ -301,20 +298,29 @@ def KORNIA_CHECK_TYPE(
 
     if not isinstance(x, typ):
         if raises:
-            expected_type_str = typ.__name__ if not isinstance(typ, tuple) else " | ".join(t.__name__ for t in typ)
-            error_msg = f"Type mismatch: expected {expected_type_str}, got {type(x).__name__}."
-            if msg is not None:
-                error_msg += f"\n  {msg}"
-            raise TypeCheckError(
-                error_msg,
-                actual_type=type(x),
-                expected_type=typ,
-            )
+            # JIT doesn't support try-except or type introspection, so use simple message
+            if torch.jit.is_scripting():
+                error_msg = "Type mismatch."
+                if msg is not None:
+                    error_msg += f"\n  {msg}"
+                raise TypeCheckError(error_msg)
+            else:
+                # In Python mode, we can safely use type introspection
+                expected_type_str = typ.__name__ if not isinstance(typ, tuple) else " | ".join(t.__name__ for t in typ)
+                type_name = str(type(x))
+                error_msg = f"Type mismatch: expected {expected_type_str}, got {type_name}."
+                if msg is not None:
+                    error_msg += f"\n  {msg}"
+                raise TypeCheckError(
+                    error_msg,
+                    actual_type=type(x),
+                    expected_type=typ,
+                )
         return False
     return True
 
 
-def KORNIA_CHECK_IS_TENSOR(x: object, msg: Optional[str] = None, raises: bool = True) -> TypeGuard[torch.Tensor]:
+def KORNIA_CHECK_IS_TENSOR(x: Any, msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check the input variable is a Tensor.
 
     Args:
@@ -343,19 +349,28 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: Optional[str] = None, raises: bool = 
 
     if not isinstance(x, torch.Tensor):
         if raises:
-            error_msg = f"Type mismatch: expected Tensor, got {type(x).__name__}."
-            if msg is not None:
-                error_msg += f"\n  {msg}"
-            raise TypeCheckError(
-                error_msg,
-                actual_type=type(x),
-                expected_type=torch.Tensor,
-            )
+            # JIT doesn't support try-except or type introspection, so use simple message
+            if torch.jit.is_scripting():
+                error_msg = "Type mismatch: expected Tensor."
+                if msg is not None:
+                    error_msg += f"\n  {msg}"
+                raise TypeCheckError(error_msg)
+            else:
+                # In Python mode, we can safely use type introspection
+                type_name = str(type(x))
+                error_msg = f"Type mismatch: expected Tensor, got {type_name}."
+                if msg is not None:
+                    error_msg += f"\n  {msg}"
+                raise TypeCheckError(
+                    error_msg,
+                    actual_type=type(x),
+                    expected_type=torch.Tensor,
+                )
         return False
     return True
 
 
-def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[object]], raises: bool = True) -> TypeGuard[list[torch.Tensor]]:
+def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[Any]], raises: bool = True) -> bool:
     """Check the input variable is a List of Tensors.
 
     Args:

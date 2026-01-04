@@ -26,10 +26,13 @@ from .camera import *
 from .conversions import *
 from .depth import *
 from .epipolar import *
+from .grid import *
 from .homography import *
 from .liegroup import *
 from .linalg import *
 from .line import *
+from .plane import *
+from .pointcloud import *
 from .pose import *
 from .ransac import *
 from .solvers import *

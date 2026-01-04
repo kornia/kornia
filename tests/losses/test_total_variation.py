@@ -19,7 +19,6 @@ import pytest
 import torch
 
 import kornia
-from kornia.utils import torch_meshgrid
 
 from testing.base import BaseTester
 
@@ -138,7 +137,7 @@ class TestTotalVariation(BaseTester):
 
     @pytest.mark.parametrize("reduction, expected", [("sum", torch.tensor(20)), ("mean", torch.tensor(1))])
     def test_tv_reduction(self, device, dtype, reduction, expected):
-        pred, _ = torch_meshgrid([torch.arange(5), torch.arange(5)], "ij")
+        pred, _ = torch.meshgrid([torch.arange(5), torch.arange(5)], indexing="ij")
         pred = pred.to(device, dtype)
         actual = kornia.losses.total_variation(pred, reduction=reduction)
         self.assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)

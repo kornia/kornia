@@ -23,9 +23,9 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, HeatMapRefineCfg, JunctionRefineCfg, LineDetectorCfg
 from kornia.geometry.bbox import nms
-from kornia.utils import dataclass_to_dict, dict_to_dataclass, torch_meshgrid
 
 from .backbones import SOLD2Net
 
@@ -420,7 +420,7 @@ class LineSegmentDetectionModule:
             device=device,
         )
 
-        h1_grid, w1_grid, h2_grid, w2_grid = torch_meshgrid(
+        h1_grid, w1_grid, h2_grid, w2_grid = torch.meshgrid(
             [perturb_vec, perturb_vec, perturb_vec, perturb_vec], indexing="ij"
         )
 

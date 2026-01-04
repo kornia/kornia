@@ -21,6 +21,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.core._compat import torch_version_le
 from kornia.geometry.homography import (
     find_homography_dlt,
     find_homography_dlt_iterated,
@@ -31,7 +32,6 @@ from kornia.geometry.homography import (
     sample_is_valid_for_homography,
     symmetric_transfer_error,
 )
-from kornia.utils._compat import torch_version_le
 
 from testing.base import BaseTester
 from testing.geometry.create import create_random_homography
@@ -218,7 +218,7 @@ class TestFindHomographyDLT(BaseTester):
     def test_clean_points_svd(self, batch_size, device, dtype):
         # generate input data
         points_src = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
-        H = kornia.eye_like(3, points_src)
+        H = kornia.core.ops.eye_like(3, points_src)
         H = H * 0.3 * torch.rand_like(H)
         H = H / H[:, 2:3, 2:3]
 
@@ -238,7 +238,7 @@ class TestFindHomographyDLT(BaseTester):
     def test_clean_points_lu(self, batch_size, device, dtype):
         # generate input data
         points_src = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
-        H = kornia.eye_like(3, points_src)
+        H = kornia.core.ops.eye_like(3, points_src)
         H = H * 0.3 * torch.rand_like(H)
         H = H / H[:, 2:3, 2:3]
 
@@ -352,7 +352,7 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         points_src_st = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
         points_src_end = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
 
-        H = kornia.eye_like(3, points_src_st)
+        H = kornia.core.ops.eye_like(3, points_src_st)
         H = H * 0.3 * torch.rand_like(H)
         H = H / H[:, 2:3, 2:3]
         points_dst_st = kornia.geometry.transform_points(H, points_src_st)
@@ -377,7 +377,7 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         points_src_st = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
         points_src_end = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
 
-        H = kornia.eye_like(3, points_src_st)
+        H = kornia.core.ops.eye_like(3, points_src_st)
         H = H * 0.3 * torch.rand_like(H)
         H = H / H[:, 2:3, 2:3]
         points_dst_st = kornia.geometry.transform_points(H, points_src_st)
@@ -434,7 +434,7 @@ class TestFindHomographyDLTIter(BaseTester):
     def test_clean_points(self, batch_size, device, dtype):
         # generate input data
         points_src = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
-        H = kornia.eye_like(3, points_src)
+        H = kornia.core.ops.eye_like(3, points_src)
         H = H * 0.3 * torch.rand_like(H)
         H = H / H[:, 2:3, 2:3]
 
@@ -459,7 +459,7 @@ class TestFindHomographyDLTIter(BaseTester):
     def test_dirty_points_and_gradcheck(self, batch_size, device, dtype):
         # generate input data
         points_src = torch.rand(batch_size, 10, 2, device=device, dtype=dtype)
-        H = kornia.eye_like(3, points_src)
+        H = kornia.core.ops.eye_like(3, points_src)
         H = H * (1 + torch.rand_like(H))
         H = H / H[:, 2:3, 2:3]
 

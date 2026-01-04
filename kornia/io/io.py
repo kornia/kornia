@@ -26,7 +26,7 @@ import torch
 
 import kornia
 from kornia.core.check import KORNIA_CHECK
-from kornia.utils import image_to_tensor, tensor_to_image
+from kornia.image.utils import image_to_tensor, tensor_to_image
 
 
 class ImageLoadType(Enum):

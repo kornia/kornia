@@ -19,8 +19,8 @@ from typing import Any
 
 import torch
 
+from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
-from kornia.utils.grid import create_meshgrid
 
 
 class StereoException(Exception):

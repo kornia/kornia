@@ -121,7 +121,6 @@ Join the community
    morphology
    onnx
    tracking
-   utils
 
 .. toctree::
    :caption: KORNIA APPLICATIONS

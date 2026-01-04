@@ -18,8 +18,9 @@
 import pytest
 import torch
 
-from kornia.utils import _extract_device_dtype
-from kornia.utils.helpers import (
+from kornia.core.exceptions import DeviceError
+from kornia.core.utils import (
+    _extract_device_dtype,
     _torch_histc_cast,
     _torch_inverse_cast,
     _torch_solve_cast,
@@ -70,7 +71,7 @@ def test_extract_device_dtype(tensor_list, out_device, out_dtype, will_throw_err
     #     warnings.warn("Add GPU tests.")
 
     if will_throw_error:
-        with pytest.raises(ValueError):
+        with pytest.raises(DeviceError):
             _extract_device_dtype(tensor_list)
     else:
         device, dtype = _extract_device_dtype(tensor_list)

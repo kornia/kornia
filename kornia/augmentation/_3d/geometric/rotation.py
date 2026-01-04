@@ -118,7 +118,7 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         rotation_mat: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center.expand(yaw.shape[0], -1))
 
         # rotation_mat is B x 3 x 4 and we need a B x 4 x 4 matrix
-        trans_mat: torch.Tensor = kornia.eye_like(4, input)
+        trans_mat: torch.Tensor = kornia.core.ops.eye_like(4, input)
         trans_mat[:, 0] = rotation_mat[:, 0]
         trans_mat[:, 1] = rotation_mat[:, 1]
         trans_mat[:, 2] = rotation_mat[:, 2]

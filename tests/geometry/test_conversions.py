@@ -23,6 +23,8 @@ import pytest
 import torch
 
 import kornia
+from kornia.core._compat import torch_version
+from kornia.core.ops import eye_like
 from kornia.geometry.conversions import (
     ARKitQTVecs_to_ColmapQTVecs,
     Rt_to_matrix4x4,
@@ -38,8 +40,6 @@ from kornia.geometry.conversions import (
     worldtocam_to_camtoworld_Rt,
 )
 from kornia.geometry.quaternion import Quaternion
-from kornia.utils._compat import torch_version
-from kornia.utils.misc import eye_like
 
 from testing.base import BaseTester, assert_close
 
@@ -760,9 +760,11 @@ class TestNormalizePixelCoordinates(BaseTester):
     def test_tensor_bhw2(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         height, width = 3, 4
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype=dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(
+            dtype=dtype
+        )
 
-        expected = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(
+        expected = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(
             dtype=dtype
         )
 
@@ -773,10 +775,12 @@ class TestNormalizePixelCoordinates(BaseTester):
     def test_list(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         height, width = 3, 4
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype=dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(
+            dtype=dtype
+        )
         grid = grid.contiguous().view(-1, 2)
 
-        expected = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(
+        expected = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(
             dtype=dtype
         )
         expected = expected.contiguous().view(-1, 2)
@@ -793,7 +797,9 @@ class TestNormalizePixelCoordinates(BaseTester):
         op_optimized = torch_optimizer(op)
 
         height, width = 3, 4
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(dtype=dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(
+            dtype=dtype
+        )
 
         actual = op_optimized(grid, height, width)
         expected = op(grid, height, width)
@@ -804,9 +810,11 @@ class TestNormalizePixelCoordinates(BaseTester):
 class TestDenormalizePixelCoordinates(BaseTester):
     def test_tensor_bhw2(self, device, dtype):
         height, width = 3, 4
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(dtype=dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(
+            dtype=dtype
+        )
 
-        expected = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(
+        expected = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(
             dtype=dtype
         )
 
@@ -816,10 +824,12 @@ class TestDenormalizePixelCoordinates(BaseTester):
 
     def test_list(self, device, dtype):
         height, width = 3, 4
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(dtype=dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(
+            dtype=dtype
+        )
         grid = grid.contiguous().view(-1, 2)
 
-        expected = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(
+        expected = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(
             dtype=dtype
         )
         expected = expected.contiguous().view(-1, 2)
@@ -836,7 +846,9 @@ class TestDenormalizePixelCoordinates(BaseTester):
         op_optimized = torch_optimizer(op)
 
         height, width = 3, 4
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(dtype=dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(
+            dtype=dtype
+        )
 
         actual = op_optimized(grid, height, width)
         expected = op(grid, height, width)
