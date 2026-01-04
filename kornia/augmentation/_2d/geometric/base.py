@@ -244,6 +244,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     ) -> torch.Tensor:
         resample_method: Optional[Resample] = None
         align_corners_value: Optional[bool] = None
+        align_corners_was_none_in_kwargs: bool = False
         if "resample" in flags:
             resample_method = flags["resample"]
             flags["resample"] = Resample.get("nearest")
@@ -253,8 +254,14 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             align_corners_value = flags.get("align_corners")
             # When align_corners=None is in kwargs, use the module's default
             # This ensures masks use the same align_corners value as inputs for consistency
+            # We need to normalize it in kwargs too, because inverse_inputs will call
+            # _process_kwargs_to_params_and_flags which merges kwargs into flags
             if kwargs["align_corners"] is None:
-                flags["align_corners"] = self.flags.get("align_corners", False)
+                align_corners_was_none_in_kwargs = True
+                normalized_align_corners = self.flags.get("align_corners", False)
+                flags["align_corners"] = normalized_align_corners
+                # Also update kwargs to prevent _process_kwargs_to_params_and_flags from overwriting
+                kwargs["align_corners"] = normalized_align_corners
             else:
                 flags["align_corners"] = kwargs["align_corners"]
         output = self.inverse_inputs(input, params, flags, transform, **kwargs)
@@ -263,6 +270,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         # Restore align_corners if it was modified (mirror the modification condition)
         # This ensures complete state restoration even if the original value was None
         if "align_corners" in kwargs:
+            # Restore kwargs to original value if it was None
+            if align_corners_was_none_in_kwargs:
+                kwargs["align_corners"] = None
             flags["align_corners"] = align_corners_value
         return output
 
