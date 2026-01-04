@@ -216,7 +216,24 @@ def efficientvit_backbone_b3(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
 
 
 class EfficientViTLargeBackbone(nn.Module):
-    """Implement the large-scale variant of the EfficientViT backbone."""
+    """Implement the large-scale variant of the EfficientViT backbone.
+
+    This backbone is designed for high-resolution dense prediction tasks. It 
+    utilizes multi-scale linear attention to achieve a global receptive field 
+    while maintaining linear computational complexity relative to the input 
+    resolution.
+
+    Args:
+        width_list: List of channel widths for each stage of the backbone.
+        depth_list: List of number of blocks for each stage.
+        in_channels: Number of input image channels. Default: 3.
+        qkv_dim: The internal dimension for query, key, and value projections 
+            in the attention layers. Default: 32.
+        norm: Normalization layer type to use (e.g., "bn2d", "ln"). 
+            Default: "bn2d".
+        act_func: Activation function type to use (e.g., "gelu", "relu"). 
+            Default: "gelu".
+    """
 
     def __init__(
         self,
