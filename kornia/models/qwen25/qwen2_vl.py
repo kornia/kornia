@@ -21,8 +21,9 @@ from typing import Optional
 
 import torch
 import torch.nn.functional as F
-from torch import nn, Tensor
+from torch import Tensor, nn
 from torch.nn import Module
+
 
 class Qwen2VLPatchMerger(Module):
     """Patch merger block used in the Qwen2-VL vision encoder.
@@ -39,13 +40,13 @@ class Qwen2VLPatchMerger(Module):
         self.ln_q = nn.LayerNorm(dim, eps=1e-6)
 
     def forward(self, x: Tensor) -> Tensor:
-    
         x = self.conv(x)
         x = x.flatten(2)
         x = x.transpose(1, 2)
         x = self.ln_q(x)
         return x
-    
+
+
 class Qwen2VLRotaryEmbedding(Module):
     """Rotary positional embedding module used in Qwen2-VL vision-language layers.
 
@@ -58,6 +59,7 @@ class Qwen2VLRotaryEmbedding(Module):
         dim: The feature dimension to be rotated.
         theta: The base frequency scaling factor for the rotary embedding.
     """
+
     def __init__(self, dim: int, theta: float = 10000.0) -> None:
         super().__init__()
         self.dim = dim
@@ -77,6 +79,7 @@ class Qwen2VLVisionAttention(Module):
         dim: Input feature dimension.
         num_heads: Number of attention heads.
     """
+
     def __init__(self, dim: int, num_heads: int = 16) -> None:
         super().__init__()
         self.num_heads = num_heads
@@ -105,6 +108,7 @@ class Qwen2VLMLP(Module):
         dim: Input and output feature dimension.
         hidden_dim: Dimension of the hidden layer. If None, defaults to 4 * dim.
     """
+
     def __init__(self, dim: int, hidden_dim: Optional[int] = None) -> None:
         super().__init__()
         if hidden_dim is None:
@@ -119,8 +123,7 @@ class Qwen2VLMLP(Module):
 
 
 class Qwen2VLVisionBlock(Module):
-    """
-    Single transformer block for the Qwen2-VL vision encoder.
+    """Single transformer block for the Qwen2-VL vision encoder.
 
     Applies layer-normalized self-attention followed by an MLP, each with
     residual connections.
@@ -146,8 +149,7 @@ class Qwen2VLVisionBlock(Module):
 
 
 class Qwen2VLVisionTransformer(Module):
-    """
-    PyTorch implementation of the Qwen2-VL vision encoder.
+    """PyTorch implementation of the Qwen2-VL vision encoder.
 
     A ViT-style backbone composed of a patch merger followed by stacked
     transformer blocks with rotary positional embeddings.
@@ -171,17 +173,13 @@ class Qwen2VLVisionTransformer(Module):
     ) -> None:
         super().__init__()
         self.patch_embed = Qwen2VLPatchMerger(embed_dim, context_window=224, spatial_merge_size=2)
-        self.blocks = nn.ModuleList([
-            Qwen2VLVisionBlock(embed_dim, num_heads, mlp_ratio) 
-            for _ in range(depth)
-        ])    
+        self.blocks = nn.ModuleList([Qwen2VLVisionBlock(embed_dim, num_heads, mlp_ratio) for _ in range(depth)])
         self.rotary_pos_emb = Qwen2VLRotaryEmbedding(embed_dim // num_heads)
 
     def forward(self, x: Tensor) -> Tensor:
-      
         x = self.patch_embed(x)
         rot_pos_emb = self.rotary_pos_emb(x)
         for block in self.blocks:
             x = block(x, rot_pos_emb=rot_pos_emb)
-            
+
         return x
