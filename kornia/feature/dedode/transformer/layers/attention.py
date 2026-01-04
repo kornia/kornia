@@ -41,8 +41,16 @@ except ImportError:
 
 
 class Attention(nn.Module):
-    """Implement the standard Multi-Head Self-Attention mechanism."""
+    """Implement the standard Multi-Head Self-Attention mechanism.
 
+    Args:
+        dim: Total dimension of the input and output features.
+        num_heads: Number of attention heads.
+        qkv_bias: If True, add a bias term to the query, key, and value projections.
+        proj_bias: If True, add a bias term to the output projection.
+        attn_drop: Dropout probability applied to the attention weights.
+        proj_drop: Dropout probability applied to the output projection.
+    """
     def __init__(
         self,
         dim: int,

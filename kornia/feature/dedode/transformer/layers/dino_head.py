@@ -28,8 +28,17 @@ from torch.nn.utils import weight_norm
 
 
 class DINOHead(nn.Module):
-    """Implement the projection head for DINO-based models."""
+    """Implement the projection head for DINO-based models.
 
+    Args:
+        in_dim: Input feature dimensionality.
+        out_dim: Output feature dimensionality of the projection head.
+        use_bn: Whether to use batch normalization layers in the MLP.
+        nlayers: Number of layers in the MLP projection head. A value smaller than 1 is clamped to 1.
+        hidden_dim: Hidden dimensionality used in intermediate MLP layers when ``nlayers > 1``.
+        bottleneck_dim: Dimensionality of the bottleneck output of the MLP before the final normalized layer.
+        mlp_bias: Whether to include bias terms in the MLP linear layers.
+    """
     def __init__(
         self,
         in_dim,

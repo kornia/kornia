@@ -256,8 +256,6 @@ class EncoderDeFMO(nn.Module):
     The encoder extracts latent features from the concatenation of the blurred input image and
     the estimated background. It uses a modified ResNet-50 backbone to accept 6-channel inputs.
 
-    Args:
-        None
 
     Shape:
         - Input: (B, 6, H, W) where 6 represents the concatenated blurred image and background.
