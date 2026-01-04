@@ -3,6 +3,11 @@ name: Tests on CPU (scheduled)
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+      - 'COPYRIGHT'
   schedule:
     - cron: '0 4 * * *'
   workflow_call:
