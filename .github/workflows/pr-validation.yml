@@ -1,0 +1,129 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  issues: read
+  contents: read
+
+jobs:
+  validate:
+    name: Validate PR Requirements
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate PR requirements
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const prBody = pr.body || '';
+            const prAuthor = pr.user.login;
+
+            // Extract issue numbers from PR description
+            // Matches patterns like: Fixes #123, Closes #456, Relates to #789, etc.
+            const issuePattern = /(?:fixes?|closes?|resolves?|relates?\s+to|see|refs?)\s+#(\d+)/gi;
+            const matches = [...prBody.matchAll(issuePattern)];
+            const issueNumbers = [...new Set(matches.map(m => parseInt(m[1])))];
+
+            const warnings = [];
+
+            if (issueNumbers.length === 0) {
+              warnings.push('❌ **No linked issue found**: This PR does not reference any issue. Please link to an issue using "Fixes #123" or "Closes #123" in the PR description.');
+            } else {
+              // Check each linked issue
+              for (const issueNumber of issueNumbers) {
+                try {
+                  const issue = await github.rest.issues.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issueNumber
+                  });
+
+                  if (issue.data.state === 'closed') {
+                    warnings.push(`⚠️ **Issue #${issueNumber} is closed**: The linked issue #${issueNumber} is already closed. Please ensure you're linking to the correct issue.`);
+                  }
+
+                  // Check if PR author is assigned to the issue
+                  const assignees = issue.data.assignees.map(a => a.login);
+                  if (assignees.length === 0) {
+                    warnings.push(`⚠️ **Issue #${issueNumber} has no assignee**: This issue has not been assigned to anyone. Please wait for a maintainer to assign it to you before submitting a PR.`);
+                  } else if (!assignees.includes(prAuthor)) {
+                    warnings.push(`⚠️ **Assignment mismatch**: You (@${prAuthor}) are not assigned to issue #${issueNumber}. The issue is assigned to: ${assignees.map(a => `@${a}`).join(', ')}. Please wait for a maintainer to assign the issue to you.`);
+                  }
+
+                  // Check if issue has triage label (indicating it might not be approved yet)
+                  const labels = issue.data.labels.map(l => l.name);
+                  if (labels.includes('triage')) {
+                    warnings.push(`ℹ️ **Issue #${issueNumber} is still in triage**: This issue may not have been reviewed and approved by a maintainer yet. Please ensure the issue has been approved before submitting a PR.`);
+                  }
+                } catch (error) {
+                  if (error.status === 404) {
+                    warnings.push(`❌ **Issue #${issueNumber} not found**: The linked issue #${issueNumber} does not exist. Please check the issue number.`);
+                  } else {
+                    warnings.push(`⚠️ **Error checking issue #${issueNumber}**: ${error.message}`);
+                  }
+                }
+              }
+            }
+
+            // Post comment if there are warnings
+            if (warnings.length > 0) {
+              const commentBody = '## ⚠️ PR Validation Warnings\n\n' +
+                warnings.join('\n\n') + '\n\n' +
+                '---\n\n' +
+                '**Note**: This PR can remain open, but please address these issues to ensure a smooth review process. For more information, see our [Contributing Guide](CONTRIBUTING.md).';
+
+              // Check if we already posted a comment
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number
+              });
+
+              const botComment = comments.data.find(
+                c => c.user.type === 'Bot' && c.body.includes('PR Validation Warnings')
+              );
+
+              if (botComment) {
+                // Update existing comment
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: botComment.id,
+                  body: commentBody
+                });
+              } else {
+                // Create new comment
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  body: commentBody
+                });
+              }
+            } else {
+              // Remove any existing warning comments if validation passes
+              const comments = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number
+              });
+
+              const botComment = comments.data.find(
+                c => c.user.type === 'Bot' && c.body.includes('PR Validation Warnings')
+              );
+
+              if (botComment) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: botComment.id
+                });
+              }
+            }

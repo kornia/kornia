@@ -15,6 +15,18 @@ body:
         - [ ] I have read the [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md)
         - [ ] This feature aligns with Kornia's focus on end-to-end vision models and SOTA Vision/Robotics models
 
+        ---
+
+        **⚠️ Important: Before submitting a PR**
+
+        If you plan to implement this feature yourself:
+
+        1. **Wait for maintainer approval**: A maintainer must review and approve this issue first
+        2. **Wait for assignment**: You must be assigned to this issue by a maintainer before submitting a PR
+        3. **Do not start work until assigned**: PRs submitted without prior issue approval and assignment may be closed
+
+        This helps us ensure the issue aligns with project goals, avoid duplicate work, and coordinate contributions effectively. See the [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#pull-request) for more details.
+
   - type: textarea
     id: feature-description
     attributes:
