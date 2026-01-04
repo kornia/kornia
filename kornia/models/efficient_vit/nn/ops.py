@@ -537,10 +537,10 @@ class ResidualBlock(nn.Module):
     """
 
    def __init__(
-    self, 
-    main: nn.Module | None, 
-    shortcut: nn.Module | None, 
-    post_act: nn.Module | None = None, 
+    self,
+    main: nn.Module | None,
+    shortcut: nn.Module | None,
+    post_act: nn.Module | None = None,
     pre_norm: nn.Module | None = None
 ) -> None:
         super().__init__()
