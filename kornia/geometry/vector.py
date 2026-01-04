@@ -21,7 +21,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK
-from kornia.core.tensor_wrapper import TensorWrapper, wrap  # type: ignore[attr-defined]
+from kornia.core.tensor_wrapper import TensorWrapper, _wrap  # type: ignore[attr-defined]
 from kornia.geometry.linalg import batched_dot_product, batched_squared_norm
 
 __all__ = ["Scalar", "Vector2", "Vector3"]
@@ -110,12 +110,12 @@ class Vector3(TensorWrapper):
         dtype: Optional[torch.dtype] = None,
     ) -> "Vector3":
         KORNIA_CHECK(type(x) is type(y) is type(z))
-        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)))
+        KORNIA_CHECK(isinstance(x, torch.Tensor | float))
         if isinstance(x, float):
-            return wrap(torch.as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
+            return _wrap(torch.as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
         # TODO: this is totally insane ...
         tensors: Tuple[torch.Tensor, ...] = (x, cast(torch.Tensor, y), cast(torch.Tensor, z))
-        return wrap(torch.stack(tensors, -1), Vector3)
+        return _wrap(torch.stack(tensors, -1), Vector3)
 
 
 class Vector2(TensorWrapper):
@@ -168,12 +168,12 @@ class Vector2(TensorWrapper):
         dtype: Optional[torch.dtype] = None,
     ) -> "Vector2":
         KORNIA_CHECK(type(x) is type(y))
-        KORNIA_CHECK(isinstance(x, (torch.Tensor, float)))
+        KORNIA_CHECK(isinstance(x, torch.Tensor | float))
         if isinstance(x, float):
-            return wrap(torch.as_tensor((x, y), device=device, dtype=dtype), Vector2)
+            return _wrap(torch.as_tensor((x, y), device=device, dtype=dtype), Vector2)
         # TODO: this is totally insane ...
         tensors: Tuple[torch.Tensor, ...] = (x, cast(torch.Tensor, y))
-        return wrap(torch.stack(tensors, -1), Vector2)
+        return _wrap(torch.stack(tensors, -1), Vector2)
 
 
 Vec3 = Vector3

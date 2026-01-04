@@ -24,9 +24,6 @@ from torch import nn
 from .mixin.image_module import ImageModuleMixIn
 from .mixin.onnx import ONNXExportMixin
 
-# ImageModuleMixIn is now imported from .mixin.image_module
-# The class definition was moved there to avoid duplication
-
 
 class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
     """Handles image-based operations.
