@@ -77,7 +77,7 @@ jobs:
               const commentBody = '## ⚠️ PR Validation Warnings\n\n' +
                 warnings.join('\n\n') + '\n\n' +
                 '---\n\n' +
-                '**Note**: This PR can remain open, but please address these issues to ensure a smooth review process. For more information, see our [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md).';
+                '**Note**: This PR can remain open, but please address these issues to ensure a smooth review process. For more information, see our [Contributing Guide](CONTRIBUTING.md).';
 
               // Check if we already posted a comment
               const comments = await github.rest.issues.listComments({
