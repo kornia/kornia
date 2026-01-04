@@ -20,6 +20,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-docs:
+    # Check if any documentation files were changed in this PR
+    runs-on: ubuntu-latest
+    outputs:
+      docs-changed: ${{ steps.check.outputs.docs-changed }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history to compare
+
+      - name: Check if docs files changed
+        id: check
+        run: |
+          # Get list of changed files in this PR
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            # For workflow_dispatch, compare with main
+            BASE_SHA="origin/main"
+            HEAD_SHA="HEAD"
+          fi
+
+          CHANGED_FILES=$(git diff --name-only $BASE_SHA $HEAD_SHA)
+
+          # Check if any files in docs/ directory or .rst files were changed
+          # Root-level .md files (like CONTRIBUTING.md) don't trigger docs build
+          DOCS_CHANGED="false"
+          for file in $CHANGED_FILES; do
+            if [[ "$file" =~ ^docs/ ]] || \
+               [[ "$file" =~ \.rst$ ]]; then
+              DOCS_CHANGED="true"
+              break
+            fi
+          done
+
+          echo "docs-changed=$DOCS_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "Changed files: $CHANGED_FILES"
+          echo "Docs changed: $DOCS_CHANGED"
+
   pre-tests:
     runs-on: ubuntu-latest
     outputs:
@@ -92,7 +133,8 @@ jobs:
     uses: ./.github/workflows/tutorials.yml
 
   docs:
-    needs: [pre-tests]
+    needs: [check-docs, pre-tests]
+    if: needs.check-docs.outputs.docs-changed == 'true'
     uses: ./.github/workflows/docs.yml
     with:
       python-version: '["3.11"]'
