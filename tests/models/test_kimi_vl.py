@@ -16,6 +16,7 @@
 #
 
 import os
+import json
 
 import pytest
 import torch
@@ -27,6 +28,7 @@ from kornia.models.kimi_vl.model import KimiVLProjector
 from kornia.models.kimi_vl.moonvit import MoonViT, MoonViTAttention, MoonViTEncoder, MoonViTRotaryEmbedding
 
 from testing.base import BaseTester
+from safetensors.torch import load_file
 
 
 @pytest.fixture
@@ -191,9 +193,6 @@ def test_kimi_vl_official_weights():
     containing the file ``model.safetensors.index.json`` and the referenced shard files.
     If this variable is not set or the files are missing, the test is skipped.
     """
-    import json
-
-    from safetensors.torch import load_file
 
     weights_dir = os.environ.get("KIMI_VL_WEIGHTS_DIR")
     if not weights_dir:
