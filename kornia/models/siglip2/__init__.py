@@ -18,8 +18,19 @@
 """SigLip2 vision-language model implementation."""
 
 from .builder import SigLip2Builder
-from .config import SigLip2Config
+from .config import SigLip2Config, SigLip2VisionConfig
 from .model import SigLip2Model, SigLip2Result
+from .naflex import NaFlex
 from .preprocessor import SigLip2ImagePreprocessor
+from .vision_encoder import SigLip2VisionEmbeddings
 
-__all__ = ["SigLip2Builder", "SigLip2Config", "SigLip2ImagePreprocessor", "SigLip2Model", "SigLip2Result"]
+__all__ = [
+    "NaFlex",
+    "SigLip2Builder",
+    "SigLip2Config",
+    "SigLip2ImagePreprocessor",
+    "SigLip2Model",
+    "SigLip2Result",
+    "SigLip2VisionConfig",
+    "SigLip2VisionEmbeddings",
+]
