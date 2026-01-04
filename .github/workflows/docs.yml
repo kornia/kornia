@@ -44,32 +44,20 @@ jobs:
 
       - name: Check if docs files changed
         id: check-docs
+        if: github.event_name == 'pull_request'
         run: |
-          # For pull requests, check if docs files were changed
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
-            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
 
-            CHANGED_FILES=$(git diff --name-only $BASE_SHA $HEAD_SHA)
-
-            # Check if any files in docs/ directory or .rst files were changed
-            # Root-level .md files (like CONTRIBUTING.md) don't trigger docs build
-            DOCS_CHANGED="false"
-            for file in $CHANGED_FILES; do
-              if [[ "$file" =~ ^docs/ ]] || \
-                 [[ "$file" =~ \.rst$ ]]; then
-                DOCS_CHANGED="true"
-                break
-              fi
-            done
-
-            echo "docs-changed=$DOCS_CHANGED" >> "$GITHUB_OUTPUT"
-            echo "Changed files: $CHANGED_FILES"
-            echo "Docs changed: $DOCS_CHANGED"
-          else
-            # For non-PR events (workflow_call from scheduled, etc.), always run
+          # Use git diff with pathspec to check if docs files changed
+          # Only files in docs/ directory or .rst files trigger docs build
+          # git diff --quiet returns 0 if no changes, non-zero if changes exist
+          if ! git diff --quiet $BASE_SHA $HEAD_SHA -- 'docs/**' '*.rst'; then
             echo "docs-changed=true" >> "$GITHUB_OUTPUT"
-            echo "Not a PR event, will build docs"
+            echo "Documentation files changed"
+          else
+            echo "docs-changed=false" >> "$GITHUB_OUTPUT"
+            echo "No documentation files changed"
           fi
 
       - name: Restore cache
