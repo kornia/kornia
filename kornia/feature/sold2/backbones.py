@@ -34,6 +34,7 @@ class HourglassConfig(NamedTuple):
         depth: The number of downsampling levels in the hourglass.
         num_stacks: The number of stacked hourglass modules.
     """
+
     depth: int
     num_stacks: int
     num_blocks: int
@@ -68,6 +69,7 @@ class HourglassBackbone(nn.Module):
 
 class MultitaskHead(nn.Module):
     """Implement a multitask head for the Hourglass backbone."""
+
     def __init__(self, input_channels: int) -> None:
         super().__init__()
 
@@ -91,6 +93,7 @@ class MultitaskHead(nn.Module):
 
 class Bottleneck2D(nn.Module):
     """Implement a 2D Bottleneck block for the Hourglass backbone."""
+
     def __init__(
         self,
         inplanes: int,
@@ -143,6 +146,7 @@ class Hourglass(nn.Module):
         depth: The depth of the hourglass.
         expansion: The expansion factor for the bottleneck. Default: 2.
     """
+
     def __init__(self, block: Type[Bottleneck2D], num_blocks: int, planes: int, depth: int, expansion: int = 2) -> None:
         super().__init__()
         self.depth = depth

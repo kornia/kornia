@@ -185,6 +185,7 @@ class SelfBlock(nn.Module):
         flash: Whether to use FlashAttention. Default: False.
         bias: Whether to include bias in the linear layers. Default: True.
     """
+
     def __init__(self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True) -> None:
         super().__init__()
         self.embed_dim = embed_dim
@@ -283,6 +284,7 @@ class TransformerLayer(nn.Module):
     This layer typically alternates between self-attention and cross-attention
     to update local feature descriptors.
     """
+
     def __init__(self, *args, **kwargs):  # type: ignore
         super().__init__()
         self.self_attn = SelfBlock(*args, **kwargs)

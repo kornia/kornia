@@ -32,6 +32,7 @@ __all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 
 class BaseModel(nn.Module):
     """Provide an abstract base class for image registration models."""
+
     @abstractmethod
     def reset_model(self) -> None: ...
 

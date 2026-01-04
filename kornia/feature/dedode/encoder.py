@@ -30,6 +30,7 @@ class VGG19(nn.Module):
         amp: Whether to use automatic mixed precision.
         amp_dtype: The data type for automatic mixed precision.
     """
+
     def __init__(self, amp: bool = False, amp_dtype: torch.dtype = torch.float16) -> None:
         super().__init__()
         self.layers = nn.ModuleList(vgg19_bn().features[:40])  # type: ignore

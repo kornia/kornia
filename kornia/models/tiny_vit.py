@@ -202,6 +202,7 @@ class MLP(nn.Sequential):
         activation: The activation function to use. Default: :class:`nn.GELU`.
         drop: The dropout rate. Default: 0.0.
     """
+
     def __init__(
         self,
         in_features: int,
@@ -232,6 +233,7 @@ class Attention(nn.Module):
         attn_ratio: The ratio of the attention dimension. Default: 4.0.
         resolution: The resolution of the input feature map. Default: (14, 14).
     """
+
     def __init__(
         self,
         dim: int,
@@ -380,6 +382,7 @@ class BasicLayer(nn.Module):
         local_conv_size: The size of the local convolution kernel. Default: 3.
         activation: The activation function to use. Default: :class:`nn.GELU`.
     """
+
     def __init__(
         self,
         dim: int,

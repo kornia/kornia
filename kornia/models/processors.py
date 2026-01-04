@@ -73,6 +73,7 @@ class ResizePostProcessor(nn.Module):
     Args:
         interpolation_mode: The algorithm used for upsampling. Default: "bilinear".
     """
+
     def __init__(self, interpolation_mode: str = "bilinear") -> None:
         super().__init__()
         self.interpolation_mode = interpolation_mode
@@ -115,6 +116,7 @@ class OutputRangePostProcessor(nn.Module):
         min_val: The minimum value for clipping. Default: 0.0.
         max_val: The maximum value for clipping. Default: 1.0.
     """
+
     def __init__(self, min_val: float = 0.0, max_val: float = 1.0) -> None:
         super().__init__()
         self.min_val = min_val

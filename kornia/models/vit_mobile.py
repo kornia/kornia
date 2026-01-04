@@ -38,6 +38,7 @@ class PreNorm(nn.Module):
         dim: The input dimension size.
         fn: The module or function to be executed after normalization.
     """
+
     def __init__(self, dim: int, fn: nn.Module) -> None:
         super().__init__()
         self.norm = nn.LayerNorm(dim)
@@ -55,6 +56,7 @@ class FeedForward(nn.Module):
         hidden_dim: The dimension of the hidden layer.
         dropout: The dropout probability. Default: 0.0.
     """
+
     def __init__(self, dim: int, hidden_dim: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.net = nn.Sequential(
@@ -74,6 +76,7 @@ class Attention(nn.Module):
         dim_head: The dimension of each head. Default: 64.
         dropout: The dropout probability. Default: 0.0.
     """
+
     def __init__(self, dim: int, heads: int = 8, dim_head: int = 64, dropout: float = 0.0) -> None:
         super().__init__()
         inner_dim = dim_head * heads

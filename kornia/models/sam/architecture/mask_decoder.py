@@ -31,6 +31,7 @@ from kornia.models.common import MLP, LayerNorm2d
 
 class MaskDecoder(nn.Module):
     """Predict object masks and quality scores from image and prompt embeddings."""
+
     def __init__(
         self,
         *,

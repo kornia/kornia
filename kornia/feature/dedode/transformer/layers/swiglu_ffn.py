@@ -77,6 +77,7 @@ class SwiGLUFFNFused(SwiGLU):
 
     This implementation is optimized for training speed and memory usage.
     """
+
     def __init__(
         self,
         in_features: int,

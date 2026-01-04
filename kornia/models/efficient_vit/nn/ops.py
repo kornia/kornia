@@ -62,6 +62,7 @@ class ConvLayer(nn.Module):
         norm: Normalization layer type. Default: :class:`bn2d` (BatchNorm2d).
         act_func: Activation layer type. Default: :class:`relu` (ReLU).
     """
+
     def __init__(
         self,
         in_channels: int,
@@ -107,6 +108,7 @@ class ConvLayer(nn.Module):
 
 class IdentityLayer(nn.Module):
     """Implement a placeholder layer that returns the input as-is."""
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x
 
@@ -122,6 +124,7 @@ class DSConv(nn.Module):
     This layer splits a standard convolution into a depthwise convolution
     followed by a pointwise convolution to reduce parameters and FLOPs.
     """
+
     def __init__(
         self,
         in_channels: int,
@@ -160,6 +163,7 @@ class DSConv(nn.Module):
 
 class MBConv(nn.Module):
     """Implement the Inverted Residual Block (Mobile Inverted Bottleneck)."""
+
     def __init__(
         self,
         in_channels: int,
@@ -205,6 +209,7 @@ class MBConv(nn.Module):
 
 class FusedMBConv(nn.Module):
     """Implement a fused version of the Inverted Residual Block for efficiency."""
+
     def __init__(
         self,
         in_channels: int,
@@ -247,6 +252,7 @@ class FusedMBConv(nn.Module):
 
 class ResBlock(nn.Module):
     """Implement a standard residual block for EfficientViT."""
+
     def __init__(
         self,
         in_channels: int,
@@ -373,6 +379,7 @@ class LiteMLA(nn.Module):
 
 class EfficientViTBlock(nn.Module):
     """Implement the standard EfficientViT backbone architecture."""
+
     def __init__(
         self,
         in_channels: int,
@@ -419,6 +426,7 @@ class ResidualBlock(nn.Module):
         post_act: Activation to apply after the summation.
         pre_norm: Normalization to apply before the branches.
     """
+
     def __init__(
         self, main: nn.Module or None, shortcut: nn.Module or None, post_act=None, pre_norm: nn.Module or None = None
     ):
@@ -449,6 +457,7 @@ class ResidualBlock(nn.Module):
 
 class OpSequential(nn.Module):
     """A container for sequential execution that handles optional or None modules."""
+
     def __init__(self, op_list: list[nn.Module or None]):
         super().__init__()
         valid_op_list = []

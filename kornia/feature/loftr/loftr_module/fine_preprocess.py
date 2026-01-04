@@ -28,6 +28,7 @@ class FinePreprocess(nn.Module):
     Args:
         config: A dictionary containing configuration parameters for fine-level processing.
     """
+
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
 

@@ -34,6 +34,7 @@ class LoFTREncoderLayer(nn.Module):
         nhead: The number of heads in the multi-head attention.
         attention: The type of attention to use. Supported: "linear". Default: "linear".
     """
+
     def __init__(self, d_model: int, nhead: int, attention: Optional[Literal["linear"]] = "linear") -> None:
         super().__init__()
 

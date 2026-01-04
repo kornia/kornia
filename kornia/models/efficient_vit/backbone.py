@@ -55,6 +55,7 @@ class EfficientViTBackbone(nn.Module):
         norm: Normalization layer type. Default: "bn2d".
         act_func: Activation function type. Default: "hswish".
     """
+
     def __init__(
         self,
         width_list: list[int],
@@ -216,6 +217,7 @@ def efficientvit_backbone_b3(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
 
 class EfficientViTLargeBackbone(nn.Module):
     """Implement the large-scale variant of the EfficientViT backbone."""
+
     def __init__(
         self,
         width_list: list[int],

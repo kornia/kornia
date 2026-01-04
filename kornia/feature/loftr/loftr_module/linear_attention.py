@@ -42,6 +42,7 @@ class LinearAttention(nn.Module):
     Args:
         eps: A small value to avoid division by zero. Default: 1e-6.
     """
+
     def __init__(self, eps: float = 1e-6) -> None:
         super().__init__()
         self.feature_map = elu_feature_map
@@ -94,6 +95,7 @@ class FullAttention(nn.Module):
         use_dropout: Whether to apply dropout to the attention weights. Default: False.
         attention_dropout: The dropout probability. Default: 0.1.
     """
+
     def __init__(self, use_dropout: bool = False, attention_dropout: float = 0.1) -> None:
         super().__init__()
         self.use_dropout = use_dropout

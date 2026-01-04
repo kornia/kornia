@@ -81,6 +81,7 @@ class SmallSRNetWrapper(nn.Module):
         upscale_factor: The factor by which the image resolution is increased.
         pretrained: Whether to load weights from a pre-trained model. Default: True.
     """
+
     def __init__(self, upscale_factor: int = 3, pretrained: bool = True) -> None:
         super().__init__()
         self.rgb_to_ycbcr = RgbToYcbcr()

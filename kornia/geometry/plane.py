@@ -44,6 +44,7 @@ class Hyperplane(nn.Module):
         n: The normal vector of the hyperplane.
         d: The scalar distance from the origin.
     """
+
     def __init__(self, n: Vector3, d: Scalar) -> None:
         super().__init__()
         KORNIA_CHECK_TYPE(n, Vector3)

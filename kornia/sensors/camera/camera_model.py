@@ -36,6 +36,7 @@ class CameraModelType(Enum):
         - PINHOLE: Standard perspective projection.
         - BROWN_CONRADY: Standard radial and tangential distortion model.
     """
+
     PINHOLE = 0
     BROWN_CONRADY = 1
     KANNALA_BRANDT_K3 = 2

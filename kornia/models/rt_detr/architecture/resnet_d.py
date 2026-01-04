@@ -67,6 +67,7 @@ class BasicBlockD(nn.Module):
 
 class BottleneckD(nn.Module):
     """Implement the Bottleneck Block for the ResNet-D variant."""
+
     expansion = 4
 
     def __init__(self, in_channels: int, out_channels: int, stride: int, shortcut: bool) -> None:

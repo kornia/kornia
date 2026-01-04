@@ -59,6 +59,7 @@ class LightConvNormAct(nn.Sequential):
         out_channels: Number of output channels.
         kernel_size: Size of the convolving kernel.
     """
+
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 1, act="none")  # point-wise

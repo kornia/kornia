@@ -62,6 +62,7 @@ class CoFusion(nn.Module):
         in_ch: The number of input channels.
         out_ch: The number of output channels.
     """
+
     def __init__(self, in_ch: int, out_ch: int) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(in_ch, 64, kernel_size=3, stride=1, padding=1)
@@ -126,6 +127,7 @@ class UpConvBlock(nn.Module):
         in_features: The number of input channels.
         up_scale: The scale factor for upsampling.
     """
+
     def __init__(self, in_features: int, up_scale: int) -> None:
         super().__init__()
         self.up_factor = 2
@@ -166,6 +168,7 @@ class SingleConvBlock(nn.Module):
         stride: The stride of the convolution.
         use_bs: Whether to use Batch Normalization. Default: True.
     """
+
     def __init__(self, in_features: int, out_features: int, stride: int, use_bs: bool = True) -> None:
         super().__init__()
         self.use_bn = use_bs
@@ -181,6 +184,7 @@ class SingleConvBlock(nn.Module):
 
 class DoubleConvBlock(nn.Sequential):
     """Apply two consecutive convolutional blocks for edge feature extraction."""
+
     def __init__(
         self,
         in_features: int,
