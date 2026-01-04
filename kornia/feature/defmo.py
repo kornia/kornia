@@ -279,10 +279,7 @@ class RenderingDeFMO(nn.Module):
 
     This module acts as a decoder that transforms the latent features from the encoder into
     a temporal sequence of sharp sub-frames, recovering the object's appearance and motion.
-
-    Args:
-        None
-
+    
     Shape:
         - Input: Latent feature representation from the :class:`EncoderDeFMO`.
         - Output: (B, T, 4, H, W) where T is the number of sub-frames and 4 represents RGBA channels.
