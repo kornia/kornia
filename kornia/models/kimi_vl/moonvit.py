@@ -145,6 +145,7 @@ class MoonViTMLP(nn.Module):
         config: Model configuration containing ``hidden_size``, ``intermediate_size``,
             and ``dropout_p`` used to construct the MLP.
     """
+
     def __init__(self, config: MoonViTConfig) -> None:
         super().__init__()
         self.fc1 = nn.Linear(config.hidden_size, config.intermediate_size)
@@ -172,6 +173,7 @@ class MoonViTLayer(nn.Module):
         config: Model configuration specifying hidden sizes, number of heads, dropout, and
             normalization parameters.
     """
+
     def __init__(self, config: MoonViTConfig) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
@@ -195,6 +197,7 @@ class MoonViTEncoder(nn.Module):
     positional embeddings followed by an MLP block, with residual connections and
     layer normalization, producing an encoded representation of the input sequence.
     """
+
     def __init__(self, config: MoonViTConfig) -> None:
         super().__init__()
         self.layers = nn.ModuleList([MoonViTLayer(config) for _ in range(config.num_hidden_layers)])
