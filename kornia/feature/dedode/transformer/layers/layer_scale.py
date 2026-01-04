@@ -37,6 +37,7 @@ class LayerScale(nn.Module):
         init_values: Initial value or tensor used to initialize the learnable scaling parameter ``gamma``.
         inplace: If True, apply the scaling operation in-place on the input tensor.
     """
+
     def __init__(
         self,
         dim: int,
