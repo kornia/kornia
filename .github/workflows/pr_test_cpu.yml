@@ -9,6 +9,7 @@ on:
       - '*.md'
       - 'LICENSE'
       - 'COPYRIGHT'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
