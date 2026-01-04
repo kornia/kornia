@@ -27,7 +27,7 @@ class AffineTransform:
     This class handles the scaling and shifting of coordinates, typically used
     to map normalized coordinates to pixel coordinates.
     """
-    
+
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         """Distort one or more Vector2 points using the affine transform.
 
@@ -92,7 +92,7 @@ class BrownConradyTransform:
 class KannalaBrandtK3Transform:
     """Apply the Kannala-Brandt (K3) distortion model.
 
-    This model is specifically designed for fisheye lenses with significant 
+    This model is specifically designed for fisheye lenses with significant
     radial distortion, using a polynomial approximation for the projection.
     """
 

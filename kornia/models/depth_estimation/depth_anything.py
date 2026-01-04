@@ -25,6 +25,8 @@ __all__ = ["DepthAnythingONNXBuilder"]
 
 
 class DepthAnythingONNXBuilder:
+    """Provide static methods to build DepthAnything models for ONNX inference."""
+
     @staticmethod
     def build(
         model_name: str = "depth-anything-v2-small", model_type: str = "model", cache_dir: Optional[str] = None

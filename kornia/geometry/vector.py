@@ -29,11 +29,13 @@ __all__ = ["Scalar", "Vector2", "Vector3"]
 
 # TODO: implement more functionality to validate
 class Scalar(TensorWrapper):
+    """Wrap a tensor representing a scalar value."""
     def __init__(self, data: torch.Tensor) -> None:
         super().__init__(data)
 
 
 class Vector3(TensorWrapper):
+    """Wrap a tensor representing a 3D vector."""
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
         KORNIA_CHECK(vector.shape[-1] == 3)
@@ -115,6 +117,7 @@ class Vector3(TensorWrapper):
 
 
 class Vector2(TensorWrapper):
+    """Wrap a tensor representing a 2D vector."""
     def __init__(self, vector: torch.Tensor) -> None:
         super().__init__(vector)
         KORNIA_CHECK(vector.shape[-1] == 2)

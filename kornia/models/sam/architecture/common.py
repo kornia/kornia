@@ -50,7 +50,7 @@ class MLPBlock(nn.Module):
 
 class LayerNorm(nn.LayerNorm):
     """Implement Layer Normalization with a small epsilon to avoid division by zero."""
-    
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.eps = 1e-6

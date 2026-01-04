@@ -134,7 +134,8 @@ class ResNet(nn.Module):
         zero_init_residual: Whether to initialize the last batch norm in each residual branch to zero. Default: False.
         groups: The number of groups for the convolution. Default: 1.
         width_per_group: The width of each group. Default: 64.
-        replace_stride_with_dilation: A list of booleans indicating if stride should be replaced by dilation in each stage. Default: None.
+        replace_stride_with_dilation: A list of booleans indicating
+            if stride should be replaced by dilation in each stage. Default: None.
         norm_layer: The normalization layer to use. Default: None.
     """
 
@@ -252,7 +253,7 @@ class ResNet(nn.Module):
 class EncoderDeFMO(nn.Module):
     """Implement the Encoder module for the Deblurring Fast Moving Objects (DeFMO) model.
 
-    The encoder extracts latent features from the concatenation of the blurred input image and 
+    The encoder extracts latent features from the concatenation of the blurred input image and
     the estimated background. It uses a modified ResNet-50 backbone to accept 6-channel inputs.
 
     Args:
@@ -278,7 +279,7 @@ class EncoderDeFMO(nn.Module):
 class RenderingDeFMO(nn.Module):
     """Implement the Rendering module for the Deblurring Fast Moving Objects (DeFMO) model.
 
-    This module acts as a decoder that transforms the latent features from the encoder into 
+    This module acts as a decoder that transforms the latent features from the encoder into
     a temporal sequence of sharp sub-frames, recovering the object's appearance and motion.
 
     Args:

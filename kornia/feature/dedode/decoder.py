@@ -61,7 +61,7 @@ class ConvRefiner(nn.Module):
         residual: Whether to use residual connections.
         amp_dtype: The data type for automatic mixed precision.
     """
-    
+
     def __init__(  # type: ignore[no-untyped-def]
         self,
         in_dim=6,

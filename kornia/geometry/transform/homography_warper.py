@@ -32,6 +32,7 @@ __all__ = ["BaseWarper", "HomographyWarper"]
 
 
 class BaseWarper(nn.Module):
+    """Provide a base class for homography-based image warping."""
     def __init__(self, height: int, width: int, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.height = height

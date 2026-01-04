@@ -221,6 +221,8 @@ class TransformerDecoderLayer(nn.Module):
 
 
 class TransformerDecoder(nn.Module):
+    """Implement the transformer decoder for generating object queries."""
+
     def __init__(self, hidden_dim: int, decoder_layer: nn.Module, num_layers: int, eval_idx: int = -1) -> None:
         super().__init__()
         self.layers = nn.ModuleList([copy.deepcopy(decoder_layer) for _ in range(num_layers)])
@@ -287,6 +289,8 @@ class TransformerDecoder(nn.Module):
 
 
 class RTDETRHead(nn.Module):
+    """Implement the RT-DETR prediction head for object detection."""
+
     def __init__(
         self,
         num_classes: int,

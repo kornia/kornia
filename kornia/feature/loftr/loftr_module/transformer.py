@@ -27,6 +27,13 @@ from .linear_attention import FullAttention, LinearAttention
 
 
 class LoFTREncoderLayer(nn.Module):
+    """Implement a single encoder layer for the LoFTR transformer.
+
+    Args:
+        d_model: The number of expected features in the input.
+        nhead: The number of heads in the multi-head attention.
+        attention: The type of attention to use. Supported: "linear". Default: "linear".
+    """
     def __init__(self, d_model: int, nhead: int, attention: Optional[Literal["linear"]] = "linear") -> None:
         super().__init__()
 

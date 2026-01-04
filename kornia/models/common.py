@@ -23,6 +23,19 @@ from torch import nn
 
 
 class ConvNormAct(nn.Sequential):
+    """Apply a sequence of Convolution, Normalization, and Activation layers.
+
+    Args:
+        in_channels: Number of input channels.
+        out_channels: Number of output channels.
+        kernel_size: Size of the convolution kernel.
+        stride: Stride of the convolution. Default: 1.
+        padding: Zero-padding added to both sides of the input. Default: 0.
+        groups: Number of blocked connections from input to output. Default: 1.
+        norm: Normalization layer type. Default: :class:`nn.BatchNorm2d`.
+        act: Activation layer type. Default: :class:`nn.ReLU`.
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -59,6 +72,16 @@ class ConvNormAct(nn.Sequential):
 # Lightly adapted from
 # https://github.com/facebookresearch/MaskFormer/blob/main/mask_former/modeling/transformer/transformer_predictor.py
 class MLP(nn.Module):
+    """Implement a Multi-Layer Perceptron (MLP) for feature projection.
+
+    Args:
+        input_dim: The number of input features.
+        hidden_dim: The number of features in hidden layers.
+        output_dim: The number of output features.
+        num_layers: The total number of layers.
+        sigmoid_output: Whether to apply a sigmoid to the final output. Default: False.
+    """
+
     def __init__(
         self, input_dim: int, hidden_dim: int, output_dim: int, num_layers: int, sigmoid_output: bool = False
     ) -> None:
@@ -100,6 +123,7 @@ class DropPath(nn.Module):
 # From https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py
 # Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa
 class LayerNorm2d(nn.Module):
+    """Apply Layer Normalization over a 4D input tensor (NCHW)."""
     def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
         super().__init__()
         self.weight = nn.Parameter(torch.ones(num_channels))

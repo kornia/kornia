@@ -119,7 +119,7 @@ def match_adalam(
 class AdalamFilter:
     """Implement the AdaLAM (Adaptive Locally-Affine Matching) filter for outlier rejection.
 
-    This class wraps the AdaLAM algorithm to filter feature matches based on 
+    This class wraps the AdaLAM algorithm to filter feature matches based on
     local affine consistency.
 
     Args:

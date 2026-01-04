@@ -81,6 +81,15 @@ def compute_max_candidates(p_m0: torch.Tensor, p_m1: torch.Tensor) -> torch.Tens
 
 
 class CoarseMatching(nn.Module):
+    """Perform coarse-level matching between two sets of feature maps.
+
+    This module calculates the confidence matrix and produces coarse matches
+    using an optimal transport layer or a dual-softmax operator.
+
+    Args:
+        config: A dictionary containing configuration parameters for the matching.
+    """
+
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
         self.config = config

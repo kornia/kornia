@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class HeatMapRefineCfg:
+    """Configuration for heatmap refinement in the SOLD2 pipeline."""
     mode: str = "local"
     ratio: float = 0.2
     valid_thresh: float = 0.001
@@ -29,12 +30,14 @@ class HeatMapRefineCfg:
 
 @dataclass
 class JunctionRefineCfg:
+    """Configuration for junction refinement in the SOLD2 pipeline."""
     num_perturbs: int = 9
     perturb_interval: float = 0.25
 
 
 @dataclass
 class LineDetectorCfg:
+    """Configuration for line detection in the SOLD2 pipeline."""
     detect_thresh: float = 0.5
     num_samples: int = 64
     inlier_thresh: float = 0.99
@@ -52,6 +55,7 @@ class LineDetectorCfg:
 
 @dataclass
 class LineMatcherCfg:
+    """Configuration for line matching in the SOLD2 pipeline."""
     cross_check: bool = True
     num_samples: int = 5
     min_dist_pts: int = 8
@@ -62,6 +66,7 @@ class LineMatcherCfg:
 
 @dataclass
 class BackboneCfg:
+    """Configuration for the backbone network in the SOLD2 pipeline."""
     input_channel: int = 1
     depth: int = 4
     num_stacks: int = 2
@@ -71,6 +76,7 @@ class BackboneCfg:
 
 @dataclass
 class DetectorCfg:
+    """Configuration for the SOLD2 detector."""
     backbone_cfg: BackboneCfg = field(default_factory=BackboneCfg)
     use_descriptor: bool = False
     grid_size: int = 8

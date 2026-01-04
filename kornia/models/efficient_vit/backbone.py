@@ -40,6 +40,21 @@ from kornia.models.efficient_vit.utils import build_kwargs_from_config
 
 
 class EfficientViTBackbone(nn.Module):
+    """Implement the EfficientViT backbone architecture.
+
+    EfficientViT is a high-speed vision transformer designed for efficient
+    inference on mobile and edge devices by optimizing the attention mechanism
+    and structural blocks.
+
+    Args:
+        width_list: List of widths for each stage.
+        depth_list: List of depths (number of blocks) for each stage.
+        in_channels: Number of input image channels. Default: 3.
+        dim: Dimension of the query, key, and value tensors in the attention mechanism. Default: 32.
+        expand_ratio: Expansion ratio for the MBConv blocks. Default: 4.
+        norm: Normalization layer type. Default: "bn2d".
+        act_func: Activation function type. Default: "hswish".
+    """
     def __init__(
         self,
         width_list: list[int],
@@ -200,6 +215,7 @@ def efficientvit_backbone_b3(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
 
 
 class EfficientViTLargeBackbone(nn.Module):
+    """Implement the large-scale variant of the EfficientViT backbone."""
     def __init__(
         self,
         width_list: list[int],

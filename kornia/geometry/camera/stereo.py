@@ -24,6 +24,8 @@ from kornia.utils.grid import create_meshgrid
 
 
 class StereoException(Exception):
+    """Handle errors related to stereo camera calibration and rectification."""
+
     def __init__(self, msg: str, *args: Any, **kwargs: Any) -> None:
         r"""Construct custom exception for the :module:`~kornia.geometry.camera.stereo` module.
 
@@ -46,6 +48,13 @@ class StereoException(Exception):
 
 
 class StereoCamera:
+    """Represent a horizontal stereo camera setup for depth estimation.
+
+    Args:
+        rectified_left_camera: The intrinsic matrix for the left camera.
+        rectified_right_camera: The intrinsic matrix for the right camera.
+    """
+
     def __init__(self, rectified_left_camera: torch.Tensor, rectified_right_camera: torch.Tensor) -> None:
         r"""Class representing a horizontal stereo camera setup.
 

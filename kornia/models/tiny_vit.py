@@ -159,8 +159,8 @@ class ConvLayer(nn.Module):
         downsample: The downsample module to use. Default: None.
         use_checkpoint: Whether to use checkpointing for memory efficiency. Default: False.
         conv_expand_ratio: The expansion ratio for the hidden dimension. Default: 4.0.
-    """ 
-    
+    """
+
     def __init__(
         self,
         dim: int,
@@ -231,7 +231,7 @@ class Attention(nn.Module):
         num_heads: The number of attention heads. Default: 8.
         attn_ratio: The ratio of the attention dimension. Default: 4.0.
         resolution: The resolution of the input feature map. Default: (14, 14).
-    """ 
+    """
     def __init__(
         self,
         dim: int,
@@ -379,7 +379,7 @@ class BasicLayer(nn.Module):
         use_checkpoint: Whether to use checkpointing for memory efficiency. Default: False.
         local_conv_size: The size of the local convolution kernel. Default: 3.
         activation: The activation function to use. Default: :class:`nn.GELU`.
-    """ 
+    """
     def __init__(
         self,
         dim: int,

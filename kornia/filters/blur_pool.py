@@ -132,6 +132,16 @@ class MaxBlurPool2D(nn.Module):
 
 
 class EdgeAwareBlurPool2D(nn.Module):
+    """Apply an edge-aware anti-aliasing filter during downsampling.
+
+    This module performs blur pooling while preserving edges by using an
+    edge-intensity threshold.
+
+    Args:
+        kernel_size: The size of the Gaussian blur kernel.
+        edge_threshold: The threshold for detecting edges. Default: 1.25.
+        edge_dilation_kernel_size: The kernel size for dilating the edge map. Default: 3.
+    """
     def __init__(
         self, kernel_size: tuple[int, int] | int, edge_threshold: float = 1.25, edge_dilation_kernel_size: int = 3
     ) -> None:

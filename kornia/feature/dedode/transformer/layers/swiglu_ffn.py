@@ -30,7 +30,7 @@ from torch import Tensor, nn
 class SwiGLUFFN(nn.Module):
     """Implement the SwiGLU Feed-Forward Network.
 
-    This block uses the Gated Linear Unit with Swish activation, common in 
+    This block uses the Gated Linear Unit with Swish activation, common in
     modern transformer architectures like DINOv2.
 
     Args:
@@ -73,6 +73,10 @@ except ImportError:
 
 
 class SwiGLUFFNFused(SwiGLU):
+    """Implement the fused SwiGLU activation and Feed-Forward Network.
+
+    This implementation is optimized for training speed and memory usage.
+    """
     def __init__(
         self,
         in_features: int,

@@ -35,6 +35,13 @@ def elu_feature_map(x: torch.Tensor) -> torch.Tensor:
 
 
 class LinearAttention(nn.Module):
+    """Implement the Linear Attention mechanism for efficient transformer processing.
+
+    This module uses the ELU-based kernel map to approximate softmax attention.
+
+    Args:
+        eps: A small value to avoid division by zero. Default: 1e-6.
+    """
     def __init__(self, eps: float = 1e-6) -> None:
         super().__init__()
         self.feature_map = elu_feature_map
@@ -81,6 +88,12 @@ class LinearAttention(nn.Module):
 
 
 class FullAttention(nn.Module):
+    """Implement the standard Multi-Head Softmax Attention.
+
+    Args:
+        use_dropout: Whether to apply dropout to the attention weights. Default: False.
+        attention_dropout: The dropout probability. Default: 0.1.
+    """
     def __init__(self, use_dropout: bool = False, attention_dropout: float = 0.1) -> None:
         super().__init__()
         self.use_dropout = use_dropout

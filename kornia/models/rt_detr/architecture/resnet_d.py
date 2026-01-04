@@ -90,6 +90,12 @@ class BottleneckD(nn.Module):
 
 
 class Block(nn.Sequential):
+    """Implement a residual block for the ResNet-D architecture.
+
+    Args:
+        blocks: A module containing the sequence of operations for the block.
+    """
+
     def __init__(self, blocks: nn.Module) -> None:
         super().__init__()
         self.blocks = blocks

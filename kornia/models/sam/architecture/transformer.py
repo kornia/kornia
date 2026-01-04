@@ -132,7 +132,7 @@ class TwoWayTransformer(nn.Module):
 class TwoWayAttentionBlock(nn.Module):
     """Implement a single block for the Two-Way Transformer.
 
-    This block performs self-attention on tokens, cross-attention from tokens to 
+    This block performs self-attention on tokens, cross-attention from tokens to
     image features, and cross-attention from image features to tokens.
 
     Args:

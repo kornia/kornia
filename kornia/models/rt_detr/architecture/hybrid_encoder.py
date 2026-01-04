@@ -195,6 +195,13 @@ class AIFI(nn.Module):
 
 
 class TransformerEncoder(nn.Module):
+    """Implement a transformer encoder comprising multiple encoder layers.
+
+    Args:
+        encoder_layer: An instance of a transformer encoder layer.
+        num_layers: The total number of encoder layers to stack.
+    """
+
     def __init__(self, encoder_layer: nn.Module, num_layers: int) -> None:
         super().__init__()
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(num_layers)])
@@ -259,6 +266,12 @@ class CCFM(nn.Module):
 
 
 class HybridEncoder(nn.Module):
+    """Implement the Efficient Hybrid Encoder for RT-DETR.
+
+    This module combines multi-scale feature fusion with Intra-scale
+    Feature Interaction using transformer layers.
+    """
+
     def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int, expansion: float = 1.0) -> None:
         super().__init__()
         self.input_proj = nn.ModuleList(

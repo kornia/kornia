@@ -90,7 +90,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 class AugmentationSequentialOps:
     """Implement the operational logic for the Augmentation Sequential container.
 
-    This class manages how data keys (e.g., IMAGE, MASK, BBOX) are handled 
+    This class manages how data keys (e.g., IMAGE, MASK, BBOX) are handled
     during the execution of an augmentation pipeline.
 
     Args:
@@ -212,7 +212,7 @@ def get_geometric_only_param(module: "K.container.ImageSequentialBase", param: L
 class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
     """Implement the operations for processing input tensors within a sequential container.
 
-    This class provides class methods to apply transformations and manage the 
+    This class provides class methods to apply transformations and manage the
     flow of data through the augmentation pipeline.
     """
 

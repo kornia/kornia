@@ -32,6 +32,8 @@ from kornia.models.common import ConvNormAct
 
 
 class StemBlock(nn.Module):
+    """Implement the entry-level Stem block for HGNetV2 backbones."""
+
     def __init__(self, in_channels: int, mid_channels: int, out_channels: int) -> None:
         super().__init__()
         self.stem1 = ConvNormAct(in_channels, mid_channels, 3, 2)
@@ -50,6 +52,13 @@ class StemBlock(nn.Module):
 
 # Separable conv
 class LightConvNormAct(nn.Sequential):
+    """Implement a composite layer containing Convolution, Normalization, and Activation.
+
+    Args:
+        in_channels: Number of input channels.
+        out_channels: Number of output channels.
+        kernel_size: Size of the convolving kernel.
+    """
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 1, act="none")  # point-wise
@@ -57,6 +66,8 @@ class LightConvNormAct(nn.Sequential):
 
 
 class StageConfig(NamedTuple):
+    """Represent configuration parameters for a single HGNetV2 stage."""
+
     in_channels: int
     mid_channels: int
     out_channels: int

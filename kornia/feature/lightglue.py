@@ -82,7 +82,7 @@ def apply_cached_rotary_emb(freqs: torch.Tensor, t: torch.Tensor) -> torch.Tenso
 class LearnableFourierPositionalEncoding(nn.Module):
     """Implement learnable Fourier features for positional encoding.
 
-    This module encodes spatial coordinates into high-dimensional embeddings 
+    This module encodes spatial coordinates into high-dimensional embeddings
     using a learnable projection and periodic functions.
 
     Args:
@@ -278,6 +278,11 @@ class CrossBlock(nn.Module):
 
 
 class TransformerLayer(nn.Module):
+    """Implement a complete Transformer layer for feature matching.
+
+    This layer typically alternates between self-attention and cross-attention
+    to update local feature descriptors.
+    """
     def __init__(self, *args, **kwargs):  # type: ignore
         super().__init__()
         self.self_attn = SelfBlock(*args, **kwargs)
@@ -380,7 +385,7 @@ def filter_matches(scores: torch.Tensor, th: float) -> Tuple[torch.Tensor, torch
 class LightGlue(nn.Module):
     """Implement the LightGlue matcher for sparse local features.
 
-    LightGlue is a deep network that matches local features across image pairs 
+    LightGlue is a deep network that matches local features across image pairs
     using a series of transformer layers and an adaptive pruning mechanism.
 
     Args:

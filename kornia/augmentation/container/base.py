@@ -185,7 +185,7 @@ class SequentialBase(BasicSequentialBase):
 class ImageSequentialBase(SequentialBase):
     """Provide a base class for sequential image-only augmentations.
 
-    This class handles the logic for applying a series of transformations 
+    This class handles the logic for applying a series of transformations
     sequentially to input tensors while managing the transformation matrices.
     """
 
