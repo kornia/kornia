@@ -76,10 +76,16 @@ class AffineTransform:
 
 
 class BrownConradyTransform:
-    """Apply an affine transformation to a set of 2D points.
+    """Implement the Brown-Conrady model for lens distortion and undistortion.
 
-    This class handles the scaling and shifting of coordinates, typically used
-    to map normalized coordinates to pixel coordinates.
+    The model accounts for radial distortion (due to lens shape) and tangential 
+    distortion (due to lens misalignment). It is commonly used to transform 
+    points between ideal pinhole projections and distorted image coordinates.
+
+    Args:
+        params: A tensor containing the distortion coefficients 
+            (usually k1, k2, p1, p2, k3).
+        points: A :class:`Vector2` representing the 2D coordinates to be transformed.
     """
 
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
