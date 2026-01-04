@@ -26,7 +26,8 @@ class MoonViTConfig:
     """Configuration for MoonViT vision encoder.
 
     Args:
-        image_size: Default input image size (used for initialization, though model supports variable).
+        image_size: Default input image size used for positional embedding initialization.
+        The model supports variable resolution inputs through interpolation.
         patch_size: Size of image patches.
         num_channels: Number of input channels.
         hidden_size: Hidden dimension size.

@@ -29,7 +29,7 @@ __all__ = ["KimiVLModel", "KimiVLProjector"]
 
 
 class KimiVLProjector(nn.Module):
-    """KimiVL Projector with Pixel Shuffle and MLP."""
+    """KimiVL Projector with Pixel Unshuffle and MLP."""
 
     def __init__(self, config: KimiVLProjectorConfig) -> None:
         super().__init__()
@@ -68,7 +68,7 @@ class KimiVLProjector(nn.Module):
         # Reshape to spatial (B, H, W, D) -> (B, D, H, W)
         x = x.view(B, h, w, D).permute(0, 3, 1, 2)
 
-        # Pixel Shuffle (Downsampling) -> (B, D*4, H/2, W/2)
+        # Pixel unshuffle for spatial downsampling -> (B, D*4, H/2, W/2)
         x = torch.nn.functional.pixel_unshuffle(x, self.downsample_ratio)
 
         # Flatten back -> (B, D*4, N/4) -> (B, N/4, D*4)
