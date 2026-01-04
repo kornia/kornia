@@ -179,6 +179,13 @@ class MoonViTLayer(nn.Module):
 
 
 class MoonViTEncoder(nn.Module):
+    """Stack of MoonViT transformer layers.
+
+    This encoder sequentially applies multiple :class:`MoonViTLayer` blocks to a
+    sequence of hidden states. Each layer consists of self-attention with rotary
+    positional embeddings followed by an MLP block, with residual connections and
+    layer normalization, producing an encoded representation of the input sequence.
+    """
     def __init__(self, config: MoonViTConfig) -> None:
         super().__init__()
         self.layers = nn.ModuleList([MoonViTLayer(config) for _ in range(config.num_hidden_layers)])
