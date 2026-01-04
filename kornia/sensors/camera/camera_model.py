@@ -33,8 +33,10 @@ class CameraModelType(Enum):
     """Represent the type of camera projection and distortion model.
 
     Supported types:
-        - PINHOLE: Standard perspective projection.
-        - BROWN_CONRADY: Standard radial and tangential distortion model.
+        - PINHOLE: Standard perspective projection with no distortion.
+        - BROWN_CONRADY: Standard radial and tangential distortion model, often used for wide-angle lenses.
+        - KANNALA_BRANDT_K3: Fisheye distortion model using a 9th-order polynomial for equidistant projection.
+        - ORTHOGRAPHIC: Parallel projection where rays are perpendicular to the image plane, with no perspective effect.
     """
 
     PINHOLE = 0
