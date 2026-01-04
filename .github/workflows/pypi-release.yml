@@ -1,13 +1,6 @@
 name: PyPI Release
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'LICENSE'
-      - 'COPYRIGHT'
   release:
     types: [published]
   workflow_dispatch:
