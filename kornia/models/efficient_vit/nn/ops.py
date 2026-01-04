@@ -536,9 +536,13 @@ class ResidualBlock(nn.Module):
         pre_norm: Normalization to apply before the branches.
     """
 
-    def __init__(
-        self, main: nn.Module | None, shortcut: nn.Module | None, post_act=None, pre_norm: nn.Module | None = None
-    ):
+   def __init__(
+    self, 
+    main: nn.Module | None, 
+    shortcut: nn.Module | None, 
+    post_act: nn.Module | None = None, 
+    pre_norm: nn.Module | None = None
+) -> None:
         super().__init__()
 
         self.pre_norm = pre_norm
