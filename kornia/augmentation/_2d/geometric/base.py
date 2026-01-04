@@ -95,15 +95,35 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
         Note:
             Convert "resample" arguments to "nearest" by default.
+            Normalize "align_corners" from None to False to match PyTorch's default behavior.
 
         """
-        resample_method: Optional[Resample]
+        resample_method: Optional[Resample] = None
+        align_corners_was_none: bool = False
+        original_align_corners: Optional[bool] = None
+
         if "resample" in flags:
             resample_method = flags["resample"]
             flags["resample"] = Resample.get("nearest")
+
+        # When align_corners=None is in flags (from extra_args), use the module's default
+        # This ensures masks use the same align_corners value as inputs for consistency
+        if "align_corners" in flags and flags["align_corners"] is None:
+            align_corners_was_none = True
+            original_align_corners = None
+            # Use the module's default align_corners value from self.flags
+            # This ensures masks use the same align_corners as inputs
+            flags["align_corners"] = self.flags.get("align_corners", False)
+
         output = self.apply_transform(input, params, flags, transform)
+
         if resample_method is not None:
             flags["resample"] = resample_method
+
+        # Restore align_corners if it was modified
+        if align_corners_was_none:
+            flags["align_corners"] = original_align_corners
+
         return output
 
     def apply_non_transform_box(
@@ -231,7 +251,12 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         # This ensures masks use the same align_corners setting in inverse as in forward
         if "align_corners" in kwargs:
             align_corners_value = flags.get("align_corners")
-            flags["align_corners"] = kwargs["align_corners"]
+            # When align_corners=None is in kwargs, use the module's default
+            # This ensures masks use the same align_corners value as inputs for consistency
+            if kwargs["align_corners"] is None:
+                flags["align_corners"] = self.flags.get("align_corners", False)
+            else:
+                flags["align_corners"] = kwargs["align_corners"]
         output = self.inverse_inputs(input, params, flags, transform, **kwargs)
         if resample_method is not None:
             flags["resample"] = resample_method
