@@ -123,6 +123,15 @@ class DSConv(nn.Module):
 
     This layer splits a standard convolution into a depthwise convolution
     followed by a pointwise convolution to reduce parameters and FLOPs.
+
+    Args:
+        in_channels: Number of input channels.
+        out_channels: Number of output channels.
+        kernel_size: Size of the convolving kernel. Default: 3.
+        stride: Stride of the convolution. Default: 1.
+        use_bias: Whether to use bias in the convolutional layers. Default: False.
+        norm: Normalization layers for the depthwise and pointwise stages. Default: ("bn2d", "bn2d").
+        act_func: Activation functions for the depthwise and pointwise stages. Default: ("relu6", None).
     """
 
     def __init__(
@@ -162,7 +171,27 @@ class DSConv(nn.Module):
 
 
 class MBConv(nn.Module):
-    """Implement the Inverted Residual Block (Mobile Inverted Bottleneck)."""
+    """Implement the Inverted Residual Block (Mobile Inverted Bottleneck).
+
+    This block follows the MobileNetV2 design: a wide intermediate layer 
+    (expansion) between two narrow layers, using depthwise convolutions 
+    to maintain efficiency.
+
+    Args:
+        in_channels: Number of input channels.
+        out_channels: Number of output channels.
+        kernel_size: Size of the depthwise convolution kernel. Default: 3.
+        stride: Stride of the depthwise convolution. Default: 1.
+        mid_channels: Number of intermediate expansion channels. If None, calculated 
+            using expand_ratio. Default: None.
+        expand_ratio: Expansion factor for the intermediate channels relative to 
+            in_channels. Default: 6.
+        use_bias: Whether to use bias in the convolutional layers. Default: False.
+        norm: Normalization layers for the expansion, depthwise, and pointwise stages. 
+            Default: ("bn2d", "bn2d", "bn2d").
+        act_func: Activation functions for the expansion, depthwise, and pointwise stages. 
+            Default: ("relu6", "relu6", None).
+    """
 
     def __init__(
         self,
@@ -208,7 +237,28 @@ class MBConv(nn.Module):
 
 
 class FusedMBConv(nn.Module):
-    """Implement a fused version of the Inverted Residual Block for efficiency."""
+   """Implement a fused version of the Inverted Residual Block for efficiency.
+
+    This block improves throughput on certain hardware by replacing the 
+    separate expansion and depthwise convolutions with a single regular 
+    convolution, as seen in EfficientNet-V2.
+
+    Args:
+        in_channels: Number of input channels.
+        out_channels: Number of output channels.
+        kernel_size: Size of the main convolution kernel. Default: 3.
+        stride: Stride of the convolution. Default: 1.
+        mid_channels: Number of intermediate expansion channels. If None, 
+            calculated using expand_ratio. Default: None.
+        expand_ratio: Expansion factor for the intermediate channels relative 
+            to in_channels. Default: 6.
+        groups: Number of groups for the main convolution. Default: 1.
+        use_bias: Whether to use bias in the convolutional layers. Default: False.
+        norm: Normalization layers for the fused and pointwise stages. 
+            Default: ("bn2d", "bn2d").
+        act_func: Activation functions for the fused and pointwise stages. 
+            Default: ("relu6", None).
+    """
 
     def __init__(
         self,
@@ -251,7 +301,26 @@ class FusedMBConv(nn.Module):
 
 
 class ResBlock(nn.Module):
-    """Implement a standard residual block for EfficientViT."""
+    """Implement a standard residual block for EfficientViT.
+
+    This block applies a series of convolutions and adds the original input 
+    back to the output via a skip connection, helping to mitigate the 
+    vanishing gradient problem in deep networks.
+
+    Args:
+        in_channels: Number of input channels.
+        out_channels: Number of output channels.
+        kernel_size: Size of the convolving kernel. Default: 3.
+        stride: Stride of the convolution. Default: 1.
+        mid_channels: Number of intermediate channels. If None, calculated 
+            using expand_ratio. Default: None.
+        expand_ratio: Expansion factor for the intermediate channels. Default: 1.
+        use_bias: Whether to use bias in the convolutional layers. Default: False.
+        norm: Normalization layers for the main and projection stages. 
+            Default: ("bn2d", "bn2d").
+        act_func: Activation functions for the main and projection stages. 
+            Default: ("relu6", None).
+    """
 
     def __init__(
         self,
@@ -286,7 +355,32 @@ class ResBlock(nn.Module):
 
 
 class LiteMLA(nn.Module):
-    r"""Lightweight multi-scale linear attention."""
+    r"""Lightweight multi-scale linear attention.
+
+    This module implements a linear attention mechanism that avoids the quadratic 
+    complexity of standard self-attention. It incorporates multi-scale depthwise 
+    convolutions (scales) to aggregate local information effectively.
+
+    Args:
+        in_channels: Number of input channels.
+        out_channels: Number of output channels.
+        heads: Number of attention heads. If None, calculated using heads_ratio. 
+            Default: None.
+        heads_ratio: Ratio to determine the number of heads relative to channels. 
+            Default: 1.0.
+        dim: Dimension of each attention head. Default: 8.
+        use_bias: Whether to use bias in the linear projections. Default: False.
+        norm: Normalization layers for the query/key/value and output projections. 
+            Default: (None, "bn2d").
+        act_func: Activation functions for the internal and output stages. 
+            Default: (None, None).
+        kernel_func: The kernel function to use for linear attention (e.g., "relu"). 
+            Default: "relu".
+        scales: Kernel sizes for the multi-scale depthwise convolutions. 
+            Default: (5,).
+        eps: A small value to ensure numerical stability during division. 
+            Default: 1.0e-15.
+    """
 
     def __init__(
         self,
@@ -378,7 +472,22 @@ class LiteMLA(nn.Module):
 
 
 class EfficientViTBlock(nn.Module):
-    """Implement the standard EfficientViT backbone architecture."""
+    """Implement a single EfficientViT building block.
+
+    This block consists of two main components: a Lightweight Multi-scale Linear 
+    Attention (LiteMLA) layer and a Feed-Forward Network (FFN). It follows the 
+    standard transformer-style residual architecture optimized for efficiency.
+
+    Args:
+        in_channels: Number of input channels.
+        heads_ratio: Ratio to determine the number of attention heads in LiteMLA. 
+            Default: 1.0.
+        dim: The dimension for the attention head and FFN layers. Default: 32.
+        expand_ratio: Expansion factor for the FFN (Feed-Forward Network). 
+            Default: 4.
+        norm: Normalization layer type to use (e.g., "bn2d"). Default: "bn2d".
+        act_func: Activation function type to use (e.g., "hswish"). Default: "hswish".
+    """
 
     def __init__(
         self,
@@ -428,7 +537,7 @@ class ResidualBlock(nn.Module):
     """
 
     def __init__(
-        self, main: nn.Module or None, shortcut: nn.Module or None, post_act=None, pre_norm: nn.Module or None = None
+        self, main: nn.Module | None, shortcut: nn.Module | None, post_act=None, pre_norm: nn.Module | None = None
     ):
         super().__init__()
 
@@ -456,9 +565,18 @@ class ResidualBlock(nn.Module):
 
 
 class OpSequential(nn.Module):
-    """A container for sequential execution that handles optional or None modules."""
+    """A container for sequential execution that handles optional or None modules.
 
-    def __init__(self, op_list: list[nn.Module or None]):
+    This class behaves similarly to :class:`nn.Sequential` but explicitly 
+    allows for ``None`` elements within the operation list, which are 
+    ignored during the forward pass.
+
+    Args:
+        op_list: A list of modules to be executed sequentially. 
+            Elements can be ``None``, in which case they act as an identity.
+    """
+
+    def __init__(self, op_list: list[nn.Module | None]):
         super().__init__()
         valid_op_list = []
         for op in op_list:
