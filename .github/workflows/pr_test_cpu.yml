@@ -91,19 +91,8 @@ jobs:
     needs: [pre-tests]
     uses: ./.github/workflows/tutorials.yml
 
-  docs:
-    needs: [pre-tests]
-    uses: ./.github/workflows/docs.yml
-    with:
-      python-version: '["3.11"]'
-      cache-path: weights/
-      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
-      cache-restore-keys: |
-        model-weights-${{ needs.pre-tests.outputs.hash }}
-        model-weights-
-
   collector:
-    needs: [tests, tutorials, typecheck, docs]
+    needs: [tests, tutorials, typecheck]
     if: always()
     runs-on: ubuntu-latest
     steps:

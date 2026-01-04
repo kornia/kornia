@@ -1,4 +1,20 @@
 on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'kornia/**'
+      - 'tests/**'
+      - 'testing/**'
+      - 'benchmarks/**'
+      - '*.py'
+      - 'pyproject.toml'
+      - 'pixi.toml'
+      - 'pixi.lock'
+      - 'uv.lock'
+      - '.github/workflows/**'
+      - '*.md'
+      - 'LICENSE'
+      - 'COPYRIGHT'
   workflow_call:
     inputs:
       python-version:
@@ -39,29 +55,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
-          fetch-depth: 0  # Need full history to compare
-
-      - name: Check if docs files changed
-        id: check-docs
-        if: github.event_name == 'pull_request'
-        run: |
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-
-          # Use git diff with pathspec to check if docs files changed
-          # Only files in docs/ directory or .rst files trigger docs build
-          # git diff --quiet returns 0 if no changes, non-zero if changes exist
-          if ! git diff --quiet $BASE_SHA $HEAD_SHA -- 'docs/**' '*.rst'; then
-            echo "docs-changed=true" >> "$GITHUB_OUTPUT"
-            echo "Documentation files changed"
-          else
-            echo "docs-changed=false" >> "$GITHUB_OUTPUT"
-            echo "No documentation files changed"
-          fi
+          ref: ${{ github.event.pull_request.head.sha || inputs.ref }}
 
       - name: Restore cache
-        if: inputs.cache-path != '' && (github.event_name != 'pull_request' || steps.check-docs.outputs.docs-changed == 'true')
+        if: inputs.cache-path != ''
         uses: actions/cache/restore@v4
         with:
           path: ${{ inputs.cache-path }}
@@ -69,13 +66,11 @@ jobs:
           restore-keys: ${{ inputs.cache-restore-keys }}
 
       - name: Set pixi environment name
-        if: github.event_name != 'pull_request' || steps.check-docs.outputs.docs-changed == 'true'
         id: pixi-env
         shell: bash
         run: echo "name=py$(echo '${{ matrix.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
       - name: Setup pixi
-        if: github.event_name != 'pull_request' || steps.check-docs.outputs.docs-changed == 'true'
         uses: prefix-dev/setup-pixi@v0.8.1
         with:
           pixi-version: v0.40.0
@@ -83,17 +78,13 @@ jobs:
           environments: ${{ steps.pixi-env.outputs.name }}
 
       - name: Install environment
-        if: github.event_name != 'pull_request' || steps.check-docs.outputs.docs-changed == 'true'
         run: pixi install -e ${{ steps.pixi-env.outputs.name }} --locked
 
       - name: Install docs dependencies
-        if: github.event_name != 'pull_request' || steps.check-docs.outputs.docs-changed == 'true'
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install-docs
 
       - name: Run doctest
-        if: github.event_name != 'pull_request' || steps.check-docs.outputs.docs-changed == 'true'
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} doctest
 
       - name: Build Documentation
-        if: github.event_name != 'pull_request' || steps.check-docs.outputs.docs-changed == 'true'
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} build-docs
