@@ -361,6 +361,10 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
 - Understand every line of code you submit; you must be able to explain it during review (see [AI Policy](#policies-and-guidelines))
 - Review AI output thoroughly: check for unnecessary complexity, verify it follows project conventions, ensure it uses existing utilities, and test it
 - Be transparent in PR descriptions about what was AI-assisted and what you manually reviewed (see [Pull Request](#pull-request) for AI Usage Disclosure requirements)
+- **AI Usage Disclosure in PR Template**: When completing the PR template's "AI Usage Disclosure" section:
+  - Mark as **🟢 No AI used** only if you wrote all code manually without any AI assistance
+  - Mark as **🟡 AI-assisted** if you used AI tools (Copilot, Cursor, etc.) for boilerplate/refactoring but manually reviewed and tested every line
+  - Mark as **🔴 AI-generated** if an AI agent generated the code, PR description, or commit messages, or if you cannot explain the logic without referring to the AI's output. **Important**: PRs marked as AI-generated are subject to stricter scrutiny and may be immediately closed if the logic cannot be explained
 
 ## Communication
 
@@ -396,7 +400,7 @@ This workflow helps maintain quality, avoid conflicts, and ensure contributions 
 - **AI Policy Compliance**: Must comply with [AI_POLICY.md](AI_POLICY.md). This includes:
   - Using existing `kornia` utilities instead of reinventing
   - Being able to explain all submitted code
-  - Completing the AI Usage Disclosure in the PR template
+  - Completing the AI Usage Disclosure in the PR template accurately (see [AI-Assisted Development](#ai-assisted-development) for guidance on when to mark as AI-generated)
 - 15-Day Rule: Inactive PRs (>15 days) will be closed
 - Transparency: Keep discussions public
 
