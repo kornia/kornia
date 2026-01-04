@@ -370,7 +370,25 @@ This section provides guidance for contributing to Kornia, with a focus on Pytho
 
 # Pull Request
 
+## Issue Approval and Assignment Workflow
+
+**Before submitting a PR, you must:**
+
+1. **Open an issue first**: All PRs must be linked to an existing issue. If no issue exists for your work, create one using the appropriate template (bug report or feature request).
+
+2. **Wait for maintainer approval**: A maintainer must review and approve the issue before you start working on it. New issues are automatically labeled with `triage` and will receive a welcome message explaining this process.
+
+3. **Wait for assignment**: You must be assigned to the issue by a maintainer before submitting a PR. This ensures:
+   - The issue aligns with project goals
+   - No duplicate work is being done
+   - Proper coordination of contributions
+
+4. **Do not start work until assigned**: PRs submitted without prior issue approval and assignment may be closed or receive warnings during automated validation.
+
+This workflow helps maintain quality, avoid conflicts, and ensure contributions align with the project's direction. The automated PR validation workflow will check these requirements and post warnings if they're not met.
+
 **Requirements:**
+- **Issue approval and assignment**: The linked issue must be approved by a maintainer and you must be assigned to it (see workflow above)
 - Link PR to an issue (use "Closes #123" or "Fixes #123")
 - Pass all local tests before submission
 - Provide proof of local test execution in the PR description (this is especially important for first-time contributors)
