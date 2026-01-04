@@ -1,0 +1,166 @@
+site_name: Kornia
+site_description: State-of-the-art and curated Computer Vision algorithms for AI
+site_url: https://kornia.readthedocs.io
+repo_url: https://github.com/kornia/kornia
+repo_name: kornia/kornia
+edit_uri: edit/main/
+
+# Documentation directory
+docs_dir: docs
+
+# Copyright
+copyright: Copyright &copy; 2018-2024 Kornia developers
+
+# Theme configuration
+theme:
+  name: material
+  palette:
+    # Light mode
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.annotate
+    - content.code.copy
+  icon:
+    logo: material/rocket-launch
+  favicon: assets/img/kornia_logo_favicon.png
+  custom_dir: docs/overrides
+
+# Plugins
+plugins:
+  - search
+  - mkdocs-autoapi:
+      autoapi_root: kornia
+      autoapi_file_patterns: ['*.py']
+      autoapi_ignore:
+        - '**/tests/**'
+        - '**/test_*.py'
+        - '**/__pycache__/**'
+        - '**/.pixi/**'
+        - '**/venv/**'
+        - '**/.venv/**'
+        - 'tests/**'
+        - '.pixi/**'
+        - 'benchmarks/**'
+        - 'testing/**'
+        - 'docs/**'
+        - 'conftest.py'
+        - 'conftest/**'
+        - '**/generate_examples.py'
+        - '**/site/**'
+        - 'site/**'
+      autoapi_add_nav_entry: true
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [".", "kornia"]
+          options:
+            docstring_style: google
+            docstring_options:
+              ignore_init_summary: false
+            show_source: true
+            show_root_heading: true
+            show_root_toc_entry: true
+            show_root_full_path: false
+            show_object_full_path: false
+            show_category_heading: true
+            show_if_no_docstring: false
+            separate_signature: true
+            line_length: 120
+
+# Markdown extensions
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+# Navigation
+nav:
+  - Home: index.md
+  - Get Started:
+    - Introduction: get-started/introduction.md
+    - Highlights: get-started/highlights.md
+    - Installation: get-started/installation.md
+    - About: get-started/about.md
+    - Multi-framework Support: get-started/multi-framework-support.md
+    - Governance: get-started/governance.md
+  - Applications:
+    - Introduction: applications/intro.md
+    - Visual Prompting: applications/visual_prompting.md
+    - Face Detection: applications/face_detection.md
+    - Image Augmentations: applications/image_augmentations.md
+    - Image Matching: applications/image_matching.md
+    - Image Stitching: applications/image_stitching.md
+    - Image Registration: applications/image_registration.md
+    - Image Denoising: applications/image_denoising.md
+  - Models:
+    - Efficient ViT: models/efficient_vit.md
+    - RT-DETR: models/rt_detr.md
+    - Segment Anything: models/segment_anything.md
+    - Mobile SAM: models/mobile_sam.md
+    - YuNet: models/yunet.md
+    - Vision Transformer: models/vit.md
+    - Mobile ViT: models/vit_mobile.md
+    - Tiny ViT: models/tiny_vit.md
+    - LoFTR: models/loftr.md
+    - DeFMO: models/defmo.md
+    - HardNet: models/hardnet.md
+    - AffNet: models/affnet.md
+    - SOLD2: models/sold2.md
+    - DexiNed: models/dexined.md
+  - Community:
+    - Contribute: community/contribute.md
+    - FAQs: community/faqs.md
+    - Bibliography: community/bibliography.md
+    - Chinese: community/chinese.md
+
+# Extra CSS and JS
+extra_css:
+  - assets/css/main.css
+
+extra_javascript:
+  - assets/js/custom.js
+
+# Extra configuration
+extra:
+  version: 0.8.0
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/kornia/kornia
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/kornia_foss
+    - icon: fontawesome/brands/slack
+      link: https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA

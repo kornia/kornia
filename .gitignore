@@ -21,6 +21,8 @@ kornia.egg-info/
 docs/source/_static/*jpg
 docs/source/_static/img/*jpg
 docs/source/_static/scripts/*
+docs/assets/
+site/
 *DS_Store
 *jpg
 

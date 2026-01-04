@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import math
 import os
 from pathlib import Path
@@ -100,7 +101,7 @@ def main():
     # as they depend on kornia.x which has been removed
     URLS_TUTORIALS_EXAMPLES = {}
 
-    OUTPUT_PATH_SCRIPTS = Path(__file__).absolute().parent / "source/_static/scripts/"
+    OUTPUT_PATH_SCRIPTS = Path(__file__).absolute().parent / "assets" / "scripts"
 
     os.makedirs(OUTPUT_PATH_SCRIPTS, exist_ok=True)
     print(f"Downloading script examples from kornia/tutorials. Saving into the path {OUTPUT_PATH_SCRIPTS}.")
@@ -120,10 +121,15 @@ def main():
     )
     MASK_IMAGE_URL2: str = "https://raw.githubusercontent.com/kornia/data/main/simba_mask.png"
 
-    OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
-
+    # New organized output structure: assets/images/{module}/
+    OUTPUT_BASE = Path(__file__).absolute().parent / "assets" / "images"
+    OUTPUT_PATH = OUTPUT_BASE / "legacy"  # Keep old path for backward compatibility during migration
     os.makedirs(OUTPUT_PATH, exist_ok=True)
+    os.makedirs(OUTPUT_BASE, exist_ok=True)
     print(f"Pointing images to path {OUTPUT_PATH}.")
+
+    # Metadata tracking
+    manifest = {"generated_at": str(Path(__file__).stat().st_mtime), "assets": {}}
     img1 = read_img_from_url(BASE_IMAGE_URL1)
     img2 = read_img_from_url(BASE_IMAGE_URL2, img1.shape[-2:])
     img3 = read_img_from_url(BASE_IMAGE_URL3, img1.shape[-2:])
@@ -219,10 +225,22 @@ def main():
 
         out = torch.cat([ori, *(out[i] for i in range(out.size(0)))], dim=-1)
         # save the output image
+        module_output_path = OUTPUT_BASE / "augmentation"
+        os.makedirs(module_output_path, exist_ok=True)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
+        output_file = module_output_path / f"{aug_name}.png"
+        cv2.imwrite(str(output_file), out_np)
+        # Also save to legacy path for backward compatibility
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
+        # Track in manifest
+        manifest["assets"][f"augmentation.{aug_name}"] = {
+            "module": "augmentation",
+            "function": aug_name,
+            "path": str(output_file.relative_to(OUTPUT_BASE)),
+            "parameters": str(args),
+        }
 
     mix_augmentations_list = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019)}
     # ITERATE OVER THE TRANSFORMS
@@ -717,6 +735,12 @@ def main():
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for response function {fn_name}")
+
+    # Save manifest
+    manifest_path = OUTPUT_BASE.parent / "manifest.json"
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+    print(f"Saved asset manifest to {manifest_path}")
 
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ py313 = { features = ["py313"], solve-group = "py313" }
 # Installation
 install = { cmd = "uv sync --extra dev", description = "Install dev dependencies" }
 install-docs = { cmd = "uv sync --extra dev --extra docs", description = "Install dev + docs dependencies" }
+
 # Tests - use env vars (KORNIA_TEST_DEVICE, KORNIA_TEST_DTYPE, KORNIA_TEST_RUNSLOW)
 test = { cmd = "uv run pytest -v tests/", description = "Run tests (configure via KORNIA_TEST_* env vars)" }
 test-f32 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DTYPE = "float32" } }
@@ -43,14 +44,19 @@ test-f64 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DTYPE = "float
 test-slow = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_RUNSLOW = "true" } }
 test-quick = { cmd = "uv run pytest -v -m 'not (jit or grad or nn)' tests/" }
 test-module = { cmd = "uv run pytest -v", description = "Run tests for a specific module (usage: pixi run test-module tests/<module_path>, e.g., pixi run test-module tests/contrib/)" }
+
 # Quality
 lint = { cmd = "uv run pre-commit run ruff --all-files" }
 typecheck = { cmd = "uvx ty check" }
 doctest = { cmd = "uv run pytest -v --doctest-modules kornia/" }
 toml-fmt = { cmd = "tombi format", description = "Format TOML files" }
 toml-fmt-check = { cmd = "tombi format --check", description = "Check TOML formatting" }
+
 # Docs
-build-docs = { cmd = "uv run sphinx-build -W -b html docs/source docs/build/html" }
+docs-build = { cmd = "uv sync --extra docs && uv run python -m mkdocs build", description = "Build documentation with MkDocs" }
+docs-serve = { cmd = "uv sync --extra docs && uv run python -m mkdocs serve", description = "Serve documentation locally with live reload" }
+docs-images = { cmd = "cd docs && uv run python generate_examples.py", description = "Generate example images and assets" }
+
 # Utility
 clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete && rm -rf .venv" }
 

@@ -60,23 +60,19 @@ dev = [
   "transformers<4.57",
 ]
 docs = [
-  "furo",
   "ivy>=1.0.0.0",
   "kornia_moons",
   "matplotlib",
+  "mkdocs>=1.5.0",
+  "mkdocs-autoapi>=0.4.0,<0.5.0",
+  "mkdocs-material>=9.0.0",
+  "mkdocs-section-index>=0.3.0",
+  "mkdocstrings[python]>=0.24.0",
+  "pymdown-extensions>=10.0",
   "onnx",
   "onnxruntime",
   "opencv-python",
   "PyYAML>=5.1",
-  "sphinx",
-  "sphinx-autodoc-defaultargs",
-  "sphinx-autodoc-typehints",
-  "sphinx-copybutton>=0.3",
-  "sphinx-design",
-  "sphinx-notfound-page",
-  "sphinxcontrib-bibtex",
-  "sphinxcontrib-gtagjs",
-  "sphinxcontrib-youtube",
 ]
 
 [tool.hatch.version]
