@@ -31,7 +31,7 @@ jobs:
             const welcomeMessage = '## ⚠️ Before Submitting a PR\n\n' +
               'Please wait for a maintainer to approve and assign this issue to you or someone else before submitting a PR. ' +
               'PRs submitted without prior approval and assignment may be closed. ' +
-              'See our [Contributing Guide](CONTRIBUTING.md) for details.';
+              'See our [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md) for details.';
 
             await github.rest.issues.createComment({
               owner: context.repo.owner,
