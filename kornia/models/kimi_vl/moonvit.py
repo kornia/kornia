@@ -136,6 +136,15 @@ class MoonViTAttention(nn.Module):
 
 
 class MoonViTMLP(nn.Module):
+    """Feed-forward MLP block used in MoonViT transformer layers.
+
+    This module implements a two-layer projection with GELU activation and dropout,
+    following the standard transformer feed-forward network pattern.
+
+    Args:
+        config: Model configuration containing ``hidden_size``, ``intermediate_size``,
+            and ``dropout_p`` used to construct the MLP.
+    """
     def __init__(self, config: MoonViTConfig) -> None:
         super().__init__()
         self.fc1 = nn.Linear(config.hidden_size, config.intermediate_size)
