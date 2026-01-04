@@ -15,12 +15,13 @@
 # limitations under the License.
 #
 
-import os
 import json
+import os
 
 import pytest
 import torch
 import torch.nn.functional as F
+from safetensors.torch import load_file
 
 from kornia.models.kimi_vl import KimiVLConfig, KimiVLModel
 from kornia.models.kimi_vl.config import KimiVLProjectorConfig, MoonViTConfig
@@ -28,7 +29,6 @@ from kornia.models.kimi_vl.model import KimiVLProjector
 from kornia.models.kimi_vl.moonvit import MoonViT, MoonViTAttention, MoonViTEncoder, MoonViTRotaryEmbedding
 
 from testing.base import BaseTester
-from safetensors.torch import load_file
 
 
 @pytest.fixture
