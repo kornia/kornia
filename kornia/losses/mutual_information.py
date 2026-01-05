@@ -24,12 +24,13 @@ def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
 
     Support: [-window_radius, window_radius]. Returns 0 outside this range.
     Ref: "Parzen-Window Based Normalized Mutual Information for Medical Image Registration", Eq. 22.
-    :param x: signal, any shape
-    :type x: torch.Tensor
-    :param window_radius: radius of window for the kernel
-    :type window_radius: float
-    :return: transformed signal
-    :rtype: torch.Tensor
+
+    Args:
+        x (torch.Tensor): signal, any shape
+        window_radius (float): radius of window for the kernel
+
+    Returns:
+        torch.Tensor: transformed signal
     """
     x = torch.abs(x) / window_radius
 
@@ -81,14 +82,15 @@ class EntropyBasedLossBase(torch.nn.Module):
     ):
         """Instantiation.
 
-        :param reference_signal: reference signal to which other signals will be compared by the forward method
-        :type reference_signal: torch.Tensor
-        :param kernel_function: Used kernel function for kernel density estimate, by default xu_kernel
-        :type kernel_function: Callable
-        :param num_bins: number of signal value bins in kernel density estimate, by default 64
-        :type num_bins: int
-        :param window_radius: radius of the kernel's support interval, by default 1.0
-        :type window_radius: float
+        Args:
+            reference_signal (torch.Tensor): reference signal to which
+                other signals will be compared by the forward method
+            kernel_function (Callable): Used kernel function for kernel
+                density estimate, by default xu_kernel
+            num_bins (int): number of signal value bins in kernel
+                density estimate, by default 64
+            window_radius (float): radius of the kernel's support
+                interval, by default 1.0
         """
         super().__init__()
         self.eps = torch.finfo(reference_signal.dtype).eps
@@ -126,11 +128,12 @@ class MILossFromRef(EntropyBasedLossBase):
         To have a loss function, the opposite is returned.
         Can also handle two batches of flat tensors, then a batch of loss values is returned.
 
-        :param other_signal: Batch of flat tensors shape (B,N) where B is the tuple of batch dimensions for self.signal,
-        possibly empty.
+        Args:
+            other_signal: Batch of flat tensors shape (B,N) where B is
+                the tuple of batch dimensions for self.signal, possibly empty.
 
-        :return: tensor of losses, shape B as above
-        :rtype: torch.Tensor
+        Returns:
+            torch.Tensor: tensor of losses, shape B as above
         """
         H_x, H_y, H_xy = self.entropies(other_signal)
         mi = H_x + H_y - H_xy
@@ -146,11 +149,12 @@ class NMILossFromRef(EntropyBasedLossBase):
         To have a loss function, the opposite is returned.
         Can also handle two batches of flat tensors, then a batch of loss values is returned.
 
-        :param other_signal: Batch of flat tensors shape (B,N) where B is the tuple of batch dimensions for self.signal,
-        possibly empty.
+        Args:
+            other_signal: Batch of flat tensors shape (B,N) where B is
+                the tuple of batch dimensions for self.signal, possibly empty.
 
-        :return: tensor of losses, shape B as above
-        :rtype: torch.Tensor
+        Returns:
+            torch.Tensor: tensor of losses, shape B as above
         """
         H_x, H_y, H_xy = self.entropies(other_signal)
         nmi = (H_x + H_y) / H_xy
@@ -170,15 +174,17 @@ class MILossFromRef2D(MILossFromRef):
     ):
         """Instantiation.
 
-        :param reference_signal: reference signal to which other signals will be compared by the forward method.
-        batch of 2D images, shape (B,H,W) where B are the batch dimensions.
-        :type reference_signal: torch.Tensor
-        :param kernel_function: Used kernel function for kernel density estimate, by default xu_kernel
-        :type kernel_function: Callable
-        :param num_bins: number of signal value bins in kernel density estimate, by default 64
-        :type num_bins: int
-        :param window_radius: radius of the kernel's support interval, by default 1.0
-        :type window_radius: float
+        Args:
+            reference_signal (torch.Tensor): reference signal to which
+                other signals will be compared by the forward method.
+                batch of 2D images, shape (B,H,W) where B are the batch
+                dimensions.
+            kernel_function (Callable): Used kernel function for kernel
+                density estimate, by default xu_kernel
+            num_bins (int): number of signal value bins in kernel
+                density estimate, by default 64
+            window_radius (float): radius of the kernel's support
+                interval, by default 1.0
         """
         super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
 
@@ -193,9 +199,12 @@ class MILossFromRef2D(MILossFromRef):
         To have a loss function, the opposite is returned.
         Can also handle two batches of flat tensors, then a batch of loss values is returned.
 
-        :param other_signal: Batch of flat tensors same shape (B,H,W) as reference_signal passed for instantiation
-        :return: tensor of losses, shape B as above
-        :rtype: torch.Tensor
+        Args:
+            other_signal: Batch of flat tensors same shape (B,H,W) as
+                reference_signal passed for instantiation
+
+        Returns:
+            torch.Tensor: tensor of losses, shape B as above
         """
         return super().forward(self.arrange_shape(other_signal))
 
@@ -212,15 +221,17 @@ class MILossFromRef3D(MILossFromRef):
     ):
         """Instantiation.
 
-        :param reference_signal: reference signal to which other signals will be compared by the forward method.
-        batch of 3D images, shape (B,D,H,W) where B are the batch dimensions.
-        :type reference_signal: torch.Tensor
-        :param kernel_function: Used kernel function for kernel density estimate, by default xu_kernel
-        :type kernel_function: Callable
-        :param num_bins: number of signal value bins in kernel density estimate, by default 64
-        :type num_bins: int
-        :param window_radius: radius of the kernel's support interval, by default 1.0
-        :type window_radius: float
+        Args:
+            reference_signal (torch.Tensor): reference signal to which
+                other signals will be compared by the forward method.
+                batch of 3D images, shape (B,D,H,W) where B are the
+                batch dimensions.
+            kernel_function (Callable): Used kernel function for kernel
+                density estimate, by default xu_kernel
+            num_bins (int): number of signal value bins in kernel
+                density estimate, by default 64
+            window_radius (float): radius of the kernel's support
+                interval, by default 1.0
         """
         super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
 
@@ -235,9 +246,12 @@ class MILossFromRef3D(MILossFromRef):
         To have a loss function, the opposite is returned.
         Can also handle two batches of flat tensors, then a batch of loss values is returned.
 
-        :param other_signal: Batch of flat tensors same shape (B,D,H,W) as reference_signal passed for instantiation
-        :return: tensor of losses, shape B as above
-        :rtype: torch.Tensor
+        Args:
+            other_signal: Batch of flat tensors same shape (B,D,H,W) as
+                reference_signal passed for instantiation
+
+        Returns:
+            torch.Tensor: tensor of losses, shape B as above
         """
         return super().forward(self.arrange_shape(other_signal))
 
@@ -254,15 +268,17 @@ class NMILossFromRef2D(NMILossFromRef):
     ):
         """Instantiation.
 
-        :param reference_signal: reference signal to which other signals will be compared by the forward method.
-        batch of 2D images, shape (B,H,W) where B are the batch dimensions.
-        :type reference_signal: torch.Tensor
-        :param kernel_function: Used kernel function for kernel density estimate, by default xu_kernel
-        :type kernel_function: Callable
-        :param num_bins: number of signal value bins in kernel density estimate, by default 64
-        :type num_bins: int
-        :param window_radius: radius of the kernel's support interval, by default 1.0
-        :type window_radius: float
+        Args:
+            reference_signal (torch.Tensor): reference signal to which
+                other signals will be compared by the forward method.
+                batch of 2D images, shape (B,H,W) where B are the batch
+                dimensions.
+            kernel_function (Callable): Used kernel function for kernel
+                density estimate, by default xu_kernel
+            num_bins (int): number of signal value bins in kernel
+                density estimate, by default 64
+            window_radius (float): radius of the kernel's support
+                interval, by default 1.0
         """
         super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
 
@@ -277,9 +293,12 @@ class NMILossFromRef2D(NMILossFromRef):
         To have a loss function, the opposite is returned.
         Can also handle two batches of tensors, then a batch of loss values is returned.
 
-        :param other_signal: Batch of tensors same shape (B,H,W) as reference_signal passed for instantiation
-        :return: tensor of losses, shape B as above
-        :rtype: torch.Tensor
+        Args:
+            other_signal: Batch of tensors same shape (B,H,W) as
+                reference_signal passed for instantiation
+
+        Returns:
+            torch.Tensor: tensor of losses, shape B as above
         """
         return super().forward(self.arrange_shape(other_signal))
 
@@ -296,15 +315,17 @@ class NMILossFromRef3D(NMILossFromRef):
     ):
         """Instantiation.
 
-        :param reference_signal: reference signal to which other signals will be compared by the forward method.
-        batch of 3D images, shape (B,D,H,W) where B are the batch dimensions.
-        :type reference_signal: torch.Tensor
-        :param kernel_function: Used kernel function for kernel density estimate, by default xu_kernel
-        :type kernel_function: Callable
-        :param num_bins: number of signal value bins in kernel density estimate, by default 64
-        :type num_bins: int
-        :param window_radius: radius of the kernel's support interval, by default 1.0
-        :type window_radius: float
+        Args:
+            reference_signal (torch.Tensor): reference signal to which
+                other signals will be compared by the forward method.
+                batch of 3D images, shape (B,D,H,W) where B are the
+                batch dimensions.
+            kernel_function (Callable): Used kernel function for kernel
+                density estimate, by default xu_kernel
+            num_bins (int): number of signal value bins in kernel
+                density estimate, by default 64
+            window_radius (float): radius of the kernel's support
+                interval, by default 1.0
         """
         super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
 
@@ -319,9 +340,12 @@ class NMILossFromRef3D(NMILossFromRef):
         To have a loss function, the opposite is returned.
         Can also handle two batches of flat tensors, then a batch of loss values is returned.
 
-        :param other_signal: Batch of tensors, same shape (B,D,H,W) as reference_signal passed for instantiation
-        :return: tensor of losses, shape B as above
-        :rtype: torch.Tensor
+        Args:
+            other_signal: Batch of tensors, same shape (B,D,H,W) as
+                reference_signal passed for instantiation
+
+        Returns:
+            torch.Tensor: tensor of losses, shape B as above
         """
         return super().forward(self.arrange_shape(other_signal))
 
@@ -339,17 +363,20 @@ def mutual_information_loss(
     To have a loss function, the opposite is returned.
     Can also handle two batches of flat tensors, then a batch of loss values is returned.
 
-    :param input: Batch of flat tensors shape (B,N) where B is any batch dimensions tuple, possibly empty
-    :type input: torch.Tensor
-    :param target: Batch of flat tensors, same shape as input.
-    :type target: torch.Tensor
-    :param kernel_function: The kernel function used for KDE, defaults to built-in xu_kernel.
-    :param num_bins:The number of bins used for KDE, defaults to 64.
-    :type num_bins: int
-    :param window_radius: The smoothing window radius in KDE, in terms of bin width units, defaults to 1.
-    :type window_radius: float
-    :return: tensor of losses, shape B (common batch dims tuple of input and target)
-    :rtype: torch.Tensor
+    Args:
+        input (torch.Tensor): Batch of flat tensors shape (B,N) where B
+            is any batch dimensions tuple, possibly empty.
+        target (torch.Tensor): Batch of flat tensors, same shape as
+            input.
+        kernel_function: The kernel function used for KDE, defaults to
+            built-in xu_kernel.
+        num_bins (int): The number of bins used for KDE, defaults to 64.
+        window_radius (float): The smoothing window radius in KDE, in
+            terms of bin width units, defaults to 1.
+
+    Returns:
+        torch.Tensor: tensor of losses, shape B (common batch dims tuple
+        of input and target)
     """
     module = MILossFromRef(
         reference_signal=target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
@@ -370,17 +397,19 @@ def mutual_information_loss_2d(
     To have a loss function, the opposite is returned.
     Can also handle two batches of 2d tensors, then a batch of loss values is returned.
 
-    :param input: Batch of 2d tensors shape (B,H,W) where B is any batch dimensions tuple, possibly empty
-    :type input: torch.Tensor
-    :param target: Batch of 2d tensors, same shape as input.
-    :type target: torch.Tensor
-    :param kernel_function: The kernel function used for KDE, defaults to built-in xu_kernel.
-    :param num_bins: The number of bins used for KDE, defaults to 64.
-    :type num_bins: int
-    :param window_radius: The smoothing window radius in KDE, in terms of bin width units, defaults to 1.
-    :type window_radius: float
-    :return: tensor of losses, shape B (common batch dims tuple of input and target)
-    :rtype: torch.Tensor
+    Args:
+        input (torch.Tensor): Batch of 2d tensors shape (B,H,W) where B
+            is any batch dimensions tuple, possibly empty.
+        target (torch.Tensor): Batch of 2d tensors, same shape as input.
+        kernel_function: The kernel function used for KDE, defaults to
+            built-in xu_kernel.
+        num_bins (int): The number of bins used for KDE, defaults to 64.
+        window_radius (float): The smoothing window radius in KDE, in
+            terms of bin width units, defaults to 1.
+
+    Returns:
+        torch.Tensor: tensor of losses, shape B (common batch dims tuple
+        of input and target)
     """
     module = MILossFromRef2D(
         reference_signal=target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
@@ -401,17 +430,19 @@ def mutual_information_loss_3d(
     To have a loss function, the opposite is returned.
     Can also handle two batches of 3d tensors, then a batch of loss values is returned.
 
-    :param input: Batch of 3d tensors shape (B,D,H,W) where B is any batch dimensions tuple, possibly empty
-    :type input: torch.Tensor
-    :param target: Batch of 3d tensors, same shape as input.
-    :type target: torch.Tensor
-    :param kernel_function: The kernel function used for KDE, defaults to built-in xu_kernel.
-    :param num_bins: The number of bins used for KDE, defaults to 64.
-    :type num_bins: int
-    :param window_radius: The smoothing window radius in KDE, in terms of bin width units, defaults to 1.
-    :type window_radius: float
-    :return: tensor of losses, shape B (common batch dims tuple of input and target)
-    :rtype: torch.Tensor
+    Args:
+        input (torch.Tensor): Batch of 3d tensors shape (B,D,H,W) where
+            B is any batch dimensions tuple, possibly empty.
+        target (torch.Tensor): Batch of 3d tensors, same shape as input.
+        kernel_function: The kernel function used for KDE, defaults to
+            built-in xu_kernel.
+        num_bins (int): The number of bins used for KDE, defaults to 64.
+        window_radius (float): The smoothing window radius in KDE, in
+            terms of bin width units, defaults to 1.
+
+    Returns:
+        torch.Tensor: tensor of losses, shape B (common batch dims tuple
+        of input and target)
     """
     module = MILossFromRef3D(
         reference_signal=target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
@@ -432,17 +463,20 @@ def normalized_mutual_information_loss(
     To have a loss function, the opposite is returned.
     Can also handle two batches of flat tensors, then a batch of loss values is returned.
 
-    :param input: Batch of flat tensors shape (B,N) where B is any batch dimensions tuple, possibly empty
-    :type input: torch.Tensor
-    :param target: Batch of flat tensors, same shape as input.
-    :type target: torch.Tensor
-    :param kernel_function: The kernel function used for KDE, defaults to built-in xu_kernel.
-    :param num_bins:The number of bins used for KDE, defaults to 64.
-    :type num_bins: int
-    :param window_radius: The smoothing window radius in KDE, in terms of bin width units, defaults to 1.
-    :type window_radius: float
-    :return: tensor of losses, shape B (common batch dims tuple of input and target)
-    :rtype: torch.Tensor
+    Args:
+        input (torch.Tensor): Batch of flat tensors shape (B,N) where B
+            is any batch dimensions tuple, possibly empty.
+        target (torch.Tensor): Batch of flat tensors, same shape as
+            input.
+        kernel_function: The kernel function used for KDE, defaults to
+            built-in xu_kernel.
+        num_bins (int): The number of bins used for KDE, defaults to 64.
+        window_radius (float): The smoothing window radius in KDE, in
+            terms of bin width units, defaults to 1.
+
+    Returns:
+        torch.Tensor: tensor of losses, shape B (common batch dims tuple
+        of input and target)
     """
     module = NMILossFromRef(
         reference_signal=target,
@@ -466,17 +500,19 @@ def normalized_mutual_information_loss_2d(
     To have a loss function, the opposite is returned.
     Can also handle two batches of 2d tensors, then a batch of loss values is returned.
 
-    :param input: Batch of 2d tensors shape (B,H,W) where B is any batch dimensions tuple, possibly empty
-    :type input: torch.Tensor
-    :param target: Batch of 2d tensors, same shape as input.
-    :type target: torch.Tensor
-    :param kernel_function: The kernel function used for KDE, defaults to built-in xu_kernel.
-    :param num_bins: The number of bins used for KDE, defaults to 64.
-    :type num_bins: int
-    :param window_radius: The smoothing window radius in KDE, in terms of bin width units, defaults to 1.
-    :type window_radius: float
-    :return: tensor of losses, shape B (common batch dims tuple of input and target)
-    :rtype: torch.Tensor
+    Args:
+        input (torch.Tensor): Batch of 2d tensors shape (B,H,W) where B
+            is any batch dimensions tuple, possibly empty.
+        target (torch.Tensor): Batch of 2d tensors, same shape as input.
+        kernel_function: The kernel function used for KDE, defaults to
+            built-in xu_kernel.
+        num_bins (int): The number of bins used for KDE, defaults to 64.
+        window_radius (float): The smoothing window radius in KDE, in
+            terms of bin width units, defaults to 1.
+
+    Returns:
+        torch.Tensor: tensor of losses, shape B (common batch dims tuple
+        of input and target)
     """
     module = NMILossFromRef2D(
         reference_signal=target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
@@ -497,17 +533,19 @@ def normalized_mutual_information_loss_3d(
     To have a loss function, the opposite is returned.
     Can also handle two batches of 3d tensors, then a batch of loss values is returned.
 
-    :param input: Batch of 3d tensors shape (B,D,H,W) where B is any batch dimensions tuple, possibly empty
-    :type input: torch.Tensor
-    :param target: Batch of 3d tensors, same shape as input.
-    :type target: torch.Tensor
-    :param kernel_function: The kernel function used for KDE, defaults to built-in xu_kernel.
-    :param num_bins: The number of bins used for KDE, defaults to 64.
-    :type num_bins: int
-    :param window_radius: The smoothing window radius in KDE, in terms of bin width units, defaults to 1.
-    :type window_radius: float
-    :return: tensor of losses, shape B (common batch dims tuple of input and target)
-    :rtype: torch.Tensor
+    Args:
+        input (torch.Tensor): Batch of 3d tensors shape (B,D,H,W) where
+            B is any batch dimensions tuple, possibly empty.
+        target (torch.Tensor): Batch of 3d tensors, same shape as input.
+        kernel_function: The kernel function used for KDE, defaults to
+            built-in xu_kernel.
+        num_bins (int): The number of bins used for KDE, defaults to 64.
+        window_radius (float): The smoothing window radius in KDE, in
+            terms of bin width units, defaults to 1.
+
+    Returns:
+        torch.Tensor: tensor of losses, shape B (common batch dims tuple
+        of input and target)
     """
     module = NMILossFromRef3D(
         reference_signal=target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
