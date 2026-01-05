@@ -49,14 +49,17 @@ def config():
     return KimiVLConfig(vision_config=vision_config, projector_config=projector_config)
 
 
+@pytest.fixture
+def model(device, dtype, config):
+    return KimiVLModel(config).to(device, dtype)
+
+
 class TestKimiVLModel(BaseTester):
-    def test_smoke(self, device, dtype, config):
-        model = KimiVLModel(config).to(device, dtype)
+    def test_smoke(self, model):
         assert model is not None
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
-    def test_cardinality(self, device, dtype, config, batch_size):
-        model = KimiVLModel(config).to(device, dtype)
+    def test_cardinality(self, device, dtype, model, config, batch_size):
         images = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
 
         output = model(images)
@@ -69,8 +72,7 @@ class TestKimiVLModel(BaseTester):
         expected_patches = 16
         assert output.shape == (batch_size, expected_patches, config.projector_config.output_dim)
 
-    def test_variable_resolution(self, device, dtype, config):
-        model = KimiVLModel(config).to(device, dtype)
+    def test_variable_resolution(self, device, dtype, model, config):
         batch_size = 1
         # 48x48 image -> 12x12 patches -> 6x6 after shuffle -> 36 patches
         images = torch.randn(batch_size, 3, 48, 48, device=device, dtype=dtype)
@@ -78,8 +80,7 @@ class TestKimiVLModel(BaseTester):
         output = model(images)
         assert output.shape == (batch_size, 36, config.projector_config.output_dim)
 
-    def test_attention_mask(self, device, dtype, config):
-        model = KimiVLModel(config).to(device, dtype)
+    def test_attention_mask(self, device, dtype, model, config):
         batch_size = 1
         images = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
 
@@ -94,14 +95,13 @@ class TestKimiVLModel(BaseTester):
         output = model(images, attention_mask=mask)
         assert output.shape == (batch_size, 16, config.projector_config.output_dim)
 
-    def test_exception(self, device, dtype, config):
-        model = KimiVLModel(config).to(device, dtype)
+    def test_exception(self, device, dtype, model):
         # Test invalid input shape (missing batch dim)
         with pytest.raises((RuntimeError, ValueError, IndexError)):
             images = torch.randn(3, 32, 32, device=device, dtype=dtype)
             model(images)
 
-    def test_gradcheck(self, device, dtype, config):
+    def test_gradcheck(self, device, config):
         # Convert model to float64 for gradcheck
         model = KimiVLModel(config).to(device, torch.float64).train()
         batch_size = 1
@@ -109,8 +109,8 @@ class TestKimiVLModel(BaseTester):
 
         self.gradcheck(model, images, raise_exception=True, fast_mode=True)
 
-    def test_dynamo(self, device, dtype, torch_optimizer, config):
-        model = KimiVLModel(config).to(device, dtype).eval()
+    def test_dynamo(self, device, dtype, torch_optimizer, model):
+        model = model.eval()
         batch_size = 1
         images = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
 
