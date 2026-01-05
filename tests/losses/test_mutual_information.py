@@ -60,7 +60,6 @@ class TestMutualInformationBatch:
                 normalized_loss_iterative = torch.stack(normalized_losses)
 
                 # 4. Compare
-                print(f"{loss_batch.shape=},{loss_iterative.shape}")
                 assert loss_batch.shape == dims[:-1], "The shape of the batched losses for mi is wrong."
                 assert normalized_loss_batch.shape == dims[:-1], "The shape of the batched losses for nmi is wrong."
 
@@ -111,7 +110,6 @@ def value_ranges_check(n_samples=10000, num_bins=64):
             "Wrong MI behaviour, correlated case."
         )
         # relative MI, expect 0
-        print(relative_mi(img_1, img_3, window_radius=radius))
         assert torch.allclose(relative_mi(img_1, img_3, window_radius=radius), torch.zeros(1), atol=0.2), (
             "Wrong MI behaviour, uncorrelated case."
         )
