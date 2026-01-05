@@ -50,7 +50,9 @@ doctest = { cmd = "uv run pytest -v --doctest-modules kornia/" }
 toml-fmt = { cmd = "tombi format", description = "Format TOML files" }
 toml-fmt-check = { cmd = "tombi format --check", description = "Check TOML formatting" }
 # Docs
-build-docs = { cmd = "uv run sphinx-build -W -b html docs/source docs/build/html" }
+build-docs = { cmd = "uv run python -m sphinx -W -b html docs/source docs/build/html", depends-on = [
+  "install-docs"
+] }
 # Utility
 clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete && rm -rf .venv" }
 

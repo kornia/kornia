@@ -387,7 +387,7 @@ class DescriptorMatcherWithSteerer(nn.Module):
     Example:
         >>> import kornia as K
         >>> import kornia.feature as KF
-        >>> device = K.utils.get_cuda_or_mps_device_if_available()
+        >>> device = K.core.utils.get_cuda_or_mps_device_if_available()
         >>> img1 = torch.randn([1, 3, 768, 768], device=device)
         >>> img2 = torch.randn([1, 3, 768, 768], device=device)
         >>> dedode = KF.DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-SO2").to(device)
