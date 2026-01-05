@@ -393,7 +393,7 @@ def mutual_information_loss_2d(
 ) -> torch.Tensor:
     """Compute differentiable mutual information for 2d tensors.
 
-    mi = (H(X) + H(Y) - H(X,Y))
+    nmi = (H(X) + H(Y)) / H(X,Y)
     To have a loss function, the opposite is returned.
     Can also handle two batches of 2d tensors, then a batch of loss values is returned.
 
@@ -426,7 +426,7 @@ def mutual_information_loss_3d(
 ) -> torch.Tensor:
     """Compute differentiable mutual information for 3d tensors.
 
-    mi = (H(X) + H(Y) - H(X,Y))
+    nmi = (H(X) + H(Y)) / H(X,Y)
     To have a loss function, the opposite is returned.
     Can also handle two batches of 3d tensors, then a batch of loss values is returned.
 
