@@ -62,19 +62,19 @@ class TestMutualInformationLoss(BaseTester):
                 normalized_mutual_information_loss(img_1, img_2, window_radius=radius, num_bins=num_bins),
                 -2 * torch.ones(1),
                 atol=0.2 * radius + 0.15,
-            ), "Wrong NMI behaviour, uncorrelated case."
+            ), "Wrong NMI behaviour, correlated case."
 
             # NMI, expect -1
             assert torch.allclose(
                 normalized_mutual_information_loss(img_1, img_3, window_radius=radius, num_bins=num_bins),
                 -torch.ones(1),
                 atol=0.1,
-            ), "Wrong NMI behaviour, correlated case."
+            ), "Wrong NMI behaviour, uncorrelated case."
             assert torch.allclose(
                 normalized_mutual_information_loss(img_2, img_3, window_radius=radius, num_bins=num_bins),
                 -torch.ones(1),
                 atol=0.1,
-            ), "Wrong NMI behaviour, correlated case."
+            ), "Wrong NMI behaviour, uncorrelated case."
 
     def test_smoke(self, device, dtype):
         """Basic functionality test"""
