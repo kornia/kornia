@@ -49,8 +49,8 @@ def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
 
 
 def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> torch.Tensor:
-    min_val, _ = data.min(axis=-1)
-    max_val, _ = data.max(axis=-1)
+    min_val, _ = data.min(dim=-1)
+    max_val, _ = data.max(dim=-1)
     diff = (max_val - min_val).unsqueeze(-1)
     # signal is considered trivial if too low variation
     return torch.where(diff > eps, (data - min_val.unsqueeze(-1)) / diff * num_bins, 0)
