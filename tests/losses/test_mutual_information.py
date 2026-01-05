@@ -27,9 +27,9 @@ class TestMutualInformationBatch:
         Loss(Batch of 4) == Mean(Loss(Image 1), Loss(Image 2), ...)
         """
         torch.manual_seed(0)  # Fix seed for reproducibility
-        for i in range(5):
+        for dim_param in range(5):
             # 1. Create random batch with n_dims = i+1
-            dims = torch.randint(low=1, high=8, size=(i + 1,))
+            dims = torch.randint(low=1, high=8, size=(dim_param + 1,))
             dims = tuple(map(int, dims))
             device = torch.device("cpu")
             for _ in range(10):
