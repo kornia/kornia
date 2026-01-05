@@ -32,11 +32,11 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
     Args:
         gain: Range for the gain factor (intensity) applied to the generated illumination.
         center: The center coordinates of the Gaussian distribution are expressed as a
-        percentage of the spatial dimensions :math:(H, W).
+            percentage of the spatial dimensions :math:(H, W).
         sigma: The sigma values (standard deviation) of the Gaussian distribution are expressed as a
-        percentage of the spatial dimensions :math:(H, W).
+            percentage of the spatial dimensions :math:(H, W).
         sign: Range for the sign of the Gaussian distribution. If only one sign is needed,
-        insert only as a tuple or float.
+            insert only as a tuple or float.
         p: Probability of applying the transformation.
         same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it

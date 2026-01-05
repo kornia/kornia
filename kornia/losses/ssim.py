@@ -48,15 +48,15 @@ def ssim_loss(
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
         eps: Small value for numerically stability when dividing.
-        reduction : Specifies the reduction to apply to the
-         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
+        reduction: Specifies the reduction to apply to the
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of elements
+            in the output, ``'sum'``: the output will be summed.
         padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
-         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
+            area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
-        The loss based on the ssim index.
+        torch.Tensor: The loss based on the ssim index.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)
@@ -97,15 +97,15 @@ class SSIMLoss(nn.Module):
         window_size: the size of the gaussian kernel to smooth the images.
         max_val: the dynamic range of the images.
         eps: Small value for numerically stability when dividing.
-        reduction : Specifies the reduction to apply to the
-         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
+        reduction: Specifies the reduction to apply to the
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of elements
+            in the output, ``'sum'``: the output will be summed.
         padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
-         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
+            area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
-        The loss based on the ssim index.
+        torch.Tensor: The loss based on the ssim index.
 
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5)

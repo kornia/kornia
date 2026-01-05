@@ -30,13 +30,15 @@ class TranslateGenerator(RandomGeneratorBase):
     r"""Get parameters for ``translate`` for a random translate transform.
 
     Args:
-        translate: tuple of maximum absolute fraction for horizontal
-            and vertical translations. For example translate=(a, b), then horizontal shift
-            is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
-            randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
+        translate_x: tuple of maximum absolute fraction for horizontal translation.
+            For example translate_x=(a, b), then horizontal shift is randomly sampled in the range
+            -img_width * a < dx < img_width * a. Will not translate by default.
+        translate_y: tuple of maximum absolute fraction for vertical translation.
+            For example translate_y=(a, b), then vertical shift is randomly sampled in the range
+            -img_height * a < dy < img_height * a. Will not translate by default.
 
     Returns:
-        A dict of parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: A dict of parameters to be passed for transformation.
             - translations (torch.Tensor): element-wise translations with a shape of (B, 2).
 
     Note:

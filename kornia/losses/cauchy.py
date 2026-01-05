@@ -44,13 +44,13 @@ def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
         img1: the predicted torch.tensor with shape :math:`(*)`.
         img2: the target torch.tensor with the same shape as img1.
         reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied (default), ``'mean'``: the sum of the output will be divided
-          by the number of elements in the output, ``'sum'``: the output will be
-          summed.
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+            will be applied (default), ``'mean'``: the sum of the output will be divided
+            by the number of elements in the output, ``'sum'``: the output will be
+            summed.
 
-    Return:
-        a scalar with the computed loss.
+    Returns:
+        torch.Tensor: a scalar with the computed loss.
 
     Example:
         >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
@@ -106,10 +106,10 @@ class CauchyLoss(nn.Module):
 
     Args:
         reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied (default), ``'mean'``: the sum of the output will be divided
-          by the number of elements in the output, ``'sum'``: the output will be
-          summed.
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+            will be applied (default), ``'mean'``: the sum of the output will be divided
+            by the number of elements in the output, ``'sum'``: the output will be
+            summed.
 
     Shape:
         - img1: the predicted torch.tensor with shape :math:`(*)`.

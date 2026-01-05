@@ -37,7 +37,7 @@ class CropGenerator(RandomGeneratorBase):
         resize_to (tuple): Desired output size of the crop, like (h, w). If None, no resize will be performed.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - src (torch.Tensor): cropping bounding boxes with a shape of (B, 4, 2).
             - dst (torch.Tensor): output bounding boxes with a shape (B, 4, 2).
 
@@ -159,7 +159,7 @@ class ResizedCropGenerator(CropGenerator):
         ratio (torch.Tensor): range of aspect ratio of the origin aspect ratio cropped with (2,) shape.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - size (torch.Tensor): element-wise cropping sizes with a shape of (B, 2).
 
     Note:
@@ -291,13 +291,13 @@ def center_crop_generator(
 
     Args:
         batch_size (int): the torch.tensor batch size.
-        height (int) : height of the image.
+        height (int): height of the image.
         width (int): width of the image.
         size (tuple): Desired output size of the crop, like (h, w).
         device (Union[str, torch.device, None]): the device on which the random numbers will be generated. Default: cpu.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - src (torch.Tensor): cropping bounding boxes with a shape of (B, 4, 2).
             - dst (torch.Tensor): output bounding boxes with a shape (B, 4, 2).
 

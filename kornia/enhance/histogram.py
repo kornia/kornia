@@ -33,8 +33,8 @@ def marginal_pdf(
 
     Returns:
         Tuple[torch.Tensor, torch.Tensor]:
-          - torch.Tensor: shape [BxN].
-          - torch.Tensor: shape [BxNxNUM_BINS].
+            - torch.Tensor: shape [BxN].
+            - torch.Tensor: shape [BxNxNUM_BINS].
 
     """
     if not isinstance(values, torch.Tensor):
@@ -180,29 +180,29 @@ def image_histogram2d(
 
     Args:
         image: Input torch.tensor to compute the histogram with shape
-          :math:`(H, W)`, :math:`(C, H, W)` or :math:`(B, C, H, W)`.
+            :math:`(H, W)`, :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         min: Lower end of the interval (inclusive).
         max: Upper end of the interval (inclusive). Ignored when
-          :attr:`centers` is specified.
+            :attr:`centers` is specified.
         n_bins: The number of histogram bins. Ignored when
-          :attr:`centers` is specified.
+            :attr:`centers` is specified.
         bandwidth: Smoothing factor. If not specified or equal to -1,
-          :math:`(bandwidth = (max - min) / n_bins)`.
+            :math:`(bandwidth = (max - min) / n_bins)`.
         centers: Centers of the bins with shape :math:`(n_bins,)`.
-          If not specified or empty, it is calculated as centers of
-          equal width bins of [min, max] range.
+            If not specified or empty, it is calculated as centers of
+            equal width bins of [min, max] range.
         return_pdf: If True, also return probability densities for
-          each bin.
+            each bin.
         kernel: kernel to perform kernel density estimation
-          ``(`triangular`, `gaussian`, `uniform`, `epanechnikov`)``.
+            ``(`triangular`, `gaussian`, `uniform`, `epanechnikov`)``.
         eps: epsilon for numerical stability.
 
     Returns:
         Computed histogram of shape :math:`(bins)`, :math:`(C, bins)`,
-          :math:`(B, C, bins)`.
+            :math:`(B, C, bins)`.
         Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,
-          :math:`(B, C, bins)`, if return_pdf is ``True``. torch.Tensor of torch.zeros with shape
-          of the histogram otherwise.
+            :math:`(B, C, bins)`, if return_pdf is ``True``. torch.Tensor of torch.zeros with shape
+            of the histogram otherwise.
 
     """
     if image is not None and not isinstance(image, torch.Tensor):

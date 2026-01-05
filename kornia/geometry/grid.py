@@ -38,13 +38,13 @@ def create_meshgrid(
         height: the image height (rows).
         width: the image width (cols).
         normalized_coordinates: whether to normalize
-          coordinates in the range :math:`[-1,1]` in order to be consistent with the
-          PyTorch function :py:func:`torch.nn.functional.grid_sample`.
+            coordinates in the range :math:`[-1,1]` in order to be consistent with the
+            PyTorch function :py:func:`torch.nn.functional.grid_sample`.
         device: the device on which the grid will be generated.
         dtype: the data type of the generated grid.
 
-    Return:
-        grid tensor with shape :math:`(1, H, W, 2)`.
+    Returns:
+        torch.Tensor: grid tensor with shape :math:`(1, H, W, 2)`.
 
     Example:
         >>> create_meshgrid(2, 2)
@@ -104,13 +104,13 @@ def create_meshgrid3d(
         height: the image height (rows).
         width: the image width (cols).
         normalized_coordinates: whether to normalize
-          coordinates in the range :math:`[-1,1]` in order to be consistent with the
-          PyTorch function :py:func:`torch.nn.functional.grid_sample`.
+            coordinates in the range :math:`[-1,1]` in order to be consistent with the
+            PyTorch function :py:func:`torch.nn.functional.grid_sample`.
         device: the device on which the grid will be generated.
         dtype: the data type of the generated grid.
 
-    Return:
-        grid tensor with shape :math:`(1, D, H, W, 3)`.
+    Returns:
+        torch.Tensor: grid tensor with shape :math:`(1, D, H, W, 3)`.
 
     """
     xs: torch.Tensor = torch.linspace(0, width - 1, width, device=device, dtype=dtype)

@@ -43,8 +43,8 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
         image: RGB Image to be converted to Lab with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        Lab version of the image with shape :math:`(*, 3, H, W)`.
-        The L channel values are in the range 0..100. a and b are in the range -128..127.
+        torch.Tensor: Lab version of the image with shape :math:`(*, 3, H, W)`.
+            The L channel values are in the range 0..100. a and b are in the range -128..127.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -95,8 +95,8 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
         clip: Whether to apply clipping to insure output RGB values in range :math:`[0, 1]`.
 
     Returns:
-        Lab version of the image with shape :math:`(*, 3, H, W)`.
-        The output RGB image are in the range of :math:`[0, 1]`.
+        torch.Tensor: Lab version of the image with shape :math:`(*, 3, H, W)`.
+            The output RGB image are in the range of :math:`[0, 1]`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -153,7 +153,7 @@ class RgbToLab(nn.Module):
     color is computed using the D65 illuminant and Observer 2.
 
     Returns:
-        Lab version of the image.
+        torch.Tensor: Lab version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -184,7 +184,7 @@ class LabToRgb(nn.Module):
     r"""Convert an image from Lab to RGB.
 
     Returns:
-        RGB version of the image. Range may not be in :math:`[0, 1]`.
+        torch.Tensor: RGB version of the image. Range may not be in :math:`[0, 1]`.
 
     Shape:
         - image: :math:`(*, 3, H, W)`

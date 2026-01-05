@@ -49,12 +49,12 @@ def gaussian_blur2d(
         sigma: the standard deviation of the kernel. Can be a tuple of two floats or a torch.tensor
             with shape :math:`(B, 2)`. Values must be positive.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         separable: run as composition of two 1d-convolutions. Default: ``True``.
 
     Returns:
-        the blurred torch.tensor with shape :math:`(B, C, H, W)`.
+        torch.Tensor: the blurred torch.tensor with shape :math:`(B, C, H, W)`.
 
     Raises:
         RuntimeError: if input is not a 4D torch.tensor.
@@ -125,12 +125,12 @@ class GaussianBlur2d(nn.Module):
         kernel_size: the size of the kernel.
         sigma: the standard deviation of the kernel.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         separable: run as composition of two 1d-convolutions.
 
     Returns:
-        the blurred torch.tensor.
+        torch.Tensor: the blurred torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`

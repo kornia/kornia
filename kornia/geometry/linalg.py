@@ -44,11 +44,11 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
 
     Args:
         trans_01: tensor with the homogeneous transformation from
-          a reference frame 1 respect to a frame 0. The tensor has must have a
-          shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
+            a reference frame 1 respect to a frame 0. The tensor has must have a
+            shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
         trans_12: tensor with the homogeneous transformation from
-          a reference frame 2 respect to a frame 1. The tensor has must have a
-          shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
+            a reference frame 2 respect to a frame 1. The tensor has must have a
+            shape of :math:`(N, 4, 4)` or :math:`(4, 4)`.
 
     Returns:
         the transformation between the two frames with shape :math:`(N, 4, 4)` or :math:`(4, 4)`.
@@ -185,7 +185,7 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
 
     Args:
         trans_01: tensor for transformations of shape
-          :math:`(B, D+1, D+1)`.
+            :math:`(B, D+1, D+1)`.
         points_1: tensor of points of shape :math:`(B, N, D)`.
 
     Returns:

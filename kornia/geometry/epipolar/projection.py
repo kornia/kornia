@@ -38,7 +38,7 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
     Args:
         focal: the focal length for the camera matrix.
         input: image torch.tensor that will determine the batch size and image height
-          and width. It is assumed to be a torch.tensor in the shape of :math:`(B, C, H, W)`.
+            and width. It is assumed to be a torch.tensor in the shape of :math:`(B, C, H, W)`.
 
     Returns:
         The camera matrix with the shape of :math:`(B, 3, 3)`.
@@ -84,7 +84,7 @@ def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: Union[float, tor
 
     Args:
         camera_matrix: the camera calibration matrix containing the intrinsic
-          parameters. The expected shape for the torch.tensor is :math:`(B, 3, 3)`.
+            parameters. The expected shape for the torch.tensor is :math:`(B, 3, 3)`.
         scale_factor: the scaling factor to be applied.
 
     Returns:

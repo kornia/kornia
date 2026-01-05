@@ -142,7 +142,7 @@ class OriNet(nn.Module):
         eps: to avoid division by zero in atan2.
 
     Returns:
-        Angle in radians.
+        torch.Tensor: Angle in radians.
 
     Shape:
         - Input: (B, 1, 32, 32)
@@ -222,7 +222,7 @@ class LAFOrienter(nn.Module):
         patch_size:
         num_angular_bins:
         angle_detector: Patch orientation estimator, e.g. :class:`~kornia.feature.PatchDominantGradientOrientation`
-          or OriNet.
+            or OriNet.
 
     """  # pylint: disable
 

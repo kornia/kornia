@@ -41,9 +41,9 @@ def triangulate_points(
         P1: The projection matrix for the first camera with shape :math:`(*, 3, 4)`.
         P2: The projection matrix for the second camera with shape :math:`(*, 3, 4)`.
         points1: The set of points seen from the first camera frame in the camera plane
-          coordinates with shape :math:`(*, N, 2)`.
+            coordinates with shape :math:`(*, N, 2)`.
         points2: The set of points seen from the second camera frame in the camera plane
-          coordinates with shape :math:`(*, N, 2)`.
+            coordinates with shape :math:`(*, N, 2)`.
 
     Returns:
         The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.

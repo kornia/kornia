@@ -61,7 +61,7 @@ class ColorMapType(Enum):
         r"""Load the base colormap corresponding to the enumeration member.
 
         Returns:
-            The base colormap.
+            ColorMapType: The base colormap.
 
         """
         return {
@@ -91,7 +91,7 @@ class ColorMapType(Enum):
         r"""Return a list of names of enumeration members.
 
         Returns:
-            A list containing the names of enumeration members.
+            List[str]: A list containing the names of enumeration members.
 
         """
         return [c.name for c in cls]
@@ -105,13 +105,13 @@ class ColorMap:
 
     Args:
         base: A list of RGB colors to define a new custom colormap or the name of a built-in colormap as str or
-        using `ColorMapType` class.
+            using `ColorMapType` class.
         num_colors: Number of colors in the colormap.
         device: The device to put the generated colormap on.
         dtype: The data type of the generated colormap.
 
     Returns:
-        An object of the colormap with the num_colors length.
+        ColorMap: An object of the colormap with the num_colors length.
 
     Examples:
         >>> ColorMap(base='viridis', num_colors=8).colors
@@ -165,7 +165,7 @@ class ColorMap:
             num_colors: Number of colors in the colormap.
 
         Returns:
-            A torch.tensor representing the colormap.
+            torch.Tensor: A torch.tensor representing the colormap.
 
         """
         tensor_colors = torch.tensor(list(base_colormap), dtype=self._dtype, device=self._device).T
@@ -175,7 +175,7 @@ class ColorMap:
         r"""Return the number of colors in the colormap.
 
         Returns:
-            Number of colors in the colormap.
+            int: Number of colors in the colormap.
 
         """
         return self.colors.shape[-1]
@@ -191,7 +191,7 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
         colormap: the colormap desired to be applied to the input torch.tensor.
 
     Returns:
-        A RGB torch.tensor with the applied color map into the input_tensor.
+        torch.Tensor: A RGB torch.tensor with the applied color map into the input_tensor.
 
     Raises:
         ValueError: If `colormap` is not a ColorMap object.
@@ -251,12 +251,6 @@ class ApplyColorMap(nn.Module):
 
     Args:
         colormap: Either the name of a built-in colormap or a ColorMap object.
-        num_colors: Number of colors in the colormap. Default is 256.
-        device: The device to put the generated colormap on.
-        dtype: The data type of the generated colormap.
-
-    Returns:
-        A RGB torch.tensor with the applied color map into the input_tensor
 
     Raises:
         ValueError: If `colormap` is not a ColorMap object.

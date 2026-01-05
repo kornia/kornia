@@ -32,7 +32,7 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         distortion_scale: controls the degree of distortion and ranges from 0 to 1.
 
     Returns:
-        A dict of parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: A dict of parameters to be passed for transformation.
             - src (torch.Tensor): perspective source bounding boxes with a shape of (B, 8, 3).
             - dst (torch.Tensor): perspective target bounding boxes with a shape (B, 8, 3).
 

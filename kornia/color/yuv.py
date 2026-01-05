@@ -40,7 +40,7 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        YUV version of the image with shape :math:`(*, 3, H, W)`.
+        torch.Tensor: YUV version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -82,8 +82,9 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        A torch.Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
-        A torch.Tensor containing the UV planes with shape :math:`(*, 2, H/2, W/2)`
+        Tuple[torch.Tensor, torch.Tensor]: Tuple containing:
+            - A torch.Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
+            - A torch.Tensor containing the UV planes with shape :math:`(*, 2, H/2, W/2)`
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
@@ -124,8 +125,9 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
-       A torch.Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
-       A torch.Tensor containing the UV planes with shape :math:`(*, 2, H, W/2)`
+        Tuple[torch.Tensor, torch.Tensor]: Tuple containing:
+            - A torch.Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
+            - A torch.Tensor containing the UV planes with shape :math:`(*, 2, H, W/2)`
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
@@ -160,7 +162,7 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
         image: YUV Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        RGB version of the image with shape :math:`(*, 3, H, W)`.
+        torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -203,7 +205,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         imageuv: UV (chroma) Image planes to be converted to RGB with shape :math:`(*, 2, H/2, W/2)`.
 
     Returns:
-        RGB version of the image with shape :math:`(*, 3, H, W)`.
+        torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
@@ -263,7 +265,7 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         imageuv: UV (luma) Image planes to be converted to RGB with shape :math:`(*, 2, H, W/2)`.
 
     Returns:
-        RGB version of the image with shape :math:`(*, 3, H, W)`.
+        torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> inputy = torch.rand(2, 1, 4, 6)
@@ -307,7 +309,7 @@ class RgbToYuv(nn.Module):
     items 2.5 and 2.6).
 
     Returns:
-        YUV version of the image.
+        torch.Tensor: YUV version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -342,7 +344,7 @@ class RgbToYuv420(nn.Module):
     items 2.5 and 2.6).
 
     Returns:
-        YUV420 version of the image.
+        torch.Tensor: YUV420 version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -377,7 +379,7 @@ class RgbToYuv422(nn.Module):
     items 2.5 and 2.6).
 
     Returns:
-        YUV422 version of the image.
+        torch.Tensor: YUV422 version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -411,7 +413,7 @@ class YuvToRgb(nn.Module):
     items 2.5 and 2.6).
 
     Returns:
-        RGB version of the image.
+        torch.Tensor: RGB version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -444,7 +446,7 @@ class Yuv420ToRgb(nn.Module):
     items 2.5 and 2.6).
 
     Returns:
-        RGB version of the image.
+        torch.Tensor: RGB version of the image.
 
     Shape:
         - imagey: :math:`(*, 1, H, W)`
@@ -479,7 +481,7 @@ class Yuv422ToRgb(nn.Module):
     items 2.5 and 2.6).
 
     Returns:
-        RGB version of the image.
+        torch.Tensor: RGB version of the image.
 
     Shape:
         - imagey: :math:`(*, 1, H, W)`

@@ -138,10 +138,10 @@ def center_crop3d(
         size: a tuple with the expected depth, height and width
             of the output patch.
         interpolation: Interpolation flag.
-        align_corners : mode for grid_generation.
+        align_corners: mode for grid_generation.
 
     Returns:
-        the output tensor with patches.
+        torch.Tensor: the output tensor with patches.
 
     Examples:
         >>> input = torch.arange(64, dtype=torch.float32).view(1, 1, 4, 4, 4)
@@ -259,8 +259,8 @@ def crop_by_boxes3d(
     in a batch must be rectangles with same width, height and depth.
 
     Args:
-        tensor : the 3D volume tensor with shape (B, C, D, H, W).
-        src_box : a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
+        tensor: the 3D volume tensor with shape (B, C, D, H, W).
+        src_box: a tensor with shape (B, 8, 3) containing the coordinates of the bounding boxes
             to be extracted. The tensor must have the shape of Bx8x3, where each box is defined in the clockwise
             order: front-top-left, front-top-right, front-bottom-right, front-bottom-left, back-top-left,
             back-top-right, back-bottom-right, back-bottom-left. The coordinates must be in x, y, z order.
@@ -272,7 +272,7 @@ def crop_by_boxes3d(
         align_corners: mode for grid_generation.
 
     Returns:
-        the output tensor with patches.
+        torch.Tensor: the output tensor with patches.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -363,13 +363,13 @@ def crop_by_transform_mat3d(
         transform: a perspective transformation matrix with shape (B, 4, 4).
         out_size: size of the output image (depth, height, width).
         mode: interpolation mode to calculate output values
-          ``'bilinear'`` | ``'nearest'``.
+            ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+            ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
 
     Returns:
-        the output tensor with patches.
+        torch.Tensor: the output tensor with patches.
 
     """
     # simulate broadcasting

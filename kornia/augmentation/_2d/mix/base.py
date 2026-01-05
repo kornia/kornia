@@ -40,10 +40,10 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     Args:
         p: probability for applying an augmentation. This param controls if to apply the augmentation for the batch.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
-          probabilities batch-wise.
+            probabilities batch-wise.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
-          to the batch form ``False``.
+            to the batch form ``False``.
         data_keys: the input type sequential for applying augmentations.
             Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "class", "label".
 

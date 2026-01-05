@@ -49,15 +49,15 @@ class MS_SSIMLoss(nn.Module):
         sigmas: gaussian sigma values.
         data_range: the range of the images.
         K: k values.
-        alpha : specifies the alpha value
+        alpha: specifies the alpha value
         compensation: specifies the scaling coefficient.
-        reduction : Specifies the reduction to apply to the
-         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
+        reduction: Specifies the reduction to apply to the
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of elements
+            in the output, ``'sum'``: the output will be summed.
 
     Returns:
-        The computed loss.
+        torch.Tensor: The computed loss.
 
     Shape:
         - Input1: :math:`(N, C, H, W)`.

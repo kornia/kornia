@@ -64,7 +64,7 @@ def dice_loss(
     Args:
         pred: logits torch.tensor with shape :math:`(N, C, H, W)` torch.where C = number of classes.
         target: labels torch.tensor with shape :math:`(N, H, W)` torch.where each value
-          is :math:`0 ≤ targets[i] ≤ C-1`.
+            is :math:`0 ≤ targets[i] ≤ C-1`.
         average:
             Reduction applied in multi-class scenario:
             - ``'micro'`` [default]: Calculate the loss across all classes.

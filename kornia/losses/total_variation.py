@@ -28,12 +28,12 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
 
     Args:
         img: the input image with shape :math:`(*, H, W)`.
-        reduction : Specifies the reduction to apply to the output: ``'mean'`` | ``'sum'``.
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
+        reduction: Specifies the reduction to apply to the output: ``'mean'`` | ``'sum'``.
+            ``'mean'``: the sum of the output will be divided by the number of elements
+            in the output, ``'sum'``: the output will be summed.
 
-    Return:
-         a torch.tensor with shape :math:`(*,)`.
+    Returns:
+        torch.Tensor: a torch.tensor with shape :math:`(*,)`.
 
     Examples:
         >>> total_variation(torch.ones(4, 4))

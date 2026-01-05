@@ -48,11 +48,11 @@ class RANSAC(nn.Module):
     Args:
         model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
             "homography_from_linesegments".
-        inliers_threshold: threshold for the correspondence to be an inlier.
+        inl_th: threshold for the correspondence to be an inlier.
         batch_size: number of generated samples at once.
-        max_iterations: maximum batches to generate. Actual number of models to try is ``batch_size * max_iterations``.
+        max_iter: maximum batches to generate. Actual number of models to try is ``batch_size * max_iter``.
         confidence: desired confidence of the result, used for the early stopping.
-        max_local_iterations: number of local optimization (polishing) iterations.
+        max_lo_iters: number of local optimization (polishing) iterations.
 
     """
 

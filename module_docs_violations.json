@@ -1,0 +1,9 @@
+{
+  "summary": {
+    "total_files_scanned": 470,
+    "total_violations": 0,
+    "returns_in_class_docstring": 0,
+    "missing_returns_in_forward": 0
+  },
+  "violations": []
+}

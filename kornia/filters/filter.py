@@ -69,17 +69,17 @@ def filter2d(
 
     Args:
         input: the input tensor with shape of
-          :math:`(B, C, H, W)`.
+            :math:`(B, C, H, W)`.
         kernel: the kernel to be convolved with the input
-          tensor. The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
+            tensor. The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``.
         normalized: If True, kernel will be L1 normalized.
         padding: This defines the type of padding.
-          2 modes available ``'same'`` or ``'valid'``.
+            2 modes available ``'same'`` or ``'valid'``.
         behaviour: defines the convolution mode -- correlation (default), using pytorch conv2d,
-        or true convolution (kernel is flipped). 2 modes available ``'corr'`` or ``'conv'``.
+            or true convolution (kernel is flipped). 2 modes available ``'corr'`` or ``'conv'``.
 
 
     Return:
@@ -171,17 +171,17 @@ def filter2d_separable(
 
     Args:
         input: the input tensor with shape of
-          :math:`(B, C, H, W)`.
+            :math:`(B, C, H, W)`.
         kernel_x: the kernel to be convolved with the input
-          tensor. The kernel shape must be :math:`(1, kW)` or :math:`(B, kW)`.
+            tensor. The kernel shape must be :math:`(1, kW)` or :math:`(B, kW)`.
         kernel_y: the kernel to be convolved with the input
-          tensor. The kernel shape must be :math:`(1, kH)` or :math:`(B, kH)`.
+            tensor. The kernel shape must be :math:`(1, kH)` or :math:`(B, kH)`.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``.
         normalized: If True, kernel will be L1 normalized.
         padding: This defines the type of padding.
-          2 modes available ``'same'`` or ``'valid'``.
+            2 modes available ``'same'`` or ``'valid'``.
 
     Return:
         Tensor: the convolved tensor of same size and numbers of channels
@@ -221,17 +221,17 @@ def filter3d(
 
     Args:
         input: the input tensor with shape of
-          :math:`(B, C, D, H, W)`.
+            :math:`(B, C, D, H, W)`.
         kernel: the kernel to be convolved with the input
-          tensor. The kernel shape must be :math:`(1, kD, kH, kW)`  or :math:`(B, kD, kH, kW)`.
+            tensor. The kernel shape must be :math:`(1, kD, kH, kW)`  or :math:`(B, kD, kH, kW)`.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``,
-          ``'replicate'`` or ``'circular'``.
+            The expected modes are: ``'constant'``,
+            ``'replicate'`` or ``'circular'``.
         normalized: If True, kernel will be L1 normalized.
 
-    Return:
-        the convolved tensor of same size and numbers of channels
-        as the input with shape :math:`(B, C, D, H, W)`.
+    Returns:
+        torch.Tensor: the convolved tensor of same size and numbers of channels
+            as the input with shape :math:`(B, C, D, H, W)`.
 
     Example:
         >>> input = torch.tensor([[[

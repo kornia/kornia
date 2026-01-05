@@ -55,8 +55,9 @@ def canny(
         eps: regularization number to avoid NaN during backprop.
 
     Returns:
-        - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
-        - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
+        Tuple[torch.Tensor, torch.Tensor]:
+            - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
+            - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/canny.html>`__.
@@ -165,7 +166,6 @@ class Canny(nn.Module):
     r"""nn.Module that finds edges of the input image and filters them using the Canny algorithm.
 
     Args:
-        input: input image torch.tensor with shape :math:`(B,C,H,W)`.
         low_threshold: lower threshold for the hysteresis procedure.
         high_threshold: upper threshold for the hysteresis procedure.
         kernel_size: the size of the kernel for the gaussian blur.
@@ -173,10 +173,6 @@ class Canny(nn.Module):
         hysteresis: if True, applies the hysteresis edge tracking.
             Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
         eps: regularization number to avoid NaN during backprop.
-
-    Returns:
-        - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
-        - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 
     Example:
         >>> input = torch.rand(5, 3, 4, 4)
@@ -237,6 +233,16 @@ class Canny(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Apply Canny edge detection to the input image.
+
+        Args:
+            input: input image torch.tensor with shape :math:`(B,C,H,W)`.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]:
+                - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
+                - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
+        """
         return canny(
             input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps
         )

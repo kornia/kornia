@@ -38,7 +38,7 @@ class MosaicGenerator(RandomGeneratorBase):
         start_ratio_range: top-left (x, y) position for cropping the mosaic images.
 
     Returns:
-        A dict of parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: A dict of parameters to be passed for transformation.
             - mosaic_ids (torch.Tensor): a shape of (B, N) torch.tensor, torch.where n is the number of mosaic images.
             - src (torch.Tensor): cropping bounding boxes with a shape of (B, 4, 2).
             - dst (torch.Tensor): output bounding boxes with a shape (B, 4, 2).

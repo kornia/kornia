@@ -28,9 +28,9 @@ class RandomEqualize3D(IntensityAugmentationBase3D):
 
     Args:
         p: probability of the image being equalized.
-        same_on_batch): apply the same transformation across the batch.
+        same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
-          to the batch form (False).
+            to the batch form (False).
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`

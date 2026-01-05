@@ -53,10 +53,10 @@ def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
         pred: the input torch.tensor with shape :math:`(B, N, H, W)`.
         target: the target torch.tensor with shape :math:`(B, N, H, W)`.
         reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+            will be applied, ``'mean'``: the sum of the output will be divided by
+            the number of elements in the output, ``'sum'``: the output will be
+            summed.
 
     Examples:
         >>> pred = torch.full((1, 1, 2, 4), 0.125)
@@ -75,10 +75,10 @@ def kl_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
         pred: the input torch.tensor with shape :math:`(B, N, H, W)`.
         target: the target torch.tensor with shape :math:`(B, N, H, W)`.
         reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+            will be applied, ``'mean'``: the sum of the output will be divided by
+            the number of elements in the output, ``'sum'``: the output will be
+            summed.
 
     Examples:
         >>> pred = torch.full((1, 1, 2, 4), 0.125)

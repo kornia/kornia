@@ -34,7 +34,7 @@ class RandomRotation(GeometricAugmentationBase2D):
 
     Args:
         degrees: range of degrees to select from. If degrees is a number the
-          range of degrees to select from will be (-degrees, +degrees).
+            range of degrees to select from will be (-degrees, +degrees).
         resample: Default: the interpolation mode.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.

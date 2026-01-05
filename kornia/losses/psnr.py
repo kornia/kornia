@@ -36,11 +36,11 @@ def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
 
     Args:
         image: the input image with shape :math:`(*)`.
-        target : the labels image with shape :math:`(*)`.
+        target: the labels image with shape :math:`(*)`.
         max_val: The maximum value in the image tensor.
 
-    Return:
-        the computed loss as a scalar.
+    Returns:
+        torch.Tensor: the computed loss as a scalar.
 
     Examples:
         >>> ones = torch.ones(1)

@@ -46,8 +46,8 @@ class OnnxLightGlue:
 
     Args:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
-          are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. `Note that FP16 requires CUDA.`
-          Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
+            are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. Note that FP16 requires CUDA.
+            Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
         device: Union[str, torch.device, None] to run inference on.
 
     """

@@ -510,7 +510,7 @@ def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torc
 
     Args:
         quaternion: a tensor containing a quaternion to be normalized.
-          The tensor can be of shape :math:`(*, 4)`.
+            The tensor can be of shape :math:`(*, 4)`.
         eps: small value to avoid division by zero.
 
     Return:
@@ -542,7 +542,7 @@ def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
-          The tensor can be of shape :math:`(*, 4)`.
+            The tensor can be of shape :math:`(*, 4)`.
 
     Return:
         the rotation matrix of shape :math:`(*, 3, 3)`.
@@ -677,11 +677,11 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
-          The tensor can be of shape :math:`(*, 3)`.
+            The tensor can be of shape :math:`(*, 3)`.
         eps: a small number for clamping.
 
-    Return:
-        the quaternion exponential map of shape :math:`(*, 4)`.
+    Returns:
+        torch.Tensor: the quaternion exponential map of shape :math:`(*, 4)`.
 
     Example:
         >>> quaternion = torch.tensor((0., 0., 0.))
@@ -716,7 +716,7 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
-          The tensor can be of shape :math:`(*, 4)`.
+            The tensor can be of shape :math:`(*, 4)`.
         eps: a small number for clamping.
 
     Return:
@@ -1067,7 +1067,7 @@ def normalize_homography(
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
-          normalized. :math:`(B, 3, 3)`
+            normalized. :math:`(B, 3, 3)`
         dsize_src: size of the source image (height, width).
         dsize_dst: size of the destination image (height, width).
 
@@ -1175,7 +1175,7 @@ def denormalize_homography(
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
-          denormalized. :math:`(B, 3, 3)`
+            denormalized. :math:`(B, 3, 3)`
         dsize_src: size of the source image (height, width).
         dsize_dst: size of the destination image (height, width).
 
@@ -1210,7 +1210,7 @@ def normalize_homography3d(
 
     Args:
         dst_pix_trans_src_pix: homography/ies from source to destination to be
-          normalized. :math:`(B, 4, 4)`
+            normalized. :math:`(B, 4, 4)`
         dsize_src: size of the source image (depth, height, width).
         dsize_dst: size of the destination image (depth, height, width).
 

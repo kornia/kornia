@@ -54,7 +54,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
     r"""nn.Sequential for creating kornia image processing pipeline.
 
     Args:
-        *args : a list of kornia augmentation and image operation modules.
+        *args: a list of kornia augmentation and image operation modules.
         same_on_batch: apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it

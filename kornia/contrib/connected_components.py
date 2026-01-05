@@ -36,7 +36,7 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
 
     Args:
         image: the binarized input image with shape :math:`(*, 1, H, W)`.
-          The image must be in floating point with range [0, 1].
+            The image must be in floating point with range [0, 1].
         num_iterations: the number of iterations to make the algorithm to converge.
 
     Return:

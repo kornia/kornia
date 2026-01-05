@@ -30,9 +30,9 @@ class RandomSnow(IntensityAugmentationBase2D):
 
     Args:
         snow_coefficient: A tuple of floats (lower and upper bound) between 0 and 1 that control
-        the amount of snow to add to the image, the larger value corresponds to the more snow.
+            the amount of snow to add to the image, the larger value corresponds to the more snow.
         brightness: A tuple of floats (lower and upper bound) greater than 1 that controls the
-        brightness of the snow.
+            brightness of the snow.
         same_on_batch: If True, apply the same transformation to each image in a batch. Default: False.
         p: Probability of applying the transformation. Default: 0.5.
         keepdim: Keep the output torch.tensor with the same shape as input. Default: False.

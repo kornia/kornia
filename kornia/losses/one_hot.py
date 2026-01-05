@@ -28,14 +28,14 @@ def one_hot(
 
     Args:
         labels: torch.tensor with labels of shape :math:`(N, *)`, torch.where N is batch size.
-          Each value is an integer representing correct classification.
+            Each value is an integer representing correct classification.
         num_classes: number of classes in labels.
         device: the desired device of returned torch.tensor.
         dtype: the desired data type of returned torch.tensor.
         eps: epsilon for numerical stability.
 
     Returns:
-        the labels in one hot torch.tensor of shape :math:`(N, C, *)`,
+        torch.Tensor: the labels in one hot torch.tensor of shape :math:`(N, C, *)`,
 
     Examples:
         >>> labels = torch.LongTensor([[[0, 1], [2, 0]]])

@@ -69,12 +69,12 @@ def unproject_meshgrid(
         width: width of image.
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(3, 3)`.
         normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
-          represented as the Euclidean ray length from the camera position.
+            represented as the Euclidean ray length from the camera position.
         device: device to place the result on.
         dtype: dtype of the result.
 
-    Return:
-        tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
+    Returns:
+        torch.Tensor: tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
 
     """
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
@@ -117,11 +117,11 @@ def depth_to_3d_v2(
         depth: image tensor containing a depth value per pixel with shape :math:`(*, H, W)`.
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(*, 3, 3)`.
         normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
-          represented as the Euclidean ray length from the camera position.
+            represented as the Euclidean ray length from the camera position.
         xyz_grid: explicit xyz point values.
 
-    Return:
-        tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
+    Returns:
+        torch.Tensor: tensor with a 3d point per pixel of the same resolution as the input :math:`(*, H, W, 3)`.
 
     Example:
         >>> depth = torch.rand(4, 4)
@@ -156,10 +156,10 @@ def depth_to_3d(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize_poin
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
         normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
-          represented as the Euclidean ray length from the camera position.
+            represented as the Euclidean ray length from the camera position.
 
-    Return:
-        tensor with a 3d point per pixel of the same resolution as the input :math:`(B, 3, H, W)`.
+    Returns:
+        torch.Tensor: tensor with a 3d point per pixel of the same resolution as the input :math:`(B, 3, H, W)`.
 
     Example:
         >>> depth = torch.rand(1, 1, 4, 4)
@@ -198,10 +198,11 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
         normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
-        represented as the Euclidean ray length from the camera position.
+            represented as the Euclidean ray length from the camera position.
 
-    Return:
-        tensor with a normal surface vector per pixel of the same resolution as the input :math:`(B, 3, H, W)`.
+    Returns:
+        torch.Tensor: tensor with a normal surface vector per pixel of the same resolution as the input
+            :math:`(B, 3, H, W)`.
 
     Example:
         >>> depth = torch.rand(1, 1, 4, 4)
@@ -290,10 +291,10 @@ def warp_frame_depth(
         src_trans_dst: transformation matrix from destination to source with shape :math:`(B,4,4)`.
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(B,3,3)`.
         normalize_points: whether to normalize the pointcloud. This must be set to ``True`` when the depth
-           is represented as the Euclidean ray length from the camera position.
+            is represented as the Euclidean ray length from the camera position.
 
-    Return:
-        the warped tensor in the source frame with shape :math:`(B,3,H,W)`.
+    Returns:
+        torch.Tensor: the warped tensor in the source frame with shape :math:`(B,3,H,W)`.
 
     """
     KORNIA_CHECK_SHAPE(image_src, ["B", "D", "H", "W"])
@@ -330,7 +331,6 @@ class DepthWarper(nn.Module):
         I_{src} = \\omega(I_{dst}, P_{src}^{\{dst\}}, D_{src})
 
     Args:
-        pinholes_dst: the pinhole models for the destination frame.
         height: the height of the image to warp.
         width: the width of the image to warp.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.

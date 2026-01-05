@@ -70,7 +70,7 @@ def match_adalam(
         lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
         config: dict with AdaLAM config
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+            to each descriptor in desc2, shape of :math:`(B1, B2)`.
         hw1: Height/width of image.
         hw2: Height/width of image.
 
@@ -78,7 +78,7 @@ def match_adalam(
     Return:
         - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
         - Long torch.tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
-          torch.where 0 <= B3 <= B1.
+            torch.where 0 <= B3 <= B1.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])

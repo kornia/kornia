@@ -38,11 +38,11 @@ def unsharp_mask(
         kernel_size: the size of the kernel.
         sigma: the standard deviation of the kernel.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``.
 
     Returns:
-        the blurred torch.tensor with shape :math:`(B,C,H,W)`.
+        torch.Tensor: the blurred torch.tensor with shape :math:`(B,C,H,W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -62,11 +62,11 @@ class UnsharpMask(nn.Module):
         kernel_size: the size of the kernel.
         sigma: the standard deviation of the kernel.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``.
 
     Returns:
-        the sharpened torch.tensor with shape :math:`(B,C,H,W)`.
+        torch.Tensor: the sharpened torch.tensor with shape :math:`(B,C,H,W)`.
 
     Shape:
         - Input: :math:`(B, C, H, W)`

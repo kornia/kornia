@@ -37,9 +37,9 @@ def oneway_transfer_error(
 
     Args:
         pts1: correspondences from the left images with shape
-          (B, N, 2 or 3). If they are homogeneous, converted automatically.
+            (B, N, 2 or 3). If they are homogeneous, converted automatically.
         pts2: correspondences from the right images with shape
-          (B, N, 2 or 3). If they are homogeneous, converted automatically.
+            (B, N, 2 or 3). If they are homogeneous, converted automatically.
         H: Homographies with shape :math:`(B, 3, 3)`.
         squared: if True (default), the squared distance is returned.
         eps: Small constant for safe sqrt.
@@ -72,9 +72,9 @@ def symmetric_transfer_error(
 
     Args:
         pts1: correspondences from the left images with shape
-          (B, N, 2 or 3). If they are homogeneous, converted automatically.
+            (B, N, 2 or 3). If they are homogeneous, converted automatically.
         pts2: correspondences from the right images with shape
-          (B, N, 2 or 3). If they are homogeneous, converted automatically.
+            (B, N, 2 or 3). If they are homogeneous, converted automatically.
         H: Homographies with shape :math:`(B, 3, 3)`.
         squared: if True (default), the squared distance is returned.
         eps: Small constant for safe sqrt.
@@ -114,9 +114,9 @@ def line_segment_transfer_error_one_way(
 
     Args:
         ls1: line segment correspondences from the left images with shape
-          (B, N, 2, 2).
+            (B, N, 2, 2).
         ls2: line segment correspondences from the right images with shape
-          (B, N, 2, 2).
+            (B, N, 2, 2).
         H: Homographies with shape :math:`(B, 3, 3)`.
         squared: if True (default is False), the squared distance is returned.
 
@@ -228,7 +228,7 @@ def find_homography_dlt_iterated(
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
-          Used for the first iteration of the IRWLS.
+            Used for the first iteration of the IRWLS.
         soft_inl_th: Soft inlier threshold used for weight calculation.
         n_iter: number of iterations.
 
@@ -365,7 +365,7 @@ def find_homography_lines_dlt_iterated(
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
         ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
-          Used for the first iteration of the IRWLS.
+            Used for the first iteration of the IRWLS.
         soft_inl_th: Soft inlier threshold used for weight calculation.
         n_iter: number of iterations.
 

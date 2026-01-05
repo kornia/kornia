@@ -37,7 +37,7 @@ class BasicSequentialBase(nn.Sequential):
     r"""BasicSequential for creating kornia modulized processing pipeline.
 
     Args:
-        *args : a list of kornia augmentation and image operation modules.
+        *args: a list of kornia augmentation and image operation modules.
 
     """
 
@@ -118,11 +118,9 @@ class SequentialBase(BasicSequentialBase):
     r"""SequentialBase for creating kornia modulized processing pipeline.
 
     Args:
-        *args : a list of kornia augmentation and image operation modules.
+        *args: a list of kornia augmentation and image operation modules.
         same_on_batch: apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings.
-        return_transform: if ``True`` return the matrix describing the transformation
-            applied to each. If None, it will not overwrite the function-wise settings.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
 

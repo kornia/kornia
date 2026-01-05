@@ -40,8 +40,8 @@ class PlainUniformGenerator(RandomGeneratorBase):
             both provided worked as a validator to the given factor.
 
     Returns:
-        A dict of parameters to be passed for transformation according the number of samplers
-        and the pointed returning name of each tuple.
+        Dict[str, torch.Tensor]: A dict of parameters to be passed for transformation according the number of samplers
+            and the pointed returning name of each tuple.
             - ``name``: element-wise probabilities with a shape of (B,).
 
     Note:

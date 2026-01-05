@@ -68,8 +68,8 @@ def harris_response(
         k: the Harris detector free parameter.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
         sigmas: coefficients to be multiplied by multichannel response. Should be shape of :math:`(B)`
-          It is necessary for performing non-maxima-suppression across different scale pyramid levels.
-          See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_.
+            It is necessary for performing non-maxima-suppression across different scale pyramid levels.
+            See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_.
 
     Return:
         the response map per channel with shape :math:`(B, C, H, W)`.
@@ -151,8 +151,8 @@ def gftt_response(
         input: input image with shape :math:`(B, C, H, W)`.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
         sigmas: coefficients to be multiplied by multichannel response. Should be shape of :math:`(B)`
-          It is necessary for performing non-maxima-suppression across different scale pyramid levels.
-          See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_.
+            It is necessary for performing non-maxima-suppression across different scale pyramid levels.
+            See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_.
 
     Return:
         the response map per channel with shape :math:`(B, C, H, W)`.
@@ -228,15 +228,15 @@ def hessian_response(
         input: input image with shape :math:`(B, C, H, W)`.
         grads_mode: can be ``'sobel'`` for standalone use or ``'diff'`` for use on Gaussian pyramid.
         sigmas: coefficients to be multiplied by multichannel response. Should be shape of :math:`(B)`
-          It is necessary for performing non-maxima-suppression across different scale pyramid levels.
-          See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_.
+            It is necessary for performing non-maxima-suppression across different scale pyramid levels.
+            See `vlfeat <https://github.com/vlfeat/vlfeat/blob/master/vl/covdet.c#L874>`_.
 
     Return:
         the response map per channel with shape :math:`(B, C, H, W)`.
 
     Shape:
-       - Input: :math:`(B, C, H, W)`
-       - Output: :math:`(B, C, H, W)`
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
 
     Examples:
         >>> input = torch.tensor([[[

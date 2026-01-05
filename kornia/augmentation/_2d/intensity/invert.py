@@ -31,7 +31,7 @@ class RandomInvert(IntensityAugmentationBase2D):
 
     Args:
         max_val: The expected maximum value in the input tensor. The shape has to
-          according to the input tensor shape, or at least has to work with broadcasting.
+            according to the input tensor shape, or at least has to work with broadcasting.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it

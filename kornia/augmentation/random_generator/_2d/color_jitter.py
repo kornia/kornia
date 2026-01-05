@@ -46,7 +46,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
         hue: The hue factor to apply.
 
     Returns:
-        A dict of parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: A dict of parameters to be passed for transformation.
             - brightness_factor: element-wise brightness factors with a shape of (B,).
             - contrast_factor: element-wise contrast factors with a shape of (B,).
             - hue_factor: element-wise hue factors with a shape of (B,).

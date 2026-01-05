@@ -37,13 +37,12 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         kernel_size: the size of the kernel.
         sigma: the range for the standard deviation of the kernel.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
+            The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
         separable: run as composition of two 1d-convolutions.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
-        silence_instantiation_warning: if True, silence the warning at instantiation.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`

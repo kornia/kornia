@@ -35,7 +35,7 @@ class CropGenerator3D(RandomGeneratorBase):
         resize_to (tuple): Desired output size of the crop, like (d, h, w). If None, no resize will be performed.
 
     Returns:
-        A dict of parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: A dict of parameters to be passed for transformation.
             - src (torch.Tensor): cropping bounding boxes with a shape of (B, 8, 3).
             - dst (torch.Tensor): output bounding boxes with a shape (B, 8, 3).
 
@@ -167,14 +167,14 @@ def center_crop_generator3d(
 
     Args:
         batch_size (int): the torch.tensor batch size.
-        depth (int) : depth of the image.
-        height (int) : height of the image.
+        depth (int): depth of the image.
+        height (int): height of the image.
         width (int): width of the image.
         size (tuple): Desired output size of the crop, like (d, h, w).
         device (Union[str, torch.device, None]): the device on which the random numbers will be generated. Default: cpu.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - src (torch.Tensor): cropping bounding boxes with a shape of (B, 8, 3).
             - dst (torch.Tensor): output bounding boxes with a shape (B, 8, 3).
 

@@ -33,7 +33,7 @@ class ProbabilityGenerator(RandomGeneratorBase):
         p: probability to generate an 1-d binary mask. Default value is 0.5.
 
     Returns:
-        A dict of parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: A dict of parameters to be passed for transformation.
             - probs (torch.Tensor): element-wise probabilities with a shape of (B,).
 
     Note:

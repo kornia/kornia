@@ -147,12 +147,12 @@ def guided_blur(
         kernel_size: the size of the kernel.
         eps: regularization parameter. Smaller values preserve more edges.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
 
     Returns:
-        the blurred torch.tensor with same shape as `input` :math:`(B, C, H, W)`.
+        torch.Tensor: the blurred torch.tensor with same shape as `input` :math:`(B, C, H, W)`.
 
     Examples:
         >>> guidance = torch.rand(2, 3, 5, 5)
@@ -188,12 +188,12 @@ class GuidedBlur(nn.Module):
         kernel_size: the size of the kernel.
         eps: regularization parameter. Smaller values preserve more edges.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
 
     Returns:
-        the blurred input torch.tensor.
+        torch.Tensor: the blurred input torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`

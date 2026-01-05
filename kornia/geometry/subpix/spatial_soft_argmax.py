@@ -297,11 +297,11 @@ def conv_soft_argmax2d(
 
          .. math::
              H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[0] -
-               (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
+                 (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
 
          .. math::
              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[1] -
-               (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
+                 (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
 
     Examples:
         >>> input = torch.randn(20, 16, 50, 32)
@@ -403,7 +403,7 @@ def conv_soft_argmax3d(
         eps: small value to avoid zero division.
         output_value: if True, val is output, if False, only ij.
         strict_maxima_bonus: pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
-          This is needed for mimic behavior of strict NMS in classic local features
+            This is needed for mimic behavior of strict NMS in classic local features
 
     Returns:
         Function has two outputs - argmax coordinates and the softmaxpooled heatmap values themselves.
@@ -414,11 +414,11 @@ def conv_soft_argmax3d(
 
          .. math::
              D_{out} = \left\lfloor\frac{D_{in}  + 2 \times \text{padding}[0] -
-             (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
+                 (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
 
          .. math::
              H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[1] -
-             (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
+                 (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
 
          .. math::
              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[2] -
@@ -563,7 +563,7 @@ def conv_quad_interp3d(
     Args:
         input: the given heatmap with shape :math:`(N, C, D_{in}, H_{in}, W_{in})`.
         strict_maxima_bonus: pixels, which are strict maxima will score (1 + strict_maxima_bonus) * value.
-          This is needed for mimic behavior of strict NMS in classic local features
+            This is needed for mimic behavior of strict NMS in classic local features
         eps: parameter to control the hessian matrix ill-condition number.
 
     Returns:
@@ -574,11 +574,11 @@ def conv_quad_interp3d(
 
          .. math::
              D_{out} = \left\lfloor\frac{D_{in}  + 2 \times \text{padding}[0] -
-             (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
+                 (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
 
          .. math::
              H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[1] -
-             (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
+                 (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
 
          .. math::
              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[2] -

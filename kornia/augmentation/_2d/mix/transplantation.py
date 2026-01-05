@@ -48,39 +48,37 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
     Args:
         excluded_labels: sequence of labels which should not be transplanted from a donor. This can be useful if only
-          parts of the image are annotated and the non-annotated regions (with a specific label index) should be
-          excluded from the augmentation. If no label is left in the donor image, nothing is transplanted.
+            parts of the image are annotated and the non-annotated regions (with a specific label index) should be
+            excluded from the augmentation. If no label is left in the donor image, nothing is transplanted.
         p: probability for applying an augmentation to an image. This parameter controls how many images in a batch
-          receive a transplant.
+            receive a transplant.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
-          probabilities batch-wise.
+            probabilities batch-wise.
         data_keys: the input type sequential for applying augmentations. There must be at least one "mask" torch.tensor.
-          If no data keys are given, the first torch.tensor is assumed to be `DataKey.INPUT` and the second
-          torch.tensor `DataKey.MASK`.
-          Accepts "input", "mask".
+            If no data keys are given, the first torch.tensor is assumed to be `DataKey.INPUT` and the second
+            torch.tensor `DataKey.MASK`.
+            Accepts "input", "mask".
 
     Note:
         - This augmentation requires that segmentation masks are available for all images in the batch and that at
-          least some objects in the image are annotated.
+        least some objects in the image are annotated.
         - When using this class directly (`RandomTransplantation()(...)`), it works for arbitrary spatial dimensions
-          including 2D and 3D images. When wrapping in :class:`kornia.augmentation.AugmentationSequential`, use
+        including 2D and 3D images. When wrapping in :class:`kornia.augmentation.AugmentationSequential`, use
           :class:`kornia.augmentation.RandomTransplantation` for 2D and
           :class:`kornia.augmentation.RandomTransplantation3D` for 3D images.
 
     Inputs:
         - Segmentation mask torch.tensor which is used to determine the objects for transplantation: :math:`(B, *)`.
         - (optional) Additional image or mask tensors torch.where the features are transplanted based on the first
-          segmentation mask: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)` (`DataKey.MASK`).
+        segmentation mask: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)` (`DataKey.MASK`).
 
     Returns:
-        torch.Tensor | list[torch.Tensor]:
-
-        torch.Tensor:
-            - Augmented mask tensors: :math:`(B, *)`.
-        list[torch.Tensor]:
-            - Augmented mask tensors: :math:`(B, *)`.
-            - Additional augmented image or mask tensors: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)`
-              (`DataKey.MASK`).
+        Union[torch.Tensor, List[torch.Tensor]]: Union containing:
+            - torch.Tensor: Augmented mask tensors: :math:`(B, *)`.
+            - list[torch.Tensor]: List containing:
+                - Augmented mask tensors: :math:`(B, *)`.
+                - Additional augmented image or mask tensors: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)`
+                    (`DataKey.MASK`).
 
     Examples:
         >>> import torch

@@ -30,8 +30,8 @@ class AdalamConfig(TypedDict):
 
     Args:
         area_ratio: Ratio between seed circle area and image area. Higher values produce more seeds with smaller
-        neighborhoods
-    search_expansion: Expansion factor of the seed circle radius for the purpose of collecting neighborhoods.
+            neighborhoods.
+        search_expansion: Expansion factor of the seed circle radius for the purpose of collecting neighborhoods.
         Increases neighborhood radius without changing seed distribution
     ransac_iters: Fixed number of inner GPU-RANSAC iterations
     min_inliers: Minimum number of inliers required to accept inliers coming from a neighborhood

@@ -34,12 +34,12 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
     Args:
         input: the input flow map with shape :math:`(*, 2)`.
         target: the target flow map with shape :math:`(*, 2)`.
-        reduction : Specifies the reduction to apply to the
-         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
+        reduction: Specifies the reduction to apply to the
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of elements
+            in the output, ``'sum'``: the output will be summed.
 
-    Return:
+    Returns:
         the computed AEPE as a scalar.
 
     Examples:
@@ -84,14 +84,14 @@ class AEPE(nn.Module):
         \text{AEPE}=\frac{1}{hw}\sum_{i=1, j=1}^{h, w}\sqrt{(I_{i,j,1}-T_{i,j,1})^{2}+(I_{i,j,2}-T_{i,j,2})^{2}}
 
     Args:
-        reduction : Specifies the reduction to apply to the
-         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
-         ``'mean'``: the sum of the output will be divided by the number of elements
-         in the output, ``'sum'``: the output will be summed.
+        reduction: Specifies the reduction to apply to the
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of elements
+            in the output, ``'sum'``: the output will be summed.
 
     Shape:
         - input: :math:`(*, 2)`.
-        - target :math:`(*, 2)`.
+        - target: :math:`(*, 2)`.
         - output: :math:`(1)`.
 
     Examples:

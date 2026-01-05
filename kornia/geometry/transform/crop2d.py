@@ -50,16 +50,16 @@ def crop_and_resize(
 
     Args:
         input_tensor: the 2D image torch.tensor with shape (B, C, H, W).
-        boxes : a torch.tensor containing the coordinates of the bounding boxes to be extracted.
+        boxes: a torch.tensor containing the coordinates of the bounding boxes to be extracted.
             The torch.tensor must have the shape of Bx4x2, torch.where each box is defined in the following (clockwise)
             order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order.
             The coordinates would compose a rectangle with a shape of (N1, N2).
         size: a tuple with the height and width that will be
             used to resize the extracted patches.
         mode: interpolation mode to calculate output values
-          ``'bilinear'`` | ``'nearest'``.
+            ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | 'reflection'.
+            ``'torch.zeros'`` | ``'border'`` | 'reflection'.
         align_corners: mode for grid_generation.
 
     Returns:
@@ -125,15 +125,15 @@ def center_crop(
     Args:
         input_tensor: the 2D image torch.tensor with shape (B, C, H, W).
         size: a tuple with the expected height and width
-          of the output patch.
+            of the output patch.
         mode: interpolation mode to calculate output values
-          ``'bilinear'`` | ``'nearest'``.
+            ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+            ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
 
     Returns:
-        the output torch.tensor with patches.
+        torch.Tensor: the output torch.tensor with patches.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -218,9 +218,9 @@ def crop_by_boxes(
             in the clockwise order: top-left, top-right, bottom-right and bottom-left.
             The coordinates must be in x, y order.
         mode: interpolation mode to calculate output values
-          ``'bilinear'`` | ``'nearest'``.
+            ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+            ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
         validate_boxes: flag to perform validation on boxes.
 
@@ -290,13 +290,13 @@ def crop_by_transform_mat(
         transform: a perspective transformation matrix with shape (B, 3, 3).
         out_size: size of the output image (height, width).
         mode: interpolation mode to calculate output values
-          ``'bilinear'`` | ``'nearest'``.
-        padding_mode (str): padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+            ``'bilinear'`` | ``'nearest'``.
+        padding_mode: padding mode for outside grid values
+            ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
 
     Returns:
-        the output torch.tensor with patches.
+        torch.Tensor: the output torch.tensor with patches.
 
     """
     # simulate broadcasting

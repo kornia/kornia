@@ -32,7 +32,7 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
     Args:
         gain: Range for the gain factor (intensity) applied to the generated illumination.
         sign: Range for the sign of the distribution. If only one sign is needed,
-        insert only as a tuple or float.
+            insert only as a tuple or float.
         p: Probability of applying the transformation.
         same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -139,7 +139,7 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
     Args:
         gain: Range for the gain factor (intensity) applied to the generated illumination.
         sign: Range for the sign of the distribution. If only one sign is needed,
-        insert only as a tuple or float.
+            insert only as a tuple or float.
         p: Probability of applying the transformation.
         same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it

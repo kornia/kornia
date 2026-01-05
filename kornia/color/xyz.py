@@ -32,7 +32,7 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
         image: RGB Image to be converted to XYZ with shape :math:`(*, 3, H, W)`.
 
     Returns:
-         XYZ version of the image with shape :math:`(*, 3, H, W)`.
+        torch.Tensor: XYZ version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -65,7 +65,7 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
         image: XYZ Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        RGB version of the image with shape :math:`(*, 3, H, W)`.
+        torch.Tensor: RGB version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -97,7 +97,7 @@ class RgbToXyz(nn.Module):
     The image data is assumed to be in the range of (0, 1).
 
     Returns:
-        XYZ version of the image.
+        torch.Tensor: XYZ version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -124,7 +124,7 @@ class XyzToRgb(nn.Module):
     r"""Converts an image from XYZ to RGB.
 
     Returns:
-        RGB version of the image.
+        torch.Tensor: RGB version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`

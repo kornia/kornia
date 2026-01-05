@@ -77,7 +77,7 @@ def adjust_saturation_with_gray_subtraction(image: torch.Tensor, factor: Union[f
     Args:
         image: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
         factor: How much to adjust the saturation. 0 will give a black
-          and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
+            and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
 
     Return:
         Adjusted image in the shape of :math:`(*, 3, H, W)`.
@@ -131,7 +131,7 @@ def adjust_saturation(image: torch.Tensor, factor: Union[float, torch.Tensor]) -
     Args:
         image: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
         factor: How much to adjust the saturation. 0 will give a black
-          and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
+            and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
         saturation_mode: The mode to adjust saturation.
 
     Return:
@@ -206,9 +206,9 @@ def adjust_hue(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch
     Args:
         image: Image to be adjusted in the shape of :math:`(*, 3, H, W)`.
         factor: How much to shift the hue channel. Should be in [-PI, PI]. PI
-          and -PI give complete reversal of hue channel in HSV space in positive and negative
-          direction respectively. 0 means no shift. Therefore, both -PI and PI will give an
-          image with complementary colors while 0 gives the original image.
+            and -PI give complete reversal of hue channel in HSV space in positive and negative
+            direction respectively. 0 means no shift. Therefore, both -PI and PI will give an
+            image with complementary colors while 0 gives the original image.
 
     Return:
         Adjusted image in the shape of :math:`(*, 3, H, W)`.
@@ -1029,7 +1029,7 @@ def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch
     Args:
         image: The input torch.tensor to invert with an arbitatry shape.
         max_val: The expected maximum value in the input torch.tensor. The shape has to
-          according to the input torch.tensor shape, or at least has to work with broadcasting.
+            according to the input torch.tensor shape, or at least has to work with broadcasting.
 
     Example:
         >>> img = torch.rand(1, 2, 4, 4)
@@ -1065,7 +1065,7 @@ class AdjustSaturation(nn.Module):
 
     Args:
         saturation_factor: How much to adjust the saturation. 0 will give a black
-          and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
+            and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
         saturation_mode: The mode to adjust saturation.
 
     Shape:
@@ -1116,7 +1116,7 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
 
     Args:
         saturation_factor: How much to adjust the saturation. 0 will give a black
-          and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
+            and white image, 1 will give the original image while 2 will enhance the saturation by a factor of 2.
         saturation_mode: The mode to adjust saturation.
 
     Shape:
@@ -1167,9 +1167,9 @@ class AdjustHue(nn.Module):
 
     Args:
         hue_factor: How much to shift the hue channel. Should be in [-PI, PI]. PI
-          and -PI give complete reversal of hue channel in HSV space in positive and negative
-          direction respectively. 0 means no shift. Therefore, both -PI and PI will give an
-          image with complementary colors while 0 gives the original image.
+            and -PI give complete reversal of hue channel in HSV space in positive and negative
+            direction respectively. 0 means no shift. Therefore, both -PI and PI will give an
+            image with complementary colors while 0 gives the original image.
 
     Shape:
         - Input: Image/torch.Tensor to be adjusted in the shape of :math:`(*, 3, H, W)`.
@@ -1215,8 +1215,8 @@ class AdjustGamma(nn.Module):
 
     Args:
         gamma: Non negative real number, same as y\gammay in the equation.
-          gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
-          dark regions lighter.
+            gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
+            dark regions lighter.
         gain: The constant multiplier.
 
     Shape:
@@ -1255,9 +1255,9 @@ class AdjustContrast(nn.Module):
 
     Args:
         contrast_factor: Contrast adjust factor per element
-          in the batch. 0 generates a completely black image, 1 does not modify
-          the input image while any other non-negative number modify the
-          brightness by this factor.
+            in the batch. 0 generates a completely black image, 1 does not modify
+            the input image while any other non-negative number modify the
+            brightness by this factor.
 
     Shape:
         - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
@@ -1293,10 +1293,10 @@ class AdjustContrastWithMeanSubtraction(nn.Module):
 
     Args:
         contrast_factor: Contrast adjust factor per element
-          in the batch by subtracting its mean grayscaled version.
-          0 generates a completely black image, 1 does not modify
-          the input image while any other non-negative number modify the
-          brightness by this factor.
+            in the batch by subtracting its mean grayscaled version.
+            0 generates a completely black image, 1 does not modify
+            the input image while any other non-negative number modify the
+            brightness by this factor.
 
     Shape:
         - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
@@ -1332,8 +1332,8 @@ class AdjustBrightness(nn.Module):
 
     Args:
         brightness_factor: Brightness adjust factor per element
-          in the batch. 0 does not modify the input image while any other number modify the
-          brightness.
+            in the batch. 0 does not modify the input image while any other number modify the
+            brightness.
 
     Shape:
         - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
@@ -1434,8 +1434,8 @@ class AdjustBrightnessAccumulative(nn.Module):
 
     Args:
         brightness_factor: Brightness adjust factor per element
-          in the batch. 0 does not modify the input image while any other number modify the
-          brightness.
+            in the batch. 0 does not modify the input image while any other number modify the
+            brightness.
 
     Shape:
         - Input: Image/Input to be adjusted in the shape of :math:`(*, N)`.
@@ -1469,7 +1469,7 @@ class Invert(nn.Module):
     Args:
         input: The input torch.tensor to invert with an arbitatry shape.
         max_val: The expected maximum value in the input torch.tensor. The shape has to
-          according to the input torch.tensor shape, or at least has to work with broadcasting. Default: 1.0.
+            according to the input torch.tensor shape, or at least has to work with broadcasting. Default: 1.0.
 
     Example:
         >>> img = torch.rand(1, 2, 4, 4)

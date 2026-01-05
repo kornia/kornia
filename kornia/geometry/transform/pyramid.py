@@ -61,13 +61,13 @@ class PyrDown(nn.Module):
 
     Args:
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
         factor: the downsampling factor
 
-    Return:
-        the downsampled torch.tensor.
+    Returns:
+        torch.Tensor: the downsampled torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -93,9 +93,9 @@ class PyrUp(nn.Module):
     r"""Upsample a torch.tensor and then blurs it.
 
     Args:
-        borde_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+        border_type: the padding mode to be applied before convolving.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
 
     Return:
@@ -132,9 +132,10 @@ class ScalePyramid(nn.Module):
         double_image: add 2x upscaled image as 1st level of pyramid. OpenCV SIFT does this.
 
     Returns:
-        1st output: images
-        2nd output: sigmas (coefficients for scale conversion)
-        3rd output: pixelDists (coefficients for coordinate conversion)
+        Tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
+            - 1st output: images
+            - 2nd output: sigmas (coefficients for scale conversion)
+            - 3rd output: pixelDists (coefficients for coordinate conversion)
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -257,13 +258,13 @@ def pyrdown(
     Args:
         input: the torch.tensor to be downsampled.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
         factor: the downsampling factor
 
-    Return:
-        the downsampled torch.tensor.
+    Returns:
+        torch.Tensor: the downsampled torch.tensor.
 
     Examples:
         >>> input = torch.arange(16, dtype=torch.float32).reshape(1, 1, 4, 4)
@@ -298,11 +299,11 @@ def pyrup(input: torch.Tensor, border_type: str = "reflect", align_corners: bool
     Args:
         input: the torch.tensor to be downsampled.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+            The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
 
-    Return:
-        the downsampled torch.tensor.
+    Returns:
+        torch.Tensor: the downsampled torch.tensor.
 
     Examples:
         >>> input = torch.arange(4, dtype=torch.float32).reshape(1, 1, 2, 2)
@@ -339,12 +340,12 @@ def build_pyramid(
     by recursively applying pyrDown to the previously built pyramid layers.
 
     Args:
-        input : the torch.tensor to be used to construct the pyramid.
+        input: the torch.tensor to be used to construct the pyramid.
         max_level: 0-based index of the last (the smallest) pyramid layer.
-          It must be non-negative.
+            It must be non-negative.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
 
     Shape:
@@ -392,16 +393,16 @@ def build_laplacian_pyramid(
     See :cite:`burt1987laplacian` for more details.
 
     Args:
-        input : the torch.tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
+        input: the torch.tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
         max_level: 0-based index of the last (the smallest) pyramid layer.
-          It must be non-negative.
+            It must be non-negative.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
 
-    Return:
-        Output: :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
+    Returns:
+        list[torch.Tensor]: Output :math:`[(B, C, H, W), (B, C, H/2, W/2), ...]`
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])

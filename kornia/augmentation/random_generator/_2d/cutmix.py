@@ -40,7 +40,7 @@ class CutmixGenerator(RandomGeneratorBase):
             If None, it will be set to [0, 1], which means no restriction.
 
     Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: parameters to be passed for transformation.
             - mix_pairs (torch.Tensor): element-wise probabilities with a shape of (num_mix, B).
             - crop_src (torch.Tensor): element-wise probabilities with a shape of (num_mix, B, 4, 2).
 

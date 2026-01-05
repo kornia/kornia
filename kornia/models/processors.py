@@ -36,10 +36,10 @@ class ResizePreProcessor(nn.Module):
         """Construct ResizePreprocessor module.
 
         Args:
-        height: height of the resized image.
-        width: width of the resized image.
-        interpolation_mode: interpolation mode for image resizing. Supported values: ``nearest``, ``bilinear``,
-            ``bicubic``, ``area``, and ``nearest-exact``.
+            height: height of the resized image.
+            width: width of the resized image.
+            interpolation_mode: interpolation mode for image resizing. Supported values: ``nearest``, ``bilinear``,
+                ``bicubic``, ``area``, and ``nearest-exact``.
 
         """
         super().__init__()
@@ -49,9 +49,12 @@ class ResizePreProcessor(nn.Module):
     def forward(self, imgs: Union[torch.Tensor, List[torch.Tensor]]) -> Tuple[torch.Tensor, torch.Tensor]:
         """Run forward.
 
+        Args:
+            imgs: input images as a tensor or list of tensors.
+
         Returns:
-        resized_imgs: resized images in a batch.
-        original_sizes: the original image sizes of (height, width).
+            resized_imgs: resized images in a batch.
+            original_sizes: the original image sizes of (height, width).
 
         """
         # TODO: support other input formats e.g. file path, numpy
@@ -83,9 +86,12 @@ class ResizePostProcessor(nn.Module):
     ) -> Union[torch.Tensor, List[torch.Tensor]]:
         """Run forward.
 
+        Args:
+            imgs: input images as a tensor or list of tensors.
+            original_sizes: the original image sizes of (height, width).
+
         Returns:
-        resized_imgs: resized images in a batch.
-        original_sizes: the original image sizes of (height, width).
+            resized_imgs: resized images in a batch.
 
         """
         # TODO: support other input formats e.g. file path, numpy

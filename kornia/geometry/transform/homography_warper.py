@@ -58,7 +58,7 @@ class HomographyWarper(BaseWarper):
         width: The width of the destination torch.tensor.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+            ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
         normalized_coordinates: whether to use a grid with normalized coordinates.
         align_corners: interpolation flag.
 
@@ -93,10 +93,10 @@ class HomographyWarper(BaseWarper):
 
         Args:
             src_homo_dst: Homography or homographies (stacked) to
-              transform all points in the grid. Shape of the homography
-              has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
-              The homography assumes normalized coordinates [-1, 1] if
-              normalized_coordinates is True.
+                transform all points in the grid. Shape of the homography
+                has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
+                The homography assumes normalized coordinates [-1, 1] if
+                normalized_coordinates is True.
 
         """
         self._warped_grid = warp_grid(self.grid, src_homo_dst)
@@ -107,11 +107,11 @@ class HomographyWarper(BaseWarper):
         Args:
             patch_src: The torch.tensor to warp.
             src_homo_dst: The homography or torch.stack of
-              homographies from destination to source. The homography assumes
-              normalized coordinates [-1, 1] if normalized_coordinates is True.
+                homographies from destination to source. The homography assumes
+                normalized coordinates [-1, 1] if normalized_coordinates is True.
 
-        Return:
-            Patch sampled at locations from source to destination.
+        Returns:
+            torch.Tensor: Patch sampled at locations from source to destination.
 
         Shape:
             - Input: :math:`(N, C, H, W)` and :math:`(N, 3, 3)`

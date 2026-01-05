@@ -60,9 +60,9 @@ class StereoCamera:
 
         Args:
             rectified_left_camera: The rectified left camera projection matrix
-              of shape :math:`(B, 3, 4)`
+                  of shape :math:`(B, 3, 4)`
             rectified_right_camera: The rectified right camera projection matrix
-              of shape :math:`(B, 3, 4)`
+                  of shape :math:`(B, 3, 4)`
 
         """
         self._check_stereo_camera(rectified_left_camera, rectified_right_camera)
@@ -80,9 +80,9 @@ class StereoCamera:
 
         Args:
             rectified_left_camera: The rectified left camera projection matrix
-              of shape :math:`(B, 3, 4)`
+                of shape :math:`(B, 3, 4)`
             rectified_right_camera: The rectified right camera projection matrix
-              of shape :math:`(B, 3, 4)`
+                of shape :math:`(B, 3, 4)`
 
         """
         # Ensure correct shapes

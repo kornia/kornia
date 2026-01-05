@@ -26,7 +26,7 @@ def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.
     Args:
         n: the number of rows :math:`(N)`.
         input: image tensor that will determine the batch size of the output matrix.
-          The expected shape is :math:`(B, *)`.
+            The expected shape is :math:`(B, *)`.
         shared_memory: when set, all samples in the batch will share the same memory.
 
     Returns:
@@ -53,7 +53,7 @@ def vec_like(n: int, tensor: torch.Tensor, shared_memory: bool = False) -> torch
     Args:
         n: the number of rows :math:`(N)`.
         tensor: image tensor that will determine the batch size of the output matrix.
-          The expected shape is :math:`(B, *)`.
+            The expected shape is :math:`(B, *)`.
         shared_memory: when set, all samples in the batch will share the same memory.
 
     Returns:

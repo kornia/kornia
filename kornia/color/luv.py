@@ -44,7 +44,7 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         eps: for numerically stability when dividing.
 
     Returns:
-        Luv version of the image with shape :math:`(*, 3, H, W)`.
+        torch.Tensor: Luv version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -97,7 +97,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
         eps: for numerically stability when dividing.
 
     Returns:
-        Luv version of the image with shape :math:`(*, 3, H, W)`.
+        torch.Tensor: Luv version of the image with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -146,7 +146,7 @@ class RgbToLuv(nn.Module):
     color is computed using the D65 illuminant and Observer 2.
 
     Returns:
-        Luv version of the image.
+        torch.Tensor: Luv version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`
@@ -177,7 +177,7 @@ class LuvToRgb(nn.Module):
     r"""Convert an image from Luv to RGB.
 
     Returns:
-        RGB version of the image.
+        torch.Tensor: RGB version of the image.
 
     Shape:
         - image: :math:`(*, 3, H, W)`

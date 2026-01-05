@@ -30,9 +30,9 @@ class PinholeCamera:
 
     Args:
         intrinsics: torch.tensor with shape :math:`(B, 4, 4)`
-          containing the full 4x4 camera calibration matrix.
+            containing the full 4x4 camera calibration matrix.
         extrinsics: torch.tensor with shape :math:`(B, 4, 4)`
-          containing the full 4x4 rotation-translation matrix.
+            containing the full 4x4 rotation-translation matrix.
         height: torch.tensor with shape :math:`(B)` containing the image height.
         width: torch.tensor with shape :math:`(B)` containing the image width.
 
@@ -277,8 +277,8 @@ class PinholeCamera:
 
         Args:
             scale_factor: a torch.tensor with the scale factor. It has
-              to be broadcastable with class members. The expected shape is
-              :math:`(B)` or :math:`(1)`.
+                to be broadcastable with class members. The expected shape is
+                :math:`(B)` or :math:`(1)`.
 
         Returns:
             the camera model with scaled parameters.
@@ -300,8 +300,8 @@ class PinholeCamera:
 
         Args:
             scale_factor: a torch.tensor with the scale factor. It has
-              to be broadcastable with class members. The expected shape is
-              :math:`(B)` or :math:`(1)`.
+                to be broadcastable with class members. The expected shape is
+                :math:`(B)` or :math:`(1)`.
 
         Returns:
             the camera model with scaled parameters.
@@ -352,9 +352,6 @@ class PinholeCamera:
                 world coordinates. The shape of the torch.tensor can be :math:`(*, 2)`.
             depth: torch.tensor containing the depth value of each 2d
                 points. The torch.tensor shape must be equal to point2d :math:`(*, 1)`.
-            normalize: whether to F.normalize the pointcloud. This
-                must be set to `True` when the depth is represented as the Euclidean
-                ray length from the camera position.
 
         Returns:
             torch.tensor of (x, y, z) world coordinates with shape :math:`(*, 3)`.
@@ -708,7 +705,7 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
     Args:
         cam_coords_src: (x, y, z) coordinates defined in the first camera coordinates system. Shape must be BxHxWx3.
         dst_proj_src: the projection matrix between the
-          reference and the non reference camera frame. Shape must be Bx4x4.
+            reference and the non reference camera frame. Shape must be Bx4x4.
         eps: small value to avoid division by zero error.
 
     Returns:

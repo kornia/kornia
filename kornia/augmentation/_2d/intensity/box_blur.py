@@ -31,7 +31,7 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
     Args:
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
+            The expected modes are: ``constant``, ``reflect``, ``replicate`` or ``circular``.
         normalized: if True, L1 norm of the kernel is set to 1.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.

@@ -88,7 +88,7 @@ def gaussian(
         window_size: the size which drives the filter amount.
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
         mean: Mean of the Gaussian function (center). If not provided, it defaults to window_size // 2.
-        If a tensor, should be in a shape :math:`(B, 1)`
+            If a tensor, should be in a shape :math:`(B, 1)`
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
 

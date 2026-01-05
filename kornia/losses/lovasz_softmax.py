@@ -59,11 +59,11 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
     Args:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
         target: labels tensor with shape :math:`(N, H, W)` where each value
-          is :math:`0 ≤ targets[i] ≤ C-1`.
+            is :math:`0 ≤ targets[i] ≤ C-1`.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
-    Return:
-        a scalar with the computed loss.
+    Returns:
+        torch.Tensor: a scalar with the computed loss.
 
     Example:
         >>> N = 5  # num_classes
@@ -161,12 +161,12 @@ class LovaszSoftmaxLoss(nn.Module):
 
     Args:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
-        labels: labels tensor with shape :math:`(N, H, W)` where each value
-          is :math:`0 ≤ targets[i] ≤ C-1`.
+        target: labels tensor with shape :math:`(N, H, W)` where each value
+            is :math:`0 ≤ targets[i] ≤ C-1`.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
-    Return:
-        a scalar with the computed loss.
+    Returns:
+        torch.Tensor: a scalar with the computed loss.
 
     Example:
         >>> N = 5  # num_classes

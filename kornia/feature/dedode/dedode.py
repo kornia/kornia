@@ -224,7 +224,7 @@ class DeDoDe(nn.Module):
                 'B-C4', 'B-SO2', 'G-C4', 'G-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152).
                 Default is 'G-upright'.
             amp_dtype: the dtype to use for the model. One of torch.float16 or torch.float32.
-            Default is torch.float16, suitable for CUDA. Use torch.float32 for CPU or MPS
+                Default is torch.float16, suitable for CUDA. Use torch.float32 for CPU or MPS.
 
         Returns:
             The pretrained model.

@@ -33,7 +33,6 @@ class RandomThinPlateSpline(AugmentationBase2D):
     Args:
         scale: the scale factor to apply to the destination points.
         align_corners: Interpolation flag used by ``grid_sample``.
-        mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it

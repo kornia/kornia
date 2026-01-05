@@ -484,13 +484,13 @@ def motion_from_essential_choose_solution(
         K1: The camera matrix from first camera with shape :math:`(*, 3, 3)`.
         K2: The camera matrix from second camera with shape :math:`(*, 3, 3)`.
         x1: The set of points seen from the first camera frame in the camera plane
-          coordinates with shape :math:`(*, N, 2)`.
+            coordinates with shape :math:`(*, N, 2)`.
         x2: The set of points seen from the first camera frame in the camera plane
-          coordinates with shape :math:`(*, N, 2)`.
+            coordinates with shape :math:`(*, N, 2)`.
         mask: A boolean mask which can be used to exclude some points from choosing
-          the best solution. This is useful for using this function with sets of points of
-          different cardinality (for instance after filtering with RANSAC) while keeping batch
-          semantics. Mask is of shape :math:`(*, N)`.
+            the best solution. This is useful for using this function with sets of points of
+            different cardinality (for instance after filtering with RANSAC) while keeping batch
+            semantics. Mask is of shape :math:`(*, N)`.
 
     Returns:
         The rotation and translation plus the 3d triangulated points.

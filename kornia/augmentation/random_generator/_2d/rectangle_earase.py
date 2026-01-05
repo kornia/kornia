@@ -35,7 +35,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         value (float): value to be filled in the erased area.
 
     Returns:
-        A dict of parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: A dict of parameters to be passed for transformation.
             - widths (torch.Tensor): element-wise erasing widths with a shape of (B,).
             - heights (torch.Tensor): element-wise erasing heights with a shape of (B,).
             - xs (torch.Tensor): element-wise erasing x coordinates with a shape of (B,).

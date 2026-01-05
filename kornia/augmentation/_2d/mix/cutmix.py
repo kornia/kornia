@@ -41,10 +41,8 @@ class RandomCutMixV2(MixAugmentationBaseV2):
     <https://github.com/clovaai/CutMix-PyTorch>`_.
 
     Args:
-        height: the width of the input image.
-        width: the width of the input image.
         p: probability for applying an augmentation to a batch. This param controls the augmentation
-                   probabilities batch-wisely.
+            probabilities batch-wisely.
         num_mix: cut mix times.
         beta: hyperparameter for generating cut size from beta distribution.
             Beta cannot be set to 0 after torch 1.8.0. If None, it will be set to 1.
@@ -63,9 +61,9 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         - Raw labels, shape of :math:`(B)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]:
-        - Adjusted image, shape of :math:`(B, C, H, W)`.
-        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, num_mix, 3)`.
+        Tuple[torch.Tensor, torch.Tensor]: Tuple containing:
+            - Adjusted image, shape of :math:`(B, C, H, W)`.
+            - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, num_mix, 3)`.
 
     Note:
         This implementation would randomly cutmix images in a batch. Ideally, the larger batch size would be preferred.

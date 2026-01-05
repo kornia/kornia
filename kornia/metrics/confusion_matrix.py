@@ -28,12 +28,12 @@ def confusion_matrix(
 
     Args:
         pred: tensor with estimated targets returned by a
-          classifier. The shape can be :math:`(B, *)` and must contain integer
-          values between 0 and K-1.
+            classifier. The shape can be :math:`(B, *)` and must contain integer
+            values between 0 and K-1.
         target: tensor with ground truth (correct) target
-          values. The shape can be :math:`(B, *)` and must contain integer
-          values between 0 and K-1, where targets are assumed to be provided as
-          one-hot vectors.
+            values. The shape can be :math:`(B, *)` and must contain integer
+            values between 0 and K-1, where targets are assumed to be provided as
+            one-hot vectors.
         num_classes: total possible number of classes in target.
         normalized: whether to return the confusion matrix normalized.
 

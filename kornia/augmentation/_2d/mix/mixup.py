@@ -69,9 +69,9 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         - Label: raw labels, shape of :math:`(B)`.
 
     Returns:
-        Tuple[torch.Tensor, torch.Tensor]:
-        - Adjusted image, shape of :math:`(B, C, H, W)`.
-        - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, 3)`.
+        Tuple[torch.Tensor, torch.Tensor]: Tuple containing:
+            - Adjusted image, shape of :math:`(B, C, H, W)`.
+            - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, 3)`.
 
     Note:
         This implementation would randomly mixup images in a batch. Ideally, the larger batch size would be preferred.

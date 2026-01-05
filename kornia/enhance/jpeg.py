@@ -513,9 +513,9 @@ def jpeg_codec_differentiable(
         image_rgb: the RGB image to be coded.
         jpeg_quality: JPEG quality in the range :math:`[0, 100]` controlling the compression strength.
         quantization_table_y: quantization table for Y channel. Default: `None`, which will load the standard
-          quantization table.
+            quantization table.
         quantization_table_c: quantization table for C channels. Default: `None`, which will load the standard
-          quantization table.
+            quantization table.
 
     Shape:
         - image_rgb: :math:`(*, 3, H, W)`.
@@ -681,9 +681,9 @@ class JPEGCodecDifferentiable(nn.Module):
 
     Args:
         quantization_table_y: quantization table for Y channel. Default: `None`, which will load the standard
-          quantization table.
+            quantization table.
         quantization_table_c: quantization table for C channels. Default: `None`, which will load the standard
-          quantization table.
+            quantization table.
 
     Shape:
         - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ image_rgb).

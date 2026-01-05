@@ -26,11 +26,9 @@ class Vflip(nn.Module):
 
     Input must be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
-    Args:
-        input: input torch.tensor.
 
     Returns:
-        The vertically flipped image torch.tensor.
+        torch.Tensor: The vertically flipped image torch.tensor.
 
     Examples:
         >>> vflip = Vflip()
@@ -47,6 +45,14 @@ class Vflip(nn.Module):
     """
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Apply vertical flip to the input tensor.
+
+        Args:
+            input: input torch.tensor.
+
+        Returns:
+            torch.Tensor: The vertically flipped image torch.tensor.
+        """
         return vflip(input)
 
     def __repr__(self) -> str:
@@ -58,11 +64,9 @@ class Hflip(nn.Module):
 
     Input must be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
-    Args:
-        input: input torch.tensor.
 
     Returns:
-        The horizontally flipped image torch.tensor.
+        torch.Tensor: The horizontally flipped image torch.tensor.
 
     Examples:
         >>> hflip = Hflip()
@@ -79,6 +83,14 @@ class Hflip(nn.Module):
     """
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Apply horizontal flip to the input tensor.
+
+        Args:
+            input: input torch.tensor.
+
+        Returns:
+            torch.Tensor: The horizontally flipped image torch.tensor.
+        """
         return hflip(input)
 
     def __repr__(self) -> str:
@@ -90,8 +102,6 @@ class Rot180(nn.Module):
 
     Input must be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
-    Args:
-        input: input torch.tensor.
 
     Examples:
         >>> rot180 = Rot180()
@@ -121,11 +131,9 @@ def rot180(input: torch.Tensor) -> torch.Tensor:
 
     Input must be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
-    Args:
-        input: input torch.tensor.
 
     Returns:
-        The rotated image torch.tensor.
+        torch.Tensor: The rotated image torch.tensor.
 
     """
     return torch.flip(input, [-2, -1])
@@ -138,11 +146,9 @@ def hflip(input: torch.Tensor) -> torch.Tensor:
 
     Input must be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
-    Args:
-        input: input torch.tensor.
 
     Returns:
-        The horizontally flipped image torch.tensor.
+        torch.Tensor: The horizontally flipped image torch.tensor.
 
     """
     return input.flip(-1).contiguous()
@@ -155,11 +161,9 @@ def vflip(input: torch.Tensor) -> torch.Tensor:
 
     Input must be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
-    Args:
-        input: input torch.tensor.
 
     Returns:
-        The vertically flipped image torch.tensor.
+        torch.Tensor: The vertically flipped image torch.tensor.
 
     """
     return input.flip(-2).contiguous()

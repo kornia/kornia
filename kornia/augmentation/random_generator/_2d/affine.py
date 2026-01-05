@@ -47,7 +47,7 @@ class AffineGenerator(RandomGeneratorBase):
             (shear[1][0], shear[1][1]) will be applied. Will not apply shear by default.
 
     Returns:
-        A dict of parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: A dict of parameters to be passed for transformation.
             - translations (torch.Tensor): element-wise translations with a shape of (B, 2).
             - center (torch.Tensor): element-wise center with a shape of (B, 2).
             - scale (torch.Tensor): element-wise scales with a shape of (B, 2).

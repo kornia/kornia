@@ -175,7 +175,7 @@ def warp_affine(
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'torch.zeros'`` | ``'border'`` | ``'reflection'``
             | ``'fill'``.
-        align_corners : mode for grid_generation.
+        align_corners: mode for grid_generation.
         fill_value: torch.tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area.
 
     Returns:
@@ -261,11 +261,11 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     Args:
         grid: Unwrapped grid of the shape :math:`(1, H, W, 2)`.
         src_homo_dst: Homography or homographies (stacked) to
-          transform all points in the grid. Shape of the homography
-          has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
+            transform all points in the grid. Shape of the homography
+            has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
 
     Returns:
-        the transformed grid of shape :math:`(N, H, W, 2)`.
+        torch.Tensor: the transformed grid of shape :math:`(N, H, W, 2)`.
 
     """
     batch_size: int = src_homo_dst.size(0)
@@ -286,11 +286,11 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     Args:
         grid: Unwrapped grid of the shape :math:`(1, D, H, W, 3)`.
         src_homo_dst: Homography or homographies (stacked) to
-          transform all points in the grid. Shape of the homography
-          has to be :math:`(1, 4, 4)` or :math:`(N, 1, 4, 4)`.
+            transform all points in the grid. Shape of the homography
+            has to be :math:`(1, 4, 4)` or :math:`(N, 1, 4, 4)`.
 
     Returns:
-        the transformed grid of shape :math:`(N, H, W, 3)`.
+        torch.Tensor: the transformed grid of shape :math:`(N, H, W, 3)`.
 
     """
     batch_size: int = src_homo_dst.size(0)
@@ -509,18 +509,18 @@ def remap(
 
     Args:
         image: the torch.tensor to remap with shape (B, C, H, W).
-          Where C is the number of channels.
+            Where C is the number of channels.
         map_x: the flow in the x-direction in pixel coordinates.
-          The torch.tensor must be in the shape of (B, H, W).
+            The torch.tensor must be in the shape of (B, H, W).
         map_y: the flow in the y-direction in pixel coordinates.
-          The torch.tensor must be in the shape of (B, H, W).
+            The torch.tensor must be in the shape of (B, H, W).
         mode: interpolation mode to calculate output values
-          ``'bilinear'`` | ``'nearest'``.
+            ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+            ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
         normalized_coordinates: whether the input coordinates are
-           normalized in the range of [-1, 1].
+            normalized in the range of [-1, 1].
 
     Returns:
         the warped torch.tensor with same shape as the input grid maps.
@@ -579,7 +579,7 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
 
     Args:
         matrix: original affine transform. The torch.tensor must be
-          in the shape of :math:`(B, 2, 3)`.
+            in the shape of :math:`(B, 2, 3)`.
 
     Return:
         the reverse affine transform with shape :math:`(B, 2, 3)`.
@@ -888,14 +888,14 @@ def warp_affine3d(
         This API signature it is experimental and might suffer some changes in the future.
 
     Args:
-        src : input torch.tensor of shape :math:`(B, C, D, H, W)`.
+        src: input torch.tensor of shape :math:`(B, C, D, H, W)`.
         M: projective transformation matrix of shape :math:`(B, 3, 4)`.
         dsize: size of the output image (depth, height, width).
         flags: interpolation mode to calculate output values
-          ``'bilinear'`` | ``'nearest'``.
+            ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
-        align_corners : mode for grid_generation.
+            ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+        align_corners: mode for grid_generation.
 
     Returns:
         torch.Tensor: the warped 3d torch.tensor with shape :math:`(B, C, D, H, W)`.
@@ -1247,9 +1247,9 @@ def warp_perspective3d(
         M: transformation matrix with shape :math:`(B, 4, 4)`.
         dsize: size of the output image (height, width).
         flags: interpolation mode to calculate output values
-          ``'bilinear'`` | ``'nearest'``.
+            ``'bilinear'`` | ``'nearest'``.
         border_mode: padding mode for outside grid values
-          ``'zeros'`` | ``'border'`` | ``'reflection'``.
+            ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -1295,8 +1295,8 @@ def homography_warp(
         src_homo_dst: The homography or torch.stack of homographies from destination to source of shape
             :math:`(N, 3, 3)`.
         dsize:
-          if homography normalized: The height and width of the image to warp.
-          if homography not normalized: size of the output image (height, width).
+            if homography normalized: The height and width of the image to warp.
+            if homography not normalized: size of the output image (height, width).
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
@@ -1367,7 +1367,7 @@ def homography_warp3d(
     Args:
         patch_src: The image or torch.tensor to warp. Should be from source of shape :math:`(N, C, D, H, W)`.
         src_homo_dst: The homography or torch.stack of homographies from destination to source of shape
-          :math:`(N, 4, 4)`.
+            :math:`(N, 4, 4)`.
         dsize: The height and width of the image to warp.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.

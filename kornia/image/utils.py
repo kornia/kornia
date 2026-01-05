@@ -78,7 +78,7 @@ def image_list_to_tensor(images: List[Any]) -> torch.Tensor:
 
     Args:
         images: list of images, each of the form :math:`(H, W, C)`.
-        Image shapes must be consistent
+            Image shapes must be consistent.
 
     Returns:
         tensor of the form :math:`(B, C, H, W)`.

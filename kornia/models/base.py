@@ -36,7 +36,11 @@ ModelConfig = TypeVar("ModelConfig")
 
 
 class ModelBaseMixin:
-    """Provide common properties and utilities for Kornia model classes."""
+    """Provide common properties and utilities for Kornia model classes.
+
+    This mixin provides methods for converting tensor outputs to different formats,
+    saving outputs to disk, and other common model utilities.
+    """
 
     name: str = "model"
 

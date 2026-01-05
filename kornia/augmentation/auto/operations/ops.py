@@ -388,7 +388,7 @@ class VerticalFlip(OperationBase):
     """Apply vertical flip operation.
 
     Args:
-        initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
         temperature: temperature for RelaxedBernoulli distribution used during training.
 
     """

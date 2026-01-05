@@ -36,7 +36,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
-          to the batch form (False).
+            to the batch form (False).
 
     Shape:
         - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`

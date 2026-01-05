@@ -82,16 +82,16 @@ class ScaleSpaceDetector(nn.Module):
 
     Args:
         num_features: Number of features to detect. In order to keep everything batchable,
-          output would always have num_features output, even for completely homogeneous images.
+            output would always have num_features output, even for completely homogeneous images.
         mr_size: multiplier for local feature scale compared to the detection scale.
-          6.0 is matching OpenCV 12.0 convention for SIFT.
+            6.0 is matching OpenCV 12.0 convention for SIFT.
         scale_pyr_module: generates scale pyramid. See :class:`~kornia.geometry.ScalePyramid` for details.
-          Default: ScalePyramid(3, 1.6, 10).
+            Default: ScalePyramid(3, 1.6, 10).
         resp_module: calculates ``'cornerness'`` of the pixel.
         nms_module: outputs per-patch coordinates of the response maxima.
-          See :class:`~kornia.geometry.ConvSoftArgmax3d` for details.
+            See :class:`~kornia.geometry.ConvSoftArgmax3d` for details.
         ori_module: for local feature orientation estimation. Default:class:`~kornia.feature.PassLAF`,
-           which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
+            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
             which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
         minima_are_also_good: if True, then both response function minima and maxima are detected
@@ -251,7 +251,7 @@ class ScaleSpaceDetector(nn.Module):
         Args:
             img: image to extract features with shape [BxCxHxW]
             mask: a mask with weights torch.where to apply the response function. The shape must be the same as
-              the input image.
+                the input image.
 
         Returns:
             lafs: shape [BxNx2x3]. Detected local affine frames.
@@ -297,7 +297,7 @@ class MultiResolutionDetector(nn.Module):
         num_features: Number of features to detect.
         conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
         ori_module: for local feature orientation estimation. Default: :class:`~kornia.feature.PassLAF`,
-           which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
+        which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,
             which does nothing. See :class:`~kornia.feature.LAFAffineShapeEstimator` for details.
 

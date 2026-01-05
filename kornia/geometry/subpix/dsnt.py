@@ -82,7 +82,7 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
     Args:
         input: the input torch.tensor representing dense spatial probabilities with shape :math:`(B, N, H, W)`.
         normalized_coordinates: whether to return the coordinates normalized in the range
-          of :math:`[-1, 1]`. Otherwise, it will return the coordinates in the range of the input shape.
+            of :math:`[-1, 1]`. Otherwise, it will return the coordinates in the range of the input shape.
 
     Returns:
        expected value of the 2D coordinates with shape :math:`(B, N, 2)`. Output order of the coordinates is (x, y).
@@ -126,10 +126,10 @@ def render_gaussian2d(
     Args:
         mean: the mean location of the Gaussian to render, :math:`(\mu_x, \mu_y)`. Shape: :math:`(*, 2)`.
         std: the standard deviation of the Gaussian to render, :math:`(\sigma_x, \sigma_y)`.
-          Shape :math:`(*, 2)`. Should be able to be broadcast with `mean`.
+            Shape :math:`(*, 2)`. Should be able to be broadcast with `mean`.
         size: the (height, width) of the output image.
         normalized_coordinates: whether ``mean`` and ``std`` are assumed to use coordinates normalized
-          in the range of :math:`[-1, 1]`. Otherwise, coordinates are assumed to be in the range of the output shape.
+            in the range of :math:`[-1, 1]`. Otherwise, coordinates are assumed to be in the range of the output shape.
 
     Returns:
         torch.tensor including rendered points with shape :math:`(*, H, W)`.

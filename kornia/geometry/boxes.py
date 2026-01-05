@@ -1015,7 +1015,7 @@ class Boxes3D:
 
         Returns:
             the output mask tensor, shape of :math:`(N, depth, width, height)` or :math:`(B,N, depth, width, height)`
-             and dtype of :func:`Boxes3D.dtype` (it can be any floating point dtype).
+                and dtype of :func:`Boxes3D.dtype` (it can be any floating point dtype).
 
         Note:
             It is currently non-differentiable.

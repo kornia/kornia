@@ -184,7 +184,7 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
                 \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
 
     Returns:
-        the transformed torch.tensor.
+        torch.Tensor: the transformed torch.tensor.
 
     .. note::
         This function is tested against https://github.com/adobe/antialiased-cnns.
@@ -290,7 +290,7 @@ def edge_aware_blur_pool2d(
         epsilon: for numerical stability.
 
     Returns:
-        The blurred torch.tensor of shape :math:`(B, C, H, W)`.
+        torch.Tensor: The blurred torch.tensor of shape :math:`(B, C, H, W)`.
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])

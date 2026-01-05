@@ -104,19 +104,19 @@ def bilateral_blur(
         input: the input torch.tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges.
+            Smaller values preserve more edges.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+            This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         color_distance_type: the type of distance to calculate intensity/color
-          difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
-          match OpenCV implementation. Use ``'l2'`` to match Matlab implementation.
-          Default: ``'l1'``.
+            difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
+            match OpenCV implementation. Use ``'l2'`` to match Matlab implementation.
+            Default: ``'l1'``.
 
     Returns:
-        the blurred torch.tensor with shape :math:`(B, C, H, W)`.
+        torch.Tensor: the blurred torch.tensor with shape :math:`(B, C, H, W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -150,18 +150,18 @@ def joint_bilateral_blur(
         guidance: the guidance torch.tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges.
+            Smaller values preserve more edges.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+            This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         color_distance_type: the type of distance to calculate intensity/color
-          difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
-          match OpenCV implementation.
+            difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
+            match OpenCV implementation.
 
     Returns:
-        the blurred torch.tensor with shape :math:`(B, C, H, W)`.
+        torch.Tensor: the blurred torch.tensor with shape :math:`(B, C, H, W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -212,19 +212,19 @@ class BilateralBlur(_BilateralBlur):
     Arguments:
         kernel_size: the size of the kernel.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges.
+            Smaller values preserve more edges.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+            This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         color_distance_type: the type of distance to calculate intensity/color
-          difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
-          match OpenCV implementation. Use ``'l2'`` to match Matlab implementation.
-          Default: ``'l1'``.
+            difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
+            match OpenCV implementation. Use ``'l2'`` to match Matlab implementation.
+            Default: ``'l1'``.
 
     Returns:
-        the blurred input torch.tensor.
+        torch.Tensor: the blurred input torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -255,18 +255,18 @@ class JointBilateralBlur(_BilateralBlur):
     Arguments:
         kernel_size: the size of the kernel.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
-          Smaller values preserve more edges.
+            Smaller values preserve more edges.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+            This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
         color_distance_type: the type of distance to calculate intensity/color
-          difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
-          match OpenCV implementation.
+            difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
+            match OpenCV implementation.
 
     Returns:
-        the blurred input torch.tensor.
+        torch.Tensor: the blurred input torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`

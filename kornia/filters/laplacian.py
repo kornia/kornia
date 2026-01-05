@@ -38,12 +38,12 @@ def laplacian(
         input: the input image tensor with shape :math:`(B, C, H, W)`.
         kernel_size: the size of the kernel.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``.
         normalized: if True, L1 norm of the kernel is set to 1.
 
-    Return:
-        the blurred image with shape :math:`(B, C, H, W)`.
+    Returns:
+        torch.Tensor: the blurred image with shape :math:`(B, C, H, W)`.
 
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_edges.html>`__.
@@ -72,8 +72,8 @@ class Laplacian(nn.Module):
     Args:
         kernel_size: the size of the kernel.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``.
         normalized: if True, L1 norm of the kernel is set to 1.
 
     Shape:

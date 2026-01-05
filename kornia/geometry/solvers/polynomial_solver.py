@@ -33,7 +33,7 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     .. math:: coeffs[0]x^2 + coeffs[1]x + coeffs[2] = 0
 
     Args:
-        coeffs : The coefficients of quadratic equation :`(B, 3)`
+        coeffs: The coefficients of quadratic equation :`(B, 3)`
 
     Returns:
         A torch.tensor of shape `(B, 2)` containing the real roots to the quadratic equation.
@@ -95,7 +95,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     .. math:: coeffs[0]x^3 + coeffs[1]x^2 + coeffs[2]x + coeffs[3] = 0
 
     Args:
-        coeffs : The coefficients cubic equation : `(B, 4)`
+        coeffs: The coefficients cubic equation : `(B, 4)`
 
     Returns:
         A torch.tensor of shape `(B, 3)` containing the real roots to the cubic equation.

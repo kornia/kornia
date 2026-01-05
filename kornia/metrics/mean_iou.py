@@ -26,13 +26,13 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
     The function internally computes the confusion matrix.
 
     Args:
-        pred : tensor with estimated targets returned by a
-          classifier. The shape can be :math:`(B, *)` and must contain integer
-          values between 0 and K-1.
+        pred: tensor with estimated targets returned by a
+            classifier. The shape can be :math:`(B, *)` and must contain integer
+            values between 0 and K-1.
         target: tensor with ground truth (correct) target
-          values. The shape can be :math:`(B, *)` and must contain integer
-          values between 0 and K-1, where targets are assumed to be provided as
-          one-hot vectors.
+            values. The shape can be :math:`(B, *)` and must contain integer
+            values between 0 and K-1, where targets are assumed to be provided as
+            one-hot vectors.
         num_classes: total possible number of classes in target.
         eps: epsilon for numerical stability.
 

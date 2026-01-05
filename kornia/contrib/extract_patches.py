@@ -145,9 +145,9 @@ class ExtractTensorPatches(nn.Module):
     be either:
 
         - a single ``int`` -- in which case the same value is used for the
-          height and width dimension.
+            height and width dimension.
         - a ``tuple`` of two ints -- in which case, the first `int` is used for
-          the height dimension, and the second `int` for the width dimension.
+            the height dimension, and the second `int` for the width dimension.
 
     :attr:`padding` can also be a ``tuple`` of four ints -- in which case, the
     first two ints are for the height dimension while the last two ints are for
@@ -236,9 +236,9 @@ class CombineTensorPatches(nn.Module):
     be either:
 
         - a single ``int`` -- in which case the same value is used for the
-          height and width dimension.
+            height and width dimension.
         - a ``tuple`` of two ints -- in which case, the first `int` is used for
-          the height dimension, and the second `int` for the width dimension.
+            the height dimension, and the second `int` for the width dimension.
 
     :attr:`unpadding` can also be a ``tuple`` of four ints -- in which case, the
     first two ints are for the height dimension while the last two ints are for

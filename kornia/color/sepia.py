@@ -94,4 +94,13 @@ class Sepia(nn.Module):
         return self.__class__.__name__ + f"(rescale={self.rescale}, eps={self.eps})"
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        r"""Apply sepia filter to input tensor.
+
+        Args:
+            input: the input torch.tensor with shape of :math:`(*, C, H, W)`.
+
+        Returns:
+            torch.Tensor: The sepia torch.tensor of same size and numbers of channels
+                as the input with shape :math:`(*, C, H, W)`.
+        """
         return sepia_from_rgb(input, rescale=self.rescale, eps=self.eps)

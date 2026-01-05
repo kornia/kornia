@@ -38,7 +38,7 @@ class RotationGenerator3D(RandomGeneratorBase):
             Set to 0 to deactivate rotations.
 
     Returns:
-        A dict of parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: A dict of parameters to be passed for transformation.
             - yaw (torch.Tensor): element-wise rotation yaws with a shape of (B,).
             - pitch (torch.Tensor): element-wise rotation pitches with a shape of (B,).
             - roll (torch.Tensor): element-wise rotation rolls with a shape of (B,).

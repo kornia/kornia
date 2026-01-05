@@ -69,6 +69,7 @@ def _no_match(dm: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """Output empty tensors.
 
     Returns:
+        Tuple[torch.Tensor, torch.Tensor]: Tuple containing:
             - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
             - Long torch.tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
 
@@ -89,11 +90,12 @@ def match_nn(
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+            to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
     Returns:
-        - Descriptor distance of matching descriptors, shape of :math:`(B1, 1)`.
-        - Long torch.tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B1, 2)`.
+        Tuple[torch.Tensor, torch.Tensor]: Tuple containing:
+            - Descriptor distance of matching descriptors, shape of :math:`(B1, 1)`.
+            - Long torch.tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B1, 2)`.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -118,12 +120,12 @@ def match_mnn(
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+            to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
     Return:
         - Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)`.
         - Long torch.tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B3, 2)`,
-          torch.where 0 <= B3 <= min(B1, B2)
+            torch.where 0 <= B3 <= min(B1, B2)
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -161,12 +163,12 @@ def match_snn(
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
         th: distance ratio threshold.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+            to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
     Return:
         - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
         - Long torch.tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
-          torch.where 0 <= B3 <= B1.
+            torch.where 0 <= B3 <= B1.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -201,12 +203,12 @@ def match_smnn(
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
         th: distance ratio threshold.
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+            to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
     Return:
         - Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)`.
         - Long torch.tensor indexes of matching descriptors in desc1 and desc2,
-          shape of :math:`(B3, 2)` torch.where 0 <= B3 <= B1.
+            shape of :math:`(B3, 2)` torch.where 0 <= B3 <= B1.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -272,12 +274,12 @@ def match_fginn(
         spatial_th: minimal distance in pixels to 2nd nearest neighbor.
         mutual: also perform mutual nearest neighbor check
         dm: torch.Tensor containing the distances from each descriptor in desc1
-          to each descriptor in desc2, shape of :math:`(B1, B2)`.
+            to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
     Return:
         - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
         - Long torch.tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
-          torch.where 0 <= B3 <= B1.
+            torch.where 0 <= B3 <= B1.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])

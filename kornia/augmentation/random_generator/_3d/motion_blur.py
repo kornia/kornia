@@ -41,7 +41,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
             If Tuple[int, int], it will randomly generate the value from the range.
 
     Returns:
-        A dict of parameters to be passed for transformation.
+        Dict[str, torch.Tensor]: A dict of parameters to be passed for transformation.
             - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
             - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
             - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).

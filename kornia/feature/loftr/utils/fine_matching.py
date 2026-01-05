@@ -40,9 +40,9 @@ class FineMatching(nn.Module):
         Args:
             feat_f0 (torch.Tensor): [M, WW, C]
             feat_f1 (torch.Tensor): [M, WW, C]
-            data (dict)
+            data: dict containing matching data
         Update:
-            data (dict):{
+            data: dict containing matching data:{
                 'expec_f' (torch.Tensor): [M, 3],
                 'mkpts0_f' (torch.Tensor): [M, 2],
                 'mkpts1_f' (torch.Tensor): [M, 2]}

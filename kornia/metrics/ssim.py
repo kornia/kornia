@@ -63,7 +63,7 @@ def ssim(
         max_val: the dynamic range of the images.
         eps: Small value for numerically stability when dividing.
         padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
-         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
+            area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Returns:
        The ssim index map with shape :math:`(B, C, H, W)`.
@@ -162,7 +162,7 @@ class SSIM(nn.Module):
         max_val: the dynamic range of the images.
         eps: Small value for numerically stability when dividing.
         padding: ``'same'`` | ``'valid'``. Whether to only use the "valid" convolution
-         area to compute SSIM to match the MATLAB implementation of original SSIM paper.
+            area to compute SSIM to match the MATLAB implementation of original SSIM paper.
 
     Shape:
         - Input: :math:`(B, C, H, W)`.

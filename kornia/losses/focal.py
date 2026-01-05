@@ -53,19 +53,19 @@ def focal_loss(
     Args:
         pred: logits torch.tensor with shape :math:`(N, C, *)` torch.where C = number of classes.
         target: labels torch.tensor with shape :math:`(N, *)` torch.where each value is an integer
-          representing correct classification :math:`target[i] \in [0, C)`.
+            representing correct classification :math:`target[i] \in [0, C)`.
         alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+            will be applied, ``'mean'``: the sum of the output will be divided by
+            the number of elements in the output, ``'sum'``: the output will be
+            summed.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
         ignore_index: labels with this value are ignored in the loss computation.
 
-    Return:
-        the computed loss.
+    Returns:
+        torch.Tensor: the computed loss.
 
     Example:
         >>> C = 5  # num_classes
@@ -153,17 +153,17 @@ class FocalLoss(nn.Module):
         alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+            will be applied, ``'mean'``: the sum of the output will be divided by
+            the number of elements in the output, ``'sum'``: the output will be
+            summed.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
         ignore_index: labels with this value are ignored in the loss computation.
 
     Shape:
         - Pred: :math:`(N, C, *)` torch.where C = number of classes.
         - Target: :math:`(N, *)` torch.where each value is an integer
-          representing correct classification :math:`target[i] \in [0, C)`.
+            representing correct classification :math:`target[i] \in [0, C)`.
 
     Example:
         >>> C = 5  # num_classes
@@ -219,16 +219,16 @@ def binary_focal_loss_with_logits(
     Args:
         pred: logits torch.tensor with shape :math:`(N, C, *)` torch.where C = number of classes.
         target: labels torch.tensor with the same shape as pred :math:`(N, C, *)`
-          torch.where each value is between 0 and 1.
+            torch.where each value is between 0 and 1.
         alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+            will be applied, ``'mean'``: the sum of the output will be divided by
+            the number of elements in the output, ``'sum'``: the output will be
+            summed.
         pos_weight: a weight of positive examples with shape :math:`(num\_of\_classes,)`.
-          It is possible to trade off recall and precision by adding weights to positive examples.
+            It is possible to trade off recall and precision by adding weights to positive examples.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
         ignore_index: labels with this value are ignored in the loss computation.
 
@@ -325,19 +325,19 @@ class BinaryFocalLossWithLogits(nn.Module):
         alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
-          output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
-          will be applied, ``'mean'``: the sum of the output will be divided by
-          the number of elements in the output, ``'sum'``: the output will be
-          summed.
+            output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
+            will be applied, ``'mean'``: the sum of the output will be divided by
+            the number of elements in the output, ``'sum'``: the output will be
+            summed.
         pos_weight: a weight of positive examples with shape :math:`(num\_of\_classes,)`.
-          It is possible to trade off recall and precision by adding weights to positive examples.
+            It is possible to trade off recall and precision by adding weights to positive examples.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
         ignore_index: labels with this value are ignored in the loss computation.
 
     Shape:
         - Pred: :math:`(N, C, *)` torch.where C = number of classes.
         - Target: the same shape as Pred :math:`(N, C, *)`
-          torch.where each value is between 0 and 1.
+            torch.where each value is between 0 and 1.
 
     Examples:
         >>> C = 3  # num_classes

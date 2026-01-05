@@ -129,11 +129,11 @@ class CoarseMatching(nn.Module):
         Args:
             feat_c0 (torch.Tensor): [N, L, C]
             feat_c1 (torch.Tensor): [N, S, C]
-            data (dict)
+            data: dict containing matching data
             mask_c0 (torch.Tensor): [N, L] (optional)
             mask_c1 (torch.Tensor): [N, S] (optional)
         Update:
-            data (dict): {
+            data: dict containing matching data: {
                 'b_ids' (torch.Tensor): [M'],
                 'i_ids' (torch.Tensor): [M'],
                 'j_ids' (torch.Tensor): [M'],
@@ -187,7 +187,7 @@ class CoarseMatching(nn.Module):
 
         Args:
             conf_matrix (torch.Tensor): [N, L, S]
-            data (dict): with keys ['hw0_i', 'hw1_i', 'hw0_c', 'hw1_c']
+            data: dict containing matching data: with keys ['hw0_i', 'hw1_i', 'hw0_c', 'hw1_c']
 
         Returns:
             coarse_matches (dict): {

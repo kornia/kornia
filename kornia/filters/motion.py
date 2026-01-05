@@ -45,7 +45,7 @@ class MotionBlur(nn.Module):
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Returns:
-        the blurred input torch.tensor.
+        torch.Tensor: the blurred input torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -93,7 +93,7 @@ class MotionBlur3D(nn.Module):
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Returns:
-        the blurred input torch.tensor.
+        torch.Tensor: the blurred input torch.tensor.
 
     Shape:
         - Input: :math:`(B, C, D, H, W)`
@@ -160,7 +160,7 @@ def motion_blur(
         kernel_size: motion kernel width and height. It should be odd and positive.
         angle (Union[torch.Tensor, float]): angle of the motion blur in degrees (anti-clockwise rotation).
             If torch.tensor, it must be :math:`(B,)`.
-        direction : forward/backward direction of the motion blur.
+        direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
