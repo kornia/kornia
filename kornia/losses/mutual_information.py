@@ -323,7 +323,7 @@ def mutual_information_loss(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Compute differentiable mutual information for for flat tensors.
+    """Compute differentiable mutual information for flat tensors.
 
     mi = (H(X) + H(Y) - H(X,Y))
     To have a loss function, the opposite is returned.
@@ -354,7 +354,7 @@ def mutual_information_loss_2d(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Compute differentiable mutual information for for 2d tensors.
+    """Compute differentiable mutual information for 2d tensors.
 
     mi = (H(X) + H(Y) - H(X,Y))
     To have a loss function, the opposite is returned.
@@ -385,7 +385,7 @@ def mutual_information_loss_3d(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Compute differentiable mutual information for for 3d tensors.
+    """Compute differentiable mutual information for 3d tensors.
 
     mi = (H(X) + H(Y) - H(X,Y))
     To have a loss function, the opposite is returned.
@@ -416,7 +416,7 @@ def normalized_mutual_information_loss(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Compute differentiable normalized mutual information for for flat tensors.
+    """Compute differentiable normalized mutual information for flat tensors.
 
     nmi = (H(X) + H(Y)) / H(X,Y)
     To have a loss function, the opposite is returned.
@@ -450,7 +450,7 @@ def normalized_mutual_information_loss_2d(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Compute differentiable normalized mutual information for for 2d tensors.
+    """Compute differentiable normalized mutual information for 2d tensors.
 
     mi = (H(X) + H(Y) - H(X,Y))
     To have a loss function, the opposite is returned.
@@ -481,7 +481,7 @@ def normalized_mutual_information_loss_3d(
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
-    """Compute differentiable normalized mutual information for for 3d tensors.
+    """Compute differentiable normalized mutual information for 3d tensors.
 
     mi = (H(X) + H(Y) - H(X,Y))
     To have a loss function, the opposite is returned.
