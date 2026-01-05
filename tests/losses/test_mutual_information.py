@@ -193,3 +193,19 @@ class TestMutualInformationLoss(BaseTester):
         op_module = MILossFromRef(target)
 
         self.assert_close(op(*args), op_module(pred))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
+        target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
+
+        args = (pred, target)
+
+        op = mutual_information_loss
+        op_optimized = torch_optimizer(op)
+
+        self.assert_close(op(*args), op_optimized(*args))
+
+        op = normalized_mutual_information_loss
+        op_optimized = torch_optimizer(op)
+
+        self.assert_close(op(*args), op_optimized(*args))
