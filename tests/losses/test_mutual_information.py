@@ -17,7 +17,12 @@
 import pytest
 import torch
 
-from kornia.losses.mutual_information import mutual_information_loss, normalized_mutual_information_loss
+from kornia.losses.mutual_information import (
+    MILossFromRef,
+    NMILossFromRef,
+    mutual_information_loss,
+    normalized_mutual_information_loss,
+)
 
 from testing.base import BaseTester
 
@@ -172,3 +177,19 @@ class TestMutualInformationLoss(BaseTester):
                 assert torch.allclose(normalized_loss_batch.flatten(), normalized_loss_iterative, atol=1e-4), (
                     f"Batch mismatch for nmi! Batch: {normalized_loss_batch}, Iterative: {normalized_loss_iterative}"
                 )
+
+    def test_module(self, device, dtype):
+        pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
+        target = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
+
+        args = (pred, target)
+
+        op = normalized_mutual_information_loss
+        op_module = NMILossFromRef(target)
+
+        self.assert_close(op(*args), op_module(pred))
+
+        op = mutual_information_loss
+        op_module = MILossFromRef(target)
+
+        self.assert_close(op(*args), op_module(pred))
