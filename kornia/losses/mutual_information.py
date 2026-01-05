@@ -68,6 +68,8 @@ def _joint_histogram_to_entropies(joint_histogram: torch.Tensor, eps: float = 1e
 
 
 class EntropyBasedLossBase(torch.nn.Module):
+    """A base class for entropy based losses."""
+
     def __init__(
         self,
         reference_signal: torch.Tensor,
@@ -75,6 +77,17 @@ class EntropyBasedLossBase(torch.nn.Module):
         num_bins: int = 64,
         window_radius: float = 1.0,
     ):
+        """Instantiation.
+
+        :param reference_signal: reference signal to which other signals will be compared by the forward method
+        :type reference_signal: torch.Tensor
+        :param kernel_function: Used kernel function for kernel density estimate, by default xu_kernel
+        :type kernel_function: Callable
+        :param num_bins: number of signal value bins in kernel density estimate, by default 64
+        :type num_bins: int
+        :param window_radius: radius of the kernel's support interval, by default 1.0
+        :type window_radius: float
+        """
         super().__init__()
         self.register_buffer("signal", _normalize_signal(reference_signal, num_bins))
         self.num_bins = num_bins
@@ -112,7 +125,7 @@ class MILossFromRef(EntropyBasedLossBase):
         To have a loss function, the opposite is returned.
         Can also handle two batches of flat tensors, then a batch of loss values is returned.
 
-        :param input: Batch of flat tensors shape (B,N) where B is the tuple of batch dimensions for self.signal,
+        :param other_signal: Batch of flat tensors shape (B,N) where B is the tuple of batch dimensions for self.signal,
         possibly empty.
 
         :return: tensor of losses, shape B as above
@@ -132,7 +145,7 @@ class NMILossFromRef(EntropyBasedLossBase):
         To have a loss function, the opposite is returned.
         Can also handle two batches of flat tensors, then a batch of loss values is returned.
 
-        :param input: Batch of flat tensors shape (B,N) where B is the tuple of batch dimensions for self.signal,
+        :param other_signal: Batch of flat tensors shape (B,N) where B is the tuple of batch dimensions for self.signal,
         possibly empty.
 
         :return: tensor of losses, shape B as above
@@ -145,6 +158,8 @@ class NMILossFromRef(EntropyBasedLossBase):
 
 
 class MILossFromRef2D(MILossFromRef):
+    """MILossFromRef for 2D images."""
+
     def __init__(
         self,
         reference_signal: torch.Tensor,
@@ -152,18 +167,17 @@ class MILossFromRef2D(MILossFromRef):
         num_bins: int = 64,
         window_radius: float = 1,
     ):
-        """MILossFromRef for 2D images. Check details there.
+        """Instantiation.
 
-        Parameters
-        ----------
-        reference_signal : torch.Tensor
-            batch of two 2D images, shape (B,H,W) where B are the batch dimensions.
-        kernel_function : _type_, optional
-            _description_, by default xu_kernel
-        num_bins : int, optional
-            _description_, by default 64
-        window_radius : int, optional
-            _description_, by default 1
+        :param reference_signal: reference signal to which other signals will be compared by the forward method.
+        batch of 2D images, shape (B,H,W) where B are the batch dimensions.
+        :type reference_signal: torch.Tensor
+        :param kernel_function: Used kernel function for kernel density estimate, by default xu_kernel
+        :type kernel_function: Callable
+        :param num_bins: number of signal value bins in kernel density estimate, by default 64
+        :type num_bins: int
+        :param window_radius: radius of the kernel's support interval, by default 1.0
+        :type window_radius: float
         """
         super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
 
@@ -172,15 +186,13 @@ class MILossFromRef2D(MILossFromRef):
         return tensor.reshape(tensor.shape[:-2] + (-1,))
 
     def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
-        """Compute differentiable mutual information for self.signal and other_signal (both supposed 2D).
+        """Compute differentiable mutual information for reference_signal and other_signal (both supposed 2D).
 
         mi = (H(X) + H(Y) - H(X,Y))
         To have a loss function, the opposite is returned.
         Can also handle two batches of flat tensors, then a batch of loss values is returned.
 
-        :param input: Batch of flat tensors shape (B,N) where B is the tuple of batch dimensions for self.signal,
-        possibly empty.
-
+        :param other_signal: Batch of flat tensors same shape (B,H,W) as reference_signal passed for instantiation
         :return: tensor of losses, shape B as above
         :rtype: torch.Tensor
         """
@@ -188,6 +200,8 @@ class MILossFromRef2D(MILossFromRef):
 
 
 class MILossFromRef3D(MILossFromRef):
+    """MILossFromRef for 3D images."""
+
     def __init__(
         self,
         reference_signal: torch.Tensor,
@@ -195,18 +209,17 @@ class MILossFromRef3D(MILossFromRef):
         num_bins: int = 64,
         window_radius: float = 1,
     ):
-        """MILossFromRef for 2D images. Check details there.
+        """Instantiation.
 
-        Parameters
-        ----------
-        reference_signal : torch.Tensor
-            batch of two 2D images, shape (B,H,W) where B are the batch dimensions.
-        kernel_function : _type_, optional
-            _description_, by default xu_kernel
-        num_bins : int, optional
-            _description_, by default 64
-        window_radius : int, optional
-            _description_, by default 1
+        :param reference_signal: reference signal to which other signals will be compared by the forward method.
+        batch of 3D images, shape (B,D,H,W) where B are the batch dimensions.
+        :type reference_signal: torch.Tensor
+        :param kernel_function: Used kernel function for kernel density estimate, by default xu_kernel
+        :type kernel_function: Callable
+        :param num_bins: number of signal value bins in kernel density estimate, by default 64
+        :type num_bins: int
+        :param window_radius: radius of the kernel's support interval, by default 1.0
+        :type window_radius: float
         """
         super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
 
@@ -215,15 +228,13 @@ class MILossFromRef3D(MILossFromRef):
         return tensor.reshape(tensor.shape[:-3] + (-1,))
 
     def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
-        """Compute differentiable mutual information for self.signal and other_signal (both supposed 3D).
+        """Compute differentiable mutual information for reference_signal and other_signal (both supposed 3D).
 
         mi = (H(X) + H(Y) - H(X,Y))
         To have a loss function, the opposite is returned.
         Can also handle two batches of flat tensors, then a batch of loss values is returned.
 
-        :param input: Batch of flat tensors shape (B,N) where B is the tuple of batch dimensions for self.signal,
-        possibly empty.
-
+        :param other_signal: Batch of flat tensors same shape (B,D,H,W) as reference_signal passed for instantiation
         :return: tensor of losses, shape B as above
         :rtype: torch.Tensor
         """
@@ -231,6 +242,8 @@ class MILossFromRef3D(MILossFromRef):
 
 
 class NMILossFromRef2D(NMILossFromRef):
+    """NMILossFromRef for 2D images."""
+
     def __init__(
         self,
         reference_signal: torch.Tensor,
@@ -238,18 +251,17 @@ class NMILossFromRef2D(NMILossFromRef):
         num_bins: int = 64,
         window_radius: float = 1,
     ):
-        """NMILossFromRef for 2D images. Check details there.
+        """Instantiation.
 
-        Parameters
-        ----------
-        reference_signal : torch.Tensor
-            batch of two 2D images, shape (B,H,W) where B are the batch dimensions.
-        kernel_function : _type_, optional
-            _description_, by default xu_kernel
-        num_bins : int, optional
-            _description_, by default 64
-        window_radius : int, optional
-            _description_, by default 1
+        :param reference_signal: reference signal to which other signals will be compared by the forward method.
+        batch of 2D images, shape (B,H,W) where B are the batch dimensions.
+        :type reference_signal: torch.Tensor
+        :param kernel_function: Used kernel function for kernel density estimate, by default xu_kernel
+        :type kernel_function: Callable
+        :param num_bins: number of signal value bins in kernel density estimate, by default 64
+        :type num_bins: int
+        :param window_radius: radius of the kernel's support interval, by default 1.0
+        :type window_radius: float
         """
         super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
 
@@ -258,15 +270,13 @@ class NMILossFromRef2D(NMILossFromRef):
         return tensor.reshape(tensor.shape[:-2] + (-1,))
 
     def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
-        """Compute differentiable mutual information for self.signal and other_signal (both supposed 2D).
+        """Compute differentiable mutual information for reference_signal and other_signal (both supposed 2D).
 
-        mi = (H(X) + H(Y) - H(X,Y))
+        nmi = (H(X) + H(Y)) / H(X,Y)
         To have a loss function, the opposite is returned.
-        Can also handle two batches of flat tensors, then a batch of loss values is returned.
+        Can also handle two batches of tensors, then a batch of loss values is returned.
 
-        :param input: Batch of flat tensors shape (B,N) where B is the tuple of batch dimensions for self.signal,
-        possibly empty.
-
+        :param other_signal: Batch of tensors same shape (B,H,W) as reference_signal passed for instantiation
         :return: tensor of losses, shape B as above
         :rtype: torch.Tensor
         """
@@ -274,6 +284,8 @@ class NMILossFromRef2D(NMILossFromRef):
 
 
 class NMILossFromRef3D(NMILossFromRef):
+    """NMILossFromRef for 3D images. Check details there."""
+
     def __init__(
         self,
         reference_signal: torch.Tensor,
@@ -281,18 +293,17 @@ class NMILossFromRef3D(NMILossFromRef):
         num_bins: int = 64,
         window_radius: float = 1,
     ):
-        """NMILossFromRef for 3D images. Check details there.
+        """Instantiation.
 
-        Parameters
-        ----------
-        reference_signal : torch.Tensor
-            batch of two 2D images, shape (B,H,W) where B are the batch dimensions.
-        kernel_function : _type_, optional
-            _description_, by default xu_kernel
-        num_bins : int, optional
-            _description_, by default 64
-        window_radius : int, optional
-            _description_, by default 1
+        :param reference_signal: reference signal to which other signals will be compared by the forward method.
+        batch of 3D images, shape (B,D,H,W) where B are the batch dimensions.
+        :type reference_signal: torch.Tensor
+        :param kernel_function: Used kernel function for kernel density estimate, by default xu_kernel
+        :type kernel_function: Callable
+        :param num_bins: number of signal value bins in kernel density estimate, by default 64
+        :type num_bins: int
+        :param window_radius: radius of the kernel's support interval, by default 1.0
+        :type window_radius: float
         """
         super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
 
@@ -301,15 +312,13 @@ class NMILossFromRef3D(NMILossFromRef):
         return tensor.reshape(tensor.shape[:-3] + (-1,))
 
     def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
-        """Compute differentiable mutual information for self.signal and other_signal (both supposed 3D).
+        """Compute differentiable mutual information for reference_signal and other_signal (both supposed 3D).
 
-        mi = (H(X) + H(Y) - H(X,Y))
+        nmi = (H(X) + H(Y)) / H(X,Y)
         To have a loss function, the opposite is returned.
         Can also handle two batches of flat tensors, then a batch of loss values is returned.
 
-        :param input: Batch of flat tensors shape (B,N) where B is the tuple of batch dimensions for self.signal,
-        possibly empty.
-
+        :param other_signal: Batch of tensors, same shape (B,D,H,W) as reference_signal passed for instantiation
         :return: tensor of losses, shape B as above
         :rtype: torch.Tensor
         """
