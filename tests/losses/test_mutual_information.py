@@ -114,12 +114,12 @@ class TestMutualInformationLoss(BaseTester):
             mi = mutual_information_loss(img_1 + param * img_2, img_2)
             mi.backward()
             # negative gradient, order of magnitude 1/2
-            assert param.grad > -1 and -1 / 10 > param.grad, f"Differentiability issue for mi, {param.grad=}."
+            assert -1 < param.grad < -1 / 10, f"Differentiability issue for mi, {param.grad=}."
             param = torch.tensor(1 / 2.0, requires_grad=True)
             nmi = normalized_mutual_information_loss(img_1 + param * img_2, img_2)
             nmi.backward()
             # negative gradient, order of magnitude 1/20
-            assert param.grad > -1 / 10 and -1 / 100 > param.grad, f"Differentiability issue for nmi, {param.grad=}."
+            assert -1 / 10 < param.grad < -1 / 100, f"Differentiability issue for nmi, {param.grad=}."
 
     def test_value_ranges(self):
         for _ in range(10):
