@@ -33,10 +33,6 @@ def torch_version() -> str:
 
     Returns:
         The clean version string (e.g., "2.0.1" from "2.0.1+cu118").
-
-    Example:
-        >>> torch_version()
-        '2.0.1'
     """
     return torch.__version__.partition("+")[0]
 
@@ -53,11 +49,6 @@ def torch_version_lt(major: int, minor: int, patch: int) -> bool:
         True if the current PyTorch version is strictly less than the specified version,
         False otherwise.
 
-    Example:
-        >>> torch_version_lt(2, 0, 0)  # True if PyTorch < 2.0.0
-        False
-        >>> torch_version_lt(3, 0, 0)  # True if PyTorch < 3.0.0
-        True
     """
     _version = version.parse(torch_version())
     return _version < version.parse(f"{major}.{minor}.{patch}")
@@ -75,11 +66,6 @@ def torch_version_le(major: int, minor: int, patch: int) -> bool:
         True if the current PyTorch version is less than or equal to the specified version,
         False otherwise.
 
-    Example:
-        >>> torch_version_le(2, 0, 0)  # True if PyTorch <= 2.0.0
-        True
-        >>> torch_version_le(1, 13, 0)  # True if PyTorch <= 1.13.0
-        True
     """
     _version = version.parse(torch_version())
     return _version <= version.parse(f"{major}.{minor}.{patch}")
