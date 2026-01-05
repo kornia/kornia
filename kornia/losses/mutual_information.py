@@ -45,10 +45,12 @@ def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     return kernel_val
 
 
-def _normalize_signal(data: torch.Tensor, num_bins: int) -> torch.Tensor:
+def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> torch.Tensor:
     min_val, _ = data.min(axis=-1)
     max_val, _ = data.max(axis=-1)
-    return (data - min_val.unsqueeze(-1)) / (max_val - min_val).unsqueeze(-1) * num_bins
+    diff = (max_val - min_val).unsqueeze(-1)
+    # signal is considered trivial if too low variation
+    return torch.where(diff > eps, (data - min_val.unsqueeze(-1)) / diff * num_bins, 0)
 
 
 def _joint_histogram_to_entropies(joint_histogram: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
@@ -89,18 +91,17 @@ class EntropyBasedLossBase(torch.nn.Module):
         :type window_radius: float
         """
         super().__init__()
-        self.register_buffer("signal", _normalize_signal(reference_signal, num_bins))
+        self.eps = torch.finfo(reference_signal.dtype).eps
+        self.register_buffer("signal", _normalize_signal(reference_signal, num_bins, self.eps))
         self.num_bins = num_bins
         self.kernel_function = kernel_function
         self.window_radius = window_radius
         self.bin_centers = torch.arange(self.num_bins, device=self.signal.device)
 
-        self.eps = torch.finfo(self.signal.dtype).eps
-
-    def _compute_joint_histogram(self, other_signal: torch.Tensor) -> torch.Tensor:
+    def _compute_joint_histogram(self, other_signal: torch.Tensor, eps: float) -> torch.Tensor:
         if other_signal.shape != self.signal.shape:
-            raise ValueError(f"The two signals have incompatible shapes: {other_signal.shape} and {self.signal}.")
-        other_signal = _normalize_signal(other_signal, num_bins=self.num_bins)
+            raise ValueError(f"The two signals have incompatible shapes: {other_signal.shape} and {self.signal.shape}.")
+        other_signal = _normalize_signal(other_signal, num_bins=self.num_bins, eps=eps)
 
         diff_1 = self.bin_centers.unsqueeze(-1) - self.signal.unsqueeze(-2)
         diff_2 = self.bin_centers.unsqueeze(-1) - other_signal.unsqueeze(-2)
@@ -113,7 +114,7 @@ class EntropyBasedLossBase(torch.nn.Module):
         return joint_histogram
 
     def entropies(self, other_signal: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        joint_histogram = self._compute_joint_histogram(other_signal)
+        joint_histogram = self._compute_joint_histogram(other_signal, self.eps)
         return _joint_histogram_to_entropies(joint_histogram, eps=self.eps)
 
 
