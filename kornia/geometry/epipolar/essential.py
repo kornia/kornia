@@ -375,8 +375,6 @@ def null_to_Nister_sol222ution(X: torch.Tensor, batch_size: int) -> torch.Tensor
     r"""Use Nister's 5PC to solve essential matrix."""
 
     original_dtype = X.dtype
-    #X = X.to(dtype=torch.float64)
-
     _, _, V = _torch_svd_cast(X)
 
     null_ = V[:, :, -4:]                        # (B, 9, 4)

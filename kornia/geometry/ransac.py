@@ -26,8 +26,8 @@ import torch
 from kornia.core import Device, Module, Tensor, zeros
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry import (
-    find_fundamental,
     find_essential,
+    find_fundamental,
     find_homography_dlt,
     find_homography_dlt_iterated,
     find_homography_lines_dlt,
@@ -81,7 +81,13 @@ class RANSAC(Module):
 
         """
         super().__init__()
-        self.supported_models = ["homography", "fundamental", "fundamental_7pt", "homography_from_linesegments", "essential"]
+        self.supported_models = [
+            "homography",
+            "fundamental",
+            "fundamental_7pt",
+            "homography_from_linesegments",
+            "essential",
+        ]
         self.supported_scores = ["msac", "ransac"]
         self.score_type = score_type
         self.inl_th = inl_th
