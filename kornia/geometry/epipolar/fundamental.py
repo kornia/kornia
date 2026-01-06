@@ -22,8 +22,6 @@ from typing import Literal, Optional, Tuple
 
 import torch
 
-import torch
-
 from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.utils import _torch_svd_cast, safe_inverse_with_mask
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
@@ -245,7 +243,10 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
 
 @torch.jit.script
 def run_8point(
-    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, use_einsum_at_more_than_points: int = 512
+    points1: torch.Tensor,
+    points2: torch.Tensor,
+    weights: Optional[torch.Tensor] = None,
+    use_einsum_at_more_than_points: int = 512,
 ) -> torch.Tensor:
     r"""Compute the fundamental matrix using (weighted) 8-point DLT, optimized.
 
@@ -315,7 +316,10 @@ def run_8point(
 
 
 def find_fundamental(
-    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, method: Literal["8POINT", "7POINT"] = "8POINT"
+    points1: torch.Tensor,
+    points2: torch.Tensor,
+    weights: Optional[torch.Tensor] = None,
+    method: Literal["8POINT", "7POINT"] = "8POINT",
 ) -> torch.Tensor:
     r"""Find the fundamental matrix.
 

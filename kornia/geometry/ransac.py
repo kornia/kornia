@@ -22,9 +22,7 @@ from functools import partial
 from typing import Callable, Optional, Tuple
 
 import torch
-
-import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.epipolar import find_essential, find_fundamental, sampson_epipolar_distance
@@ -209,7 +207,9 @@ class RANSAC(nn.Module):
         H = self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
         return H
 
-    def verify(self, kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float) -> Tuple[torch.Tensor, torch.Tensor, float, float]:
+    def verify(
+        self, kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float
+    ) -> Tuple[torch.Tensor, torch.Tensor, float, float]:
         """Verify models by computing inliers and selecting the best model.
 
         Args:
@@ -332,7 +332,9 @@ class RANSAC(nn.Module):
                     f" {kp2.shape}"
                 )
 
-    def forward(self, kp1: torch.Tensor, kp2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, kp1: torch.Tensor, kp2: torch.Tensor, weights: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Call main forward method to execute the RANSAC algorithm.
 
         Args:
