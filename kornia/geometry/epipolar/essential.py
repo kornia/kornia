@@ -24,7 +24,6 @@ import torch
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like, vec_like
 from kornia.core.utils import _torch_solve_cast, _torch_svd_cast
-from kornia.geometry import solvers
 from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2, coefficient_map, multiplication_indices, signs
 
 from .numeric import cross_product_matrix, matrix_cofactor_tensor
