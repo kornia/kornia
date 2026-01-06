@@ -26,7 +26,7 @@ from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjus
 
 
 class ColorJiggle(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.tensor image.
+    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.Tensor image.
 
     .. image:: _static/img/ColorJiggle.png
 

@@ -153,8 +153,8 @@ def _unpatchify_8x8(input: torch.Tensor, H: int, W: int) -> torch.Tensor:
 
     Args:
         input (torch.Tensor): Input image of the shape :math:`(B, N, 8, 8)`.
-        H: height of resulting torch.tensor.
-        W: width of resulting torch.tensor.
+        H: height of resulting torch.Tensor.
+        W: width of resulting torch.Tensor.
 
     Returns:
         output (torch.Tensor): Image patchify of the shape :math:`(B, H, W)`.
@@ -605,7 +605,7 @@ def jpeg_codec_differentiable(
             f"Batch dimensions do not match. "
             f"Got {image_rgb.shape[0]} images and {jpeg_quality.shape[0]} JPEG qualities.",
         )
-    # keep jpeg_quality same device as input torch.tensor
+    # keep jpeg_quality same device as input torch.Tensor
     jpeg_quality = jpeg_quality.to(device, dtype)
     # Quantization tables to same device and dtype as input image
     quantization_table_y = quantization_table_y.to(device, dtype)

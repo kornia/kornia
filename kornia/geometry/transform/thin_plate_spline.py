@@ -43,7 +43,7 @@ def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torc
 
 
 def _kernel_distance(squared_distances: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
-    r"""Compute the TPS kernel distance function: :math:`r^2 log(r)`, torch.where `r` is the euclidean distance.
+    r"""Compute the TPS kernel distance function: :math:`r^2 log(r)`, where `r` is the euclidean distance.
 
     Since
     :math: `\log(r) = 1/2 \log(r^2)`, this function takes the squared distance matrix and calculates
@@ -56,16 +56,16 @@ def _kernel_distance(squared_distances: torch.Tensor, eps: float = 1e-8) -> torc
 def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Compute the TPS transform parameters that warp source points to target points.
 
-    The input to this function is a torch.tensor of :math:`(x, y)` source points :math:`(B, N, 2)` and a corresponding
-    torch.tensor of target :math:`(x, y)` points :math:`(B, N, 2)`.
+    The input to this function is a torch.Tensor of :math:`(x, y)` source points :math:`(B, N, 2)` and a corresponding
+    torch.Tensor of target :math:`(x, y)` points :math:`(B, N, 2)`.
 
     Args:
         points_src: batch of source points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
         points_dst: batch of target points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
 
     Returns:
-        :math:`(B, N, 2)` torch.tensor of kernel weights and :math:`(B, 3, 2)`
-            torch.tensor of affine weights. The last dimension contains the x-transform and y-transform weights
+        :math:`(B, N, 2)` torch.Tensor of kernel weights and :math:`(B, 3, 2)`
+            torch.Tensor of affine weights. The last dimension contains the x-transform and y-transform weights
             as separate columns.
 
     Example:
@@ -116,22 +116,22 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
 def warp_points_tps(
     points_src: torch.Tensor, kernel_centers: torch.Tensor, kernel_weights: torch.Tensor, affine_weights: torch.Tensor
 ) -> torch.Tensor:
-    r"""Warp a torch.tensor of coordinate points using the thin plate spline defined by arguments.
+    r"""Warp a torch.Tensor of coordinate points using the thin plate spline defined by arguments.
 
-    The source points should be a :math:`(B, N, 2)` torch.tensor of :math:`(x, y)` coordinates. The kernel centers are
-    a :math:`(B, K, 2)` torch.tensor of :math:`(x, y)` coordinates. The kernel weights are a :math:`(B, K, 2)`
-    torch.tensor, and the affine weights are a :math:`(B, 3, 2)` torch.tensor.  For the weight tensors,
-    torch.tensor[..., 0] contains the weights for the x-transform and torch.tensor[..., 1] the weights
+    The source points should be a :math:`(B, N, 2)` torch.Tensor of :math:`(x, y)` coordinates. The kernel centers are
+    a :math:`(B, K, 2)` torch.Tensor of :math:`(x, y)` coordinates. The kernel weights are a :math:`(B, K, 2)`
+    torch.Tensor, and the affine weights are a :math:`(B, 3, 2)` torch.Tensor.  For the weight tensors,
+    torch.Tensor[..., 0] contains the weights for the x-transform and torch.Tensor[..., 1] the weights
     for the y-transform.
 
     Args:
-        points_src: torch.tensor of source points :math:`(B, N, 2)`.
-        kernel_centers: torch.tensor of kernel center points :math:`(B, K, 2)`.
-        kernel_weights: torch.tensor of kernl weights :math:`(B, K, 2)`.
-        affine_weights: torch.tensor of affine weights :math:`(B, 3, 2)`.
+        points_src: torch.Tensor of source points :math:`(B, N, 2)`.
+        kernel_centers: torch.Tensor of kernel center points :math:`(B, K, 2)`.
+        kernel_weights: torch.Tensor of kernl weights :math:`(B, K, 2)`.
+        affine_weights: torch.Tensor of affine weights :math:`(B, 3, 2)`.
 
     Returns:
-        The :math:`(B, N, 2)` torch.tensor of warped source points, from applying the TPS transform.
+        The :math:`(B, N, 2)` torch.Tensor of warped source points, from applying the TPS transform.
 
     Example:
         >>> points_src = torch.rand(1, 5, 2)
@@ -189,7 +189,7 @@ def warp_image_tps(
     align_corners: bool = False,
     padding_mode: str = "zeros",
 ) -> torch.Tensor:
-    r"""Warp an image torch.tensor according to the thin plate spline transform defined by arguments.
+    r"""Warp an image torch.Tensor according to the thin plate spline transform defined by arguments.
 
     .. image:: _static/img/warp_image_tps.png
 
@@ -197,19 +197,19 @@ def warp_image_tps(
     image for interpolation of the output pixel. So the TPS parameters should correspond to a warp from
     output space to input space.
 
-    The input `image` is a :math:`(B, C, H, W)` torch.tensor. The kernel centers, kernel weight and affine weights
+    The input `image` is a :math:`(B, C, H, W)` torch.Tensor. The kernel centers, kernel weight and affine weights
     are the same as in `warp_points_tps`.
 
     Args:
-        image: input image torch.tensor :math:`(B, C, H, W)`.
+        image: input image torch.Tensor :math:`(B, C, H, W)`.
         kernel_centers: kernel center points :math:`(B, K, 2)`.
-        kernel_weights: torch.tensor of kernl weights :math:`(B, K, 2)`.
-        affine_weights: torch.tensor of affine weights :math:`(B, 3, 2)`.
+        kernel_weights: torch.Tensor of kernl weights :math:`(B, K, 2)`.
+        affine_weights: torch.Tensor of affine weights :math:`(B, 3, 2)`.
         align_corners: interpolation flag used by `grid_sample`.
         padding_mode: padding flag used by `grid_sample`.
 
     Returns:
-        warped image torch.tensor :math:`(B, C, H, W)`.
+        warped image torch.Tensor :math:`(B, C, H, W)`.
 
     Example:
         >>> points_src = torch.rand(1, 5, 2)

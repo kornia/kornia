@@ -34,7 +34,7 @@ def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, n
     .. image:: _static/img/spatial_gradient.png
 
     Args:
-        input: input image torch.tensor with shape :math:`(B, C, H, W)`.
+        input: input image torch.Tensor with shape :math:`(B, C, H, W)`.
         mode: derivatives modality, can be: `sobel` or `diff`.
         order: the order of the derivatives.
         normalized: whether the output is normalized.
@@ -76,7 +76,7 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
     r"""Compute the first and second order volume derivative in x, y and d using a diff operator.
 
     Args:
-        input: input features torch.tensor with shape :math:`(B, C, D, H, W)`.
+        input: input features torch.Tensor with shape :math:`(B, C, D, H, W)`.
         mode: derivatives modality, can be: `sobel` or `diff`.
         order: the order of the derivatives.
 
@@ -115,7 +115,7 @@ def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) 
 
         tmp_kernel = kernel.repeat(c, 1, 1, 1, 1)
 
-        # convolve input torch.tensor with grad kernel
+        # convolve input torch.Tensor with grad kernel
         kernel_flip = tmp_kernel.flip(-3)
 
         # Pad with "replicate for spatial dims, but with torch.zeros for channel

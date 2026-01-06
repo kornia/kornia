@@ -45,7 +45,7 @@ def canny(
     .. image:: _static/img/canny.png
 
     Args:
-        input: input image torch.tensor with shape :math:`(B,C,H,W)`.
+        input: input image torch.Tensor with shape :math:`(B,C,H,W)`.
         low_threshold: lower threshold for the hysteresis procedure.
         high_threshold: upper threshold for the hysteresis procedure.
         kernel_size: the size of the kernel for the gaussian blur.
@@ -165,7 +165,7 @@ class Canny(nn.Module):
     r"""nn.Module that finds edges of the input image and filters them using the Canny algorithm.
 
     Args:
-        input: input image torch.tensor with shape :math:`(B,C,H,W)`.
+        input: input image torch.Tensor with shape :math:`(B,C,H,W)`.
         low_threshold: lower threshold for the hysteresis procedure.
         high_threshold: upper threshold for the hysteresis procedure.
         kernel_size: the size of the kernel for the gaussian blur.

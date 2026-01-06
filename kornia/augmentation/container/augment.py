@@ -392,7 +392,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         out: List[DataType] = []
         for in_arg, out_arg, dcate in zip(in_args, out_args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
-                # It is torch.tensor type already.
+                # It is torch.Tensor type already.
                 out.append(out_arg)
                 # TODO: may add the float to integer (for masks), etc.
             elif DataKey.get(dcate) in _MSK_OPTIONS:
@@ -450,7 +450,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if DataKey.INPUT in self.transform_op.data_keys:
                 inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
                 if not isinstance(inp, torch.Tensor):
-                    raise ValueError(f"`INPUT` should be a torch.tensor but `{type(inp)}` received.")
+                    raise ValueError(f"`INPUT` should be a torch.Tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
                 if self.contains_video_sequential or self.contains_3d_augmentation:
                     _, out_shape = self.autofill_dim(inp, dim_range=(3, 5))

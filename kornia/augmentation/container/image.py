@@ -270,7 +270,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         """Compute the transformation matrix according to the provided parameters.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
@@ -393,9 +393,9 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
             batch_shape = _get_new_batch_shape(p, batch_shape)
         return batch_shape
 
-    # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.tensor
+    # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:
-        # Inline check for common PyTorch float torch.tensor case
+        # Inline check for common PyTorch float torch.Tensor case
         batch_prob = data.get("batch_prob", None)
         if batch_prob is not None:
             # Avoid repeated indexing, always fetch scalar efficiently

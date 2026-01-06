@@ -24,7 +24,7 @@ from kornia.geometry.transform import vflip
 
 
 class RandomVerticalFlip(GeometricAugmentationBase2D):
-    r"""Apply a random vertical flip to a torch.tensor image or a batch of torch.tensor images with a given probability.
+    r"""Apply a random vertical flip to a torch.Tensor image or a batch of torch.Tensor images with a given probability.
 
     .. image:: _static/img/RandomVerticalFlip.png
 

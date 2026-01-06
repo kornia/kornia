@@ -26,7 +26,7 @@ from kornia.enhance.adjust import adjust_saturation
 
 
 class RandomSaturation(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the saturation of a torch.tensor image.
+    r"""Apply a random transformation to the saturation of a torch.Tensor image.
 
     This implementation aligns PIL. Hence, the output is close to TorchVision.
 

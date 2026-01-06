@@ -51,7 +51,7 @@ class PatchSequential(ImageSequential):
         *args: a list of processing modules.
         grid_size: controls the grid board separation.
         padding: same or valid padding. If same padding, it will F.pad to include all pixels if the input
-            torch.tensor cannot be divisible by grid_size. If valid padding, the redundant border will be removed.
+            torch.Tensor cannot be divisible by grid_size. If valid padding, the redundant border will be removed.
         same_on_batch: apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -189,7 +189,7 @@ class PatchSequential(ImageSequential):
         grid_size: Optional[Tuple[int, int]] = None,
         pad: Optional[Tuple[int, int, int, int]] = None,
     ) -> torch.Tensor:
-        """Extract patches from torch.tensor.
+        """Extract patches from torch.Tensor.
 
         Example:
             >>> import kornia.augmentation as K
@@ -408,7 +408,7 @@ class PatchSequential(ImageSequential):
     ) -> torch.Tensor:
         """Inverse transformation.
 
-        Used to inverse a torch.tensor according to the performed transformation by a forward pass, or with respect to
+        Used to inverse a torch.Tensor according to the performed transformation by a forward pass, or with respect to
         provided parameters.
         """
         if self.is_intensity_only():

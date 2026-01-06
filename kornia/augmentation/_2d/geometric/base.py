@@ -312,7 +312,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
-            raise RuntimeError("`transform` has to be a torch.tensor. Got None.")
+            raise RuntimeError("`transform` has to be a torch.Tensor. Got None.")
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -340,7 +340,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """Inverse the transformation on keypoints.
 
         Args:
-            input: input keypoints torch.tensor or object.
+            input: input keypoints torch.Tensor or object.
             params: the corresponding parameters for an operation.
             flags: static parameters.
             transform: the inverse transformation matrix
@@ -352,7 +352,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
-            raise RuntimeError("`transform` has to be a torch.tensor. Got None.")
+            raise RuntimeError("`transform` has to be a torch.Tensor. Got None.")
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -385,7 +385,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """Perform inverse operations.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             params: the corresponding parameters for an operation.
                 If None, a new parameter suite will be generated.
             **kwargs: key-value pairs to override the parameters and flags.

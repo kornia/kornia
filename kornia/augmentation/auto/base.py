@@ -69,7 +69,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         """Compute the transformation matrix according to the provided parameters.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.

@@ -758,7 +758,7 @@ def find_essential(
     Args:
          points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
          points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-         weights: Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.
+         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
 
     Returns:
          the computed essential matrices with shape :math:`(B, 10, 3, 3)`.

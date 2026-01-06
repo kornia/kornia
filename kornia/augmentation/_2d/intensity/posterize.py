@@ -25,7 +25,7 @@ from kornia.enhance import posterize
 
 
 class RandomPosterize(IntensityAugmentationBase2D):
-    r"""Posterize given torch.tensor image or a batch of torch.tensor images randomly.
+    r"""Posterize given torch.Tensor image or a batch of torch.Tensor images randomly.
 
     .. image:: _static/img/RandomPosterize.png
 

@@ -124,7 +124,7 @@ class CutmixGenerator(RandomGeneratorBase):
 
         cutmix_betas: torch.Tensor = _adapted_rsampling((batch_size * self.num_mix,), self.beta_sampler, same_on_batch)
 
-        # Note: torch.clamp does not accept torch.tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
+        # Note: torch.clamp does not accept torch.Tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
         # Argument 1 to "clamp" of "_TensorBase" has incompatible type "torch.Tensor"; expected "float"
         cutmix_betas = torch.min(torch.max(cutmix_betas, self._cut_size[0]), self._cut_size[1])
         cutmix_rate = torch.sqrt(1.0 - cutmix_betas) * batch_probs

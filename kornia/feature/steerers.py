@@ -28,7 +28,7 @@ class DiscreteSteerer(nn.Module):
     A steerer rotates keypoint descriptions in latent space as if they were obtained from rotated images.
 
     Args:
-        generator: [N, N] torch.tensor torch.where N is the descriptor dimension.
+        generator: [N, N] torch.Tensor where N is the descriptor dimension.
 
     Example:
         >>> desc = torch.randn(512, 128)
@@ -65,7 +65,7 @@ class DiscreteSteerer(nn.Module):
         steerer_order: int = 8,
     ) -> nn.Module:
         r"""Create a steerer for pretrained DeDoDe descriptors int the "C-setting"
-            from the paper https://arxiv.org/abs/2312.02152, torch.where descriptors were
+            from the paper https://arxiv.org/abs/2312.02152, where descriptors were
             trained for fixed steerers.
 
         Args:

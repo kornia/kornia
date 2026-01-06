@@ -31,7 +31,7 @@ class CropGenerator3D(RandomGeneratorBase):
 
     Args:
         size (tuple): Desired size of the crop operation, like (d, h, w).
-            If torch.tensor, it must be (B, 3).
+            If torch.Tensor, it must be (B, 3).
         resize_to (tuple): Desired output size of the crop, like (d, h, w). If None, no resize will be performed.
 
     Returns:
@@ -75,7 +75,7 @@ class CropGenerator3D(RandomGeneratorBase):
             size = self.size.to(device=_device, dtype=_dtype)
         if size.shape != torch.Size([batch_size, 3]):
             raise AssertionError(
-                "If `size` is a torch.tensor, it must be shaped as (B, 3). "
+                "If `size` is a torch.Tensor, it must be shaped as (B, 3). "
                 f"Got {size.shape} while expecting {torch.Size([batch_size, 3])}."
             )
         if not (
@@ -166,7 +166,7 @@ def center_crop_generator3d(
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
 
     Args:
-        batch_size (int): the torch.tensor batch size.
+        batch_size (int): the torch.Tensor batch size.
         depth (int) : depth of the image.
         height (int) : height of the image.
         width (int): width of the image.

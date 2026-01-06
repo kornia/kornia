@@ -62,7 +62,7 @@ def get_laf_descriptors(
         grayscale_descriptor: True if ``patch_descriptor`` expects single-channel image.
 
     Returns:
-        Local descriptors of shape :math:`(B,N,D)` torch.where :math:`D` is descriptor size.
+        Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
 
     """
     KORNIA_CHECK_LAF(lafs)
@@ -71,13 +71,13 @@ def get_laf_descriptors(
 
     timg: torch.Tensor = img
     if lafs.shape[1] == 0:
-        warnings.warn(f"LAF contains no keypoints {lafs.shape}, returning empty torch.tensor", stacklevel=1)
+        warnings.warn(f"LAF contains no keypoints {lafs.shape}, returning empty torch.Tensor", stacklevel=1)
         return torch.empty(lafs.shape[0], lafs.shape[1], 128, dtype=lafs.dtype, device=lafs.device)
     if grayscale_descriptor and img.size(1) == 3:
         timg = rgb_to_grayscale(img)
 
     patches: torch.Tensor = extract_patches_from_pyramid(timg, lafs, patch_size)
-    # Descriptor accepts standard torch.tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
+    # Descriptor accepts standard torch.Tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
     # So we need to reshape a bit :)
     B, N, CH, H, W = patches.size()
     return patch_descriptor(patches.view(B * N, CH, H, W)).view(B, N, -1)
@@ -128,7 +128,7 @@ class LAFDescriptor(nn.Module):
             lafs: local affine frames :math:`(B,N,2,3)`.
 
         Returns:
-            Local descriptors of shape :math:`(B,N,D)` torch.where :math:`D` is descriptor size.
+            Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
 
         """
         return get_laf_descriptors(img, lafs, self.descriptor, self.patch_size, self.grayscale_descriptor)
@@ -159,13 +159,13 @@ class LocalFeature(nn.Module):
 
         Args:
             img: image to extract features with shape :math:`(B,C,H,W)`.
-            mask: a mask with weights torch.where to apply the response function.
+            mask: a mask with weights where to apply the response function.
                 The shape must be the same as the input image.
 
         Returns:
             - Detected local affine frames with shape :math:`(B,N,2,3)`.
             - Response function values for corresponding lafs with shape :math:`(B,N,1)`.
-            - Local descriptors of shape :math:`(B,N,D)` torch.where :math:`D` is descriptor size.
+            - Local descriptors of shape :math:`(B,N,D)` where :math:`D` is descriptor size.
 
         """
         lafs, responses = self.detector(img, mask)
@@ -509,8 +509,8 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
 
         Return:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
-            - Long torch.tensor indexes of matching descriptors in desc1 and desc2,
-                shape of :math:`(B3, 2)` torch.where :math:`0 <= B3 <= B1`.
+            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
+                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
 
         """
         if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):

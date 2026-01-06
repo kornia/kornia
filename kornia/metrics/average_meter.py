@@ -26,7 +26,7 @@ class AverageMeter:
     Example:
         >>> stats = AverageMeter()
         >>> acc1 = torch.tensor(0.99) # coming from K.metrics.accuracy
-        >>> stats.update(acc1, n=1)  # torch.where n is batch size usually
+        >>> stats.update(acc1, n=1)  # where n is batch size usually
         >>> round(stats.avg, 2)
         0.99
 

@@ -25,7 +25,7 @@ from kornia.enhance import solarize
 
 
 class RandomSolarize(IntensityAugmentationBase2D):
-    r"""Solarize given torch.tensor image or a batch of torch.tensor images randomly.
+    r"""Solarize given torch.Tensor image or a batch of torch.Tensor images randomly.
 
     .. image:: _static/img/RandomSolarize.png
 

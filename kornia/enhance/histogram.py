@@ -103,12 +103,12 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
 
 
 def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
-    """Estimate the histogram of the input torch.tensor.
+    """Estimate the histogram of the input torch.Tensor.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
     Args:
-        x: Input torch.tensor to compute the histogram with shape :math:`(B, D)`.
+        x: Input torch.Tensor to compute the histogram with shape :math:`(B, D)`.
         bins: The number of bins to use the histogram :math:`(N_{bins})`.
         bandwidth: Gaussian smoothing factor with shape shape [1].
         epsilon: A scalar, for numerical stability.
@@ -132,13 +132,13 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
 def histogram2d(
     x1: torch.Tensor, x2: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10
 ) -> torch.Tensor:
-    """Estimate the 2d histogram of the input torch.tensor.
+    """Estimate the 2d histogram of the input torch.Tensor.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
     Args:
-        x1: Input torch.tensor to compute the histogram with shape :math:`(B, D1)`.
-        x2: Input torch.tensor to compute the histogram with shape :math:`(B, D2)`.
+        x1: Input torch.Tensor to compute the histogram with shape :math:`(B, D1)`.
+        x2: Input torch.Tensor to compute the histogram with shape :math:`(B, D2)`.
         bins: The number of bins to use the histogram :math:`(N_{bins})`.
         bandwidth: Gaussian smoothing factor with shape shape [1].
         epsilon: A scalar, for numerical stability. Default: 1e-10.
@@ -179,7 +179,7 @@ def image_histogram2d(
     The calculation uses triangular kernel density estimation.
 
     Args:
-        image: Input torch.tensor to compute the histogram with shape
+        image: Input torch.Tensor to compute the histogram with shape
           :math:`(H, W)`, :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         min: Lower end of the interval (inclusive).
         max: Upper end of the interval (inclusive). Ignored when

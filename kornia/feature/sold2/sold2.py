@@ -328,7 +328,7 @@ def keypoints_to_grid(keypoints: torch.Tensor, img_size: Tuple[int, int]) -> tor
     """Convert a list of keypoints into a grid in [-1, 1]² that can be used in torch.nn.functional.interpolate.
 
     Args:
-        keypoints: a torch.tensor [N, 2] of N keypoints (ij coordinates convention).
+        keypoints: a torch.Tensor [N, 2] of N keypoints (ij coordinates convention).
         img_size: the original image size (H, W)
 
     """

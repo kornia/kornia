@@ -59,7 +59,7 @@ class PosterizeGenerator(RandomGeneratorBase):
             bits = bits.repeat(2)
             bits[1] = 8
         elif not (len(bits.size()) == 1 and bits.size(0) == 2):
-            raise ValueError(f"'bits' shall be either a scalar or a length 2 torch.tensor. Got {bits}.")
+            raise ValueError(f"'bits' shall be either a scalar or a length 2 torch.Tensor. Got {bits}.")
         _joint_range_check(bits, "bits", (0, 8))
         self.bit_sampler = UniformDistribution(bits[0], bits[1], validate_args=False)
 

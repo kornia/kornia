@@ -564,7 +564,7 @@ class LineSegmentDetectionModule:
 
 
 def line_map_to_segments(junctions: torch.Tensor, line_map: torch.Tensor) -> torch.Tensor:
-    """Convert a junction connectivity map to a Nx2x2 torch.tensor of segments."""
+    """Convert a junction connectivity map to a Nx2x2 torch.Tensor of segments."""
     junc_loc1, junc_loc2 = torch.where(torch.triu(line_map))
     segments = torch.stack([junctions[junc_loc1], junctions[junc_loc2]], 1)
     return segments

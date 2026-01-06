@@ -98,7 +98,7 @@ class AddWeighted(nn.Module):
     Shape:
         - Input1: torch.Tensor with an arbitrary shape, equal to shape of Input2.
         - Input2: torch.Tensor with an arbitrary shape, equal to shape of Input1.
-        - Output: Weighted torch.tensor with shape equal to src1 and src2 shapes.
+        - Output: Weighted torch.Tensor with shape equal to src1 and src2 shapes.
 
     Example:
         >>> input1 = torch.rand(1, 1, 5, 5)

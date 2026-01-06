@@ -25,7 +25,7 @@ class Rescale(nn.Module):
     r"""Initialize the Rescale operator.
 
     Args:
-        factor: The scaling factor. Could be a float or a 0-d torch.tensor.
+        factor: The scaling factor. Could be a float or a 0-d torch.Tensor.
 
     """
 
@@ -35,7 +35,7 @@ class Rescale(nn.Module):
             self.factor = torch.tensor(factor)
         else:
             if not isinstance(factor, torch.Tensor) or factor.ndim != 0:
-                raise TypeError(f"Expected factor to be a float or a 0-d torch.tensor, got {factor}.")
+                raise TypeError(f"Expected factor to be a float or a 0-d torch.Tensor, got {factor}.")
             self.factor = factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:

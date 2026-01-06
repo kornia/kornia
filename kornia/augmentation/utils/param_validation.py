@@ -82,7 +82,7 @@ def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[
             raise ValueError(f"{name}[0] should be smaller than {name}[1] got {ranged_factor}")
     else:
         raise TypeError(
-            f"{name} should be a torch.tensor with length 2 whose values between {bounds}. Got {ranged_factor}."
+            f"{name} should be a torch.Tensor with length 2 whose values between {bounds}. Got {ranged_factor}."
         )
 
 
@@ -122,7 +122,7 @@ def _tuple_range_reader(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    """Given target_size, it will generate the corresponding (target_size, 2) range torch.tensor.
+    """Given target_size, it will generate the corresponding (target_size, 2) range torch.Tensor.
 
     This is for element-wise params.
 
@@ -158,7 +158,7 @@ def _tuple_range_reader(
 
         else:
             raise ValueError(
-                f"Degrees must be a {list(target_shape)} torch.tensor for the degree range for independent operation."
+                f"Degrees must be a {list(target_shape)} torch.Tensor for the degree range for independent operation."
                 f"Got {input_range}"
             )
     elif isinstance(input_range, (float, int)):
@@ -192,7 +192,7 @@ def _tuple_range_reader(
 
     else:
         raise TypeError(
-            "If not pass a torch.tensor, it must be float, (float, float) for isotropic operation or a tuple of "
+            "If not pass a torch.Tensor, it must be float, (float, float) for isotropic operation or a tuple of "
             f"{target_size} floats or {target_size} (float, float) for independent operation. Got {input_range}."
         )
 

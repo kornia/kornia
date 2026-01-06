@@ -35,7 +35,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
 
     Args:
         *samplers: a list of tuple in a pattern of ``(factor, name, center, range)``, in which
-            the factor can be a two-numbered tuple, or a ``(2,)`` shaped torch torch.tensor. The name
+            the factor can be a two-numbered tuple, or a ``(2,)`` shaped torch torch.Tensor. The name
             will be the corresponding key of the returning dict. The center and range must be
             both provided worked as a validator to the given factor.
 
