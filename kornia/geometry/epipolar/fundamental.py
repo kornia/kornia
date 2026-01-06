@@ -156,6 +156,23 @@ def _isclose0(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
 @torch.jit.script
 def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
+    r"""Compute the fundamental matrix using the 7-point algorithm.
+
+    The 7-point algorithm computes the fundamental matrix from exactly 7 point correspondences.
+    Unlike the 8-point algorithm, this method can return up to 3 possible fundamental matrices
+    as solutions to the rank-2 constraint, which is formulated as a cubic equation.
+
+    Reference: Hartley/Zisserman 11.1.2 pag.281
+
+    Args:
+        points1: A set of 7 points in the first image with shape :math:`(B, 7, 2)`.
+        points2: A set of 7 points in the second image with shape :math:`(B, 7, 2)`.
+
+    Returns:
+        The computed fundamental matrices with shape :math:`(B, 3, 3, 3)`, containing up to 3
+        candidate solutions per batch. Invalid solutions are zeroed out.
+
+    """
     KORNIA_CHECK_SHAPE(points1, ["B", "7", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "7", "2"])
 
