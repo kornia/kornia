@@ -213,7 +213,7 @@ class Sam(ModelBase[SamConfig]):
             model = _build_sam(
                 encoder_embed_dim=config.encoder_embed_dim,
                 encoder_depth=config.encoder_depth,
-                encoder_num_heads=config.num_heads,
+                encoder_num_heads=config.encoder_num_heads,
                 encoder_global_attn_indexes=config.encoder_global_attn_indexes,
             )
 

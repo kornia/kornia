@@ -178,10 +178,9 @@ class PinholeCamera:
         return self.extrinsics[..., 0, -1]
 
     @tx.setter
-    def tx(self, value: Union[torch.Tensor, float]) -> "PinholeCamera":
+    def tx(self, value: Union[torch.Tensor, float]) -> None:
         r"""Set the x-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 0, -1] = value
-        return self
 
     @property
     def ty(self) -> torch.Tensor:
@@ -194,10 +193,9 @@ class PinholeCamera:
         return self.extrinsics[..., 1, -1]
 
     @ty.setter
-    def ty(self, value: Union[torch.Tensor, float]) -> "PinholeCamera":
+    def ty(self, value: Union[torch.Tensor, float]) -> None:
         r"""Set the y-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 1, -1] = value
-        return self
 
     @property
     def tz(self) -> torch.Tensor:
@@ -210,10 +208,9 @@ class PinholeCamera:
         return self.extrinsics[..., 2, -1]
 
     @tz.setter
-    def tz(self, value: Union[torch.Tensor, float]) -> "PinholeCamera":
+    def tz(self, value: Union[torch.Tensor, float]) -> None:
         r"""Set the y-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 2, -1] = value
-        return self
 
     @property
     def rt_matrix(self) -> torch.Tensor:

@@ -312,21 +312,37 @@ name = "pytorch-cu124"
 url = "https://download.pytorch.org/whl/cu124"
 explicit = true
 
-[[tool.ty.rules]]
-invalid-argument-type = "ignore"
-invalid-method-override = "warn"
-no-matching-overload = "warn"
-call-non-callable = "warn"
-unsupported-operator = "warn"
-possibly-missing-attribute = "warn"
+[tool.ty.src]
+include = ["kornia"]
+exclude = ["tests", "docs", "conftest.py"]
+
 
 [[tool.ty.overrides]]
-include = ["docs/**", "tests/**", "conftest.py"]
+include = ["kornia"]
 
-[[tool.ty.overrides.rules]]
+[tool.ty.overrides.rules]
 unresolved-import = "ignore"
-possibly-missing-attribute = "ignore"
-unresolved-attribute = "ignore"
-index-out-of-bounds = "ignore"
+#invalid-argument-type = "ignore"
+invalid-method-override = "ignore"
+invalid-type-form = "ignore"
 no-matching-overload = "ignore"
-call-non-callable = "ignore"
+unsupported-operator = "ignore"
+possibly-missing-attribute = "ignore"
+#too-many-positional-arguments = "ignore"
+not-subscriptable = "ignore"
+# Silenced because ty has issues with:
+# - Iterator[Enum] from metaclass __iter__ returning Iterator[object]
+# - Scalar wrapper return types in geometry/plane.py
+invalid-return-type = "ignore"
+# Silenced because ty doesn't understand star unpacking with union types
+# e.g., `[-i for i in unpadding]` where unpadding is int | tuple
+# or `*images.shape, images.device` unpacking
+not-iterable = "ignore"
+# Silenced because ty struggles with:
+# - Star unpacking assignments like `b, c, h, w, device = *tensor.shape, tensor.device`
+# - dict containing partial() alongside type[nn.Module]
+# - Attribute assignments with getattr fallback to None
+invalid-assignment = "ignore"
+# Silenced because KORNIA_UNWRAP intentionally uses cast for type narrowing
+redundant-cast = "ignore"
+

@@ -39,6 +39,7 @@ class DeDoDeDescriptor(nn.Module):
     ) -> torch.Tensor:
         features, sizes = self.encoder(images)
         context = None
+        descriptions = None
         scales = self.decoder.scales
         for idx, (feature_map, scale) in enumerate(zip(reversed(features), scales)):
             if idx == 0:

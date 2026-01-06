@@ -95,6 +95,9 @@ class SigLip2Model(nn.Module):
         super().__init__()
         self.config = config
 
+        if config.vision_config is None or config.text_config is None:
+            raise ValueError("vision_config and text_config must be provided")
+
         # vision and text encoders
         self.vision_model = SigLip2VisionModel(config.vision_config)
         self.text_model = SigLip2TextModel(config.text_config)

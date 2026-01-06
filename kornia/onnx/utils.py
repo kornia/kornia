@@ -65,7 +65,7 @@ class ONNXLoader(CachedDownloader):
         if not download:
             raise RuntimeError(f"File `{url}` not found. You may set `download=True`.")
 
-        raise RuntimeError(f"File `{file_path}` not found.")
+        raise RuntimeError(f"File `{url}` not found.")
 
     @classmethod
     def load_model(cls, model_name: str, download: bool = True, with_data: bool = False, **kwargs) -> onnx.ModelProto:  # type:ignore

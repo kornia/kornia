@@ -81,7 +81,7 @@ from kornia.image import (
     print_image as _print_image,
     tensor_to_image as _tensor_to_image,
 )
-from kornia.losses import one_hot as _one_hot
+from kornia.losses.one_hot import one_hot as _one_hot
 
 
 @deprecated(replace_with="kornia.core.ops.eye_like", version="0.8.3")
