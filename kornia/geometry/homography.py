@@ -22,7 +22,6 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inverse_with_mask, safe_solve_with_mask
-
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.epipolar import normalize_points
 from kornia.geometry.linalg import transform_points
@@ -30,7 +29,9 @@ from kornia.geometry.linalg import transform_points
 TupleTensor = Tuple[torch.Tensor, torch.Tensor]
 
 
-def oneway_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True, eps: float = 1e-8) -> torch.Tensor:
+def oneway_transfer_error(
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Return transfer error in image 2 for correspondences given the homography matrix.
 
     Args:
@@ -93,7 +94,9 @@ def oneway_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tenso
     return (err2 + eps).sqrt()
 
 
-def symmetric_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True, eps: float = 1e-8) -> torch.Tensor:
+def symmetric_transfer_error(
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Return Symmetric transfer error for correspondences given the homography matrix.
 
     Args:
@@ -130,7 +133,9 @@ def symmetric_transfer_error(pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Te
     return (out + eps).sqrt()
 
 
-def line_segment_transfer_error_one_way(ls1: torch.Tensor, ls2: torch.Tensor, H: torch.Tensor, squared: bool = False) -> torch.Tensor:
+def line_segment_transfer_error_one_way(
+    ls1: torch.Tensor, ls2: torch.Tensor, H: torch.Tensor, squared: bool = False
+) -> torch.Tensor:
     r"""Return transfer error in image 2 for line segment correspondences given the homography matrix.
 
     Line segment end points are reprojected into image 2, and point-to-line error is calculated w.r.t. line,
@@ -301,7 +306,9 @@ def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor)
     return sample_is_valid
 
 
-def find_homography_lines_dlt(ls1: torch.Tensor, ls2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
+def find_homography_lines_dlt(
+    ls1: torch.Tensor, ls2: torch.Tensor, weights: Optional[torch.Tensor] = None
+) -> torch.Tensor:
     """Compute the homography matrix using the DLT formulation for line correspondences.
 
     See :cite:`homolines2001` for details.

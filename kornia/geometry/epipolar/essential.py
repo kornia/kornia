@@ -80,22 +80,24 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
 
     return E_Nister
 
-from kornia.geometry.solvers.polynomial_solver import multiplication_indices, signs, coefficient_map, T_deg1, T_deg2
+
+from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2, coefficient_map, multiplication_indices, signs
+
 
 @torch.jit.script
 def _multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg1: torch.Tensor) -> torch.Tensor:
     # a, b: (..., 4)
-    product_basis = a.unsqueeze(2) * b.unsqueeze(1)        # (..., 4, 4)
-    product_vector = product_basis.flatten(start_dim=-2)   # (..., 16)
-    return product_vector @ T_deg1                         # (..., 10)
+    product_basis = a.unsqueeze(2) * b.unsqueeze(1)  # (..., 4, 4)
+    product_vector = product_basis.flatten(start_dim=-2)  # (..., 16)
+    return product_vector @ T_deg1  # (..., 10)
 
 
 @torch.jit.script
 def _multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg2: torch.Tensor) -> torch.Tensor:
     # a: (..., 10), b: (..., 4)
-    product_basis = a.unsqueeze(2) * b.unsqueeze(1)        # (..., 10, 4)
-    product_vector = product_basis.flatten(start_dim=-2)   # (..., 40)
-    return product_vector @ T_deg2                         # (..., 20)
+    product_basis = a.unsqueeze(2) * b.unsqueeze(1)  # (..., 10, 4)
+    product_vector = product_basis.flatten(start_dim=-2)  # (..., 40)
+    return product_vector @ T_deg2  # (..., 20)
 
 
 @torch.jit.script
@@ -107,11 +109,11 @@ def _determinant_to_polynomial_jit(
 ) -> torch.Tensor:
     # A: (B, 3, 13) -> (B, 11)
     B = A.shape[0]
-    A_flat = A.view(B, -1)                         # (B, 39)
+    A_flat = A.view(B, -1)  # (B, 39)
 
     gathered_values = A_flat[:, multiplication_indices]  # (B, 486, 3)
-    products = torch.prod(gathered_values, dim=-1)       # (B, 486)
-    signed_products = products * signs                   # (B, 486)
+    products = torch.prod(gathered_values, dim=-1)  # (B, 486)
+    signed_products = products * signs  # (B, 486)
 
     cs = torch.zeros(B, 11, device=A.device, dtype=A.dtype)
     batch_coefficient_map = coefficient_map.unsqueeze(0).expand(B, -1)  # (B, 486)
@@ -122,6 +124,7 @@ def _determinant_to_polynomial_jit(
 # --- fun_select inline, to keep it JIT-simple ---
 def _fun_select(mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.Tensor:
     return mat[:, ratio * j + i]
+
 
 @torch.jit.script
 def _null_to_Nister_solution_script(
@@ -143,8 +146,8 @@ def _null_to_Nister_solution_script(
 
     _, _, V = _torch_svd_cast(X)
 
-    null_ = V[:, :, -4:].contiguous()             # (B, 9, 4)
-    nullSpace = V.transpose(-1, -2)[:, -4:, :]    # (B, 4, 9)
+    null_ = V[:, :, -4:].contiguous()  # (B, 9, 4)
+    nullSpace = V.transpose(-1, -2)[:, -4:, :]  # (B, 4, 9)
 
     B = batch_size
     device = null_.device
@@ -186,17 +189,17 @@ def _null_to_Nister_solution_script(
     prods_flat = _multiply_deg_one_poly(a_flat, b_flat, T_deg1)  # (B*9*3, 10)
     prods = prods_flat.view(B, 9, 3, 10)
 
-    D_sum = prods.sum(dim=2)                        # (B, 9, 10)
-    D_blocks = D_sum.view(B, 3, 3, 10).contiguous() # (B, i, j, 10)
+    D_sum = prods.sum(dim=2)  # (B, 9, 10)
+    D_blocks = D_sum.view(B, 3, 3, 10).contiguous()  # (B, i, j, 10)
 
     # trace removal
-    diag = D_blocks[:, idx3, idx3, :]          # (B, 3, 10)
-    t = 0.5 * diag.sum(dim=1, keepdim=True)    # (B, 1, 10)
+    diag = D_blocks[:, idx3, idx3, :]  # (B, 3, 10)
+    t = 0.5 * diag.sum(dim=1, keepdim=True)  # (B, 1, 10)
     D_blocks[:, idx3, idx3, :] -= t
 
     # --- first 9 rows of coeffs ---
-    D_for_i = D_blocks[:, i_idx, :, :]         # (B, 9, 3, 10)
-    Null_for_j = null_ij[:, :, j_idx, :]       # (B, 3, 9, 4)
+    D_for_i = D_blocks[:, i_idx, :, :]  # (B, 9, 3, 10)
+    Null_for_j = null_ij[:, :, j_idx, :]  # (B, 3, 9, 4)
     Null_for_j = Null_for_j.permute(0, 2, 1, 3).contiguous()  # (B, 9, 3, 4)
 
     a2_flat = D_for_i.reshape(-1, 10)
@@ -204,11 +207,11 @@ def _null_to_Nister_solution_script(
     prods2_flat = _multiply_deg_two_one_poly(a2_flat, b2_flat, T_deg2)  # (B*9*3, 20)
     prods2 = prods2_flat.view(B, 9, 3, 20)
 
-    coeffs[:, :9, :] = prods2.sum(dim=2)       # (B, 9, 20)
+    coeffs[:, :9, :] = prods2.sum(dim=2)  # (B, 9, 20)
 
     # --- rest of pipeline ---
     b_poly = coeffs[:, :, 10:]
-    rank_10  = torch.linalg.matrix_rank(coeffs[:, :, :10])
+    rank_10 = torch.linalg.matrix_rank(coeffs[:, :, :10])
     rank_all = torch.linalg.matrix_rank(coeffs)
     singular_filter = rank_10 >= torch.max(rank_all, torch.ones_like(rank_10) * 10)
 
@@ -244,11 +247,11 @@ def _null_to_Nister_solution_script(
     cs_de = torch.where(cs_de == 0, torch.tensor(1e-8, device=device, dtype=dtype), cs_de)
     C[:, -1, :] = -cs[:, :-1] / cs_de
 
-    roots_eig = torch.linalg.eigvals(C)           # (Bf, 10)
+    roots_eig = torch.linalg.eigvals(C)  # (Bf, 10)
     roots = torch.real(roots_eig)
     is_real = torch.abs(torch.imag(roots_eig)) < 1e-10
 
-    roots_unsqu = roots.unsqueeze(1)              # (Bf, 1, 10)
+    roots_unsqu = roots.unsqueeze(1)  # (Bf, 1, 10)
 
     Bs = torch.stack(
         (
@@ -265,12 +268,16 @@ def _null_to_Nister_solution_script(
     ).transpose(1, -1)  # (Bf, 10, 3, 2)
 
     bs_vec = (
-        A[:, 0:3, 8:9] * (roots_unsqu**4)
-        + A[:, 0:3, 9:10] * (roots_unsqu**3)
-        + A[:, 0:3, 10:11] * roots_unsqu.square()
-        + A[:, 0:3, 11:12] * roots_unsqu
-        + A[:, 0:3, 12:13]
-    ).transpose(1, 2).unsqueeze(-1)  # (Bf, 10, 3, 1)
+        (
+            A[:, 0:3, 8:9] * (roots_unsqu**4)
+            + A[:, 0:3, 9:10] * (roots_unsqu**3)
+            + A[:, 0:3, 10:11] * roots_unsqu.square()
+            + A[:, 0:3, 11:12] * roots_unsqu
+            + A[:, 0:3, 12:13]
+        )
+        .transpose(1, 2)
+        .unsqueeze(-1)
+    )  # (Bf, 10, 3, 1)
 
     xzs = torch.matmul(torch.linalg.inv(Bs[:, :, 0:2, 0:2]), bs_vec[:, :, 0:2, :])
 
@@ -287,22 +294,17 @@ def _null_to_Nister_solution_script(
     nullSpace_filtered = nullSpace[singular_filter]  # (Bf, 4, 9)
 
     # ---- explicit Es construction (GPU & JIT-friendly) ----
-    xzs_sq = xzs.squeeze(-1)        # (Bf, 10, 2)
-    x = -xzs_sq[:, :, 0]           # (Bf, 10)
-    y = -xzs_sq[:, :, 1]           # (Bf, 10)
-    z = roots                      # (Bf, 10)
+    xzs_sq = xzs.squeeze(-1)  # (Bf, 10, 2)
+    x = -xzs_sq[:, :, 0]  # (Bf, 10)
+    y = -xzs_sq[:, :, 1]  # (Bf, 10)
+    z = roots  # (Bf, 10)
 
     N0 = nullSpace_filtered[:, 0, :].unsqueeze(1)  # (Bf, 1, 9)
     N1 = nullSpace_filtered[:, 1, :].unsqueeze(1)
     N2 = nullSpace_filtered[:, 2, :].unsqueeze(1)
     N3 = nullSpace_filtered[:, 3, :].unsqueeze(1)
 
-    Es_vec = (
-        x.unsqueeze(-1) * N0 +
-        y.unsqueeze(-1) * N1 +
-        z.unsqueeze(-1) * N2 +
-        N3
-    )  # (Bf, 10, 9)
+    Es_vec = x.unsqueeze(-1) * N0 + y.unsqueeze(-1) * N1 + z.unsqueeze(-1) * N2 + N3  # (Bf, 10, 9)
 
     inv_norm = 1.0 / torch.sqrt(x * x + y * y + z * z + 1.0)
     Es_vec = Es_vec * inv_norm.unsqueeze(-1)
@@ -312,22 +314,18 @@ def _null_to_Nister_solution_script(
     if is_real.logical_not().any():
         Es[~is_real] = torch.nan
 
-    E_return = torch.eye(3, dtype=dtype, device=device).unsqueeze(0).unsqueeze(1).expand(
-        batch_size, 10, 3, 3
-    ).clone()
+    E_return = torch.eye(3, dtype=dtype, device=device).unsqueeze(0).unsqueeze(1).expand(batch_size, 10, 3, 3).clone()
     E_return[singular_filter] = Es
 
     return E_return.to(dtype=original_dtype)
 
 
 # Indices for null_ij reshaping
-IDX_IJ = torch.tensor([[0, 3, 6],
-                       [1, 4, 7],
-                       [2, 5, 8]], dtype=torch.long)
+IDX_IJ = torch.tensor([[0, 3, 6], [1, 4, 7], [2, 5, 8]], dtype=torch.long)
 
 I_IDX = torch.tensor([0, 0, 0, 1, 1, 1, 2, 2, 2], dtype=torch.long)
 J_IDX = torch.tensor([0, 1, 2, 0, 1, 2, 0, 1, 2], dtype=torch.long)
-IDX3  = torch.tensor([0, 1, 2], dtype=torch.long)
+IDX3 = torch.tensor([0, 1, 2], dtype=torch.long)
 
 TOP_IDX = torch.tensor([4, 6, 8], dtype=torch.long)
 BOT_IDX = torch.tensor([5, 7, 9], dtype=torch.long)
@@ -348,9 +346,9 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     coeff_map = coefficient_map.to(device=device)
 
     idx_ij_dev = IDX_IJ.to(device=device)
-    i_idx_dev  = I_IDX.to(device=device)
-    j_idx_dev  = J_IDX.to(device=device)
-    idx3_dev   = IDX3.to(device=device)
+    i_idx_dev = I_IDX.to(device=device)
+    j_idx_dev = J_IDX.to(device=device)
+    idx3_dev = IDX3.to(device=device)
     top_idx_dev = TOP_IDX.to(device=device)
     bot_idx_dev = BOT_IDX.to(device=device)
 
@@ -371,14 +369,12 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     )
 
 
-
 def null_to_Nister_sol222ution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     r"""Use Nister's 5PC to solve essential matrix."""
-
     original_dtype = X.dtype
     _, _, V = _torch_svd_cast(X)
 
-    null_ = V[:, :, -4:]                        # (B, 9, 4)
+    null_ = V[:, :, -4:]  # (B, 9, 4)
     nullSpace = V.transpose(-1, -2)[:, -4:, :]  # (B, 4, 9)
 
     coeffs = torch.zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
@@ -418,8 +414,8 @@ def null_to_Nister_sol222ution(X: torch.Tensor, batch_size: int) -> torch.Tensor
         dtype=torch.long,
     )  # [[0,3,6],[1,4,7],[2,5,8]]
 
-    idx_flat = idx_ij.view(1, -1, 1).expand(B, -1, 4)      # (B, 9, 4)
-    null_ij = null_.gather(1, idx_flat).view(B, 3, 3, 4)   # (B, 3(i), 3(j), 4)
+    idx_flat = idx_ij.view(1, -1, 1).expand(B, -1, 4)  # (B, 9, 4)
+    null_ij = null_.gather(1, idx_flat).view(B, 3, 3, 4)  # (B, 3(i), 3(j), 4)
 
     # (i,j) enumeration in the same order as original loops:
     # (0,0),(0,1),(0,2),(1,0),...,(2,2)
@@ -433,43 +429,43 @@ def null_to_Nister_sol222ution(X: torch.Tensor, batch_size: int) -> torch.Tensor
     b_data = null_ij[:, j_idx, :, :]  # (B, 9, 3, 4)
 
     # Flatten (B, 9, 3) -> batch
-    a_flat = a_data.reshape(-1, 4)    # (B*9*3, 4)
-    b_flat = b_data.reshape(-1, 4)    # (B*9*3, 4)
+    a_flat = a_data.reshape(-1, 4)  # (B*9*3, 4)
+    b_flat = b_data.reshape(-1, 4)  # (B*9*3, 4)
 
     prods_flat = solvers.multiply_deg_one_poly(a_flat, b_flat)  # (B*9*3, 10)
-    prods = prods_flat.view(B, 9, 3, 10)                        # (B, 9, 3, 10)
+    prods = prods_flat.view(B, 9, 3, 10)  # (B, 9, 3, 10)
 
     # Sum over k to get D(i,j)
-    D_sum = prods.sum(dim=2)            # (B, 9, 10)
+    D_sum = prods.sum(dim=2)  # (B, 9, 10)
     D_blocks = D_sum.view(B, 3, 3, 10)  # (B, 3(i), 3(j), 10)
 
     # ----- Trace removal on diagonals -----
     # t = 0.5 * (D(0,0) + D(1,1) + D(2,2)), per coefficient
     diag = D_blocks[:, [0, 1, 2], [0, 1, 2], :]  # (B, 3, 10)
-    t = 0.5 * diag.sum(dim=1, keepdim=True)      # (B, 1, 10)
+    t = 0.5 * diag.sum(dim=1, keepdim=True)  # (B, 1, 10)
 
     idx3 = torch.arange(3, device=device)
-    D_blocks[:, idx3, idx3, :] -= t              # modify only the diagonal entries
+    D_blocks[:, idx3, idx3, :] -= t  # modify only the diagonal entries
 
     # ----- Build first 9 rows of coeffs -----
     # Original:
     #   row(i,j) = Σ_k multiply_deg_two_one_poly( D(i,k), Null(k,j) )
     #
     # D_for_i[:, p, k, :] = D(i_idx[p], k)
-    D_for_i = D_blocks[:, i_idx, :, :]           # (B, 9, 3, 10)
+    D_for_i = D_blocks[:, i_idx, :, :]  # (B, 9, 3, 10)
 
     # Null_for_j[:, k, p, :] = Null(k, j_idx[p]) = null_ij[:, k, j_idx[p], :]
-    Null_for_j = null_ij[:, :, j_idx, :]         # (B, 3, 9, 4)
+    Null_for_j = null_ij[:, :, j_idx, :]  # (B, 3, 9, 4)
     Null_for_j = Null_for_j.permute(0, 2, 1, 3)  # (B, 9, 3, 4)  (B, pair, k, 4)
 
     # Flatten for batched poly multiplication
-    a2_flat = D_for_i.reshape(-1, 10)            # (B*9*3, 10)
-    b2_flat = Null_for_j.reshape(-1, 4)          # (B*9*3, 4)
+    a2_flat = D_for_i.reshape(-1, 10)  # (B*9*3, 10)
+    b2_flat = Null_for_j.reshape(-1, 4)  # (B*9*3, 4)
 
     prods2_flat = solvers.multiply_deg_two_one_poly(a2_flat, b2_flat)  # (B*9*3, 20)
-    prods2 = prods2_flat.view(B, 9, 3, 20)                             # (B, 9, 3, 20)
+    prods2 = prods2_flat.view(B, 9, 3, 20)  # (B, 9, 3, 20)
 
-    rows = prods2.sum(dim=2)                     # (B, 9, 20)
+    rows = prods2.sum(dim=2)  # (B, 9, 20)
     coeffs[:, :9, :] = rows
 
     # ----------------------------------------------------------------------
@@ -481,9 +477,7 @@ def null_to_Nister_sol222ution(X: torch.Tensor, batch_size: int) -> torch.Tensor
     singular_filter = rank_10 >= torch.max(rank_all, torch.ones_like(rank_10) * 10)
 
     if singular_filter.sum() == 0:
-        return torch.eye(3, dtype=coeffs.dtype, device=coeffs.device)[None].expand(
-            batch_size, 10, -1, -1
-        ).clone()
+        return torch.eye(3, dtype=coeffs.dtype, device=coeffs.device)[None].expand(batch_size, 10, -1, -1).clone()
 
     eliminated_mat = _torch_solve_cast(coeffs[singular_filter, :, :10], b[singular_filter])
     coeffs_ = torch.cat((coeffs[singular_filter, :, :10], eliminated_mat), dim=-1)
@@ -549,9 +543,7 @@ def null_to_Nister_sol222ution(X: torch.Tensor, batch_size: int) -> torch.Tensor
 
     xzs = torch.matmul(torch.linalg.inv(Bs[:, :, 0:2, 0:2]), bs[:, :, 0:2])
 
-    mask = (
-        abs(torch.matmul(Bs[:, :, 2, :].unsqueeze(2), xzs) - bs[:, :, 2, :].unsqueeze(2)) > 1e-3
-    )
+    mask = abs(torch.matmul(Bs[:, :, 2, :].unsqueeze(2), xzs) - bs[:, :, 2, :].unsqueeze(2)) > 1e-3
     mask = mask.squeeze(3).squeeze(2)
 
     if torch.any(mask):
@@ -568,21 +560,16 @@ def null_to_Nister_sol222ution(X: torch.Tensor, batch_size: int) -> torch.Tensor
         + nullSpace_filtered[:, 3:4]
     )
 
-    inv = 1.0 / torch.sqrt(
-        (-xzs[:, :, 0]) ** 2 + (-xzs[:, :, 1]) ** 2 + roots.unsqueeze(-1) ** 2 + 1.0
-    )
+    inv = 1.0 / torch.sqrt((-xzs[:, :, 0]) ** 2 + (-xzs[:, :, 1]) ** 2 + roots.unsqueeze(-1) ** 2 + 1.0)
     Es *= inv
 
     Es = Es.view(batch_size_filtered, -1, 3, 3).transpose(-1, -2)
     Es[~is_real] = float("nan")
 
-    E_return = torch.eye(3, dtype=Es.dtype, device=Es.device)[None].expand(
-        batch_size, 10, -1, -1
-    ).clone()
+    E_return = torch.eye(3, dtype=Es.dtype, device=Es.device)[None].expand(batch_size, 10, -1, -1).clone()
     E_return[singular_filter] = Es
 
     return E_return.to(dtype=original_dtype)
-
 
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
