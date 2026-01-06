@@ -15,11 +15,6 @@
 # limitations under the License.
 #
 
-"""Kornia Geometry Epipolar — Epipolar geometry operations for Kornia.
-
-This subpackage provides functions for epipolar distance, fundamental matrices, and stereo vision.
-"""
-
 from ._metrics import (
     left_to_right_epipolar_distance,
     right_to_left_epipolar_distance,

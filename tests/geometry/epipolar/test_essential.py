@@ -66,6 +66,7 @@ class TestFindEssential(BaseTester):
         E = epi.essential.find_essential(calibrated_x1, calibrated_x2)
         if torch.all(E != 0):
             distance = epi.symmetrical_epipolar_distance(calibrated_x1, calibrated_x2, E)
+            distance = torch.nan_to_num(distance, nan=1e8)
             # Note : here we check only the best model, although all solutions are returned
             mean_error = distance.mean(-1).min()
             self.assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
@@ -85,8 +86,9 @@ class TestFindEssential(BaseTester):
         weights = torch.ones_like(calibrated_x2)[..., 0]
         E_est = epi.essential.find_essential(calibrated_x1, calibrated_x2, weights)
         error = epi.sampson_epipolar_distance(calibrated_x1, calibrated_x2, E_est)
+        error = torch.nan_to_num(error, nan=1e8)
         self.assert_close(
-            error[:, torch.argmin(error.mean(-1).min())],
+            error[:, torch.argmin(error.mean(-1))],
             torch.zeros((calibrated_x1.shape[:2]), device=device, dtype=dtype),
             atol=1e-4,
             rtol=1e-4,

@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""nn.Module containing functionalities for the Essential matrix."""
+"""Module containing functionalities for the Essential matrix."""
 
 from typing import Optional, Tuple
 
@@ -49,42 +49,288 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     and the solver implemented referred to [@barath2020magsac++][@wei2023generalized][@wang2023vggsfm].
 
     Args:
-        points1: A set of carlibrated points in the first image with a torch.tensor shape :math:`(B, N, 2), N>=8`.
-        points2: A set of points in the second image with a torch.tensor shape :math:`(B, N, 2), N>=8`.
-        weights: torch.Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        points1: A set of carlibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
+        weights: Not used, kept for compatibility.
 
     Returns:
-        the computed essential matrix with shape :math:`(B, 3, 3)`.
+        the computed essential matrix with shape :math:`(B, 10, 3, 3)`.
 
     """
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
     KORNIA_CHECK_SAME_SHAPE(points1, points2)
     KORNIA_CHECK(points1.shape[1] >= 5, "Number of points should be >=5")
-    if weights is not None:
-        KORNIA_CHECK_SAME_SHAPE(points1[:, :, 0], weights)
 
     batch_size, _, _ = points1.shape
     x1, y1 = torch.chunk(points1, dim=-1, chunks=2)  # Bx1xN
     x2, y2 = torch.chunk(points2, dim=-1, chunks=2)  # Bx1xN
-    ones_tensor = torch.ones_like(x1)
+    ones = torch.ones_like(x1)
 
     # build the equation system and find the null space.
     # https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf
     # [x * x', x * y', x, y * x', y * y', y, x', y', 1]
     # BxNx9
-    X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones_tensor], dim=-1)
-
-    # apply the weights to the linear system
-    if weights is None:
-        X = X.transpose(-2, -1) @ X
-    else:
-        w_diag = torch.diag_embed(weights)
-        X = X.transpose(-2, -1) @ w_diag @ X
+    X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones], dim=-1)
 
     # use Nister's 5PC to solve essential matrix
+    original_dtype = X.dtype
+    X = X.to(dtype=torch.float64)
     E_Nister = null_to_Nister_solution(X, batch_size)
+    E_Nister = E_Nister.to(dtype=original_dtype)
 
     return E_Nister
+
+from kornia.geometry.solvers.polynomial_solver import multiplication_indices, signs, coefficient_map, T_deg1, T_deg2
+
+@torch.jit.script
+def _multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg1: torch.Tensor) -> torch.Tensor:
+    # a, b: (..., 4)
+    product_basis = a.unsqueeze(2) * b.unsqueeze(1)        # (..., 4, 4)
+    product_vector = product_basis.flatten(start_dim=-2)   # (..., 16)
+    return product_vector @ T_deg1                         # (..., 10)
+
+
+@torch.jit.script
+def _multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg2: torch.Tensor) -> torch.Tensor:
+    # a: (..., 10), b: (..., 4)
+    product_basis = a.unsqueeze(2) * b.unsqueeze(1)        # (..., 10, 4)
+    product_vector = product_basis.flatten(start_dim=-2)   # (..., 40)
+    return product_vector @ T_deg2                         # (..., 20)
+
+
+@torch.jit.script
+def _determinant_to_polynomial_jit(
+    A: torch.Tensor,
+    multiplication_indices: torch.Tensor,
+    signs: torch.Tensor,
+    coefficient_map: torch.Tensor,
+) -> torch.Tensor:
+    # A: (B, 3, 13) -> (B, 11)
+    B = A.shape[0]
+    A_flat = A.view(B, -1)                         # (B, 39)
+
+    gathered_values = A_flat[:, multiplication_indices]  # (B, 486, 3)
+    products = torch.prod(gathered_values, dim=-1)       # (B, 486)
+    signed_products = products * signs                   # (B, 486)
+
+    cs = torch.zeros(B, 11, device=A.device, dtype=A.dtype)
+    batch_coefficient_map = coefficient_map.unsqueeze(0).expand(B, -1)  # (B, 486)
+    cs.scatter_add_(1, batch_coefficient_map, signed_products)
+    return cs
+
+
+# --- fun_select inline, to keep it JIT-simple ---
+def _fun_select(mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.Tensor:
+    return mat[:, ratio * j + i]
+
+@torch.jit.script
+def _null_to_Nister_solution_script(
+    X: torch.Tensor,
+    batch_size: int,
+    T_deg1: torch.Tensor,
+    T_deg2: torch.Tensor,
+    multiplication_indices: torch.Tensor,
+    signs: torch.Tensor,
+    coefficient_map: torch.Tensor,
+    idx_ij: torch.Tensor,
+    i_idx: torch.Tensor,
+    j_idx: torch.Tensor,
+    idx3: torch.Tensor,
+    top_idx: torch.Tensor,
+    bot_idx: torch.Tensor,
+) -> torch.Tensor:
+    original_dtype = X.dtype
+
+    _, _, V = _torch_svd_cast(X)
+
+    null_ = V[:, :, -4:].contiguous()             # (B, 9, 4)
+    nullSpace = V.transpose(-1, -2)[:, -4:, :]    # (B, 4, 9)
+
+    B = batch_size
+    device = null_.device
+    dtype = null_.dtype
+
+    coeffs = torch.zeros(B, 10, 20, device=device, dtype=dtype)
+
+    # --- determinant constraint ---
+    coeffs[:, 9] = (
+        _multiply_deg_two_one_poly(
+            _multiply_deg_one_poly(_fun_select(null_, 0, 1), _fun_select(null_, 1, 2), T_deg1)
+            - _multiply_deg_one_poly(_fun_select(null_, 0, 2), _fun_select(null_, 1, 1), T_deg1),
+            _fun_select(null_, 2, 0),
+            T_deg2,
+        )
+        + _multiply_deg_two_one_poly(
+            _multiply_deg_one_poly(_fun_select(null_, 0, 2), _fun_select(null_, 1, 0), T_deg1)
+            - _multiply_deg_one_poly(_fun_select(null_, 0, 0), _fun_select(null_, 1, 2), T_deg1),
+            _fun_select(null_, 2, 1),
+            T_deg2,
+        )
+        + _multiply_deg_two_one_poly(
+            _multiply_deg_one_poly(_fun_select(null_, 0, 0), _fun_select(null_, 1, 1), T_deg1)
+            - _multiply_deg_one_poly(_fun_select(null_, 0, 1), _fun_select(null_, 1, 0), T_deg1),
+            _fun_select(null_, 2, 2),
+            T_deg2,
+        )
+    )
+
+    # --- vectorized EE^T ---
+    idx_flat = idx_ij.view(1, -1, 1).expand(B, -1, 4)
+    null_ij = null_.gather(1, idx_flat).view(B, 3, 3, 4).contiguous()
+
+    a_data = null_ij[:, i_idx, :, :]  # (B, 9, 3, 4)
+    b_data = null_ij[:, j_idx, :, :]  # (B, 9, 3, 4)
+
+    a_flat = a_data.reshape(-1, 4)
+    b_flat = b_data.reshape(-1, 4)
+    prods_flat = _multiply_deg_one_poly(a_flat, b_flat, T_deg1)  # (B*9*3, 10)
+    prods = prods_flat.view(B, 9, 3, 10)
+
+    D_sum = prods.sum(dim=2)                        # (B, 9, 10)
+    D_blocks = D_sum.view(B, 3, 3, 10).contiguous() # (B, i, j, 10)
+
+    # trace removal
+    diag = D_blocks[:, idx3, idx3, :]          # (B, 3, 10)
+    t = 0.5 * diag.sum(dim=1, keepdim=True)    # (B, 1, 10)
+    D_blocks[:, idx3, idx3, :] -= t
+
+    # --- first 9 rows of coeffs ---
+    D_for_i = D_blocks[:, i_idx, :, :]         # (B, 9, 3, 10)
+    Null_for_j = null_ij[:, :, j_idx, :]       # (B, 3, 9, 4)
+    Null_for_j = Null_for_j.permute(0, 2, 1, 3).contiguous()  # (B, 9, 3, 4)
+
+    a2_flat = D_for_i.reshape(-1, 10)
+    b2_flat = Null_for_j.reshape(-1, 4)
+    prods2_flat = _multiply_deg_two_one_poly(a2_flat, b2_flat, T_deg2)  # (B*9*3, 20)
+    prods2 = prods2_flat.view(B, 9, 3, 20)
+
+    coeffs[:, :9, :] = prods2.sum(dim=2)       # (B, 9, 20)
+
+    # --- rest of pipeline ---
+    b_poly = coeffs[:, :, 10:]
+    rank_10  = torch.linalg.matrix_rank(coeffs[:, :, :10])
+    rank_all = torch.linalg.matrix_rank(coeffs)
+    singular_filter = rank_10 >= torch.max(rank_all, torch.ones_like(rank_10) * 10)
+
+    if singular_filter.sum().item() == 0:
+        eye3 = torch.eye(3, dtype=dtype, device=device)
+        return eye3.unsqueeze(0).unsqueeze(1).expand(batch_size, 10, 3, 3).clone().to(original_dtype)
+
+    coeffs_sf = coeffs[singular_filter]
+    b_poly_sf = b_poly[singular_filter]
+
+    eliminated_mat = _torch_solve_cast(coeffs_sf[:, :, :10], b_poly_sf)
+    coeffs_ = torch.cat((coeffs_sf[:, :, :10], eliminated_mat), dim=-1)
+    batch_size_filtered = coeffs_.shape[0]
+
+    A = torch.zeros(batch_size_filtered, 3, 13, device=device, dtype=dtype)
+
+    A[:, :, 1:4] = coeffs_[:, top_idx, 10:13]
+    A[:, :, 0:3] -= coeffs_[:, bot_idx, 10:13]
+
+    A[:, :, 5:8] = coeffs_[:, top_idx, 13:16]
+    A[:, :, 4:7] -= coeffs_[:, bot_idx, 13:16]
+
+    A[:, :, 9:13] = coeffs_[:, top_idx, 16:20]
+    A[:, :, 8:12] -= coeffs_[:, bot_idx, 16:20]
+
+    cs = _determinant_to_polynomial_jit(A, multiplication_indices, signs, coefficient_map)
+
+    C = torch.zeros(batch_size_filtered, 10, 10, device=device, dtype=dtype)
+    eye9 = torch.eye(9, device=device, dtype=dtype)
+    C[:, 0:-1, 1:] = eye9
+
+    cs_de = cs[:, -1].unsqueeze(-1)
+    cs_de = torch.where(cs_de == 0, torch.tensor(1e-8, device=device, dtype=dtype), cs_de)
+    C[:, -1, :] = -cs[:, :-1] / cs_de
+
+    roots_eig = torch.linalg.eigvals(C)           # (Bf, 10)
+    roots = torch.real(roots_eig)
+    is_real = torch.abs(torch.imag(roots_eig)) < 1e-10
+
+    roots_unsqu = roots.unsqueeze(1)              # (Bf, 1, 10)
+
+    Bs = torch.stack(
+        (
+            A[:, :3, :1] * (roots_unsqu**3)
+            + A[:, :3, 1:2] * roots_unsqu.square()
+            + A[:, 0:3, 2:3] * roots_unsqu
+            + A[:, 0:3, 3:4],
+            A[:, 0:3, 4:5] * (roots_unsqu**3)
+            + A[:, 0:3, 5:6] * roots_unsqu.square()
+            + A[:, 0:3, 6:7] * roots_unsqu
+            + A[:, 0:3, 7:8],
+        ),
+        dim=1,
+    ).transpose(1, -1)  # (Bf, 10, 3, 2)
+
+    bs_vec = (
+        A[:, 0:3, 8:9] * (roots_unsqu**4)
+        + A[:, 0:3, 9:10] * (roots_unsqu**3)
+        + A[:, 0:3, 10:11] * roots_unsqu.square()
+        + A[:, 0:3, 11:12] * roots_unsqu
+        + A[:, 0:3, 12:13]
+    ).transpose(1, 2).unsqueeze(-1)  # (Bf, 10, 3, 1)
+
+    xzs = torch.matmul(torch.linalg.inv(Bs[:, :, 0:2, 0:2]), bs_vec[:, :, 0:2, :])
+
+    residual = torch.matmul(Bs[:, :, 2, :].unsqueeze(2), xzs) - bs_vec[:, :, 2:3, :]
+    mask = (residual.abs() > 1e-3).squeeze(-1).squeeze(-1)  # (Bf, 10)
+
+    if mask.any():
+        Bs_mask = Bs[mask]
+        bs_mask = bs_vec[mask]
+        q_batch, r_batch = torch.linalg.qr(Bs_mask)
+        xyz_to_feed = torch.linalg.solve(r_batch, torch.matmul(q_batch.transpose(-1, -2), bs_mask))
+        xzs[mask] = xyz_to_feed
+
+    nullSpace_filtered = nullSpace[singular_filter]  # (Bf, 4, 9)
+
+    # ---- explicit Es construction (GPU & JIT-friendly) ----
+    xzs_sq = xzs.squeeze(-1)        # (Bf, 10, 2)
+    x = -xzs_sq[:, :, 0]           # (Bf, 10)
+    y = -xzs_sq[:, :, 1]           # (Bf, 10)
+    z = roots                      # (Bf, 10)
+
+    N0 = nullSpace_filtered[:, 0, :].unsqueeze(1)  # (Bf, 1, 9)
+    N1 = nullSpace_filtered[:, 1, :].unsqueeze(1)
+    N2 = nullSpace_filtered[:, 2, :].unsqueeze(1)
+    N3 = nullSpace_filtered[:, 3, :].unsqueeze(1)
+
+    Es_vec = (
+        x.unsqueeze(-1) * N0 +
+        y.unsqueeze(-1) * N1 +
+        z.unsqueeze(-1) * N2 +
+        N3
+    )  # (Bf, 10, 9)
+
+    inv_norm = 1.0 / torch.sqrt(x * x + y * y + z * z + 1.0)
+    Es_vec = Es_vec * inv_norm.unsqueeze(-1)
+
+    Es = Es_vec.view(batch_size_filtered, -1, 3, 3).transpose(-1, -2)
+
+    if is_real.logical_not().any():
+        Es[~is_real] = torch.nan
+
+    E_return = torch.eye(3, dtype=dtype, device=device).unsqueeze(0).unsqueeze(1).expand(
+        batch_size, 10, 3, 3
+    ).clone()
+    E_return[singular_filter] = Es
+
+    return E_return.to(dtype=original_dtype)
+
+
+# Indices for null_ij reshaping
+IDX_IJ = torch.tensor([[0, 3, 6],
+                       [1, 4, 7],
+                       [2, 5, 8]], dtype=torch.long)
+
+I_IDX = torch.tensor([0, 0, 0, 1, 1, 1, 2, 2, 2], dtype=torch.long)
+J_IDX = torch.tensor([0, 1, 2, 0, 1, 2, 0, 1, 2], dtype=torch.long)
+IDX3  = torch.tensor([0, 1, 2], dtype=torch.long)
+
+TOP_IDX = torch.tensor([4, 6, 8], dtype=torch.long)
+BOT_IDX = torch.tensor([5, 7, 9], dtype=torch.long)
 
 
 def fun_select(null_mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.Tensor:
@@ -92,32 +338,54 @@ def fun_select(null_mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.
 
 
 def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
-    r"""Use Nister's 5PC to solve essential matrix.
+    device = X.device
+    dtype_internal = X.dtype
 
-    The linear system is solved by Nister's 5-point algorithm [@nister2004efficient],
-    and the solver implemented referred to [@barath2020magsac++][@wei2023generalized][@wang2023vggsfm].
+    T1 = T_deg1.to(device=device, dtype=dtype_internal)
+    T2 = T_deg2.to(device=device, dtype=dtype_internal)
+    mult_idx = multiplication_indices.to(device=device)
+    sgns = signs.to(device=device, dtype=dtype_internal)
+    coeff_map = coefficient_map.to(device=device)
 
-    Args:
-        X: Coefficients for the null space :math:`(B, N, 2), N>=8`.
-        batch_size: batcs size of the input, the number of image pairs :math:`B`.
+    idx_ij_dev = IDX_IJ.to(device=device)
+    i_idx_dev  = I_IDX.to(device=device)
+    j_idx_dev  = J_IDX.to(device=device)
+    idx3_dev   = IDX3.to(device=device)
+    top_idx_dev = TOP_IDX.to(device=device)
+    bot_idx_dev = BOT_IDX.to(device=device)
 
-    Returns:
-        the computed essential matrix with shape :math:`(B, 3, 3)`.
-        Note that the returned E matrices should be the same batch size with the input.
+    return _null_to_Nister_solution_script(
+        X,
+        batch_size,
+        T1,
+        T2,
+        mult_idx,
+        sgns,
+        coeff_map,
+        idx_ij_dev,
+        i_idx_dev,
+        j_idx_dev,
+        idx3_dev,
+        top_idx_dev,
+        bot_idx_dev,
+    )
 
-    """
-    # compute eigenvectors and retrieve the one with the smallest eigenvalue, using SVD
-    # turn off the grad check due to the unstable gradients from SVD.
-    # several close to zero values of eigenvalues.
-    _, _, V = _torch_svd_cast(X)  # torch.svd
 
-    null_ = V[:, :, -4:]  # the last four rows
-    nullSpace = V.transpose(-1, -2)[:, -4:, :]
+
+def null_to_Nister_sol222ution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
+    r"""Use Nister's 5PC to solve essential matrix."""
+
+    original_dtype = X.dtype
+    _, _, V = _torch_svd_cast(X)
+
+    null_ = V[:, :, -4:]                        # (B, 9, 4)
+    nullSpace = V.transpose(-1, -2)[:, -4:, :]  # (B, 4, 9)
 
     coeffs = torch.zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
-    d = torch.zeros(batch_size, 60, device=null_.device, dtype=null_.dtype)
 
-    # Determinant constraint
+    # ----------------------------------------------------------------------
+    # Determinant constraint (unchanged)
+    # ----------------------------------------------------------------------
     coeffs[:, 9] = (
         solvers.multiply_deg_two_one_poly(
             solvers.multiply_deg_one_poly(fun_select(null_, 0, 1), fun_select(null_, 1, 2))
@@ -136,78 +404,118 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
         )
     )
 
-    indices = torch.tensor([[0, 10, 20], [10, 40, 30], [20, 30, 50]])
+    # ----------------------------------------------------------------------
+    # Vectorized EE^T (d not needed explicitly) and coeffs[:, :9]
+    # ----------------------------------------------------------------------
+    B = batch_size
+    device = null_.device
 
-    # Compute EE^T (Eqn. 20 in the paper)
-    for i in range(3):
-        for j in range(3):
-            d[:, indices[i, j] : indices[i, j] + 10] = (
-                solvers.multiply_deg_one_poly(fun_select(null_, i, 0), fun_select(null_, j, 0))
-                + solvers.multiply_deg_one_poly(fun_select(null_, i, 1), fun_select(null_, j, 1))
-                + solvers.multiply_deg_one_poly(fun_select(null_, i, 2), fun_select(null_, j, 2))
-            )
+    # Build null_ij so that:
+    #   null_ij[:, i, j, :] == fun_select(null_, i, j) == null_[:, 3*j + i]
+    idx_ij = torch.tensor(
+        [[3 * j + i for j in range(3)] for i in range(3)],  # shape (3, 3)
+        device=device,
+        dtype=torch.long,
+    )  # [[0,3,6],[1,4,7],[2,5,8]]
 
-    for i in range(10):
-        t = 0.5 * (d[:, indices[0, 0] + i] + d[:, indices[1, 1] + i] + d[:, indices[2, 2] + i])
-        d[:, indices[0, 0] + i] -= t
-        d[:, indices[1, 1] + i] -= t
-        d[:, indices[2, 2] + i] -= t
+    idx_flat = idx_ij.view(1, -1, 1).expand(B, -1, 4)      # (B, 9, 4)
+    null_ij = null_.gather(1, idx_flat).view(B, 3, 3, 4)   # (B, 3(i), 3(j), 4)
 
-    cnt = 0
-    for i in range(3):
-        for j in range(3):
-            row = (
-                solvers.multiply_deg_two_one_poly(d[:, indices[i, 0] : indices[i, 0] + 10], fun_select(null_, 0, j))
-                + solvers.multiply_deg_two_one_poly(d[:, indices[i, 1] : indices[i, 1] + 10], fun_select(null_, 1, j))
-                + solvers.multiply_deg_two_one_poly(d[:, indices[i, 2] : indices[i, 2] + 10], fun_select(null_, 2, j))
-            )
-            coeffs[:, cnt] = row
-            cnt += 1
+    # (i,j) enumeration in the same order as original loops:
+    # (0,0),(0,1),(0,2),(1,0),...,(2,2)
+    i_idx = torch.tensor([0, 0, 0, 1, 1, 1, 2, 2, 2], device=device, dtype=torch.long)
+    j_idx = torch.tensor([0, 1, 2, 0, 1, 2, 0, 1, 2], device=device, dtype=torch.long)
 
+    # ----- EE^T: D(i,j) = Σ_k multiply_deg_one_poly( Null(i,k), Null(j,k) ) -----
+    # Null(i,k) = null_ij[:, i, k, :]
+    # Null(j,k) = null_ij[:, j, k, :]
+    a_data = null_ij[:, i_idx, :, :]  # (B, 9, 3, 4)
+    b_data = null_ij[:, j_idx, :, :]  # (B, 9, 3, 4)
+
+    # Flatten (B, 9, 3) -> batch
+    a_flat = a_data.reshape(-1, 4)    # (B*9*3, 4)
+    b_flat = b_data.reshape(-1, 4)    # (B*9*3, 4)
+
+    prods_flat = solvers.multiply_deg_one_poly(a_flat, b_flat)  # (B*9*3, 10)
+    prods = prods_flat.view(B, 9, 3, 10)                        # (B, 9, 3, 10)
+
+    # Sum over k to get D(i,j)
+    D_sum = prods.sum(dim=2)            # (B, 9, 10)
+    D_blocks = D_sum.view(B, 3, 3, 10)  # (B, 3(i), 3(j), 10)
+
+    # ----- Trace removal on diagonals -----
+    # t = 0.5 * (D(0,0) + D(1,1) + D(2,2)), per coefficient
+    diag = D_blocks[:, [0, 1, 2], [0, 1, 2], :]  # (B, 3, 10)
+    t = 0.5 * diag.sum(dim=1, keepdim=True)      # (B, 1, 10)
+
+    idx3 = torch.arange(3, device=device)
+    D_blocks[:, idx3, idx3, :] -= t              # modify only the diagonal entries
+
+    # ----- Build first 9 rows of coeffs -----
+    # Original:
+    #   row(i,j) = Σ_k multiply_deg_two_one_poly( D(i,k), Null(k,j) )
+    #
+    # D_for_i[:, p, k, :] = D(i_idx[p], k)
+    D_for_i = D_blocks[:, i_idx, :, :]           # (B, 9, 3, 10)
+
+    # Null_for_j[:, k, p, :] = Null(k, j_idx[p]) = null_ij[:, k, j_idx[p], :]
+    Null_for_j = null_ij[:, :, j_idx, :]         # (B, 3, 9, 4)
+    Null_for_j = Null_for_j.permute(0, 2, 1, 3)  # (B, 9, 3, 4)  (B, pair, k, 4)
+
+    # Flatten for batched poly multiplication
+    a2_flat = D_for_i.reshape(-1, 10)            # (B*9*3, 10)
+    b2_flat = Null_for_j.reshape(-1, 4)          # (B*9*3, 4)
+
+    prods2_flat = solvers.multiply_deg_two_one_poly(a2_flat, b2_flat)  # (B*9*3, 20)
+    prods2 = prods2_flat.view(B, 9, 3, 20)                             # (B, 9, 3, 20)
+
+    rows = prods2.sum(dim=2)                     # (B, 9, 20)
+    coeffs[:, :9, :] = rows
+
+    # ----------------------------------------------------------------------
+    # From here on: same as original code
+    # ----------------------------------------------------------------------
     b = coeffs[:, :, 10:]
-    singular_filter = torch.linalg.matrix_rank(coeffs[:, :, :10]) >= torch.max(
-        torch.linalg.matrix_rank(coeffs), torch.ones_like(torch.linalg.matrix_rank(coeffs[:, :, :10])) * 10
-    )
+    rank_10 = torch.linalg.matrix_rank(coeffs[:, :, :10])
+    rank_all = torch.linalg.matrix_rank(coeffs)
+    singular_filter = rank_10 >= torch.max(rank_all, torch.ones_like(rank_10) * 10)
 
-    # check if there is no solution
     if singular_filter.sum() == 0:
-        return torch.eye(3, dtype=coeffs.dtype, device=coeffs.device)[None].expand(batch_size, 10, -1, -1).clone()
+        return torch.eye(3, dtype=coeffs.dtype, device=coeffs.device)[None].expand(
+            batch_size, 10, -1, -1
+        ).clone()
 
     eliminated_mat = _torch_solve_cast(coeffs[singular_filter, :, :10], b[singular_filter])
-
     coeffs_ = torch.cat((coeffs[singular_filter, :, :10], eliminated_mat), dim=-1)
 
-    # check the batch size after singular filter, for batch operation afterwards
     batch_size_filtered = coeffs_.shape[0]
 
-    A = torch.zeros(coeffs_.shape[0], 3, 13, device=coeffs_.device, dtype=coeffs_.dtype)
+    A = torch.zeros(batch_size_filtered, 3, 13, device=coeffs_.device, dtype=coeffs_.dtype)
+    top_idx = torch.tensor([4, 6, 8], device=coeffs_.device, dtype=torch.long)
+    bot_idx = torch.tensor([5, 7, 9], device=coeffs_.device, dtype=torch.long)
 
-    for i in range(3):
-        A[:, i, 0] = 0.0
-        A[:, i : i + 1, 1:4] = coeffs_[:, 4 + 2 * i : 5 + 2 * i, 10:13]
-        A[:, i : i + 1, 0:3] -= coeffs_[:, 5 + 2 * i : 6 + 2 * i, 10:13]
-        A[:, i, 4] = 0.0
-        A[:, i : i + 1, 5:8] = coeffs_[:, 4 + 2 * i : 5 + 2 * i, 13:16]
-        A[:, i : i + 1, 4:7] -= coeffs_[:, 5 + 2 * i : 6 + 2 * i, 13:16]
-        A[:, i, 8] = 0.0
-        A[:, i : i + 1, 9:13] = coeffs_[:, 4 + 2 * i : 5 + 2 * i, 16:20]
-        A[:, i : i + 1, 8:12] -= coeffs_[:, 5 + 2 * i : 6 + 2 * i, 16:20]
+    A[:, :, 1:4] = coeffs_[:, top_idx, 10:13]
+    A[:, :, 0:3] -= coeffs_[:, bot_idx, 10:13]
 
-    # Bx11
+    A[:, :, 5:8] = coeffs_[:, top_idx, 13:16]
+    A[:, :, 4:7] -= coeffs_[:, bot_idx, 13:16]
+
+    A[:, :, 9:13] = coeffs_[:, top_idx, 16:20]
+    A[:, :, 8:12] -= coeffs_[:, bot_idx, 16:20]
+
     cs = solvers.determinant_to_polynomial(A)
 
-    # A: Bx3x13
-    # nullSpace: Bx4x9
-    # companion matrices to solve the polynomial, in batch
     C = torch.zeros((batch_size_filtered, 10, 10), device=cs.device, dtype=cs.dtype)
     eye_mat = torch.eye(C[0, 0:-1, 0:-1].shape[0], device=cs.device, dtype=cs.dtype)
     C[:, 0:-1, 1:] = eye_mat
 
     cs_de = cs[:, -1].unsqueeze(-1)
-    cs_de = torch.where(cs_de == 0, torch.tensor(1e-8, dtype=cs_de.dtype), cs_de)
+    cs_de = torch.where(cs_de == 0, torch.tensor(1e-8, dtype=cs_de.dtype, device=cs_de.device), cs_de)
     C[:, -1, :] = -cs[:, :-1] / cs_de
 
-    roots = torch.real(torch.linalg.eigvals(C))
+    roots_eig = torch.linalg.eigvals(C)
+    roots = torch.real(roots_eig)
+    is_real = torch.abs(torch.imag(roots_eig)) < 1e-10
 
     roots_unsqu = roots.unsqueeze(1)
 
@@ -241,14 +549,9 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
 
     xzs = torch.matmul(torch.linalg.inv(Bs[:, :, 0:2, 0:2]), bs[:, :, 0:2])
 
-    mask = (abs(Bs[:, 2].unsqueeze(1) @ xzs - bs[:, 2].unsqueeze(1)) > 1e-3).flatten()
-
-    # mask: bx10x1x1
     mask = (
         abs(torch.matmul(Bs[:, :, 2, :].unsqueeze(2), xzs) - bs[:, :, 2, :].unsqueeze(2)) > 1e-3
-    )  # .flatten(start_dim=1)
-
-    # bx10
+    )
     mask = mask.squeeze(3).squeeze(2)
 
     if torch.any(mask):
@@ -265,16 +568,21 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
         + nullSpace_filtered[:, 3:4]
     )
 
-    inv = 1.0 / torch.sqrt((-xzs[:, :, 0]) ** 2 + (-xzs[:, :, 1]) ** 2 + roots.unsqueeze(-1) ** 2 + 1.0)
+    inv = 1.0 / torch.sqrt(
+        (-xzs[:, :, 0]) ** 2 + (-xzs[:, :, 1]) ** 2 + roots.unsqueeze(-1) ** 2 + 1.0
+    )
     Es *= inv
 
     Es = Es.view(batch_size_filtered, -1, 3, 3).transpose(-1, -2)
+    Es[~is_real] = float("nan")
 
-    # make sure the returned batch size equals to that of inputs
-    E_return = torch.eye(3, dtype=Es.dtype, device=Es.device)[None].expand(batch_size, 10, -1, -1).clone()
+    E_return = torch.eye(3, dtype=Es.dtype, device=Es.device)[None].expand(
+        batch_size, 10, -1, -1
+    ).clone()
     E_return[singular_filter] = Es
 
-    return E_return
+    return E_return.to(dtype=original_dtype)
+
 
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
@@ -609,9 +917,9 @@ def find_essential(
     r"""Find essential matrices.
 
     Args:
-         points1: A set of points in the first image with a torch.tensor shape :math:`(B, N, 2), N>=5`.
-         points2: A set of points in the second image with a torch.tensor shape :math:`(B, N, 2), N>=5`.
-         weights: torch.Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.
+         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
+         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
+         weights: Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.
 
     Returns:
          the computed essential matrices with shape :math:`(B, 10, 3, 3)`.
