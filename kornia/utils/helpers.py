@@ -40,7 +40,7 @@ def xla_is_available() -> bool:
 
 def is_mps_tensor_safe(x: Tensor) -> bool:
     """Return whether tensor is on MPS device."""
-    return "mps" in str(x.device)
+    return x.device.type == "mps"
 
 
 def get_cuda_device_if_available(index: int = 0) -> torch.device:

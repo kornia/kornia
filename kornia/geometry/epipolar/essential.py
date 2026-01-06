@@ -431,7 +431,7 @@ def null_to_Nister_sol222ution(X: torch.Tensor, batch_size: int) -> torch.Tensor
     a_data = null_ij[:, i_idx, :, :]  # (B, 9, 3, 4)
     b_data = null_ij[:, j_idx, :, :]  # (B, 9, 3, 4)
 
-    # Flatten (B, 9, 3) → batch
+    # Flatten (B, 9, 3) -> batch
     a_flat = a_data.reshape(-1, 4)    # (B*9*3, 4)
     b_flat = b_data.reshape(-1, 4)    # (B*9*3, 4)
 

@@ -17,6 +17,8 @@
 
 """Module containing the functionalities for computing the real roots of polynomial equation."""
 
+from typing import Tuple
+
 import torch
 
 from kornia.core import Tensor, ones_like, zeros, zeros_like
@@ -171,7 +173,7 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
 
 
 T_deg1 = torch.zeros(16, 10)
-T_deg1[0, 0] = 1  # x * x → x^2
+T_deg1[0, 0] = 1  # x * x -> x^2
 T_deg1[1, 1] = 1  # x * y
 T_deg1[4, 1] = 1  # y * x
 T_deg1[2, 2] = 1  # x * z
@@ -187,24 +189,6 @@ T_deg1[10, 7] = 1  # z * z
 T_deg1[11, 8] = 1  # z * 1
 T_deg1[14, 8] = 1  # 1 * z
 T_deg1[15, 9] = 1  # 1 * 1
-
-
-def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    r"""Multiply two polynomials of the first order [@nister2004efficient].
-
-    Args:
-        a: a first order polynomial for variables :math:`(x,y,z,1)`.
-        b: a first order polynomial for variables :math:`(x,y,z,1)`.
-
-    Returns:
-        degree 2 poly with the order :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
-
-    """
-    global T_deg1  # noqa: PLW0603
-    if T_deg1.device != a.device or T_deg1.dtype != a.dtype:
-        T_deg1 = T_deg1.to(device=a.device, dtype=a.dtype)
-    return (a.unsqueeze(2) * b.unsqueeze(1)).flatten(start_dim=-2) @ T_deg1
-
 
 # Reference
 # https://github.com/danini/graph-cut-ransac/blob/aae1f40c2e10e31fd2191bac601c53a189673f60/src/pygcransac/
@@ -251,28 +235,6 @@ T_deg2[34, 17] = 1  # (8*4+2)
 T_deg2[35, 18] = 1  # (8*4+3)
 T_deg2[38, 18] = 1  # (9*4+2)
 T_deg2[39, 19] = 1  # (9*4+3)
-
-
-def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    r"""Multiply two polynomials a and b of degrees two and one [@nister2004efficient].
-
-    Args:
-        a: a second degree poly for variables :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
-        b: a first degree poly for variables :math:`(x y z 1)`.
-
-    Returns:
-        a third degree poly for variables,
-        :math:`(x^3, y^3, x^2*y, x*y^2, x^2*z, x^2, y^2*z, y^2,
-        x*y*z, x*y, x*z^2, x*z, x, y*z^2, y*z, y, z^3, z^2, z, 1)`.
-
-    """
-    global T_deg2  # noqa: PLW0603
-    if T_deg2.device != a.device or T_deg2.dtype != a.dtype:
-        T_deg2 = T_deg2.to(device=a.device, dtype=a.dtype)
-    product_basis = a.unsqueeze(2) * b.unsqueeze(1)
-    product_vector = product_basis.flatten(start_dim=-2)
-    return product_vector @ T_deg2
-
 
 # Compute degree 10 poly representing determinant (equation 14 in the paper)
 # https://github.com/danini/graph-cut-ransac/blob/aae1f40c2e10e31fd2191bac601c53a189673f60/src/pygcransac/
@@ -1739,31 +1701,38 @@ coefficient_map = torch.tensor(
 )
 
 
-def determinant_to_polynomial(
-    A: Tensor,
-) -> Tensor:
-    r"""Represent the determinant by the 10th polynomial, used for 5PC solver [@nister2004efficient].
 
-    Args:
-        A: Tensor :math:`(*, 3, 13)`.
+def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg1: torch.Tensor) -> torch.Tensor:
+    # a, b: (..., 4)
+    product_basis = a.unsqueeze(2) * b.unsqueeze(1)        # (..., 4, 4)
+    product_vector = product_basis.flatten(start_dim=-2)   # (..., 16)
+    return product_vector @ T_deg1                         # (..., 10)
 
-    Returns:
-        a degree 10 poly, representing determinant (Eqn. 14 in the paper).
 
-    """
-    B, device, dtype = A.shape[0], A.device, A.dtype
-    global multiplication_indices, signs, coefficient_map  # noqa: PLW0603
 
-    multiplication_indices = multiplication_indices.to(device)
-    signs = signs.to(device, dtype)
-    coefficient_map = coefficient_map.to(device)
+def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg2: torch.Tensor) -> torch.Tensor:
+    # a: (..., 10), b: (..., 4)
+    product_basis = a.unsqueeze(2) * b.unsqueeze(1)        # (..., 10, 4)
+    product_vector = product_basis.flatten(start_dim=-2)   # (..., 40)
+    return product_vector @ T_deg2                         # (..., 20)
 
-    A_flat = A.view(B, -1)
-    gathered_values = A_flat[:, multiplication_indices]
-    products = torch.prod(gathered_values, dim=-1)
-    signed_products = products * signs
+
+def determinant_to_polynomial(A: Tensor) -> Tensor:
+    r"""A: (B, 3, 13) -> cs: (B, 11)"""
+    B = A.shape[0]
+    device = A.device
+    dtype = A.dtype
+
+    mult_idx = multiplication_indices.to(device=device)
+    signs_local = signs.to(device=device, dtype=dtype)
+    coeff_map = coefficient_map.to(device=device)
+
+    A_flat = A.reshape(B, -1)                 # (B, 39)
+    gathered = A_flat[:, mult_idx]           # (B, 486, 3)
+    products = torch.prod(gathered, dim=-1)  # (B, 486)
+    signed_products = products * signs_local # (B, 486)
 
     cs = torch.zeros(B, 11, device=device, dtype=dtype)
-    batch_coefficient_map = coefficient_map.repeat(B, 1)
-    cs.scatter_add_(dim=1, index=batch_coefficient_map, src=signed_products)
+    batch_coeff_map = coeff_map.unsqueeze(0).expand(B, -1)  # (B, 486)
+    cs.scatter_add_(1, batch_coeff_map, signed_products)
     return cs
