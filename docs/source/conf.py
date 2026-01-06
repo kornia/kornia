@@ -32,6 +32,27 @@ if not hasattr(torch.jit.annotations, "compiler_flag"):
 # To add an evnironment variable
 builtins.__sphinx_build__ = True
 
+# --- Patch sphinx_autodoc_defaultargs to not crash on torchscript/pybind11 callables ---
+try:
+    import sphinx_autodoc_defaultargs
+
+    _orig_process_docstring = sphinx_autodoc_defaultargs.process_docstring
+
+    def _safe_process_docstring(app, what, name, obj, options, lines):
+        try:
+            return _orig_process_docstring(app, what, name, obj, options, lines)
+        except ValueError as e:
+            # Typical torchscript/pybind failure: "no signature found for builtin <built-in method __call__ ...>"
+            if "no signature found for builtin" in str(e).lower():
+                return  # leave docstring unchanged
+            raise
+
+    sphinx_autodoc_defaultargs.process_docstring = _safe_process_docstring
+except Exception:
+    # If it's not installed in some envs, just skip patching
+    pass
+
+
 # readthedocs generated the whole documentation in an isolated environment
 # by cloning the git repo. Thus, any on-the-fly operation will not effect
 # on the resulting documentation. We therefore need to import and run the
@@ -204,9 +225,6 @@ html_js_files = [
 
 # Configure viewcode extension.
 # based on https://github.com/readthedocs/sphinx-autoapi/issues/202
-code_url = "https://github.com/kornia/kornia/blob/main"
-
-
 code_url = "https://github.com/kornia/kornia/blob/main"
 
 def linkcode_resolve(domain, info):
