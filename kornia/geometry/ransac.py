@@ -76,6 +76,8 @@ class RANSAC(nn.Module):
             max_iter: maximum batches to generate. Actual number of models to try is ``batch_size * max_iter``.
             confidence: desired confidence of the result, used for the early stopping.
             max_lo_iters: number of local optimization (polishing) iterations.
+            score_type: scoring method to use: "ransac" or "msac".
+            prosac_sampling: whether to use PROSAC sampling instead of random sampling.
 
         """
         super().__init__()
@@ -145,6 +147,7 @@ class RANSAC(nn.Module):
             sample_size: number of samples to draw from the population.
             pop_size: size of the population to sample from.
             batch_size: number of sample sets to generate.
+            iteration: current iteration number (used for PROSAC sampling).
             device: device to place the samples on.
 
         Returns:
@@ -183,7 +186,8 @@ class RANSAC(nn.Module):
         if conf <= 0.0:
             return 1
         # Proper RANSAC formula for sampling without replacement
-        # P(all samples are inliers) = (n_inl/num_tc) * ((n_inl-1)/(num_tc-1)) * ... * ((n_inl-sample_size+1)/(num_tc-sample_size+1))
+        # P(all samples are inliers) = (n_inl/num_tc) * ((n_inl-1)/(num_tc-1)) * ...
+        # ... * ((n_inl-sample_size+1)/(num_tc-sample_size+1))
         prob_inlier = 1.0
         for i in range(sample_size):
             prob_inlier *= (n_inl - i) / (num_tc - i)

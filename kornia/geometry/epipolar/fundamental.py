@@ -54,7 +54,7 @@ def normalize_points(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Ten
     if points.shape[-1] != 2:
         raise AssertionError(points.shape)
 
-    B, N, _ = points.shape
+    B, _N, _ = points.shape
     device, dtype = points.device, points.dtype
 
     # Center at mean
@@ -115,7 +115,7 @@ def _nullspace_via_eigh(A: torch.Tensor) -> torch.Tensor:
     """
     AT = A.transpose(-2, -1)  # (..., 9, 7)
     G = AT @ A  # (..., 9, 9) SPD
-    evals, evecs = torch.linalg.eigh(G)  # ascending eigenvalues
+    _evals, evecs = torch.linalg.eigh(G)  # ascending eigenvalues
     N = evecs[..., :, :2]  # eigenvectors for 2 smallest evals
     return N  # orthonormal columns
 
@@ -253,11 +253,11 @@ def run_8point(
         points1: (B, N, 2), N >= 8
         points2: (B, N, 2), N >= 8
         weights: optional (B, N) nonnegative weights
+        use_einsum_at_more_than_points: threshold for using einsum vs GEMM for large N
 
     Returns:
         (B, 3, 3) fundamental matrices
     """
-    small_n_threshold: int = 512
     KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "N", "2"])
     KORNIA_CHECK_SAME_SHAPE(points1, points2)
@@ -281,7 +281,6 @@ def run_8point(
     A = torch.cat([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], dim=-1).squeeze(-2)
 
     B, N, _ = A.shape
-    device, dtype = A.device, A.dtype
 
     # Build normal matrix M = A^T W A  (B,9,9) without forming NxN diagonals.
     if weights is None:
@@ -301,7 +300,7 @@ def run_8point(
             # Weighted einsum
             M = torch.einsum("bni,bnj,bn->bij", A, A, w)
 
-    evals, evecs = torch.linalg.eigh(M)  # ascending order
+    _evals, evecs = torch.linalg.eigh(M)  # ascending order
     h = evecs[..., 0]  # (B,9), eigenvector for smallest λ
     F_hat = h.view(B, 3, 3)
 

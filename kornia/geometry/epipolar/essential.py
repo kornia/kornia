@@ -25,6 +25,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHEC
 from kornia.core.ops import eye_like, vec_like
 from kornia.core.utils import _torch_solve_cast, _torch_svd_cast
 from kornia.geometry import solvers
+from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2, coefficient_map, multiplication_indices, signs
 
 from .numeric import cross_product_matrix, matrix_cofactor_tensor
 from .projection import depth_from_point, projection_from_KRt
@@ -80,7 +81,6 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
 
     return E_Nister
 
-from kornia.geometry.solvers.polynomial_solver import multiplication_indices, signs, coefficient_map, T_deg1, T_deg2
 
 @torch.jit.script
 def _multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg1: torch.Tensor) -> torch.Tensor:
