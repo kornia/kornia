@@ -330,5 +330,3 @@ unresolved-attribute = "ignore"
 index-out-of-bounds = "ignore"
 no-matching-overload = "ignore"
 call-non-callable = "ignore
-
-
