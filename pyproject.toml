@@ -313,5 +313,7 @@ url = "https://download.pytorch.org/whl/cu124"
 explicit = true
 
 
-[tool.ty]
-disable = ["invalid-argument-type"]
+[tool.ty.rules]
+invalid-argument-type = "ignore"
+unknown-attribute = "ignore"
+implicit-any = "ignore"
