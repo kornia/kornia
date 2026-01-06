@@ -227,6 +227,7 @@ html_js_files = [
 # based on https://github.com/readthedocs/sphinx-autoapi/issues/202
 code_url = "https://github.com/kornia/kornia/blob/main"
 
+
 def linkcode_resolve(domain, info):
     # Non-linkable objects from the starter kit in the tutorial.
     if domain == "js" or info["module"] == "connect4":
@@ -264,7 +265,6 @@ def linkcode_resolve(domain, info):
 
     end_line = start_line + len(source) - 1
     return f"{code_url}/{file}#L{start_line}-L{end_line}"
-
 
 
 # -- Options for LaTeX output ---------------------------------------------
