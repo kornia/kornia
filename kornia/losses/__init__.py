@@ -34,6 +34,20 @@ from .hausdorff import HausdorffERLoss, HausdorffERLoss3D
 from .lovasz_hinge import LovaszHingeLoss, lovasz_hinge_loss
 from .lovasz_softmax import LovaszSoftmaxLoss, lovasz_softmax_loss
 from .ms_ssim import MS_SSIMLoss
+from .mutual_information import (
+    MILossFromRef,
+    MILossFromRef2D,
+    MILossFromRef3D,
+    NMILossFromRef,
+    NMILossFromRef2D,
+    NMILossFromRef3D,
+    mutual_information_loss,
+    mutual_information_loss_2d,
+    mutual_information_loss_3d,
+    normalized_mutual_information_loss,
+    normalized_mutual_information_loss_2d,
+    normalized_mutual_information_loss_3d,
+)
 from .psnr import PSNRLoss, psnr_loss
 from .ssim import SSIMLoss, ssim_loss
 from .ssim3d import SSIM3DLoss, ssim3d_loss
@@ -53,7 +67,13 @@ __all__ = [
     "InverseDepthSmoothnessLoss",
     "LovaszHingeLoss",
     "LovaszSoftmaxLoss",
+    "MILossFromRef",
+    "MILossFromRef2D",
+    "MILossFromRef3D",
     "MS_SSIMLoss",
+    "NMILossFromRef",
+    "NMILossFromRef2D",
+    "NMILossFromRef3D",
     "PSNRLoss",
     "SSIM3DLoss",
     "SSIMLoss",
@@ -71,6 +91,12 @@ __all__ = [
     "kl_div_loss_2d",
     "lovasz_hinge_loss",
     "lovasz_softmax_loss",
+    "mutual_information_loss",
+    "mutual_information_loss_2d",
+    "mutual_information_loss_3d",
+    "normalized_mutual_information_loss",
+    "normalized_mutual_information_loss_2d",
+    "normalized_mutual_information_loss_3d",
     "psnr_loss",
     "ssim3d_loss",
     "ssim_loss",
