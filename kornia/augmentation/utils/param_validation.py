@@ -158,7 +158,7 @@ def _tuple_range_reader(
 
         else:
             raise ValueError(
-                f"Degrees must be a {list(target_shape)} torch.Tensor for the degree range for independent operation."
+                f"Degrees must be a {list(target_shape)} torch.tensor for the degree range for independent operation."
                 f"Got {input_range}"
             )
     elif isinstance(input_range, (float, int)):
@@ -192,7 +192,7 @@ def _tuple_range_reader(
 
     else:
         raise TypeError(
-            "If not pass a torch.Tensor, it must be float, (float, float) for isotropic operation or a tuple of "
+            "If not pass a torch.tensor, it must be float, (float, float) for isotropic operation or a tuple of "
             f"{target_size} floats or {target_size} (float, float) for independent operation. Got {input_range}."
         )
 

@@ -279,7 +279,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
             selected_labels: torch.Tensor = params["selected_labels"]
             KORNIA_CHECK(
                 selected_labels.ndim == 1,
-                f"selected_labels must be a 1-dimensional torch.Tensor, but got {selected_labels.ndim} dimensions.",
+                f"selected_labels must be a 1-dimensional torch.tensor, but got {selected_labels.ndim} dimensions.",
             )
             KORNIA_CHECK(
                 len(selected_labels) <= len(params["acceptor_indices"]),
