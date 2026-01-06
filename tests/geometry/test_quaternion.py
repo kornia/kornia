@@ -353,7 +353,7 @@ def _align_sign(q: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
 class TestQuaternionAverage:
     @pytest.mark.parametrize("M", [1, 2, 5, 10])
     def test_average_identity(self, device, dtype, M):
-        """All identity quaternions → should return identity"""
+        """All identity quaternions -> should return identity"""
         Q = Quaternion.identity(M, device=device, dtype=dtype)
         out = average_quaternions(Q)
         q = _to_tensor(out)

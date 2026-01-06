@@ -40,7 +40,7 @@ Lie group with its Lie algebra through the following facts
 #. The Lie algebra :math:`m` is a vector space. As such, its elements can be identified with vectors in :math:`R^d`, whose
    dimension :math:`d` is the number of degrees of freedom of :math:`M`.
 
-#. The exponential map, `exp` : :math:`m` → :math:`M`, exactly converts elements of the Lie algebra into elements of the group.
+#. The exponential map, `exp` : :math:`m` -> :math:`M`, exactly converts elements of the Lie algebra into elements of the group.
    The `log` map is the inverse operation.
 
 .. image:: data/lie_ops.png
