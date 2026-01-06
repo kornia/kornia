@@ -52,12 +52,11 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     # Optional dependency not installed in some environments.
-    sphinx_autodoc_defaultargs = None  # noqa: F841
+    sphinx_autodoc_defaultargs = None
 
 except AttributeError:
     # Extension API changed; don't patch.
-    sphinx_autodoc_defaultargs = None  # noqa: F841
-
+    sphinx_autodoc_defaultargs = None
 
 
 # readthedocs generated the whole documentation in an isolated environment
