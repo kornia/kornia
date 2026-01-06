@@ -312,7 +312,7 @@ name = "pytorch-cu124"
 url = "https://download.pytorch.org/whl/cu124"
 explicit = true
 
-[tool.ty.rules]
+[[tool.ty.rules]]
 invalid-argument-type = "ignore"
 invalid-method-override = "warn"
 no-matching-overload = "warn"
@@ -323,12 +323,10 @@ possibly-missing-attribute = "warn"
 [[tool.ty.overrides]]
 include = ["docs/**", "tests/**", "conftest.py"]
 
-[tool.ty.overrides.rules]
+[[tool.ty.overrides.rules]]
 unresolved-import = "ignore"
 possibly-missing-attribute = "ignore"
 unresolved-attribute = "ignore"
 index-out-of-bounds = "ignore"
 no-matching-overload = "ignore"
-call-non-callable = "ignore
-
-
+call-non-callable = "ignore"
