@@ -33,6 +33,7 @@ if not hasattr(torch.jit.annotations, "compiler_flag"):
 builtins.__sphinx_build__ = True
 
 # --- Patch sphinx_autodoc_defaultargs to not crash on torchscript/pybind11 callables ---
+# --- Patch sphinx_autodoc_defaultargs to not crash on torchscript/pybind11 callables ---
 try:
     import sphinx_autodoc_defaultargs
 
@@ -42,15 +43,21 @@ try:
         try:
             return _orig_process_docstring(app, what, name, obj, options, lines)
         except ValueError as e:
-            # Typical torchscript/pybind failure: "no signature found for builtin <built-in method __call__ ...>"
-            if "no signature found for builtin" in str(e).lower():
+            msg = str(e).lower()
+            if "no signature found for builtin" in msg or "pybind11" in msg:
                 return  # leave docstring unchanged
             raise
 
     sphinx_autodoc_defaultargs.process_docstring = _safe_process_docstring
-except Exception:
-    # If it's not installed in some envs, just skip patching
-    pass
+
+except (ModuleNotFoundError, ImportError):
+    # Optional dependency not installed in some environments.
+    sphinx_autodoc_defaultargs = None  # noqa: F841
+
+except AttributeError:
+    # Extension API changed; don't patch.
+    sphinx_autodoc_defaultargs = None  # noqa: F841
+
 
 
 # readthedocs generated the whole documentation in an isolated environment
