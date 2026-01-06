@@ -29,12 +29,12 @@ def unsharp_mask(
     sigma: tuple[float, float] | torch.Tensor,
     border_type: str = "reflect",
 ) -> torch.Tensor:
-    r"""Create an operator that sharpens a torch.tensor by applying operation out = 2 * image - gaussian_blur2d(image).
+    r"""Create an operator that sharpens a torch.Tensor by applying operation out = 2 * image - gaussian_blur2d(image).
 
     .. image:: _static/img/unsharp_mask.png
 
     Args:
-        input: the input torch.tensor with shape :math:`(B,C,H,W)`.
+        input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel.
         sigma: the standard deviation of the kernel.
         border_type: the padding mode to be applied before convolving.
@@ -42,7 +42,7 @@ def unsharp_mask(
           ``'replicate'`` or ``'circular'``.
 
     Returns:
-        the blurred torch.tensor with shape :math:`(B,C,H,W)`.
+        the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -66,7 +66,7 @@ class UnsharpMask(nn.Module):
           ``'replicate'`` or ``'circular'``.
 
     Returns:
-        the sharpened torch.tensor with shape :math:`(B,C,H,W)`.
+        the sharpened torch.Tensor with shape :math:`(B,C,H,W)`.
 
     Shape:
         - Input: :math:`(B, C, H, W)`

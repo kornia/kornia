@@ -36,14 +36,14 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
         coeffs : The coefficients of quadratic equation :`(B, 3)`
 
     Returns:
-        A torch.tensor of shape `(B, 2)` containing the real roots to the quadratic equation.
+        A torch.Tensor of shape `(B, 2)` containing the real roots to the quadratic equation.
 
     Example:
         >>> coeffs = torch.tensor([[1., 4., 4.]])
         >>> roots = solve_quadratic(coeffs)
 
     .. note::
-       In cases torch.where a quadratic polynomial has only one real root, the output will be in the format
+       In cases where a quadratic polynomial has only one real root, the output will be in the format
        [real_root, 0]. And for the torch.complex roots should be represented as 0. This is done to maintain
        a consistent output shape for all cases.
 
@@ -65,7 +65,7 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     # Calculate 1/(2*a) for efficient computation
     inv_2a = 0.5 / a
 
-    # Initialize solutions torch.tensor
+    # Initialize solutions torch.Tensor
     solutions = torch.zeros((coeffs.shape[0], 2), device=coeffs.device, dtype=coeffs.dtype)
 
     # Handle cases with zero discriminant
@@ -98,14 +98,14 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         coeffs : The coefficients cubic equation : `(B, 4)`
 
     Returns:
-        A torch.tensor of shape `(B, 3)` containing the real roots to the cubic equation.
+        A torch.Tensor of shape `(B, 3)` containing the real roots to the cubic equation.
 
     Example:
         >>> coeffs = torch.tensor([[32., 3., -11., -6.]])
         >>> roots = solve_cubic(coeffs)
 
     .. note::
-       In cases torch.where a cubic polynomial has only one or two real roots, the output for the non-real
+       In cases where a cubic polynomial has only one or two real roots, the output for the non-real
        roots should be represented as 0. Thus, the output for a single real root should be in the
        format [real_root, 0, 0], and for two real roots, it should be [real_root_1, real_root_2, 0].
 

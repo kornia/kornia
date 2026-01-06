@@ -32,25 +32,25 @@ def in_range(
     upper: Union[tuple[Any, ...], torch.Tensor],
     return_mask: bool = False,
 ) -> torch.Tensor:
-    r"""Create a mask indicating whether elements of the input torch.tensor are within the specified range.
+    r"""Create a mask indicating whether elements of the input torch.Tensor are within the specified range.
 
     .. image:: _static/img/in_range.png
 
-    The formula applied for single-channel torch.tensor is:
+    The formula applied for single-channel torch.Tensor is:
 
     .. math::
         \text{out}(I) = \text{lower}(I) \leq \text{input}(I) \geq \text{upper}(I)
 
-    The formula applied for multi-channel torch.tensor is:
+    The formula applied for multi-channel torch.Tensor is:
 
     .. math::
         \text{out}(I) = \bigwedge_{c=0}^{C}
         \left( \text{lower}_c(I) \leq \text{input}_c(I) \geq \text{upper}_c(I) \right)
 
-    torch.where `C` is the number of channels.
+    where `C` is the number of channels.
 
     Args:
-        input: The input torch.tensor to be filtered in the shape of :math:`(*, *, H, W)`.
+        input: The input torch.Tensor to be filtered in the shape of :math:`(*, *, H, W)`.
         lower: The lower bounds of the filter (inclusive).
         upper: The upper bounds of the filter (inclusive).
         return_mask: If is true, the filtered mask is returned, otherwise the filtered input image.
@@ -65,14 +65,14 @@ def in_range(
     .. note::
         Clarification of `lower` and `upper`:
 
-        - If provided as a tuple, it should have the same number of elements as the channels in the input torch.tensor.
+        - If provided as a tuple, it should have the same number of elements as the channels in the input torch.Tensor.
           This bound is then applied uniformly across all batches.
 
-        - When provided as a torch.tensor, it allows for different bounds to be applied to each batch.
-          The torch.tensor shape should be (B, C, 1, 1), torch.where B is the batch size and C is
+        - When provided as a torch.Tensor, it allows for different bounds to be applied to each batch.
+          The torch.Tensor shape should be (B, C, 1, 1), where B is the batch size and C is
           the number of channels.
 
-        - If the torch.tensor has a 1-D shape, same bound will be applied across all batches.
+        - If the torch.Tensor has a 1-D shape, same bound will be applied across all batches.
 
     Examples:
         >>> rng = torch.manual_seed(1)
@@ -152,7 +152,7 @@ class InRange(nn.Module):
     r"""Create a module for applying lower and upper bounds to input tensors.
 
     Args:
-        input: The input torch.tensor to be filtered.
+        input: The input torch.Tensor to be filtered.
         lower: The lower bounds of the filter (inclusive).
         upper: The upper bounds of the filter (inclusive).
         return_mask: If is true, the filtered mask is returned, otherwise the filtered input image.

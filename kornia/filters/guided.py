@@ -134,7 +134,7 @@ def guided_blur(
     border_type: str = "reflect",
     subsample: int = 1,
 ) -> torch.Tensor:
-    r"""Blur a torch.tensor using a Guided filter.
+    r"""Blur a torch.Tensor using a Guided filter.
 
     .. image:: _static/img/guided_blur.png
 
@@ -142,8 +142,8 @@ def guided_blur(
     and :cite:`he2015fast` for details. Guidance and input can have different number of channels.
 
     Arguments:
-        guidance: the guidance torch.tensor with shape :math:`(B,C,H,W)`.
-        input: the input torch.tensor with shape :math:`(B,C,H,W)`.
+        guidance: the guidance torch.Tensor with shape :math:`(B,C,H,W)`.
+        input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel.
         eps: regularization parameter. Smaller values preserve more edges.
         border_type: the padding mode to be applied before convolving.
@@ -152,7 +152,7 @@ def guided_blur(
         subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
 
     Returns:
-        the blurred torch.tensor with same shape as `input` :math:`(B, C, H, W)`.
+        the blurred torch.Tensor with same shape as `input` :math:`(B, C, H, W)`.
 
     Examples:
         >>> guidance = torch.rand(2, 3, 5, 5)
@@ -179,7 +179,7 @@ def guided_blur(
 
 
 class GuidedBlur(nn.Module):
-    r"""Blur a torch.tensor using a Guided filter.
+    r"""Blur a torch.Tensor using a Guided filter.
 
     The operator is an edge-preserving image smoothing filter. See :cite:`he2010guided`
     and :cite:`he2015fast` for details. Guidance and input can have different number of channels.
@@ -193,7 +193,7 @@ class GuidedBlur(nn.Module):
         subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
 
     Returns:
-        the blurred input torch.tensor.
+        the blurred input torch.Tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`

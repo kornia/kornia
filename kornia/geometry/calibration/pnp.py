@@ -85,18 +85,18 @@ def solve_pnp_dlt(
     twisted cubic. However, this function does not check for this condition.
 
     Args:
-        world_points : A torch.tensor with shape :math:`(B, N, 3)` representing
+        world_points : A torch.Tensor with shape :math:`(B, N, 3)` representing
           the points in the world space.
-        img_points : A torch.tensor with shape :math:`(B, N, 2)` representing
+        img_points : A torch.Tensor with shape :math:`(B, N, 2)` representing
           the points in the image space.
-        intrinsics : A torch.tensor with shape :math:`(B, 3, 3)` representing
+        intrinsics : A torch.Tensor with shape :math:`(B, 3, 3)` representing
           the intrinsic matrices.
-        weights : A torch.tensor with shape :math:`(B, N)` representing the
+        weights : A torch.Tensor with shape :math:`(B, N)` representing the
             weights for each point. If None, all points are considered to be equally important.
         svd_eps : A small float value to avoid numerical precision issues.
 
     Returns:
-        A torch.tensor with shape :math:`(B, 3, 4)` representing the estimated world to
+        A torch.Tensor with shape :math:`(B, 3, 4)` representing the estimated world to
         camera transformation matrices (also known as the extrinsic matrices).
 
     Example:

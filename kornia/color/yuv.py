@@ -241,7 +241,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         [imagey, imageuv.repeat_interleave(2, dim=-1).repeat_interleave(2, dim=-2)],
         dim=-3,
     )
-    # then convert the yuv444 torch.tensor
+    # then convert the yuv444 torch.Tensor
 
     return yuv_to_rgb(yuv444image)
 
@@ -293,7 +293,7 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 
     # first upsample
     yuv444image = torch.cat([imagey, imageuv.repeat_interleave(2, dim=-1)], dim=-3)
-    # then convert the yuv444 torch.tensor
+    # then convert the yuv444 torch.Tensor
     return yuv_to_rgb(yuv444image)
 
 

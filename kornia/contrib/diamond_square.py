@@ -45,8 +45,8 @@ def _diamond_square_seed(
         width: the expected image width.
         height: the expected image height.
         random_fn: the random function to generate the image seed.
-        device: the torch device torch.where to create the image seed.
-        dtype: the torch dtype torch.where to create the image seed.
+        device: the torch device where to create the image seed.
+        dtype: the torch dtype where to create the image seed.
 
     Return:
         the generated image seed of size Bx1xHxW.
@@ -103,7 +103,7 @@ def _one_diamond_one_square(
     If this function is run in the usual sense, it is more efficient if it is run in a no_grad()
 
     Args:
-        img: a 4D torch.tensor torch.where dimensions are Batch, Channel, Width, Height.
+        img: a 4D torch.Tensor where dimensions are Batch, Channel, Width, Height.
             Width and Height must both be 2^N+1 and
             Batch and Channels should in the usual case be 1.
         random_scale: a float  number in [0,1] controlling the randomness created pixels get. I the usual case, it is
@@ -113,7 +113,7 @@ def _one_diamond_one_square(
         square_kernel: the 3x3 kernel to perform the square step.
 
     Return:
-        A torch.tensor on the same device as img with the same channels as img and width, height of 2^(N+1)+1.
+        A torch.Tensor on the same device as img with the same channels as img and width, height of 2^(N+1)+1.
 
     """
     KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])
@@ -173,14 +173,14 @@ def diamond_square(
         output_size: a tuple of integers with the BxCxHxW of the image to be generated.
         roughness: the scale value to apply at each recursion step.
         random_scale: the initial value of the scale for recursion.
-        random_fn: the callable function to use to sample a random torch.tensor.
+        random_fn: the callable function to use to sample a random torch.Tensor.
         normalize_range: whether to F.normalize using min-max the output map. In case of a
             range is specified, min-max norm is applied between the provided range.
         device: the torch device to place the output map.
         dtype: the torch dtype to place the output map.
 
     Returns:
-        A torch.tensor with shape :math:`(B,C,H,W)` containing the fractal image.
+        A torch.Tensor with shape :math:`(B,C,H,W)` containing the fractal image.
 
     """
     KORNIA_CHECK(len(output_size) == 4, "output_size must be (B,C,H,W)")

@@ -46,7 +46,7 @@ def math_clamp(x, min_, max_):  # type: ignore
 
 @torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
 def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
-    """Normalize torch.tensor of keypoints."""
+    """Normalize torch.Tensor of keypoints."""
     if isinstance(size, torch.Size):
         size = torch.tensor(size)[None]
     shift = size.float().to(kpts) / 2
@@ -56,7 +56,7 @@ def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
 
 
 def pad_to_length(x: torch.Tensor, length: int) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Pad torch.tensor to desired length."""
+    """Pad torch.Tensor to desired length."""
     if length <= x.shape[-2]:
         return x, torch.ones_like(x[..., :1], dtype=torch.bool)
     pad_tensor = torch.ones(*x.shape[:-2], length - x.shape[-2], x.shape[-1], device=x.device, dtype=x.dtype)

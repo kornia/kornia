@@ -159,7 +159,7 @@ class So3(nn.Module):
         """Convert elements from vector space to lie algebra. Returns matrix of shape :math:`(B,3,3)`.
 
         Args:
-            v: Vector3 or torch.tensor of shape :math:`(B,3)`.
+            v: Vector3 or torch.Tensor of shape :math:`(B,3)`.
 
         Example:
             >>> v = torch.ones((1,3))
@@ -258,7 +258,7 @@ class So3(nn.Module):
 
     @classmethod
     def from_wxyz(cls, wxyz: torch.Tensor) -> So3:
-        """Create So3 from a torch.tensor representing a quaternion.
+        """Create So3 from a torch.Tensor representing a quaternion.
 
         Args:
             wxyz: the quaternion to convert of shape :math:`(B,4)`.

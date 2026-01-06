@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from enum import Enum, member
+from functools import partial
 
 import torch
 
@@ -119,7 +120,7 @@ class EntropyBasedLossBase(torch.nn.Module):
             raise ValueError(
                 f"The passed_kernel_function is not an accepted Kernel, the available options are {list(Kernel)}."
             )
-        self.kernel_function = kernel_function.value
+        self.kernel_function = partial(kernel_function.value, window_radius=window_radius)
         self.window_radius = window_radius
         self.bin_centers = torch.arange(self.num_bins, device=self.signal.device)
 
@@ -149,8 +150,8 @@ class EntropyBasedLossBase(torch.nn.Module):
         diff_1 = self.bin_centers.unsqueeze(-1) - self.signal.unsqueeze(-2)
         diff_2 = self.bin_centers.unsqueeze(-1) - other_signal.unsqueeze(-2)
 
-        vals_1 = self.kernel_function(diff_1, window_radius=self.window_radius)
-        vals_2 = self.kernel_function(diff_2, window_radius=self.window_radius)
+        vals_1 = self.kernel_function(diff_1)
+        vals_2 = self.kernel_function(diff_2)
 
         joint_histogram = torch.einsum("...in,...jn->...ij", vals_1, vals_2)
 

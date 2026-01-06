@@ -31,9 +31,9 @@ class DISKFeatures:
     Since DISK detects a varying number of keypoints per image, `DISKFeatures` is not batched.
 
     Args:
-        keypoints: torch.Tensor of shape :math:`(N, 2)`, torch.where :math:`N` is the number of keypoints.
-        descriptors: torch.Tensor of shape :math:`(N, D)`, torch.where :math:`D` is the descriptor dimension.
-        detection_scores: torch.Tensor of shape :math:`(N,)` torch.where the detection score can be interpreted as
+        keypoints: torch.Tensor of shape :math:`(N, 2)`, where :math:`N` is the number of keypoints.
+        descriptors: torch.Tensor of shape :math:`(N, D)`, where :math:`D` is the descriptor dimension.
+        detection_scores: torch.Tensor of shape :math:`(N,)` where the detection score can be interpreted as
                           the log-probability of keeping a keypoint after it has been proposed (see the paper
                           section *Method → Feature distribution* for details).
 
@@ -91,7 +91,7 @@ class Keypoints:
     detection_logp: torch.Tensor
 
     def merge_with_descriptors(self, descriptors: torch.Tensor) -> DISKFeatures:
-        """Select descriptors from a dense `descriptors` torch.tensor, at locations given by `self.xys`."""
+        """Select descriptors from a dense `descriptors` torch.Tensor, at locations given by `self.xys`."""
         dtype = descriptors.dtype
         x, y = self.xys.T
 

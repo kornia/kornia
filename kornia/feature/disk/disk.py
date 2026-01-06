@@ -39,8 +39,8 @@ class DISK(nn.Module):
         desc_dim: The dimension of the descriptor.
         unet: The U-Net to use. If None, a default U-Net is used. Kornia doesn't provide the training code for DISK
               so this is only useful when using a custom checkpoint trained using the code released with the paper.
-              The unet should take as input a torch.tensor of shape :math:`(B, C, H, W)` and output
-              a torch.tensor of shape
+              The unet should take as input a torch.Tensor of shape :math:`(B, C, H, W)` and output
+              a torch.Tensor of shape
               :math:`(B, \mathrm{desc\_dim} + 1, H, W)`.
 
     Example:
@@ -69,7 +69,7 @@ class DISK(nn.Module):
 
         Returns:
             A tuple of dense detection scores and descriptors.
-            Shapes are :math:`(B, 1, H, W)` and :math:`(B, D, H, W)`, torch.where
+            Shapes are :math:`(B, 1, H, W)` and :math:`(B, D, H, W)`, where
             :math:`D` is the descriptor dimension.
 
         """
@@ -132,8 +132,8 @@ class DISK(nn.Module):
         r"""Load a pretrained model.
 
         Depth model was trained using depth map supervision and is slightly more precise but biased to detect keypoints
-        only torch.where SfM depth is available. Epipolar model was trained using epipolar geometry supervision and
-        is less precise but detects keypoints everywhere torch.where they are matchable. The difference is especially
+        only where SfM depth is available. Epipolar model was trained using epipolar geometry supervision and
+        is less precise but detects keypoints everywhere where they are matchable. The difference is especially
         pronounced on thin structures and on edges of objects.
 
         Args:

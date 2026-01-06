@@ -47,7 +47,7 @@ class BlurPool2D(nn.Module):
 
     Shape:
         - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(N, C, H_{out}, W_{out})`, torch.where
+        - Output: :math:`(N, C, H_{out}, W_{out})`, where
 
           .. math::
               H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{kernel\_size//2}[0] -
@@ -167,13 +167,13 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
     See :cite:`zhang2019shiftinvar` for more details.
 
     Args:
-        input: torch.tensor to apply operation to.
+        input: torch.Tensor to apply operation to.
         kernel_size: the kernel size for max pooling.
         stride: stride for pooling.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(N, C, H_{out}, W_{out})`, torch.where
+        - Output: :math:`(N, C, H_{out}, W_{out})`, where
 
           .. math::
               H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{kernel\_size//2}[0] -
@@ -184,7 +184,7 @@ def blur_pool2d(input: torch.Tensor, kernel_size: tuple[int, int] | int, stride:
                 \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
 
     Returns:
-        the transformed torch.tensor.
+        the transformed torch.Tensor.
 
     .. note::
         This function is tested against https://github.com/adobe/antialiased-cnns.
@@ -220,7 +220,7 @@ def max_blur_pool2d(
     See :class:`~kornia.filters.MaxBlurPool2D` for details.
 
     Args:
-        input: torch.tensor to apply operation to.
+        input: torch.Tensor to apply operation to.
         kernel_size: the kernel size for max pooling.
         stride: stride for pooling.
         max_pool_size: the kernel size for max pooling.
@@ -280,7 +280,7 @@ def edge_aware_blur_pool2d(
     edge_dilation_kernel_size: int = 3,
     epsilon: float = 1e-6,
 ) -> torch.Tensor:
-    r"""Blur the input torch.tensor while maintaining its edges.
+    r"""Blur the input torch.Tensor while maintaining its edges.
 
     Args:
         input: the input image to blur with shape :math:`(B, C, H, W)`.
@@ -290,7 +290,7 @@ def edge_aware_blur_pool2d(
         epsilon: for numerical stability.
 
     Returns:
-        The blurred torch.tensor of shape :math:`(B, C, H, W)`.
+        The blurred torch.Tensor of shape :math:`(B, C, H, W)`.
 
     """
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])

@@ -46,12 +46,12 @@ def crop_and_resize(
     padding_mode: str = "zeros",
     align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Extract crops from 2D images (4D torch.tensor) and resize given a bounding box.
+    r"""Extract crops from 2D images (4D torch.Tensor) and resize given a bounding box.
 
     Args:
-        input_tensor: the 2D image torch.tensor with shape (B, C, H, W).
-        boxes : a torch.tensor containing the coordinates of the bounding boxes to be extracted.
-            The torch.tensor must have the shape of Bx4x2, torch.where each box is defined in the following (clockwise)
+        input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
+        boxes : a torch.Tensor containing the coordinates of the bounding boxes to be extracted.
+            The torch.Tensor must have the shape of Bx4x2, where each box is defined in the following (clockwise)
             order: top-left, top-right, bottom-right and bottom-left. The coordinates must be in the x, y order.
             The coordinates would compose a rectangle with a shape of (N1, N2).
         size: a tuple with the height and width that will be
@@ -93,7 +93,7 @@ def crop_and_resize(
         raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
 
     if len(input_tensor.shape) != 4:
-        raise AssertionError(f"Only torch.tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
+        raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
 
     # unpack input data
     dst_h, dst_w = size
@@ -120,10 +120,10 @@ def center_crop(
     padding_mode: str = "zeros",
     align_corners: bool = True,
 ) -> torch.Tensor:
-    r"""Crop the 2D images (4D torch.tensor) from the center.
+    r"""Crop the 2D images (4D torch.Tensor) from the center.
 
     Args:
-        input_tensor: the 2D image torch.tensor with shape (B, C, H, W).
+        input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
         size: a tuple with the expected height and width
           of the output patch.
         mode: interpolation mode to calculate output values
@@ -133,7 +133,7 @@ def center_crop(
         align_corners: mode for grid_generation.
 
     Returns:
-        the output torch.tensor with patches.
+        the output torch.Tensor with patches.
 
     Examples:
         >>> input = torch.tensor([[[
@@ -154,7 +154,7 @@ def center_crop(
         raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
 
     if len(input_tensor.shape) != 4:
-        raise AssertionError(f"Only torch.tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
+        raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
 
     # unpack input sizes
     dst_h, dst_w = size
@@ -200,21 +200,21 @@ def crop_by_boxes(
     align_corners: bool = True,
     validate_boxes: bool = True,
 ) -> torch.Tensor:
-    """Perform crop transform on 2D images (4D torch.tensor) given two bounding boxes.
+    """Perform crop transform on 2D images (4D torch.Tensor) given two bounding boxes.
 
-    Given an input torch.tensor, this function selected the interested areas by the provided bounding boxes (src_box).
+    Given an input torch.Tensor, this function selected the interested areas by the provided bounding boxes (src_box).
     Then the selected areas would be fitted into the targeted bounding boxes (dst_box) by a perspective transformation.
-    So far, the ragged torch.tensor is not supported by PyTorch right now. This function hereby requires
+    So far, the ragged torch.Tensor is not supported by PyTorch right now. This function hereby requires
     the bounding boxes in a batch must be rectangles with same width and height.
 
     Args:
-        input_tensor: the 2D image torch.tensor with shape (B, C, H, W).
-        src_box: a torch.tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
-            to be extracted. The torch.tensor must have the shape of Bx4x2, torch.where each box is defined
+        input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
+        src_box: a torch.Tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
+            to be extracted. The torch.Tensor must have the shape of Bx4x2, where each box is defined
             in the clockwise order: top-left, top-right, bottom-right and bottom-left.
             The coordinates must be in x, y order.
-        dst_box: a torch.tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
-            to be placed. The torch.tensor must have the shape of Bx4x2, torch.where each box is defined
+        dst_box: a torch.Tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
+            to be placed. The torch.Tensor must have the shape of Bx4x2, where each box is defined
             in the clockwise order: top-left, top-right, bottom-right and bottom-left.
             The coordinates must be in x, y order.
         mode: interpolation mode to calculate output values
@@ -255,7 +255,7 @@ def crop_by_boxes(
         validate_bbox(dst_box)
 
     if len(input_tensor.shape) != 4:
-        raise AssertionError(f"Only torch.tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
+        raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
 
     # compute transformation between points and warp
     # Note: torch.Tensor.dtype must be float. "solve_cpu" not implemented for 'Long'
@@ -283,10 +283,10 @@ def crop_by_transform_mat(
     padding_mode: str = "zeros",
     align_corners: bool = True,
 ) -> torch.Tensor:
-    """Perform crop transform on 2D images (4D torch.tensor) given a perspective transformation matrix.
+    """Perform crop transform on 2D images (4D torch.Tensor) given a perspective transformation matrix.
 
     Args:
-        input_tensor: the 2D image torch.tensor with shape (B, C, H, W).
+        input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
         transform: a perspective transformation matrix with shape (B, 3, 3).
         out_size: size of the output image (height, width).
         mode: interpolation mode to calculate output values
@@ -296,7 +296,7 @@ def crop_by_transform_mat(
         align_corners: mode for grid_generation.
 
     Returns:
-        the output torch.tensor with patches.
+        the output torch.Tensor with patches.
 
     """
     # simulate broadcasting
@@ -328,9 +328,9 @@ def crop_by_indices(
     """Crop tensors with naive indices.
 
     Args:
-        input_tensor: the 2D image torch.tensor with shape (B, C, H, W).
-        src_box: a torch.tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
-            to be extracted. The torch.tensor must have the shape of Bx4x2, torch.where each box is defined
+        input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
+        src_box: a torch.Tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
+            to be extracted. The torch.Tensor must have the shape of Bx4x2, where each box is defined
             in the clockwise order: top-left, top-right, bottom-right and bottom-left.
             The coordinates must be in x, y order.
         size: output size. An auto resize or F.pad will be performed according to ``shape_compensation``
@@ -393,7 +393,7 @@ def crop_by_indices(
 
 
 class CenterCrop2D(nn.Module):
-    """Center crop the input torch.tensor.
+    """Center crop the input torch.Tensor.
 
     Args:
         size: Size (h, w) in pixels of the resized region or just one side.

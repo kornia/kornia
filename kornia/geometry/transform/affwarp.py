@@ -261,9 +261,9 @@ def rotate(
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
         angle: The angle through which to rotate. The tensor
-          must have a shape of (B), torch.where B is batch size.
+          must have a shape of (B), where B is batch size.
         center: The center through which to rotate. The tensor
-          must have a shape of (B, 2), torch.where B is batch size and last
+          must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -326,13 +326,13 @@ def rotate3d(
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, D, H, W)`.
         yaw: The yaw angle through which to rotate. The tensor
-          must have a shape of (B), torch.where B is batch size.
+          must have a shape of (B), where B is batch size.
         pitch: The pitch angle through which to rotate. The tensor
-          must have a shape of (B), torch.where B is batch size.
+          must have a shape of (B), where B is batch size.
         roll: The roll angle through which to rotate. The tensor
-          must have a shape of (B), torch.where B is batch size.
+          must have a shape of (B), where B is batch size.
         center: The center through which to rotate. The tensor
-          must have a shape of (B, 2), torch.where B is batch size and last
+          must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -393,7 +393,7 @@ def translate(
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
         translation: tensor containing the amount of pixels to
           translate in the x and y direction. The tensor must have a shape of
-          (B, 2), torch.where B is batch size, last dimension contains dx dy.
+          (B, 2), where B is batch size, last dimension contains dx dy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
@@ -442,11 +442,11 @@ def scale(
     Args:
         tensor: The image tensor to be warped in shapes of :math:`(B, C, H, W)`.
         scale_factor: The scale factor apply. The tensor
-          must have a shape of (B) or (B, 2), torch.where B is batch size.
+          must have a shape of (B) or (B, 2), where B is batch size.
           If (B), isotropic scaling will perform.
           If (B, 2), x-y-direction specific scaling will perform.
         center: The center through which to scale. The tensor
-          must have a shape of (B, 2), torch.where B is batch size and last
+          must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -504,7 +504,7 @@ def shear(
         tensor: The image tensor to be skewed with shape of :math:`(B, C, H, W)`.
         shear: tensor containing the angle to shear
           in the x and y direction. The tensor must have a shape of
-          (B, 2), torch.where B is batch size, last dimension contains shx shy.
+          (B, 2), where B is batch size, last dimension contains shx shy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
@@ -775,15 +775,15 @@ class Affine(nn.Module):
 
     Args:
         angle: Angle in degrees for counter-clockwise rotation around the center. The tensor
-            must have a shape of (B), torch.where B is the batch size.
+            must have a shape of (B), where B is the batch size.
         translation: Amount of pixels for translation in x- and y-direction. The tensor must
-            have a shape of (B, 2), torch.where B is the batch size and the last dimension contains dx and dy.
-        scale_factor: Factor for scaling. The tensor must have a shape of (B,2), torch.where B is the
+            have a shape of (B, 2), where B is the batch size and the last dimension contains dx and dy.
+        scale_factor: Factor for scaling. The tensor must have a shape of (B,2), where B is the
             batch size and the last dimension contains scale factors for x and y direction.
         shear: Factor for shearing in x- and y-direction around the center. The
-            tensor must have a shape of (B, 2), torch.where B is the batch size and the last dimension
+            tensor must have a shape of (B, 2), where B is the batch size and the last dimension
             contains sx and sy.
-        center: Transformation center in pixels. The tensor must have a shape of (B, 2), torch.where
+        center: Transformation center in pixels. The tensor must have a shape of (B, 2), where
             B is the batch size and the last dimension contains cx and cy. Defaults to the center of image to be
             transformed.
         mode: interpolation mode to calculate output values
@@ -917,9 +917,9 @@ class Rotate(nn.Module):
 
     Args:
         angle: The angle through which to rotate. The tensor
-          must have a shape of (B), torch.where B is batch size.
+          must have a shape of (B), where B is batch size.
         center: The center through which to rotate. The tensor
-          must have a shape of (B, 2), torch.where B is batch size and last
+          must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -964,7 +964,7 @@ class Translate(nn.Module):
     Args:
         translation: tensor containing the amount of pixels to
           translate in the x and y direction. The tensor must have a shape of
-          (B, 2), torch.where B is batch size, last dimension contains dx dy.
+          (B, 2), where B is batch size, last dimension contains dx dy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
@@ -1005,11 +1005,11 @@ class Scale(nn.Module):
 
     Args:
         scale_factor: The scale factor apply. The tensor
-          must have a shape of (B) or (B, 2), torch.where B is batch size.
+          must have a shape of (B) or (B, 2), where B is batch size.
           If (B), isotropic scaling will perform.
           If (B, 2), x-y-direction specific scaling will perform.
         center: The center through which to scale. The tensor
-          must have a shape of (B, 2), torch.where B is batch size and last
+          must have a shape of (B, 2), where B is batch size and last
           dimension contains cx and cy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -1054,7 +1054,7 @@ class Shear(nn.Module):
     Args:
         shear: tensor containing the angle to shear
           in the x and y direction. The tensor must have a shape of
-          (B, 2), torch.where B is batch size, last dimension contains shx shy.
+          (B, 2), where B is batch size, last dimension contains shx shy.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values

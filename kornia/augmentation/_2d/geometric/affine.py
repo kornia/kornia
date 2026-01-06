@@ -26,7 +26,7 @@ from kornia.geometry.transform import get_affine_matrix2d, warp_affine
 
 
 class RandomAffine(GeometricAugmentationBase2D):
-    r"""Apply a random 2D affine transformation to a torch.tensor image.
+    r"""Apply a random 2D affine transformation to a torch.Tensor image.
 
     .. image:: _static/img/RandomAffine.png
 
@@ -52,7 +52,7 @@ class RandomAffine(GeometricAugmentationBase2D):
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         padding_mode: padding mode from "torch.zeros" (0), "border" (1), "reflection" (2) or "fill" (3).
         fill_value: the value to be filled in the padding area when padding_mode="fill".
-            Can be a float, int, or a torch.tensor of shape (C) or (1).
+            Can be a float, int, or a torch.Tensor of shape (C) or (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         p: probability of applying the transformation.
