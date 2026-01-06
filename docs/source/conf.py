@@ -207,23 +207,25 @@ html_js_files = [
 code_url = "https://github.com/kornia/kornia/blob/main"
 
 
+code_url = "https://github.com/kornia/kornia/blob/main"
+
 def linkcode_resolve(domain, info):
     # Non-linkable objects from the starter kit in the tutorial.
     if domain == "js" or info["module"] == "connect4":
-        return
+        return None
 
-    assert domain == "py", "expected only Python objects"
+    if domain != "py":
+        return None
 
     mod = importlib.import_module(info["module"])
+
     if "." in info["fullname"]:
         objname, attrname = info["fullname"].split(".")
         obj = getattr(mod, objname)
         try:
-            # object is a method of a class
-            obj = getattr(obj, attrname)
+            obj = getattr(obj, attrname)  # method
         except AttributeError:
-            # object is an attribute of a class
-            return None
+            return None  # attribute; no source
     else:
         obj = getattr(mod, info["fullname"])
 
@@ -231,17 +233,20 @@ def linkcode_resolve(domain, info):
 
     try:
         file = inspect.getsourcefile(obj)
-        lines = inspect.getsourcelines(obj)
-    except TypeError:
-        # e.g. object is a typing.Union
+        source, start_line = inspect.getsourcelines(obj)
+    except (TypeError, OSError):
         return None
+
+    if not file:
+        return None
+
     file = os.path.relpath(file, os.path.abspath(".."))
     if not file.startswith("kornia/"):
-        # e.g. object is a typing.NewType
         return None
-    start, end = lines[1], lines[1] + len(lines[0]) - 1
 
-    return f"{code_url}/{file}#L{start}-L{end}"
+    end_line = start_line + len(source) - 1
+    return f"{code_url}/{file}#L{start_line}-L{end_line}"
+
 
 
 # -- Options for LaTeX output ---------------------------------------------
