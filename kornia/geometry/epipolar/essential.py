@@ -23,7 +23,7 @@ import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like, vec_like
-from kornia.core.utils import _torch_solve_cast, _torch_svd_cast
+from kornia.core.utils import _torch_svd_cast
 from kornia.geometry.solvers.polynomial_solver import T_deg1, T_deg2, coefficient_map, multiplication_indices, signs
 
 from .numeric import cross_product_matrix, matrix_cofactor_tensor
@@ -77,7 +77,6 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         eye3 = torch.eye(3, device=E.device, dtype=E.dtype).view(1, 1, 3, 3).expand(batch_size, 10, 3, 3)
         E = torch.where(bad.view(batch_size, 1, 1, 1), eye3, E)
     return E
-
 
 
 @torch.jit.script
@@ -170,7 +169,7 @@ def _null_to_Nister_solution_script(
     multiplication_indices: torch.Tensor,
     signs: torch.Tensor,
     coefficient_map: torch.Tensor,
-    idx_ij: torch.Tensor,   # kept for signature compatibility (unused)
+    idx_ij: torch.Tensor,  # kept for signature compatibility (unused)
     i_idx: torch.Tensor,
     j_idx: torch.Tensor,
     idx3: torch.Tensor,
@@ -180,8 +179,8 @@ def _null_to_Nister_solution_script(
     original_dtype = X.dtype
 
     _, _, V = _torch_svd_cast(X)  # V: (B, 9, 9)
-    null_ = V[:, :, -4:].contiguous()          # (B, 9, 4)
-    nullSpace = V.transpose(-1, -2)[:, -4:, :] # (B, 4, 9)
+    null_ = V[:, :, -4:].contiguous()  # (B, 9, 4)
+    nullSpace = V.transpose(-1, -2)[:, -4:, :]  # (B, 4, 9)
 
     B = batch_size
     device = X.device
@@ -224,8 +223,8 @@ def _null_to_Nister_solution_script(
     D_blocks = prods.sum(dim=2).view(B, 3, 3, 10).contiguous()
 
     # trace removal
-    diag = D_blocks[:, idx3, idx3, :]                 # (B,3,10)
-    t = 0.5 * diag.sum(dim=1, keepdim=True)           # (B,1,10)
+    diag = D_blocks[:, idx3, idx3, :]  # (B,3,10)
+    t = 0.5 * diag.sum(dim=1, keepdim=True)  # (B,1,10)
     D_blocks[:, idx3, idx3, :] = D_blocks[:, idx3, idx3, :] - t
 
     # first 9 rows of coeffs
@@ -235,8 +234,8 @@ def _null_to_Nister_solution_script(
     coeffs[:, :9, :] = prods2.sum(dim=2)  # (B,9,20)
 
     # ---- elimination: solve A10 * X = b_poly ----
-    A10 = coeffs[:, :, :10]        # (B, 10, 10)
-    b_poly = coeffs[:, :, 10:]     # (B, 10, 10)
+    A10 = coeffs[:, :, :10]  # (B, 10, 10)
+    b_poly = coeffs[:, :, 10:]  # (B, 10, 10)
 
     # Prefer direct solve; if singular, add tiny damping (no batch compaction).
     eye10 = torch.eye(10, device=device, dtype=dtype).unsqueeze(0).expand(B, 10, 10)
@@ -312,8 +311,8 @@ def _null_to_Nister_solution_script(
     )  # (B,10,3,1)
 
     # ---- solve 2x2 (fast) with robust fallback ----
-    A2 = Bs[:, :, 0:2, 0:2]          # (B,10,2,2)
-    b2 = bs_vec[:, :, 0:2, :]        # (B,10,2,1)
+    A2 = Bs[:, :, 0:2, 0:2]  # (B,10,2,2)
+    b2 = bs_vec[:, :, 0:2, :]  # (B,10,2,1)
 
     xzs, bad2 = _solve_2x2_safe(A2, b2, 1e-12)  # xzs: (B,10,2,1), bad2: (B,10)
 
@@ -327,7 +326,7 @@ def _null_to_Nister_solution_script(
         xzs = torch.where(bad2.view(B, 10, 1, 1), xzs_d, xzs)
 
     # ---- build Es ----
-    xzs_sq = xzs.squeeze(-1)   # (B,10,2)
+    xzs_sq = xzs.squeeze(-1)  # (B,10,2)
     x = -xzs_sq[:, :, 0]
     y = -xzs_sq[:, :, 1]
     z = roots
