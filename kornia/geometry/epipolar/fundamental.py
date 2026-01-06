@@ -149,95 +149,93 @@ def _normalize_F(F: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 # Reference: Adapted from the 'run_7point' function in opencv
 # https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp
 @torch.jit.script
+def _isclose0(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    # torch.isclose(x, 0) but TorchScript/GPU-friendly (no scalar tensor creation)
+    return x.abs() <= eps
+
+
+@torch.jit.script
 def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
-    r"""Compute the fundamental matrix using the 7-point algorithm.
-
-    Args:
-        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
-
-    Returns:
-        the computed fundamental matrix with shape :math:`(B, 3*m, 3), Valid values of m are 1, 2 or 3`
-
-    """
     KORNIA_CHECK_SHAPE(points1, ["B", "7", "2"])
     KORNIA_CHECK_SHAPE(points2, ["B", "7", "2"])
 
-    batch_size = points1.shape[0]
+    B = points1.shape[0]
+    device = points1.device
+    dtype = points1.dtype
 
     points1_norm, transform1 = normalize_points(points1)
     points2_norm, transform2 = normalize_points(points2)
 
-    x1, y1 = torch.chunk(points1_norm, dim=-1, chunks=2)  # Bx1xN
-    x2, y2 = torch.chunk(points2_norm, dim=-1, chunks=2)  # Bx1xN
-
+    x1, y1 = torch.chunk(points1_norm, dim=-1, chunks=2)  # (B,7,1)
+    x2, y2 = torch.chunk(points2_norm, dim=-1, chunks=2)  # (B,7,1)
     ones = torch.ones_like(x1)
-    # form a linear system: which represents
-    # the equation (x2[i], 1)*F*(x1[i], 1) = 0
-    X = torch.cat([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], -1)  # BxNx9
 
-    # X * Fmat = 0 is singular (7 equations for 9 variables)
-    # solving for nullspace of X to get two F
-    # Slower original SVD route
-    # _, _, v = _torch_svd_cast(X)
-    # last two singular vector as a basic of the space
-    # f1 = v[..., 7].view(-1, 3, 3)
-    # f2 = v[..., 8].view(-1, 3, 3)
+    # (B,7,9)
+    X = torch.cat([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], dim=-1)
+
+    # nullspace basis -> (B,3,3)
     f1, f2 = _F1F2_from_nullspace(_nullspace_via_eigh(X))
-    f1, f2 = _normalize_F(f1), _normalize_F(f2)
+    f1 = _normalize_F(f1)
+    f2 = _normalize_F(f2)
 
-    # lambda*f1 + mu*f2 is an arbitrary fundamental matrix
-    # f ~ lambda*f1 + (1 - lambda)*f2
-    # det(f) = det(lambda*f1 + (1-lambda)*f2), find lambda
-    # form a cubic equation
-    # finding the coefficients of cubic polynomial (coeffs)
-
-    coeffs = torch.zeros((batch_size, 4), device=f1.device, dtype=f1.dtype)
+    # --- cubic coeffs (keep your known-good inverse-based formula) ---
+    coeffs = torch.zeros((B, 4), device=device, dtype=dtype)
     f1_det = torch.linalg.det(f1)
     f2_det = torch.linalg.det(f2)
+
+    inv_f1, _ = safe_inverse_with_mask(f1)
+    inv_f2, _ = safe_inverse_with_mask(f2)
+
     coeffs[:, 0] = f1_det
-    coeffs[:, 1] = torch.einsum("bii->b", f2 @ safe_inverse_with_mask(f1)[0]) * f1_det
-    coeffs[:, 2] = torch.einsum("bii->b", f1 @ safe_inverse_with_mask(f2)[0]) * f2_det
+    coeffs[:, 1] = torch.einsum("bii->b", f2 @ inv_f1) * f1_det
+    coeffs[:, 2] = torch.einsum("bii->b", f1 @ inv_f2) * f2_det
     coeffs[:, 3] = f2_det
 
-    # solve the cubic equation, there can be 1 to 3 roots
-    # roots = torch.tensor(np.roots(coeffs.numpy()))
-    roots = solve_cubic(coeffs)
+    roots = solve_cubic(coeffs)  # (B,3)
 
-    fmatrix = torch.zeros((batch_size, 3, 3, 3), device=f1.device, dtype=f1.dtype)
-    cnz = torch.count_nonzero(roots, dim=1)
-    valid_root_mask = (cnz < 3) | (cnz > 1)
+    # same "valid_root_mask" logic as your working version
+    cnz = torch.count_nonzero(roots, dim=1)  # (B,)
+    valid_root_mask = (cnz < 3) | (cnz > 1)  # (B,) bool
 
-    _lambda = roots
+    # --- compute lambda/mu for ALL batches (no compaction) ---
+    _lambda = roots.clone()
     _mu = torch.ones_like(_lambda)
 
-    _s = f1[valid_root_mask, 2, 2].unsqueeze(dim=1) * roots[valid_root_mask] + f2[valid_root_mask, 2, 2].unsqueeze(
-        dim=1
-    )
-    _s_non_zero_mask = ~torch.isclose(_s, torch.tensor(0.0, device=f1.device, dtype=f1.dtype))
+    # _s = f1[2,2] * root + f2[2,2]   for each of 3 roots
+    f1_22 = f1[:, 2, 2].unsqueeze(1)  # (B,1)
+    f2_22 = f2[:, 2, 2].unsqueeze(1)  # (B,1)
+    _s = f1_22 * roots + f2_22        # (B,3)
 
-    _mu[_s_non_zero_mask] = 1.0 / _s[_s_non_zero_mask]
-    _lambda[_s_non_zero_mask] = _lambda[_s_non_zero_mask] * _mu[_s_non_zero_mask]
+    # avoid torch.isclose with scalar tensor creation
+    _s_non_zero_mask = ~_isclose0(_s, 1e-12)  # (B,3) bool
 
-    f1_expanded = f1.unsqueeze(1).expand(batch_size, 3, 3, 3)
-    f2_expanded = f2.unsqueeze(1).expand(batch_size, 3, 3, 3)
+    # mu = 1/s where s != 0, else mu stays 1
+    mu_new = torch.where(_s_non_zero_mask, 1.0 / _s, _mu)
+    lam_new = torch.where(_s_non_zero_mask, _lambda * mu_new, _lambda)
 
-    fmatrix[valid_root_mask] = (
-        f1_expanded[valid_root_mask] * _lambda[valid_root_mask, :, None, None]
-        + f2_expanded[valid_root_mask] * _mu[valid_root_mask, :, None, None]
-    )
+    _mu = mu_new
+    _lambda = lam_new
 
-    mat_ind = torch.zeros(3, 3, dtype=torch.bool)
-    mat_ind[2, 2] = True
-    fmatrix[_s_non_zero_mask, mat_ind] = 1.0
-    fmatrix[~_s_non_zero_mask, mat_ind] = 0.0
+    # --- form candidates for ALL batches: F = f1*lambda + f2*mu ---
+    f1_expanded = f1.unsqueeze(1).expand(B, 3, 3, 3)
+    f2_expanded = f2.unsqueeze(1).expand(B, 3, 3, 3)
 
-    trans1_exp = transform1[valid_root_mask].unsqueeze(1).expand(-1, fmatrix.shape[2], -1, -1)
-    trans2_exp = transform2[valid_root_mask].unsqueeze(1).expand(-1, fmatrix.shape[2], -1, -1)
+    fmatrix = f1_expanded * _lambda[:, :, None, None] + f2_expanded * _mu[:, :, None, None]  # (B,3,3,3)
 
-    fmatrix[valid_root_mask] = torch.matmul(
-        trans2_exp.transpose(-2, -1), torch.matmul(fmatrix[valid_root_mask], trans1_exp)
-    )
+    # --- enforce last element handling like your original ---
+    # If s != 0 set F[2,2]=1 else set to 0 (per-candidate)
+    # This is exactly what your boolean-indexing version did, but without advanced indexing.
+    f22 = torch.where(_s_non_zero_mask, torch.ones_like(_s, dtype=dtype), torch.zeros_like(_s, dtype=dtype))
+    fmatrix[:, :, 2, 2] = f22  # (B,3)
+
+    # --- apply batch validity mask (no compaction) ---
+    # If batch invalid -> zero all 3 candidates
+    fmatrix = torch.where(valid_root_mask.view(B, 1, 1, 1), fmatrix, torch.zeros_like(fmatrix))
+
+    # --- denormalize for ALL batches ---
+    # F = T2^T * F * T1
+    fmatrix = (transform2.unsqueeze(1).transpose(-2, -1) @ fmatrix) @ transform1.unsqueeze(1)
+
     return normalize_transformation(fmatrix)
 
 

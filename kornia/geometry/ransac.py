@@ -67,7 +67,7 @@ class RANSAC(nn.Module):
         """Initialize the RANSAC estimator.
 
         Args:
-            model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
+            model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt", "essential",
                 "homography_from_linesegments".
             inl_th: threshold for the correspondence to be an inlier. Internally is squared.
             batch_size: number of generated samples at once.
