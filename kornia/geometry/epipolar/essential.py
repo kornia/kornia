@@ -118,15 +118,16 @@ def _determinant_to_polynomial_jit(
 
 @torch.jit.script
 def _solve_2x2_tikhonov_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> Tuple[torch.Tensor, torch.Tensor]:
-    r"""
-    Solve (A)x=b for A (...,2,2), b (...,2,1) using:
+    r"""Solve (A)x=b for A (...,2,2), b (...,2,1) using:
       - direct inverse when det is OK
       - otherwise solve normal equations (A^T A + λI)x = A^T b  (λ from trace scale)
     Never throws. Returns (x, bad) where bad marks ill-conditioned A.
+
     Args:
         A: (...,2,2)
         b: (...,2,1)
         eps: small value to avoid unstabilities.
+
     Returns:
         x: (...,2,1)
         bad: (...,2,1)
