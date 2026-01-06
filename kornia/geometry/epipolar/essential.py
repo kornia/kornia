@@ -116,12 +116,9 @@ def _determinant_to_polynomial_jit(
     return cs
 
 
-from typing import Tuple
-
 @torch.jit.script
 def _solve_2x2_tikhonov_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Solve (A)x=b for A (...,2,2), b (...,2,1) using:
+    """Solve (A)x=b for A (...,2,2), b (...,2,1) using:
       - direct inverse when det is OK
       - otherwise solve normal equations (A^T A + λI)x = A^T b  (λ from trace scale)
     Never throws. Returns (x, bad) where bad marks ill-conditioned A.
@@ -347,11 +344,10 @@ def _null_to_Nister_solution_script(
         .unsqueeze(-1)
     )  # (B,10,3,1)
 
-    A2 = Bs[:, :, 0:2, 0:2]     # (B,10,2,2)
-    b2 = bs_vec[:, :, 0:2, :]   # (B,10,2,1)
+    A2 = Bs[:, :, 0:2, 0:2]  # (B,10,2,2)
+    b2 = bs_vec[:, :, 0:2, :]  # (B,10,2,1)
 
     xzs, bad2 = _solve_2x2_tikhonov_safe(A2, b2, 1e-12)  # never throws
-
 
     # ---- build Es ----
     xzs_sq = xzs.squeeze(-1)  # (B,10,2)
