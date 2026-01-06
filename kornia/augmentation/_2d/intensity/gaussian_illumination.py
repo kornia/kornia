@@ -169,7 +169,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
             # The gradient comes from the generator on CPU.
             # We must explicitly move it to the input's device before adding.
             gradient = params["gradient"].to(input.device, input.dtype)
-            
+
             return input.add_(gradient).clamp_(0, 1)
 
         self._fn = _apply_transform
