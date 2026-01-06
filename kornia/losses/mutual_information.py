@@ -77,7 +77,17 @@ def _joint_histogram_to_entropies(joint_histogram: torch.Tensor, eps: float = 1e
 
 
 class EntropyBasedLossBase(torch.nn.Module):
-    """A base class for entropy based losses."""
+    """A base class for entropy-based loss functions using kernel density estimation.
+
+    This class provides the foundation for computing entropy-based losses between signals
+    by estimating probability distributions using kernel density estimation (KDE). It
+    computes joint histograms and derives entropy measures that can be used to quantify
+    the similarity or dissimilarity between signals.
+
+    The class pre-processes a reference signal and provides methods to compute joint
+    histograms with other signals, from which various entropy measures (joint, marginal,
+    conditional, mutual information) can be derived in subclasses.
+    """
 
     def __init__(
         self,
@@ -86,7 +96,7 @@ class EntropyBasedLossBase(torch.nn.Module):
         num_bins: int = 64,
         window_radius: float = 1.0,
     ):
-        """Instantiation.
+        """Initialize the entropy-based loss base module.
 
         Args:
             reference_signal (torch.Tensor): reference signal to which
@@ -97,6 +107,9 @@ class EntropyBasedLossBase(torch.nn.Module):
                 density estimate, by default 64
             window_radius (float): radius of the kernel's support
                 interval, by default 1.0
+
+        Raises:
+            ValueError: If kernel_function is not a valid Kernel member.
         """
         super().__init__()
         self.eps = torch.finfo(reference_signal.dtype).eps
@@ -111,6 +124,24 @@ class EntropyBasedLossBase(torch.nn.Module):
         self.bin_centers = torch.arange(self.num_bins, device=self.signal.device)
 
     def _compute_joint_histogram(self, other_signal: torch.Tensor, eps: float) -> torch.Tensor:
+        """Compute the joint histogram between the reference signal and another signal.
+
+        Uses kernel density estimation to estimate the joint probability distribution
+        between the reference signal and the provided other signal. The histogram is
+        computed by evaluating kernel functions at discretized signal values.
+
+        Args:
+            other_signal (torch.Tensor): Signal to compare with the reference signal.
+                Must have the same shape as the reference signal.
+            eps (float): Epsilon value for numerical stability in computations.
+
+        Returns:
+            torch.Tensor: Joint histogram tensor with shape [..., num_bins, num_bins]
+                representing the estimated joint probability distribution.
+
+        Raises:
+            ValueError: If other_signal has incompatible shape with reference signal.
+        """
         if other_signal.shape != self.signal.shape:
             raise ValueError(f"The two signals have incompatible shapes: {other_signal.shape} and {self.signal.shape}.")
         other_signal = _normalize_signal(other_signal, num_bins=self.num_bins, eps=eps)
@@ -126,6 +157,26 @@ class EntropyBasedLossBase(torch.nn.Module):
         return joint_histogram
 
     def entropies(self, other_signal: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Compute entropy measures between the reference signal and another signal.
+
+        Calculates joint entropy and marginal entropies based on the joint histogram of the two signals.
+
+        Args:
+            other_signal (torch.Tensor): Signal to compare with the reference signal.
+                Must have the same shape as the reference_signal passed at instantiation.
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor, torch.Tensor]: A tuple containing:
+                - Marginal entropy H(X) of reference signal
+                - Marginal entropy H(Y) of other signal
+                - Joint entropy H(X,Y)
+
+            All tensors have the same batch dimensions as the input signals.
+
+        Note:
+            Subclasses should implement specific loss functions based on these entropy
+            measures (e.g., mutual information).
+        """
         joint_histogram = self._compute_joint_histogram(other_signal, self.eps)
         return _joint_histogram_to_entropies(joint_histogram, eps=self.eps)
 
@@ -173,7 +224,13 @@ class NMILossFromRef(EntropyBasedLossBase):
 
 
 class MILossFromRef2D(MILossFromRef):
-    """MILossFromRef for 2D images."""
+    """Mutual Information loss module specifically designed for 2D image data.
+
+    This class extends MILossFromRef to handle 2D image inputs by automatically
+    reshaping batched 2D images into the format expected by the base entropy
+    computation methods. It computes mutual information between reference 2D images
+    and other images using kernel density estimation.
+    """
 
     def __init__(
         self,
@@ -182,7 +239,7 @@ class MILossFromRef2D(MILossFromRef):
         num_bins: int = 64,
         window_radius: float = 1,
     ):
-        """Instantiation.
+        """Initialize the 2D Mutual Information loss module.
 
         Args:
             reference_signal (torch.Tensor): reference signal to which
@@ -220,7 +277,13 @@ class MILossFromRef2D(MILossFromRef):
 
 
 class MILossFromRef3D(MILossFromRef):
-    """MILossFromRef for 3D images."""
+    """Mutual Information loss module specifically designed for 3D image data.
+
+    This class extends MILossFromRef to handle 3D image inputs by automatically
+    reshaping batched 3D images into the format expected by the base entropy
+    computation methods. It computes normalized mutual information between reference 3D images
+    and other images using kernel density estimation.
+    """
 
     def __init__(
         self,
@@ -229,7 +292,7 @@ class MILossFromRef3D(MILossFromRef):
         num_bins: int = 64,
         window_radius: float = 1,
     ):
-        """Instantiation.
+        """Initialize the 3D Mutual Information loss module.
 
         Args:
             reference_signal (torch.Tensor): reference signal to which
@@ -267,7 +330,13 @@ class MILossFromRef3D(MILossFromRef):
 
 
 class NMILossFromRef2D(NMILossFromRef):
-    """NMILossFromRef for 2D images."""
+    """Normalized Mutual Information loss module specifically designed for 2D image data.
+
+    This class extends NMILossFromRef to handle 2D image inputs by automatically
+    reshaping batched 2D images into the format expected by the base entropy
+    computation methods. It computes normalized mutual information between reference 2D images
+    and other images using kernel density estimation.
+    """
 
     def __init__(
         self,
@@ -276,7 +345,7 @@ class NMILossFromRef2D(NMILossFromRef):
         num_bins: int = 64,
         window_radius: float = 1,
     ):
-        """Instantiation.
+        """Initialize the 2D Normalized Mutual Information loss module.
 
         Args:
             reference_signal (torch.Tensor): reference signal to which
@@ -314,7 +383,13 @@ class NMILossFromRef2D(NMILossFromRef):
 
 
 class NMILossFromRef3D(NMILossFromRef):
-    """NMILossFromRef for 3D images. Check details there."""
+    """Normalized Mutual Information loss module specifically designed for 3D image data.
+
+    This class extends NMILossFromRef to handle 3D image inputs by automatically
+    reshaping batched 3D images into the format expected by the base entropy
+    computation methods. It computes mutual information between reference 3D images
+    and other images using kernel density estimation.
+    """
 
     def __init__(
         self,
@@ -323,7 +398,7 @@ class NMILossFromRef3D(NMILossFromRef):
         num_bins: int = 64,
         window_radius: float = 1,
     ):
-        """Instantiation.
+        """Initialize the 3D Normalized Mutual Information loss module.
 
         Args:
             reference_signal (torch.Tensor): reference signal to which
