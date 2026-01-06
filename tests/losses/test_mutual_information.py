@@ -36,14 +36,14 @@ class TestMutualInformationLoss(BaseTester):
         return numerator / denominator
 
     @staticmethod
-    def sampling_function(n_samples):
-        data = torch.rand(n_samples)
+    def sampling_function(n_samples, device, dtype):
+        data = torch.rand(n_samples, device=device, dtype=dtype)
         return 400 * torch.sin(data * torch.pi)
 
-    def value_ranges_check(self, n_samples=10000, num_bins=64):
-        img_1 = self.sampling_function(n_samples)
+    def value_ranges_check(self, device, dtype, n_samples=10000, num_bins=64):
+        img_1 = self.sampling_function(n_samples, device, dtype)
         img_2 = 50 * img_1 + 1
-        img_3 = self.sampling_function(n_samples)
+        img_3 = self.sampling_function(n_samples, device, dtype)
 
         for radius in [1 / 2, 1, 2, 3]:
             # relative MI, expect 1
@@ -114,10 +114,10 @@ class TestMutualInformationLoss(BaseTester):
         self.gradcheck(mutual_information_loss, (img1, img2))
         self.gradcheck(normalized_mutual_information_loss, (img1, img2))
 
-    def test_differentiability(self):
+    def test_differentiability(self, device, dtype):
         for _ in range(10):
-            img_1 = self.sampling_function(10000)
-            img_2 = self.sampling_function(10000)
+            img_1 = self.sampling_function(10000, device, dtype)
+            img_2 = self.sampling_function(10000, device, dtype)
             param = torch.tensor(1 / 2.0, requires_grad=True)
             mi = mutual_information_loss(img_1 + param * img_2, img_2)
             mi.backward()
@@ -129,20 +129,19 @@ class TestMutualInformationLoss(BaseTester):
             # negative gradient, order of magnitude 1/20
             assert -1 / 10 < param.grad < -1 / 100, f"Differentiability issue for nmi, {param.grad=}."
 
-    def test_value_ranges(self):
+    def test_value_ranges(self, device, dtype):
         for _ in range(10):
-            self.value_ranges_check()
+            self.value_ranges_check(device, dtype)
 
-    def test_batch_consistency(self):
+    def test_batch_consistency(self, device, dtype):
         torch.manual_seed(0)  # Fix seed for reproducibility
         for dim_param in range(5):
             # 1. Create random batch with n_dims = i+1
             dims = torch.randint(low=1, high=8, size=(dim_param + 1,))
             dims = tuple(map(int, dims))
-            device = torch.device("cpu")
             for _ in range(10):
-                img1 = torch.rand(dims, device=device)
-                img2 = torch.rand(dims, device=device)
+                img1 = torch.rand(dims, device=device, dtype=dtype)
+                img2 = torch.rand(dims, device=device, dtype=dtype)
 
                 # flatten batch dims
                 unique_batch_dim_1 = img1.reshape((-1,) + img1.shape[-1:])
