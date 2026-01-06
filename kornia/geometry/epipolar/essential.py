@@ -117,6 +117,45 @@ def _determinant_to_polynomial_jit(
     return cs
 
 
+@torch.jit.script
+def _solve_2x2_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> Tuple[torch.Tensor, torch.Tensor]:
+    # A: (..., 2, 2), b: (..., 2, 1)
+    # Returns:
+    #   x: (..., 2, 1)
+    #   bad: (...) bool, True where det is too small / non-finite
+    a = A[..., 0, 0]
+    bb = A[..., 0, 1]
+    c = A[..., 1, 0]
+    d = A[..., 1, 1]
+
+    det = a * d - bb * c
+    det_abs = det.abs()
+
+    # mark singular or non-finite
+    bad = (det_abs <= eps) | torch.isnan(det_abs) | torch.isinf(det_abs)
+
+    # safe reciprocal (avoid inf)
+    det_safe = torch.where(det_abs > eps, det, torch.ones_like(det) * eps)
+    inv_det = 1.0 / det_safe
+
+    # adj(A) / det
+    # invA = [[ d, -b],
+    #         [-c,  a]] / det
+    inv00 = d * inv_det
+    inv01 = (-bb) * inv_det
+    inv10 = (-c) * inv_det
+    inv11 = a * inv_det
+
+    x0 = inv00 * b[..., 0, 0] + inv01 * b[..., 1, 0]
+    x1 = inv10 * b[..., 0, 0] + inv11 * b[..., 1, 0]
+
+    x = torch.stack((x0, x1), dim=-1).unsqueeze(-1)  # (..., 2, 1)
+
+    # For bad systems, return zeros (or NaNs if you prefer)
+    x = torch.where(bad.unsqueeze(-1).unsqueeze(-1), torch.zeros_like(x), x)
+    return x, bad
+
+
 # --- fun_select inline, to keep it JIT-simple ---
 def _fun_select(mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.Tensor:
     return mat[:, ratio * j + i]
@@ -273,12 +312,11 @@ def _null_to_Nister_solution_script(
     )  # (B,10,3,1)
 
     # ---- solve 2x2 (fast) with robust fallback ----
-    A2 = Bs[:, :, 0:2, 0:2]     # (B,10,2,2)
-    b2 = bs_vec[:, :, 0:2, :]   # (B,10,2,1)
+    A2 = Bs[:, :, 0:2, 0:2]          # (B,10,2,2)
+    b2 = bs_vec[:, :, 0:2, :]        # (B,10,2,1)
 
-    xzs = torch.linalg.solve(A2, b2)  # (B,10,2,1)
+    xzs, bad2 = _solve_2x2_safe(A2, b2, 1e-12)  # xzs: (B,10,2,1), bad2: (B,10)
 
-    bad2 = torch.isnan(xzs).any(dim=(-2, -1)) | torch.isinf(xzs).any(dim=(-2, -1))  # (B,10)
     if bad2.any():
         eye2 = torch.eye(2, device=device, dtype=dtype).view(1, 1, 2, 2)
         # small damping scaled by |A2| mean
