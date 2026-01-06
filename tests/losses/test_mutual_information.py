@@ -54,13 +54,13 @@ class TestMutualInformationLoss(BaseTester):
             # NOTE: mutual_information_loss is a finite-sample, histogram-based estimator applied to random data.
             # For independent variables the theoretical value is 0, but sampling noise and binning effects across
             # radii introduce noticeable variance, so we use a slightly looser atol here for test robustness.
-            assert torch.allclose(self.relative_mi(img_1, img_3, window_radius=radius), torch.zeros(1), atol=0.2), (
-                "Wrong MI behaviour, uncorrelated case."
-            )
+            assert torch.allclose(
+                self.relative_mi(img_1, img_3, window_radius=radius), torch.zeros(1).to(dtype), atol=0.2
+            ), "Wrong MI behaviour, uncorrelated case."
 
-            assert torch.allclose(self.relative_mi(img_2, img_3, window_radius=radius), torch.zeros(1), atol=0.2), (
-                "Wrong MI behaviour, uncorrelated case."
-            )
+            assert torch.allclose(
+                self.relative_mi(img_2, img_3, window_radius=radius), torch.zeros(1).to(dtype), atol=0.2
+            ), "Wrong MI behaviour, uncorrelated case."
 
             # NMI, expect -2
             assert torch.allclose(
