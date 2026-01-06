@@ -46,7 +46,7 @@ test-quick = { cmd = "uv run pytest -v -m 'not (jit or grad or nn)' tests/" }
 test-module = { cmd = "uv run pytest -v", description = "Run tests for a specific module (usage: pixi run test-module tests/<module_path>, e.g., pixi run test-module tests/contrib/)" }
 # Quality
 lint = { cmd = "uv run pre-commit run ruff --all-files" }
-typecheck = { cmd = "ty check kornia" }
+typecheck = { cmd = "ty check --config pyproject.toml kornia" }
 doctest = { cmd = "uv run pytest -v --doctest-modules kornia/" }
 toml-fmt = { cmd = "tombi format", description = "Format TOML files" }
 toml-fmt-check = { cmd = "tombi format --check", description = "Check TOML formatting" }
