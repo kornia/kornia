@@ -333,7 +333,7 @@ def rotate3d(
           must have a shape of (B), torch.where B is batch size.
         center: The center through which to rotate. The tensor
           must have a shape of (B, 2), torch.where B is batch size and last
-          dimension contains cx and cy.
+          dimension contains cx and cy. If ``None``, the center of the image is used.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
