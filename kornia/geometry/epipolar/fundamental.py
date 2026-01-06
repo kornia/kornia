@@ -204,7 +204,7 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     # _s = f1[2,2] * root + f2[2,2]   for each of 3 roots
     f1_22 = f1[:, 2, 2].unsqueeze(1)  # (B,1)
     f2_22 = f2[:, 2, 2].unsqueeze(1)  # (B,1)
-    _s = f1_22 * roots + f2_22        # (B,3)
+    _s = f1_22 * roots + f2_22  # (B,3)
 
     # avoid torch.isclose with scalar tensor creation
     _s_non_zero_mask = ~_isclose0(_s, 1e-12)  # (B,3) bool
