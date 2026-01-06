@@ -345,4 +345,3 @@ not-iterable = "ignore"
 invalid-assignment = "ignore"
 # Silenced because KORNIA_UNWRAP intentionally uses cast for type narrowing
 redundant-cast = "ignore"
-
