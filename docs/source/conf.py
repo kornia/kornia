@@ -22,6 +22,13 @@ import os
 import sys
 from datetime import UTC, datetime
 
+# Monkey-patch for PyTorch compatibility with sphinx_autodoc_typehints
+# Newer versions of PyTorch removed torch.jit.annotations.compiler_flag
+import torch.jit.annotations
+
+if not hasattr(torch.jit.annotations, "compiler_flag"):
+    torch.jit.annotations.compiler_flag = None
+
 # To add an evnironment variable
 builtins.__sphinx_build__ = True
 

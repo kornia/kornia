@@ -311,7 +311,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """
         original_keys = None
         if len(args) == 1 and isinstance(args[0], dict):
-            original_keys, data_keys, args, invalid_data = self._preproc_dict_data(args[0])
+            original_keys, data_keys, args, invalid_data = self._preproc_dict_data(cast(Dict[str, DataType], args[0]))
 
         # args here should already be `DataType`
         # NOTE: how to right type to: unpacked args <-> tuple of args to unpack
@@ -437,7 +437,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # Unpack/handle dictionary args
         original_keys = None
         if len(args) == 1 and isinstance(args[0], dict):
-            original_keys, data_keys, args, invalid_data = self._preproc_dict_data(args[0])
+            original_keys, data_keys, args, invalid_data = self._preproc_dict_data(cast(Dict[str, DataType], args[0]))
 
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 

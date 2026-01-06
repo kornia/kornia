@@ -25,7 +25,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-import kornia.core as kornia_ops
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters.sobel import spatial_gradient
 from kornia.geometry.grid import create_meshgrid
@@ -93,7 +92,7 @@ def unproject_meshgrid(
     points_xyz = convert_points_to_homogeneous(points_xy)  # HxWx3
 
     if normalize_points:
-        points_xyz = kornia_ops.normalize(points_xyz, dim=-1, p=2)
+        points_xyz = F.normalize(points_xyz, dim=-1, p=2)
 
     return points_xyz
 

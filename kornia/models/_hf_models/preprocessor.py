@@ -63,7 +63,7 @@ class DPTImageProcessor(PreprocessingLoader):
             preproc_list.append(PreprocessingLoader.rescale(rescale_factor=json_data["rescale_factor"] * 255))
         if json_data["do_normalize"]:
             preproc_list.append(
-                PreprocessingLoader.F.normalize(
+                PreprocessingLoader.normalize(
                     mean=torch.tensor([json_data["image_mean"]]), std=torch.tensor([json_data["image_std"]])
                 )
             )
