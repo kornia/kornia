@@ -116,12 +116,16 @@ def _determinant_to_polynomial_jit(
     return cs
 
 
+from typing import Tuple
+
 @torch.jit.script
-def _solve_2x2_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> Tuple[torch.Tensor, torch.Tensor]:
-    # A: (..., 2, 2), b: (..., 2, 1)
-    # Returns:
-    #   x: (..., 2, 1)
-    #   bad: (...) bool, True where det is too small / non-finite
+def _solve_2x2_tikhonov_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Solve (A)x=b for A (...,2,2), b (...,2,1) using:
+      - direct inverse when det is OK
+      - otherwise solve normal equations (A^T A + λI)x = A^T b  (λ from trace scale)
+    Never throws. Returns (x, bad) where bad marks ill-conditioned A.
+    """
     a = A[..., 0, 0]
     bb = A[..., 0, 1]
     c = A[..., 1, 0]
@@ -129,29 +133,62 @@ def _solve_2x2_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> Tup
 
     det = a * d - bb * c
     det_abs = det.abs()
-
-    # mark singular or non-finite
     bad = (det_abs <= eps) | torch.isnan(det_abs) | torch.isinf(det_abs)
 
-    # safe reciprocal (avoid inf)
+    # ---- direct inverse branch (but branchless via where) ----
     det_safe = torch.where(det_abs > eps, det, torch.ones_like(det) * eps)
     inv_det = 1.0 / det_safe
 
-    # adj(A) / det
-    # invA = [[ d, -b],
-    #         [-c,  a]] / det
     inv00 = d * inv_det
     inv01 = (-bb) * inv_det
     inv10 = (-c) * inv_det
     inv11 = a * inv_det
 
-    x0 = inv00 * b[..., 0, 0] + inv01 * b[..., 1, 0]
-    x1 = inv10 * b[..., 0, 0] + inv11 * b[..., 1, 0]
+    x0_dir = inv00 * b[..., 0, 0] + inv01 * b[..., 1, 0]
+    x1_dir = inv10 * b[..., 0, 0] + inv11 * b[..., 1, 0]
+    x_dir = torch.stack((x0_dir, x1_dir), dim=-1).unsqueeze(-1)  # (...,2,1)
 
-    x = torch.stack((x0, x1), dim=-1).unsqueeze(-1)  # (..., 2, 1)
+    # ---- fallback: normal equations with λI (always SPD if λ>0) ----
+    # ATA = A^T A, ATb = A^T b
+    # ATA = [[a^2 + c^2, a*bb + c*d],
+    #        [a*bb + c*d, bb^2 + d^2]]
+    ata00 = a * a + c * c
+    ata01 = a * bb + c * d
+    ata11 = bb * bb + d * d
 
-    # For bad systems, return zeros (or NaNs if you prefer)
+    atb0 = a * b[..., 0, 0] + c * b[..., 1, 0]
+    atb1 = bb * b[..., 0, 0] + d * b[..., 1, 0]
+
+    # λ from trace scale; ensure strictly positive even if A is zero
+    tr = ata00 + ata11
+    lam = (tr * 1e-8).clamp_min(eps)
+
+    m00 = ata00 + lam
+    m01 = ata01
+    m10 = ata01
+    m11 = ata11 + lam
+
+    det_m = m00 * m11 - m01 * m10
+    det_m_safe = det_m.abs().clamp_min(eps)
+    inv_det_m = 1.0 / det_m_safe
+
+    invm00 = m11 * inv_det_m
+    invm01 = (-m01) * inv_det_m
+    invm10 = (-m10) * inv_det_m
+    invm11 = m00 * inv_det_m
+
+    x0_fb = invm00 * atb0 + invm01 * atb1
+    x1_fb = invm10 * atb0 + invm11 * atb1
+    x_fb = torch.stack((x0_fb, x1_fb), dim=-1).unsqueeze(-1)  # (...,2,1)
+
+    # choose fallback only when bad; else direct
+    x = torch.where(bad.unsqueeze(-1).unsqueeze(-1), x_fb, x_dir)
+
+    # if still non-finite, mark bad and zero it
+    nonfinite = torch.isnan(x).any(dim=(-2, -1)) | torch.isinf(x).any(dim=(-2, -1))
+    bad = bad | nonfinite
     x = torch.where(bad.unsqueeze(-1).unsqueeze(-1), torch.zeros_like(x), x)
+
     return x, bad
 
 
@@ -310,20 +347,11 @@ def _null_to_Nister_solution_script(
         .unsqueeze(-1)
     )  # (B,10,3,1)
 
-    # ---- solve 2x2 (fast) with robust fallback ----
-    A2 = Bs[:, :, 0:2, 0:2]  # (B,10,2,2)
-    b2 = bs_vec[:, :, 0:2, :]  # (B,10,2,1)
+    A2 = Bs[:, :, 0:2, 0:2]     # (B,10,2,2)
+    b2 = bs_vec[:, :, 0:2, :]   # (B,10,2,1)
 
-    xzs, bad2 = _solve_2x2_safe(A2, b2, 1e-12)  # xzs: (B,10,2,1), bad2: (B,10)
+    xzs, bad2 = _solve_2x2_tikhonov_safe(A2, b2, 1e-12)  # never throws
 
-    if bad2.any():
-        eye2 = torch.eye(2, device=device, dtype=dtype).view(1, 1, 2, 2)
-        # small damping scaled by |A2| mean
-        scale2 = A2.abs().mean(dim=(-2, -1)).clamp_min(1e-8)  # (B,10)
-        lam2 = (scale2 * 1e-8).to(dtype)
-        A2_d = A2 + eye2 * lam2.unsqueeze(-1).unsqueeze(-1)
-        xzs_d = torch.linalg.solve(A2_d, b2)
-        xzs = torch.where(bad2.view(B, 10, 1, 1), xzs_d, xzs)
 
     # ---- build Es ----
     xzs_sq = xzs.squeeze(-1)  # (B,10,2)
@@ -341,7 +369,9 @@ def _null_to_Nister_solution_script(
     Es_vec = Es_vec * inv_norm.unsqueeze(-1)
 
     Es = Es_vec.view(B, 10, 3, 3).transpose(-1, -2)
-
+    # after Es is created (B,10,3,3)
+    if bad2.any():
+        Es[bad2] = torch.nan
     # mark complex roots as NaN (keeps shape, no compaction)
     if is_real.logical_not().any():
         Es[~is_real] = torch.nan
