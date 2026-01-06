@@ -24,5 +24,11 @@ jobs:
       - name: Install dependencies
         run: pixi run -e default install
 
+      - name: Debug - Show ty version and config
+        run: |
+          pixi run -e default ty --version
+          echo "=== pyproject.toml ty config ==="
+          grep -A 30 '\[tool.ty' pyproject.toml || echo "No ty config found"
+
       - name: Run type checking with ty
         run: pixi run -e default typecheck
