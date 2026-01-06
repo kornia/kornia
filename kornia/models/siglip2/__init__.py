@@ -18,10 +18,9 @@
 """SigLip2 vision-language model implementation."""
 
 from .builder import SigLip2Builder
-from .config import SigLip2Config, SigLip2VisionConfig
+from .config import SigLip2Config
 from .model import SigLip2Model, SigLip2Result
 from .preprocessor import SigLip2ImagePreprocessor
-from .vision_encoder import SigLip2VisionEmbeddings
 
 __all__ = [
     "SigLip2Builder",
@@ -29,6 +28,4 @@ __all__ = [
     "SigLip2ImagePreprocessor",
     "SigLip2Model",
     "SigLip2Result",
-    "SigLip2VisionConfig",
-    "SigLip2VisionEmbeddings",
 ]
