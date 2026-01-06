@@ -95,7 +95,7 @@ class EntropyBasedLossBase(torch.nn.Module):
         kernel_function: Kernel = Kernel.xu,
         num_bins: int = 64,
         window_radius: float = 1.0,
-    ):
+    ) -> None:
         """Initialize the entropy-based loss base module.
 
         Args:
@@ -238,7 +238,7 @@ class MILossFromRef2D(MILossFromRef):
         kernel_function: Kernel = Kernel.xu,
         num_bins: int = 64,
         window_radius: float = 1,
-    ):
+    ) -> None:
         """Initialize the 2D Mutual Information loss module.
 
         Args:
@@ -291,7 +291,7 @@ class MILossFromRef3D(MILossFromRef):
         kernel_function: Kernel = Kernel.xu,
         num_bins: int = 64,
         window_radius: float = 1,
-    ):
+    ) -> None:
         """Initialize the 3D Mutual Information loss module.
 
         Args:
@@ -344,7 +344,7 @@ class NMILossFromRef2D(NMILossFromRef):
         kernel_function: Kernel = Kernel.xu,
         num_bins: int = 64,
         window_radius: float = 1,
-    ):
+    ) -> None:
         """Initialize the 2D Normalized Mutual Information loss module.
 
         Args:
@@ -397,7 +397,7 @@ class NMILossFromRef3D(NMILossFromRef):
         kernel_function: Kernel = Kernel.xu,
         num_bins: int = 64,
         window_radius: float = 1,
-    ):
+    ) -> None:
         """Initialize the 3D Normalized Mutual Information loss module.
 
         Args:
