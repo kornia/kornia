@@ -196,7 +196,7 @@ class TestIoImage:
         assert img_load.shape[1:] == (height, width)
         if load_type in [ImageLoadType.RGB8, ImageLoadType.GRAY8]:
             assert img_load.dtype == torch.uint8
-        else:   
+        else:
             assert img_load.dtype == torch.float32
 
     @pytest.mark.parametrize("ext", ["tiff"])
