@@ -296,6 +296,10 @@ def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
 
     It works by first viewing the image as `(B, C, H, W)`, applying the function and re-viewing the image as original
     shape.
+
+    This decorator is compatible with torch.export and ONNX export by skipping shape transformations
+    when in export mode, as ONNX handles shape conversions internally.
+
     """
 
     @wraps(f)
@@ -305,6 +309,10 @@ def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
 
         if input.shape.numel() == 0:
             raise ValueError("Invalid input tensor, it is empty.")
+
+        # Skip shape transformations during ONNX/torch.export to avoid dynamic attribute issues
+        if torch.onnx.is_in_onnx_export() or torch.jit.is_tracing():
+            return f(input, *args, **kwargs)
 
         input_shape = input.shape
         input = _to_bchw(input)  # view input as (B, C, H, W)
