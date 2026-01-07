@@ -248,7 +248,7 @@ def warp_image_tps(
         raise ValueError(f"Invalid shape for affine_weights, expected BxNx2. Got {affine_weights.shape}")
 
     batch_size, _, h, w = image.shape
-    coords: torch.Tensor = create_meshgrid(h, w, device=image.device, dtype=image.dtype)
+    coords: torch.Tensor = create_meshgrid(h, w, device=image.device, dtype=image.dtype, normalized_coordinates=True)
     coords = coords.reshape(-1, 2).expand(batch_size, -1, -1)
     warped: torch.Tensor = warp_points_tps(coords, kernel_centers, kernel_weights, affine_weights)
     warped = warped.view(-1, h, w, 2)
