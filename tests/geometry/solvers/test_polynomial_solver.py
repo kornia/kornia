@@ -52,6 +52,7 @@ class TestQuadraticSolver(BaseTester):
         coeffs = torch.rand(1, 3, device=device, dtype=torch.float64, requires_grad=True)
         assert self.gradcheck(solver.solve_quadratic, (coeffs), raise_exception=True, fast_mode=True)
 
+
 class TestCubicSolver(BaseTester):
     def test_smoke(self, device, dtype):
         coeffs = torch.rand(1, 4, device=device, dtype=dtype)
@@ -82,6 +83,7 @@ class TestCubicSolver(BaseTester):
     def gradcheck(self, device):
         coeffs = torch.rand(1, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert self.gradcheck(solver.solve_cubic, (coeffs), raise_exception=True, fast_mode=True)
+
 
 class TestMultiplyDegOnePoly(BaseTester):
     def test_smoke(self, device, dtype):

@@ -75,8 +75,7 @@ class TestTransformParameters(BaseTester):
         src.requires_grad_(requires_grad)
         dst.requires_grad_(not requires_grad)
         assert self.gradcheck(
-            kornia.geometry.transform.get_tps_transform, (src, dst),
-            raise_exception=True, fast_mode=True
+            kornia.geometry.transform.get_tps_transform, (src, dst), raise_exception=True, fast_mode=True
         )
 
     @pytest.mark.jit()
