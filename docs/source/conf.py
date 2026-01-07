@@ -93,7 +93,6 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
     "sphinx.ext.napoleon",
-    # "sphinx.ext.viewcode",
     "sphinx_autodoc_typehints",
     "sphinx_autodoc_defaultargs",
     "sphinx_copybutton",
@@ -231,46 +230,56 @@ html_js_files = [
 
 # Configure viewcode extension.
 # based on https://github.com/readthedocs/sphinx-autoapi/issues/202
-code_url = "https://github.com/kornia/kornia/blob/main"
+rtd_version = os.environ.get("READTHEDOCS_VERSION")
+if rtd_version and rtd_version not in {"latest", "stable"}:
+    code_ref = rtd_version
+else:
+    code_ref = "main"
+
+code_url = f"https://github.com/kornia/kornia/blob/{code_ref}"
 
 
 def linkcode_resolve(domain, info):
-    # Non-linkable objects from the starter kit in the tutorial.
-    if domain == "js" or info["module"] == "connect4":
-        return None
-
     if domain != "py":
         return None
 
-    mod = importlib.import_module(info["module"])
+    modname = info.get("module")
+    fullname = info.get("fullname")
+    if not modname or not fullname:
+        return None
 
-    if "." in info["fullname"]:
-        objname, attrname = info["fullname"].split(".")
-        obj = getattr(mod, objname)
+    try:
+        mod = importlib.import_module(modname)
+    except (ImportError, ModuleNotFoundError):
+        return None
+
+    obj = mod
+    for part in fullname.split("."):
         try:
-            obj = getattr(obj, attrname)  # method
+            obj = getattr(obj, part)
         except AttributeError:
-            return None  # attribute; no source
-    else:
-        obj = getattr(mod, info["fullname"])
+            return None
 
     obj = inspect.unwrap(obj)
 
     try:
-        file = inspect.getsourcefile(obj)
-        source, start_line = inspect.getsourcelines(obj)
-    except (TypeError, OSError):
+        fn = inspect.getsourcefile(obj)
+        src, start = inspect.getsourcelines(obj)
+    except (TypeError, OSError, ValueError):
         return None
 
-    if not file:
+    if not fn:
         return None
 
-    file = os.path.relpath(file, os.path.abspath("..")).replace("kornia/kornia", "kornia")
-    if not file.startswith("kornia/"):
+    fn = os.path.abspath(fn).replace("\\", "/")
+    marker = "/kornia/"
+    idx = fn.rfind(marker)
+    if idx == -1:
         return None
 
-    end_line = start_line + len(source) - 1
-    return f"{code_url}/{file}#L{start_line}-L{end_line}"
+    file_rel = fn[idx + 1 :]  # -> "kornia/....py"
+    end = start + len(src) - 1
+    return f"{code_url}/{file_rel}#L{start}-L{end}"
 
 
 # -- Options for LaTeX output ---------------------------------------------
