@@ -181,3 +181,37 @@ class TestIoImage:
         img_load = load_image(file_path, ImageLoadType.UNCHANGED)
         assert img_load.shape == img_th.shape
         assert img_load.dtype == torch.float32
+
+    @pytest.mark.parametrize("ext", ["png", "tiff"])
+    @pytest.mark.parametrize(
+        "load_type", [ImageLoadType.RGB8, ImageLoadType.GRAY8, ImageLoadType.RGB32, ImageLoadType.GRAY32]
+    )
+    def test_load_image_uint16_conversions(self, device, tmp_path, ext, load_type):
+        height, width = 4, 5
+        img_th = create_random_img16_torch(height, width, 3, device)
+        file_path = tmp_path / f"image.{ext}"
+        write_image(file_path, img_th)
+
+        img_load = load_image(file_path, load_type)
+        assert img_load.shape[1:] == (height, width)
+        if load_type in [ImageLoadType.RGB8, ImageLoadType.GRAY8]:
+            assert img_load.dtype == torch.uint8
+        else:   
+            assert img_load.dtype == torch.float32
+
+    @pytest.mark.parametrize("ext", ["tiff"])
+    @pytest.mark.parametrize(
+        "load_type", [ImageLoadType.RGB8, ImageLoadType.GRAY8, ImageLoadType.RGB32, ImageLoadType.GRAY32]
+    )
+    def test_load_image_float32_conversions(self, device, tmp_path, ext, load_type):
+        height, width = 4, 5
+        img_th = create_random_img32_torch(height, width, 3, device)
+        file_path = tmp_path / f"image.{ext}"
+        write_image(file_path, img_th)
+
+        img_load = load_image(file_path, load_type)
+        assert img_load.shape[1:] == (height, width)
+        if load_type in [ImageLoadType.RGB8, ImageLoadType.GRAY8]:
+            assert img_load.dtype == torch.uint8
+        else:
+            assert img_load.dtype == torch.float32

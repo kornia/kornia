@@ -54,10 +54,12 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
         Image torch.tensor with shape :math:`(3,H,W)`.
 
     """
+    # read image and return as `np.ndarray` with shape HxWxC
     if path_file.suffix.lower() in [".jpg", ".jpeg"]:
         img = kornia_rs.read_image_jpegturbo(str(path_file))
     else:
         img = kornia_rs.read_image(str(path_file))
+    # convert the image to torch.tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)
 
     # move the torch.tensor to the desired device,
@@ -67,6 +69,17 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
 
 
 def _to_float32(image: torch.Tensor) -> torch.Tensor:
+    """Convert an image tensor to float32 and normalize based on its dtype.
+
+    Args:
+        image: The input image tensor.
+
+    Returns:
+        The normalized float32 image tensor.
+
+    Raises:
+        NotImplementedError: if the image dtype is not supported.
+    """
     if image.dtype == torch.uint8:
         return image.float() / 255.0
     elif image.dtype == torch.uint16:
@@ -91,10 +104,21 @@ def _to_float16(image: torch.Tensor) -> torch.Tensor:
 
 
 def _to_uint8(image: torch.Tensor) -> torch.Tensor:
+    """Convert an image tensor to uint8.
+
+    Args:
+        image: The input image tensor.
+
+    Returns:
+        The uint8 image tensor.
+
+    Raises:
+        NotImplementedError: if the image dtype is not supported.
+    """
     if image.dtype == torch.float32:
         return torch.round(image * 255.0).clamp(0, 255).to(torch.uint8)
     elif image.dtype == torch.uint16:
-        return (image >> 8).to(torch.uint8)
+        return (image.to(torch.float32) / 256.0).to(torch.uint8)
     elif image.dtype == torch.uint8:
         return image
     else:
@@ -126,41 +150,41 @@ def load_image(
     if desired_type == ImageLoadType.UNCHANGED:
         return image
     elif desired_type == ImageLoadType.GRAY8:
-        if image.shape[0] == 1 and image.dtype == torch.uint8:
-            return image
-        elif image.shape[0] == 3 and image.dtype == torch.uint8:
-            gray8 = kornia.color.rgb_to_grayscale(image)
-            return gray8
-        elif image.shape[0] == 4 and image.dtype == torch.uint8:
+        if image.shape[0] == 1:
+            return _to_uint8(image)
+        elif image.shape[0] == 3:
+            gray32 = kornia.color.rgb_to_grayscale(_to_float32(image))
+            return _to_uint8(gray32)
+        elif image.shape[0] == 4:
             gray32 = kornia.color.rgb_to_grayscale(kornia.color.rgba_to_rgb(_to_float32(image)))
             return _to_uint8(gray32)
 
     elif desired_type == ImageLoadType.RGB8:
-        if image.shape[0] == 3 and image.dtype == torch.uint8:
-            return image
-        elif image.shape[0] == 1 and image.dtype == torch.uint8:
-            rgb8 = kornia.color.grayscale_to_rgb(image)
-            return rgb8
+        if image.shape[0] == 3:
+            return _to_uint8(image)
+        elif image.shape[0] == 1:
+            rgb32 = kornia.color.grayscale_to_rgb(_to_float32(image))
+            return _to_uint8(rgb32)
 
     elif desired_type == ImageLoadType.RGBA8:
-        if image.shape[0] == 3 and image.dtype == torch.uint8:
+        if image.shape[0] == 3:
             rgba32 = kornia.color.rgb_to_rgba(_to_float32(image), 0.0)
             return _to_uint8(rgba32)
 
     elif desired_type == ImageLoadType.GRAY32:
-        if image.shape[0] == 1 and image.dtype == torch.uint8:
+        if image.shape[0] == 1:
             return _to_float32(image)
-        elif image.shape[0] == 3 and image.dtype == torch.uint8:
+        elif image.shape[0] == 3:
             gray32 = kornia.color.rgb_to_grayscale(_to_float32(image))
             return gray32
-        elif image.shape[0] == 4 and image.dtype == torch.uint8:
+        elif image.shape[0] == 4:
             gray32 = kornia.color.rgb_to_grayscale(kornia.color.rgba_to_rgb(_to_float32(image)))
             return gray32
 
     elif desired_type == ImageLoadType.RGB32:
-        if image.shape[0] == 3 and image.dtype == torch.uint8:
+        if image.shape[0] == 3:
             return _to_float32(image)
-        elif image.shape[0] == 1 and image.dtype == torch.uint8:
+        elif image.shape[0] == 1:
             rgb32 = kornia.color.grayscale_to_rgb(_to_float32(image))
             return rgb32
 
@@ -168,6 +192,17 @@ def load_image(
 
 
 def _detect_image_mode(img_np: Any) -> str:
+    """Detect the image mode from a numpy-like image array.
+
+    Args:
+        img_np: The input image array with shape (H, W) or (H, W, C).
+
+    Returns:
+        The detected mode: "mono", "rgb", or "rgba".
+
+    Raises:
+        ValueError: if the number of channels is not 1, 3, or 4.
+    """
     if img_np.ndim == 2:
         return "mono"
     channels = img_np.shape[-1]
@@ -182,6 +217,17 @@ def _detect_image_mode(img_np: Any) -> str:
 
 
 def _write_uint8_image(path_file: Path, img_np: Any, quality: int | None) -> None:
+    """Write a uint8 image to a file.
+
+    Args:
+        path_file: The path to the output file.
+        img_np: The image array to write.
+        quality: The JPEG quality (only for JPEG files).
+
+    Raises:
+        TypeError: if the image is not uint8.
+        NotImplementedError: if the file extension is not supported.
+    """
     if img_np.dtype != np.uint8:
         raise TypeError(f"Expected uint8 image, got {img_np.dtype}")
     suffix = path_file.suffix.lower()
@@ -199,6 +245,16 @@ def _write_uint8_image(path_file: Path, img_np: Any, quality: int | None) -> Non
 
 
 def _write_uint16_image(path_file: Path, img_np: Any) -> None:
+    """Write a uint16 image to a file.
+
+    Args:
+        path_file: The path to the output file.
+        img_np: The image array to write.
+
+    Raises:
+        TypeError: if the image is not uint16.
+        NotImplementedError: if the file extension is not supported.
+    """
     if img_np.dtype != np.uint16:
         raise TypeError(f"Expected uint16 image, got {img_np.dtype}")
     suffix = path_file.suffix.lower()
@@ -212,6 +268,16 @@ def _write_uint16_image(path_file: Path, img_np: Any) -> None:
 
 
 def _write_float32_image(path_file: Path, img_np: Any) -> None:
+    """Write a float32 image to a file.
+
+    Args:
+        path_file: The path to the output file.
+        img_np: The image array to write.
+
+    Raises:
+        TypeError: if the image is not float32.
+        NotImplementedError: if the file extension is not supported.
+    """
     if img_np.dtype != np.float32:
         raise TypeError(f"Expected float32 image, got {img_np.dtype}")
     suffix = path_file.suffix.lower()
