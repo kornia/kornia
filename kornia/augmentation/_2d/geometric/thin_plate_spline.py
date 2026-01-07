@@ -79,11 +79,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
 
         # 5 TPS control points in normalized coordinates
         src = torch.tensor(
-            [[[-1.0, -1.0],
-              [-1.0,  1.0],
-              [ 1.0, -1.0],
-              [ 1.0,  1.0],
-              [ 0.0,  0.0]]],
+            [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]],
             device=device,
             dtype=dtype,
         ).expand(B, 5, 2)
