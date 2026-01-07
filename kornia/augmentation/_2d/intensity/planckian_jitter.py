@@ -91,7 +91,7 @@ def get_planckian_coeffs(mode: str) -> torch.Tensor:
 
 
 class RandomPlanckianJitter(IntensityAugmentationBase2D):
-    r"""Apply planckian jitter transformation to input torch.tensor.
+    r"""Apply planckian jitter transformation to input torch.Tensor.
 
     .. image:: _static/img/RandomPlanckianJitter.png
 
@@ -114,7 +114,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        Input torch.tensor must be float and normalized into [0, 1].
+        Input torch.Tensor must be float and normalized into [0, 1].
 
     Examples:
         To apply planckian jitter based on mode

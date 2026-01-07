@@ -84,6 +84,11 @@ class SamConfig:
 
 
 class Sam(ModelBase[SamConfig]):
+    """Implement the Segment Anything Model (SAM) wrapper.
+
+    This class coordinates the image encoder, prompt encoder, and mask decoder.
+    """
+
     mask_threshold: float = 0.0
 
     def __init__(
@@ -208,7 +213,7 @@ class Sam(ModelBase[SamConfig]):
             model = _build_sam(
                 encoder_embed_dim=config.encoder_embed_dim,
                 encoder_depth=config.encoder_depth,
-                encoder_num_heads=config.num_heads,
+                encoder_num_heads=config.encoder_num_heads,
                 encoder_global_attn_indexes=config.encoder_global_attn_indexes,
             )
 

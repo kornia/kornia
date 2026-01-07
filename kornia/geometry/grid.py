@@ -15,11 +15,10 @@
 # limitations under the License.
 #
 
+
 from typing import Optional
 
 import torch
-
-from kornia.utils._compat import torch_meshgrid
 
 
 def create_meshgrid(
@@ -79,10 +78,10 @@ def create_meshgrid(
     # generate grid by stacking coordinates
     # TODO: torchscript doesn't like `torch_version_ge`
     # if torch_version_ge(1, 13, 0):
-    #     x, y = torch_meshgrid([xs, ys], indexing="xy")
+    #     x, y = torch.meshgrid([xs, ys], indexing="xy")
     #     return torch.stack([x, y], -1).unsqueeze(0)  # 1xHxWx2
     # TODO: remove after we drop support of old versions
-    base_grid: torch.Tensor = torch.stack(torch_meshgrid([xs, ys], indexing="ij"), dim=-1)  # WxHx2
+    base_grid: torch.Tensor = torch.stack(torch.meshgrid([xs, ys], indexing="ij"), dim=-1)  # WxHx2
     return base_grid.permute(1, 0, 2).unsqueeze(0)  # 1xHxWx2
 
 
@@ -123,5 +122,5 @@ def create_meshgrid3d(
         ys = (ys / (height - 1) - 0.5) * 2
         zs = (zs / (depth - 1) - 0.5) * 2
     # generate grid by stacking coordinates
-    base_grid = torch.stack(torch_meshgrid([zs, xs, ys], indexing="ij"), dim=-1)  # DxWxHx3
+    base_grid = torch.stack(torch.meshgrid([zs, xs, ys], indexing="ij"), dim=-1)  # DxWxHx3
     return base_grid.permute(0, 2, 1, 3).unsqueeze(0)  # 1xDxHxWx3

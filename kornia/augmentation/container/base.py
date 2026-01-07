@@ -170,9 +170,9 @@ class SequentialBase(BasicSequentialBase):
         self.update_attribute(keepdim=keepdim)
 
     def autofill_dim(self, input: torch.Tensor, dim_range: Tuple[int, int] = (2, 4)) -> Tuple[torch.Size, torch.Size]:
-        """Fill torch.tensor dim to the upper bound of dim_range.
+        """Fill torch.Tensor dim to the upper bound of dim_range.
 
-        If input torch.tensor dim is smaller than the lower bound of dim_range, an error will be thrown out.
+        If input torch.Tensor dim is smaller than the lower bound of dim_range, an error will be thrown out.
         """
         ori_shape = input.shape
         if len(ori_shape) < dim_range[0] or len(ori_shape) > dim_range[1]:
@@ -183,6 +183,12 @@ class SequentialBase(BasicSequentialBase):
 
 
 class ImageSequentialBase(SequentialBase):
+    """Provide a base class for sequential image-only augmentations.
+
+    This class handles the logic for applying a series of transformations
+    sequentially to input tensors while managing the transformation matrices.
+    """
+
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return identity matrix."""
         raise NotImplementedError
@@ -197,7 +203,7 @@ class ImageSequentialBase(SequentialBase):
         """Compute the transformation matrix according to the provided parameters.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
@@ -277,7 +283,7 @@ class ImageSequentialBase(SequentialBase):
     ) -> torch.Tensor:
         """Inverse transformation.
 
-        Used to inverse a torch.tensor according to the performed transformation by a forward pass, or with respect to
+        Used to inverse a torch.Tensor according to the performed transformation by a forward pass, or with respect to
         provided parameters.
         """
         if params is None:

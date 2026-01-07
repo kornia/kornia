@@ -52,7 +52,7 @@ def box_blur(
         separable: run as composition of two 1d-convolutions.
 
     Returns:
-        the blurred torch.tensor with shape :math:`(B,C,H,W)`.
+        the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
 
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_operators.html>`__.
@@ -100,7 +100,7 @@ class BoxBlur(nn.Module):
         separable: run as composition of two 1d-convolutions.
 
     Returns:
-        the blurred input torch.tensor.
+        the blurred input torch.Tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`

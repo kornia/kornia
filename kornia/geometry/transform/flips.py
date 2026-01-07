@@ -22,15 +22,15 @@ __all__ = ["Hflip", "Rot180", "Vflip", "hflip", "rot180", "vflip"]
 
 
 class Vflip(nn.Module):
-    r"""Vertically flip a torch.tensor image or a batch of torch.tensor images.
+    r"""Vertically flip a torch.Tensor image or a batch of torch.Tensor images.
 
-    Input must be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input must be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
     Args:
-        input: input torch.tensor.
+        input: input torch.Tensor.
 
     Returns:
-        The vertically flipped image torch.tensor.
+        The vertically flipped image torch.Tensor.
 
     Examples:
         >>> vflip = Vflip()
@@ -54,15 +54,15 @@ class Vflip(nn.Module):
 
 
 class Hflip(nn.Module):
-    r"""Horizontally flip a torch.tensor image or a batch of torch.tensor images.
+    r"""Horizontally flip a torch.Tensor image or a batch of torch.Tensor images.
 
-    Input must be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input must be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
     Args:
-        input: input torch.tensor.
+        input: input torch.Tensor.
 
     Returns:
-        The horizontally flipped image torch.tensor.
+        The horizontally flipped image torch.Tensor.
 
     Examples:
         >>> hflip = Hflip()
@@ -86,12 +86,12 @@ class Hflip(nn.Module):
 
 
 class Rot180(nn.Module):
-    r"""Rotate a torch.tensor image or a batch of torch.tensor images 180 degrees.
+    r"""Rotate a torch.Tensor image or a batch of torch.Tensor images 180 degrees.
 
-    Input must be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input must be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
     Args:
-        input: input torch.tensor.
+        input: input torch.Tensor.
 
     Examples:
         >>> rot180 = Rot180()
@@ -115,51 +115,51 @@ class Rot180(nn.Module):
 
 
 def rot180(input: torch.Tensor) -> torch.Tensor:
-    r"""Rotate a torch.tensor image or a batch of torch.tensor images 180 degrees.
+    r"""Rotate a torch.Tensor image or a batch of torch.Tensor images 180 degrees.
 
     .. image:: _static/img/rot180.png
 
-    Input must be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input must be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
     Args:
-        input: input torch.tensor.
+        input: input torch.Tensor.
 
     Returns:
-        The rotated image torch.tensor.
+        The rotated image torch.Tensor.
 
     """
     return torch.flip(input, [-2, -1])
 
 
 def hflip(input: torch.Tensor) -> torch.Tensor:
-    r"""Horizontally flip a torch.tensor image or a batch of torch.tensor images.
+    r"""Horizontally flip a torch.Tensor image or a batch of torch.Tensor images.
 
     .. image:: _static/img/hflip.png
 
-    Input must be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input must be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
     Args:
-        input: input torch.tensor.
+        input: input torch.Tensor.
 
     Returns:
-        The horizontally flipped image torch.tensor.
+        The horizontally flipped image torch.Tensor.
 
     """
     return input.flip(-1).contiguous()
 
 
 def vflip(input: torch.Tensor) -> torch.Tensor:
-    r"""Vertically flip a torch.tensor image or a batch of torch.tensor images.
+    r"""Vertically flip a torch.Tensor image or a batch of torch.Tensor images.
 
     .. image:: _static/img/vflip.png
 
-    Input must be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+    Input must be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
     Args:
-        input: input torch.tensor.
+        input: input torch.Tensor.
 
     Returns:
-        The vertically flipped image torch.tensor.
+        The vertically flipped image torch.Tensor.
 
     """
     return input.flip(-2).contiguous()

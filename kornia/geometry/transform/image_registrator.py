@@ -31,6 +31,8 @@ __all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 
 
 class BaseModel(nn.Module):
+    """Provide an abstract base class for image registration models."""
+
     @abstractmethod
     def reset_model(self) -> None: ...
 
@@ -235,14 +237,14 @@ class ImageRegistrator(nn.Module):
         The shape of the tensors is not checked, because it may depend on the model, e.g. volume registration.
 
         Args:
-            src_img: Input image torch.tensor.
-            dst_img: Input image torch.tensor.
+            src_img: Input image torch.Tensor.
+            dst_img: Input image torch.Tensor.
             verbose: if True, outputs loss every 10 iterations.
             output_intermediate_models: if True with intermediate models
 
         Returns:
             the transformation between two images, shape depends on the model,
-            typically [1x3x3] torch.tensor for string model_types.
+            typically [1x3x3] torch.Tensor for string model_types.
 
         """
         self.reset_model()

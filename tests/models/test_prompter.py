@@ -19,8 +19,8 @@ import pytest
 import torch
 
 from kornia.contrib.visual_prompter import VisualPrompter
+from kornia.core._compat import torch_version
 from kornia.models.sam import SamConfig
-from kornia.utils._compat import torch_version
 
 from testing.base import BaseTester
 

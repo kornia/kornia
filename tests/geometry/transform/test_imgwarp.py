@@ -21,8 +21,8 @@ import pytest
 import torch
 
 import kornia
-from kornia.utils._compat import torch_version, torch_version_lt
-from kornia.utils.helpers import _torch_inverse_cast
+from kornia.core._compat import torch_version, torch_version_lt
+from kornia.core.utils import _torch_inverse_cast
 
 from testing.base import BaseTester
 
@@ -332,7 +332,7 @@ class TestWarpPerspective(BaseTester):
     def test_smoke(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 4
         img_b = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        H_ab = kornia.eye_like(3, img_b)
+        H_ab = kornia.core.ops.eye_like(3, img_b)
         img_a = kornia.geometry.warp_perspective(img_b, H_ab, (height, width))
         self.assert_close(img_b, img_a)
 
@@ -342,7 +342,7 @@ class TestWarpPerspective(BaseTester):
         batch_size, channels, height, width = batch_shape
         h_out, w_out = out_shape
         img_b = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        H_ab = kornia.eye_like(3, img_b)
+        H_ab = kornia.core.ops.eye_like(3, img_b)
         img_a = kornia.geometry.warp_perspective(img_b, H_ab, (h_out, w_out))
         assert img_a.shape == (batch_size, channels, h_out, w_out)
 
@@ -370,7 +370,7 @@ class TestWarpPerspective(BaseTester):
         h, w = 3, 4
 
         img_b = torch.arange(float(h * w), device=device, dtype=dtype).view(1, 1, h, w)
-        homo_ab = kornia.eye_like(3, img_b)
+        homo_ab = kornia.core.ops.eye_like(3, img_b)
         homo_ab[..., :2, -1] += offset
 
         expected = torch.zeros_like(img_b)
@@ -385,7 +385,7 @@ class TestWarpPerspective(BaseTester):
         h, w = 3, 4
 
         img_b = torch.arange(float(h * w), device=device, dtype=dtype).view(1, 1, h, w)
-        homo_ab = kornia.eye_like(3, img_b)
+        homo_ab = kornia.core.ops.eye_like(3, img_b)
         homo_ab[..., :2, -1] += offset
 
         expected = torch.zeros_like(img_b)
@@ -495,7 +495,7 @@ class TestWarpPerspective(BaseTester):
         if dtype == torch.float64 and torch_version() in {"2.0.0", "2.0.1"} and sys.platform == "linux":
             pytest.xfail("Failing on CI on ubuntu with torch 2.0.0 for float64")
         img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-        H_ab = kornia.eye_like(3, img)
+        H_ab = kornia.core.ops.eye_like(3, img)
         args = (img, H_ab, (4, 5))
         op = kornia.geometry.warp_perspective
         op_optimized = torch_optimizer(op)
@@ -504,7 +504,7 @@ class TestWarpPerspective(BaseTester):
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 3, 4
         img_b = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
-        H_ab = kornia.eye_like(3, img_b)
+        H_ab = kornia.core.ops.eye_like(3, img_b)
         # TODO(dmytro/edgar): firgure out why gradient don't propagate for the tranaform
         self.gradcheck(
             kornia.geometry.warp_perspective, (img_b, H_ab, (height, width)), requires_grad=(True, False, False)
@@ -515,7 +515,7 @@ class TestWarpPerspective(BaseTester):
         h, w = 3, 4
 
         img_b = torch.arange(float(3 * h * w), device=device, dtype=dtype).view(1, 3, h, w)
-        homo_ab = kornia.eye_like(3, img_b)
+        homo_ab = kornia.core.ops.eye_like(3, img_b)
         homo_ab[..., :2, -1] += offset
 
         # normally fill_value will also be converted to the right device and type in warp_perspective
@@ -532,7 +532,7 @@ class TestRemap(BaseTester):
     def test_smoke(self, device, dtype):
         height, width = 3, 4
         input_org = torch.ones(1, 1, height, width, device=device, dtype=dtype)
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype)
         input_warped = kornia.geometry.remap(
             input_org, grid[..., 0], grid[..., 1], normalized_coordinates=False, align_corners=True
         )
@@ -540,7 +540,7 @@ class TestRemap(BaseTester):
 
     def test_different_size(self, device, dtype):
         height, width = 3, 4
-        grid = kornia.utils.create_meshgrid(height, width, device=device, dtype=dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, device=device, dtype=dtype)
 
         img = torch.rand(1, 2, 6, 5, device=device, dtype=dtype)
         img_warped = kornia.geometry.remap(img, grid[..., 0], grid[..., 1])
@@ -555,7 +555,7 @@ class TestRemap(BaseTester):
             [[[[1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0]]]], device=device, dtype=dtype
         )
 
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
         grid += 1.0  # apply shift in both x/y direction
 
         input_warped = kornia.geometry.remap(inp, grid[..., 0], grid[..., 1], align_corners=True)
@@ -577,7 +577,7 @@ class TestRemap(BaseTester):
         )
 
         # generate a batch of grids
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
         grid = grid.repeat(2, 1, 1, 1)
         grid[0, ..., 0] += 1.0  # apply shift in the x direction
         grid[1, ..., 1] += 1.0  # apply shift in the y direction
@@ -594,7 +594,7 @@ class TestRemap(BaseTester):
             [[[[1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 1.0, 0.0], [0.0, 0.0, 0.0, 0.0]]]], device=device, dtype=dtype
         ).repeat(2, 1, 1, 1)
 
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
         grid += 1.0  # apply shift in both x/y direction
 
         input_warped = kornia.geometry.remap(inp, grid[..., 0], grid[..., 1], align_corners=True)
@@ -610,7 +610,7 @@ class TestRemap(BaseTester):
             [[[[1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0]]]], device=device, dtype=dtype
         ).repeat(2, 1, 1, 1)
 
-        grid = kornia.utils.create_meshgrid(
+        grid = kornia.geometry.create_meshgrid(
             height, width, normalized_coordinates=normalized_coordinates, device=device
         ).to(dtype)
 
@@ -624,7 +624,7 @@ class TestRemap(BaseTester):
         batch_size, channels, height, width = 1, 2, 3, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
 
-        grid = kornia.utils.create_meshgrid(
+        grid = kornia.geometry.create_meshgrid(
             height, width, normalized_coordinates=False, device=device, dtype=torch.float64
         )
 
@@ -640,7 +640,7 @@ class TestRemap(BaseTester):
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
 
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=False, device=device).to(dtype)
         grid += 1.0  # apply some shift
 
         op = kornia.geometry.remap

@@ -57,6 +57,10 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./tutorials-repo/
+        env:
+          PIP_NO_CACHE_DIR: "1"
+          PIP_INDEX_URL: "https://download.pytorch.org/whl/cpu"
+          PIP_EXTRA_INDEX_URL: "https://pypi.org/simple"
         run: make setup
 
       - name: Check deps

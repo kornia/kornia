@@ -16,16 +16,16 @@
 #
 
 import warnings
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, cast
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, LineMatcherCfg
 from kornia.geometry.conversions import normalize_pixel_coordinates
-from kornia.utils import dataclass_to_dict, dict_to_dataclass
 
 from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
@@ -70,7 +70,7 @@ class SOLD2(nn.Module):
                 category=DeprecationWarning,
                 stacklevel=2,
             )
-            config = dict_to_dataclass(config, DetectorCfg)
+            config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
         super().__init__()
         # Initialize some parameters
         self.config = config if config is not None else DetectorCfg()
@@ -328,7 +328,7 @@ def keypoints_to_grid(keypoints: torch.Tensor, img_size: Tuple[int, int]) -> tor
     """Convert a list of keypoints into a grid in [-1, 1]² that can be used in torch.nn.functional.interpolate.
 
     Args:
-        keypoints: a torch.tensor [N, 2] of N keypoints (ij coordinates convention).
+        keypoints: a torch.Tensor [N, 2] of N keypoints (ij coordinates convention).
         img_size: the original image size (H, W)
 
     """

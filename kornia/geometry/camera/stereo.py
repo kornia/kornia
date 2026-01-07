@@ -19,11 +19,13 @@ from typing import Any
 
 import torch
 
+from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
-from kornia.utils.grid import create_meshgrid
 
 
 class StereoException(Exception):
+    """Handle errors related to stereo camera calibration and rectification."""
+
     def __init__(self, msg: str, *args: Any, **kwargs: Any) -> None:
         r"""Construct custom exception for the :module:`~kornia.geometry.camera.stereo` module.
 
@@ -46,6 +48,13 @@ class StereoException(Exception):
 
 
 class StereoCamera:
+    """Represent a horizontal stereo camera setup for depth estimation.
+
+    Args:
+        rectified_left_camera: The intrinsic matrix for the left camera.
+        rectified_right_camera: The intrinsic matrix for the right camera.
+    """
+
     def __init__(self, rectified_left_camera: torch.Tensor, rectified_right_camera: torch.Tensor) -> None:
         r"""Class representing a horizontal stereo camera setup.
 
@@ -144,7 +153,7 @@ class StereoCamera:
         camera are assumed to be equal.
 
         Returns:
-            torch.tensor of shape :math:`(B)`
+            torch.Tensor of shape :math:`(B)`
 
         """
         return self.rectified_left_camera[..., 0, 0]
@@ -157,7 +166,7 @@ class StereoCamera:
         camera are assumed to be equal.
 
         Returns:
-            torch.tensor of shape :math:`(B)`
+            torch.Tensor of shape :math:`(B)`
 
         """
         return self.rectified_left_camera[..., 1, 1]
@@ -167,7 +176,7 @@ class StereoCamera:
         r"""Return the x-coordinate of the principal point for the left camera.
 
         Returns:
-            torch.tensor of shape :math:`(B)`
+            torch.Tensor of shape :math:`(B)`
 
         """
         return self.rectified_left_camera[..., 0, 2]
@@ -177,7 +186,7 @@ class StereoCamera:
         r"""Return the x-coordinate of the principal point for the right camera.
 
         Returns:
-            torch.tensor of shape :math:`(B)`
+            torch.Tensor of shape :math:`(B)`
 
         """
         return self.rectified_right_camera[..., 0, 2]
@@ -190,7 +199,7 @@ class StereoCamera:
         is assumed to be equal for the left and right camera.
 
         Returns:
-            torch.tensor of shape :math:`(B)`
+            torch.Tensor of shape :math:`(B)`
 
         """
         return self.rectified_left_camera[..., 1, 2]
@@ -209,7 +218,7 @@ class StereoCamera:
     def Q(self) -> torch.Tensor:
         r"""The Q matrix of the horizontal stereo setup.
 
-        This matrix is used for reprojecting a disparity torch.tensor to
+        This matrix is used for reprojecting a disparity torch.Tensor to
         the corresponding point cloud. Note that this is in a general form that allows different focal
         lengths in the x and y direction.
 
@@ -238,10 +247,10 @@ class StereoCamera:
         return Q
 
     def reproject_disparity_to_3D(self, disparity_tensor: torch.Tensor) -> torch.Tensor:
-        r"""Reproject the disparity torch.tensor to a 3D point cloud.
+        r"""Reproject the disparity torch.Tensor to a 3D point cloud.
 
         Args:
-            disparity_tensor: Disparity torch.tensor of shape :math:`(B, 1, H, W)`.
+            disparity_tensor: Disparity torch.Tensor of shape :math:`(B, 1, H, W)`.
 
         Returns:
             The 3D point cloud of shape :math:`(B, H, W, 3)`
@@ -251,10 +260,10 @@ class StereoCamera:
 
 
 def _check_disparity_tensor(disparity_tensor: torch.Tensor) -> None:
-    r"""Ensure correct user provided correct disparity torch.tensor.
+    r"""Ensure correct user provided correct disparity torch.Tensor.
 
     Args:
-        disparity_tensor: The disparity torch.tensor of shape :math:`(B, 1, H, W)`.
+        disparity_tensor: The disparity torch.Tensor of shape :math:`(B, 1, H, W)`.
 
     """
     if not isinstance(disparity_tensor, torch.Tensor):
@@ -301,10 +310,10 @@ def _check_Q_matrix(Q_matrix: torch.Tensor) -> None:
 
 
 def reproject_disparity_to_3D(disparity_tensor: torch.Tensor, Q_matrix: torch.Tensor) -> torch.Tensor:
-    r"""Reproject the disparity torch.tensor to a 3D point cloud.
+    r"""Reproject the disparity torch.Tensor to a 3D point cloud.
 
     Args:
-        disparity_tensor: Disparity torch.tensor of shape :math:`(B, H, W, 1)`.
+        disparity_tensor: Disparity torch.Tensor of shape :math:`(B, H, W, 1)`.
         Q_matrix: torch.Tensor of Q matrices of shapes :math:`(B, 4, 4)`.
 
     Returns:

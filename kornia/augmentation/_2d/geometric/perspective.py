@@ -26,7 +26,7 @@ from kornia.geometry.transform import get_perspective_transform, warp_perspectiv
 
 
 class RandomPerspective(GeometricAugmentationBase2D):
-    r"""Apply a random perspective transformation to an image torch.tensor with a given probability.
+    r"""Apply a random perspective transformation to an image torch.Tensor with a given probability.
 
     .. image:: _static/img/RandomPerspective.png
 

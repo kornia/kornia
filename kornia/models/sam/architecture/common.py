@@ -30,6 +30,14 @@ from torch import nn
 
 
 class MLPBlock(nn.Module):
+    """Implement a standard Multi-Layer Perceptron (MLP) block.
+
+    Args:
+        embedding_dim: The size of the input and output embeddings.
+        mlp_dim: The size of the hidden layer.
+        act: The activation function class to use. Default: nn.GELU.
+    """
+
     def __init__(self, embedding_dim: int, mlp_dim: int, act: type[nn.Module] = nn.GELU) -> None:
         super().__init__()
         self.lin1 = nn.Linear(embedding_dim, mlp_dim)
@@ -41,6 +49,8 @@ class MLPBlock(nn.Module):
 
 
 class LayerNorm(nn.LayerNorm):
+    """Implement Layer Normalization with a small epsilon to avoid division by zero."""
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.eps = 1e-6

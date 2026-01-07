@@ -24,8 +24,8 @@ import pytest
 import requests
 import torch
 
+from kornia.core._compat import torch_version_ge
 from kornia.io import ImageLoadType, load_image, write_image
-from kornia.utils._compat import torch_version_ge
 
 try:
     import kornia_rs

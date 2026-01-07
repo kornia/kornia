@@ -22,13 +22,13 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core.ops import eye_like
 from kornia.geometry.transform import affine
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix, _compute_tensor_center
-from kornia.utils.misc import eye_like
 
 
 class RandomRotation(GeometricAugmentationBase2D):
-    r"""Apply a random rotation to a torch.tensor image or a batch of torch.tensor images given an amount of degrees.
+    r"""Apply a random rotation to a torch.Tensor image or a batch of torch.Tensor images given an amount of degrees.
 
     .. image:: _static/img/RandomRotation.png
 
@@ -138,7 +138,7 @@ class RandomRotation(GeometricAugmentationBase2D):
 
 
 class RandomRotation90(GeometricAugmentationBase2D):
-    r"""Apply a random 90 * n degree rotation to a torch.tensor image or a batch of torch.tensor images.
+    r"""Apply a random 90 * n degree rotation to a torch.Tensor image or a batch of torch.Tensor images.
 
     Args:
         times: the range of n times 90 degree rotation needs to be applied.

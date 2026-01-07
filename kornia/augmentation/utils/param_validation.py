@@ -82,7 +82,7 @@ def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[
             raise ValueError(f"{name}[0] should be smaller than {name}[1] got {ranged_factor}")
     else:
         raise TypeError(
-            f"{name} should be a torch.tensor with length 2 whose values between {bounds}. Got {ranged_factor}."
+            f"{name} should be a torch.Tensor with length 2 whose values between {bounds}. Got {ranged_factor}."
         )
 
 
@@ -122,7 +122,7 @@ def _tuple_range_reader(
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> torch.Tensor:
-    """Given target_size, it will generate the corresponding (target_size, 2) range torch.tensor.
+    """Given target_size, it will generate the corresponding (target_size, 2) range torch.Tensor.
 
     This is for element-wise params.
 

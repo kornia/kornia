@@ -163,7 +163,7 @@ def scale_laf(laf: torch.Tensor, scale_coef: Union[float, torch.Tensor]) -> torc
 
     Args:
         laf: :math:`(B, N, 2, 3)`
-        scale_coef: broadcastable torch.tensor or float.
+        scale_coef: broadcastable torch.Tensor or float.
 
     Returns:
         LAF :math:`(B, N, 2, 3)`
@@ -223,7 +223,7 @@ def ellipse_to_laf(ells: torch.Tensor) -> torch.Tensor:
     See also https://github.com/vlfeat/vlfeat/blob/master/toolbox/sift/vl_frame2oell.m
 
     Args:
-        ells: torch.tensor :math:`(B, N, 5)` of ellipses in Oxford format [x y a b c].
+        ells: torch.Tensor :math:`(B, N, 5)` of ellipses in Oxford format [x y a b c].
 
     Returns:
         LAF :math:`(B, N, 2, 3)`
@@ -266,7 +266,7 @@ def laf_to_boundary_points(LAF: torch.Tensor, n_pts: int = 50) -> torch.Tensor:
         n_pts: number of points to output.
 
     Returns:
-        torch.tensor of boundary points LAF: :math:`(B, N, n_pts, 2)`
+        torch.Tensor of boundary points LAF: :math:`(B, N, n_pts, 2)`
 
     """
     KORNIA_CHECK_LAF(LAF)
@@ -301,7 +301,7 @@ def get_laf_pts_to_draw(LAF: torch.Tensor, img_idx: int = 0) -> Tuple[List[int],
     Examples:
         x, y = get_laf_pts_to_draw(LAF, img_idx)
         plt.figure()
-        plt.imshow(kornia.utils.tensor_to_image(img[img_idx]))
+        plt.imshow(kornia.image.tensor_to_image(img[img_idx]))
         plt.plot(x, y, 'r')
         plt.show()
 
@@ -380,7 +380,7 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
     """Generate affine grid.
 
     Args:
-        img: image torch.tensor of shape :math:`(B, CH, H, W)`.
+        img: image torch.Tensor of shape :math:`(B, CH, H, W)`.
         LAF: laf with shape :math:`(B, N, 2, 3)`.
         PS: patch size to be extracted.
 
@@ -405,7 +405,7 @@ def generate_patch_grid_from_normalized_LAF(img: torch.Tensor, LAF: torch.Tensor
 def extract_patches_simple(
     img: torch.Tensor, laf: torch.Tensor, PS: int = 32, normalize_lafs_before_extraction: bool = True
 ) -> torch.Tensor:
-    """Extract patches defined by LAFs from image torch.tensor.
+    """Extract patches defined by LAFs from image torch.Tensor.
 
     No smoothing applied, huge aliasing (better use extract_patches_from_pyramid).
 
@@ -441,7 +441,7 @@ def extract_patches_simple(
 def extract_patches_from_pyramid(
     img: torch.Tensor, laf: torch.Tensor, PS: int = 32, normalize_lafs_before_extraction: bool = True
 ) -> torch.Tensor:
-    """Extract patches defined by LAFs from image torch.tensor.
+    """Extract patches defined by LAFs from image torch.Tensor.
 
     Patches are extracted from appropriate pyramid level.
 
@@ -552,11 +552,11 @@ def perspective_transform_lafs(trans_01: torch.Tensor, lafs_1: torch.Tensor) -> 
     r"""Apply perspective transformations to a set of local affine frames (LAFs).
 
     Args:
-        trans_01: torch.tensor for perspective transformations of shape :math:`(B, 3, 3)`.
-        lafs_1: torch.tensor of lafs of shape :math:`(B, N, 2, 3)`.
+        trans_01: torch.Tensor for perspective transformations of shape :math:`(B, 3, 3)`.
+        lafs_1: torch.Tensor of lafs of shape :math:`(B, N, 2, 3)`.
 
     Returns:
-        torch.tensor of N-dimensional points of shape :math:`(B, N, 2, 3)`.
+        torch.Tensor of N-dimensional points of shape :math:`(B, N, 2, 3)`.
 
     Examples:
         >>> rng = torch.manual_seed(0)

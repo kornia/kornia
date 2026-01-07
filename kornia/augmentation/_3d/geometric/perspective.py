@@ -26,7 +26,7 @@ from kornia.geometry import get_perspective_transform3d, warp_perspective3d
 
 
 class RandomPerspective3D(GeometricAugmentationBase3D):
-    r"""Apply andom perspective transformation to 3D volumes (5D torch.tensor).
+    r"""Apply andom perspective transformation to 3D volumes (5D torch.Tensor).
 
     Args:
         p: probability of the image being perspectively transformed.
@@ -42,9 +42,9 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
-        Input torch.tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.tensor and returned.
+        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:
         >>> import torch

@@ -64,7 +64,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         """Apply a transformation with respect to the parameters.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -78,7 +78,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         """Inverse a transformation with respect to the parameters.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -88,6 +88,15 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
 
 class AugmentationSequentialOps:
+    """Implement the operational logic for the Augmentation Sequential container.
+
+    This class manages how data keys (e.g., IMAGE, MASK, BBOX) are handled
+    during the execution of an augmentation pipeline.
+
+    Args:
+        data_keys: A list of :class:`DataKey` defining the types of data to process.
+    """
+
     def __init__(self, data_keys: Optional[List[DataKey]]) -> None:
         self._data_keys = data_keys
 
@@ -201,6 +210,12 @@ def get_geometric_only_param(module: "K.container.ImageSequentialBase", param: L
 
 
 class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
+    """Implement the operations for processing input tensors within a sequential container.
+
+    This class provides class methods to apply transformations and manage the
+    flow of data through the augmentation pipeline.
+    """
+
     @classmethod
     def transform(
         cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
@@ -270,7 +285,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         """Apply a transformation with respect to the parameters.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -384,7 +399,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         """Inverse a transformation with respect to the parameters.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -432,7 +447,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
         """Apply a transformation with respect to the parameters.
 
         Args:
-            input: the input torch.tensor, (B, N, 4, 2) or (B, 4, 2).
+            input: the input torch.Tensor, (B, N, 4, 2) or (B, 4, 2).
             module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -478,7 +493,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
         """Inverse a transformation with respect to the parameters.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -529,7 +544,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
         """Apply a transformation with respect to the parameters.
 
         Args:
-            input: the input torch.tensor, (B, N, 4, 2) or (B, 4, 2).
+            input: the input torch.Tensor, (B, N, 4, 2) or (B, 4, 2).
             module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -576,7 +591,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
         """Inverse a transformation with respect to the parameters.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.

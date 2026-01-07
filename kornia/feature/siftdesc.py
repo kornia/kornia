@@ -302,7 +302,7 @@ class DenseSIFTDescriptor(nn.Module):
         PoolingConv.weight.data.copy_(self._poolingconv_weight)
         self.PoolingConv = PoolingConv
 
-        # Cache pooling kernel torch.tensor for fast return in get_pooling_kernel
+        # Cache pooling kernel torch.Tensor for fast return in get_pooling_kernel
         self._pooling_kernel = self._bin_pooling_kernel_weight.detach()
 
     def get_pooling_kernel(self) -> torch.Tensor:

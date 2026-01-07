@@ -34,7 +34,7 @@ def grayscale_to_rgb(image: torch.Tensor) -> torch.Tensor:
     The image data is assumed to be in the range of (0, 1).
 
     Args:
-        image: grayscale image torch.tensor to be converted to RGB with shape :math:`(*,1,H,W)`.
+        image: grayscale image torch.Tensor to be converted to RGB with shape :math:`(*,1,H,W)`.
 
     Returns:
         RGB version of the image with shape :math:`(*,3,H,W)`.
@@ -93,7 +93,7 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
         else:
             raise TypeError(f"Unknown data type: {image.dtype}")
     else:
-        # is torch.tensor that we make sure is in the same device/dtype
+        # is torch.Tensor that we make sure is in the same device/dtype
         rgb_weights = rgb_weights.to(image)
 
     # unpack the color image channels with RGB order

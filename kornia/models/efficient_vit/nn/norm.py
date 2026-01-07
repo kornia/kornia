@@ -29,6 +29,8 @@ from kornia.models.efficient_vit.utils import build_kwargs_from_config
 
 
 class LayerNorm2d(nn.LayerNorm):
+    """Apply Layer Normalization over a 4D input tensor (NCHW format)."""
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         out = x - torch.mean(x, dim=1, keepdim=True)
         out = out / torch.sqrt(torch.square(out).mean(dim=1, keepdim=True) + self.eps)

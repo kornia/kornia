@@ -19,7 +19,7 @@ import datetime
 import math
 import os
 from functools import wraps
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, List, Literal, Optional, Tuple, Union
 
 import torch
 
@@ -39,18 +39,21 @@ class ImageModuleMixIn:
     def convert_input_output(
         self,
         input_names_to_handle: Optional[List[Any]] = None,
-        output_type: str = "tensor",
+        output_type: Literal["pt", "numpy", "pil"] = "pt",
     ) -> Callable[[Any], Any]:
         """Convert input and output types for a function.
 
         Args:
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
-            output_type: Desired output type ('tensor', 'numpy', or 'pil').
+            output_type: Desired output type ('pt', 'numpy', or 'pil').
 
         Returns:
             Callable: Decorated function with converted input and output types.
 
         """
+        # Validate output_type at the start
+        if output_type not in ("pt", "numpy", "pil"):
+            raise ValueError(f"Invalid output_type '{output_type}'. Must be one of 'pt', 'numpy', or 'pil'.")
 
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
@@ -64,7 +67,7 @@ class ImageModuleMixIn:
                 else:
                     # Convert specified args to tensors
                     args = list(args)  # type:ignore
-                    for i, (arg, name) in enumerate(zip(args, func.__code__.co_varnames)):
+                    for i, (arg, name) in enumerate(zip(args, func.__code__.co_varnames)):  # ty: ignore[unresolved-attribute]
                         if name in input_names_to_handle:
                             args[i] = self.to_tensor(arg)  # type:ignore
                     # Convert specified kwargs to tensors
@@ -75,20 +78,20 @@ class ImageModuleMixIn:
                 # Call the actual forward method
                 tensor_outputs = func(*args, **kwargs)
 
-                if not isinstance(tensor_outputs, (tuple,)):
+                if not isinstance(tensor_outputs, tuple):
                     tensor_outputs = (tensor_outputs,)
 
                 # Convert outputs to the desired type
                 outputs = []
                 for output in tensor_outputs:
-                    if output_type == "tensor":
+                    if output_type == "pt":
                         outputs.append(output)
                     elif output_type == "numpy":
                         outputs.append(self.to_numpy(output))
                     elif output_type == "pil":
                         outputs.append(self.to_pil(output))
                     else:
-                        raise ValueError("Output type not supported. Choose from 'tensor', 'numpy', or 'pil'.")
+                        raise ValueError("Output type not supported. Choose from 'pt', 'numpy', or 'pil'.")
 
                 return outputs if len(outputs) > 1 else outputs[0]
 
@@ -106,12 +109,12 @@ class ImageModuleMixIn:
             bool: True if valid, False otherwise.
 
         """
-        if isinstance(arg, (str,)) and os.path.exists(arg):
+        if isinstance(arg, str) and os.path.exists(arg):
             return True
-        if isinstance(arg, (torch.Tensor,)):
+        if isinstance(arg, torch.Tensor):
             return True
         # Make sure that the numpy and PIL are not necessarily needed to be imported.
-        if isinstance(arg, (np.ndarray,)):  # type: ignore
+        if isinstance(arg, np.ndarray):  # type: ignore
             return True
         if isinstance(arg, (Image.Image)):  # type: ignore
             return True
@@ -129,17 +132,17 @@ class ImageModuleMixIn:
             Tensor: The converted tensor.
 
         """
-        if isinstance(x, (str,)):
+        if isinstance(x, str):
             from kornia.io import ImageLoadType, load_image  # pylint: disable=C0415
 
             return load_image(x, ImageLoadType.UNCHANGED) / 255
-        if isinstance(x, (torch.Tensor,)):
+        if isinstance(x, torch.Tensor):
             return x
-        if isinstance(x, (np.ndarray,)):  # type: ignore
-            from kornia.utils.image import image_to_tensor  # pylint: disable=C0415
+        if isinstance(x, np.ndarray):  # type: ignore
+            from kornia.image.utils import image_to_tensor  # pylint: disable=C0415
 
             return image_to_tensor(x) / 255
-        if isinstance(x, (Image.Image,)):  # type: ignore
+        if isinstance(x, Image.Image):  # type: ignore
             return torch.from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # type: ignore
         raise TypeError("Input type not supported")
 
@@ -153,11 +156,11 @@ class ImageModuleMixIn:
             np.array: The converted numpy array.
 
         """
-        if isinstance(x, (torch.Tensor,)):
+        if isinstance(x, torch.Tensor):
             return x.cpu().detach().numpy()
-        if isinstance(x, (np.ndarray,)):  # type: ignore
+        if isinstance(x, np.ndarray):  # type: ignore
             return x
-        if isinstance(x, (Image.Image,)):  # type: ignore
+        if isinstance(x, Image.Image):  # type: ignore
             return np.array(x)  # type: ignore
         raise TypeError("Input type not supported")
 
@@ -171,7 +174,7 @@ class ImageModuleMixIn:
             Image.Image: The converted PIL image.
 
         """
-        if isinstance(x, (torch.Tensor,)):
+        if isinstance(x, torch.Tensor):
             x = x.cpu().detach() * 255
             if x.dim() == 3:
                 x = x.permute(1, 2, 0)
@@ -181,24 +184,18 @@ class ImageModuleMixIn:
                 return [Image.fromarray(_x.byte().numpy()) for _x in x]  # type: ignore
             else:
                 raise NotImplementedError
-        if isinstance(x, (np.ndarray,)):  # type: ignore
+        if isinstance(x, np.ndarray):  # type: ignore
             raise NotImplementedError
-        if isinstance(x, (Image.Image,)):  # type: ignore
+        if isinstance(x, Image.Image):  # type: ignore
             return x
         raise TypeError("Input type not supported")
 
     def _detach_tensor_to_cpu(
         self, output_image: Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]
     ) -> Union[torch.Tensor, List[torch.Tensor], Tuple[torch.Tensor]]:
-        if isinstance(output_image, (torch.Tensor,)):
+        if isinstance(output_image, torch.Tensor):
             return output_image.detach().cpu()
-        if isinstance(
-            output_image,
-            (
-                list,
-                tuple,
-            ),
-        ):
+        if isinstance(output_image, list | tuple):
             return type(output_image)([self._detach_tensor_to_cpu(out) for out in output_image])  # type: ignore
         raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
 
@@ -217,7 +214,7 @@ class ImageModuleMixIn:
         if len(self._output_image.shape) == 3:
             out_image = self._output_image
         elif len(self._output_image.shape) == 4:
-            from kornia.utils.image import make_grid  # pylint: disable=C0415
+            from kornia.image.utils import make_grid  # pylint: disable=C0415
 
             if n_row is None:
                 n_row = math.ceil(self._output_image.shape[0] ** 0.5)
@@ -240,8 +237,8 @@ class ImageModuleMixIn:
             n_row: Number of images displayed in each row of the grid.
 
         """
+        from kornia.image.utils import make_grid  # pylint: disable=C0415
         from kornia.io import write_image  # pylint: disable=C0415
-        from kornia.utils.image import make_grid  # pylint: disable=C0415
 
         if name is None:
             name = f"Kornia-{datetime.datetime.now(tz=datetime.UTC).strftime('%Y%m%d%H%M%S')!s}.jpg"

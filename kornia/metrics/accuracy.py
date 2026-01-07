@@ -24,8 +24,8 @@ def accuracy(pred: torch.Tensor, target: torch.Tensor, topk: Tuple[int, ...] = (
     """Compute the accuracy over the k top predictions for the specified values of k.
 
     Args:
-        pred: the input torch.tensor with the logits to evaluate.
-        target: the torch.tensor containing the ground truth.
+        pred: the input torch.Tensor with the logits to evaluate.
+        target: the torch.Tensor containing the ground truth.
         topk: the expected topk ranking.
 
     Example:

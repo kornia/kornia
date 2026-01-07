@@ -27,7 +27,6 @@ import torch
 from torch import nn
 
 from kornia.models.common import MLP, ConvNormAct
-from kornia.utils._compat import torch_meshgrid
 
 
 def _inverse_sigmoid(x: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
@@ -221,6 +220,8 @@ class TransformerDecoderLayer(nn.Module):
 
 
 class TransformerDecoder(nn.Module):
+    """Implement the transformer decoder for generating object queries."""
+
     def __init__(self, hidden_dim: int, decoder_layer: nn.Module, num_layers: int, eval_idx: int = -1) -> None:
         super().__init__()
         self.layers = nn.ModuleList([copy.deepcopy(decoder_layer) for _ in range(num_layers)])
@@ -287,6 +288,8 @@ class TransformerDecoder(nn.Module):
 
 
 class RTDETRHead(nn.Module):
+    """Implement the RT-DETR prediction head for object detection."""
+
     def __init__(
         self,
         num_classes: int,
@@ -472,8 +475,8 @@ class RTDETRHead(nn.Module):
         anchors_list: list[torch.Tensor] = []
 
         for i, (h, w) in enumerate(spatial_shapes):
-            # TODO: fix later kornia.utils.create_meshgrid()
-            grid_y, grid_x = torch_meshgrid(
+            # TODO: fix later kornia.geometry.create_meshgrid()
+            grid_y, grid_x = torch.meshgrid(
                 [torch.arange(h, device=device, dtype=dtype), torch.arange(w, device=device, dtype=dtype)],
                 indexing="ij",
             )

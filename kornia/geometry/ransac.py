@@ -15,25 +15,22 @@
 # limitations under the License.
 #
 
-"""nn.Module containing RANSAC modules."""
+"""Module containing RANSAC modules."""
 
 import math
 from functools import partial
-from typing import Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Tuple
 
 import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.geometry import (
-    find_fundamental,
+from kornia.geometry.epipolar import find_essential, find_fundamental, sampson_epipolar_distance
+from kornia.geometry.homography import (
     find_homography_dlt,
     find_homography_dlt_iterated,
     find_homography_lines_dlt,
     find_homography_lines_dlt_iterated,
-    symmetrical_epipolar_distance,
-)
-from kornia.geometry.homography import (
     line_segment_transfer_error_one_way,
     oneway_transfer_error,
     sample_is_valid_for_homography,
@@ -43,7 +40,7 @@ __all__ = ["RANSAC"]
 
 
 class RANSAC(nn.Module):
-    """nn.Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
+    """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
 
     Args:
         model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
@@ -64,21 +61,33 @@ class RANSAC(nn.Module):
         max_iter: int = 10,
         confidence: float = 0.99,
         max_lo_iters: int = 5,
+        score_type: str = "ransac",
+        prosac_sampling: bool = False,
     ) -> None:
         """Initialize the RANSAC estimator.
 
         Args:
-            model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
+            model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt", "essential",
                 "homography_from_linesegments".
-            inl_th: threshold for the correspondence to be an inlier.
+            inl_th: threshold for the correspondence to be an inlier. Internally is squared.
             batch_size: number of generated samples at once.
             max_iter: maximum batches to generate. Actual number of models to try is ``batch_size * max_iter``.
             confidence: desired confidence of the result, used for the early stopping.
             max_lo_iters: number of local optimization (polishing) iterations.
+            score_type: scoring method to use: "ransac" or "msac".
+            prosac_sampling: whether to use PROSAC sampling instead of random sampling.
 
         """
         super().__init__()
-        self.supported_models = ["homography", "fundamental", "fundamental_7pt", "homography_from_linesegments"]
+        self.supported_models = [
+            "homography",
+            "fundamental",
+            "fundamental_7pt",
+            "homography_from_linesegments",
+            "essential",
+        ]
+        self.supported_scores = ["msac", "ransac"]
+        self.score_type = score_type
         self.inl_th = inl_th
         self.max_iter = max_iter
         self.batch_size = batch_size
@@ -86,6 +95,7 @@ class RANSAC(nn.Module):
         self.confidence = confidence
         self.max_lo_iters = max_lo_iters
         self.model_type = model_type
+        self.prosac_sampling = prosac_sampling
 
         self.error_fn: Callable[..., torch.Tensor]
         self.minimal_solver: Callable[..., torch.Tensor]
@@ -96,26 +106,36 @@ class RANSAC(nn.Module):
             self.minimal_solver = find_homography_dlt
             self.polisher_solver = find_homography_dlt_iterated
             self.minimal_sample_size = 4
+            self.polisher_sample_size = 4
         elif model_type == "homography_from_linesegments":
             self.error_fn = line_segment_transfer_error_one_way
             self.minimal_solver = find_homography_lines_dlt
             self.polisher_solver = find_homography_lines_dlt_iterated
             self.minimal_sample_size = 4
+            self.polisher_sample_size = 4
         elif model_type == "fundamental":
-            self.error_fn = symmetrical_epipolar_distance
+            self.error_fn = sampson_epipolar_distance
             self.minimal_solver = find_fundamental
             self.minimal_sample_size = 8
             self.polisher_solver = find_fundamental
+            self.polisher_sample_size = 8
         elif model_type == "fundamental_7pt":
-            self.error_fn = symmetrical_epipolar_distance
+            self.error_fn = sampson_epipolar_distance
             self.minimal_solver = partial(find_fundamental, method="7POINT")
             self.minimal_sample_size = 7
             self.polisher_solver = find_fundamental
+            self.polisher_sample_size = 8
+        elif model_type == "essential":
+            self.error_fn = sampson_epipolar_distance
+            self.minimal_solver = find_essential
+            self.minimal_sample_size = 5
+            self.polisher_solver = find_fundamental
+            self.polisher_sample_size = 8
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
 
     def sample(
-        self, sample_size: int, pop_size: int, batch_size: int, device: Optional[Union[str, torch.device, None]] = None
+        self, sample_size: int, pop_size: int, batch_size: int, iteration: int, device: Optional[torch.device] = None
     ) -> torch.Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches.
 
@@ -125,20 +145,21 @@ class RANSAC(nn.Module):
             sample_size: number of samples to draw from the population.
             pop_size: size of the population to sample from.
             batch_size: number of sample sets to generate.
+            iteration: current iteration number (used for PROSAC sampling).
             device: device to place the samples on.
 
         Returns:
-            torch.Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
+            Tensor of sampled indices with shape :math:`(batch_size, sample_size)`.
 
         """
         if device is None:
             device = torch.device("cpu")
-        rand_tensor = torch.rand(batch_size, pop_size, device=device)
-        _, out = rand_tensor.topk(k=sample_size, dim=1)
+        rand = torch.rand(batch_size, pop_size, device=device)
+        _, out = rand.topk(k=sample_size, dim=1)
         return out
 
     @staticmethod
-    def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> float:
+    def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> int:
         """Update max_iter to stop iterations earlier https://en.wikipedia.org/wiki/Random_sample_consensus.
 
         Args:
@@ -153,10 +174,23 @@ class RANSAC(nn.Module):
         """
         eps = 1e-9
         if num_tc <= sample_size:
-            return 1.0
+            return 1
         if n_inl == num_tc:
-            return 1.0
-        return math.log(1.0 - conf) / min(-eps, math.log(max(eps, 1.0 - math.pow(n_inl / num_tc, sample_size))))
+            return 1
+        if n_inl <= sample_size:
+            return 1
+        if conf >= 1.0:
+            return 1
+        if conf <= 0.0:
+            return 1
+        # Proper RANSAC formula for sampling without replacement
+        # P(all samples are inliers) = (n_inl/num_tc) * ((n_inl-1)/(num_tc-1)) * ...
+        # ... * ((n_inl-sample_size+1)/(num_tc-sample_size+1))
+        prob_inlier = 1.0
+        for i in range(sample_size):
+            prob_inlier *= (n_inl - i) / (num_tc - i)
+
+        return int(math.log(1.0 - conf) / min(-eps, math.log(max(eps, 1.0 - prob_inlier))))
 
     def estimate_model_from_minsample(self, kp1: torch.Tensor, kp2: torch.Tensor) -> torch.Tensor:
         """Estimate models from minimal samples.
@@ -166,7 +200,7 @@ class RANSAC(nn.Module):
             kp2: target keypoints with shape :math:`(batch_size, sample_size, 2)`.
 
         Returns:
-            Estimated models torch.tensor.
+            Estimated models tensor.
 
         """
         batch_size, sample_size = kp1.shape[:2]
@@ -175,7 +209,7 @@ class RANSAC(nn.Module):
 
     def verify(
         self, kp1: torch.Tensor, kp2: torch.Tensor, models: torch.Tensor, inl_th: float
-    ) -> Tuple[torch.Tensor, torch.Tensor, float]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, float, float]:
         """Verify models by computing inliers and selecting the best model.
 
         Args:
@@ -200,13 +234,20 @@ class RANSAC(nn.Module):
             errors = self.error_fn(kp1.expand(batch_size, -1, 2, 2), kp2.expand(batch_size, -1, 2, 2), models)
         else:
             errors = self.error_fn(kp1.expand(batch_size, -1, 2), kp2.expand(batch_size, -1, 2), models)
-        inl = errors <= inl_th
-        models_score = inl.to(kp1).sum(dim=1)
-        best_model_idx = models_score.argmax()
-        best_model_score = models_score[best_model_idx].item()
+        inl_mask = errors <= inl_th
+        score_ransac = inl_mask.sum(dim=1)
+        if self.score_type == "msac":
+            score = errors.shape[1] - errors.clamp(min=0.0, max=inl_th).sum(dim=1)
+        elif self.score_type == "ransac":
+            score = score_ransac
+        else:
+            raise ValueError(f"Unsupported score type: {self.score_type}")
+        best_model_idx = score.argmax()
+        best_model_score = score[best_model_idx].item()
+        num_inliers = score_ransac[best_model_idx].item()
         model_best = models[best_model_idx].clone()
-        inliers_best = inl[best_model_idx]
-        return model_best, inliers_best, best_model_score
+        inliers_best = inl_mask[best_model_idx]
+        return model_best, inliers_best, best_model_score, num_inliers
 
     def remove_bad_samples(self, kp1: torch.Tensor, kp2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Remove degenerate samples based on model-specific constraints.
@@ -233,13 +274,11 @@ class RANSAC(nn.Module):
             models: candidate models to filter.
 
         Returns:
-            Filtered models torch.tensor.
+            Filtered models tensor.
 
         """
-        # ToDo: add more and better degenerate model rejection
-        # For now it is simple and hardcoded
-        main_diagonal = torch.diagonal(models, dim1=1, dim2=2)
-        mask = main_diagonal.abs().min(dim=1)[0] > 1e-4
+        # Filter out NaN or Inf models
+        mask = torch.isfinite(models).all(dim=-1).all(dim=-1)
         return models[mask]
 
     def polish_model(self, kp1: torch.Tensor, kp2: torch.Tensor, inliers: torch.Tensor) -> torch.Tensor:
@@ -251,7 +290,7 @@ class RANSAC(nn.Module):
             inliers: boolean mask indicating inlier correspondences.
 
         Returns:
-            Polished model torch.tensor.
+            Polished model tensor.
 
         """
         # TODO: Replace this with MAGSAC++ polisher
@@ -305,7 +344,7 @@ class RANSAC(nn.Module):
 
         Returns:
             - Estimated model, shape of :math:`(1, 3, 3)`.
-            - The inlier/outlier mask, shape of :math:`(1, N)`, torch.where N is number of input correspondences.
+            - The inlier/outlier mask, shape of :math:`(1, N)`, where N is number of input correspondences.
 
         """
         self.validate_inputs(kp1, kp2, weights)
@@ -315,30 +354,30 @@ class RANSAC(nn.Module):
         inliers_best_total: torch.Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
         for i in range(self.max_iter):
             # Sample minimal samples in batch to estimate models
-            idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, kp1.device)
+            idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, i, kp1.device)
             kp1_sampled = kp1[idxs]
             kp2_sampled = kp2[idxs]
-
             kp1_sampled, kp2_sampled = self.remove_bad_samples(kp1_sampled, kp2_sampled)
             if len(kp1_sampled) == 0:
                 continue
             # Estimate models
             models = self.estimate_model_from_minsample(kp1_sampled, kp2_sampled)
+            if self.model_type in ["essential", "fundamental_7pt"]:
+                models = models.reshape(-1, 3, 3)
             models = self.remove_bad_models(models)
             if (models is None) or (len(models) == 0):
                 continue
             # Score the models and select the best one
-            model, inliers, model_score = self.verify(kp1, kp2, models, self.inl_th)
+            model, inliers, model_score, num_inliers = self.verify(kp1, kp2, models, self.inl_th**2)
             # Store far-the-best model and (optionally) do a local optimization
-            if model_score > best_score_total:
+            if (model_score > best_score_total) and num_inliers >= self.polisher_sample_size:
                 # Local optimization
                 for _ in range(self.max_lo_iters):
                     model_lo = self.polish_model(kp1, kp2, inliers)
                     if (model_lo is None) or (len(model_lo) == 0):
                         continue
-                    _, inliers_lo, score_lo = self.verify(kp1, kp2, model_lo, self.inl_th)
-                    # print (f"Orig score = {best_model_score}, LO score = {score_lo} TC={num_tc}")
-                    if score_lo > model_score:
+                    _, inliers_lo, score_lo, num_inliers_lo = self.verify(kp1, kp2, model_lo, self.inl_th**2)
+                    if (score_lo > model_score) and (num_inliers_lo >= self.polisher_sample_size):
                         model = model_lo.clone()[0]
                         inliers = inliers_lo.clone()
                         model_score = score_lo
@@ -350,10 +389,10 @@ class RANSAC(nn.Module):
                 best_score_total = model_score
 
                 # Should we already stop?
-                new_max_iter = int(
-                    self.max_samples_by_conf(int(best_score_total), num_tc, self.minimal_sample_size, self.confidence)
+                new_max_iter = self.max_samples_by_conf(
+                    int(best_score_total), num_tc, self.minimal_sample_size, self.confidence
                 )
-                # print (f"New max_iter = {new_max_iter}")
+
                 # Stop estimation, if the model is very good
                 if (i + 1) * self.batch_size >= new_max_iter:
                     break

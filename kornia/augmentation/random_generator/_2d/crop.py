@@ -22,8 +22,8 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
+from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
-from kornia.utils.helpers import _extract_device_dtype
 
 __all__ = ["CropGenerator", "ResizedCropGenerator", "center_crop_generator"]
 
@@ -33,7 +33,7 @@ class CropGenerator(RandomGeneratorBase):
 
     Args:
         size (tuple): Desired size of the crop operation, like (h, w).
-            If torch.tensor, it must be (B, 2).
+            If torch.Tensor, it must be (B, 2).
         resize_to (tuple): Desired output size of the crop, like (h, w). If None, no resize will be performed.
 
     Returns:
@@ -82,7 +82,7 @@ class CropGenerator(RandomGeneratorBase):
             size = self.size.to(device=_device, dtype=_dtype)
         if size.shape != torch.Size([batch_size, 2]):
             raise AssertionError(
-                "If `size` is a torch.tensor, it must be shaped as (B, 2). "
+                "If `size` is a torch.Tensor, it must be shaped as (B, 2). "
                 f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}."
             )
         if not (input_size[0] > 0 and input_size[1] > 0 and (size > 0).all()):
@@ -290,7 +290,7 @@ def center_crop_generator(
     r"""Get parameters for ```center_crop``` transformation for center crop transform.
 
     Args:
-        batch_size (int): the torch.tensor batch size.
+        batch_size (int): the torch.Tensor batch size.
         height (int) : height of the image.
         width (int): width of the image.
         size (tuple): Desired output size of the crop, like (h, w).

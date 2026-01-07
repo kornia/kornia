@@ -24,6 +24,13 @@ from .vgg import vgg19_bn
 
 
 class VGG19(nn.Module):
+    """Implement the VGG19 encoder for feature encoding.
+
+    Args:
+        amp: Whether to use automatic mixed precision.
+        amp_dtype: The data type for automatic mixed precision.
+    """
+
     def __init__(self, amp: bool = False, amp_dtype: torch.dtype = torch.float16) -> None:
         super().__init__()
         self.layers = nn.ModuleList(vgg19_bn().features[:40])  # type: ignore
@@ -44,6 +51,8 @@ class VGG19(nn.Module):
 
 
 class FrozenDINOv2(nn.Module):
+    """Implement a wrapper for a frozen DINOv2 vision transformer backbone."""
+
     def __init__(self, amp: bool = True, amp_dtype: torch.dtype = torch.float16, dinov2_weights: Optional[Any] = None):
         super().__init__()
         if dinov2_weights is None:
@@ -78,6 +87,8 @@ class FrozenDINOv2(nn.Module):
 
 
 class VGG_DINOv2(nn.Module):
+    """Implement a hybrid encoder combining VGG and DINOv2 features."""
+
     def __init__(self, vgg_kwargs=None, dinov2_kwargs=None):  # type: ignore[no-untyped-def]
         if (vgg_kwargs is None) or (dinov2_kwargs is None):
             raise ValueError("Input kwargs please")

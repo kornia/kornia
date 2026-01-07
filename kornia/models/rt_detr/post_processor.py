@@ -52,6 +52,19 @@ def mod(a: torch.Tensor, b: int) -> torch.Tensor:
 
 # TODO: deprecate the confidence threshold and add the num_top_queries as a parameter and num_classes as a parameter
 class DETRPostProcessor(nn.Module):
+    """Convert raw DETR model outputs into final bounding box detections.
+
+    This module applies the softmax function to scores and transforms normalized
+    bounding box coordinates into the pixel coordinate system of the input image.
+
+    Args:
+        num_classes: The number of object classes.
+        confidence_threshold: The threshold to filter out low-confidence detections.
+        num_top_queries: The number of top queries to consider for each image.
+        confidence_filtering: Whether to apply confidence-based filtering.
+        filter_as_zero: If True, boxes below the confidence threshold are set to zero instead of being removed.
+    """
+
     def __init__(
         self,
         confidence_threshold: Optional[float] = None,

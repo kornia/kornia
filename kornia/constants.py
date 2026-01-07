@@ -30,6 +30,8 @@ TKEnum = Union[str, int, T]
 
 
 class _KORNIA_EnumMeta(EnumMeta):
+    """Custom metaclass for enums to support string and integer comparisons."""
+
     def __iter__(self) -> Iterator[Enum]:  # type: ignore[override]
         return super().__iter__()
 
@@ -62,6 +64,8 @@ def _get(cls: Type[T], value: TKEnum[T]) -> T:
 
 
 class Resample(Enum, metaclass=_KORNIA_EnumMeta):
+    """Represent the resampling mode for image interpolation."""
+
     NEAREST = 0
     BILINEAR = 1
     BICUBIC = 2
@@ -72,6 +76,8 @@ class Resample(Enum, metaclass=_KORNIA_EnumMeta):
 
 
 class BorderType(Enum, metaclass=_KORNIA_EnumMeta):
+    """Represent the border padding mode for image operations."""
+
     CONSTANT = 0
     REFLECT = 1
     REPLICATE = 2
@@ -83,6 +89,8 @@ class BorderType(Enum, metaclass=_KORNIA_EnumMeta):
 
 
 class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):
+    """Represent the padding mode used during spatial sampling."""
+
     ZEROS = 0
     BORDER = 1
     REFLECTION = 2
@@ -94,6 +102,8 @@ class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):
 
 
 class DType(Enum, metaclass=_KORNIA_EnumMeta):
+    """Represent the internal data types used across the library."""
+
     INT64 = 0
     FLOAT16 = 1
     FLOAT32 = 2

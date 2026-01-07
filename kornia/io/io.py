@@ -27,7 +27,7 @@ import torch
 
 import kornia
 from kornia.core.check import KORNIA_CHECK
-from kornia.utils import image_to_tensor, tensor_to_image
+from kornia.image.utils import image_to_tensor, tensor_to_image
 
 
 class ImageLoadType(Enum):
@@ -48,10 +48,10 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
 
     Args:
         path_file: Path to a valid image file.
-        device: the device torch.where you want to get your image placed.
+        device: the device where you want to get your image placed.
 
     Return:
-        Image torch.tensor with shape :math:`(3,H,W)`.
+        Image torch.Tensor with shape :math:`(3,H,W)`.
 
     """
     # read image and return as `np.ndarray` with shape HxWxC
@@ -62,7 +62,7 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
     # convert the image to torch.tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)
 
-    # move the torch.tensor to the desired device,
+    # move the torch.Tensor to the desired device,
     dev = device if isinstance(device, torch.device) or device is None else torch.device(device)
 
     return img_t.to(device=dev)
@@ -135,10 +135,10 @@ def load_image(
     Args:
         path_file: Path to a valid image file.
         desired_type: the desired image type, defined by color space and dtype.
-        device: the device torch.where you want to get your image placed.
+        device: the device where you want to get your image placed.
 
     Return:
-        Image torch.tensor with shape :math:`(3,H,W)`.
+        Image torch.Tensor with shape :math:`(3,H,W)`.
 
     """
     if not isinstance(path_file, Path):
@@ -293,7 +293,7 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int | None 
 
     Args:
         path_file: Path to a valid image file.
-        image: Image torch.tensor with shape :math:`(3,H,W)`, `(1,H,W)` and `(H,W)`.
+        image: Image torch.Tensor with shape :math:`(3,H,W)`, `(1,H,W)` and `(H,W)`.
         quality: The quality of the JPEG encoding. If the file extension is .png or .tiff, the quality is ignored.
 
     Return:

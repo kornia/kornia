@@ -24,7 +24,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.losses._utils import mask_ignore_pixels
-from kornia.utils.one_hot import one_hot
+from kornia.losses.one_hot import one_hot
 
 # based on:
 # https://github.com/zhezh/focalloss/blob/master/focalloss.py
@@ -51,8 +51,8 @@ def focal_loss(
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        pred: logits torch.tensor with shape :math:`(N, C, *)` torch.where C = number of classes.
-        target: labels torch.tensor with shape :math:`(N, *)` torch.where each value is an integer
+        pred: logits torch.Tensor with shape :math:`(N, C, *)` where C = number of classes.
+        target: labels torch.Tensor with shape :math:`(N, *)` where each value is an integer
           representing correct classification :math:`target[i] \in [0, C)`.
         alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
@@ -89,7 +89,7 @@ def focal_loss(
 
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
-    # create the labels one hot torch.tensor
+    # create the labels one hot torch.Tensor
     target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 
     # mask ignore pixels
@@ -161,8 +161,8 @@ class FocalLoss(nn.Module):
         ignore_index: labels with this value are ignored in the loss computation.
 
     Shape:
-        - Pred: :math:`(N, C, *)` torch.where C = number of classes.
-        - Target: :math:`(N, *)` torch.where each value is an integer
+        - Pred: :math:`(N, C, *)` where C = number of classes.
+        - Target: :math:`(N, *)` where each value is an integer
           representing correct classification :math:`target[i] \in [0, C)`.
 
     Example:
@@ -213,13 +213,13 @@ def binary_focal_loss_with_logits(
 
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
-    torch.where:
+    Where:
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        pred: logits torch.tensor with shape :math:`(N, C, *)` torch.where C = number of classes.
-        target: labels torch.tensor with the same shape as pred :math:`(N, C, *)`
-          torch.where each value is between 0 and 1.
+        pred: logits torch.Tensor with shape :math:`(N, C, *)` where C = number of classes.
+        target: labels torch.Tensor with the same shape as pred :math:`(N, C, *)`
+          where each value is between 0 and 1.
         alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
@@ -335,9 +335,9 @@ class BinaryFocalLossWithLogits(nn.Module):
         ignore_index: labels with this value are ignored in the loss computation.
 
     Shape:
-        - Pred: :math:`(N, C, *)` torch.where C = number of classes.
+        - Pred: :math:`(N, C, *)` where C = number of classes.
         - Target: the same shape as Pred :math:`(N, C, *)`
-          torch.where each value is between 0 and 1.
+          where each value is between 0 and 1.
 
     Examples:
         >>> C = 3  # num_classes

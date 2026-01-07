@@ -26,7 +26,7 @@ from kornia.core.check import KORNIA_CHECK
 
 
 class RandomSnow(IntensityAugmentationBase2D):
-    r"""Generates snow effect on given torch.tensor image or a batch torch.tensor images.
+    r"""Generates snow effect on given torch.Tensor image or a batch torch.Tensor images.
 
     Args:
         snow_coefficient: A tuple of floats (lower and upper bound) between 0 and 1 that control
@@ -35,7 +35,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         brightness of the snow.
         same_on_batch: If True, apply the same transformation to each image in a batch. Default: False.
         p: Probability of applying the transformation. Default: 0.5.
-        keepdim: Keep the output torch.tensor with the same shape as input. Default: False.
+        keepdim: Keep the output torch.Tensor with the same shape as input. Default: False.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`

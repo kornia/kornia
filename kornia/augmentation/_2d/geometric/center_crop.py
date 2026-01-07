@@ -26,7 +26,7 @@ from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, ge
 
 
 class CenterCrop(GeometricAugmentationBase2D):
-    r"""Crop a given image torch.tensor at the center.
+    r"""Crop a given image torch.Tensor at the center.
 
     .. image:: _static/img/CenterCrop.png
 
@@ -39,7 +39,7 @@ class CenterCrop(GeometricAugmentationBase2D):
         p: probability of applying the transformation for the whole batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
-        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.tensor based
+        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.Tensor based
                        on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
                        to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
                        differentiability.
@@ -89,7 +89,7 @@ class CenterCrop(GeometricAugmentationBase2D):
         cropping_mode: str = "slice",
     ) -> None:
         # same_on_batch is always True for CenterCrop
-        # Since PyTorch does not support ragged torch.tensor. So cropping function happens batch-wisely.
+        # Since PyTorch does not support ragged torch.Tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
         if isinstance(size, tuple):
             self.size = (size[0], size[1])

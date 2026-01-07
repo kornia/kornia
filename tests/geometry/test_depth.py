@@ -138,7 +138,7 @@ class TestDepthTo3d(BaseTester):
 
         points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix)
         points2d = kornia.geometry.camera.project_points(points3d.permute(0, 2, 3, 1), camera_matrix[:, None, None])
-        points2d_expected = kornia.utils.create_meshgrid(4, 3, False, device=device).to(dtype=dtype)
+        points2d_expected = kornia.geometry.create_meshgrid(4, 3, False, device=device).to(dtype=dtype)
         self.assert_close(points2d, points2d_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):

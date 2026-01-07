@@ -26,15 +26,15 @@ from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 
 
 class RandomCutMixV2(MixAugmentationBaseV2):
-    r"""Apply CutMix augmentation to a batch of torch.tensor images.
+    r"""Apply CutMix augmentation to a batch of torch.Tensor images.
 
     .. image:: _static/img/RandomCutMixV2.png
 
     Implementation for `CutMix: Regularization Strategy to Train Strong Classifiers with
     Localizable Features` :cite:`yun2019cutmix`.
 
-    The function returns (inputs, labels), in which the inputs is the torch.tensor that contains the mixup images
-    while the labels is a :math:`(\text{num_mixes}, B, 3)` torch.tensor that contains (label_permuted_batch, lambda)
+    The function returns (inputs, labels), in which the inputs is the torch.Tensor that contains the mixup images
+    while the labels is a :math:`(\text{num_mixes}, B, 3)` torch.Tensor that contains (label_permuted_batch, lambda)
     for each cutmix.
 
     The implementation referred to the following repository: `https://github.com/clovaai/CutMix-PyTorch

@@ -21,7 +21,7 @@ import torch
 from torch import nn
 
 from kornia.filters import filter2d
-from kornia.utils import create_meshgrid
+from kornia.geometry.grid import create_meshgrid
 
 
 def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.35) -> torch.Tensor:

@@ -22,8 +22,42 @@ import os
 import sys
 from datetime import UTC, datetime
 
+# Monkey-patch for PyTorch compatibility with sphinx_autodoc_typehints
+# Newer versions of PyTorch removed torch.jit.annotations.compiler_flag
+import torch.jit.annotations
+
+if not hasattr(torch.jit.annotations, "compiler_flag"):
+    torch.jit.annotations.compiler_flag = None
+
 # To add an evnironment variable
 builtins.__sphinx_build__ = True
+
+# --- Patch sphinx_autodoc_defaultargs to not crash on torchscript/pybind11 callables ---
+# --- Patch sphinx_autodoc_defaultargs to not crash on torchscript/pybind11 callables ---
+try:
+    import sphinx_autodoc_defaultargs
+
+    _orig_process_docstring = sphinx_autodoc_defaultargs.process_docstring
+
+    def _safe_process_docstring(app, what, name, obj, options, lines):
+        try:
+            return _orig_process_docstring(app, what, name, obj, options, lines)
+        except ValueError as e:
+            msg = str(e).lower()
+            if "no signature found for builtin" in msg or "pybind11" in msg:
+                return  # leave docstring unchanged
+            raise
+
+    sphinx_autodoc_defaultargs.process_docstring = _safe_process_docstring
+
+except (ModuleNotFoundError, ImportError):
+    # Optional dependency not installed in some environments.
+    sphinx_autodoc_defaultargs = None
+
+except AttributeError:
+    # Extension API changed; don't patch.
+    sphinx_autodoc_defaultargs = None
+
 
 # readthedocs generated the whole documentation in an isolated environment
 # by cloning the git repo. Thus, any on-the-fly operation will not effect
@@ -59,6 +93,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
     "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
     "sphinx_autodoc_typehints",
     "sphinx_autodoc_defaultargs",
     "sphinx_copybutton",
@@ -202,20 +237,20 @@ code_url = "https://github.com/kornia/kornia/blob/main"
 def linkcode_resolve(domain, info):
     # Non-linkable objects from the starter kit in the tutorial.
     if domain == "js" or info["module"] == "connect4":
-        return
+        return None
 
-    assert domain == "py", "expected only Python objects"
+    if domain != "py":
+        return None
 
     mod = importlib.import_module(info["module"])
+
     if "." in info["fullname"]:
         objname, attrname = info["fullname"].split(".")
         obj = getattr(mod, objname)
         try:
-            # object is a method of a class
-            obj = getattr(obj, attrname)
+            obj = getattr(obj, attrname)  # method
         except AttributeError:
-            # object is an attribute of a class
-            return None
+            return None  # attribute; no source
     else:
         obj = getattr(mod, info["fullname"])
 
@@ -223,17 +258,19 @@ def linkcode_resolve(domain, info):
 
     try:
         file = inspect.getsourcefile(obj)
-        lines = inspect.getsourcelines(obj)
-    except TypeError:
-        # e.g. object is a typing.Union
+        source, start_line = inspect.getsourcelines(obj)
+    except (TypeError, OSError):
         return None
+
+    if not file:
+        return None
+
     file = os.path.relpath(file, os.path.abspath(".."))
     if not file.startswith("kornia/"):
-        # e.g. object is a typing.NewType
         return None
-    start, end = lines[1], lines[1] + len(lines[0]) - 1
 
-    return f"{code_url}/{file}#L{start}-L{end}"
+    end_line = start_line + len(source) - 1
+    return f"{code_url}/{file}#L{start_line}-L{end_line}"
 
 
 # -- Options for LaTeX output ---------------------------------------------

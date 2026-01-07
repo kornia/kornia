@@ -50,7 +50,7 @@ class Quaternion(nn.Module):
 
         Q = a + b \cdot \mathbf{i} + c \cdot \mathbf{j} + d \cdot \mathbf{k}
 
-    Thus, we represent a rotation quaternion as a contiguous torch.tensor structure to
+    Thus, we represent a rotation quaternion as a contiguous torch.Tensor structure to
     perform rigid bodies transformations:
 
     .. math::
@@ -77,10 +77,10 @@ class Quaternion(nn.Module):
     _data: Union[torch.Tensor, nn.Parameter]
 
     def __init__(self, data: Union[torch.Tensor, nn.Parameter]) -> None:
-        """Construct a quaternion from torch.tensor or parameter data.
+        """Construct a quaternion from torch.Tensor or parameter data.
 
         Args:
-            data: torch.tensor or parameter containing the quaternion data with the shape of :math:`(B, 4)`.
+            data: torch.Tensor or parameter containing the quaternion data with the shape of :math:`(B, 4)`.
 
         Example:
             >>> # Create with torch.tensor(no gradients tracked by default)
@@ -101,8 +101,8 @@ class Quaternion(nn.Module):
         """Move and/or cast the quaternion data.
 
         Args:
-            *args: Arguments to pass to torch.tensor.to()
-            **kwargs: Keyword arguments to pass to torch.tensor.to()
+            *args: Arguments to pass to torch.Tensor.to()
+            **kwargs: Keyword arguments to pass to torch.Tensor.to()
 
         Returns:
             A new Quaternion with converted data.
@@ -110,12 +110,12 @@ class Quaternion(nn.Module):
         return Quaternion(self._data.to(*args, **kwargs))
 
     def _to_scalar_quaternion(self, value: Union[torch.Tensor, float]) -> "Quaternion":
-        """Convert a scalar, torch.tensor, or numeric value to a scalar quaternion.
+        """Convert a scalar, torch.Tensor, or numeric value to a scalar quaternion.
 
-        A scalar quaternion has the form [real, 0, 0, 0] torch.where real is the input value.
+        A scalar quaternion has the form [real, 0, 0, 0] where real is the input value.
 
         Args:
-            value: The scalar, torch.tensor, or numeric value to convert.
+            value: The scalar, torch.Tensor, or numeric value to convert.
 
         Returns:
             A Quaternion object representing the scalar quaternion.
@@ -167,10 +167,10 @@ class Quaternion(nn.Module):
         return Quaternion(-self.data)
 
     def __add__(self, right: Union["Quaternion", torch.Tensor, float]) -> "Quaternion":
-        """Add a given quaternion, scalar, or torch.tensor.
+        """Add a given quaternion, scalar, or torch.Tensor.
 
         Args:
-            right: the quaternion, scalar, or torch.tensor to add.
+            right: the quaternion, scalar, or torch.Tensor to add.
 
         Example:
             >>> q1 = Quaternion.identity()
@@ -187,10 +187,10 @@ class Quaternion(nn.Module):
             return Quaternion(self.data + right_quat.data)
 
     def __sub__(self, right: Union["Quaternion", torch.Tensor, float]) -> "Quaternion":
-        """Subtract a given quaternion, scalar, or torch.tensor.
+        """Subtract a given quaternion, scalar, or torch.Tensor.
 
         Args:
-            right: the quaternion, scalar, or torch.tensor to subtract.
+            right: the quaternion, scalar, or torch.Tensor to subtract.
 
         Example:
             >>> q1 = Quaternion(torch.tensor([2., 0., 1., 1.]))
@@ -204,10 +204,10 @@ class Quaternion(nn.Module):
             return Quaternion(self.data - right.data)
         else:
             right_quat = self._to_scalar_quaternion(right)
-            # For scalar operations, ensure we return a torch.tensor to preserve gradients
+            # For scalar operations, ensure we return a torch.Tensor to preserve gradients
             result_data = self.data - right_quat.data
             if isinstance(result_data, nn.Parameter):
-                result_data = result_data.data  # Convert to torch.tensor to preserve gradients
+                result_data = result_data.data  # Convert to torch.Tensor to preserve gradients
             return Quaternion(result_data)
 
     def __mul__(self, right: Union["Quaternion", torch.Tensor, float]) -> "Quaternion":
@@ -221,7 +221,7 @@ class Quaternion(nn.Module):
             )
             return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
 
-        # If right is a scalar/torch.tensor, convert to scalar quaternion and multiply
+        # If right is a scalar/torch.Tensor, convert to scalar quaternion and multiply
         else:
             right_quat = self._to_scalar_quaternion(right)
             new_real = self.real * right_quat.real - batched_dot_product(self.vec, right_quat.vec)
@@ -233,7 +233,7 @@ class Quaternion(nn.Module):
             return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
 
     def __rmul__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
-        """Right multiplication (left * self) torch.where left is a scalar or torch.tensor."""
+        """Right multiplication (left * self) where left is a scalar or torch.Tensor."""
         left_quat = self._to_scalar_quaternion(left)
         new_real = left_quat.real * self.real - batched_dot_product(left_quat.vec, self.vec)
         new_vec = (
@@ -257,35 +257,35 @@ class Quaternion(nn.Module):
             if right_tensor.dim() == 0:  # scalar
                 divisor = right_tensor.expand_as(self.data[..., 0]).unsqueeze(-1).expand_as(self.data)
             else:
-                # Broadcast the torch.tensor to match the quaternion dimensions
+                # Broadcast the torch.Tensor to match the quaternion dimensions
                 divisor = right_tensor.unsqueeze(-1).expand_as(self.data)
 
-            # For scalar operations, ensure we return a torch.tensor to preserve gradients
+            # For scalar operations, ensure we return a torch.Tensor to preserve gradients
             result_data = self.data / divisor
             if isinstance(result_data, nn.Parameter):
-                result_data = result_data.data  # Convert to torch.tensor to preserve gradients
+                result_data = result_data.data  # Convert to torch.Tensor to preserve gradients
             return Quaternion(result_data)
 
     def __truediv__(self, right: Union[torch.Tensor, "Quaternion", float]) -> "Quaternion":
         return self.__div__(right)
 
     def __radd__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
-        """Right addition (left + self) torch.where left is a scalar or torch.tensor."""
+        """Right addition (left + self) where left is a scalar or torch.Tensor."""
         left_quat = self._to_scalar_quaternion(left)
         return left_quat + self
 
     def __rsub__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
-        """Right subtraction (left - self) torch.where left is a scalar or torch.tensor."""
+        """Right subtraction (left - self) where left is a scalar or torch.Tensor."""
         left_quat = self._to_scalar_quaternion(left)
         return left_quat - self
 
     def __rtruediv__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
-        """Right division (left / self) torch.where left is a scalar or torch.tensor."""
+        """Right division (left / self) where left is a scalar or torch.Tensor."""
         left_quat = self._to_scalar_quaternion(left)
         return left_quat / self
 
     def __rdiv__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
-        """Right division (left / self) torch.where left is a scalar or torch.tensor."""
+        """Right division (left / self) where left is a scalar or torch.Tensor."""
         return self.__rtruediv__(left)
 
     def __pow__(self, t: float) -> "Quaternion":
@@ -580,7 +580,7 @@ class Quaternion(nn.Module):
             keepdim: whether to retain the last dimension.
 
         Returns:
-            The norm of the quaternion(s) as a torch.tensor.
+            The norm of the quaternion(s) as a torch.Tensor.
 
         Example:
             >>> q = Quaternion.identity()
@@ -634,7 +634,7 @@ class Quaternion(nn.Module):
         """Compute the squared norm (magnitude) of the quaternion.
 
         Returns:
-            The squared norm of the quaternion(s) as a torch.tensor.
+            The squared norm of the quaternion(s) as a torch.Tensor.
 
         Example:
             >>> q = Quaternion.identity()

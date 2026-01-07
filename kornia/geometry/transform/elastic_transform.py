@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d
 from kornia.filters.kernels import get_gaussian_kernel2d
-from kornia.utils import create_meshgrid
+from kornia.geometry.grid import create_meshgrid
 
 __all__ = ["elastic_transform2d"]
 

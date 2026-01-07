@@ -77,8 +77,8 @@ def match_adalam(
 
     Return:
         - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
-        - Long torch.tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
-          torch.where 0 <= B3 <= B1.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
+          where 0 <= B3 <= B1.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -117,6 +117,15 @@ def match_adalam(
 
 
 class AdalamFilter:
+    """Implement the AdaLAM (Adaptive Locally-Affine Matching) filter for outlier rejection.
+
+    This class wraps the AdaLAM algorithm to filter feature matches based on
+    local affine consistency.
+
+    Args:
+        custom_config: Optional configuration object for AdaLAM parameters.
+    """
+
     def __init__(self, custom_config: Optional[AdalamConfig] = None) -> None:
         """Wrap the method AdaLAM for outlier filtering.
 
@@ -150,19 +159,19 @@ class AdalamFilter:
 
         Args:
             k1: keypoint locations in the source image, in pixel coordinates.
-                Expected a float32 torch.tensor with shape (num_keypoints_in_source_image, 2).
+                Expected a float32 torch.Tensor with shape (num_keypoints_in_source_image, 2).
             k2: keypoint locations in the destination image, in pixel coordinates.
-                Expected a float32 torch.tensor with shape (num_keypoints_in_destination_image, 2).
+                Expected a float32 torch.Tensor with shape (num_keypoints_in_destination_image, 2).
             putative_matches: Initial set of putative matches to be filtered.
                               The current implementation assumes that these are unfiltered nearest neighbor matches,
                               so it requires this to be a list of indices a_i such that the source keypoint i is
                               associated to the destination keypoint a_i. For now to use AdaLAM on different inputs a
                               workaround on the input format is required.
-                              Expected a long torch.tensor with shape (num_keypoints_in_source_image,).
+                              Expected a long torch.Tensor with shape (num_keypoints_in_source_image,).
             scores: Confidence scores on the putative_matches. Usually holds Lowe's ratio scores.
             mnn: A mask indicating which putative matches are also mutual nearest neighbors. See documentation on
                  'force_seed_mnn' in the DEFAULT_CONFIG. If None, it disables the mutual nearest neighbor filtering on
-                 seed point selection. Expected a bool torch.tensor with shape (num_keypoints_in_source_image,)
+                 seed point selection. Expected a bool torch.Tensor with shape (num_keypoints_in_source_image,)
             im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of
                       wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
                       of source image
@@ -171,17 +180,17 @@ class AdalamFilter:
                       of destination image
             o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config
                    is set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
-                   Expected a float32 torch.tensor with shape (num_keypoints_in_source/destination_image,)
+                   Expected a float32 torch.Tensor with shape (num_keypoints_in_source/destination_image,)
             o2: same as o1 but for destination.
             s1: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                    See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
-                   Expected a float32 torch.tensor with shape (num_keypoints_in_source/destination_image,)
+                   Expected a float32 torch.Tensor with shape (num_keypoints_in_source/destination_image,)
             s2: same as s1 but for destination.
             return_dist: if True, inverse confidence value is also outputted.
 
         Returns:
             Filtered putative matches.
-            A long torch.tensor with shape (num_filtered_matches, 2) with indices of corresponding
+            A long torch.Tensor with shape (num_filtered_matches, 2) with indices of corresponding
             keypoints in k1 and k2.
 
         """
@@ -253,7 +262,7 @@ class AdalamFilter:
 
         Returns:
             Filtered putative matches.
-            A long torch.tensor with shape (num_filtered_matches, 2) with indices of corresponding
+            A long torch.Tensor with shape (num_filtered_matches, 2) with indices of corresponding
             keypoints in k1 and k2.
 
         """

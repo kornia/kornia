@@ -66,8 +66,8 @@ class TestTriangulation:
     def test_gradcheck(self, device):
         points1 = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(1, 8, 2, device=device, dtype=torch.float64)
-        P1 = kornia.eye_like(3, points1)
+        P1 = kornia.core.ops.eye_like(3, points1)
         P1 = torch.nn.functional.pad(P1, [0, 1])
-        P2 = kornia.eye_like(3, points2)
+        P2 = kornia.core.ops.eye_like(3, points2)
         P2 = torch.nn.functional.pad(P2, [0, 1])
         assert gradcheck(epi.triangulate_points, (P1, P2, points1, points2), raise_exception=True, fast_mode=True)

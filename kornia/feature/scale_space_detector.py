@@ -39,12 +39,12 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
     scale, using the sigmas from the ScalePyramid output.
 
     Args:
-        max_coords: torch.tensor [BxNx3].
-        sigmas: torch.tensor [BxNxD], D >= 1
+        max_coords: torch.Tensor [BxNx3].
+        sigmas: torch.Tensor [BxNxD], D >= 1
         num_levels: number of levels in the scale index.
 
     Returns:
-        torch.tensor [BxNx3].
+        torch.Tensor [BxNx3].
 
     """
     # depth (scale) in coord_max is represented as (float) index, not the scale yet.
@@ -250,7 +250,7 @@ class ScaleSpaceDetector(nn.Module):
 
         Args:
             img: image to extract features with shape [BxCxHxW]
-            mask: a mask with weights torch.where to apply the response function. The shape must be the same as
+            mask: a mask with weights where to apply the response function. The shape must be the same as
               the input image.
 
         Returns:
@@ -265,6 +265,13 @@ class ScaleSpaceDetector(nn.Module):
 
 
 class Detector_config(TypedDict):
+    """Configuration for the Scale Space Detector.
+
+    Attributes:
+        nms_size: The size of the Non-Maximum Suppression window.
+        pyramid_levels: The number of levels in the image pyramid.
+    """
+
     nms_size: int
     pyramid_levels: int
     up_levels: int
@@ -422,7 +429,7 @@ class MultiResolutionDetector(nn.Module):
         Args:
             img: image to extract features with shape [1xCxHxW]. KeyNetDetector does not support batch processing,
         because the number of detections is different on each image.
-            mask: a mask with weights torch.where to apply the response function. The shape must be the same as
+            mask: a mask with weights where to apply the response function. The shape must be the same as
               the input image.
 
         Returns:

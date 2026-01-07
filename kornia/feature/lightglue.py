@@ -27,7 +27,6 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
 from kornia.feature.laf import laf_to_three_points, scale_laf
-from kornia.utils._compat import custom_fwd
 
 try:
     from flash_attn.modules.mha import FlashCrossAttention
@@ -45,9 +44,9 @@ def math_clamp(x, min_, max_):  # type: ignore
     return min(max(x, min_), max_)
 
 
-@custom_fwd(cast_inputs=torch.float32)
+@torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
 def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
-    """Normalize torch.tensor of keypoints."""
+    """Normalize torch.Tensor of keypoints."""
     if isinstance(size, torch.Size):
         size = torch.tensor(size)[None]
     shift = size.float().to(kpts) / 2
@@ -57,7 +56,7 @@ def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
 
 
 def pad_to_length(x: torch.Tensor, length: int) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Pad torch.tensor to desired length."""
+    """Pad torch.Tensor to desired length."""
     if length <= x.shape[-2]:
         return x, torch.ones_like(x[..., :1], dtype=torch.bool)
     pad_tensor = torch.ones(*x.shape[:-2], length - x.shape[-2], x.shape[-1], device=x.device, dtype=x.dtype)
@@ -80,6 +79,18 @@ def apply_cached_rotary_emb(freqs: torch.Tensor, t: torch.Tensor) -> torch.Tenso
 
 
 class LearnableFourierPositionalEncoding(nn.Module):
+    """Implement learnable Fourier features for positional encoding.
+
+    This module encodes spatial coordinates into high-dimensional embeddings
+    using a learnable projection and periodic functions.
+
+    Args:
+        M: The number of frequencies to use.
+        dim: The dimension of the output embedding.
+        F_dim: The dimension of the Fourier features. Default: None.
+        gamma: The scaling factor for the initialization. Default: 1.0.
+    """
+
     def __init__(self, M: int, dim: int, F_dim: Optional[int] = None, gamma: float = 1.0) -> None:
         super().__init__()
         F_dim = F_dim if F_dim is not None else dim
@@ -96,6 +107,12 @@ class LearnableFourierPositionalEncoding(nn.Module):
 
 
 class TokenConfidence(nn.Module):
+    """Predict the confidence score for each token in the sequence.
+
+    Args:
+        dim: The dimension of the input feature tokens.
+    """
+
     def __init__(self, dim: int) -> None:
         super().__init__()
         self.token = nn.Sequential(nn.Linear(dim, 1), nn.Sigmoid())
@@ -111,6 +128,12 @@ class TokenConfidence(nn.Module):
 
 
 class Attention(nn.Module):
+    """Implement the optimized multi-head attention mechanism for LightGlue.
+
+    Args:
+        allow_flash: Whether to enable FlashAttention for increased performance.
+    """
+
     def __init__(self, allow_flash: bool) -> None:
         super().__init__()
         if allow_flash and not FLASH_AVAILABLE:
@@ -153,6 +176,15 @@ class Attention(nn.Module):
 
 
 class SelfBlock(nn.Module):
+    """Implement a self-attention block to process features within a single image.
+
+    Args:
+        embed_dim: The dimension of the feature embeddings.
+        num_heads: The number of attention heads.
+        flash: Whether to use FlashAttention. Default: False.
+        bias: Whether to include bias in the linear layers. Default: True.
+    """
+
     def __init__(self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True) -> None:
         super().__init__()
         self.embed_dim = embed_dim
@@ -186,6 +218,15 @@ class SelfBlock(nn.Module):
 
 
 class CrossBlock(nn.Module):
+    """Implement a cross-attention block to exchange information between two images.
+
+    Args:
+        embed_dim: The dimension of the feature embeddings.
+        num_heads: The number of attention heads.
+        flash: Whether to use FlashAttention. Default: False.
+        bias: Whether to include bias in the linear layers. Default: True.
+    """
+
     def __init__(self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True) -> None:
         super().__init__()
         self.heads = num_heads
@@ -237,6 +278,12 @@ class CrossBlock(nn.Module):
 
 
 class TransformerLayer(nn.Module):
+    """Implement a complete Transformer layer for feature matching.
+
+    This layer typically alternates between self-attention and cross-attention
+    to update local feature descriptors.
+    """
+
     def __init__(self, *args, **kwargs):  # type: ignore
         super().__init__()
         self.self_attn = SelfBlock(*args, **kwargs)
@@ -290,6 +337,12 @@ def sigmoid_log_double_softmax(sim: torch.Tensor, z0: torch.Tensor, z1: torch.Te
 
 
 class MatchAssignment(nn.Module):
+    """Assign matches between two sets of local features using a dual-softmax approach.
+
+    Args:
+        dim: The dimension of the feature descriptors.
+    """
+
     def __init__(self, dim: int) -> None:
         super().__init__()
         self.dim = dim
@@ -331,6 +384,16 @@ def filter_matches(scores: torch.Tensor, th: float) -> Tuple[torch.Tensor, torch
 
 
 class LightGlue(nn.Module):
+    """Implement the LightGlue matcher for sparse local features.
+
+    LightGlue is a deep network that matches local features across image pairs
+    using a series of transformer layers and an adaptive pruning mechanism.
+
+    Args:
+        features: The type of local features to match (e.g., 'superpoint', 'disk').
+        conf: A configuration dictionary to override default parameters.
+    """
+
     default_conf: ClassVar[Dict[str, Any]] = {
         "name": "lightglue",  # just for interfacing
         "input_dim": 256,  # input descriptor dimension (autoselected from weights)

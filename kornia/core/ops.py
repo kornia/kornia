@@ -15,9 +15,9 @@
 # limitations under the License.
 #
 
-from typing import Optional
-
 import torch
+
+from kornia.core.check import KORNIA_CHECK
 
 
 def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.Tensor:
@@ -38,12 +38,11 @@ def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.
         use this method with shared_memory=False, otherwise, prefer using it with shared_memory=True.
 
     """
-    if n <= 0:
-        raise AssertionError(type(n), n)
-    if len(input.shape) < 1:
-        raise AssertionError(input.shape)
+    KORNIA_CHECK(n > 0, f"n must be positive. Got: {n}")
+    KORNIA_CHECK(len(input.shape) >= 1, f"input must have at least 1 dimension. Got shape: {input.shape}")
 
-    identity = torch.eye(n, device=input.device).type(input.dtype)
+    # Use torch.eye with dtype parameter directly (available since PyTorch 2.0+)
+    identity = torch.eye(n, device=input.device, dtype=input.dtype)
 
     return identity[None].expand(input.shape[0], n, n) if shared_memory else identity[None].repeat(input.shape[0], 1, 1)
 
@@ -66,70 +65,8 @@ def vec_like(n: int, tensor: torch.Tensor, shared_memory: bool = False) -> torch
         use this method with shared_memory=False, otherwise, prefer using it with shared_memory=True.
 
     """
-    if n <= 0:
-        raise AssertionError(type(n), n)
-    if len(tensor.shape) < 1:
-        raise AssertionError(tensor.shape)
+    KORNIA_CHECK(n > 0, f"n must be positive. Got: {n}")
+    KORNIA_CHECK(len(tensor.shape) >= 1, f"tensor must have at least 1 dimension. Got shape: {tensor.shape}")
 
     vec = torch.zeros(n, 1, device=tensor.device, dtype=tensor.dtype)
     return vec[None].expand(tensor.shape[0], n, 1) if shared_memory else vec[None].repeat(tensor.shape[0], 1, 1)
-
-
-def differentiable_polynomial_rounding(input: torch.Tensor) -> torch.Tensor:
-    """Differentiable rounding.
-
-    Args:
-        input (torch.Tensor): Input tensor of any shape to be rounded.
-
-    Returns:
-        output (torch.Tensor): Pseudo rounded tensor of the same shape as input tensor.
-
-    """
-    # Perform differentiable rounding
-    input_round = input.round()
-    output: torch.Tensor = input_round + (input - input_round) ** 3
-    return output
-
-
-def differentiable_polynomial_floor(input: torch.Tensor) -> torch.Tensor:
-    """Perform floor via a differentiable operation.
-
-    Args:
-        input (torch.Tensor): Input tensor of any shape to be floored.
-
-    Returns:
-        output (torch.Tensor): Pseudo rounded tensor of the same shape as input tensor.
-
-    """
-    # Perform differentiable rounding
-    input_floor = input.floor()
-    output: torch.Tensor = input_floor + (input - 0.5 - input_floor) ** 3
-    return output
-
-
-def differentiable_clipping(
-    input: torch.Tensor,
-    min_val: Optional[float] = None,
-    max_val: Optional[float] = None,
-    scale: float = 0.02,
-) -> torch.Tensor:
-    """Clip via a differentiable and soft approximation of the clipping operation.
-
-    Args:
-        input (torch.Tensor): Input tensor of any shape.
-        min_val (Optional[float]): Minimum value.
-        max_val (Optional[float]): Maximum value.
-        scale (float): Scale value. Default 0.02.
-
-    Returns:
-        output (torch.Tensor): Clipped output tensor of the same shape as the input tensor.
-
-    """
-    # Make a copy of the input tensor
-    output: torch.Tensor = input.clone()
-    # Perform differentiable soft clipping
-    if max_val is not None:
-        output[output > max_val] = -scale * (torch.exp(-output[output > max_val] + max_val) - 1.0) + max_val
-    if min_val is not None:
-        output[output < min_val] = scale * (torch.exp(output[output < min_val] - min_val) - 1.0) + min_val
-    return output

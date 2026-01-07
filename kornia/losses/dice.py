@@ -25,7 +25,7 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 from kornia.losses._utils import mask_ignore_pixels
-from kornia.utils.one_hot import one_hot
+from kornia.losses.one_hot import one_hot
 
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
@@ -50,7 +50,7 @@ def dice_loss(
 
     Where:
        - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the one-hot torch.tensor with the class labels.
+       - :math:`Y` expects to be the one-hot torch.Tensor with the class labels.
 
     the loss, is finally computed as:
 
@@ -62,9 +62,9 @@ def dice_loss(
         [1] https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
 
     Args:
-        pred: logits torch.tensor with shape :math:`(N, C, H, W)` torch.where C = number of classes.
-        target: labels torch.tensor with shape :math:`(N, H, W)` torch.where each value
-          is :math:`0 ≤ targets[i] ≤ C-1`.
+        pred: logits torch.Tensor with shape :math:`(N, C, H, W)` where C = number of classes.
+        target: labels torch.Tensor with shape :math:`(N, H, W)` where each value
+          is in range :math:`0 ≤ targets[i] ≤ C-1`.
         average:
             Reduction applied in multi-class scenario:
             - ``'micro'`` [default]: Calculate the loss across all classes.
@@ -74,7 +74,7 @@ def dice_loss(
         ignore_index: labels with this value are ignored in the loss computation.
 
     Return:
-        One-element torch.tensor of the computed loss.
+        One-element torch.Tensor of the computed loss.
 
     Example:
         >>> N = 5  # num_classes
@@ -103,7 +103,7 @@ def dice_loss(
 
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
-    # create the labels one hot torch.tensor
+    # create the labels one hot torch.Tensor
     target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 
     # mask ignore pixels
@@ -162,7 +162,7 @@ class DiceLoss(nn.Module):
 
     Where:
        - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the one-hot torch.tensor with the class labels.
+       - :math:`Y` expects to be the one-hot torch.Tensor with the class labels.
 
     the loss, is finally computed as:
 
@@ -183,8 +183,8 @@ class DiceLoss(nn.Module):
         ignore_index: labels with this value are ignored in the loss computation.
 
     Shape:
-        - Pred: :math:`(N, C, H, W)` torch.where C = number of classes.
-        - Target: :math:`(N, H, W)` torch.where each value is
+        - Pred: :math:`(N, C, H, W)` where C = number of classes.
+        - Target: :math:`(N, H, W)` where each value is
           :math:`0 ≤ targets[i] ≤ C-1`.
 
     Example:

@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import math
 
 import pytest
 import torch
@@ -264,13 +263,59 @@ class TestRANSACFundamental(BaseTester):
 
 class TestRansacMethods:
     def test_max_samples_by_conf(self):
+        """Test max_samples_by_conf with realistic scenarios."""
         conf = 0.99
-        eps = 1e-9
 
+        # Test 1: Very few inliers (1 out of 1000) with sample_size=7
+        # Returns 1 because n_inl <= sample_size (early exit condition)
         x = RANSAC.max_samples_by_conf(n_inl=1, num_tc=1000, sample_size=7, conf=conf)
-        assert x > 0.0
-        assert x == math.log(1.0 - conf) / -eps
+        assert x == 1  # Early exit when n_inl <= sample_size
 
-        x = RANSAC.max_samples_by_conf(n_inl=999999999, num_tc=1000000000, sample_size=1, conf=conf)
-        assert x > 0.0
-        assert x == math.log(1.0 - conf) / math.log(eps)
+        # Test 2: Low inlier ratio (10 out of 1000, 1%) with sample_size=7
+        # Should require many iterations
+        x = RANSAC.max_samples_by_conf(n_inl=10, num_tc=1000, sample_size=7, conf=conf)
+        assert x > 0
+        # With 1% inliers, probability of all 7 samples being inliers is very low
+        # So we need a huge number of samples
+        assert x > 1_000_000  # Should be a very large number
+
+        # Test 3: Medium inlier ratio (500 out of 1000, 50%) with sample_size=4
+        # Should require moderate number of iterations
+        x = RANSAC.max_samples_by_conf(n_inl=500, num_tc=1000, sample_size=4, conf=conf)
+        assert x > 0
+        # With 50% inliers, probability of all 4 samples being inliers is ~0.0625
+        # So we need log(1-0.99)/log(1-0.0625) ≈ 70 samples
+        assert 50 < x < 100
+
+        # Test 4: High inlier ratio (900 out of 1000, 90%) with sample_size=4
+        # Should require very few iterations
+        x = RANSAC.max_samples_by_conf(n_inl=900, num_tc=1000, sample_size=4, conf=conf)
+        assert x > 0
+        # With 90% inliers, probability of all 4 samples being inliers is ~0.66
+        # So we need log(1-0.99)/log(1-0.66) ≈ 4 samples
+        assert x < 10
+
+        # Test 5: Edge case - all points are inliers
+        x = RANSAC.max_samples_by_conf(n_inl=100, num_tc=100, sample_size=4, conf=conf)
+        assert x == 1  # Only need 1 sample if all are inliers
+
+        # Test 6: Edge case - not enough points for sample
+        x = RANSAC.max_samples_by_conf(n_inl=10, num_tc=10, sample_size=15, conf=conf)
+        assert x == 1  # Returns 1 when num_tc <= sample_size
+
+        # Test 7: Edge case - too few inliers (n_inl <= sample_size)
+        x = RANSAC.max_samples_by_conf(n_inl=2, num_tc=1000, sample_size=4, conf=conf)
+        assert x == 1  # Returns 1 when n_inl <= sample_size
+
+        # Test 8: Edge case - confidence at boundaries
+        x = RANSAC.max_samples_by_conf(n_inl=50, num_tc=100, sample_size=4, conf=1.0)
+        assert x == 1  # Returns 1 when conf >= 1.0
+
+        x = RANSAC.max_samples_by_conf(n_inl=50, num_tc=100, sample_size=4, conf=0.0)
+        assert x == 1  # Returns 1 when conf <= 0.0
+
+        # Test 9: Verify monotonicity - more inliers should require fewer samples
+        x1 = RANSAC.max_samples_by_conf(n_inl=200, num_tc=1000, sample_size=4, conf=conf)
+        x2 = RANSAC.max_samples_by_conf(n_inl=500, num_tc=1000, sample_size=4, conf=conf)
+        x3 = RANSAC.max_samples_by_conf(n_inl=800, num_tc=1000, sample_size=4, conf=conf)
+        assert x1 > x2 > x3  # More inliers = fewer samples needed

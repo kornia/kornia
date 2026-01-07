@@ -30,6 +30,14 @@ from torch import Tensor, nn
 
 
 class LayerScale(nn.Module):
+    """Implement the LayerScale mechanism for stabilizing transformer training.
+
+    Args:
+        dim: Dimensionality of the input features used to define the size of the scaling parameter.
+        init_values: Initial value or tensor used to initialize the learnable scaling parameter ``gamma``.
+        inplace: If True, apply the scaling operation in-place on the input tensor.
+    """
+
     def __init__(
         self,
         dim: int,

@@ -43,6 +43,8 @@ def _make_shortcut(in_channels: int, out_channels: int, stride: int) -> nn.Modul
 
 
 class BasicBlockD(nn.Module):
+    """Implement the Basic Block for the ResNet-D variant."""
+
     expansion = 1
 
     def __init__(self, in_channels: int, out_channels: int, stride: int, shortcut: bool) -> None:
@@ -64,6 +66,8 @@ class BasicBlockD(nn.Module):
 
 
 class BottleneckD(nn.Module):
+    """Implement the Bottleneck Block for the ResNet-D variant."""
+
     expansion = 4
 
     def __init__(self, in_channels: int, out_channels: int, stride: int, shortcut: bool) -> None:
@@ -87,12 +91,25 @@ class BottleneckD(nn.Module):
 
 
 class Block(nn.Sequential):
+    """Implement a residual block for the ResNet-D architecture.
+
+    Args:
+        blocks: A module containing the sequence of operations for the block.
+    """
+
     def __init__(self, blocks: nn.Module) -> None:
         super().__init__()
         self.blocks = blocks
 
 
 class ResNetD(nn.Module):
+    """Implement the ResNet-D architecture.
+
+    Args:
+        n_blocks: A list of integers representing the number of blocks in each stage.
+        block: The block class type (BasicBlockD or BottleneckD).
+    """
+
     def __init__(self, n_blocks: list[int], block: type[BasicBlockD | BottleneckD]) -> None:
         KORNIA_CHECK(len(n_blocks) == 4)
         super().__init__()

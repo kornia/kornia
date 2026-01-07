@@ -18,9 +18,9 @@
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_le
 from kornia.feature import OnnxLightGlue
 from kornia.feature.lightglue_onnx.utils import normalize_keypoints
-from kornia.utils._compat import torch_version_le
 
 try:
     import onnxruntime as ort

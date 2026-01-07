@@ -29,8 +29,8 @@ from kornia.config import kornia_config
 from kornia.contrib.object_detection import ObjectDetector, RTDETRDetectorBuilder
 from kornia.core.external import boxmot
 from kornia.core.external import numpy as np
+from kornia.image.utils import tensor_to_image
 from kornia.io import write_image
-from kornia.utils.image import tensor_to_image
 
 __all__ = ["BoxMotTracker"]
 
@@ -71,15 +71,9 @@ class BoxMotTracker:
         fuse_first_associate: Whether to fuse appearance and motion information during the first association step.
         with_reid: Whether to use ReID (Re-Identification) features for association.
 
-    .. code-block:: python
-
-        import kornia
-        import torch
-        image = kornia.utils.sample.get_sample_images()[0][None]
-        model = BoxMotTracker()
-        for i in range(4):  # At least 4 frames are needed to initialize the tracking position
-            model.update(image)
-        model.save(image)
+    Note:
+        To use this tracker, load image tensors (shape: ``(1, C, H, W)``) and call ``model.update(image)``
+        for at least 4 frames before calling ``model.save(image)``.
 
     .. note::
         At least 4 frames are needed to initialize the tracking position.
@@ -122,7 +116,7 @@ class BoxMotTracker:
 
         """
         if not (image.ndim == 4 and image.shape[0] == 1) and not image.ndim == 3:
-            raise ValueError(f"Input torch.tensor must be of shape (1, 3, H, W) or (3, H, W). Got {image.shape}")
+            raise ValueError(f"Input torch.Tensor must be of shape (1, 3, H, W) or (3, H, W). Got {image.shape}")
 
         if image.ndim == 3:
             image = image.unsqueeze(0)

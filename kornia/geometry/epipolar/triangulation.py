@@ -15,13 +15,13 @@
 # limitations under the License.
 #
 
-"""nn.Module with the functionalities for triangulation."""
+"""Module with the functionalities for triangulation."""
 
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import _torch_svd_cast
 from kornia.geometry.conversions import convert_points_from_homogeneous
-from kornia.utils.helpers import _torch_svd_cast
 
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/triangulation.cpp#L68
 

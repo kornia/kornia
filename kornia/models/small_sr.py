@@ -20,7 +20,7 @@ from torch import nn
 
 from kornia.color.ycbcr import RgbToYcbcr, YcbcrToRgb
 from kornia.config import kornia_config
-from kornia.utils.download import CachedDownloader
+from kornia.onnx.download import CachedDownloader
 
 url = "https://s3.amazonaws.com/pytorch/test_data/export/superres_epoch100-44c6958e.pth"
 
@@ -75,6 +75,13 @@ def weight_init(model: nn.Module) -> None:
 
 
 class SmallSRNetWrapper(nn.Module):
+    """Wrap a Super-Resolution model with pre-processing and post-processing.
+
+    Args:
+        upscale_factor: The factor by which the image resolution is increased.
+        pretrained: Whether to load weights from a pre-trained model. Default: True.
+    """
+
     def __init__(self, upscale_factor: int = 3, pretrained: bool = True) -> None:
         super().__init__()
         self.rgb_to_ycbcr = RgbToYcbcr()

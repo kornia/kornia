@@ -23,9 +23,9 @@ import torch
 import torch.nn.functional as F
 
 from kornia.constants import pi
+from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.utils import deprecated
-from kornia.utils.helpers import _torch_inverse_cast
+from kornia.core.utils import _torch_inverse_cast
 
 __all__ = [
     "ARKitQTVecs_to_ColmapQTVecs",

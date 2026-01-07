@@ -15,9 +15,9 @@
 # limitations under the License.
 #
 
-import torch
+"""Module containing numerical functionalities for SfM."""
 
-"""nn.Module containing numerical functionalities for SfM."""
+import torch
 
 
 def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:

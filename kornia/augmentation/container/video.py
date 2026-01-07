@@ -291,7 +291,7 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.tensor with shape :math:`(B, T, N, 4, 2)`.
+            input: torch.Tensor with shape :math:`(B, T, N, 4, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -311,7 +311,7 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.tensor with shape :math:`(B, T, N, 4, 2)`.
+            input: torch.Tensor with shape :math:`(B, T, N, 4, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -334,7 +334,7 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.tensor with shape :math:`(B, T, N, 2)`.
+            input: torch.Tensor with shape :math:`(B, T, N, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -357,7 +357,7 @@ class VideoSequential(ImageSequential):
         """Transform bounding boxes.
 
         Args:
-            input: torch.tensor with shape :math:`(B, T, N, 2)`.
+            input: torch.Tensor with shape :math:`(B, T, N, 2)`.
                 If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
             params: params for the sequence.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -376,7 +376,7 @@ class VideoSequential(ImageSequential):
     ) -> torch.Tensor:
         """Inverse transformation.
 
-        Used to inverse a torch.tensor according to the performed transformation by a forward pass, or with respect to
+        Used to inverse a torch.Tensor according to the performed transformation by a forward pass, or with respect to
         provided parameters.
         """
         if params is None:
@@ -392,7 +392,7 @@ class VideoSequential(ImageSequential):
     ) -> torch.Tensor:
         """Define the video computation performed."""
         if len(input.shape) != 5:
-            raise AssertionError(f"Input must be a 5-dim torch.tensor. Got {input.shape}.")
+            raise AssertionError(f"Input must be a 5-dim torch.Tensor. Got {input.shape}.")
 
         if params is None:
             self._params = self.forward_parameters(input.shape)

@@ -22,9 +22,9 @@ from typing import Optional, Tuple, cast
 import torch
 from torch import Size
 
+from kornia.core.ops import eye_like
 from kornia.geometry.bbox import validate_bbox
 from kornia.geometry.linalg import transform_points
-from kornia.utils import eye_like
 
 __all__ = ["Boxes", "Boxes3D"]
 
@@ -440,6 +440,7 @@ class Boxes:
         Args:
             boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
             mode: The format in which the boxes are provided.
+            validate_boxes: Check if boxes are valid. Default is True.
 
                 * 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` where ``width = xmax - xmin``
                   and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.

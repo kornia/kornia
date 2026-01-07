@@ -77,10 +77,9 @@ from kornia.augmentation import (
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
-from kornia.geometry import transform_points
-from kornia.utils import create_meshgrid
-from kornia.utils._compat import torch_version, torch_version_le
-from kornia.utils.helpers import _torch_inverse_cast
+from kornia.core._compat import torch_version, torch_version_le
+from kornia.core.utils import _torch_inverse_cast
+from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
 from testing.base import BaseTester
@@ -295,7 +294,7 @@ class CommonTests(BaseTester):
         output = augmentation(input_tensor)
         transform = augmentation.transform_matrix
 
-        if (transform == kornia.eye_like(3, transform)).all():
+        if (transform == kornia.core.ops.eye_like(3, transform)).all():
             pytest.skip("Test not relevant for intensity augmentations.")
 
         indices = create_meshgrid(
@@ -404,7 +403,7 @@ class TestRandomEqualizeAlternative(CommonTests):
         )
         expected_output = expected_output.repeat(2, 3, 20, 1)
 
-        expected_transformation = kornia.eye_like(3, input_tensor)
+        expected_transformation = kornia.core.ops.eye_like(3, input_tensor)
         parameters = {}
         self._test_random_p_1_implementation(
             input_tensor=input_tensor,
@@ -685,7 +684,7 @@ class TestRandomRotationAlternative(CommonTests):
             dtype=self.dtype,
         ).repeat((2, 1, 1, 1))
         expected_output = input_tensor
-        expected_transformation = kornia.eye_like(3, input_tensor)
+        expected_transformation = kornia.core.ops.eye_like(3, input_tensor)
         parameters = {"degrees": (-360.0, -360.0), "align_corners": True}
         self._test_random_p_1_implementation(
             input_tensor=input_tensor,
@@ -778,7 +777,7 @@ class TestRandomRotation90(CommonTests):
             dtype=self.dtype,
         ).repeat((2, 1, 1, 1))
         expected_output = input_tensor
-        expected_transformation = kornia.eye_like(3, input_tensor)
+        expected_transformation = kornia.core.ops.eye_like(3, input_tensor)
         parameters = {"times": (0, 0), "align_corners": True}
         self._test_random_p_1_implementation(
             input_tensor=input_tensor,
@@ -851,7 +850,7 @@ class TestRandomGrayscaleAlternative(CommonTests):
             .repeat(1, 3, 1, 1)
         )
 
-        expected_transformation = kornia.eye_like(3, input_tensor)
+        expected_transformation = kornia.core.ops.eye_like(3, input_tensor)
         parameters = {}
         self._test_random_p_1_implementation(
             input_tensor=input_tensor,
@@ -3813,7 +3812,7 @@ class TestRandomEqualize(BaseTester):
             ]
         )
         expected = self.build_input(channels, height, width, bs=1, row=row_expected, device=device, dtype=dtype)
-        identity = kornia.eye_like(3, expected)  # 3 x 3
+        identity = kornia.core.ops.eye_like(3, expected)  # 3 x 3
 
         self.assert_close(f(inputs), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, identity, low_tolerance=True)
@@ -3854,7 +3853,7 @@ class TestRandomEqualize(BaseTester):
         )
         expected = self.build_input(channels, height, width, bs, row=row_expected, device=device, dtype=dtype)
 
-        identity = kornia.eye_like(3, expected)  # 2 x 3 x 3
+        identity = kornia.core.ops.eye_like(3, expected)  # 2 x 3 x 3
 
         self.assert_close(f(inputs), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, identity, low_tolerance=True)
@@ -4417,7 +4416,7 @@ class TestNormalize(BaseTester):
 
         expected = (inputs - 1) * 2
 
-        identity = kornia.eye_like(3, expected)
+        identity = kornia.core.ops.eye_like(3, expected)
 
         self.assert_close(f(inputs), expected)
         self.assert_close(f.transform_matrix, identity)
@@ -4432,7 +4431,7 @@ class TestNormalize(BaseTester):
 
         expected = (inputs - 1) * 2
 
-        identity = kornia.eye_like(3, expected)
+        identity = kornia.core.ops.eye_like(3, expected)
 
         self.assert_close(f(inputs), expected)
         self.assert_close(f.transform_matrix, identity)
@@ -4467,7 +4466,7 @@ class TestDenormalize(BaseTester):
 
         expected = inputs / 2 + 1
 
-        identity = kornia.eye_like(3, expected)
+        identity = kornia.core.ops.eye_like(3, expected)
 
         self.assert_close(f(inputs), expected)
         self.assert_close(f.transform_matrix, identity)
@@ -4482,7 +4481,7 @@ class TestDenormalize(BaseTester):
 
         expected = inputs / 2 + 1
 
-        identity = kornia.eye_like(3, expected)
+        identity = kornia.core.ops.eye_like(3, expected)
 
         self.assert_close(f(inputs), expected)
         self.assert_close(f.transform_matrix, identity)

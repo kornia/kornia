@@ -32,6 +32,8 @@ from kornia.models.common import ConvNormAct
 
 
 class StemBlock(nn.Module):
+    """Implement the entry-level Stem block for HGNetV2 backbones."""
+
     def __init__(self, in_channels: int, mid_channels: int, out_channels: int) -> None:
         super().__init__()
         self.stem1 = ConvNormAct(in_channels, mid_channels, 3, 2)
@@ -50,6 +52,14 @@ class StemBlock(nn.Module):
 
 # Separable conv
 class LightConvNormAct(nn.Sequential):
+    """Implement a composite layer containing Convolution, Normalization, and Activation.
+
+    Args:
+        in_channels: Number of input channels.
+        out_channels: Number of output channels.
+        kernel_size: Size of the convolving kernel.
+    """
+
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 1, act="none")  # point-wise
@@ -57,6 +67,8 @@ class LightConvNormAct(nn.Sequential):
 
 
 class StageConfig(NamedTuple):
+    """Represent configuration parameters for a single HGNetV2 stage."""
+
     in_channels: int
     mid_channels: int
     out_channels: int
@@ -68,6 +80,14 @@ class StageConfig(NamedTuple):
 
 
 class HGBlock(nn.Module):
+    """Implement the High-Performance GPU block for HGNetV2.
+
+    Args:
+        in_channels: The number of input channels.
+        config: The configuration object containing stage details.
+        identity: Whether to use a residual identity connection.
+    """
+
     def __init__(self, in_channels: int, config: StageConfig, identity: bool) -> None:
         super().__init__()
         self.identity = identity
@@ -93,6 +113,12 @@ class HGBlock(nn.Module):
 
 
 class HGStage(nn.Sequential):
+    """Implement a single stage of the HGNetV2 architecture.
+
+    Args:
+        config: The configuration object for the specific stage.
+    """
+
     def __init__(self, config: StageConfig) -> None:
         super().__init__()
         ch_in = config.in_channels
@@ -104,6 +130,13 @@ class HGStage(nn.Sequential):
 
 
 class PPHGNetV2(nn.Module):
+    """Implement the PPHGNetV2 backbone for real-time object detection.
+
+    Args:
+        stem_channels: A list of three integers for the stem convolution channels.
+        stage_configs: A list of StageConfig objects for each of the four stages.
+    """
+
     def __init__(self, stem_channels: list[int], stage_configs: list[StageConfig]) -> None:
         KORNIA_CHECK(len(stem_channels) == 3)
         KORNIA_CHECK(len(stage_configs) == 4)

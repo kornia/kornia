@@ -31,6 +31,12 @@ __all__ = ["SegmentationModelsBuilder"]
 
 
 class SegmentationModelsBuilder:
+    """Provide a factory to build various semantic segmentation models.
+
+    This builder simplifies the creation of models like UNet or DeepLabV3
+    by providing a unified interface for configuration and weight loading.
+    """
+
     @staticmethod
     def build(
         model_name: str = "Unet",
