@@ -281,6 +281,7 @@ def linkcode_resolve(domain, info):
     end = start + len(src) - 1
     return f"{code_url}/{file_rel}#L{start}-L{end}"
 
+
 # -- Options for LaTeX output ---------------------------------------------
 
 latex_elements = {
