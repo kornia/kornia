@@ -253,18 +253,12 @@ class TestWarpImage:
 
     @pytest.mark.parametrize("batch_size", [1])
     def test_identity_warp_align_corners(self, batch_size, device, dtype):
-        image = torch.arange(9., device=device, dtype=dtype).reshape(1, 1, 3, 3)
+        image = torch.arange(9.0, device=device, dtype=dtype).reshape(1, 1, 3, 3)
         dst = torch.tensor(
-            [[[-1., -1.],
-              [-1.,  1.],
-              [ 1., -1.],
-              [ 1.,  1.],
-              [ 0.,  0.]]],
+            [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]],
             device=device,
             dtype=dtype,
         ).repeat(batch_size, 1, 1)
         kernel, affine = kornia.geometry.transform.get_tps_transform(dst, dst)
-        warped = kornia.geometry.transform.warp_image_tps(
-            image, dst, kernel, affine, align_corners=True
-        )
+        warped = kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine, align_corners=True)
         assert_close(warped, image, atol=1e-4, rtol=1e-4)
