@@ -93,7 +93,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
     "sphinx.ext.napoleon",
-    "sphinx.ext.viewcode",
+   # "sphinx.ext.viewcode",
     "sphinx_autodoc_typehints",
     "sphinx_autodoc_defaultargs",
     "sphinx_copybutton",
@@ -265,9 +265,10 @@ def linkcode_resolve(domain, info):
     if not file:
         return None
 
-    file = os.path.relpath(file, os.path.abspath(".."))
+    file = os.path.relpath(file, os.path.abspath("..")).replace('kornia/kornia', 'kornia')
     if not file.startswith("kornia/"):
         return None
+    
 
     end_line = start_line + len(source) - 1
     return f"{code_url}/{file}#L{start_line}-L{end_line}"
