@@ -231,7 +231,7 @@ html_js_files = [
 # Configure viewcode extension.
 # based on https://github.com/readthedocs/sphinx-autoapi/issues/202
 rtd_version = os.environ.get("READTHEDOCS_VERSION")
-if rtd_version and rtd_version not in {"latest"}:
+if rtd_version and rtd_version not in {"latest", "stable"}:
     code_ref = rtd_version
 else:
     code_ref = "main"
@@ -251,15 +251,14 @@ def linkcode_resolve(domain, info):
 
     try:
         mod = importlib.import_module(modname)
-    except Exception:
-        # RTD env might miss optional deps; no link is better than a hard error.
+    except (ImportError, ModuleNotFoundError):
         return None
 
     obj = mod
     for part in fullname.split("."):
         try:
             obj = getattr(obj, part)
-        except Exception:
+        except AttributeError:
             return None
 
     obj = inspect.unwrap(obj)
@@ -273,17 +272,15 @@ def linkcode_resolve(domain, info):
     if not fn:
         return None
 
-    fn = os.path.abspath(fn).replace("\\", "/").replace("kornia/kornia", "kornia")
-
+    fn = os.path.abspath(fn).replace("\\", "/")
     marker = "/kornia/"
     idx = fn.rfind(marker)
     if idx == -1:
         return None
 
-    file_rel = fn[idx + 1:]  # -> "kornia/....py"
+    file_rel = fn[idx + 1 :]  # "kornia/....py"
     end = start + len(src) - 1
     return f"{code_url}/{file_rel}#L{start}-L{end}"
-
 
 # -- Options for LaTeX output ---------------------------------------------
 
