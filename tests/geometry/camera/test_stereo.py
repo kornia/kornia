@@ -20,7 +20,7 @@ import torch
 
 from kornia.geometry.camera import StereoCamera
 
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
 @pytest.fixture(params=[1, 2, 4])
@@ -39,7 +39,7 @@ class _TestParams:
     cy = height / 2
 
 
-class _RealTestData:
+class _RealTestData(BaseTester):
     """Collection of data from a real stereo setup."""
 
     @property
@@ -182,7 +182,7 @@ class _SmokeTestData:
         return left_rectified_camera, right_rectified_camera
 
 
-class TestStereoCamera:
+class TestStereoCamera(BaseTester):
     """Test class for :class:`~kornia.geometry.camera.stereo.StereoCamera`"""
 
     @staticmethod
@@ -212,18 +212,16 @@ class TestStereoCamera:
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
         assert stereo_camera.Q.dtype in (torch.float16, torch.float32, torch.float64)
 
-    @staticmethod
-    def test_stereo_camera_attributes_real(batch_size, device, dtype):
+    def test_stereo_camera_attributes_real(self, batch_size, device, dtype):
         """Test proper setup of the class for real data."""
         left_rectified_camera, right_rectified_camera = _RealTestData._get_real_stereo_camera(batch_size, device, dtype)
 
         stereo_camera = StereoCamera(left_rectified_camera, right_rectified_camera)
-        assert_close(stereo_camera.fx, left_rectified_camera[..., 0, 0])
-        assert_close(stereo_camera.fy, left_rectified_camera[..., 1, 1])
-        assert_close(stereo_camera.cx_left, left_rectified_camera[..., 0, 2])
-        assert_close(stereo_camera.cy, left_rectified_camera[..., 1, 2])
-        assert_close(stereo_camera.tx, -right_rectified_camera[..., 0, 3] / right_rectified_camera[..., 0, 0])
-
+        self.assert_close(stereo_camera.fx, left_rectified_camera[..., 0, 0])
+        self.assert_close(stereo_camera.fy, left_rectified_camera[..., 1, 1])
+        self.assert_close(stereo_camera.cx_left, left_rectified_camera[..., 0, 2])
+        self.assert_close(stereo_camera.cy, left_rectified_camera[..., 1, 2])
+        self.assert_close(stereo_camera.tx, -right_rectified_camera[..., 0, 3] / right_rectified_camera[..., 0, 0])
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
         assert stereo_camera.Q.dtype in (torch.float16, torch.float32, torch.float64)
 
@@ -243,8 +241,7 @@ class TestStereoCamera:
         assert xyz.dtype in (torch.float16, torch.float32, torch.float64)
         assert xyz.device == device
 
-    @staticmethod
-    def test_reproject_disparity_to_3D_real(batch_size, device, dtype):
+    def test_reproject_disparity_to_3D_real(self, batch_size, device, dtype):
         """Test reprojecting of disparity to 3D for known outcome."""
         disparity_tensor = _RealTestData._get_real_disparity(batch_size, device, dtype)
         xyz_gt = _RealTestData._get_real_point_cloud(batch_size, device, dtype)
@@ -254,7 +251,7 @@ class TestStereoCamera:
 
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
-        assert_close(xyz, xyz_gt)
+        self.assert_close(xyz, xyz_gt)
 
     def test_reproject_disparity_to_3D_simple(self, batch_size, device, dtype):
         """Test reprojecting of disparity to 3D for real data."""
