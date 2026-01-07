@@ -18,8 +18,8 @@
 import pytest
 import torch
 
+from kornia.core._compat import torch_version
 from kornia.filters import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
-from kornia.utils._compat import torch_version
 
 from testing.base import BaseTester
 
@@ -40,13 +40,15 @@ class TestSpatialGradient(BaseTester):
         assert SpatialGradient()(inp).shape == (batch_size, 3, 2, 4, 4)
 
     def test_exception(self):
-        with pytest.raises(TypeError) as errinfo:
-            spatial_gradient(1)
-        assert "Not a Tensor type" in str(errinfo)
+        from kornia.core.exceptions import ShapeError, TypeCheckError
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
+            spatial_gradient(1)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(ShapeError) as errinfo:
             spatial_gradient(torch.zeros(1))
-        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
     def test_edges(self, device, dtype):
         inp = torch.tensor(
@@ -288,13 +290,15 @@ class TestSpatialGradient3d(BaseTester):
         assert sobel(inp).shape == (batch_size, 2, 3, 4, 5, 6)
 
     def test_exception(self):
-        with pytest.raises(TypeError) as errinfo:
-            spatial_gradient3d(1)
-        assert "Not a Tensor type" in str(errinfo)
+        from kornia.core.exceptions import ShapeError, TypeCheckError
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
+            spatial_gradient3d(1)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(ShapeError) as errinfo:
             spatial_gradient3d(torch.zeros(1))
-        assert "shape must be [['B', 'C', 'D', 'H', 'W']]" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
     def test_edges(self, device, dtype):
         inp = torch.tensor(
@@ -451,13 +455,15 @@ class TestSobel(BaseTester):
         assert Sobel()(inp).shape == (batch_size, 3, 4, 7)
 
     def test_exception(self):
-        with pytest.raises(TypeError) as errinfo:
-            sobel(1)
-        assert "Not a Tensor type" in str(errinfo)
+        from kornia.core.exceptions import ShapeError, TypeCheckError
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
+            sobel(1)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(ShapeError) as errinfo:
             sobel(torch.zeros(1))
-        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
     def test_magnitude(self, device, dtype):
         inp = torch.tensor(

@@ -19,8 +19,8 @@ import pytest
 import torch
 
 import kornia
-from kornia.utils.helpers import _torch_inverse_cast
-from kornia.utils.misc import eye_like
+from kornia.core.ops import eye_like
+from kornia.core.utils import _torch_inverse_cast
 
 from testing.base import BaseTester
 from testing.error import compute_patch_abs_error
@@ -151,7 +151,7 @@ class TestHomographyWarper(BaseTester):
     def test_warp_grid_translation(self, shape, offset, device, dtype):
         # create input data
         height, width = shape
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype)
+        grid = kornia.geometry.create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype)
         dst_homo_src = eye_like(3, grid)
         dst_homo_src[..., 0, 2] = offset  # apply offset in x
         flow = kornia.geometry.transform.warp_grid(grid, dst_homo_src)
@@ -282,7 +282,7 @@ class TestHomographyWarper(BaseTester):
         if (
             device == torch.device("cpu")
             and batch_size != 1
-            and kornia.utils._compat.torch_version() in {"2.3.0", "2.3.1"}
+            and kornia.core._compat.torch_version() in {"2.3.0", "2.3.1"}
         ):
             pytest.skip("Failing to compile batched inputs see pytorch/pytorch#126617")
 
@@ -446,7 +446,7 @@ class TestHomographyWarper3D(BaseTester):
     def test_warp_grid_translation(self, shape, offset, device, dtype):
         # create input data
         depth, height, width = shape
-        grid = kornia.utils.create_meshgrid3d(
+        grid = kornia.geometry.create_meshgrid3d(
             depth, height, width, normalized_coordinates=False, dtype=dtype, device=device
         )
         dst_homo_src = eye_like(4, grid)

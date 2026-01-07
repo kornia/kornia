@@ -21,21 +21,20 @@ from typing import ClassVar
 
 import torch
 import torch.nn.functional as F
+from torch import nn
 
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor, pad
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d
 
 
-def spatial_gradient(input: Tensor, mode: str = "sobel", order: int = 1, normalized: bool = True) -> Tensor:
+def spatial_gradient(input: torch.Tensor, mode: str = "sobel", order: int = 1, normalized: bool = True) -> torch.Tensor:
     r"""Compute the first order image derivative in both x and y using a Sobel operator.
 
     .. image:: _static/img/spatial_gradient.png
 
     Args:
-        input: input image tensor with shape :math:`(B, C, H, W)`.
+        input: input image torch.Tensor with shape :math:`(B, C, H, W)`.
         mode: derivatives modality, can be: `sobel` or `diff`.
         order: the order of the derivatives.
         normalized: whether the output is normalized.
@@ -65,19 +64,19 @@ def spatial_gradient(input: Tensor, mode: str = "sobel", order: int = 1, normali
     b, c, h, w = input.shape
     tmp_kernel = kernel[:, None, ...]
 
-    # Pad with "replicate for spatial dims, but with zeros for channel
+    # Pad with "replicate for spatial dims, but with torch.zeros for channel
     spatial_pad = [kernel.size(1) // 2, kernel.size(1) // 2, kernel.size(2) // 2, kernel.size(2) // 2]
     out_channels: int = 3 if order == 2 else 2
-    padded_inp: Tensor = pad(input.reshape(b * c, 1, h, w), spatial_pad, "replicate")
+    padded_inp: torch.Tensor = F.pad(input.reshape(b * c, 1, h, w), spatial_pad, "replicate")
     out = F.conv2d(padded_inp, tmp_kernel, groups=1, padding=0, stride=1)
     return out.reshape(b, c, out_channels, h, w)
 
 
-def spatial_gradient3d(input: Tensor, mode: str = "diff", order: int = 1) -> Tensor:
+def spatial_gradient3d(input: torch.Tensor, mode: str = "diff", order: int = 1) -> torch.Tensor:
     r"""Compute the first and second order volume derivative in x, y and d using a diff operator.
 
     Args:
-        input: input features tensor with shape :math:`(B, C, D, H, W)`.
+        input: input features torch.Tensor with shape :math:`(B, C, D, H, W)`.
         mode: derivatives modality, can be: `sobel` or `diff`.
         order: the order of the derivatives.
 
@@ -100,7 +99,7 @@ def spatial_gradient3d(input: Tensor, mode: str = "diff", order: int = 1) -> Ten
     dtype = input.dtype
     if (mode == "diff") and (order == 1):
         # we go for the special case implementation due to conv3d bad speed
-        x: Tensor = pad(input, 6 * [1], "replicate")
+        x: torch.Tensor = F.pad(input, 6 * [1], "replicate")
         center = slice(1, -1)
         left = slice(0, -2)
         right = slice(2, None)
@@ -116,10 +115,10 @@ def spatial_gradient3d(input: Tensor, mode: str = "diff", order: int = 1) -> Ten
 
         tmp_kernel = kernel.repeat(c, 1, 1, 1, 1)
 
-        # convolve input tensor with grad kernel
+        # convolve input torch.Tensor with grad kernel
         kernel_flip = tmp_kernel.flip(-3)
 
-        # Pad with "replicate for spatial dims, but with zeros for channel
+        # Pad with "replicate for spatial dims, but with torch.zeros for channel
         spatial_pad = [
             kernel.size(2) // 2,
             kernel.size(2) // 2,
@@ -129,13 +128,13 @@ def spatial_gradient3d(input: Tensor, mode: str = "diff", order: int = 1) -> Ten
             kernel.size(4) // 2,
         ]
         out_ch: int = 6 if order == 2 else 3
-        out = F.conv3d(pad(input, spatial_pad, "replicate"), kernel_flip, padding=0, groups=c).view(
+        out = F.conv3d(F.pad(input, spatial_pad, "replicate"), kernel_flip, padding=0, groups=c).view(
             b, c, out_ch, d, h, w
         )
     return out
 
 
-def sobel(input: Tensor, normalized: bool = True, eps: float = 1e-6) -> Tensor:
+def sobel(input: torch.Tensor, normalized: bool = True, eps: float = 1e-6) -> torch.Tensor:
     r"""Compute the Sobel operator and returns the magnitude per channel.
 
     .. image:: _static/img/sobel.png
@@ -162,19 +161,19 @@ def sobel(input: Tensor, normalized: bool = True, eps: float = 1e-6) -> Tensor:
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     # comput the x/y gradients
-    edges: Tensor = spatial_gradient(input, normalized=normalized)
+    edges: torch.Tensor = spatial_gradient(input, normalized=normalized)
 
     # unpack the edges
-    gx: Tensor = edges[:, :, 0]
-    gy: Tensor = edges[:, :, 1]
+    gx: torch.Tensor = edges[:, :, 0]
+    gy: torch.Tensor = edges[:, :, 1]
 
     # compute gradient maginitude
-    magnitude: Tensor = torch.sqrt(gx * gx + gy * gy + eps)
+    magnitude: torch.Tensor = torch.sqrt(gx * gx + gy * gy + eps)
 
     return magnitude
 
 
-class SpatialGradient(Module):
+class SpatialGradient(nn.Module):
     r"""Compute the first order image derivative in both x and y using a Sobel operator.
 
     Args:
@@ -207,11 +206,11 @@ class SpatialGradient(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(order={self.order}, normalized={self.normalized}, mode={self.mode})"
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return spatial_gradient(input, self.mode, self.order, self.normalized)
 
 
-class SpatialGradient3d(Module):
+class SpatialGradient3d(nn.Module):
     r"""Compute the first and second order volume derivative in x, y and d using a diff operator.
 
     Args:
@@ -245,11 +244,11 @@ class SpatialGradient3d(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(order={self.order}, mode={self.mode})"
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return spatial_gradient3d(input, self.mode, self.order)
 
 
-class Sobel(Module):
+class Sobel(nn.Module):
     r"""Compute the Sobel operator and returns the magnitude per channel.
 
     Args:
@@ -277,5 +276,5 @@ class Sobel(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(normalized={self.normalized})"
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return sobel(input, self.normalized, self.eps)

@@ -20,7 +20,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 
-from ...core import Device, Tensor  # noqa: TID252
 from .. import (  # noqa: TID252
     AugmentationSequential,
     ColorJitter,
@@ -35,7 +34,7 @@ from ..base import _AugmentationBase  # noqa: TID252
 from ..container.params import ParamItem  # noqa: TID252
 
 _data_keys_type = List[str]
-_inputs_type = Union[Tensor, Dict[str, Tensor]]
+_inputs_type = Union[torch.Tensor, Dict[str, torch.Tensor]]
 
 
 class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
@@ -109,8 +108,8 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         target_real_acc: float = 0.85,
         ema_lambda: float = 0.99,
         update_every: int = 5,
-        erasing_scale: Union[Tensor, Tuple[float, float]] = (0.02, 0.33),
-        erasing_ratio: Union[Tensor, Tuple[float, float]] = (0.3, 3.3),
+        erasing_scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
+        erasing_ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
         erasing_fill_value: float = 0.0,
         data_keys: Optional[_data_keys_type] = None,
         same_on_batch: Optional[bool] = False,
@@ -165,7 +164,10 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         self._num_calls = 0  # -update_every  # to avoid updating in the first `update_every` steps
 
     def default_ada_transfroms(
-        self, scale: Union[Tensor, Tuple[float, float]], ratio: Union[Tensor, Tuple[float, float]], value: float
+        self,
+        scale: Union[torch.Tensor, Tuple[float, float]],
+        ratio: Union[torch.Tensor, Tuple[float, float]],
+        value: float,
     ) -> Tuple[Union[_AugmentationBase, ImageSequential], ...]:
         # if changed in the future, please change the expected transforms list in test_presets.py
         return (
@@ -199,7 +201,9 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         else:
             self.p = min(self.p + self.adjustment_speed, self.max_p)
 
-    def _get_inputs_metadata(self, inputs: _inputs_type, data_keys: _data_keys_type) -> Tuple[int, Device]:
+    def _get_inputs_metadata(
+        self, inputs: _inputs_type, data_keys: _data_keys_type
+    ) -> Tuple[int, Optional[Union[str, torch.device]]]:
         if isinstance(inputs, dict):
             key = data_keys[0]
             batch_size = inputs[key].size(0)
@@ -210,7 +214,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
 
         return batch_size, device
 
-    def _sample_inputs(self, inputs: _inputs_type, data_keys: _data_keys_type, p_tensor: Tensor) -> _inputs_type:
+    def _sample_inputs(self, inputs: _inputs_type, data_keys: _data_keys_type, p_tensor: torch.Tensor) -> _inputs_type:
         if isinstance(inputs, dict):
             return {key: inputs[key][p_tensor] for key in data_keys}
         else:
@@ -220,7 +224,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         self,
         original: _inputs_type,
         augmented: _inputs_type,
-        p_tensor: Tensor,
+        p_tensor: torch.Tensor,
     ) -> _inputs_type:
         merged: _inputs_type
         if isinstance(original, dict) and isinstance(augmented, dict):
@@ -229,7 +233,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
                 merged_tensor = original[key].clone()
                 merged_tensor[p_tensor] = augmented[key]
                 merged[key] = merged_tensor
-        elif isinstance(original, Tensor) and isinstance(augmented, Tensor):
+        elif isinstance(original, torch.Tensor) and isinstance(augmented, torch.Tensor):
             merged = original.clone()
             merged[p_tensor] = augmented
         else:

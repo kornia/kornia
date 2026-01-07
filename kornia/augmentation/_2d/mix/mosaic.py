@@ -18,15 +18,15 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, Resample
-from kornia.core import Tensor, as_tensor, concatenate, pad, zeros
 from kornia.core.check import KORNIA_UNWRAP
+from kornia.core.ops import eye_like
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
-from kornia.utils import eye_like
 
 __all__ = ["RandomMosaic"]
 
@@ -46,7 +46,7 @@ class RandomMosaic(MixAugmentationBaseV2):
          2. Crop out the outcome image according to the top-left corner and crop size.
 
     Args:
-        output_size: the output tensor width and height after mosaicing.
+        output_size: the output torch.Tensor width and height after mosaicing.
         start_ratio_range: top-left (x, y) position for cropping the mosaic images.
         mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means
             each output will mix 4 images in a 2x2 grid.
@@ -60,7 +60,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         padding_mode: Type of padding. Should be: constant, reflect, replicate.
         resample: the interpolation mode.
         align_corners: interpolation flag.
-        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the tensor based
+        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.Tensor based
             on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
             to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
             differentiability.
@@ -106,17 +106,19 @@ class RandomMosaic(MixAugmentationBaseV2):
             "cropping_mode": cropping_mode,
         }
 
-    def apply_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform_mask(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         raise NotImplementedError
 
     @torch.no_grad()
-    def apply_transform_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
+    def apply_transform_boxes(self, input: Boxes, params: Dict[str, torch.Tensor], flags: Dict[str, Any]) -> Boxes:
         to_apply = params["batch_prob"] > 0.5
-        src_box = as_tensor(params["src"], device=input.device, dtype=input.dtype)
-        dst_box = as_tensor(params["dst"], device=input.device, dtype=input.dtype)
+        src_box = torch.as_tensor(params["src"], device=input.device, dtype=input.dtype)
+        dst_box = torch.as_tensor(params["dst"], device=input.device, dtype=input.dtype)
         # Boxes is BxNx4x2 only.
-        batch_shapes = as_tensor(params["batch_shapes"], device=input.device, dtype=input.dtype)
-        offset = zeros((len(to_apply), 2), device=input.device, dtype=input.dtype)  # Bx2
+        batch_shapes = torch.as_tensor(params["batch_shapes"], device=input.device, dtype=input.dtype)
+        offset = torch.zeros((len(to_apply), 2), device=input.device, dtype=input.dtype)  # Bx2
         # NOTE: not a pretty good line I think.
         offset_end = dst_box[0, 2].repeat(input.data.shape[0], 1)
         idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[to_apply]
@@ -143,14 +145,20 @@ class RandomMosaic(MixAugmentationBaseV2):
         out_boxes.filter_boxes_by_area(flags["min_bbox_size"], inplace=True)
         return out_boxes
 
-    def apply_transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform_keypoint(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         raise NotImplementedError
 
-    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform_class(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         raise RuntimeError(f"{self.__class__.__name__} does not support `TAG` types.")
 
     @torch.no_grad()
-    def _compose_images(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def _compose_images(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         out = []
         for i in range(flags["mosaic_grid"][0]):
             out_row = []
@@ -158,26 +166,32 @@ class RandomMosaic(MixAugmentationBaseV2):
                 img_idx = flags["mosaic_grid"][1] * i + j
                 image = input[params["permutation"][:, img_idx]]
                 out_row.append(image)
-            out.append(concatenate(out_row, -2))
-        return concatenate(out, -1)
+            out.append(torch.cat(out_row, -2))
+        return torch.cat(out, -1)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         if flags["cropping_mode"] == "resample":
-            transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
+            transform: torch.Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             return transform
         if flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
             return eye_like(3, input)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def _crop_images(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            if not isinstance(transform, Tensor):
-                raise TypeError(f"Expected the transform to be a Tensor. Gotcha {type(transform)}")
+            if not isinstance(transform, torch.Tensor):
+                raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
 
-            # Fit the arg to F.pad
+            # Fit the arg to F.F.pad
             if flags["padding_mode"] == "constant":
                 padding_mode = "zeros"
             elif flags["padding_mode"] == "replicate":
@@ -196,15 +210,15 @@ class RandomMosaic(MixAugmentationBaseV2):
                 align_corners=flags["align_corners"],
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
-            return crop_by_indices(input, params["src"], flags["output_size"], shape_compensation="pad")
+            return crop_by_indices(input, params["src"], flags["output_size"], shape_compensation="F.pad")
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_non_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         if flags is not None and flags["output_size"] is not None:
             output_size = KORNIA_UNWRAP(flags["output_size"], Tuple[int, int])
-            return pad(input, [0, output_size[1] - input.shape[-1], 0, output_size[0] - input.shape[-2]])
+            return F.pad(input, [0, output_size[1] - input.shape[-1], 0, output_size[0] - input.shape[-2]])
             # NOTE: resize is not suitable for being consistent with bounding boxes.
             # return resize(
             #     input,
@@ -215,8 +229,8 @@ class RandomMosaic(MixAugmentationBaseV2):
         return input
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         flags = KORNIA_UNWRAP(maybe_flags, Dict[str, Any])
         output = self._compose_images(input, params, flags=flags)
         transform = self.compute_transformation(output, params, flags=flags)

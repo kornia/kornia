@@ -54,9 +54,11 @@ class TestBilateralBlur(BaseTester):
         assert actual.shape == shape
 
     def test_exception(self):
-        with pytest.raises(Exception) as errinfo:
+        from kornia.core.exceptions import TypeCheckError
+
+        with pytest.raises(TypeCheckError) as errinfo:
             bilateral_blur(torch.rand(1, 1, 5, 5), 3, 1, 1)
-        assert "Not a Tensor type. Go" in str(errinfo)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
         with pytest.raises(ValueError) as errinfo:
             bilateral_blur(torch.rand(1, 1, 5, 5), 3, 0.1, (1, 1), color_distance_type="l3")
@@ -209,9 +211,11 @@ class TestJointBilateralBlur(BaseTester):
         inp = torch.rand(1, 1, 5, 5)
         guide = torch.rand(1, 1, 5, 5)
 
-        with pytest.raises(Exception) as errinfo:
+        from kornia.core.exceptions import TypeCheckError
+
+        with pytest.raises(TypeCheckError) as errinfo:
             joint_bilateral_blur(inp, guide, 3, 1, 1)
-        assert "Not a Tensor type. Go" in str(errinfo)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
         with pytest.raises(Exception) as errinfo:
             joint_bilateral_blur(inp, torch.randn(1, 1, 2, 4), 3, 1, (1, 1))

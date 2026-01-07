@@ -18,17 +18,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
 import kornia.color
-from kornia.core import Device, Dtype, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
+from kornia.image.image_print import image_to_string
 from kornia.io.io import ImageLoadType, load_image, write_image
-from kornia.utils.image_print import image_to_string
 
 # placeholder for numpy
 np_ndarray = Any
@@ -36,12 +35,12 @@ DLPack = Any
 
 
 class Image:
-    r"""Class that holds an Image Tensor representation.
+    r"""Class that holds an Image torch.Tensor representation.
 
     .. note::
 
         Disclaimer: This class provides the minimum functionality for image manipulation. However, as soon
-        as you start to experiment with advanced tensor manipulation, you might expect fancy
+        as you start to experiment with advanced torch.Tensor manipulation, you might expect fancy
         polymorphic behaviours.
 
     .. warning::
@@ -49,7 +48,7 @@ class Image:
         This API is experimental and might suffer changes in the future.
 
     Args:
-        data: a torch tensor containing the image data.
+        data: a torch torch.Tensor containing the image data.
         layout: a dataclass containing the image layout information.
 
     Examples:
@@ -76,11 +75,11 @@ class Image:
 
     """
 
-    def __init__(self, data: Tensor, pixel_format: PixelFormat, layout: ImageLayout) -> None:
+    def __init__(self, data: torch.Tensor, pixel_format: PixelFormat, layout: ImageLayout) -> None:
         """Image constructor.
 
         Args:
-            data: a torch tensor containing the image data.
+            data: a torch torch.Tensor containing the image data.
             pixel_format: the pixel format of the image.
             layout: a dataclass containing the image layout information.
 
@@ -104,7 +103,7 @@ class Image:
         return f"Image data: {self.data}\nPixel Format: {self.pixel_format}\n Layout: {self.layout}"
 
     # TODO: explore use TensorWrapper
-    def to(self, device: Device = None, dtype: Dtype = None) -> Image:
+    def to(self, device: Union[str, torch.device, None] = None, dtype: Union[torch.dtype, None] = None) -> Image:
         """Move the image to the given device and dtype.
 
         Args:
@@ -127,8 +126,8 @@ class Image:
         return Image(self.data.clone(), self.pixel_format, self.layout)
 
     @property
-    def data(self) -> Tensor:
-        """Return the underlying tensor data."""
+    def data(self) -> torch.Tensor:
+        """Return the underlying torch.Tensor data."""
         return self._data
 
     @property
@@ -279,13 +278,13 @@ class Image:
         color_space: ColorSpace = ColorSpace.RGB,
         channels_order: ChannelsOrder = ChannelsOrder.CHANNELS_LAST,
     ) -> Image:
-        """Construct an image tensor from a numpy array.
+        """Construct an image torch.Tensor from a numpy array.
 
         Args:
             data: a numpy array containing the image data.
             color_space: the color space of the image.
             pixel_format: the pixel format of the image.
-            channels_order: what dimension the channels are in the image tensor.
+            channels_order: what dimension the channels are in the image torch.Tensor.
 
         Example:
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
@@ -310,16 +309,16 @@ class Image:
         # create the image layout based on the input data
         layout = ImageLayout(image_size=image_size, channels=channels, channels_order=channels_order)
 
-        # create the image tensor
+        # create the image torch.Tensor
         return cls(torch.from_numpy(data), pixel_format, layout)
 
     def to_numpy(self) -> np_ndarray:
-        """Return a numpy array in cpu from the image tensor."""
+        """Return a numpy array in cpu from the image torch.Tensor."""
         return self.data.cpu().detach().numpy()
 
     @classmethod
     def from_dlpack(cls, data: DLPack) -> Image:
-        """Construct an image tensor from a DLPack capsule.
+        """Construct an image torch.Tensor from a DLPack capsule.
 
         Args:
             data: a DLPack capsule from numpy, tvm or jax.
@@ -329,7 +328,7 @@ class Image:
             >>> img = Image.from_dlpack(x.__dlpack__())
 
         """
-        _data: Tensor = from_dlpack(data)
+        _data: torch.Tensor = from_dlpack(data)
 
         pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=_data.element_size() * 8)
 
@@ -343,19 +342,19 @@ class Image:
         return cls(_data, pixel_format, layout)
 
     def to_dlpack(self) -> DLPack:
-        """Return a DLPack capsule from the image tensor."""
+        """Return a DLPack capsule from the image torch.Tensor."""
         return to_dlpack(self.data)
 
     @classmethod
     def from_file(cls, file_path: str | Path) -> Image:
-        """Construct an image tensor from a file.
+        """Construct an image torch.Tensor from a file.
 
         Args:
             file_path: the path to the file to read the image from.
 
         """
         # TODO: allow user to specify the desired type and device
-        data: Tensor = load_image(file_path, desired_type=ImageLoadType.RGB8, device="cpu")
+        data: torch.Tensor = load_image(file_path, desired_type=ImageLoadType.RGB8, device="cpu")
 
         pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=data.element_size() * 8)
 
@@ -386,7 +385,7 @@ class Image:
         write_image(file_path, data)
 
     def print(self, max_width: int = 256) -> None:
-        """Print the image tensor to the console.
+        """Print the image torch.Tensor to the console.
 
         Args:
             max_width: the maximum width of the image to print.

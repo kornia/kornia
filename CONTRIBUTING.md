@@ -1,303 +1,189 @@
 # Contributing to Kornia
-**Welcome !!** This is the Kornia library contributor's corner. If you are reading this, it means that you have an interest
-in **Differentiable Computer Vision**, and are willing to contribute to the project.
 
-Everyone is welcome to get involved with the project. There are different ways to contribute with your two cents:
+Welcome! This guide will help you contribute to Kornia.
 
-1. Ask/Answer questions:
-    - Where can you ask questions?
-      1. using the GitHub discussion at Kornia repo: [GH Discussions](https://github.com/kornia/kornia/discussions)
-      2. using the `#kornia` tag in [PyTorch Discuss](https://discuss.pytorch.org)
-      3. using Discord Link [Join Discord](https://discord.gg/HfnywwpBnD)
-    - Please, don't use GitHub issues for Q&A.
-    - In case you are a developer and want to learn more about the PyTorch ecosystem, we suggest you join the PyTorch
-      slack. You can apply using this form: [https://bit.ly/ptslack](https://bit.ly/ptslack)
+## Policies and Guidelines
 
-2. Report bugs through [GitHub issues](https://github.com/kornia/kornia/issues):
-   - Do a quick search first to see whether others reported a similar issue.
-   - In case you find an unreported bug, please open a new ticket.
-   - Try to provide as much information as possible. Report using one of the available templates. Some tips:
-     - Clear title and description of the issue.
-     - Explain how to reproduce the error.
-     - Report your package versions to facilitate the task.
-     - Try to include a code sample/test that raises the error.
+- **AI Policy & Authorship**: See [AI_POLICY.md](AI_POLICY.md) for the complete policy. Summary:
+    - Kornia accepts AI-assisted code but strictly rejects AI-generated contributions where the submitter acts as a proxy.
+    - **Proof of Verification**: PRs must include local test logs proving execution.
+    - **Hallucination & Redundancy Ban**: Use existing `kornia` utilities and never reinvent the wheel, except for when the utility is not available.
+    - **The "Explain It" Standard**: You must be able to explain any code you submit.
+    - Violations result in immediate closure or rejection.
 
-3. Fix a bug or develop a feature from the roadmap:
-   - We will always have an open ticket showing the current roadmap.
-   - Pick an unassigned feature (or potentially propose a new one) or an open bug ticket.
-   - Follow the instructions from [Developing Kornia](#developing-kornia) to setup your development
-     environment and start coding.
-   - Check our coding conventions. See more details below.
-   - Run the test framework locally and make sure all works as expected before sending a pull request.
-   - Open a Pull Request, get the green light from the CI, and get your code merged.
+- **15-Day Rule**: PRs with no activity for 15+ days will be automatically closed.
 
-4. Donate resources to the project:
-   - In case you are an organization/institution that wants to give support, sponsor, or just use the project, please
-     contact us.
-     - [opencollective.com/kornia](https://opencollective.com/kornia)
-     - [github.com/sponsors/kornia](https://github.com/sponsors/kornia)
-   - We are open to starting any kind of collaboration and hearing feedback from you.
-   - We pretend to provide features on demand. Reach us!
-   - Currently looking for some kind of server donation to test *CUDA* code. (Please contact us).
+- **Transparency**: All discussions must be public.
+
+We're all volunteers. These policies help us focus on high-impact work.
+
+## Ways to Contribute
+
+1. **Ask/Answer questions:**
+   - [GitHub Discussions](https://github.com/kornia/kornia/discussions)
+   - `#kornia` tag in [PyTorch Discuss](https://discuss.pytorch.org)
+   - [Discord](https://discord.gg/HfnywwpBnD)
+   - Don't use GitHub issues for Q&A.
+
+2. **Report bugs** via [GitHub issues](https://github.com/kornia/kornia/issues):
+   - Search for existing issues first.
+   - Use the bug report template.
+   - Include: clear description, reproduction steps, package versions, and code sample.
+
+3. **Fix bugs or add features:**
+   - Check [help wanted issues](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) for starting points.
+   - Follow the [development setup](#developing-kornia) below.
+   - See [Pull Request](#pull-request) section for PR requirements.
+
+4. **Donate resources:**
+   - [Open Collective](https://opencollective.com/kornia)
+   - [GitHub Sponsors](https://github.com/sponsors/kornia)
+   - We're looking for CUDA server donations for testing.
 
 # Developing Kornia
 
-To start to develop, please follow the steps below:
+## Setup
 
-1. Fork the [kornia repository](https://github.com/kornia/kornia) by clicking on the
-[fork](https://github.com/kornia/kornia/fork) button on the repository page. This will create a copy of the Kornia
-repository under your GitHub account.
+1. **Fork** the [repository](https://github.com/kornia/kornia/fork)
 
-
-2. Clone your fork of Kornia, and add the Kornia repository as a remote:
+2. **Clone your fork** and add upstream:
     ```bash
     $ git clone git@github.com:<your Github username>/kornia.git
     $ cd kornia
     $ git remote add upstream https://github.com/kornia/kornia.git
     ```
 
-3. Create a new branch with a meaningful name reflecting your contribution. See an example:
-    ```bash
-    $ git checkout upstream/main -b feat/foo_feature
-    # or
-    $ git checkout upstream/main -b fix/bar_bug
-    ```
-    🚨 **Do not** work on the `main` branch!
+3. **Create a branch** (don't work on `main`):
+   ```bash
+   git checkout upstream/main -b feat/foo_feature
+   # or
+   git checkout upstream/main -b fix/bar_bug
+   ```
 
-4. Creating a development environment
+4. **Development environment**
 
-    **Using kornia script (Recommended)**
+    We use [pixi](https://pixi.sh) for package and environment management.
 
-    Kornia now uses [uv](https://github.com/astral-sh/uv) for fast Python package management and virtual environment creation.
-    The `setup_dev_env.sh` script will automatically install uv (if not already installed), create a virtual environment,
-    and install all development dependencies including PyTorch with the appropriate CUDA version.
+    **Install Pixi:**
 
-    ```bash
-    $ ./setup_dev_env.sh
-    ```
-
-    This script will:
-    - Install uv if it's not already available
-    - Create a virtual environment in the `./venv` directory
-    - Install PyTorch with the appropriate CUDA version (default CUDA 12.1)
-    - Install all development dependencies using uv dependency groups
-    - Install documentation dependencies using uv dependency groups
-
-    You can customize the Python version, PyTorch version, and CUDA version using environment variables:
-    ```bash
-    $ PYTHON_VERSION=3.10 PYTORCH_VERSION=2.4.0 CUDA_VERSION=11.8 ./setup_dev_env.sh
-    ```
-
-    To use CPU-only PyTorch:
-    ```bash
-    $ PYTORCH_MODE=cpuonly ./setup_dev_env.sh
-    ```
-
-    **Using justfile commands (Recommended)**
-
-    Kornia provides a `justfile` with convenient commands for development tasks. The justfile automatically
-    ensures the virtual environment is set up before running any commands.
-
-    To see all available commands:
-    ```bash
-    $ just
-    ```
-
-    To run tests:
-    ```bash
-    $ just test-cpu        # Run CPU tests
-    $ just test-cuda       # Run CUDA tests
-    $ just test-all        # Run all tests
-    ```
-
-    To run linting and type checking:
-    ```bash
-    $ just lint            # Run code formatting and linting
-    $ just mypy            # Run type checking
-    ```
-
-    **Manually setup with uv**
-
-    If you prefer to set up the environment manually:
-
-    1. Install uv:
     ```bash
     # On Linux/macOS
-    $ curl -LsSf https://astral.sh/uv/install.sh | sh
+    curl -fsSL https://pixi.sh/install.sh | bash
 
-    # Or using pip
-    $ pip install uv
+    # On Windows (PowerShell)
+    irm https://pixi.sh/install.ps1 | iex
+
+    # Or using conda/mamba
+    conda install -c conda-forge pixi
     ```
 
-    2. Create and activate a virtual environment:
+    **Set up the development environment:**
+
     ```bash
-    $ uv venv
-    $ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+    # Install all dependencies (defaults to Python 3.11)
+    pixi install
+
+    # For specific Python versions
+    pixi install -e py312  # Python 3.12
+    pixi install -e py313  # Python 3.13
+
+    # For CUDA development (requires reinstall of PyTorch)
+    pixi run -e cuda install
     ```
 
-    3. Install PyTorch with appropriate CUDA version:
+    **Available tasks:**
+
+    Kornia provides several tasks via pixi for common development workflows:
+
     ```bash
-    # For CUDA 12.1 (default)
-    $ uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+    # Installation
+    pixi run install          # Install dev dependencies
+    pixi run install-docs     # Install dev + docs dependencies
 
-    # For CPU-only
-    $ uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+    # Testing
+    pixi run test             # Run tests (configure via KORNIA_TEST_* env vars)
+    pixi run test-f32         # Run tests with float32
+    pixi run test-f64         # Run tests with float64
+    pixi run test-slow        # Run slow tests
+    pixi run test-quick       # Run quick tests (excludes jit, grad, nn)
+
+    # CUDA testing (requires cuda environment)
+    pixi run -e cuda test-cuda      # Run tests on CUDA
+    pixi run -e cuda test-cuda-f32  # Run CUDA tests with float32
+    pixi run -e cuda test-cuda-f64  # Run CUDA tests with float64
+
+    # Code quality
+    pixi run lint             # Run ruff linting
+    pixi run typecheck        # Run type checking with ty
+    pixi run doctest          # Run doctests
+
+    # Documentation
+    pixi run build-docs       # Build documentation
+
+    # Utilities
+    pixi run clean            # Clean Python cache files
     ```
 
-    4. Install Kornia development dependencies:
+    **Environment variables for tests:**
+
+    Tests can be configured using environment variables:
+
     ```bash
-    $ uv pip install -e .[dev,x]
-    $ uv pip install -e .[docs]  # For documentation development
+    # Set device (cpu, cuda, mps, tpu)
+    export KORNIA_TEST_DEVICE=cuda
+
+    # Set dtype (float32, float64, float16, bfloat16)
+    export KORNIA_TEST_DTYPE=float32
+
+    # Run slow tests
+    export KORNIA_TEST_RUNSLOW=true
+
+    # Then run tests
+    pixi run test
     ```
 
-    **Attention**: If *Kornia* was already installed in your virtual environment, remove it with
-    `uv pip uninstall kornia` before reinstalling it in editable mode with the `-e` flag.
+    **Dependencies:** Defined in `pyproject.toml`. Update it and run `pixi install`.
 
-    **Dependency Management with uv.lock**
+    **CUDA:** The CUDA environment uses PyTorch with CUDA 12.1. Run `pixi run -e cuda install` to set it up.
 
-    Kornia uses a `uv.lock` file for reproducible dependency management. This ensures all developers get exactly
-    the same versions of dependencies:
+5. **Develop and test:**
 
-    - **Adding dependencies**: Add new dependencies to the appropriate section in `pyproject.toml`:
-      - Main dependencies: `dependencies = [...]`
-      - Dev dependencies: `optional-dependencies.dev = [...]`
-      - Docs dependencies: `optional-dependencies.docs = [...]`
-      - Extra dependencies: `optional-dependencies.x = [...]`
-
-    - **Updating the lock file**: After adding dependencies, regenerate the lock file:
-      ```bash
-      $ just lock-update
-      # or: uv lock --upgrade
-      ```
-
-    - **Installing from lock file**: The setup script automatically uses the lock file when available:
-      ```bash
-      $ just sync  # Install dependencies from lock file
-      # or: uv sync --frozen
-      ```
-
-    - **Updating specific packages**:
-      ```bash
-      $ uv lock --upgrade-package <package-name>
-      ```
-
-    Always commit both your `pyproject.toml` changes AND the updated `uv.lock` file together.
-
-5. Develop the code on your branch, and before creating the pull request, make sure to ensure the code passes the checks.
-
-    As you develop your code, you should also create test cases for your code. As well as, In addition to ensuring that
-    the other tests continue to pass. You can run the tests with:
+    Create test cases for your code. Run tests with:
     ```bash
-    $ pytest tests/<TEST_TO_RUN>.py --dtype=float32,float64 --device=all
+    # Run all tests
+    pixi run test
+
+    # Run specific test file
+    pixi run test tests/<TEST_TO_RUN>.py
+
+    # For specific test with pytest options
+    pixi run test tests/<TEST_TO_RUN>.py --dtype=float32,float64 --device=all
     ```
-    With the `dtype` argument, run the tests using tensors with all `dtypes` desired. Options: `bfloat16`, `float16`,
-    `float32`, `float64`, and `all`.
 
-    In the same way, the `device`, will run the tests using tensors on the `device` desired. Options: `cpu`, `cuda`,
-    `tpu`, `mps`, and `all`.
+    **dtype options:** `bfloat16`, `float16`, `float32`, `float64`, `all`
+    **device options:** `cpu`, `cuda`, `tpu`, `mps`, `all`
 
-
-    Kornia relies on [pre-commit](https://pre-commit.com) to run code quality tools. Make sure to have `pre-commit`
-    under your dev environment, otherwise, you can install the tools manually and run them with the help of the available
-    commands of the [Makefile](./Makefile). Read more about the code standards adopted [here](#coding-standards).
+    We use [pre-commit](https://pre-commit.com) for code quality. Install it with `pre-commit install`. See [coding standards](#coding-standards) below.
 
 # Contributing to Documentation
 
-We welcome contributions to the Kornia documentation! If you'd like to improve our docs, please follow these steps:
-
-1. Set up your development environment as described in the [Developing Kornia](#developing-kornia) section above.
-
-2. Make your changes to the documentation files located in the `docs/` directory.
-
-3. Build the documentation using the provided Makefile:
-
-   ```bash
-   $ make build-docs
-   ```
-
-   This command will delete any previously built files and generate the newest version of the documentation.
-
-4. The built documentation will be available in the `docs/build/html/` directory. You can open the main page in your browser by running:
-
-   ```bash
-   $ open docs/build/html/index.html
-   ```
-
-5. Review your changes in the browser to ensure they appear as expected.
-
-6. Once you're satisfied with your changes, commit them and submit a pull request following the guidelines in the [Pull Request](#pull-request) section below.
-
-## Benchmarking
-
-We have a benchmark suite configured in [benchmarks/](./benchmarks/). We used the
- [pytest-benchmark](https://pypi.org/project/pytest-benchmark/) library to benchmark our function units.
-
-Our [Makefile](./Makefile) has an `benchmark` command as an alias on how to run our benchmarks.
-
-```console
-# To run all suite
-$ make benchmark
-
-# To run a specific file you can pass `BENCHMARK_SOURCE`
-$ make benchmark BENCHMARK_SOURCE=benchmarks/augmentation/2d_geometric_test.py
-
-# To run a specific benchmark you use `BENCHMARK_SOURCE` as the pytest standard behaviour
-$ make benchmark BENCHMARK_SOURCE=benchmarks/augmentation/2d_geometric_test.py::test_aug_2d_elastic_transform
-
-# To update the optimizer backends desired to execute you can pass `BENCHMARK_BACKENDS=`
-$ make benchmark BENCHMARK_BACKENDS='inductor,eager'
-
-# To pass other options to the runner, you can use `BENCHMARK_OPTS`
-# Example, setup to run the benchmark on cuda on verbose mode
-$ make benchmark BENCHMARK_OPTS='--device=cuda -vv'
-```
-
-We use the same tests generator suite, so you can set up the device within `--device`, the dtype within
-`--dtype`, and the optimizer backend within `--optimizer`.
-
-The optimizer backend supported on the suite, is the torch compile backend on non-experimental mode,
- and the `''` or `None` which will do the same as `eager` mode and do anything, and `'jit'` which will
- try to `torch.jit.script` the operation.
-
-You can use the `BENCHMARK_OPTS` on `make benchmark` to overload the default options we use on pytest-benchmark.
-
-We are using as default:
-- the warmup, because the optimizer/jit may had an overhead.
-- the group: to display the benchmark per each test
-- the precision: to have a better precision on the results
-- the default for `BENCHMARK_BACKENDS` are `'inductor,eager'`.
-- the default for `BENCHMARK_SOURCE` is `benchmarks/`.
-
-You can also run the benchmark within docker:
-```console
-$ make benchmark-docker
-```
-
-which will build and run the image [docker/Dockerfile.benchmark](docker/Dockerfile.benchmark).
- The benchmark command can be used within `BENCHMARK_BACKENDS` and `BENCHMARK_SOURCE`.
+1. Set up your development environment (see [above](#developing-kornia))
+2. Edit files in `docs/`
+3. Build docs: `make build-docs`
+4. Preview: `open docs/build/html/index.html`
+5. Submit a PR following the [Pull Request](#pull-request) guidelines
 
 # Coding Standards
 
-This section provides general guidance for developing code for the project. The following rules will serve as a guide in
-writing high-quality code that will allow us to scale the project and ensure that the code base remains readable and
-maintainable.
+- **Write small incremental changes:**
+  - Commit small, logical changes
+  - Write clear commit messages
+  - Avoid large files
 
-- Use meaningful names for variables, functions, and classes.
-
-- Write small incremental changes:
-
-  - To have a linear and clean commits history, we recommend committing each small change that you do to the
-    source code.
-  - Clear commit messages will help to understand the progress of your work.
-  - Please, avoid pushing large files.
-
-- Add tests:
-  - Tests are crucial and we expect you to write unit tests for each of the functionalities that you implement.
-    It is also a good idea to group the tests for functionalities
-  - At [testing/](./testing/) directory we have a bunch of functions to help you to produce meaningful tests. Feel free,
-    to add any functionality that you think is essential and can be used with the test suite. Under this
-    testing, directory should go all code which are needed under the tests and aren't tests or pytest configs (fixtures,
-    etc).
+- **Add tests:**
+  - Write unit tests for each functionality
+  - Use helpers from [testing/](./testing/)
+  - Put test utilities (not tests or fixtures) in `testing/`
 
     ```python
     from testing.base import BaseTester
@@ -350,9 +236,7 @@ maintainable.
             pass
     ```
 
-- Tests should cover different devices (`CPU`, `CUDA`, etc), dtypes, and different input batch sizes. The `device`, and
-  `dtype`, are generated from the arguments (`--dtype` and `--device`) as explained before. These arguments when invoking the
-  tests suits with pytest, will generate all possibilities, providing fixtures for all functions. See an example:
+- **Test coverage:** Cover different devices, dtypes, and batch sizes. Use `--dtype` and `--device` pytest arguments to generate test combinations:
 
     ```python
     import pytest
@@ -363,77 +247,178 @@ maintainable.
         assert x.shape == (batch_size, 2, 3)
     ```
 
-- We give support to static type checker for Python >= 3.8
-
-  - Please, read
-    [MyPy cheatsheet](https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html#type-hints-cheat-sheet-python-3) for
-    Python 3.
-  - It is recommended to use typing inside the function, **when** it would increase readability.
-  - Try to use all things available under `kornia.core`, e.g. `from kornia.core import Tensor`
-  - For modules which not support anymore `JIT` consider, adding `from __future__ import annotations`, to enable the
-    new features of typing.
-  - **Always** type function input and output, e.g.:
+- **Type hints** (Python >= 3.11):
+  - Use typing when it improves readability
+  - **Use `torch.Tensor` directly** for type hints (preferred) or import from `kornia.core` for backward compatibility
+  - Use `torch.nn.Module` directly for module classes (preferred) or import from `kornia.core` for backward compatibility
+  - For non-JIT modules, use `from __future__ import annotations`
+  - **Always** type function inputs and outputs:
+  - Run type checking with `pixi run typecheck` (uses `ty`)
     ```python
     from __future__ import annotations
-    from kornia.core import Tensor
+    import torch
 
     def homography_warp(
-      patch_src: Tensor,
-      dst_homo_src: Tensor,
+      patch_src: torch.Tensor,
+      dst_homo_src: torch.Tensor,
       dsize: tuple[int, int],
       mode: str = 'bilinear',
       padding_mode: str = 'zeros'
-    ) -> Tensor:
+    ) -> torch.Tensor:
     ```
 
-- We suggest using new Python 3's f-Strings improved string formatting syntax:
+    For module classes:
+    ```python
+    from __future__ import annotations
+    import torch.nn as nn
 
-  Guidelines: [PEP 498 - Literal String Interpolation](https://peps.python.org/pep-0498/)
+    class MyModule(nn.Module):
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return x
+    ```
 
-- Format your code:
-
-  - We follow [PEP8 style guide](https://www.python.org/dev/peps/pep-0008).
-  - Use `pre-commit` to autoformat each commit before push: [pre-commit.com](https://pre-commit.com)
-    To do so, just install it for this repository by running the command: `pre-commit install` on your terminal
-
-- Changes to PEP8:
-  - Line length is 120 characters.
-  - W504 (line break after binary operator) is sometimes acceptable. E.g.
+- **Code style:**
+  - Follow [PEP8](https://www.python.org/dev/peps/pep-0008/)
+  - Use f-strings: [PEP 498](https://peps.python.org/pep-0498/)
+  - Line length: 120 characters
+  - Comments must be written in English and verified by a human with a good understanding of the code
+  - Obvious or redundant comments are not allowed (see [Best Practices](#best-practices) for comment guidelines)
+  - W504 (line break after binary operator) is sometimes acceptable. Example:
 
     ```python
     determinant = A[:, :, 0:1, 0:1] * A[:, :, 1:2, 1:2] -
                   A[:, :, 0:1, 1:2] * A[:, :, 1:2, 0:1])
     ```
 
--  Using 3rd party libraries:
-  - Everything from the standard library (https://docs.python.org/3/library/) and PyTorch (https://pytorch.org/) is OK.
-    It doesn’t mean, that one should import `urllib` just because, but doing it when needed is fine.
+- **Third-party libraries:** Not allowed. Only PyTorch.
+
+# Best Practices
+
+This section provides guidance for contributing to Kornia, with a focus on Python and PyTorch best practices, performance, and maintainability.
+
+## Before You Start
+
+1. **Discuss First**: Always discuss your proposed changes in Discord or via a GitHub issue before starting implementation. This ensures your work aligns with project goals and avoids duplicate effort.
+
+2. **Start Small**: If you're new to the project, start with small bug fixes or documentation improvements to familiarize yourself with the codebase and contribution process.
+
+3. **Understand the Codebase**: Take time to explore existing code patterns, architecture, and conventions before implementing new features.
+
+4. **Review Existing Utilities**: Before implementing new functionality, search the codebase for existing utilities in `kornia`. This aligns with the AI Policy's Hallucination & Redundancy Ban (see [Policies and Guidelines](#policies-and-guidelines)).
+
+## Development Workflow
+
+1. **Keep PRs Focused**: Each PR should address a single concern. If you're working on multiple features, create separate PRs for each.
+
+2. **Test Locally First**: Always run all relevant tests locally before submitting (see [Pull Request](#pull-request) for requirements):
+   ```bash
+   pixi run lint        # Check formatting and linting
+   pixi run test         # Run all tests
+   pixi run typecheck    # Verify type checking
+   ```
+
+3. **Update Documentation**: When adding new features or changing behavior, update docstrings for public APIs. For documentation contributions, see [Contributing to Documentation](#contributing-to-documentation).
+
+## Code Quality
+
+1. **Performance Considerations**:
+   - Prefer in-place operations when possible (e.g., `tensor.add_(other)` vs `tensor = tensor.add(other)`)
+   - Use tensor views and slicing instead of copying when possible
+   - Leverage PyTorch's vectorized operations over Python loops
+   - Profile before optimizing (use `torch.profiler` or `cProfile`)
+   - Consider memory efficiency for large tensors (use appropriate dtypes, avoid unnecessary copies)
+   - Use `torch.jit.script` or `torch.compile` for performance-critical paths when appropriate
+
+2. **Code Clarity**:
+   - Use descriptive variable and function names that convey intent
+   - Keep functions focused and single-purpose
+   - Prefer clear code over comments; when comments are needed, explain "why" not "what"
+   - Avoid over-engineering; start simple and refactor when needed
+
+3. **Tensor Operations**:
+   - Use `kornia` utilities instead of reimplementing common operations (see [AI Policy](#policies-and-guidelines))
+   - Ensure operations are device-agnostic (work on CPU, CUDA, MPS, etc.)
+   - Support multiple dtypes (float32, float64, float16, bfloat16) when applicable
+   - Handle batched and non-batched inputs consistently
+
+## Testing Best Practices
+
+- Write tests for happy paths, error cases, edge conditions, boundary conditions, and integration scenarios
+- Use `BaseTester` from `testing.base` for consistent test structure (see [Coding Standards](#coding-standards) for examples)
+- Test across different devices and dtypes using pytest parametrization (see [Coding Standards](#coding-standards) for examples)
+- Make tests deterministic, fast, and independent
+- Use descriptive test names; test both forward pass and gradients when applicable
+
+## Review Process
+
+- Review your own PR first: check for typos/formatting, verify tests pass, ensure documentation is updated, and confirm AI policy compliance
+- Respond promptly to review feedback
+- Be open to feedback and explain your decisions when questioned
+- See [Pull Request](#pull-request) section for review requirements
+
+## AI-Assisted Development
+
+- Understand every line of code you submit; you must be able to explain it during review (see [AI Policy](#policies-and-guidelines))
+- Review AI output thoroughly: check for unnecessary complexity, verify it follows project conventions, ensure it uses existing utilities, and test it
+- Be transparent in PR descriptions about what was AI-assisted and what you manually reviewed (see [Pull Request](#pull-request) for AI Usage Disclosure requirements)
+- **AI Usage Disclosure in PR Template**: When completing the PR template's "AI Usage Disclosure" section:
+  - Mark as **🟢 No AI used** only if you wrote all code manually without any AI assistance
+  - Mark as **🟡 AI-assisted** if you used AI tools (Copilot, Cursor, etc.) for boilerplate/refactoring but manually reviewed and tested every line
+  - Mark as **🔴 AI-generated** if an AI agent generated the code, PR description, or commit messages, or if you cannot explain the logic without referring to the AI's output. **Important**: PRs marked as AI-generated are subject to stricter scrutiny and may be immediately closed if the logic cannot be explained
+
+## Communication
+
+- Write clear, concise PR descriptions (see [Pull Request](#pull-request) for requirements)
+- Always link to related issues or discussions in your PR description
+- Ask questions in Discord or PR comments if unsure; it's better to clarify early than to rework later
 
 # Pull Request
 
-Once you finish implementing a feature or bug fix, please send a Pull Request to https://github.com/kornia/kornia
-through the website.
+## Issue Approval and Assignment Workflow
 
-If you are not familiar with creating a Pull Request, here are some guides:
+**Before submitting a PR, you must:**
 
-- http://stackoverflow.com/questions/14680711/how-to-do-a-github-pull-request
-- https://help.github.com/articles/creating-a-pull-request
+1. **Open an issue first**: All PRs must be linked to an existing issue. If no issue exists for your work, create one using the appropriate template (bug report or feature request).
 
-Once your pull request is created, our continuous build system will check your pull request. Continuous build will
-test that:
-- [pytest](https://docs.pytest.org/en/latest) all tests pass.
-- Test coverage remains high. Please add unit tests so we maintain our code coverage.
-- Typing with [mypy](http://mypy-lang.org) type checks the Python code.
-- If the docs can be generated successfully
-- [pre-commit ci](https://pre-commit.ci)
-  - [ruff](https://pypi.org/project/ruff/) accepts the code style (our guidelines are based on PEP8) and checks if the code
-    is well formatted
-  - [docformatter](https://pypi.org/project/docformatter/) checks if the code docstrings are well formatted
-  - and some other checks. Check our [pre-commit config](./.pre-commit-config.yaml)
+2. **Wait for maintainer approval**: A maintainer must review and approve the issue before you start working on it. New issues are automatically labeled with `triage` and will receive a welcome message explaining this process.
 
-If your code fails one of these checks, you will be expected to fix your pull request before it is considered.
+3. **Wait for assignment**: You must be assigned to the issue by a maintainer before submitting a PR. This ensures:
+   - The issue aligns with project goals
+   - No duplicate work is being done
+   - Proper coordination of contributions
 
-# Licence
+4. **Do not start work until assigned**: PRs submitted without prior issue approval and assignment may be closed or receive warnings during automated validation.
 
-By contributing to the project, you agree that your contributions will be licensed under the Apache LICENSE. Check the
-complete license [here](./LICENSE)
+This workflow helps maintain quality, avoid conflicts, and ensure contributions align with the project's direction. The automated PR validation workflow will check these requirements and post warnings if they're not met.
+
+**Requirements:**
+- **Issue approval and assignment**: The linked issue must be approved by a maintainer and you must be assigned to it (see workflow above)
+- Link PR to an issue (use "Closes #123" or "Fixes #123")
+- Pass all local tests before submission
+- Provide proof of local test execution in the PR description (this is especially important for first-time contributors)
+- Fill the [pull request template](.github/pull_request_template.md)
+- **AI Policy Compliance**: Must comply with [AI_POLICY.md](AI_POLICY.md). This includes:
+  - Using existing `kornia` utilities instead of reinventing
+  - Being able to explain all submitted code
+  - Completing the AI Usage Disclosure in the PR template accurately (see [AI-Assisted Development](#ai-assisted-development) for guidance on when to mark as AI-generated)
+- 15-Day Rule: Inactive PRs (>15 days) will be closed
+- Transparency: Keep discussions public
+
+**Code review:**
+- By default, GitHub Copilot will check the PR against the AI Policy and the coding standards.
+- Code must be reviewed by the repository owner or a senior contributor, who have the final say on the quality and acceptance of the PR.
+
+**Note:** Tickets may be closed during cleanup. Feel free to reopen if you plan to finish the work.
+
+**CI checks:**
+- All tests pass
+- Test coverage maintained
+- Type checking (ty)
+- Documentation builds successfully
+- Code formatting (ruff, docformatter via pre-commit)
+
+Fix any failing checks before your PR will be considered.
+
+# License
+
+By contributing, you agree to license your contributions under the Apache License. See [LICENSE](./LICENSE).

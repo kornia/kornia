@@ -17,15 +17,16 @@
 
 from typing import Any, Dict, List, Optional, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor, stack, tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
-def get_planckian_coeffs(mode: str) -> Tensor:
+def get_planckian_coeffs(mode: str) -> torch.Tensor:
     if mode.lower() == "blackbody":
-        coefs = tensor(
+        coefs = torch.tensor(
             [
                 [0.6743, 0.4029, 0.0013],
                 [0.6281, 0.4241, 0.1665],
@@ -56,7 +57,7 @@ def get_planckian_coeffs(mode: str) -> Tensor:
         )
 
     elif mode.upper() == "CIED":
-        coefs = tensor(
+        coefs = torch.tensor(
             [
                 [0.5829, 0.4421, 0.2288],
                 [0.5510, 0.4514, 0.2948],
@@ -86,11 +87,11 @@ def get_planckian_coeffs(mode: str) -> Tensor:
     else:
         raise RuntimeError(f"Unexpected mode. Gotcha {mode}")
 
-    return stack((coefs[:, 0] / coefs[:, 1], coefs[:, 2] / coefs[:, 1]), 1)
+    return torch.stack((coefs[:, 0] / coefs[:, 1], coefs[:, 2] / coefs[:, 1]), 1)
 
 
 class RandomPlanckianJitter(IntensityAugmentationBase2D):
-    r"""Apply planckian jitter transformation to input tensor.
+    r"""Apply planckian jitter transformation to input torch.Tensor.
 
     .. image:: _static/img/RandomPlanckianJitter.png
 
@@ -113,7 +114,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        Input tensor must be float and normalized into [0, 1].
+        Input torch.Tensor must be float and normalized into [0, 1].
 
     Examples:
         To apply planckian jitter based on mode
@@ -175,7 +176,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         if select_from is not None:
             _pl = _pl[select_from]
         self.register_buffer("pl", _pl)
-        self.pl: Tensor
+        self.pl: torch.Tensor
 
         # the range of the sampling parameters
         _param_min: float = 0.0
@@ -184,8 +185,12 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         self._param_generator = rg.PlanckianJitterGenerator([_param_min, _param_max])
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         list_idx = params["idx"].tolist()
         KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])
         self.pl = self.pl.to(device=input.device)
@@ -198,6 +203,6 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         g = input[..., 1, :, :]
         b = input[..., 2, :, :] * b_w
 
-        output = stack([r, g, b], -3)
+        output = torch.stack([r, g, b], -3)
 
         return output.clamp(max=1.0)

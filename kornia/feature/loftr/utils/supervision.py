@@ -21,15 +21,14 @@ from typing import Any
 
 import torch
 
-from kornia.core import Tensor
-from kornia.utils import create_meshgrid
+from kornia.geometry.grid import create_meshgrid
 
 from .geometry import warp_kpts
 
 
 #  Coarse-Level supervision
 @torch.no_grad()
-def mask_pts_at_padded_regions(grid_pt: Tensor, mask: Tensor) -> Tensor:
+def mask_pts_at_padded_regions(grid_pt: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     """For megadepth dataset, zero-padding exists in images."""
     n, h, w = mask.shape
     mask = mask.reshape(n, h * w).unsqueeze(-1).repeat(1, 1, 2)
@@ -94,7 +93,7 @@ def spvs_coarse(data: dict[str, Any], config: dict[str, Any]) -> None:
     nearest_index0 = w_pt1_c_round[..., 0] + w_pt1_c_round[..., 1] * w0
 
     # corner case: out of boundary
-    def out_bound_mask(pt: Tensor, w: Tensor, h: Tensor) -> Tensor:
+    def out_bound_mask(pt: torch.Tensor, w: torch.Tensor, h: torch.Tensor) -> torch.Tensor:
         return (pt[..., 0] < 0) + (pt[..., 0] >= w) + (pt[..., 1] < 0) + (pt[..., 1] >= h)
 
     nearest_index1[out_bound_mask(w_pt0_c_round, w1, h1)] = 0

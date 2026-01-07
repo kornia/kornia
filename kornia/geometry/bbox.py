@@ -22,8 +22,6 @@ from typing import Optional
 
 import torch
 
-from kornia.core import arange, stack, where
-
 from .linalg import transform_points
 
 __all__ = [
@@ -298,9 +296,9 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
     x_min = boxes[:, 0, 0].long()
     x_max = boxes[:, 1, 0].long()
 
-    z = arange(D0, device=boxes.device, dtype=torch.long)
-    y = arange(D1, device=boxes.device, dtype=torch.long)
-    x = arange(D2, device=boxes.device, dtype=torch.long)
+    z = torch.arange(D0, device=boxes.device, dtype=torch.long)
+    y = torch.arange(D1, device=boxes.device, dtype=torch.long)
+    x = torch.arange(D2, device=boxes.device, dtype=torch.long)
 
     # Compute mask as union of planes in one step
     m = (
@@ -582,10 +580,10 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         inter = w * h
         ovr = inter / (areas[i] + areas[order[1:]] - inter)
 
-        inds = where(ovr <= iou_threshold)[0]
+        inds = torch.where(ovr <= iou_threshold)[0]
         order = order[inds + 1]
 
     if len(keep) > 0:
-        return stack(keep)
+        return torch.stack(keep)
 
     return torch.tensor(keep)

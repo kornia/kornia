@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import torch
 
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.geometry.linalg import euclidean_distance
 
@@ -31,7 +30,7 @@ class KMeans:
 
     Args:
         num_clusters: number of clusters the data has to be assigned to
-        cluster_centers: tensor of starting cluster centres can be passed instead of num_clusters
+        cluster_centers: torch.Tensor of starting cluster centres can be passed instead of num_clusters
         tolerance: float value. the algorithm terminates if the shift in centers is less than tolerance
         max_iterations: number of iterations to run the algorithm for
         seed: number to set torch manual seed for reproducibility
@@ -46,7 +45,7 @@ class KMeans:
     def __init__(
         self,
         num_clusters: int,
-        cluster_centers: Tensor | None,
+        cluster_centers: torch.Tensor | None,
         tolerance: float = 10e-4,
         max_iterations: int = 0,
         seed: int | None = None,
@@ -62,37 +61,37 @@ class KMeans:
         self.tolerance = tolerance
         self.max_iterations = max_iterations
 
-        self._final_cluster_assignments: None | Tensor = None
-        self._final_cluster_centers: None | Tensor = None
+        self._final_cluster_assignments: None | torch.Tensor = None
+        self._final_cluster_centers: None | torch.Tensor = None
 
         if seed is not None:
             torch.manual_seed(seed)
 
     @property
-    def cluster_centers(self) -> Tensor:
-        if isinstance(self._final_cluster_centers, Tensor):
+    def cluster_centers(self) -> torch.Tensor:
+        if isinstance(self._final_cluster_centers, torch.Tensor):
             return self._final_cluster_centers
-        if isinstance(self._cluster_centers, Tensor):
+        if isinstance(self._cluster_centers, torch.Tensor):
             return self._cluster_centers
         else:
             raise TypeError("Model has not been fit to a dataset")
 
     @property
-    def cluster_assignments(self) -> Tensor:
-        if isinstance(self._final_cluster_assignments, Tensor):
+    def cluster_assignments(self) -> torch.Tensor:
+        if isinstance(self._final_cluster_assignments, torch.Tensor):
             return self._final_cluster_assignments
         else:
             raise TypeError("Model has not been fit to a dataset")
 
-    def _initialise_cluster_centers(self, X: Tensor, num_clusters: int) -> Tensor:
+    def _initialise_cluster_centers(self, X: torch.Tensor, num_clusters: int) -> torch.Tensor:
         """Chooses num_cluster points from X as the initial cluster centers.
 
         Args:
-            X: 2D input tensor to be clustered
+            X: 2D input torch.Tensor to be clustered
             num_clusters: number of desired cluster centers
 
         Returns:
-            2D Tensor with num_cluster rows
+            2D torch.Tensor with num_cluster rows
 
         """
         num_samples: int = len(X)
@@ -101,15 +100,15 @@ class KMeans:
         initial_state = X[idx]
         return initial_state
 
-    def _pairwise_euclidean_distance(self, data1: Tensor, data2: Tensor) -> Tensor:
+    def _pairwise_euclidean_distance(self, data1: torch.Tensor, data2: torch.Tensor) -> torch.Tensor:
         """Compute pairwise squared distance between 2 sets of vectors.
 
         Args:
-            data1: 2D tensor of shape N, D
-            data2: 2D tensor of shape C, D
+            data1: 2D torch.Tensor of shape N, D
+            data2: 2D torch.Tensor of shape C, D
 
         Returns:
-            2D tensor of shape N, C
+            2D torch.Tensor of shape N, C
 
         """
         # N*1*D
@@ -119,12 +118,12 @@ class KMeans:
         distance = euclidean_distance(A, B)
         return distance
 
-    def fit(self, X: Tensor) -> None:
+    def fit(self, X: torch.Tensor) -> None:
         """Fit iterative KMeans clustering till a threshold for shift in cluster centers or a maximum no of iterations
         have reached.
 
         Args:
-            X: 2D input tensor to be clustered
+            X: 2D input torch.Tensor to be clustered
 
         """  # noqa: D205
         # X should have only 2 dimensions
@@ -143,12 +142,12 @@ class KMeans:
         # X = X.to(self.device)
         current_centers = self._cluster_centers
 
-        previous_centers: Tensor | None = None
+        previous_centers: torch.Tensor | None = None
         iteration: int = 0
 
         while True:
             # find distance between X and current_centers
-            distance: Tensor = self._pairwise_euclidean_distance(X, current_centers)
+            distance: torch.Tensor = self._pairwise_euclidean_distance(X, current_centers)
 
             cluster_assignment = distance.argmin(-1)
 
@@ -177,14 +176,14 @@ class KMeans:
         self._final_cluster_assignments = cluster_assignment
         self._final_cluster_centers = current_centers
 
-    def predict(self, x: Tensor) -> Tensor:
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
         """Find the cluster center closest to each point in x.
 
         Args:
-            x: 2D tensor
+            x: 2D torch.Tensor
 
         Returns:
-            1D tensor containing cluster id assigned to each data point in x
+            1D torch.Tensor containing cluster id assigned to each data point in x
 
         """
         # x and cluster_centers should have same number of columns

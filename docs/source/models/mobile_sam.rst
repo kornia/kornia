@@ -26,7 +26,7 @@ MobileSAM is integrated directly into our Segment-Anything implementation. Once 
 .. code:: python
 
     import torch
-    from kornia.contrib.models.sam import SamConfig
+    from kornia.models.sam import SamConfig
     from kornia.contrib.visual_prompter import VisualPrompter
 
     image = torch.randn(3, 512, 512)

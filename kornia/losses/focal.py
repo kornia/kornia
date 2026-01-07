@@ -22,24 +22,23 @@ from typing import Optional
 import torch
 from torch import nn
 
-from kornia.core import Tensor, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.losses._utils import mask_ignore_pixels
-from kornia.utils.one_hot import one_hot
+from kornia.losses.one_hot import one_hot
 
 # based on:
 # https://github.com/zhezh/focalloss/blob/master/focalloss.py
 
 
 def focal_loss(
-    pred: Tensor,
-    target: Tensor,
+    pred: torch.Tensor,
+    target: torch.Tensor,
     alpha: Optional[float],
     gamma: float = 2.0,
     reduction: str = "none",
-    weight: Optional[Tensor] = None,
+    weight: Optional[torch.Tensor] = None,
     ignore_index: Optional[int] = -100,
-) -> Tensor:
+) -> torch.Tensor:
     r"""Criterion that computes Focal loss.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
@@ -52,8 +51,8 @@ def focal_loss(
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        pred: logits tensor with shape :math:`(N, C, *)` where C = number of classes.
-        target: labels tensor with shape :math:`(N, *)` where each value is an integer
+        pred: logits torch.Tensor with shape :math:`(N, C, *)` where C = number of classes.
+        target: labels torch.Tensor with shape :math:`(N, *)` where each value is an integer
           representing correct classification :math:`target[i] \in [0, C)`.
         alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
@@ -90,29 +89,31 @@ def focal_loss(
 
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
-    # create the labels one hot tensor
-    target_one_hot: Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
+    # create the labels one hot torch.Tensor
+    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 
     # mask ignore pixels
     if target_mask is not None:
         target_mask.unsqueeze_(1)
         target_one_hot = target_one_hot * target_mask
 
-    # compute softmax over the classes axis
-    log_pred_soft: Tensor = pred.log_softmax(1)
+    # compute F.softmax over the classes axis
+    log_pred_soft: torch.Tensor = pred.log_softmax(1)
 
     # compute the actual focal loss
-    loss_tmp: Tensor = -torch.pow(1.0 - log_pred_soft.exp(), gamma) * log_pred_soft * target_one_hot
+    loss_tmp: torch.Tensor = -torch.pow(1.0 - log_pred_soft.exp(), gamma) * log_pred_soft * target_one_hot
 
     num_of_classes = pred.shape[1]
     broadcast_dims = [-1] + [1] * len(pred.shape[2:])
     if alpha is not None:
-        alpha_fac = tensor([1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device)
+        alpha_fac = torch.tensor(
+            [1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device
+        )
         alpha_fac = alpha_fac.view(broadcast_dims)
         loss_tmp = alpha_fac * loss_tmp
 
     if weight is not None:
-        KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
+        KORNIA_CHECK_IS_TENSOR(weight, "weight must be torch.Tensor or None.")
         KORNIA_CHECK(
             (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
             f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
@@ -180,30 +181,30 @@ class FocalLoss(nn.Module):
         alpha: Optional[float],
         gamma: float = 2.0,
         reduction: str = "none",
-        weight: Optional[Tensor] = None,
+        weight: Optional[torch.Tensor] = None,
         ignore_index: Optional[int] = -100,
     ) -> None:
         super().__init__()
         self.alpha: Optional[float] = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.weight: Optional[Tensor] = weight
+        self.weight: Optional[torch.Tensor] = weight
         self.ignore_index: Optional[int] = ignore_index
 
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return focal_loss(pred, target, self.alpha, self.gamma, self.reduction, self.weight, self.ignore_index)
 
 
 def binary_focal_loss_with_logits(
-    pred: Tensor,
-    target: Tensor,
+    pred: torch.Tensor,
+    target: torch.Tensor,
     alpha: Optional[float] = 0.25,
     gamma: float = 2.0,
     reduction: str = "none",
-    pos_weight: Optional[Tensor] = None,
-    weight: Optional[Tensor] = None,
+    pos_weight: Optional[torch.Tensor] = None,
+    weight: Optional[torch.Tensor] = None,
     ignore_index: Optional[int] = -100,
-) -> Tensor:
+) -> torch.Tensor:
     r"""Criterion that computes Binary Focal loss.
 
     According to :cite:`lin2018focal`, the Focal loss is computed as follows:
@@ -212,12 +213,12 @@ def binary_focal_loss_with_logits(
 
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
-    where:
+    Where:
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        pred: logits tensor with shape :math:`(N, C, *)` where C = number of classes.
-        target: labels tensor with the same shape as pred :math:`(N, C, *)`
+        pred: logits torch.Tensor with shape :math:`(N, C, *)` where C = number of classes.
+        target: labels torch.Tensor with the same shape as pred :math:`(N, C, *)`
           where each value is between 0 and 1.
         alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
@@ -250,8 +251,8 @@ def binary_focal_loss_with_logits(
         f"pred and target must be in the same device. Got: {pred.device} and {target.device}",
     )
 
-    log_probs_pos: Tensor = nn.functional.logsigmoid(pred)
-    log_probs_neg: Tensor = nn.functional.logsigmoid(-pred)
+    log_probs_pos: torch.Tensor = nn.functional.logsigmoid(pred)
+    log_probs_neg: torch.Tensor = nn.functional.logsigmoid(-pred)
 
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
@@ -260,8 +261,8 @@ def binary_focal_loss_with_logits(
         log_probs_neg = log_probs_neg * target_mask
         log_probs_pos = log_probs_pos * target_mask
 
-    pos_term: Tensor = -log_probs_neg.exp().pow(gamma) * target * log_probs_pos
-    neg_term: Tensor = -log_probs_pos.exp().pow(gamma) * (1.0 - target) * log_probs_neg
+    pos_term: torch.Tensor = -log_probs_neg.exp().pow(gamma) * target * log_probs_pos
+    neg_term: torch.Tensor = -log_probs_pos.exp().pow(gamma) * (1.0 - target) * log_probs_neg
     if alpha is not None:
         pos_term = alpha * pos_term
         neg_term = (1.0 - alpha) * neg_term
@@ -269,7 +270,7 @@ def binary_focal_loss_with_logits(
     num_of_classes = pred.shape[1]
     broadcast_dims = [-1] + [1] * len(pred.shape[2:])
     if pos_weight is not None:
-        KORNIA_CHECK_IS_TENSOR(pos_weight, "pos_weight must be Tensor or None.")
+        KORNIA_CHECK_IS_TENSOR(pos_weight, "pos_weight must be torch.Tensor or None.")
         KORNIA_CHECK(
             (pos_weight.shape[0] == num_of_classes and pos_weight.numel() == num_of_classes),
             f"pos_weight shape must be (num_of_classes,): ({num_of_classes},), got {pos_weight.shape}",
@@ -282,9 +283,9 @@ def binary_focal_loss_with_logits(
         pos_weight = pos_weight.view(broadcast_dims)
         pos_term = pos_weight * pos_term
 
-    loss_tmp: Tensor = pos_term + neg_term
+    loss_tmp: torch.Tensor = pos_term + neg_term
     if weight is not None:
-        KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
+        KORNIA_CHECK_IS_TENSOR(weight, "weight must be torch.Tensor or None.")
         KORNIA_CHECK(
             (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
             f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
@@ -317,7 +318,7 @@ class BinaryFocalLossWithLogits(nn.Module):
 
         \text{FL}(p_t) = -\alpha_t (1 - p_t)^{\gamma} \, \text{log}(p_t)
 
-    where:
+    torch.where:
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
@@ -354,19 +355,19 @@ class BinaryFocalLossWithLogits(nn.Module):
         alpha: Optional[float],
         gamma: float = 2.0,
         reduction: str = "none",
-        pos_weight: Optional[Tensor] = None,
-        weight: Optional[Tensor] = None,
+        pos_weight: Optional[torch.Tensor] = None,
+        weight: Optional[torch.Tensor] = None,
         ignore_index: Optional[int] = -100,
     ) -> None:
         super().__init__()
         self.alpha: Optional[float] = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.pos_weight: Optional[Tensor] = pos_weight
-        self.weight: Optional[Tensor] = weight
+        self.pos_weight: Optional[torch.Tensor] = pos_weight
+        self.weight: Optional[torch.Tensor] = weight
         self.ignore_index: Optional[int] = ignore_index
 
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return binary_focal_loss_with_logits(
             pred, target, self.alpha, self.gamma, self.reduction, self.pos_weight, self.weight, self.ignore_index
         )

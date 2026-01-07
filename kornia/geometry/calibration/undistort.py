@@ -20,12 +20,12 @@ from __future__ import annotations
 from typing import Optional
 
 import torch
+import torch.nn.functional as F
 
-from kornia.core import stack
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
-from kornia.utils import create_meshgrid
 
 from .distort import distort_points, tilt_projection
 
@@ -79,9 +79,9 @@ def undistort_points(
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
 
-    # Adding zeros to obtain vector with 14 coeffs.
+    # Adding torch.zeros to obtain vector with 14 coeffs.
     if dist.shape[-1] < 14:
-        dist = torch.nn.functional.pad(dist, [0, 14 - dist.shape[-1]])
+        dist = F.pad(dist, [0, 14 - dist.shape[-1]])
 
     # Convert 2D points from pixels to normalized camera coordinates
     cx: torch.Tensor = K[..., 0:1, 2]  # princial point in x (Bx1)
@@ -98,7 +98,7 @@ def undistort_points(
         inv_tilt = tilt_projection(dist[..., 12], dist[..., 13], True)
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        x, y = transform_points(inv_tilt, stack([x, y], dim=-1)).unbind(-1)
+        x, y = transform_points(inv_tilt, torch.stack([x, y], dim=-1)).unbind(-1)
 
     # Iteratively undistort points
     x0, y0 = x, y
@@ -131,7 +131,7 @@ def undistort_points(
     new_fy: torch.Tensor = new_K[..., 1:2, 1]  # focal in y (Bx1)
     x = new_fx * x + new_cx
     y = new_fy * y + new_cy
-    return stack([x, y], -1)
+    return torch.stack([x, y], -1)
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L287

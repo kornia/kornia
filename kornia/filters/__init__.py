@@ -33,7 +33,6 @@ from .blur_pool import (
     max_blur_pool2d,
 )
 from .canny import Canny, canny
-from .dexined import DexiNed
 from .dissolving import StableDiffusionDissolving
 from .filter import filter2d, filter2d_separable, filter3d
 from .gaussian import GaussianBlur2d, gaussian_blur2d, gaussian_blur2d_t
@@ -75,7 +74,6 @@ __all__ = [
     "BlurPool2D",
     "BoxBlur",
     "Canny",
-    "DexiNed",
     "EdgeAwareBlurPool2D",
     "GaussianBlur2d",
     "GuidedBlur",

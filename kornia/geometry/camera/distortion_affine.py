@@ -15,15 +15,15 @@
 # limitations under the License.
 #
 
-"""Module containing the affine distortion model."""
+"""nn.Module containing the affine distortion model."""
 
 # inspired by: https://github.com/farm-ng/sophus-rs/blob/main/src/sensor/affine.rs
-import kornia.core as ops
-from kornia.core import Tensor
+import torch
+
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
-def distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params: Tensor) -> Tensor:
+def distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
     r"""Distort one or more points from the canonical z=1 plane into the camera frame.
 
     .. math::
@@ -33,11 +33,11 @@ def distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params: T
         \begin{bmatrix} c_x \\ c_y \end{bmatrix}
 
     Args:
-        projected_points_in_camera_z1_plane: Tensor representing the points to distort with shape (..., 2).
-        params: Tensor representing the parameters of the affine distortion model with shape (..., 4).
+        projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
+        params: torch.Tensor representing the parameters of the affine distortion model with shape (..., 4).
 
     Returns:
-        Tensor representing the distorted points with shape (..., 2).
+        torch.Tensor representing the distorted points with shape (..., 2).
 
     Example:
         >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
@@ -58,10 +58,10 @@ def distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params: T
     u = fx * x + cx
     v = fy * y + cy
 
-    return ops.stack([u, v], dim=-1)
+    return torch.stack([u, v], dim=-1)
 
 
-def undistort_points_affine(distorted_points_in_camera: Tensor, params: Tensor) -> Tensor:
+def undistort_points_affine(distorted_points_in_camera: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
     r"""Undistort one or more points from the camera frame into the canonical z=1 plane.
 
     .. math::
@@ -71,11 +71,11 @@ def undistort_points_affine(distorted_points_in_camera: Tensor, params: Tensor) 
         \begin{bmatrix} f_x & 0 \\ 0 & f_y \end{bmatrix}^{-1}
 
     Args:
-        distorted_points_in_camera: Tensor representing the points to undistort with shape (..., 2).
-        params: Tensor representing the parameters of the affine distortion model with shape (..., 4).
+        distorted_points_in_camera: torch.Tensor representing the points to undistort with shape (..., 2).
+        params: torch.Tensor representing the parameters of the affine distortion model with shape (..., 4).
 
     Returns:
-        Tensor representing the undistorted points with shape (..., 2).
+        torch.Tensor representing the undistorted points with shape (..., 2).
 
     Example:
         >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
@@ -96,10 +96,10 @@ def undistort_points_affine(distorted_points_in_camera: Tensor, params: Tensor) 
     x = (u - cx) / fx
     y = (v - cy) / fy
 
-    return ops.stack([x, y], dim=-1)
+    return torch.stack([x, y], dim=-1)
 
 
-def dx_distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params: Tensor) -> Tensor:
+def dx_distort_points_affine(projected_points_in_camera_z1_plane: torch.Tensor, params: torch.Tensor) -> torch.Tensor:
     r"""Compute the derivative of the x distortion with respect to the x coordinate.
 
     .. math::
@@ -107,11 +107,12 @@ def dx_distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params
         \begin{bmatrix} f_x & 0 \\ 0 & f_y \end{bmatrix}
 
     Args:
-        projected_points_in_camera_z1_plane: Tensor representing the points to distort with shape (..., 2).
-        params: Tensor representing the parameters of the affine distortion model with shape (..., 4).
+        projected_points_in_camera_z1_plane: torch.Tensor representing the points to distort with shape (..., 2).
+        params: torch.Tensor representing the parameters of the affine distortion model with shape (..., 4).
 
     Returns:
-        Tensor representing the derivative of the x distortion with respect to the x coordinate with shape (..., 2).
+        torch.Tensor representing the derivative of the x distortion with respect to the x coordinate
+        with shape (..., 2).
 
     Example:
         >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
@@ -126,6 +127,6 @@ def dx_distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params
 
     fx, fy = params[..., 0], params[..., 1]
 
-    zeros = ops.zeros_like(fx)
+    zeros = torch.zeros_like(fx)
 
-    return ops.stack([ops.stack([fx, zeros], dim=-1), ops.stack([zeros, fy], dim=-1)], dim=-2)
+    return torch.stack([torch.stack([fx, zeros], dim=-1), torch.stack([zeros, fy], dim=-1)], dim=-2)

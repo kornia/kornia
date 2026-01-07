@@ -21,9 +21,9 @@ from enum import Enum
 from typing import ClassVar
 
 import torch
+import torch.nn.functional as F
+from torch import nn
 
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
@@ -110,14 +110,14 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
         raise ValueError(f"Unsupported CFA Got {cfa}.")
 
     # upscaling r and b with bi-linear gives reasonable quality
-    # Note that depending on where these are sampled we need to pad appropriately
+    # Note that depending on where these are sampled we need to F.pad appropriately
     # the bilinear filter will pretty much be based on for example this layout (RG)
     # (which needs to be padded bottom right)
     # +-+-+
     # |B| |
     # | | |
     # +-+-+
-    # While in this layout we need to pad with additional B samples top left to
+    # While in this layout we need to F.pad with additional B samples top left to
     # make sure we interpolate from the correct position
     # +-+-+
     # | | |
@@ -142,22 +142,18 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     # evenly spaced between them while the B/R samples will be missing in the corners were they are assumed to exist
     # Further we need to do align_corners to start the interpolation from the middle of the samples in the corners, that
     # way we get to keep the known blue samples across the whole image
-    rpadded = torch.nn.functional.pad(r, list(rpad), "replicate")
-    bpadded = torch.nn.functional.pad(b, list(bpad), "replicate")
+    rpadded = F.pad(r, list(rpad), "replicate")
+    bpadded = F.pad(b, list(bpad), "replicate")
     # use explicit padding instead of conv2d padding to be able to use reflect which mirror the correct colors
     # for a 2x2 bayer filter
-    gpadded = torch.nn.functional.pad(image, [1, 1, 1, 1], "reflect")
+    gpadded = F.pad(image, [1, 1, 1, 1], "reflect")
 
-    r_up = torch.nn.functional.interpolate(
-        rpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1), mode="bilinear", align_corners=True
-    )
-    b_up = torch.nn.functional.interpolate(
-        bpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1), mode="bilinear", align_corners=True
-    )
+    r_up = F.interpolate(rpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1), mode="bilinear", align_corners=True)
+    b_up = F.interpolate(bpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1), mode="bilinear", align_corners=True)
 
     # remove the extra padding
-    r_up = torch.nn.functional.pad(r_up, [-x for x in rpad])
-    b_up = torch.nn.functional.pad(b_up, [-x for x in bpad])
+    r_up = F.pad(r_up, [-x for x in rpad])
+    b_up = F.pad(b_up, [-x for x in bpad])
 
     # all unknown pixels are the average of the nearby green samples
     kernel = torch.tensor(
@@ -165,7 +161,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     )
 
     # This is done on all samples but result for the known green samples is then overwritten by the input
-    g_up = torch.nn.functional.conv2d(gpadded, kernel)
+    g_up = F.conv2d(gpadded, kernel)
 
     # overwrite the already known samples which otherwise have values from r/b
     # this depends on the CFA configuration
@@ -216,7 +212,7 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    # pick the tensor with green pixels
+    # pick the torch.Tensor with green pixels
     # clone to make sure grad works
     output: torch.Tensor = image[..., 1:2, :, :].clone()
 
@@ -237,7 +233,7 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     return output
 
 
-def raw_to_rgb_2x2_downscaled(image: Tensor, cfa: CFA) -> Tensor:
+def raw_to_rgb_2x2_downscaled(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     r"""Convert the raw bayer image to RGB version of it and resize width and height by half.
 
     This is done efficiently by converting each superpixel of bayer image to the corresponding rgb triplet.
@@ -260,7 +256,7 @@ def raw_to_rgb_2x2_downscaled(image: Tensor, cfa: CFA) -> Tensor:
         >>> rgb = raw_to_rgb_2x2_downscaled(rawinput, CFA.RG) # 2x3x2x3
 
     """
-    KORNIA_CHECK(isinstance(image, Tensor), "Input type is not a torch.Tensor")
+    KORNIA_CHECK(isinstance(image, torch.Tensor), "Input type is not a torch.Tensor")
 
     KORNIA_CHECK_SHAPE(image, ["*", "1", "H", "W"])
 
@@ -292,13 +288,13 @@ def raw_to_rgb_2x2_downscaled(image: Tensor, cfa: CFA) -> Tensor:
     else:
         raise ValueError(f"Unsupported CFA Got {cfa}.")
 
-    rgb: Tensor = concatenate([r, (g1 + g2) / 2, b], dim=-3)
+    rgb: torch.Tensor = torch.cat([r, (g1 + g2) / 2, b], dim=-3)
 
     return rgb
 
 
-class RawToRgb(Module):
-    r"""Module to convert a bayer raw image to RGB version of image.
+class RawToRgb(nn.Module):
+    r"""nn.Module to convert a bayer raw image to RGB version of image.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -324,8 +320,8 @@ class RawToRgb(Module):
         return raw_to_rgb(image, cfa=self.cfa)
 
 
-class RgbToRaw(Module):
-    r"""Module to convert a RGB image to bayer raw version of image.
+class RgbToRaw(nn.Module):
+    r"""nn.Module to convert a RGB image to bayer raw version of image.
 
     The image data is assumed to be in the range of (0, 1).
 
@@ -354,8 +350,8 @@ class RgbToRaw(Module):
         return rgb_to_raw(image, cfa=self.cfa)
 
 
-class RawToRgb2x2Downscaled(Module):
-    r"""Module version of the :func:`raw_to_rgb_2x2_downscaled()` function.
+class RawToRgb2x2Downscaled(nn.Module):
+    r"""nn.Module version of the :func:`raw_to_rgb_2x2_downscaled()` function.
 
     The image width and height have to be divisible by two. The image
     data is assumed to be in the range of (0, 1).
@@ -375,5 +371,5 @@ class RawToRgb2x2Downscaled(Module):
         super().__init__()
         self.cfa = cfa
 
-    def forward(self, image: Tensor) -> Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         return raw_to_rgb_2x2_downscaled(image, cfa=self.cfa)

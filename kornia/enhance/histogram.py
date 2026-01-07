@@ -19,10 +19,10 @@ from typing import Optional, Tuple
 
 import torch
 
-from kornia.core import Tensor
 
-
-def marginal_pdf(values: Tensor, bins: Tensor, sigma: Tensor, epsilon: float = 1e-10) -> Tuple[Tensor, Tensor]:
+def marginal_pdf(
+    values: torch.Tensor, bins: torch.Tensor, sigma: torch.Tensor, epsilon: float = 1e-10
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Calculate the marginal probability distribution function of the input based on the number of histogram bins.
 
     Args:
@@ -32,19 +32,19 @@ def marginal_pdf(values: Tensor, bins: Tensor, sigma: Tensor, epsilon: float = 1
         epsilon: scalar, for numerical stability.
 
     Returns:
-        Tuple[Tensor, Tensor]:
-          - Tensor: shape [BxN].
-          - Tensor: shape [BxNxNUM_BINS].
+        Tuple[torch.Tensor, torch.Tensor]:
+          - torch.Tensor: shape [BxN].
+          - torch.Tensor: shape [BxNxNUM_BINS].
 
     """
-    if not isinstance(values, Tensor):
-        raise TypeError(f"Input values type is not a Tensor. Got {type(values)}")
+    if not isinstance(values, torch.Tensor):
+        raise TypeError(f"Input values type is not a torch.Tensor. Got {type(values)}")
 
-    if not isinstance(bins, Tensor):
-        raise TypeError(f"Input bins type is not a Tensor. Got {type(bins)}")
+    if not isinstance(bins, torch.Tensor):
+        raise TypeError(f"Input bins type is not a torch.Tensor. Got {type(bins)}")
 
-    if not isinstance(sigma, Tensor):
-        raise TypeError(f"Input sigma type is not a Tensor. Got {type(sigma)}")
+    if not isinstance(sigma, torch.Tensor):
+        raise TypeError(f"Input sigma type is not a torch.Tensor. Got {type(sigma)}")
 
     if not values.dim() == 3:
         raise ValueError(f"Input values must be a of the shape BxNx1. Got {values.shape}")
@@ -65,7 +65,7 @@ def marginal_pdf(values: Tensor, bins: Tensor, sigma: Tensor, epsilon: float = 1
     return pdf, kernel_values
 
 
-def joint_pdf(kernel_values1: Tensor, kernel_values2: Tensor, epsilon: float = 1e-10) -> Tensor:
+def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
     """Calculate the joint probability distribution function of the input tensors based on the number of histogram bins.
 
     Args:
@@ -77,11 +77,11 @@ def joint_pdf(kernel_values1: Tensor, kernel_values2: Tensor, epsilon: float = 1
         shape [BxNUM_BINSxNUM_BINS].
 
     """
-    if not isinstance(kernel_values1, Tensor):
-        raise TypeError(f"Input kernel_values1 type is not a Tensor. Got {type(kernel_values1)}")
+    if not isinstance(kernel_values1, torch.Tensor):
+        raise TypeError(f"Input kernel_values1 type is not a torch.Tensor. Got {type(kernel_values1)}")
 
-    if not isinstance(kernel_values2, Tensor):
-        raise TypeError(f"Input kernel_values2 type is not a Tensor. Got {type(kernel_values2)}")
+    if not isinstance(kernel_values2, torch.Tensor):
+        raise TypeError(f"Input kernel_values2 type is not a torch.Tensor. Got {type(kernel_values2)}")
 
     if not kernel_values1.dim() == 3:
         raise ValueError(f"Input kernel_values1 must be a of the shape BxN. Got {kernel_values1.shape}")
@@ -102,13 +102,13 @@ def joint_pdf(kernel_values1: Tensor, kernel_values2: Tensor, epsilon: float = 1
     return pdf
 
 
-def histogram(x: Tensor, bins: Tensor, bandwidth: Tensor, epsilon: float = 1e-10) -> Tensor:
-    """Estimate the histogram of the input tensor.
+def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10) -> torch.Tensor:
+    """Estimate the histogram of the input torch.Tensor.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
     Args:
-        x: Input tensor to compute the histogram with shape :math:`(B, D)`.
+        x: Input torch.Tensor to compute the histogram with shape :math:`(B, D)`.
         bins: The number of bins to use the histogram :math:`(N_{bins})`.
         bandwidth: Gaussian smoothing factor with shape shape [1].
         epsilon: A scalar, for numerical stability.
@@ -129,14 +129,16 @@ def histogram(x: Tensor, bins: Tensor, bandwidth: Tensor, epsilon: float = 1e-10
     return pdf
 
 
-def histogram2d(x1: Tensor, x2: Tensor, bins: Tensor, bandwidth: Tensor, epsilon: float = 1e-10) -> Tensor:
-    """Estimate the 2d histogram of the input tensor.
+def histogram2d(
+    x1: torch.Tensor, x2: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsilon: float = 1e-10
+) -> torch.Tensor:
+    """Estimate the 2d histogram of the input torch.Tensor.
 
     The calculation uses kernel density estimation which requires a bandwidth (smoothing) parameter.
 
     Args:
-        x1: Input tensor to compute the histogram with shape :math:`(B, D1)`.
-        x2: Input tensor to compute the histogram with shape :math:`(B, D2)`.
+        x1: Input torch.Tensor to compute the histogram with shape :math:`(B, D1)`.
+        x2: Input torch.Tensor to compute the histogram with shape :math:`(B, D2)`.
         bins: The number of bins to use the histogram :math:`(N_{bins})`.
         bandwidth: Gaussian smoothing factor with shape shape [1].
         epsilon: A scalar, for numerical stability. Default: 1e-10.
@@ -162,22 +164,22 @@ def histogram2d(x1: Tensor, x2: Tensor, bins: Tensor, bandwidth: Tensor, epsilon
 
 
 def image_histogram2d(
-    image: Tensor,
+    image: torch.Tensor,
     min: float = 0.0,
     max: float = 255.0,
     n_bins: int = 256,
     bandwidth: Optional[float] = None,
-    centers: Optional[Tensor] = None,
+    centers: Optional[torch.Tensor] = None,
     return_pdf: bool = False,
     kernel: str = "triangular",
     eps: float = 1e-10,
-) -> Tuple[Tensor, Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Estimate the histogram of the input image(s).
 
     The calculation uses triangular kernel density estimation.
 
     Args:
-        image: Input tensor to compute the histogram with shape
+        image: Input torch.Tensor to compute the histogram with shape
           :math:`(H, W)`, :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         min: Lower end of the interval (inclusive).
         max: Upper end of the interval (inclusive). Ignored when
@@ -199,18 +201,18 @@ def image_histogram2d(
         Computed histogram of shape :math:`(bins)`, :math:`(C, bins)`,
           :math:`(B, C, bins)`.
         Computed probability densities of shape :math:`(bins)`, :math:`(C, bins)`,
-          :math:`(B, C, bins)`, if return_pdf is ``True``. Tensor of zeros with shape
+          :math:`(B, C, bins)`, if return_pdf is ``True``. torch.Tensor of torch.zeros with shape
           of the histogram otherwise.
 
     """
-    if image is not None and not isinstance(image, Tensor):
-        raise TypeError(f"Input image type is not a Tensor. Got {type(image)}.")
+    if image is not None and not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input image type is not a torch.Tensor. Got {type(image)}.")
 
-    if centers is not None and not isinstance(centers, Tensor):
-        raise TypeError(f"Bins' centers type is not a Tensor. Got {type(centers)}.")
+    if centers is not None and not isinstance(centers, torch.Tensor):
+        raise TypeError(f"Bins' centers type is not a torch.Tensor. Got {type(centers)}.")
 
     if centers is not None and len(centers.shape) > 0 and centers.dim() != 1:
-        raise ValueError(f"Bins' centers must be a Tensor of the shape (n_bins,). Got {centers.shape}.")
+        raise ValueError(f"Bins' centers must be a torch.Tensor of the shape (n_bins,). Got {centers.shape}.")
 
     if not isinstance(min, float):
         raise TypeError(f"Type of lower end of the range is not a float. Got {type(min)}.")

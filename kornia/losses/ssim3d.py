@@ -17,19 +17,21 @@
 
 from __future__ import annotations
 
+import torch
+from torch import nn
+
 from kornia import metrics
-from kornia.core import Module, Tensor
 
 
 def ssim3d_loss(
-    img1: Tensor,
-    img2: Tensor,
+    img1: torch.Tensor,
+    img2: torch.Tensor,
     window_size: int,
     max_val: float = 1.0,
     eps: float = 1e-12,
     reduction: str = "mean",
     padding: str = "same",
-) -> Tensor:
+) -> torch.Tensor:
     r"""Compute a loss based on the SSIM measurement.
 
     The loss, or the Structural dissimilarity (DSSIM) is described as:
@@ -63,7 +65,7 @@ def ssim3d_loss(
 
     """
     # compute the ssim map
-    ssim_map: Tensor = metrics.ssim3d(img1, img2, window_size, max_val, eps, padding)
+    ssim_map: torch.Tensor = metrics.ssim3d(img1, img2, window_size, max_val, eps, padding)
 
     # compute and reduce the loss
     loss = 1.0 - ssim_map
@@ -80,7 +82,7 @@ def ssim3d_loss(
     return loss
 
 
-class SSIM3DLoss(Module):
+class SSIM3DLoss(nn.Module):
     r"""Create a criterion that computes a loss based on the SSIM measurement.
 
     The loss, or the Structural dissimilarity (DSSIM) is described as:
@@ -123,5 +125,5 @@ class SSIM3DLoss(Module):
         self.reduction: str = reduction
         self.padding: str = padding
 
-    def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
+    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
         return ssim3d_loss(img1, img2, self.window_size, self.max_val, self.eps, self.reduction, self.padding)

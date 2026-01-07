@@ -1,0 +1,84 @@
+[workspace]
+name = "kornia"
+description = "Open Source Differentiable Computer Vision Library for PyTorch"
+authors = ["Edgar Riba <edgar@kornia.org>"]
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64", "win-64"]
+
+# ------------------------------------------------------------------------------
+# Base: System dependencies
+# ------------------------------------------------------------------------------
+
+[dependencies]
+python = ">=3.11,<3.14"
+uv = "*"
+tombi = "*"
+ty = ">=0.0.9,<0.0.10"
+
+# ------------------------------------------------------------------------------
+# Environments
+# ------------------------------------------------------------------------------
+
+[environments]
+# Default environment with Python 3.11 (best compatibility)
+default = { features = ["py311"], solve-group = "default" }
+# CUDA environment for GPU development
+cuda = { features = ["cuda", "py311"], solve-group = "cuda" }
+# CI environments with specific Python versions
+py311 = { features = ["py311"], solve-group = "py311" }
+py312 = { features = ["py312"], solve-group = "py312" }
+py313 = { features = ["py313"], solve-group = "py313" }
+
+# ------------------------------------------------------------------------------
+# Tasks (shared across environments)
+# ------------------------------------------------------------------------------
+
+[tasks]
+# Installation
+install = { cmd = "uv sync --extra dev", description = "Install dev dependencies" }
+install-docs = { cmd = "uv sync --extra dev --extra docs", description = "Install dev + docs dependencies" }
+# Tests - use env vars (KORNIA_TEST_DEVICE, KORNIA_TEST_DTYPE, KORNIA_TEST_RUNSLOW)
+test = { cmd = "uv run pytest -v tests/", description = "Run tests (configure via KORNIA_TEST_* env vars)" }
+test-f32 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DTYPE = "float32" } }
+test-f64 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DTYPE = "float64" } }
+test-slow = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_RUNSLOW = "true" } }
+test-quick = { cmd = "uv run pytest -v -m 'not (jit or grad or nn)' tests/" }
+test-module = { cmd = "uv run pytest -v", description = "Run tests for a specific module (usage: pixi run test-module tests/<module_path>, e.g., pixi run test-module tests/contrib/)" }
+# Quality
+lint = { cmd = "uv run pre-commit run ruff --all-files" }
+typecheck = { cmd = "ty check kornia" }
+doctest = { cmd = "uv run pytest -v --doctest-modules kornia/" }
+toml-fmt = { cmd = "tombi format", description = "Format TOML files" }
+toml-fmt-check = { cmd = "tombi format --check", description = "Check TOML formatting" }
+# Docs
+build-docs = { cmd = "uv run python -m sphinx -W -b html docs/source docs/build/html", depends-on = [
+  "install-docs"
+] }
+# Utility
+clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete && rm -rf .venv" }
+
+# ------------------------------------------------------------------------------
+# Feature: CUDA (PyTorch CUDA wheels) - for local GPU development
+# Requires reinstall because uv doesn't support per-environment sources
+# ------------------------------------------------------------------------------
+
+[feature.cuda.tasks]
+install = { cmd = "uv sync --extra dev --extra x && uv pip install --reinstall torch torchvision --index pytorch-cu121", description = "Install dev dependencies (CUDA PyTorch)" }
+install-docs = { cmd = "uv sync --extra dev --extra docs --extra x && uv pip install --reinstall torch torchvision --index pytorch-cu121", description = "Install dev + docs (CUDA PyTorch)" }
+# CUDA test tasks
+test-cuda = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda" }, description = "Run tests on CUDA" }
+test-cuda-f32 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda", KORNIA_TEST_DTYPE = "float32" } }
+test-cuda-f64 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda", KORNIA_TEST_DTYPE = "float64" } }
+
+# ------------------------------------------------------------------------------
+# Python version features (for CI matrix)
+# ------------------------------------------------------------------------------
+
+[feature.py311.dependencies]
+python = "3.11.*"
+
+[feature.py312.dependencies]
+python = "3.12.*"
+
+[feature.py313.dependencies]
+python = "3.13.*"

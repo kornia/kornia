@@ -38,26 +38,28 @@ class TestElasticTransform:
         assert elastic_transform2d(img, noise).shape == shape
 
     def test_exception(self, device, dtype):
+        from kornia.core.exceptions import ShapeError, TypeCheckError
+
         ex = torch.ones(1, device=device, dtype=dtype)
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
             elastic_transform2d([0.0], ex)
-        assert "Not a Tensor type" in str(errinfo.value)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
             elastic_transform2d(ex, 1)
-        assert "Not a Tensor type" in str(errinfo.value)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             img = torch.ones(1, 1, 1, device=device, dtype=dtype)
             noise = torch.ones(1, 2, 1, 1, device=device, dtype=dtype)
             elastic_transform2d(img, noise)
-        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo.value)
+        assert "Shape dimension mismatch" in str(errinfo.value)
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             img = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
             noise = torch.ones(2, 1, 1, device=device, dtype=dtype)
             elastic_transform2d(img, noise)
-        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo.value)
+        assert "Shape dimension mismatch" in str(errinfo.value)
 
         with pytest.raises(RuntimeError) as errinfo:
             img = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)

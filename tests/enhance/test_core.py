@@ -21,7 +21,6 @@ import pytest
 import torch
 
 import kornia
-from kornia.core import Tensor
 
 from testing.base import BaseTester
 
@@ -61,11 +60,11 @@ class TestAddWeighted(BaseTester):
     def test_shape(self, device, dtype, size1, size2, alpha, beta, gamma):
         src1 = torch.randn(size1, device=device, dtype=dtype)
         src2 = torch.randn(size2, device=device, dtype=dtype)
-        if isinstance(alpha, Tensor):
+        if isinstance(alpha, torch.Tensor):
             alpha = alpha.to(src1)
-        if isinstance(beta, Tensor):
+        if isinstance(beta, torch.Tensor):
             beta = beta.to(src2)
-        if isinstance(gamma, Tensor):
+        if isinstance(gamma, torch.Tensor):
             gamma = gamma.to(src1)
         self.assert_close(TestAddWeighted.fcn(src1, alpha, src2, beta, gamma), src1 * alpha + src2 * beta + gamma)
 

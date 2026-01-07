@@ -22,8 +22,8 @@ from typing import Optional, Tuple
 import torch
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.utils import _torch_histc_cast
 from kornia.enhance.histogram import histogram as diff_histogram
-from kornia.utils.helpers import _torch_histc_cast
 
 
 class OtsuThreshold(torch.nn.Module):

@@ -21,7 +21,6 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _common_param_check
-from kornia.core import Device, Tensor, tensor
 from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
@@ -37,9 +36,9 @@ class ResizeGenerator(RandomGeneratorBase):
 
     Returns:
         parameters to be passed for transformation.
-            - src (Tensor): cropping bounding boxes with a shape of (B, 4, 2).
-            - dst (Tensor): output bounding boxes with a shape (B, 4, 2).
-            - input_size (Tensor): (h, w) from batch input.
+            - src (torch.Tensor): cropping bounding boxes with a shape of (B, 4, 2).
+            - dst (torch.Tensor): output bounding boxes with a shape (B, 4, 2).
+            - input_size (torch.Tensor): (h, w) from batch input.
             - resize_to (tuple): new (h, w) for batch input.
 
     Note:
@@ -58,12 +57,12 @@ class ResizeGenerator(RandomGeneratorBase):
         repr = f"output_size={self.output_size}"
         return repr
 
-    def make_samplers(self, device: Device, dtype: torch.dtype) -> None:
+    def make_samplers(self, device: Union[str, torch.device, None], dtype: torch.dtype) -> None:
         self.device = device
         self.dtype = dtype
         pass
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device = self.device
@@ -78,10 +77,10 @@ class ResizeGenerator(RandomGeneratorBase):
         input_size = h, w = (batch_shape[-2], batch_shape[-1])
 
         src = bbox_generator(
-            tensor(0, device=_device, dtype=_dtype),
-            tensor(0, device=_device, dtype=_dtype),
-            tensor(input_size[1], device=_device, dtype=_dtype),
-            tensor(input_size[0], device=_device, dtype=_dtype),
+            torch.tensor(0, device=_device, dtype=_dtype),
+            torch.tensor(0, device=_device, dtype=_dtype),
+            torch.tensor(input_size[1], device=_device, dtype=_dtype),
+            torch.tensor(input_size[0], device=_device, dtype=_dtype),
         ).repeat(batch_size, 1, 1)
 
         if isinstance(self.output_size, int):
@@ -100,13 +99,13 @@ class ResizeGenerator(RandomGeneratorBase):
             raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {output_size}.")
 
         dst = bbox_generator(
-            tensor(0, device=_device, dtype=_dtype),
-            tensor(0, device=_device, dtype=_dtype),
-            tensor(output_size[1], device=_device, dtype=_dtype),
-            tensor(output_size[0], device=_device, dtype=_dtype),
+            torch.tensor(0, device=_device, dtype=_dtype),
+            torch.tensor(0, device=_device, dtype=_dtype),
+            torch.tensor(output_size[1], device=_device, dtype=_dtype),
+            torch.tensor(output_size[0], device=_device, dtype=_dtype),
         ).repeat(batch_size, 1, 1)
 
-        _input_size = tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
-        _output_size = tensor(output_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+        _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+        _output_size = torch.tensor(output_size, device=_device, dtype=torch.long).expand(batch_size, -1)
 
         return {"src": src, "dst": dst, "input_size": _input_size, "output_size": _output_size}

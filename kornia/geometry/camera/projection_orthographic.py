@@ -15,15 +15,15 @@
 # limitations under the License.
 #
 
-"""Module containing functions for orthographic projection."""
+"""nn.Module containing functions for orthographic projection."""
 
 # inspired by: https://github.com/farm-ng/sophus-rs/blob/main/src/sensor/ortho_camera.rs
-import kornia.core as ops
-from kornia.core import Tensor
+import torch
+
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
-def project_points_orthographic(points_in_camera: Tensor) -> Tensor:
+def project_points_orthographic(points_in_camera: torch.Tensor) -> torch.Tensor:
     r"""Project points from the camera frame into the canonical z=1 plane through orthographic projection.
 
     .. math::
@@ -32,10 +32,10 @@ def project_points_orthographic(points_in_camera: Tensor) -> Tensor:
 
 
     Args:
-        points_in_camera: Tensor representing the points to project.
+        points_in_camera: torch.Tensor representing the points to project.
 
     Returns:
-        Tensor representing the projected points.
+        torch.Tensor representing the projected points.
 
     Example:
         >>> points = torch.tensor([1., 2., 3.])
@@ -47,7 +47,7 @@ def project_points_orthographic(points_in_camera: Tensor) -> Tensor:
     return points_in_camera[..., :2]
 
 
-def unproject_points_orthographic(points_in_camera: Tensor, extension: Tensor) -> Tensor:
+def unproject_points_orthographic(points_in_camera: torch.Tensor, extension: torch.Tensor) -> torch.Tensor:
     r"""Unproject one or more points from the canonical z=1 plane into the camera frame.
 
     .. math::
@@ -55,11 +55,11 @@ def unproject_points_orthographic(points_in_camera: Tensor, extension: Tensor) -
         \begin{bmatrix} u \\ v \\ w \end{bmatrix}
 
     Args:
-        points_in_camera: Tensor representing the points to unproject with shape (..., 2).
-        extension: Tensor representing the extension of the points to unproject with shape (..., 1).
+        points_in_camera: torch.Tensor representing the points to unproject with shape (..., 2).
+        extension: torch.Tensor representing the extension of the points to unproject with shape (..., 1).
 
     Returns:
-        Tensor representing the unprojected points with shape (..., 3).
+        torch.Tensor representing the unprojected points with shape (..., 3).
 
     Example:
         >>> points = torch.tensor([1., 2.])
@@ -73,20 +73,20 @@ def unproject_points_orthographic(points_in_camera: Tensor, extension: Tensor) -
     if len(points_in_camera.shape) != len(extension.shape):
         extension = extension[..., None]
 
-    return ops.concatenate([points_in_camera, extension], dim=-1)
+    return torch.cat([points_in_camera, extension], dim=-1)
 
 
-def dx_project_points_orthographic(points_in_camera: Tensor) -> Tensor:
+def dx_project_points_orthographic(points_in_camera: torch.Tensor) -> torch.Tensor:
     r"""Compute the derivative of the x projection with respect to the x coordinate.
 
     .. math::
         \frac{\partial u}{\partial x} = 1
 
     Args:
-        points_in_camera: Tensor representing the points to project.
+        points_in_camera: torch.Tensor representing the points to project.
 
     Returns:
-        Tensor representing the derivative of the x projection with respect to the x coordinate.
+        torch.Tensor representing the derivative of the x projection with respect to the x coordinate.
 
     Example:
         >>> points = torch.tensor([1., 2., 3.])
@@ -95,4 +95,4 @@ def dx_project_points_orthographic(points_in_camera: Tensor) -> Tensor:
 
     """
     KORNIA_CHECK_SHAPE(points_in_camera, ["*", "3"])
-    return ops.ones_like(points_in_camera[..., 0:1])
+    return torch.ones_like(points_in_camera[..., 0:1])

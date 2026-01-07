@@ -20,10 +20,8 @@ from typing import Tuple
 
 import torch
 
-from kornia.core import Tensor
 
-
-def arange_sequence(ranges: Tensor) -> Tensor:
+def arange_sequence(ranges: torch.Tensor) -> torch.Tensor:
     """Return a sequence of the ranges specified by the argument.
 
     Example:
@@ -37,7 +35,7 @@ def arange_sequence(ranges: Tensor) -> Tensor:
     return complete_ranges[complete_ranges < ranges.unsqueeze(-1)]
 
 
-def dist_matrix(d1: Tensor, d2: Tensor, is_normalized: bool = False) -> Tensor:
+def dist_matrix(d1: torch.Tensor, d2: torch.Tensor, is_normalized: bool = False) -> torch.Tensor:
     """Distance between two tensors."""
     if is_normalized:
         return 2 - 2.0 * d1 @ d2.t()
@@ -49,7 +47,7 @@ def dist_matrix(d1: Tensor, d2: Tensor, is_normalized: bool = False) -> Tensor:
     return distmat
 
 
-def orientation_diff(o1: Tensor, o2: Tensor) -> Tensor:
+def orientation_diff(o1: torch.Tensor, o2: torch.Tensor) -> torch.Tensor:
     """Orientation difference between two tensors."""
     diff = o2 - o1
     diff[diff < -180] += 360
@@ -57,7 +55,7 @@ def orientation_diff(o1: Tensor, o2: Tensor) -> Tensor:
     return diff
 
 
-def piecewise_arange(piecewise_idxer: Tensor) -> Tensor:
+def piecewise_arange(piecewise_idxer: torch.Tensor) -> torch.Tensor:
     """Count repeated indices.
 
     Example:
@@ -65,7 +63,7 @@ def piecewise_arange(piecewise_idxer: Tensor) -> Tensor:
     """
     dv = piecewise_idxer.device
     # print(piecewise_idxer)
-    uni: Tensor
+    uni: torch.Tensor
     uni, counts = torch.unique_consecutive(piecewise_idxer, return_counts=True)
     # print(counts)
     maxcnt = int(torch.max(counts).item())
@@ -76,7 +74,7 @@ def piecewise_arange(piecewise_idxer: Tensor) -> Tensor:
     return ranges[tmp]
 
 
-def batch_2x2_inv(m: Tensor, check_dets: bool = False) -> Tensor:
+def batch_2x2_inv(m: torch.Tensor, check_dets: bool = False) -> torch.Tensor:
     """Return inverse of batch of 2x2 matrices."""
     a = m[..., 0, 0]
     b = m[..., 0, 1]
@@ -93,17 +91,17 @@ def batch_2x2_inv(m: Tensor, check_dets: bool = False) -> Tensor:
     return minv / det.unsqueeze(-1).unsqueeze(-1)
 
 
-def batch_2x2_Q(m: Tensor) -> Tensor:
+def batch_2x2_Q(m: torch.Tensor) -> torch.Tensor:
     """Return Q of batch of 2x2 matrices."""
     return batch_2x2_inv(batch_2x2_invQ(m), check_dets=True)
 
 
-def batch_2x2_invQ(m: Tensor) -> Tensor:
+def batch_2x2_invQ(m: torch.Tensor) -> torch.Tensor:
     """Return inverse Q of batch of 2x2 matrices."""
     return m @ m.transpose(-1, -2)
 
 
-def batch_2x2_det(m: Tensor) -> Tensor:
+def batch_2x2_det(m: torch.Tensor) -> torch.Tensor:
     """Return determinant of batch of 2x2 matrices."""
     a = m[..., 0, 0]
     b = m[..., 0, 1]
@@ -112,7 +110,7 @@ def batch_2x2_det(m: Tensor) -> Tensor:
     return a * d - b * c
 
 
-def batch_2x2_ellipse(m: Tensor, *, eps: float = 0.0) -> Tuple[Tensor, Tensor]:
+def batch_2x2_ellipse(m: torch.Tensor, *, eps: float = 0.0) -> Tuple[torch.Tensor, torch.Tensor]:
     """Return Eigenvalues and Eigenvectors of batch of 2x2 matrices."""
     am = m[..., 0, 0]
     bm = m[..., 0, 1]
@@ -149,7 +147,7 @@ def batch_2x2_ellipse(m: Tensor, *, eps: float = 0.0) -> Tuple[Tensor, Tensor]:
     return eigenvals, eigenvecs
 
 
-def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device) -> Tensor:
+def draw_first_k_couples(k: int, rdims: torch.Tensor, dv: torch.device) -> torch.Tensor:
     """Return first k couples.
 
     Exhaustive search over the first n samples:
@@ -171,8 +169,8 @@ def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device) -> Tensor:
     return torch.remainder(idx_sequence.unsqueeze(-1), rdims)
 
 
-def random_samples_indices(iters: int, rdims: Tensor, dv: torch.device) -> Tensor:
-    """Randomly sample indices of tensor."""
+def random_samples_indices(iters: int, rdims: torch.Tensor, dv: torch.device) -> torch.Tensor:
+    """Randomly sample indices of torch.Tensor."""
     rands = torch.rand(size=(iters, 2, rdims.shape[0]), device=dv)
     scaled_rands = rands * (rdims - 1e-8).float()
     rand_samples_rel = scaled_rands.long()

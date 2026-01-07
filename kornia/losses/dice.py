@@ -20,12 +20,12 @@ from __future__ import annotations
 from typing import Optional
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 from kornia.losses._utils import mask_ignore_pixels
-from kornia.utils.one_hot import one_hot
+from kornia.losses.one_hot import one_hot
 
 # based on:
 # https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
@@ -33,13 +33,13 @@ from kornia.utils.one_hot import one_hot
 
 
 def dice_loss(
-    pred: Tensor,
-    target: Tensor,
+    pred: torch.Tensor,
+    target: torch.Tensor,
     average: str = "micro",
     eps: float = 1e-8,
-    weight: Optional[Tensor] = None,
+    weight: Optional[torch.Tensor] = None,
     ignore_index: Optional[int] = -100,
-) -> Tensor:
+) -> torch.Tensor:
     r"""Criterion that computes Sørensen-Dice Coefficient loss.
 
     According to [1], we compute the Sørensen-Dice Coefficient as follows:
@@ -50,7 +50,7 @@ def dice_loss(
 
     Where:
        - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the one-hot tensor with the class labels.
+       - :math:`Y` expects to be the one-hot torch.Tensor with the class labels.
 
     the loss, is finally computed as:
 
@@ -62,9 +62,9 @@ def dice_loss(
         [1] https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
 
     Args:
-        pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
-        target: labels tensor with shape :math:`(N, H, W)` where each value
-          is :math:`0 ≤ targets[i] ≤ C-1`.
+        pred: logits torch.Tensor with shape :math:`(N, C, H, W)` where C = number of classes.
+        target: labels torch.Tensor with shape :math:`(N, H, W)` where each value
+          is in range :math:`0 ≤ targets[i] ≤ C-1`.
         average:
             Reduction applied in multi-class scenario:
             - ``'micro'`` [default]: Calculate the loss across all classes.
@@ -74,7 +74,7 @@ def dice_loss(
         ignore_index: labels with this value are ignored in the loss computation.
 
     Return:
-        One-element tensor of the computed loss.
+        One-element torch.Tensor of the computed loss.
 
     Example:
         >>> N = 5  # num_classes
@@ -98,13 +98,13 @@ def dice_loss(
     possible_average = {"micro", "macro"}
     KORNIA_CHECK(average in possible_average, f"The `average` has to be one of {possible_average}. Got: {average}")
 
-    # compute softmax over the classes axis
-    pred_soft: Tensor = pred.softmax(dim=1)
+    # compute F.softmax over the classes axis
+    pred_soft: torch.Tensor = F.softmax(pred, dim=1)
 
     target, target_mask = mask_ignore_pixels(target, ignore_index)
 
-    # create the labels one hot tensor
-    target_one_hot: Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
+    # create the labels one hot torch.Tensor
+    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 
     # mask ignore pixels
     if target_mask is not None:
@@ -114,7 +114,7 @@ def dice_loss(
 
     # compute the actual dice score
     if weight is not None:
-        KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
+        KORNIA_CHECK_IS_TENSOR(weight, "weight must be torch.Tensor or None.")
         KORNIA_CHECK(
             (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
             f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
@@ -162,7 +162,7 @@ class DiceLoss(nn.Module):
 
     Where:
        - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the one-hot tensor with the class labels.
+       - :math:`Y` expects to be the one-hot torch.Tensor with the class labels.
 
     the loss, is finally computed as:
 
@@ -201,7 +201,7 @@ class DiceLoss(nn.Module):
         self,
         average: str = "micro",
         eps: float = 1e-8,
-        weight: Optional[Tensor] = None,
+        weight: Optional[torch.Tensor] = None,
         ignore_index: Optional[int] = -100,
     ) -> None:
         super().__init__()
@@ -210,5 +210,5 @@ class DiceLoss(nn.Module):
         self.weight = weight
         self.ignore_index = ignore_index
 
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return dice_loss(pred, target, self.average, self.eps, self.weight, self.ignore_index)

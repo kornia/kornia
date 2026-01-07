@@ -17,15 +17,16 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
-from kornia.core import Tensor
-from kornia.geometry import deg2rad, get_affine_matrix3d, warp_affine3d
+from kornia.geometry.transform.imgwarp import get_affine_matrix3d, warp_affine3d
 
 
 class RandomAffine3D(GeometricAugmentationBase3D):
-    r"""Apply affine transformation 3D volumes (5D tensor).
+    r"""Apply affine transformation 3D volumes (5D torch.Tensor).
 
     The transformation is computed so that the center is kept invariant.
 
@@ -66,9 +67,9 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:
         >>> import torch
@@ -102,19 +103,21 @@ class RandomAffine3D(GeometricAugmentationBase3D):
     def __init__(
         self,
         degrees: Union[
-            Tensor,
+            torch.Tensor,
             float,
             Tuple[float, float],
             Tuple[float, float, float],
             Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
         ],
-        translate: Optional[Union[Tensor, Tuple[float, float, float]]] = None,
+        translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
         scale: Optional[
-            Union[Tensor, Tuple[float, float], Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]
+            Union[
+                torch.Tensor, Tuple[float, float], Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]
+            ]
         ] = None,
         shears: Union[
             None,
-            Tensor,
+            torch.Tensor,
             float,
             Tuple[float, float],
             Tuple[float, float, float, float, float, float],
@@ -142,26 +145,32 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
         self._param_generator = rg.AffineGenerator3D(degrees, translate, scale, shears)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        transform: Tensor = get_affine_matrix3d(
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
+        transform: torch.Tensor = get_affine_matrix3d(
             params["translations"],
             params["center"],
             params["scale"],
             params["angles"],
-            deg2rad(params["sxy"]),
-            deg2rad(params["sxz"]),
-            deg2rad(params["syx"]),
-            deg2rad(params["syz"]),
-            deg2rad(params["szx"]),
-            deg2rad(params["szy"]),
+            torch.deg2rad(params["sxy"]),
+            torch.deg2rad(params["sxz"]),
+            torch.deg2rad(params["syx"]),
+            torch.deg2rad(params["syz"]),
+            torch.deg2rad(params["szx"]),
+            torch.deg2rad(params["szy"]),
         ).to(input)
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
-        if not isinstance(transform, Tensor):
-            raise TypeError(f"Expected the transform to be a Tensor. Gotcha {type(transform)}")
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if not isinstance(transform, torch.Tensor):
+            raise TypeError(f"Expected the transform to be a torch.Tensor. Gotcha {type(transform)}")
 
         return warp_affine3d(
             input,

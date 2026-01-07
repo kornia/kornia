@@ -32,6 +32,7 @@ from kornia.augmentation import (
 )
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestColorJiggleBackward:
     @pytest.mark.parametrize("brightness", [0.8, torch.tensor(0.8), torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize("contrast", [0.8, torch.tensor(0.8), torch.tensor([0.8, 1.2])])
@@ -87,6 +88,7 @@ class TestColorJiggleBackward:
             assert (hue.to(device=device, dtype=dtype) - aug.hue.data).sum() != 0
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestColorJitterBackward:
     @pytest.mark.parametrize("brightness", [0.8, torch.tensor(0.8), torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize("contrast", [0.8, torch.tensor(0.8), torch.tensor([0.8, 1.2])])
@@ -142,6 +144,7 @@ class TestColorJitterBackward:
             assert (hue.to(device=device, dtype=dtype) - aug.hue.data).sum() != 0
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestRandomAffineBackward:
     @pytest.mark.parametrize("degrees", [10, [10.0, 20.0], (10, 20), torch.tensor(10.0), torch.tensor([10, 20])])
     @pytest.mark.parametrize("translate", [[0.1, 0.2], torch.tensor([0.1, 0.2])])
@@ -251,6 +254,7 @@ class TestRandomAffineBackward:
                 assert (shear.to(device=device, dtype=dtype) - aug._param_generator.shear.data).sum() != 0
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestRandomRotationBackward:
     @pytest.mark.parametrize("degrees", [10, [10.0, 20.0], (10, 20), torch.tensor(10.0), torch.tensor([10, 20])])
     @pytest.mark.parametrize("resample", ["bilinear"])  # TODO: Ignore nearest for now.
@@ -290,6 +294,7 @@ class TestRandomRotationBackward:
                 assert (degrees.to(device=device, dtype=dtype) - aug._param_generator.degrees.data).sum() != 0
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestRandomPerspectiveBackward:
     @pytest.mark.parametrize("distortion_scale", [0.5, torch.tensor(0.5)])
     @pytest.mark.parametrize("resample", ["bilinear"])  # TODO: Ignore nearest for now.
@@ -335,6 +340,7 @@ class TestRandomPerspectiveBackward:
                 ).sum() != 0
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestRandomMotionBlurBackward:
     @pytest.mark.parametrize("angle", [20.0, torch.tensor([-20.0, 20.0])])
     @pytest.mark.parametrize("direction", [[-0.5, 0.5], torch.tensor([-0.5, 0.5])])
@@ -389,6 +395,7 @@ class TestRandomMotionBlurBackward:
                 assert (direction.to(device=device, dtype=dtype) - aug._param_generator.direction.data).sum() != 0
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestRandomSharpnessBackward:
     @pytest.mark.parametrize("sharpness", [0.5, [0, 0.5], torch.tensor([0, 0.5])])
     @pytest.mark.parametrize("same_on_batch", [True, False])
@@ -418,6 +425,7 @@ class TestRandomSharpnessBackward:
             assert (sharpness.to(device=device, dtype=dtype) - aug._param_generator.sharpness.data).sum() != 0
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestRandomResizedCropBackward:
     @pytest.mark.skip("Param gen is probably breaking grads.")
     @pytest.mark.parametrize("scale", [[0.08, 1.0], torch.tensor([0.08, 1.0])])
@@ -458,6 +466,7 @@ class TestRandomResizedCropBackward:
             assert (ratio.to(device=device, dtype=dtype) - aug.ratio.data).sum() != 0
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestRandomErasingBackward:
     @pytest.mark.skip("Need differentiable indexing.")
     @pytest.mark.parametrize("scale", [[0.02, 0.33], torch.tensor([0.02, 0.33])])

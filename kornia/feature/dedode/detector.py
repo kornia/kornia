@@ -15,22 +15,28 @@
 # limitations under the License.
 #
 
+import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, Tensor
-
 
 class DeDoDeDetector(nn.Module):
-    def __init__(self, encoder: Module, decoder: Module, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+    """Implement the DeDoDe detector for keypoint learning and localization.
+
+    Args:
+        encoder: The backbone encoder module.
+        decoder: The decoder module for probability map generation.
+    """
+
+    def __init__(self, encoder: nn.Module, decoder: nn.Module, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self.encoder = encoder
         self.decoder = decoder
 
     def forward(
         self,
-        images: Tensor,
-    ) -> Tensor:
+        images: torch.Tensor,
+    ) -> torch.Tensor:
         dtype = images.dtype
         features, sizes = self.encoder(images)
         context = None

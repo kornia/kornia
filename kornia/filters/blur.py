@@ -17,8 +17,9 @@
 
 from __future__ import annotations
 
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor
+import torch
+from torch import nn
+
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
 from .filter import filter2d, filter2d_separable
@@ -26,8 +27,8 @@ from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
 
 
 def box_blur(
-    input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = False
-) -> Tensor:
+    input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = False
+) -> torch.Tensor:
     r"""Blur an image using the box filter.
 
     .. image:: _static/img/box_blur.png
@@ -51,7 +52,7 @@ def box_blur(
         separable: run as composition of two 1d-convolutions.
 
     Returns:
-        the blurred tensor with shape :math:`(B,C,H,W)`.
+        the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
 
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_operators.html>`__.
@@ -77,7 +78,7 @@ def box_blur(
     return out
 
 
-class BoxBlur(Module):
+class BoxBlur(nn.Module):
     r"""Blur an image using the box filter.
 
     The function smooths an image using the kernel:
@@ -99,7 +100,7 @@ class BoxBlur(Module):
         separable: run as composition of two 1d-convolutions.
 
     Returns:
-        the blurred input tensor.
+        the blurred input torch.Tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -126,11 +127,11 @@ class BoxBlur(Module):
             ky, kx = _unpack_2d_ks(self.kernel_size)
             self.register_buffer("kernel_y", get_box_kernel1d(ky))
             self.register_buffer("kernel_x", get_box_kernel1d(kx))
-            self.kernel_y: Tensor
-            self.kernel_x: Tensor
+            self.kernel_y: torch.Tensor
+            self.kernel_x: torch.Tensor
         else:
             self.register_buffer("kernel", get_box_kernel2d(kernel_size))
-            self.kernel: Tensor
+            self.kernel: torch.Tensor
 
     def __repr__(self) -> str:
         return (
@@ -140,7 +141,7 @@ class BoxBlur(Module):
             f"separable={self.separable})"
         )
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         KORNIA_CHECK_IS_TENSOR(input)
         if self.separable:
             return filter2d_separable(input, self.kernel_x, self.kernel_y, self.border_type)

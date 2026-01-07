@@ -20,8 +20,10 @@ from __future__ import annotations
 import os
 from typing import Any, Optional
 
+import torch
+
 from kornia.config import kornia_config
-from kornia.core import ImageSequential, Tensor
+from kornia.core import ImageSequential
 from kornia.core.external import onnx
 from kornia.geometry.transform import resize
 from kornia.models.base import ModelBaseMixin
@@ -115,7 +117,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         self.pre_processor = pre_processor
         self.post_processor = post_processor
 
-    def resize_back(self, images: Tensor, target_images: Tensor) -> Tensor:
+    def resize_back(self, images: torch.Tensor, target_images: torch.Tensor) -> torch.Tensor:
         """Resize the input images back to the original size of target images.
 
         Args:
@@ -126,7 +128,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
             The resized images.
 
         """
-        if isinstance(target_images, Tensor):
+        if isinstance(target_images, torch.Tensor):
             return resize(images, target_images.shape[-2:])
         raise RuntimeError
 

@@ -17,9 +17,10 @@
 
 from typing import Any, Dict, Optional
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor
 from kornia.enhance import shift_rgb
 
 
@@ -39,7 +40,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
           to the batch form ``False``.
 
     Note:
-        Input tensor must be float and normalized into [0, 1].
+        Input torch.Tensor must be float and normalized into [0, 1].
 
     Examples:
         >>> import torch
@@ -108,6 +109,10 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, inp: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        inp: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         return shift_rgb(inp, params["r_shift"], params["g_shift"], params["b_shift"])

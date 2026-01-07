@@ -192,7 +192,9 @@ class TestUpscaleDouble(BaseTester):
         assert kornia.geometry.transform.upscale_double(x) is not None
 
     def test_exception(self):
-        with pytest.raises(TypeError):
+        from kornia.core.exceptions import TypeCheckError
+
+        with pytest.raises(TypeCheckError):
             kornia.geometry.transform.upscale_double(None)
 
     @pytest.mark.parametrize("shape", ((5, 5), (2, 5, 5), (1, 2, 5, 5)))

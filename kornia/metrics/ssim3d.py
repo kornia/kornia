@@ -17,15 +17,18 @@
 
 from typing import List
 
-from kornia.core import Module, Tensor, pad
+import torch
+import torch.nn.functional as F
+from torch import nn
+
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters import filter3d, get_gaussian_kernel3d
 from kornia.filters.filter import _compute_padding
 
 
-def _crop(img: Tensor, cropping_shape: List[int]) -> Tensor:
+def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
     """Crop out the part of "valid" convolution area."""
-    return pad(
+    return F.pad(
         img,
         (
             -cropping_shape[4],
@@ -39,8 +42,13 @@ def _crop(img: Tensor, cropping_shape: List[int]) -> Tensor:
 
 
 def ssim3d(
-    img1: Tensor, img2: Tensor, window_size: int, max_val: float = 1.0, eps: float = 1e-12, padding: str = "same"
-) -> Tensor:
+    img1: torch.Tensor,
+    img2: torch.Tensor,
+    window_size: int,
+    max_val: float = 1.0,
+    eps: float = 1e-12,
+    padding: str = "same",
+) -> torch.Tensor:
     r"""Compute the Structural Similarity (SSIM) index map between two images.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
@@ -52,7 +60,7 @@ def ssim3d(
       \text{SSIM}(x, y) = \frac{(2\mu_x\mu_y+c_1)(2\sigma_{xy}+c_2)}
       {(\mu_x^2+\mu_y^2+c_1)(\sigma_x^2+\sigma_y^2+c_2)}
 
-    where:
+    torch.where:
       - :math:`c_1=(k_1 L)^2` and :math:`c_2=(k_2 L)^2` are two variables to
         stabilize the division with weak denominator.
       - :math:`L` is the dynamic range of the pixel-values (typically this is
@@ -86,15 +94,15 @@ def ssim3d(
         raise TypeError(f"Input max_val type is not a float. Got {type(max_val)}")
 
     # prepare kernel
-    kernel: Tensor = get_gaussian_kernel3d((window_size, window_size, window_size), (1.5, 1.5, 1.5))
+    kernel: torch.Tensor = get_gaussian_kernel3d((window_size, window_size, window_size), (1.5, 1.5, 1.5))
 
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2
     C2: float = (0.03 * max_val) ** 2
 
     # compute local mean per channel
-    mu1: Tensor = filter3d(img1, kernel)
-    mu2: Tensor = filter3d(img2, kernel)
+    mu1: torch.Tensor = filter3d(img1, kernel)
+    mu2: torch.Tensor = filter3d(img2, kernel)
 
     cropping_shape: List[int] = []
     if padding == "valid":
@@ -126,13 +134,13 @@ def ssim3d(
     sigma12 = mu_img1_img2 - mu1_mu2
 
     # compute the similarity index map
-    num: Tensor = (2.0 * mu1_mu2 + C1) * (2.0 * sigma12 + C2)
-    den: Tensor = (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
+    num: torch.Tensor = (2.0 * mu1_mu2 + C1) * (2.0 * sigma12 + C2)
+    den: torch.Tensor = (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
 
     return num / (den + eps)
 
 
-class SSIM3D(Module):
+class SSIM3D(nn.Module):
     r"""Create a module that computes the Structural Similarity (SSIM) index between two 3D images.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
@@ -144,7 +152,7 @@ class SSIM3D(Module):
       \text{SSIM}(x, y) = \frac{(2\mu_x\mu_y+c_1)(2\sigma_{xy}+c_2)}
       {(\mu_x^2+\mu_y^2+c_1)(\sigma_x^2+\sigma_y^2+c_2)}
 
-    where:
+    torch.where:
       - :math:`c_1=(k_1 L)^2` and :math:`c_2=(k_2 L)^2` are two variables to
         stabilize the division with weak denominator.
       - :math:`L` is the dynamic range of the pixel-values (typically this is
@@ -177,5 +185,5 @@ class SSIM3D(Module):
         self.eps = eps
         self.padding = padding
 
-    def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
+    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
         return ssim3d(img1, img2, self.window_size, self.max_val, self.eps, self.padding)

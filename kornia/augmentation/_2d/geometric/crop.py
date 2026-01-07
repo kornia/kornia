@@ -18,18 +18,18 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.core import Tensor, pad, tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
 
 class RandomCrop(GeometricAugmentationBase2D):
-    r"""Crop random patches of a tensor image on a given size.
+    r"""Crop random patches of a torch.Tensor image on a given size.
 
     .. image:: _static/img/RandomCrop.png
 
@@ -38,10 +38,10 @@ class RandomCrop(GeometricAugmentationBase2D):
             Must be Tuple[int, int], then out_h = size[0], out_w = size[1].
         padding: Optional padding on each border
             of the image. Default is None, i.e no padding. If a sequence of length
-            4 is provided, it is used to pad left, top, right, bottom borders
+            4 is provided, it is used to F.pad left, top, right, bottom borders
             respectively. If a sequence of length 2 is provided, it is used to
-            pad left/right, top/bottom borders, respectively.
-        pad_if_needed: It will pad the image if smaller than the
+            F.pad left/right, top/bottom borders, respectively.
+        pad_if_needed: It will F.pad the image if smaller than the
             desired size to avoid raising an exception. Since cropping is done
             after padding, the padding seems to be done at a random offset.
         fill: Pixel fill value for constant fill. Default is 0. If a tuple of
@@ -54,7 +54,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         p: probability of applying the transformation for the whole batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
-        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the tensor based
+        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.Tensor based
                        on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
                        to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
                        differentiability.
@@ -64,9 +64,9 @@ class RandomCrop(GeometricAugmentationBase2D):
         - Output: :math:`(B, C, out_h, out_w)`
 
     Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:
         >>> import torch
@@ -104,7 +104,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         keepdim: bool = False,
         cropping_mode: str = "slice",
     ) -> None:
-        # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
+        # Since PyTorch does not support ragged torch.Tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         self._param_generator = rg.CropGenerator(size)
         self.flags = {
@@ -135,12 +135,12 @@ class RandomCrop(GeometricAugmentationBase2D):
 
         if flags["pad_if_needed"]:
             needed_padding: Tuple[int, int] = (flags["size"][0] - shape[-2], flags["size"][1] - shape[-1])  # HW
-            # If crop width is larger than input width pad equally left and right
+            # If crop width is larger than input width F.pad equally left and right
             if needed_padding[1] > 0:
                 # Only use the extra padding if actually needed after possible fixed padding
                 padding[0] = max(needed_padding[1], padding[0])
                 padding[1] = max(needed_padding[1], padding[1])
-            # If crop height is larger than input height pad equally top and bottom
+            # If crop height is larger than input height F.pad equally top and bottom
             if needed_padding[0] > 0:
                 # Only use the extra padding if actually needed after possible fixed padding
                 padding[2] = max(needed_padding[0], padding[2])
@@ -148,22 +148,24 @@ class RandomCrop(GeometricAugmentationBase2D):
         return padding
 
     def precrop_padding(
-        self, input: Tensor, padding: Optional[List[int]] = None, flags: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, padding: Optional[List[int]] = None, flags: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         flags = self.flags if flags is None else flags
         if padding is None:
             padding = self.compute_padding(input.shape)
 
         if any(padding):
-            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+            input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
         return input
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
             src = params["src"].to(input)
             dst = params["dst"].to(input)
-            transform: Tensor = get_perspective_transform(src, dst)
+            transform: torch.Tensor = get_perspective_transform(src, dst)
 
             # Fast scaling correction when output exceeds input and padding disabled
             if not flags.get("pad_if_needed", False):
@@ -177,36 +179,48 @@ class RandomCrop(GeometricAugmentationBase2D):
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform_keypoint(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Keypoints,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied."""
-        # For pad the keypoints properly.
+        # For F.pad the keypoints properly.
         padding_size = params["padding_size"].to(device=input.device)
         input = input.pad(padding_size)
         return super().apply_transform_keypoint(input=input, params=params, flags=flags, transform=transform)
 
     def apply_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Boxes,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
     ) -> Boxes:
         """Process keypoints corresponding to the inputs that are no transformation applied."""
-        # For pad the boxes properly.
+        # For F.pad the boxes properly.
         padding_size = params["padding_size"]
         input = input.pad(padding_size)
         return super().apply_transform_box(input=input, params=params, flags=flags, transform=transform)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         padding_size: Optional[List[int]] = None
-        if "padding_size" in params and isinstance(params["padding_size"], Tensor):
+        if "padding_size" in params and isinstance(params["padding_size"], torch.Tensor):
             padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().tolist()
         input = self.precrop_padding(input, padding_size, flags)
 
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            if not isinstance(transform, Tensor):
-                raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
-            # Fit the arg to F.pad
+            if not isinstance(transform, torch.Tensor):
+                raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
+            # Fit the arg to F.F.pad
             if flags["padding_mode"] == "constant":
                 padding_mode = "zeros"
             elif flags["padding_mode"] == "replicate":
@@ -230,20 +244,20 @@ class RandomCrop(GeometricAugmentationBase2D):
 
     def inverse_transform(
         self,
-        input: Tensor,
+        input: torch.Tensor,
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
         if size is None:
             raise RuntimeError("`size` has to be a tuple. Got None.")
-        if not isinstance(transform, Tensor):
-            raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
-        # Fit the arg to F.pad
+        if not isinstance(transform, torch.Tensor):
+            raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
+        # Fit the arg to F.F.pad
         if flags["padding_mode"] == "constant":
             padding_mode = "zeros"
         elif flags["padding_mode"] == "replicate":
@@ -263,12 +277,12 @@ class RandomCrop(GeometricAugmentationBase2D):
 
     def inverse_inputs(
         self,
-        input: Tensor,
-        params: Dict[str, Tensor],
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
@@ -283,9 +297,9 @@ class RandomCrop(GeometricAugmentationBase2D):
     def inverse_boxes(
         self,
         input: Boxes,
-        params: Dict[str, Tensor],
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
     ) -> Boxes:
         if flags["cropping_mode"] != "resample":
@@ -301,9 +315,9 @@ class RandomCrop(GeometricAugmentationBase2D):
     def inverse_keypoints(
         self,
         input: Keypoints,
-        params: Dict[str, Tensor],
+        params: Dict[str, torch.Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
     ) -> Keypoints:
         if flags["cropping_mode"] != "resample":
@@ -317,7 +331,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         return output.unpad(params["padding_size"].to(device=input.device))
 
     # Override parameters for precrop
-    def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+    def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         input_pad = self.compute_padding(batch_shape)
         batch_shape_new = torch.Size(
             (
@@ -326,7 +340,7 @@ class RandomCrop(GeometricAugmentationBase2D):
                 batch_shape[3] + input_pad[0] + input_pad[1],  # original width + left + right padding
             )
         )
-        padding_size = tensor(tuple(input_pad), dtype=torch.long).expand(batch_shape[0], -1)
+        padding_size = torch.tensor(tuple(input_pad), dtype=torch.long).expand(batch_shape[0], -1)
         _params = super().forward_parameters(batch_shape_new)
         _params.update({"padding_size": padding_size})
         return _params

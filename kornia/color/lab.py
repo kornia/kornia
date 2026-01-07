@@ -25,8 +25,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 import torch
-
-from kornia.core import ImageModule as Module
+from torch import nn
 
 from .rgb import linear_rgb_to_rgb, rgb_to_linear_rgb
 from .xyz import rgb_to_xyz, xyz_to_rgb
@@ -63,7 +62,7 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
 
     xyz_im: torch.Tensor = rgb_to_xyz(lin_rgb)
 
-    # normalize for D65 white point
+    # F.normalize for D65 white point
     xyz_ref_white = torch.tensor([0.95047, 1.0, 1.08883], device=xyz_im.device, dtype=xyz_im.dtype)[..., :, None, None]
     xyz_normalized = torch.div(xyz_im, xyz_ref_white)
 
@@ -147,7 +146,7 @@ def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     return rgb_im
 
 
-class RgbToLab(Module):
+class RgbToLab(nn.Module):
     r"""Convert an image from RGB to Lab.
 
     The image data is assumed to be in the range of :math:`[0, 1]`. Lab
@@ -181,7 +180,7 @@ class RgbToLab(Module):
         return rgb_to_lab(image)
 
 
-class LabToRgb(Module):
+class LabToRgb(nn.Module):
     r"""Convert an image from Lab to RGB.
 
     Returns:

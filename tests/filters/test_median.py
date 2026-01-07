@@ -37,13 +37,15 @@ class TestMedianBlur(BaseTester):
         assert actual.shape == (batch_size, 3, 4, 4)
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError) as errinfo:
-            median_blur(1, 1)
-        assert "Not a Tensor type." in str(errinfo)
+        from kornia.core.exceptions import ShapeError, TypeCheckError
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(TypeCheckError) as errinfo:
+            median_blur(1, 1)
+        assert "Type mismatch: expected Tensor" in str(errinfo.value)
+
+        with pytest.raises(ShapeError) as errinfo:
             median_blur(torch.ones(1, 1, device=device, dtype=dtype), 1)
-        assert "shape must be [['B', 'C', 'H', 'W']]." in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
     def test_kernel_3x3(self, device, dtype):
         inp = torch.tensor(

@@ -23,7 +23,6 @@ from typing import Optional, Tuple, Union
 
 import torch
 
-from kornia.core import Tensor, as_tensor
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scale
 
@@ -49,15 +48,15 @@ def get_adalam_default_config() -> AdalamConfig:
 
 
 def match_adalam(
-    desc1: Tensor,
-    desc2: Tensor,
-    lafs1: Tensor,
-    lafs2: Tensor,
+    desc1: torch.Tensor,
+    desc2: torch.Tensor,
+    lafs1: torch.Tensor,
+    lafs2: torch.Tensor,
     config: Optional[AdalamConfig] = None,
     hw1: Optional[Tuple[int, int]] = None,
     hw2: Optional[Tuple[int, int]] = None,
-    dm: Optional[Tensor] = None,
-) -> Tuple[Tensor, Tensor]:
+    dm: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """Perform descriptor matching, followed by AdaLAM filtering.
 
     See :cite:`AdaLAM2020` for more details.
@@ -70,7 +69,7 @@ def match_adalam(
         lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
         lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
         config: dict with AdaLAM config
-        dm: Tensor containing the distances from each descriptor in desc1
+        dm: torch.Tensor containing the distances from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
         hw1: Height/width of image.
         hw2: Height/width of image.
@@ -78,7 +77,7 @@ def match_adalam(
 
     Return:
         - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
-        - Long tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
           where 0 <= B3 <= B1.
 
     """
@@ -118,6 +117,15 @@ def match_adalam(
 
 
 class AdalamFilter:
+    """Implement the AdaLAM (Adaptive Locally-Affine Matching) filter for outlier rejection.
+
+    This class wraps the AdaLAM algorithm to filter feature matches based on
+    local affine consistency.
+
+    Args:
+        custom_config: Optional configuration object for AdaLAM parameters.
+    """
+
     def __init__(self, custom_config: Optional[AdalamConfig] = None) -> None:
         """Wrap the method AdaLAM for outlier filtering.
 
@@ -132,38 +140,38 @@ class AdalamFilter:
 
     def filter_matches(
         self,
-        k1: Tensor,
-        k2: Tensor,
-        putative_matches: Tensor,
-        scores: Tensor,
-        mnn: Optional[Tensor] = None,
+        k1: torch.Tensor,
+        k2: torch.Tensor,
+        putative_matches: torch.Tensor,
+        scores: torch.Tensor,
+        mnn: Optional[torch.Tensor] = None,
         im1shape: Optional[Tuple[int, int]] = None,
         im2shape: Optional[Tuple[int, int]] = None,
-        o1: Optional[Tensor] = None,
-        o2: Optional[Tensor] = None,
-        s1: Optional[Tensor] = None,
-        s2: Optional[Tensor] = None,
+        o1: Optional[torch.Tensor] = None,
+        o2: Optional[torch.Tensor] = None,
+        s1: Optional[torch.Tensor] = None,
+        s2: Optional[torch.Tensor] = None,
         return_dist: bool = False,
-    ) -> Union[Tuple[Tensor, Tensor], Tensor]:
+    ) -> Union[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
         """Call the core functionality of AdaLAM, i.e. just outlier filtering.
 
         No sanity check is performed on the inputs.
 
         Args:
             k1: keypoint locations in the source image, in pixel coordinates.
-                Expected a float32 tensor with shape (num_keypoints_in_source_image, 2).
+                Expected a float32 torch.Tensor with shape (num_keypoints_in_source_image, 2).
             k2: keypoint locations in the destination image, in pixel coordinates.
-                Expected a float32 tensor with shape (num_keypoints_in_destination_image, 2).
+                Expected a float32 torch.Tensor with shape (num_keypoints_in_destination_image, 2).
             putative_matches: Initial set of putative matches to be filtered.
                               The current implementation assumes that these are unfiltered nearest neighbor matches,
                               so it requires this to be a list of indices a_i such that the source keypoint i is
                               associated to the destination keypoint a_i. For now to use AdaLAM on different inputs a
                               workaround on the input format is required.
-                              Expected a long tensor with shape (num_keypoints_in_source_image,).
+                              Expected a long torch.Tensor with shape (num_keypoints_in_source_image,).
             scores: Confidence scores on the putative_matches. Usually holds Lowe's ratio scores.
             mnn: A mask indicating which putative matches are also mutual nearest neighbors. See documentation on
                  'force_seed_mnn' in the DEFAULT_CONFIG. If None, it disables the mutual nearest neighbor filtering on
-                 seed point selection. Expected a bool tensor with shape (num_keypoints_in_source_image,)
+                 seed point selection. Expected a bool torch.Tensor with shape (num_keypoints_in_source_image,)
             im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of
                       wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
                       of source image
@@ -172,17 +180,18 @@ class AdalamFilter:
                       of destination image
             o1: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config
                    is set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
-                   Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
+                   Expected a float32 torch.Tensor with shape (num_keypoints_in_source/destination_image,)
             o2: same as o1 but for destination.
             s1: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                    See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
-                   Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
+                   Expected a float32 torch.Tensor with shape (num_keypoints_in_source/destination_image,)
             s2: same as s1 but for destination.
             return_dist: if True, inverse confidence value is also outputted.
 
         Returns:
             Filtered putative matches.
-            A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
+            A long torch.Tensor with shape (num_filtered_matches, 2) with indices of corresponding
+            keypoints in k1 and k2.
 
         """
         with torch.no_grad():
@@ -204,18 +213,18 @@ class AdalamFilter:
 
     def match_and_filter(
         self,
-        k1: Tensor,
-        k2: Tensor,
-        d1: Tensor,
-        d2: Tensor,
+        k1: torch.Tensor,
+        k2: torch.Tensor,
+        d1: torch.Tensor,
+        d2: torch.Tensor,
         im1shape: Optional[Tuple[int, int]] = None,
         im2shape: Optional[Tuple[int, int]] = None,
-        o1: Optional[Tensor] = None,
-        o2: Optional[Tensor] = None,
-        s1: Optional[Tensor] = None,
-        s2: Optional[Tensor] = None,
+        o1: Optional[torch.Tensor] = None,
+        o2: Optional[torch.Tensor] = None,
+        s1: Optional[torch.Tensor] = None,
+        s2: Optional[torch.Tensor] = None,
         return_dist: bool = False,
-    ) -> Union[Tuple[Tensor, Tensor], Tensor]:
+    ) -> Union[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
         """Match and filter with AdaLAM.
 
         This function:
@@ -253,7 +262,8 @@ class AdalamFilter:
 
         Returns:
             Filtered putative matches.
-            A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
+            A long torch.Tensor with shape (num_filtered_matches, 2) with indices of corresponding
+            keypoints in k1 and k2.
 
         """
         if s1 is None or s2 is None:
@@ -268,18 +278,18 @@ class AdalamFilter:
                     "Current configuration considers keypoint orientations for filtering, but orientations have not been provided.\n"  # noqa: E501
                     "Please either provide orientations or set 'orientation_difference_threshold' to None to disable orientations filtering"  # noqa: E501
                 )
-        _k1 = as_tensor(k1, device=self.config["device"], dtype=torch.float32)
-        _k2 = as_tensor(k2, device=self.config["device"], dtype=torch.float32)
-        _d1 = as_tensor(d1, device=self.config["device"], dtype=torch.float32)
-        _d2 = as_tensor(d2, device=self.config["device"], dtype=torch.float32)
+        _k1 = torch.as_tensor(k1, device=self.config["device"], dtype=torch.float32)
+        _k2 = torch.as_tensor(k2, device=self.config["device"], dtype=torch.float32)
+        _d1 = torch.as_tensor(d1, device=self.config["device"], dtype=torch.float32)
+        _d2 = torch.as_tensor(d2, device=self.config["device"], dtype=torch.float32)
         if o1 is not None:
-            _o1 = as_tensor(o1, device=self.config["device"], dtype=torch.float32)
-            _o2 = as_tensor(o2, device=self.config["device"], dtype=torch.float32)
+            _o1 = torch.as_tensor(o1, device=self.config["device"], dtype=torch.float32)
+            _o2 = torch.as_tensor(o2, device=self.config["device"], dtype=torch.float32)
         else:
             _o1, _o2 = o1, o2
         if s1 is not None:
-            _s1 = as_tensor(s1, device=self.config["device"], dtype=torch.float32)
-            _s2 = as_tensor(s2, device=self.config["device"], dtype=torch.float32)
+            _s1 = torch.as_tensor(s1, device=self.config["device"], dtype=torch.float32)
+            _s2 = torch.as_tensor(s2, device=self.config["device"], dtype=torch.float32)
         else:
             _s1, _s2 = s1, s2
 

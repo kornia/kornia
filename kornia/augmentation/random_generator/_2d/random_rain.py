@@ -21,8 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
-from kornia.core import Tensor
-from kornia.utils import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype
 
 
 class RainGenerator(RandomGeneratorBase):
@@ -66,7 +65,7 @@ class RainGenerator(RandomGeneratorBase):
         self.drop_width_sampler = UniformDistribution(drop_width[0], drop_width[1], validate_args=False)
         self.coordinates_sampler = UniformDistribution(drop_coordinates[0], drop_coordinates[1], validate_args=False)
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.drop_width, self.drop_height, self.number_of_drops])

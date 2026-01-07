@@ -17,14 +17,15 @@
 
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor
 from kornia.enhance import solarize
 
 
 class RandomSolarize(IntensityAugmentationBase2D):
-    r"""Solarize given tensor image or a batch of tensor images randomly.
+    r"""Solarize given torch.Tensor image or a batch of torch.Tensor images randomly.
 
     .. image:: _static/img/RandomSolarize.png
 
@@ -68,8 +69,8 @@ class RandomSolarize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        thresholds: Union[Tensor, float, Tuple[float, float], List[float]] = 0.1,
-        additions: Union[Tensor, float, Tuple[float, float], List[float]] = 0.1,
+        thresholds: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
+        additions: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -80,10 +81,14 @@ class RandomSolarize(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         thresholds = params["thresholds"]
-        additions: Optional[Tensor]
+        additions: Optional[torch.Tensor]
         if "additions" in params:
             additions = params["additions"]
         else:

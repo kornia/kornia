@@ -22,10 +22,8 @@ from typing import Callable
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor, as_tensor, stack, tensor, where, zeros_like
 
-
-class _HausdorffERLossBase(Module):
+class _HausdorffERLossBase(nn.Module):
     """Base class for binary Hausdorff loss based on morphological erosion.
 
     This is an Hausdorff Distance (HD) Loss that based on morphological erosion,which provided
@@ -45,8 +43,8 @@ class _HausdorffERLossBase(Module):
 
     """
 
-    conv: Callable[..., Tensor]
-    max_pool: Callable[..., Tensor]
+    conv: Callable[..., torch.Tensor]
+    max_pool: Callable[..., torch.Tensor]
 
     def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = "mean") -> None:
         super().__init__()
@@ -55,15 +53,15 @@ class _HausdorffERLossBase(Module):
         self.reduction = reduction
         self.register_buffer("kernel", self.get_kernel())
 
-    def get_kernel(self) -> Tensor:
+    def get_kernel(self) -> torch.Tensor:
         """Get kernel for image morphology convolution."""
         raise NotImplementedError
 
-    def perform_erosion(self, pred: Tensor, target: Tensor) -> Tensor:
+    def perform_erosion(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         bound = (pred - target) ** 2
 
-        kernel = as_tensor(self.kernel, device=pred.device, dtype=pred.dtype)
-        eroded = zeros_like(bound, device=pred.device, dtype=pred.dtype)
+        kernel = torch.as_tensor(self.kernel, device=pred.device, dtype=pred.dtype)
+        eroded = torch.zeros_like(bound, device=pred.device, dtype=pred.dtype)
         mask = torch.ones_like(bound, device=pred.device, dtype=torch.bool)
 
         # Same padding, assuming kernel is odd and square (cube) shaped.
@@ -71,7 +69,7 @@ class _HausdorffERLossBase(Module):
         for k in range(self.k):
             # compute convolution with kernel
             dilation = self.conv(bound, weight=kernel, padding=padding, groups=1)
-            # apply soft thresholding at 0.5 and normalize
+            # apply soft thresholding at 0.5 and F.normalize
             erosion = dilation - 0.5
             erosion[erosion < 0] = 0
 
@@ -86,7 +84,7 @@ class _HausdorffERLossBase(Module):
                 #       erosion[to_norm] = (erosion[to_norm] - erosion_min[to_norm]) / (
                 #           erosion_max[to_norm] - erosion_min[to_norm])
                 _erosion_to_fill = (erosion - erosion_min) / (erosion_max - erosion_min)
-                erosion = where(mask * _to_norm, _erosion_to_fill, erosion)
+                erosion = torch.where(mask * _to_norm, _erosion_to_fill, erosion)
 
             # save erosion and add to loss
             eroded = eroded + erosion * (k + 1) ** self.alpha
@@ -94,13 +92,13 @@ class _HausdorffERLossBase(Module):
 
         return eroded
 
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute Hausdorff loss.
 
         Args:
-            pred: predicted tensor with a shape of :math:`(B, C, H, W)` or :math:`(B, C, D, H, W)`.
+            pred: predicted torch.Tensor with a shape of :math:`(B, C, H, W)` or :math:`(B, C, D, H, W)`.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
-            target: target tensor with a shape of :math:`(B, 1, H, W)` or :math:`(B, C, D, H, W)`.
+            target: target torch.Tensor with a shape of :math:`(B, 1, H, W)` or :math:`(B, C, D, H, W)`.
 
         Returns:
             Estimated Hausdorff Loss.
@@ -115,14 +113,14 @@ class _HausdorffERLossBase(Module):
         if pred.size(1) < target.max().item():
             raise ValueError("Invalid target value.")
 
-        out = stack(
+        out = torch.stack(
             [
                 self.perform_erosion(
                     pred[:, i : i + 1],
-                    where(
+                    torch.where(
                         target == i,
-                        tensor(1, device=target.device, dtype=target.dtype),
-                        tensor(0, device=target.device, dtype=target.dtype),
+                        torch.tensor(1, device=target.device, dtype=target.dtype),
+                        torch.tensor(0, device=target.device, dtype=target.dtype),
                     ),
                 )
                 for i in range(pred.size(1))
@@ -181,19 +179,19 @@ class HausdorffERLoss(_HausdorffERLossBase):
     conv = torch.conv2d
     max_pool = nn.AdaptiveMaxPool2d(1)
 
-    def get_kernel(self) -> Tensor:
+    def get_kernel(self) -> torch.Tensor:
         """Get kernel for image morphology convolution."""
-        cross = tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]])
+        cross = torch.tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]])
         kernel = cross * 0.2
         return kernel[None]
 
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute Hausdorff loss.
 
         Args:
-            pred: predicted tensor with a shape of :math:`(B, C, H, W)`.
+            pred: predicted torch.Tensor with a shape of :math:`(B, C, H, W)`.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
-            target: target tensor with a shape of :math:`(B, 1, H, W)`.
+            target: target torch.Tensor with a shape of :math:`(B, 1, H, W)`.
 
         Returns:
             Estimated Hausdorff Loss.
@@ -249,23 +247,23 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
     conv = torch.conv3d
     max_pool = nn.AdaptiveMaxPool3d(1)
 
-    def get_kernel(self) -> Tensor:
+    def get_kernel(self) -> torch.Tensor:
         """Get kernel for image morphology convolution."""
-        cross = tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]])
-        bound = tensor([[[0, 0, 0], [0, 1, 0], [0, 0, 0]]])
+        cross = torch.tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]])
+        bound = torch.tensor([[[0, 0, 0], [0, 1, 0], [0, 0, 0]]])
         # NOTE: The original repo claimed it shaped as (3, 1, 3, 3)
         #    which Jian suspect it is wrongly implemented.
         # https://github.com/PatRyg99/HausdorffLoss/blob/9f580acd421af648e74b45d46555ccb7a876c27c/hausdorff_loss.py#L94
-        kernel = stack([bound, cross, bound], 1) * (1 / 7)
+        kernel = torch.stack([bound, cross, bound], 1) * (1 / 7)
         return kernel[None]
 
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """Compute 3D Hausdorff loss.
 
         Args:
-            pred: predicted tensor with a shape of :math:`(B, C, D, H, W)`.
+            pred: predicted torch.Tensor with a shape of :math:`(B, C, D, H, W)`.
                 Each channel is as binary as: 1 -> fg, 0 -> bg.
-            target: target tensor with a shape of :math:`(B, 1, D, H, W)`.
+            target: target torch.Tensor with a shape of :math:`(B, 1, D, H, W)`.
 
         Returns:
             Estimated Hausdorff Loss.

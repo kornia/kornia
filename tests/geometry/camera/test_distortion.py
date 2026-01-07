@@ -93,9 +93,11 @@ class TestDistortionAffine(BaseTester):
         self.assert_close(dx_distort_points_affine(points, params), expected)
 
     def test_exception(self, device, dtype) -> None:
+        from kornia.core.exceptions import ShapeError
+
         points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
         params = torch.tensor([600.0, 600.0, 319.5], device=device, dtype=dtype)
-        with pytest.raises(TypeError):
+        with pytest.raises(ShapeError):
             distort_points_affine(points, params)
 
     def _test_gradcheck_distort(self, device):
@@ -205,9 +207,11 @@ class TestDistortionKannalaBrandt(BaseTester):
         self.assert_close(dx_distort_points_kannala_brandt(points, params), expected)
 
     def test_exception(self, device, dtype) -> None:
+        from kornia.core.exceptions import ShapeError
+
         points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
         params = torch.tensor([600.0, 600.0, 319.5], device=device, dtype=dtype)
-        with pytest.raises(TypeError):
+        with pytest.raises(ShapeError):
             distort_points_kannala_brandt(points, params)
 
     def _test_gradcheck_distort(self, device):

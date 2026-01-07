@@ -18,18 +18,18 @@
 from __future__ import annotations
 
 import torch
+import torch.nn.functional as F
 
-from kornia.core import Tensor, pad, stack, tensor, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.transform import rotate, rotate3d
-from kornia.utils import _extract_device_dtype
 
 from .kernels import _check_kernel_size, _unpack_2d_ks, _unpack_3d_ks
 
 
 def get_motion_kernel2d(
-    kernel_size: int, angle: Tensor | float, direction: Tensor | float = 0.0, mode: str = "nearest"
-) -> Tensor:
+    kernel_size: int, angle: torch.Tensor | float, direction: torch.Tensor | float = 0.0, mode: str = "nearest"
+) -> torch.Tensor:
     r"""Return 2D motion blur filter.
 
     Args:
@@ -59,23 +59,23 @@ def get_motion_kernel2d(
 
     """
     device, dtype = _extract_device_dtype(
-        [angle if isinstance(angle, Tensor) else None, direction if isinstance(direction, Tensor) else None]
+        [angle if isinstance(angle, torch.Tensor) else None, direction if isinstance(direction, torch.Tensor) else None]
     )
 
     # TODO: add support to kernel_size as tuple or integer
     kernel_tuple = _unpack_2d_ks(kernel_size)
     _check_kernel_size(kernel_size, 2)
 
-    if not isinstance(angle, Tensor):
-        angle = tensor([angle], device=device, dtype=dtype)
+    if not isinstance(angle, torch.Tensor):
+        angle = torch.tensor([angle], device=device, dtype=dtype)
 
     if angle.dim() == 0:
         angle = angle[None]
 
     KORNIA_CHECK_SHAPE(angle, ["B"])
 
-    if not isinstance(direction, Tensor):
-        direction = tensor([direction], device=device, dtype=dtype)
+    if not isinstance(direction, torch.Tensor):
+        direction = torch.tensor([direction], device=device, dtype=dtype)
 
     if direction.dim() == 0:
         direction = direction[None]
@@ -96,8 +96,8 @@ def get_motion_kernel2d(
     # Alternatively
     # m = ((1 - 2 * direction)[:, None].repeat(1, kernel_size) / (kernel_size - 1))
     # kernel[:, kernel_size // 2, :] = direction[:, None].repeat(1, kernel_size) + m * torch.arange(0, kernel_size)
-    k = stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], -1)
-    kernel = pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2, 0, 0])
+    k = torch.stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], -1)
+    kernel = F.pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2, 0, 0])
 
     expected_shape = torch.Size([direction.size(0), *kernel_tuple])
     KORNIA_CHECK(kernel.shape == expected_shape, f"Kernel shape should be {expected_shape}. Gotcha {kernel.shape}")
@@ -111,8 +111,11 @@ def get_motion_kernel2d(
 
 
 def get_motion_kernel3d(
-    kernel_size: int, angle: Tensor | tuple[float, float, float], direction: Tensor | float = 0.0, mode: str = "nearest"
-) -> Tensor:
+    kernel_size: int,
+    angle: torch.Tensor | tuple[float, float, float],
+    direction: torch.Tensor | float = 0.0,
+    mode: str = "nearest",
+) -> torch.Tensor:
     r"""Return 3D motion blur filter.
 
     Args:
@@ -158,23 +161,23 @@ def get_motion_kernel3d(
 
     """
     device, dtype = _extract_device_dtype(
-        [angle if isinstance(angle, Tensor) else None, direction if isinstance(direction, Tensor) else None]
+        [angle if isinstance(angle, torch.Tensor) else None, direction if isinstance(direction, torch.Tensor) else None]
     )
 
     # TODO: add support to kernel_size as tuple or integer
     kernel_tuple = _unpack_3d_ks(kernel_size)
     _check_kernel_size(kernel_size, 2)
 
-    if not isinstance(angle, Tensor):
-        angle = tensor([angle], device=device, dtype=dtype)
+    if not isinstance(angle, torch.Tensor):
+        angle = torch.tensor([angle], device=device, dtype=dtype)
 
     if angle.dim() == 1:
         angle = angle[None]
 
     KORNIA_CHECK_SHAPE(angle, ["B", "3"])
 
-    if not isinstance(direction, Tensor):
-        direction = tensor([direction], device=device, dtype=dtype)
+    if not isinstance(direction, torch.Tensor):
+        direction = torch.tensor([direction], device=device, dtype=dtype)
 
     if direction.dim() == 0:
         direction = direction[None]
@@ -187,13 +190,15 @@ def get_motion_kernel3d(
 
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0
-    kernel = zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
+    kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
 
     # Element-wise linspace
     # kernel[:, kernel_size // 2, kernel_size // 2, :] = torch.stack(
     #     [(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], dim=-1)
-    k = stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], -1)
-    kernel = pad(k[:, None, None], [0, 0, kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2, 0, 0])
+    k = torch.stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], -1)
+    kernel = F.pad(
+        k[:, None, None], [0, 0, kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2, 0, 0]
+    )
 
     expected_shape = torch.Size([direction.size(0), *kernel_tuple])
     KORNIA_CHECK(kernel.shape == expected_shape, f"Kernel shape should be {expected_shape}. Gotcha {kernel.shape}")

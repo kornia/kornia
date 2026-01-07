@@ -17,25 +17,26 @@
 
 from typing import Optional, Tuple
 
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor
+import torch
+from torch import nn
+
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
-def integral_tensor(input: Tensor, dim: Optional[Tuple[int, ...]] = None) -> Tensor:
-    """Calculate integral of the input tensor.
+def integral_tensor(input: torch.Tensor, dim: Optional[Tuple[int, ...]] = None) -> torch.Tensor:
+    """Calculate integral of the input torch.Tensor.
 
     The algorithm computes the integral image by summing over the specified dimensions.
 
     In case dim is specified, the contained dimensions must be unique and sorted in ascending order
-    and not exceed the number of dimensions of the input tensor.
+    and not exceed the number of dimensions of the input torch.Tensor.
 
     Args:
-        input: the input tensor with shape :math:`(*, D)`. Where D is the number of dimensions.
+        input: the input torch.Tensor with shape :math:`(*, D)`. Where D is the number of dimensions.
         dim: the dimension to be summed.
 
     Returns:
-        Integral tensor for the input tensor with shape :math:`(*, D)`.
+        Integral torch.Tensor for the input torch.Tensor with shape :math:`(*, D)`.
 
     Examples:
         >>> input = torch.ones(3, 5)
@@ -60,16 +61,16 @@ def integral_tensor(input: Tensor, dim: Optional[Tuple[int, ...]] = None) -> Ten
     return output
 
 
-def integral_image(image: Tensor) -> Tensor:
-    r"""Calculate integral of the input image tensor.
+def integral_image(image: torch.Tensor) -> torch.Tensor:
+    r"""Calculate integral of the input image torch.Tensor.
 
     This particular version sums over the last two dimensions.
 
     Args:
-        image: the input image tensor with shape :math:`(*, H, W)`.
+        image: the input image torch.Tensor with shape :math:`(*, H, W)`.
 
     Returns:
-        Integral tensor for the input image tensor with shape :math:`(*, H, W)`.
+        Integral torch.Tensor for the input image torch.Tensor with shape :math:`(*, H, W)`.
 
     Examples:
         >>> input = torch.ones(1, 5, 5)
@@ -87,14 +88,14 @@ def integral_image(image: Tensor) -> Tensor:
     return integral_tensor(image, (-2, -1))
 
 
-class IntegralTensor(Module):
-    r"""Calculates integral of the input tensor.
+class IntegralTensor(nn.Module):
+    r"""Calculates integral of the input torch.Tensor.
 
     Args:
-        image: the input tensor with shape :math:`(B,C,H,W)`.
+        image: the input torch.Tensor with shape :math:`(B,C,H,W)`.
 
     Returns:
-        Integral tensor for the input tensor with shape :math:`(B,C,H,W)`.
+        Integral torch.Tensor for the input torch.Tensor with shape :math:`(B,C,H,W)`.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -115,20 +116,20 @@ class IntegralTensor(Module):
         super().__init__()
         self.dim = dim
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return integral_tensor(input, self.dim)
 
 
-class IntegralImage(Module):
-    """Calculates integral of the input image tensor.
+class IntegralImage(nn.Module):
+    """Calculates integral of the input image torch.Tensor.
 
     This particular version sums over the last two dimensions.
 
     Args:
-        image: the input image tensor with shape :math:`(B,C,H,W)`.
+        image: the input image torch.Tensor with shape :math:`(B,C,H,W)`.
 
     Returns:
-        Integral tensor for the input image tensor with shape :math:`(B,C,H,W)`.
+        Integral torch.Tensor for the input image torch.Tensor with shape :math:`(B,C,H,W)`.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -146,5 +147,5 @@ class IntegralImage(Module):
 
     """
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return integral_image(input)

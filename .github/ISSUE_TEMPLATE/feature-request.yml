@@ -1,0 +1,124 @@
+name: 🚀 Feature Request
+description: Suggest an idea or new feature for this project
+title: "[Feature]: "
+labels: ["enhancement", "help wanted"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature!
+
+        **Before submitting:**
+        - [ ] I have searched existing issues to ensure this feature hasn't been requested
+        - [ ] I have checked the [help wanted issues](https://github.com/kornia/kornia/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22help%20wanted%22) list
+        - [ ] I have read the [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md)
+        - [ ] This feature aligns with Kornia's focus on end-to-end vision models and SOTA Vision/Robotics models
+
+        ---
+
+        **⚠️ Important: Before submitting a PR**
+
+        If you plan to implement this feature yourself:
+
+        1. **Wait for maintainer approval**: A maintainer must review and approve this issue first
+        2. **Wait for assignment**: You must be assigned to this issue by a maintainer before submitting a PR
+        3. **Do not start work until assigned**: PRs submitted without prior issue approval and assignment may be closed
+
+        This helps us ensure the issue aligns with project goals, avoid duplicate work, and coordinate contributions effectively. See the [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md#pull-request) for more details.
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: 🚀 Feature Description
+      description: A clear and concise description of the feature you'd like to see
+      placeholder: |
+        Example: Add support for X model/functionality that enables Y use case.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feature-category
+    attributes:
+      label: 📂 Feature Category
+      description: What category does this feature belong to?
+      options:
+        - VLM/VLA Models (Vision Language Models/Agents) - Priority
+        - Robotics Models
+        - Image Processing
+        - Augmentation
+        - Feature Detection/Matching
+        - Geometry
+        - Loss Functions
+        - Models (General)
+        - Documentation
+        - Testing Infrastructure
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: 💡 Motivation
+      description: |
+        What problem does this feature solve? Why is this feature needed?
+        If this is related to another GitHub issue, please link it here.
+      placeholder: |
+        Example: I'm always frustrated when [problem]. This feature would help by [benefit].
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: 💭 Proposed Solution
+      description: A clear and concise description of what you want to happen. Include API design if applicable.
+      placeholder: |
+        Example: Add a new function `kornia.feature.new_function()` that accepts X and returns Y.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 🔄 Alternatives Considered
+      description: A clear and concise description of any alternative solutions or features you've considered
+    validations:
+      required: false
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: 🎯 Use Cases
+      description: Describe specific use cases or examples where this feature would be valuable
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 📝 Additional Context
+      description: Add any other context, mockups, diagrams, or references about the feature request here.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution-intent
+    attributes:
+      label: 🤝 Contribution Intent
+      description: Are you planning to contribute this feature?
+      options:
+        - label: I plan to submit a PR to implement this feature
+          required: false
+        - label: I'm requesting this feature but not planning to implement it
+          required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+
+        #### 📚 Consider also contributing to Kornia universe projects:
+
+        - [**Tutorials**](https://github.com/kornia/tutorials): Our repository containing the tutorials.

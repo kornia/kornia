@@ -17,14 +17,15 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor
 from kornia.enhance import posterize
 
 
 class RandomPosterize(IntensityAugmentationBase2D):
-    r"""Posterize given tensor image or a batch of tensor images randomly.
+    r"""Posterize given torch.Tensor image or a batch of torch.Tensor images randomly.
 
     .. image:: _static/img/RandomPosterize.png
 
@@ -65,7 +66,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        bits: Union[float, Tuple[float, float], Tensor] = 3,
+        bits: Union[float, Tuple[float, float], torch.Tensor] = 3,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -75,6 +76,10 @@ class RandomPosterize(IntensityAugmentationBase2D):
         self._param_generator = rg.PosterizeGenerator(bits)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         return posterize(input, params["bits_factor"].to(input.device))

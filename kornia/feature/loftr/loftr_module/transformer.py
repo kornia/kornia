@@ -23,12 +23,18 @@ from typing import Any, Literal, Optional
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor
-
 from .linear_attention import FullAttention, LinearAttention
 
 
-class LoFTREncoderLayer(Module):
+class LoFTREncoderLayer(nn.Module):
+    """Implement a single encoder layer for the LoFTR transformer.
+
+    Args:
+        d_model: The number of expected features in the input.
+        nhead: The number of heads in the multi-head attention.
+        attention: The type of attention to use. Supported: "linear". Default: "linear".
+    """
+
     def __init__(self, d_model: int, nhead: int, attention: Optional[Literal["linear"]] = "linear") -> None:
         super().__init__()
 
@@ -52,8 +58,12 @@ class LoFTREncoderLayer(Module):
         self.norm2 = nn.LayerNorm(d_model)
 
     def forward(
-        self, x: Tensor, source: Tensor, x_mask: Optional[Tensor] = None, source_mask: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        x: torch.Tensor,
+        source: torch.Tensor,
+        x_mask: Optional[torch.Tensor] = None,
+        source_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Run forward.
 
         Args:
@@ -81,7 +91,7 @@ class LoFTREncoderLayer(Module):
         return x + message
 
 
-class LocalFeatureTransformer(Module):
+class LocalFeatureTransformer(nn.Module):
     """A Local Feature Transformer (LoFTR) module."""
 
     def __init__(self, config: dict[str, Any]) -> None:
@@ -101,8 +111,12 @@ class LocalFeatureTransformer(Module):
                 nn.init.xavier_uniform_(p)
 
     def forward(
-        self, feat0: Tensor, feat1: Tensor, mask0: None | Tensor = None, mask1: None | Tensor = None
-    ) -> tuple[Tensor, Tensor]:
+        self,
+        feat0: torch.Tensor,
+        feat1: torch.Tensor,
+        mask0: None | torch.Tensor = None,
+        mask1: None | torch.Tensor = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Run forward.
 
         Args:

@@ -20,12 +20,10 @@ from __future__ import annotations
 from typing import ClassVar
 
 import torch
-
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor
+from torch import nn
 
 
-def rgb_to_yuv(image: Tensor) -> Tensor:
+def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to YUV.
 
     .. image:: _static/img/rgb_to_yuv.png
@@ -49,26 +47,26 @@ def rgb_to_yuv(image: Tensor) -> Tensor:
         >>> output = rgb_to_yuv(input)  # 2x3x4x5
 
     """
-    if not isinstance(image, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    r: Tensor = image[..., 0, :, :]
-    g: Tensor = image[..., 1, :, :]
-    b: Tensor = image[..., 2, :, :]
+    r: torch.Tensor = image[..., 0, :, :]
+    g: torch.Tensor = image[..., 1, :, :]
+    b: torch.Tensor = image[..., 2, :, :]
 
-    y: Tensor = 0.299 * r + 0.587 * g + 0.114 * b
-    u: Tensor = -0.147 * r - 0.289 * g + 0.436 * b
-    v: Tensor = 0.615 * r - 0.515 * g - 0.100 * b
+    y: torch.Tensor = 0.299 * r + 0.587 * g + 0.114 * b
+    u: torch.Tensor = -0.147 * r - 0.289 * g + 0.436 * b
+    v: torch.Tensor = 0.615 * r - 0.515 * g - 0.100 * b
 
-    out: Tensor = torch.stack([y, u, v], -3)
+    out: torch.Tensor = torch.stack([y, u, v], -3)
 
     return out
 
 
-def rgb_to_yuv420(image: Tensor) -> tuple[Tensor, Tensor]:
+def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an RGB image to YUV 420 (subsampled).
 
     Input need to be padded to be evenly divisible by 2 horizontal and vertical.
@@ -84,16 +82,16 @@ def rgb_to_yuv420(image: Tensor) -> tuple[Tensor, Tensor]:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
-        A Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
-        A Tensor containing the UV planes with shape :math:`(*, 2, H/2, W/2)`
+        A torch.Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
+        A torch.Tensor containing the UV planes with shape :math:`(*, 2, H/2, W/2)`
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
         >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x2x2x3)
 
     """
-    if not isinstance(image, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
@@ -109,7 +107,7 @@ def rgb_to_yuv420(image: Tensor) -> tuple[Tensor, Tensor]:
     )
 
 
-def rgb_to_yuv422(image: Tensor) -> tuple[Tensor, Tensor]:
+def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert an RGB image to YUV 422 (subsampled).
 
     Input need to be padded to be evenly divisible by 2 vertical.
@@ -126,16 +124,16 @@ def rgb_to_yuv422(image: Tensor) -> tuple[Tensor, Tensor]:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
 
     Returns:
-       A Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
-       A Tensor containing the UV planes with shape :math:`(*, 2, H, W/2)`
+       A torch.Tensor containing the Y plane with shape :math:`(*, 1, H, W)`
+       A torch.Tensor containing the UV planes with shape :math:`(*, 2, H, W/2)`
 
     Example:
         >>> input = torch.rand(2, 3, 4, 6)
         >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x1x4x3)
 
     """
-    if not isinstance(image, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
@@ -148,7 +146,7 @@ def rgb_to_yuv422(image: Tensor) -> tuple[Tensor, Tensor]:
     return (yuvimage[..., :1, :, :], yuvimage[..., 1:3, :, :].unfold(-1, 2, 2).mean(-1))
 
 
-def yuv_to_rgb(image: Tensor) -> Tensor:
+def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an YUV image to RGB.
 
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
@@ -169,26 +167,26 @@ def yuv_to_rgb(image: Tensor) -> Tensor:
         >>> output = yuv_to_rgb(input)  # 2x3x4x5
 
     """
-    if not isinstance(image, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if image.dim() < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    y: Tensor = image[..., 0, :, :]
-    u: Tensor = image[..., 1, :, :]
-    v: Tensor = image[..., 2, :, :]
+    y: torch.Tensor = image[..., 0, :, :]
+    u: torch.Tensor = image[..., 1, :, :]
+    v: torch.Tensor = image[..., 2, :, :]
 
-    r: Tensor = y + 1.14 * v  # coefficient for g is 0
-    g: Tensor = y + -0.396 * u - 0.581 * v
-    b: Tensor = y + 2.029 * u  # coefficient for b is 0
+    r: torch.Tensor = y + 1.14 * v  # coefficient for g is 0
+    g: torch.Tensor = y + -0.396 * u - 0.581 * v
+    b: torch.Tensor = y + 2.029 * u  # coefficient for b is 0
 
-    out: Tensor = torch.stack([r, g, b], -3)
+    out: torch.Tensor = torch.stack([r, g, b], -3)
 
     return out
 
 
-def yuv420_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
+def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     r"""Convert an YUV420 image to RGB.
 
     Input need to be padded to be evenly divisible by 2 horizontal and vertical.
@@ -213,11 +211,11 @@ def yuv420_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
         >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x6
 
     """
-    if not isinstance(imagey, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(imagey)}")
+    if not isinstance(imagey, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(imagey)}")
 
-    if not isinstance(imageuv, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(imageuv)}")
+    if not isinstance(imageuv, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(imageuv)}")
 
     if len(imagey.shape) < 3 or imagey.shape[-3] != 1:
         raise ValueError(f"Input imagey size must have a shape of (*, 1, H, W). Got {imagey.shape}")
@@ -243,12 +241,12 @@ def yuv420_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
         [imagey, imageuv.repeat_interleave(2, dim=-1).repeat_interleave(2, dim=-2)],
         dim=-3,
     )
-    # then convert the yuv444 tensor
+    # then convert the yuv444 torch.Tensor
 
     return yuv_to_rgb(yuv444image)
 
 
-def yuv422_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
+def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     r"""Convert an YUV422 image to RGB.
 
     Input need to be padded to be evenly divisible by 2 vertical.
@@ -273,11 +271,11 @@ def yuv422_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
         >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x5
 
     """
-    if not isinstance(imagey, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(imagey)}")
+    if not isinstance(imagey, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(imagey)}")
 
-    if not isinstance(imageuv, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(imageuv)}")
+    if not isinstance(imageuv, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(imageuv)}")
 
     if len(imagey.shape) < 3 or imagey.shape[-3] != 1:
         raise ValueError(f"Input imagey size must have a shape of (*, 1, H, W). Got {imagey.shape}")
@@ -295,11 +293,11 @@ def yuv422_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
 
     # first upsample
     yuv444image = torch.cat([imagey, imageuv.repeat_interleave(2, dim=-1)], dim=-3)
-    # then convert the yuv444 tensor
+    # then convert the yuv444 torch.Tensor
     return yuv_to_rgb(yuv444image)
 
 
-class RgbToYuv(Module):
+class RgbToYuv(nn.Module):
     r"""Convert an image from RGB to YUV.
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
@@ -328,11 +326,11 @@ class RgbToYuv(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return rgb_to_yuv(input)
 
 
-class RgbToYuv420(Module):
+class RgbToYuv420(nn.Module):
     r"""Convert an image from RGB to YUV420.
 
     Width and Height evenly divisible by 2.
@@ -363,11 +361,11 @@ class RgbToYuv420(Module):
     # TODO: Handle multiple inputs and outputs models later
     ONNX_EXPORTABLE = False
 
-    def forward(self, yuvinput: Tensor) -> tuple[Tensor, Tensor]:  # skipcq: PYL-R0201
+    def forward(self, yuvinput: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
         return rgb_to_yuv420(yuvinput)
 
 
-class RgbToYuv422(Module):
+class RgbToYuv422(nn.Module):
     r"""Convert an image from RGB to YUV422.
 
     Width must be evenly disvisible by 2.
@@ -398,11 +396,11 @@ class RgbToYuv422(Module):
     # TODO: Handle multiple inputs and outputs models later
     ONNX_EXPORTABLE = False
 
-    def forward(self, yuvinput: Tensor) -> tuple[Tensor, Tensor]:  # skipcq: PYL-R0201
+    def forward(self, yuvinput: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
         return rgb_to_yuv422(yuvinput)
 
 
-class YuvToRgb(Module):
+class YuvToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
 
     The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
@@ -429,11 +427,11 @@ class YuvToRgb(Module):
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return yuv_to_rgb(input)
 
 
-class Yuv420ToRgb(Module):
+class Yuv420ToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
 
     Width and Height must be evenly divisible by 2.
@@ -464,11 +462,11 @@ class Yuv420ToRgb(Module):
     # TODO: Handle multiple inputs and outputs models later
     ONNX_EXPORTABLE = False
 
-    def forward(self, inputy: Tensor, inputuv: Tensor) -> Tensor:  # skipcq: PYL-R0201
+    def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:  # skipcq: PYL-R0201
         return yuv420_to_rgb(inputy, inputuv)
 
 
-class Yuv422ToRgb(Module):
+class Yuv422ToRgb(nn.Module):
     r"""Convert an image from YUV to RGB.
 
     Width must be evenly divisible by 2.
@@ -499,5 +497,5 @@ class Yuv422ToRgb(Module):
     # TODO: Handle multiple inputs and outputs models later
     ONNX_EXPORTABLE = False
 
-    def forward(self, inputy: Tensor, inputuv: Tensor) -> Tensor:  # skipcq: PYL-R0201
+    def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:  # skipcq: PYL-R0201
         return yuv422_to_rgb(inputy, inputuv)

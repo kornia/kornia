@@ -20,13 +20,12 @@ from typing import List, Optional, Tuple, Union, cast
 import torch
 from torch import Size
 
-from kornia.core import Tensor
 from kornia.geometry import transform_points
 
 __all__ = ["Keypoints", "Keypoints3D"]
 
 
-def _merge_keypoint_list(keypoints: List[Tensor]) -> Tensor:
+def _merge_keypoint_list(keypoints: List[torch.torch.Tensor]) -> torch.torch.Tensor:
     raise NotImplementedError
 
 
@@ -34,19 +33,21 @@ class Keypoints:
     """2D Keypoints containing Nx2 or BxNx2 points.
 
     Args:
-        keypoints: Raw tensor or a list of Tensors with the Nx2 coordinates
-        raise_if_not_floating_point: will raise if the Tensor isn't float
+        keypoints: Raw tensor or a list of torch.Tensors with the Nx2 coordinates
+        raise_if_not_floating_point: will raise if the torch.Tensor isn't float
 
     """
 
-    def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True) -> None:
+    def __init__(
+        self, keypoints: Union[torch.torch.Tensor, List[torch.torch.Tensor]], raise_if_not_floating_point: bool = True
+    ) -> None:
         self._N: Optional[List[int]] = None
 
         if isinstance(keypoints, list):
             keypoints, self._N = _merge_keypoint_list(keypoints)
 
-        if not isinstance(keypoints, Tensor):
-            raise TypeError(f"Input keypoints is not a Tensor. Got: {type(keypoints)}.")
+        if not isinstance(keypoints, torch.torch.Tensor):
+            raise TypeError(f"Input keypoints is not a torch.Tensor. Got: {type(keypoints)}.")
 
         if not keypoints.is_floating_point():
             if raise_if_not_floating_point:
@@ -66,11 +67,11 @@ class Keypoints:
 
         self._data = keypoints
 
-    def __getitem__(self, key: Union[slice, int, Tensor]) -> "Keypoints":
+    def __getitem__(self, key: Union[slice, int, torch.torch.Tensor]) -> "Keypoints":
         new_obj = type(self)(self._data[key], False)
         return new_obj
 
-    def __setitem__(self, key: Union[slice, int, Tensor], value: "Keypoints") -> "Keypoints":
+    def __setitem__(self, key: Union[slice, int, torch.torch.Tensor], value: "Keypoints") -> "Keypoints":
         self._data[key] = value._data
         return self
 
@@ -79,7 +80,7 @@ class Keypoints:
         return self.data.shape
 
     @property
-    def data(self) -> Tensor:
+    def data(self) -> torch.torch.Tensor:
         return self._data
 
     @property
@@ -94,8 +95,8 @@ class Keypoints:
 
     def index_put(
         self,
-        indices: Union[Tuple[Tensor, ...], List[Tensor]],
-        values: Union[Tensor, "Keypoints"],
+        indices: Union[Tuple[torch.torch.Tensor, ...], List[torch.torch.Tensor]],
+        values: Union[torch.torch.Tensor, "Keypoints"],
         inplace: bool = False,
     ) -> "Keypoints":
         if inplace:
@@ -115,7 +116,7 @@ class Keypoints:
         obj._data = _data
         return obj
 
-    def pad(self, padding_size: Tensor) -> "Keypoints":
+    def pad(self, padding_size: torch.torch.Tensor) -> "Keypoints":
         """Pad a bounding keypoints.
 
         Args:
@@ -128,7 +129,7 @@ class Keypoints:
         self._data[..., 1] += padding_size[..., 2:3]  # top padding
         return self
 
-    def unpad(self, padding_size: Tensor) -> "Keypoints":
+    def unpad(self, padding_size: torch.torch.Tensor) -> "Keypoints":
         """Pad a bounding keypoints.
 
         Args:
@@ -141,7 +142,7 @@ class Keypoints:
         self._data[..., 1] -= padding_size[..., 2:3]  # top padding
         return self
 
-    def transform_keypoints(self, M: Tensor, inplace: bool = False) -> "Keypoints":
+    def transform_keypoints(self, M: torch.torch.Tensor, inplace: bool = False) -> "Keypoints":
         r"""Apply a transformation matrix to the 2D keypoints.
 
         Args:
@@ -162,15 +163,15 @@ class Keypoints:
 
         return Keypoints(transformed_boxes, False)
 
-    def transform_keypoints_(self, M: Tensor) -> "Keypoints":
+    def transform_keypoints_(self, M: torch.torch.Tensor) -> "Keypoints":
         """Inplace version of :func:`Keypoints.transform_keypoints`."""
         return self.transform_keypoints(M, inplace=True)
 
     @classmethod
-    def from_tensor(cls, keypoints: Tensor) -> "Keypoints":
+    def from_tensor(cls, keypoints: torch.torch.Tensor) -> "Keypoints":
         return cls(keypoints)
 
-    def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
+    def to_tensor(self, as_padded_sequence: bool = False) -> Union[torch.torch.Tensor, List[torch.torch.Tensor]]:
         r"""Cast :class:`Keypoints` to a tensor.
 
         ``mode`` controls which 2D keypoints format should be use to represent keypoints in the tensor.
@@ -199,7 +200,9 @@ class VideoKeypoints(Keypoints):
     temporal_channel_size: int
 
     @classmethod
-    def from_tensor(cls, boxes: Union[Tensor, List[Tensor]], validate_boxes: bool = True) -> "VideoKeypoints":
+    def from_tensor(
+        cls, boxes: Union[torch.torch.Tensor, List[torch.torch.Tensor]], validate_boxes: bool = True
+    ) -> "VideoKeypoints":
         if isinstance(boxes, (list,)) or (boxes.dim() != 4 or boxes.shape[-1] != 2):
             raise ValueError("Input box type is not yet supported. Please input an `BxTxNx2` tensor directly.")
 
@@ -211,12 +214,12 @@ class VideoKeypoints(Keypoints):
         out.temporal_channel_size = temporal_channel_size
         return out
 
-    def to_tensor(self) -> Tensor:  # type: ignore[override]
+    def to_tensor(self) -> torch.torch.Tensor:  # type: ignore[override]
         out = super().to_tensor(as_padded_sequence=False)
-        out = cast(Tensor, out)
+        out = cast(torch.torch.Tensor, out)
         return out.view(-1, self.temporal_channel_size, *out.shape[1:])
 
-    def transform_keypoints(self, M: Tensor, inplace: bool = False) -> "VideoKeypoints":
+    def transform_keypoints(self, M: torch.torch.Tensor, inplace: bool = False) -> "VideoKeypoints":
         out = super().transform_keypoints(M, inplace=inplace)
         if inplace:
             return self
@@ -234,19 +237,21 @@ class Keypoints3D:
     """3D Keypoints containing Nx3 or BxNx3 points.
 
     Args:
-        keypoints: Raw tensor or a list of Tensors with the Nx3 coordinates
-        raise_if_not_floating_point: will raise if the Tensor isn't float
+        keypoints: Raw tensor or a list of torch.Tensors with the Nx3 coordinates
+        raise_if_not_floating_point: will raise if the torch.Tensor isn't float
 
     """
 
-    def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True) -> None:
+    def __init__(
+        self, keypoints: Union[torch.torch.Tensor, List[torch.torch.Tensor]], raise_if_not_floating_point: bool = True
+    ) -> None:
         self._N: Optional[List[int]] = None
 
         if isinstance(keypoints, list):
             keypoints, self._N = _merge_keypoint_list(keypoints)
 
-        if not isinstance(keypoints, Tensor):
-            raise TypeError(f"Input keypoints is not a Tensor. Got: {type(keypoints)}.")
+        if not isinstance(keypoints, torch.torch.Tensor):
+            raise TypeError(f"Input keypoints is not a torch.Tensor. Got: {type(keypoints)}.")
 
         if not keypoints.is_floating_point():
             if raise_if_not_floating_point:
@@ -266,11 +271,11 @@ class Keypoints3D:
 
         self._data = keypoints
 
-    def __getitem__(self, key: Union[slice, int, Tensor]) -> "Keypoints3D":
+    def __getitem__(self, key: Union[slice, int, torch.Tensor]) -> "Keypoints3D":
         new_obj = type(self)(self._data[key], False)
         return new_obj
 
-    def __setitem__(self, key: Union[slice, int, Tensor], value: "Keypoints3D") -> "Keypoints3D":
+    def __setitem__(self, key: Union[slice, int, torch.Tensor], value: "Keypoints3D") -> "Keypoints3D":
         self._data[key] = value._data
         return self
 
@@ -279,10 +284,10 @@ class Keypoints3D:
         return self.data.shape
 
     @property
-    def data(self) -> Tensor:
+    def data(self) -> torch.torch.Tensor:
         return self._data
 
-    def pad(self, padding_size: Tensor) -> "Keypoints3D":
+    def pad(self, padding_size: torch.torch.Tensor) -> "Keypoints3D":
         """Pad a bounding keypoints.
 
         Args:
@@ -291,7 +296,7 @@ class Keypoints3D:
         """
         raise NotImplementedError
 
-    def unpad(self, padding_size: Tensor) -> "Keypoints3D":
+    def unpad(self, padding_size: torch.torch.Tensor) -> "Keypoints3D":
         """Pad a bounding keypoints.
 
         Args:
@@ -300,7 +305,7 @@ class Keypoints3D:
         """
         raise NotImplementedError
 
-    def transform_keypoints(self, M: Tensor, inplace: bool = False) -> "Keypoints3D":
+    def transform_keypoints(self, M: torch.Tensor, inplace: bool = False) -> "Keypoints3D":
         r"""Apply a transformation matrix to the 2D keypoints.
 
         Args:
@@ -313,15 +318,15 @@ class Keypoints3D:
         """
         raise NotImplementedError
 
-    def transform_keypoints_(self, M: Tensor) -> "Keypoints3D":
+    def transform_keypoints_(self, M: torch.Tensor) -> "Keypoints3D":
         """Inplace version of :func:`Keypoints.transform_keypoints`."""
         return self.transform_keypoints(M, inplace=True)
 
     @classmethod
-    def from_tensor(cls, keypoints: Tensor) -> "Keypoints3D":
+    def from_tensor(cls, keypoints: torch.Tensor) -> "Keypoints3D":
         return cls(keypoints)
 
-    def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
+    def to_tensor(self, as_padded_sequence: bool = False) -> Union[torch.torch.Tensor, List[torch.torch.Tensor]]:
         r"""Cast :class:`Keypoints` to a tensor.
 
         ``mode`` controls which 2D keypoints format should be use to represent keypoints in the tensor.

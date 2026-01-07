@@ -18,21 +18,21 @@
 from __future__ import annotations
 
 import math
+from typing import Union
 
 import torch
-from torch import Tensor
 
-from kornia.core import Device
+# from torch import Tensor (use torch.Tensor instead)
 from kornia.geometry.camera import PinholeCamera
 
 
 def create_camera_dimensions(
-    device: Device, dtype: torch.dtype, n_cams1: int = 3, n_cams2: int = 2
-) -> tuple[Tensor, Tensor, Tensor]:
+    device: Union[str, torch.device, None], dtype: torch.dtype, n_cams1: int = 3, n_cams2: int = 2
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Create camera dimensions for ray sampling.
 
     Args:
-        device: Device for tensors
+        device: Union[str, torch.device, None] for tensors
         dtype: Data type for tensors
         n_cams1: Number of cameras in first group (default: 3)
         n_cams2: Number of cameras in second group (default: 2)
@@ -64,11 +64,11 @@ def create_camera_dimensions(
 def create_intrinsics(
     fxs: list[float | int],
     fys: list[float | int],
-    cxs: Tensor | list[float | int],
-    cys: Tensor | list[float | int],
-    device: Device,
+    cxs: torch.Tensor | list[float | int],
+    cys: torch.Tensor | list[float | int],
+    device: Union[str, torch.device, None],
     dtype: torch.dtype,
-) -> Tensor:
+) -> torch.Tensor:
     """Create intrinsic camera matrices from focal lengths and principal points.
 
     Args:
@@ -76,16 +76,16 @@ def create_intrinsics(
         fys: Focal length in y direction
         cxs: Principal point x coordinate
         cys: Principal point y coordinate
-        device: Device for tensors
+        device: Union[str, torch.device, None] for tensors
         dtype: Data type for tensors
 
     Returns:
         Stacked intrinsic matrices of shape (N, 4, 4)
     """
-    intrinsics_batch: list[Tensor] = []
+    intrinsics_batch: list[torch.Tensor] = []
     # Convert cxs and cys to lists if they are tensors
-    cxs_list = cxs.tolist() if isinstance(cxs, Tensor) else cxs
-    cys_list = cys.tolist() if isinstance(cys, Tensor) else cys
+    cxs_list = cxs.tolist() if isinstance(cxs, torch.Tensor) else cxs
+    cys_list = cys.tolist() if isinstance(cys, torch.Tensor) else cys
     for fx, fy, cx, cy in zip(fxs, fys, cxs_list, cys_list):
         intrinsics = torch.eye(4, device=device, dtype=dtype)
         intrinsics[0, 0] = fx
@@ -103,9 +103,9 @@ def create_extrinsics_with_rotation(
     txs: list[float],
     tys: list[float],
     tzs: list[float],
-    device: Device,
+    device: Union[str, torch.device, None],
     dtype: torch.dtype,
-) -> Tensor:
+) -> torch.Tensor:
     """Create extrinsic camera matrices with rotation and translation.
 
     Args:
@@ -115,29 +115,29 @@ def create_extrinsics_with_rotation(
         txs: Translation in x direction
         tys: Translation in y direction
         tzs: Translation in z direction
-        device: Device for tensors
+        device: Union[str, torch.device, None] for tensors
         dtype: Data type for tensors
 
     Returns:
         Stacked extrinsic matrices of shape (N, 4, 4)
     """
-    extrinsics_batch: list[Tensor] = []
+    extrinsics_batch: list[torch.Tensor] = []
     for alpha, beta, gamma, tx, ty, tz in zip(alphas, betas, gammas, txs, tys, tzs):
         Rx = torch.eye(3, device=device, dtype=dtype)
-        Rx[1, 1] = math.cos(alpha)
-        Rx[1, 2] = math.sin(alpha)
+        Rx[1, 1] = torch.cos(alpha)
+        Rx[1, 2] = torch.sin(alpha)
         Rx[2, 1] = -Rx[1, 2]
         Rx[2, 2] = Rx[1, 1]
 
         Ry = torch.eye(3, device=device, dtype=dtype)
-        Ry[0, 0] = math.cos(beta)
-        Ry[0, 2] = -math.sin(beta)
+        Ry[0, 0] = torch.cos(beta)
+        Ry[0, 2] = -torch.sin(beta)
         Ry[2, 0] = -Ry[0, 2]
         Ry[2, 2] = Ry[0, 0]
 
         Rz = torch.eye(3, device=device, dtype=dtype)
-        Rz[0, 0] = math.cos(gamma)
-        Rz[0, 1] = math.sin(gamma)
+        Rz[0, 0] = torch.cos(gamma)
+        Rz[0, 1] = torch.sin(gamma)
         Rz[1, 0] = -Rz[0, 1]
         Rz[1, 1] = Rz[0, 0]
 
@@ -154,13 +154,15 @@ def create_extrinsics_with_rotation(
     return torch.stack(extrinsics_batch)
 
 
-def create_pinhole_camera(height: float, width: float, device: Device, dtype: torch.dtype) -> PinholeCamera:
+def create_pinhole_camera(
+    height: float, width: float, device: Union[str, torch.device, None], dtype: torch.dtype
+) -> PinholeCamera:
     """Create a single PinholeCamera with default parameters.
 
     Args:
         height: Camera image height
         width: Camera image width
-        device: Device for tensors
+        device: Union[str, torch.device, None] for tensors
         dtype: Data type for tensors
 
     Returns:
@@ -190,11 +192,11 @@ def create_pinhole_camera(height: float, width: float, device: Device, dtype: to
     )
 
 
-def create_four_cameras(device: Device, dtype: torch.dtype) -> PinholeCamera:
+def create_four_cameras(device: Union[str, torch.device, None], dtype: torch.dtype) -> PinholeCamera:
     """Create four PinholeCameras with predefined parameters.
 
     Args:
-        device: Device for tensors
+        device: Union[str, torch.device, None] for tensors
         dtype: Data type for tensors
 
     Returns:
@@ -225,19 +227,19 @@ def create_four_cameras(device: Device, dtype: torch.dtype) -> PinholeCamera:
     return cameras
 
 
-def create_random_images_for_cameras(cameras: PinholeCamera) -> list[Tensor]:
+def create_random_images_for_cameras(cameras: PinholeCamera) -> list[torch.Tensor]:
     """Create random images for a given set of cameras."""
     torch.manual_seed(112)
-    imgs: list[Tensor] = []
+    imgs: list[torch.Tensor] = []
     for height, width in zip(cameras.height.tolist(), cameras.width.tolist()):
         image_data = torch.randint(0, 255, (3, int(height), int(width)), dtype=torch.uint8)  # (C, H, W)
         imgs.append(image_data)  # (C, H, W)
     return imgs
 
 
-def create_red_images_for_cameras(cameras: PinholeCamera, device: Device) -> list[Tensor]:
+def create_red_images_for_cameras(cameras: PinholeCamera, device: Union[str, torch.device, None]) -> list[torch.Tensor]:
     """Create red images for a given set of cameras."""
-    imgs: list[Tensor] = []
+    imgs: list[torch.Tensor] = []
     for height, width in zip(cameras.height.tolist(), cameras.width.tolist()):
         image_data = torch.zeros(3, int(height), int(width), dtype=torch.uint8)  # (C, H, W)
         image_data[0, ...] = 255  # Red channel

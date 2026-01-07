@@ -22,7 +22,6 @@ from typing import ClassVar, Optional, Union
 import torch
 
 import kornia
-from kornia.core import Tensor
 from kornia.core.external import PILImage as Image
 from kornia.models.base import ModelBase
 
@@ -39,18 +38,18 @@ class SemanticSegmentation(ModelBase):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
 
     @torch.inference_mode()
-    def forward(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:
+    def forward(self, images: Union[torch.Tensor, list[torch.Tensor]]) -> Union[torch.Tensor, list[torch.Tensor]]:
         """Forward pass of the semantic segmentation model.
 
         Args:
-            images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
-                If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
+                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
             output tensor.
 
         """
-        outputs: Union[Tensor, list[Tensor]]
+        outputs: Union[torch.Tensor, list[torch.Tensor]]
 
         if isinstance(
             images,
@@ -72,7 +71,7 @@ class SemanticSegmentation(ModelBase):
 
         return outputs
 
-    def get_colormap(self, num_classes: int, colormap: str = "random", manual_seed: int = 2147) -> Tensor:
+    def get_colormap(self, num_classes: int, colormap: str = "random", manual_seed: int = 2147) -> torch.Tensor:
         """Get a color map of size num_classes.
 
         Args:
@@ -94,7 +93,7 @@ class SemanticSegmentation(ModelBase):
 
         return colors
 
-    def visualize_output(self, semantic_mask: Tensor, colors: Tensor) -> Tensor:
+    def visualize_output(self, semantic_mask: torch.Tensor, colors: torch.Tensor) -> torch.Tensor:
         """Visualize the output of the segmentation model.
 
         Args:
@@ -142,19 +141,19 @@ class SemanticSegmentation(ModelBase):
 
     def visualize(
         self,
-        images: Union[Tensor, list[Tensor]],
-        semantic_masks: Optional[Union[Tensor, list[Tensor]]] = None,
+        images: Union[torch.Tensor, list[torch.Tensor]],
+        semantic_masks: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
         output_type: str = "torch",
         colormap: str = "random",
         manual_seed: int = 2147,
-    ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
         """Visualize the segmentation masks.
 
         Args:
-            images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
-                If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
-            semantic_masks: If list of segmentation masks. Each mask is a Tensor with shape :math:`(C, H, W)`.
-                If Tensor, a Tensor with shape :math:`(B, C, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
+                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
+            semantic_masks: If list of segmentation masks. Each mask is a torch.Tensor with shape :math:`(C, H, W)`.
+                If torch.Tensor, a torch.Tensor with shape :math:`(B, C, H, W)`.
             output_type: The type of output, can be "torch" or "PIL".
             colormap: The colormap to use, can be "random" or a custom color map.
             manual_seed: The manual seed to use for the colormap.
@@ -163,7 +162,7 @@ class SemanticSegmentation(ModelBase):
         if semantic_masks is None:
             semantic_masks = self.forward(images)
 
-        outputs: Union[Tensor, list[Tensor]]
+        outputs: Union[torch.Tensor, list[torch.Tensor]]
         if isinstance(
             semantic_masks,
             (
@@ -184,12 +183,12 @@ class SemanticSegmentation(ModelBase):
             colors = self.get_colormap(semantic_masks.size(1), colormap, manual_seed=manual_seed)
             outputs = self.visualize_output(semantic_masks, colors)
 
-        return self._tensor_to_type(outputs, output_type, is_batch=True if isinstance(outputs, Tensor) else False)
+        return self._tensor_to_type(outputs, output_type, is_batch=True if isinstance(outputs, torch.Tensor) else False)
 
     def save(
         self,
-        images: Union[Tensor, list[Tensor]],
-        semantic_masks: Optional[Union[Tensor, list[Tensor]]] = None,
+        images: Union[torch.Tensor, list[torch.Tensor]],
+        semantic_masks: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
         directory: Optional[str] = None,
         output_type: str = "torch",
         colormap: str = "random",
@@ -198,10 +197,10 @@ class SemanticSegmentation(ModelBase):
         """Save the segmentation results.
 
         Args:
-            images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
-                If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
-            semantic_masks: If list of segmentation masks. Each mask is a Tensor with shape :math:`(C, H, W)`.
-                If Tensor, a Tensor with shape :math:`(B, C, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
+                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
+            semantic_masks: If list of segmentation masks. Each mask is a torch.Tensor with shape :math:`(C, H, W)`.
+                If torch.Tensor, a torch.Tensor with shape :math:`(B, C, H, W)`.
             directory: The directory to save the results.
             output_type: The type of output, can be "torch" or "PIL".
             colormap: The colormap to use, can be "random" or a custom color map.
@@ -209,8 +208,8 @@ class SemanticSegmentation(ModelBase):
 
         """
         colored_masks = self.visualize(images, semantic_masks, output_type, colormap=colormap, manual_seed=manual_seed)
-        overlaid: Union[Tensor, list[Tensor]]
-        if isinstance(images, Tensor) and isinstance(colored_masks, Tensor):
+        overlaid: Union[torch.Tensor, list[torch.Tensor]]
+        if isinstance(images, torch.Tensor) and isinstance(colored_masks, torch.Tensor):
             overlaid = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 1.0)
         elif isinstance(
             images,
@@ -229,7 +228,7 @@ class SemanticSegmentation(ModelBase):
             for i in range(len(images)):
                 overlaid.append(kornia.enhance.add_weighted(images[i][None], 0.5, colored_masks[i][None], 0.5, 1.0)[0])
         else:
-            raise ValueError(f"`images` should be a Tensor or a list of Tensors. Got {type(images)}")
+            raise ValueError(f"`images` should be a torch.Tensor or a list of Tensors. Got {type(images)}")
 
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(colored_masks, directory, suffix="_mask")

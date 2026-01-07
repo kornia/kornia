@@ -20,13 +20,14 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Tensor
-
 
 @torch.no_grad()
 def sample_keypoints(
-    scoremap: Tensor, num_samples: Optional[int] = 10_000, return_scoremap: bool = True, increase_coverage: bool = True
-) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+    scoremap: torch.Tensor,
+    num_samples: Optional[int] = 10_000,
+    return_scoremap: bool = True,
+    increase_coverage: bool = True,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     """Sample keypoints from provided candidates."""
     device = scoremap.device
     dtype = scoremap.dtype

@@ -22,9 +22,8 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.core import Tensor
+from kornia.core.ops import eye_like
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
-from kornia.utils import eye_like
 
 
 class Resize(GeometricAugmentationBase2D):
@@ -62,19 +61,25 @@ class Resize(GeometricAugmentationBase2D):
             "antialias": antialias,
         }
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         if params["output_size"] == input.shape[-2:]:
             return eye_like(3, input)
 
-        transform: Tensor = torch.as_tensor(
+        transform: torch.Tensor = torch.as_tensor(
             get_perspective_transform(params["src"], params["dst"]), dtype=input.dtype, device=input.device
         )
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         B, C, _, _ = input.shape
         out_size = tuple(params["output_size"][0].tolist())
         out = torch.empty(B, C, *out_size, device=input.device, dtype=input.dtype)
@@ -97,16 +102,16 @@ class Resize(GeometricAugmentationBase2D):
 
     def inverse_transform(
         self,
-        input: Tensor,
+        input: torch.Tensor,
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-    ) -> Tensor:
+    ) -> torch.Tensor:
         if not isinstance(size, tuple):
             raise TypeError(f"Expected the size be a tuple. Gotcha {type(size)}")
 
-        if not isinstance(transform, Tensor):
-            raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
+        if not isinstance(transform, torch.Tensor):
+            raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
 
         return crop_by_transform_mat(
             input, transform[:, :2, :], size, flags["resample"].name.lower(), "zeros", flags["align_corners"]

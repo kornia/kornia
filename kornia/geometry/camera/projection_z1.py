@@ -15,19 +15,19 @@
 # limitations under the License.
 #
 
-"""Module for the projection of points in the canonical z=1 plane."""
+"""nn.Module for the projection of points in the canonical z=1 plane."""
 
 # inspired by: https://github.com/farm-ng/sophus-rs/blob/main/src/sensor/perspective_camera.rs
 from __future__ import annotations
 
 from typing import Optional
 
-import kornia.core as ops
-from kornia.core import Tensor
+import torch
+
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
-def project_points_z1(points_in_camera: Tensor) -> Tensor:
+def project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
     r"""Project one or more points from the camera frame into the canonical z=1 plane through perspective division.
 
     .. math::
@@ -42,10 +42,10 @@ def project_points_z1(points_in_camera: Tensor) -> Tensor:
         points will be behind the camera and causing numerical issues for z == 0.
 
     Args:
-        points_in_camera: Tensor representing the points to project with shape (..., 3).
+        points_in_camera: torch.Tensor representing the points to project with shape (..., 3).
 
     Returns:
-        Tensor representing the projected points with shape (..., 2).
+        torch.Tensor representing the projected points with shape (..., 2).
 
     Example:
         >>> points = torch.tensor([1., 2., 3.])
@@ -57,7 +57,9 @@ def project_points_z1(points_in_camera: Tensor) -> Tensor:
     return points_in_camera[..., :2] / points_in_camera[..., 2:3]
 
 
-def unproject_points_z1(points_in_cam_canonical: Tensor, extension: Optional[Tensor] = None) -> Tensor:
+def unproject_points_z1(
+    points_in_cam_canonical: torch.Tensor, extension: Optional[torch.Tensor] = None
+) -> torch.Tensor:
     r"""Unproject one or more points from the canonical z=1 plane into the camera frame.
 
     .. math::
@@ -65,11 +67,11 @@ def unproject_points_z1(points_in_cam_canonical: Tensor, extension: Optional[Ten
         \begin{bmatrix} u \\ v \end{bmatrix} \cdot w
 
     Args:
-        points_in_cam_canonical: Tensor representing the points to unproject with shape (..., 2).
-        extension: Tensor representing the extension (depth) of the points to unproject with shape (..., 1).
+        points_in_cam_canonical: torch.Tensor representing the points to unproject with shape (..., 2).
+        extension: torch.Tensor representing the extension (depth) of the points to unproject with shape (..., 1).
 
     Returns:
-        Tensor representing the unprojected points with shape (..., 3).
+        torch.Tensor representing the unprojected points with shape (..., 3).
 
     Example:
         >>> points = torch.tensor([1., 2.])
@@ -81,7 +83,7 @@ def unproject_points_z1(points_in_cam_canonical: Tensor, extension: Optional[Ten
     KORNIA_CHECK_SHAPE(points_in_cam_canonical, ["*", "2"])
 
     if extension is None:
-        extension = ops.ones(
+        extension = torch.ones(
             points_in_cam_canonical.shape[:-1] + (1,),
             device=points_in_cam_canonical.device,
             dtype=points_in_cam_canonical.dtype,
@@ -89,10 +91,10 @@ def unproject_points_z1(points_in_cam_canonical: Tensor, extension: Optional[Ten
     elif extension.shape[0] > 1:
         extension = extension[..., None]  # (..., 1)
 
-    return ops.concatenate([points_in_cam_canonical * extension, extension], dim=-1)
+    return torch.cat([points_in_cam_canonical * extension, extension], dim=-1)
 
 
-def dx_project_points_z1(points_in_camera: Tensor) -> Tensor:
+def dx_project_points_z1(points_in_camera: torch.Tensor) -> torch.Tensor:
     r"""Compute the derivative of the x projection with respect to the x coordinate.
 
     Returns point derivative of inverse depth point projection with respect to the x coordinate.
@@ -110,10 +112,11 @@ def dx_project_points_z1(points_in_camera: Tensor) -> Tensor:
         points will be behind the camera and causing numerical issues for z == 0.
 
     Args:
-        points_in_camera: Tensor representing the points to project with shape (..., 3).
+        points_in_camera: torch.Tensor representing the points to project with shape (..., 3).
 
     Returns:
-        Tensor representing the derivative of the x projection with respect to the x coordinate with shape (..., 2, 3).
+        torch.Tensor representing the derivative of the x projection with respect to the x coordinate
+        with shape (..., 2, 3).
 
     Example:
         >>> points = torch.tensor([1., 2., 3.])
@@ -130,11 +133,11 @@ def dx_project_points_z1(points_in_camera: Tensor) -> Tensor:
 
     z_inv = 1.0 / z
     z_sq = z_inv * z_inv
-    zeros = ops.zeros_like(z_inv)
-    return ops.stack(
+    zeros = torch.zeros_like(z_inv)
+    return torch.stack(
         [
-            ops.stack([z_inv, zeros, -x * z_sq], dim=-1),
-            ops.stack([zeros, z_inv, -y * z_sq], dim=-1),
+            torch.stack([z_inv, zeros, -x * z_sq], dim=-1),
+            torch.stack([zeros, z_inv, -y * z_sq], dim=-1),
         ],
         dim=-2,
     )

@@ -17,15 +17,16 @@
 
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
-from kornia.core import Tensor
 from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
 
 
 class CenterCrop3D(GeometricAugmentationBase3D):
-    r"""Apply center crop on 3D volumes (5D tensor).
+    r"""Apply center crop on 3D volumes (5D torch.Tensor).
 
     Args:
         p: probability of applying the transformation for the whole batch.
@@ -42,9 +43,9 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         - Output: :math:`(B, C, out_d, out_h, out_w)`
 
     Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:
         >>> import torch
@@ -85,7 +86,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         keepdim: bool = False,
     ) -> None:
         # same_on_batch is always True for CenterCrop
-        # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
+        # Since PyTorch does not support ragged torch.Tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
         if isinstance(size, tuple):
             self.size = (size[0], size[1], size[2])
@@ -95,20 +96,26 @@ class CenterCrop3D(GeometricAugmentationBase3D):
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {size}.")
         self.flags = {"align_corners": align_corners, "resample": Resample.get(resample)}
 
-    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         return rg.center_crop_generator3d(
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.size, device=self.device
         )
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        transform: Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
+        transform: torch.Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
-        transform = cast(Tensor, transform)
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        transform = cast(torch.Tensor, transform)
         return crop_by_transform_mat3d(
             input, transform, self.size, mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )

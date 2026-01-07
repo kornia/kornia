@@ -24,7 +24,6 @@ import torch
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.utils import _validate_input_dtype
 from kornia.constants import DataKey
-from kornia.core import Tensor, tensor
 from kornia.core.check import KORNIA_CHECK
 
 __all__ = ["RandomTransplantation"]
@@ -55,8 +54,9 @@ class RandomTransplantation(MixAugmentationBaseV2):
           receive a transplant.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
-        data_keys: the input type sequential for applying augmentations. There must be at least one "mask" tensor. If no
-          data keys are given, the first tensor is assumed to be `DataKey.INPUT` and the second tensor `DataKey.MASK`.
+        data_keys: the input type sequential for applying augmentations. There must be at least one "mask" torch.Tensor.
+          If no data keys are given, the first torch.Tensor is assumed to be `DataKey.INPUT` and the second
+          torch.Tensor `DataKey.MASK`.
           Accepts "input", "mask".
 
     Note:
@@ -68,16 +68,16 @@ class RandomTransplantation(MixAugmentationBaseV2):
           :class:`kornia.augmentation.RandomTransplantation3D` for 3D images.
 
     Inputs:
-        - Segmentation mask tensor which is used to determine the objects for transplantation: :math:`(B, *)`.
+        - Segmentation mask torch.Tensor which is used to determine the objects for transplantation: :math:`(B, *)`.
         - (optional) Additional image or mask tensors where the features are transplanted based on the first
           segmentation mask: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)` (`DataKey.MASK`).
 
     Returns:
-        Tensor | list[Tensor]:
+        torch.Tensor | list[torch.Tensor]:
 
-        Tensor:
+        torch.Tensor:
             - Augmented mask tensors: :math:`(B, *)`.
-        list[Tensor]:
+        list[torch.Tensor]:
             - Augmented mask tensors: :math:`(B, *)`.
             - Additional augmented image or mask tensors: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)`
               (`DataKey.MASK`).
@@ -166,7 +166,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
     def __init__(
         self,
-        excluded_labels: Optional[Union[Sequence[int], Tensor]] = None,
+        excluded_labels: Optional[Union[Sequence[int], torch.Tensor]] = None,
         p: float = 0.5,
         p_batch: float = 1.0,
         data_keys: Optional[list[str | int | DataKey]] = None,
@@ -175,9 +175,9 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
         if excluded_labels is None:
             excluded_labels = []
-        if not isinstance(excluded_labels, Tensor):
-            excluded_labels = tensor(excluded_labels)
-        self.excluded_labels: Tensor = excluded_labels
+        if not isinstance(excluded_labels, torch.Tensor):
+            excluded_labels = torch.tensor(excluded_labels)
+        self.excluded_labels: torch.Tensor = excluded_labels
         KORNIA_CHECK(
             self.excluded_labels.ndim == 1,
             f"excluded_labels must be a 1-dimensional sequence, but got {self.excluded_labels.ndim} dimensions.",
@@ -188,26 +188,28 @@ class RandomTransplantation(MixAugmentationBaseV2):
         self.data_keys = [DataKey.get(inp) for inp in data_keys]
         self._channel_dim = 1
 
-    def apply_non_transform_mask(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def apply_non_transform_mask(
+        self, input: torch.Tensor, params: dict[str, torch.Tensor], flags: dict[str, Any]
+    ) -> torch.Tensor:
         return input
 
-    def transform_input(self, acceptor: Tensor, donor: Tensor, selection: Tensor) -> Tensor:  # type: ignore[override]
+    def transform_input(self, acceptor: torch.Tensor, donor: torch.Tensor, selection: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
         # Expand selection to the channel dimension
         selection = selection.unsqueeze(dim=self._channel_dim).expand_as(donor)
         acceptor[selection] = donor[selection]
         return acceptor
 
-    def transform_mask(self, acceptor: Tensor, donor: Tensor, selection: Tensor) -> Tensor:  # type: ignore[override]
+    def transform_mask(self, acceptor: torch.Tensor, donor: torch.Tensor, selection: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
         acceptor[selection] = donor[selection]
         return acceptor
 
     def params_from_input(
         self,
-        *input: Tensor,
+        *input: torch.Tensor,
         data_keys: list[DataKey],
-        params: dict[str, Tensor],
+        params: dict[str, torch.Tensor],
         extra_args: Optional[dict[DataKey, dict[str, Any]]] = None,
-    ) -> dict[str, Tensor]:
+    ) -> dict[str, torch.Tensor]:
         """Compute parameters for the transformation which are based on one or more input tensors.
 
         This function is, for example, called by :class:`kornia.augmentation.container.ops.AugmentationSequentialOps`
@@ -215,7 +217,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
         Args:
             *input: All input tensors passed to the augmentation pipeline.
-            data_keys: Associated data key for every input tensor.
+            data_keys: Associated data key for every input torch.Tensor.
             params: Dictionary of parameters computed so far by the augmentation pipeline (e.g. including the
                     `batch_prob`).
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
@@ -231,7 +233,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
         )
 
         # The first mask key will be used for the transplantation
-        mask: Tensor = input[data_keys.index(DataKey.MASK)]
+        mask: torch.Tensor = input[data_keys.index(DataKey.MASK)]
         for _input, key in zip(input, data_keys):
             if key == DataKey.INPUT:
                 KORNIA_CHECK(
@@ -255,7 +257,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
             if self.excluded_labels.device != mask.device:
                 self.excluded_labels = self.excluded_labels.to(mask.device)
 
-            donor_labels: list[Tensor] = []
+            donor_labels: list[torch.Tensor] = []
             for d in range(len(params["donor_indices"])):
                 # Select a random label from the donor image
                 current_mask = mask[params["donor_indices"][d]]
@@ -274,14 +276,15 @@ class RandomTransplantation(MixAugmentationBaseV2):
             selection = torch.zeros(
                 (len(params["acceptor_indices"]), *mask.shape[1:]), dtype=torch.bool, device=mask.device
             )
-            selected_labels: Tensor = params["selected_labels"]
+            selected_labels: torch.Tensor = params["selected_labels"]
             KORNIA_CHECK(
                 selected_labels.ndim == 1,
-                f"selected_labels must be a 1-dimensional tensor, but got {selected_labels.ndim} dimensions.",
+                f"selected_labels must be a 1-dimensional torch.tensor, but got {selected_labels.ndim} dimensions.",
             )
             KORNIA_CHECK(
                 len(selected_labels) <= len(params["acceptor_indices"]),
-                f"There cannot be more selected labels ({len(selected_labels)}) than images where this augmentation "
+                f"There cannot be more selected labels ({len(selected_labels)}) than images "
+                f"torch.where this augmentation "
                 f"should be applied ({len(params['acceptor_indices'])}).",
             )
 
@@ -295,11 +298,11 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
     def forward(  # type: ignore[override]
         self,
-        *input: Tensor,
-        params: Optional[dict[str, Tensor]] = None,
+        *input: torch.Tensor,
+        params: Optional[dict[str, torch.Tensor]] = None,
         data_keys: Optional[list[str | int | DataKey]] = None,
         **kwargs: dict[str, Any],
-    ) -> Tensor | list[Tensor]:
+    ) -> torch.Tensor | list[torch.Tensor]:
         keys: list[DataKey]
         if data_keys is None:
             keys = self.data_keys
@@ -307,7 +310,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
             keys = [DataKey.get(inp) for inp in data_keys]
 
         if params is None:
-            mask: Tensor = input[keys.index(DataKey.MASK)]
+            mask: torch.Tensor = input[keys.index(DataKey.MASK)]
             self._params = self.forward_parameters(mask.shape)
         else:
             self._params = params
@@ -315,12 +318,12 @@ class RandomTransplantation(MixAugmentationBaseV2):
         if any(k not in self._params for k in ["acceptor_indices", "donor_indices", "selection"]):
             self._params.update(self.params_from_input(*input, data_keys=keys, params=self._params))
 
-        outputs: list[Tensor] = []
+        outputs: list[torch.Tensor] = []
         for dcate, _input in zip(keys, input):
             acceptor = _input[self._params["acceptor_indices"]].clone()
             donor = _input[self._params["donor_indices"]]
 
-            output: Tensor
+            output: torch.Tensor
             if dcate == DataKey.INPUT:
                 _validate_input_dtype(_input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 

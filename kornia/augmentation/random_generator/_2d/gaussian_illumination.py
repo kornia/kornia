@@ -28,7 +28,6 @@ from kornia.augmentation.utils import (
     _common_param_check,
     _range_bound,
 )
-from kornia.core import Tensor
 from kornia.enhance import normalize_min_max
 from kornia.filters.kernels import gaussian
 
@@ -97,7 +96,7 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
         )
         self.sign_sampler = UniformDistribution(sign[0], sign[1], validate_args=False)
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         r"""Generate random 2D Gaussian illumination patterns."""
         batch_size, channels, height, width = batch_shape
 

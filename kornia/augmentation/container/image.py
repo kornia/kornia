@@ -15,16 +15,17 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union, cast
 
 import torch
+from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import override_parameters
-from kornia.core import ImageModule, Module, Tensor, as_tensor
-from kornia.core.module import ImageModuleMixIn
-from kornia.utils import eye_like
+from kornia.core import ImageModule
+from kornia.core.mixin.image_module import ImageModuleMixIn
+from kornia.core.ops import eye_like
 
 from .base import ImageSequentialBase
 from .params import ParamItem
@@ -43,14 +44,14 @@ class ImageModuleForSequentialMixIn(ImageModuleMixIn):
     def disable_features(self, value: bool = True) -> None:
         self._disable_features = value
 
-    def disable_item_features(self, *args: Module) -> None:
+    def disable_item_features(self, *args: nn.Module) -> None:
         for arg in args:
-            if isinstance(arg, (ImageModule,)):
+            if isinstance(arg, ImageModule):
                 arg.disable_features = True
 
 
 class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
-    r"""Sequential for creating kornia image processing pipeline.
+    r"""nn.Sequential for creating kornia image processing pipeline.
 
     Args:
         *args : a list of kornia augmentation and image operation modules.
@@ -115,7 +116,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
     def __init__(
         self,
-        *args: Module,
+        *args: nn.Module,
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
@@ -136,40 +137,40 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 "The length of `random_apply_weights` must be as same as the number of operations."
                 f"Got {len(random_apply_weights)} and {len(self)}."
             )
-        self.random_apply_weights = as_tensor(random_apply_weights or torch.ones((len(self),)))
+        self.random_apply_weights = torch.as_tensor(random_apply_weights or torch.ones((len(self),)))
         self.if_unsupported_ops = if_unsupported_ops
 
     def _read_random_apply(
         self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int
     ) -> Union[Tuple[int, int], bool]:
         """Process the scenarios for random apply."""
-        if isinstance(random_apply, (bool,)) and random_apply is False:
+        if isinstance(random_apply, bool) and random_apply is False:
             random_apply = False
-        elif isinstance(random_apply, (bool,)) and random_apply is True:
+        elif isinstance(random_apply, bool) and random_apply is True:
             random_apply = (max_length, max_length + 1)
-        elif isinstance(random_apply, (int,)):
+        elif isinstance(random_apply, int):
             random_apply = (random_apply, random_apply + 1)
         elif (
-            isinstance(random_apply, (tuple,))
+            isinstance(random_apply, tuple)
             and len(random_apply) == 2
-            and isinstance(random_apply[0], (int,))
-            and isinstance(random_apply[1], (int,))
+            and isinstance(random_apply[0], int)
+            and isinstance(random_apply[1], int)
         ):
             random_apply = (random_apply[0], random_apply[1] + 1)
-        elif isinstance(random_apply, (tuple,)) and len(random_apply) == 1 and isinstance(random_apply[0], (int,)):
+        elif isinstance(random_apply, tuple) and len(random_apply) == 1 and isinstance(random_apply[0], int):
             random_apply = (random_apply[0], max_length + 1)
         else:
             raise ValueError(f"Non-readable random_apply. Got {random_apply}.")
         if random_apply is not False and not (
-            isinstance(random_apply, (tuple,))
+            isinstance(random_apply, tuple)
             and len(random_apply) == 2
-            and isinstance(random_apply[0], (int,))
-            and isinstance(random_apply[0], (int,))
+            and isinstance(random_apply[0], int)
+            and isinstance(random_apply[1], int)
         ):
             raise AssertionError(f"Expect a tuple of (int, int). Got {random_apply}.")
         return random_apply
 
-    def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, Module]], bool]:
+    def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, nn.Module]], bool]:
         """Get a forward sequence when random apply is in need.
 
         Args:
@@ -187,26 +188,34 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         multinomial_weights = self.random_apply_weights.clone()
         # Mix augmentation can only be applied once per forward
         mix_indices = self.get_mix_augmentation_indices(self.named_children())
-        # kick out the mix augmentations
+
         multinomial_weights[mix_indices] = 0
-        indices = torch.multinomial(
-            multinomial_weights,
-            num_samples,
-            # enable replacement if non-mix augmentation is less than required
-            replacement=num_samples > multinomial_weights.sum().item(),
-        )
+
+        total_weight = multinomial_weights.sum()
+        if total_weight == 0:
+            indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
+        else:
+            indices = torch.multinomial(
+                multinomial_weights,
+                num_samples,
+                replacement=num_samples > total_weight.item(),
+            )
 
         mix_added = False
         if with_mix and len(mix_indices) != 0:
             # Make the selection fair.
             if (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item():
-                indices[-1] = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+                mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+                if len(indices) == 0:
+                    indices = mix_idx
+                else:
+                    indices[-1] = mix_idx
                 indices = indices[torch.randperm(len(indices))]
                 mix_added = True
 
         return self.get_children_by_indices(indices), mix_added
 
-    def get_mix_augmentation_indices(self, named_modules: Iterator[Tuple[str, Module]]) -> List[int]:
+    def get_mix_augmentation_indices(self, named_modules: Iterator[Tuple[str, nn.Module]]) -> List[int]:
         """Get all the mix augmentations since they are label-involved.
 
         Special operations needed for label-involved augmentations.
@@ -214,7 +223,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         # NOTE: MixV2 will not be a special op in the future.
         return [idx for idx, (_, child) in enumerate(named_modules) if isinstance(child, K.MixAugmentationBaseV2)]
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
         if params is None:
             # Mix augmentation can only be applied once per forward
             mix_indices = self.get_mix_augmentation_indices(self.named_children())
@@ -233,12 +242,12 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         return self.get_children_by_params(params)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
-        named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
+        named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()
 
         params: List[ParamItem] = []
-        mod_param: Union[Dict[str, Tensor], List[ParamItem]]
+        mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
         for name, module in named_modules:
-            if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2, ImageSequentialBase)):
+            if isinstance(module, (_AugmentationBase | K.MixAugmentationBaseV2 | ImageSequentialBase)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:
@@ -247,21 +256,21 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             params.append(param)
         return params
 
-    def identity_matrix(self, input: Tensor) -> Tensor:
+    def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return identity matrix."""
         return eye_like(3, input)
 
     def get_transformation_matrix(
         self,
-        input: Tensor,
+        input: torch.Tensor,
         params: Optional[List[ParamItem]] = None,
         recompute: bool = False,
         extra_args: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Tensor]:
+    ) -> Optional[torch.Tensor]:
         """Compute the transformation matrix according to the provided parameters.
 
         Args:
-            input: the input tensor.
+            input: the input torch.Tensor.
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
@@ -271,12 +280,12 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             raise NotImplementedError("requires params to be provided.")
         if extra_args is None:
             extra_args = {}
-        named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence(params)
+        named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting
-        res_mat: Optional[Tensor] = None
+        res_mat: Optional[torch.Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
-            if isinstance(module, (K.GeometricAugmentationBase2D,)) and isinstance(param.data, dict):
+            if isinstance(module, K.GeometricAugmentationBase2D) and isinstance(param.data, dict):
                 ori_shape = input.shape
                 try:
                     input = module.transform_tensor(input)
@@ -288,17 +297,17 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                     flags = override_parameters(module.flags, extra_args, in_place=False)
                     mat = module.generate_transformation_matrix(input, param.data, flags)
                 elif module._transform_matrix is not None:
-                    mat = as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
+                    mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 else:
                     raise RuntimeError(f"{module}._transform_matrix is None while `recompute=False`.")
                 res_mat = mat if res_mat is None else mat @ res_mat
                 input = module.transform_output_tensor(input, ori_shape)
                 if module.keepdim and ori_shape != input.shape:
                     res_mat = res_mat.squeeze()
-            elif isinstance(module, (ImageSequentialBase,)):
+            elif isinstance(module, ImageSequentialBase):
                 # If not augmentationSequential
-                if isinstance(module, (K.AugmentationSequential,)) and not recompute:
-                    mat = as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
+                if isinstance(module, K.AugmentationSequential) and not recompute:
+                    mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 else:
                     maybe_param_data = cast(Optional[List[ParamItem]], param.data)
                     _mat = module.get_transformation_matrix(
@@ -321,9 +330,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         """
         for arg in self.children():
-            if isinstance(arg, (ImageSequential,)) and not arg.is_intensity_only(strict):
+            if isinstance(arg, ImageSequential) and not arg.is_intensity_only(strict):
                 return False
-            elif isinstance(arg, (ImageSequential,)):
+            elif isinstance(arg, ImageSequential):
                 pass
             elif isinstance(arg, K.IntensityAugmentationBase2D):
                 pass
@@ -337,7 +346,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         self,
         *inputs: Any,
         input_names_to_handle: Optional[List[Any]] = None,
-        output_type: str = "tensor",
+        output_type: Literal["pt", "numpy", "pil"] = "pt",
         **kwargs: Any,
     ) -> Any:
         """Overwrite the __call__ function to handle various inputs.
@@ -345,7 +354,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         Args:
             inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
-            output_type: Desired output type ('tensor', 'numpy', or 'pil').
+            output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
         Returns:
@@ -358,7 +367,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 input_names_to_handle=input_names_to_handle, output_type=output_type
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            if output_type == "tensor":
+            if output_type == "pt":
                 self._output_image = self._detach_tensor_to_cpu(_output_image)
             else:
                 self._output_image = _output_image
@@ -384,9 +393,9 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
             batch_shape = _get_new_batch_shape(p, batch_shape)
         return batch_shape
 
-    # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element tensor
+    # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:
-        # Inline check for common PyTorch float tensor case
+        # Inline check for common PyTorch float torch.Tensor case
         batch_prob = data.get("batch_prob", None)
         if batch_prob is not None:
             # Avoid repeated indexing, always fetch scalar efficiently

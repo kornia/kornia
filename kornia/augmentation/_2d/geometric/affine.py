@@ -17,16 +17,16 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
-from kornia.core import Tensor, as_tensor
-from kornia.geometry.conversions import deg2rad
 from kornia.geometry.transform import get_affine_matrix2d, warp_affine
 
 
 class RandomAffine(GeometricAugmentationBase2D):
-    r"""Apply a random 2D affine transformation to a tensor image.
+    r"""Apply a random 2D affine transformation to a torch.Tensor image.
 
     .. image:: _static/img/RandomAffine.png
 
@@ -50,7 +50,9 @@ class RandomAffine(GeometricAugmentationBase2D):
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
-        padding_mode: padding mode from "zeros" (0), "border" (1) or "reflection" (2).
+        padding_mode: padding mode from "torch.zeros" (0), "border" (1), "reflection" (2) or "fill" (3).
+        fill_value: the value to be filled in the padding area when padding_mode="fill".
+            Can be a float, int, or a torch.Tensor of shape (C) or (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         p: probability of applying the transformation.
@@ -94,41 +96,53 @@ class RandomAffine(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        degrees: Union[Tensor, float, Tuple[float, float]],
-        translate: Optional[Union[Tensor, Tuple[float, float]]] = None,
-        scale: Optional[Union[Tensor, Tuple[float, float], Tuple[float, float, float, float]]] = None,
-        shear: Optional[Union[Tensor, float, Tuple[float, float]]] = None,
+        degrees: Union[torch.Tensor, float, Tuple[float, float]],
+        translate: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+        scale: Optional[Union[torch.Tensor, Tuple[float, float], Tuple[float, float, float, float]]] = None,
+        shear: Optional[Union[torch.Tensor, float, Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = False,
         padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
+        fill_value: Optional[Union[float, int, torch.Tensor]] = None,  # Updated type hint
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator: rg.AffineGenerator = rg.AffineGenerator(degrees, translate, scale, shear)
+
+        if fill_value is not None and not isinstance(fill_value, torch.Tensor):
+            fill_value = torch.as_tensor(fill_value)
+
         self.flags = {
             "resample": Resample.get(resample),
             "padding_mode": SamplePadding.get(padding_mode),
             "align_corners": align_corners,
+            "fill_value": fill_value,
         }
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         return get_affine_matrix2d(
-            as_tensor(params["translations"], device=input.device, dtype=input.dtype),
-            as_tensor(params["center"], device=input.device, dtype=input.dtype),
-            as_tensor(params["scale"], device=input.device, dtype=input.dtype),
-            as_tensor(params["angle"], device=input.device, dtype=input.dtype),
-            deg2rad(as_tensor(params["shear_x"], device=input.device, dtype=input.dtype)),
-            deg2rad(as_tensor(params["shear_y"], device=input.device, dtype=input.dtype)),
+            torch.as_tensor(params["translations"], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params["scale"], device=input.device, dtype=input.dtype),
+            torch.as_tensor(params["angle"], device=input.device, dtype=input.dtype),
+            torch.deg2rad(torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype)),
+            torch.deg2rad(torch.as_tensor(params["shear_y"], device=input.device, dtype=input.dtype)),
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         _, _, height, width = input.shape
-        if not isinstance(transform, Tensor):
-            raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
+        if not isinstance(transform, torch.Tensor):
+            raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
 
         return warp_affine(
             input,
@@ -137,20 +151,21 @@ class RandomAffine(GeometricAugmentationBase2D):
             flags["resample"].name.lower(),
             align_corners=flags["align_corners"],
             padding_mode=flags["padding_mode"].name.lower(),
+            fill_value=flags["fill_value"],  # <--- PASS IT DOWN
         )
 
     def inverse_transform(
         self,
-        input: Tensor,
+        input: torch.Tensor,
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Optional[torch.Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
-    ) -> Tensor:
-        if not isinstance(transform, Tensor):
-            raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
+    ) -> torch.Tensor:
+        if not isinstance(transform, torch.Tensor):
+            raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
         return self.apply_transform(
             input,
             params=self._params,
-            transform=as_tensor(transform, device=input.device, dtype=input.dtype),
+            transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
             flags=flags,
         )

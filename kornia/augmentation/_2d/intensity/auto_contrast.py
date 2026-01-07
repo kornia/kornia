@@ -17,13 +17,14 @@
 
 from typing import Any, Dict, Optional
 
+import torch
+
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor
 from kornia.enhance import normalize_min_max
 
 
 class RandomAutoContrast(IntensityAugmentationBase2D):
-    r"""Apply a random auto-contrast of a tensor image.
+    r"""Apply a random auto-contrast of a torch.Tensor image.
 
     Args:
         p: probability of applying the transformation.
@@ -48,8 +49,12 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
         self.clip_output = clip_output
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         out = normalize_min_max(input)
 
         if self.clip_output:

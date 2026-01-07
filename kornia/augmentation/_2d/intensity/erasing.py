@@ -17,14 +17,15 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor, where
 from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 
 
 class RandomErasing(IntensityAugmentationBase2D):
-    r"""Erase a random rectangle of a tensor image according to a probability p value.
+    r"""Erase a random rectangle of a torch.Tensor image according to a probability p value.
 
     .. image:: _static/img/RandomErasing.png
 
@@ -49,9 +50,9 @@ class RandomErasing(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
+        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -72,8 +73,8 @@ class RandomErasing(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        scale: Union[Tensor, Tuple[float, float]] = (0.02, 0.33),
-        ratio: Union[Tensor, Tuple[float, float]] = (0.3, 3.3),
+        scale: Union[torch.Tensor, Tuple[float, float]] = (0.02, 0.33),
+        ratio: Union[torch.Tensor, Tuple[float, float]] = (0.3, 3.3),
         value: float = 0.0,
         same_on_batch: bool = False,
         p: float = 0.5,
@@ -86,20 +87,28 @@ class RandomErasing(IntensityAugmentationBase2D):
         self._param_generator = rg.RectangleEraseGenerator(scale, ratio, value)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         _, c, h, w = input.size()
         values = params["values"].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
 
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
         mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
         mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
-        transformed = where(mask == 1.0, values, input)
+        transformed = torch.where(mask == 1.0, values, input)
         return transformed
 
     def apply_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         _, c, h, w = input.size()
 
         values = params["values"][..., None, None, None].repeat(1, *input.shape[1:]).to(input)
@@ -109,5 +118,5 @@ class RandomErasing(IntensityAugmentationBase2D):
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
         mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
         mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
-        transformed = where(mask == 1.0, values, input)
+        transformed = torch.where(mask == 1.0, values, input)
         return transformed

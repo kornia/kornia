@@ -16,21 +16,19 @@
 #
 
 import torch
-
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor
+from torch import nn
 
 
-def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Tensor:
-    r"""Apply to a tensor the sepia filter.
+def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6) -> torch.Tensor:
+    r"""Apply to a torch.Tensor the sepia filter.
 
     Args:
-        input: the input tensor with shape of :math:`(*, C, H, W)`.
-        rescale: If True, the output tensor will be rescaled (max values be 1. or 255).
+        input: the input torch.Tensor with shape of :math:`(*, C, H, W)`.
+        rescale: If True, the output torch.Tensor will be rescaled (max values be 1. or 255).
         eps: scalar to enforce numerical stability.
 
     Returns:
-        Tensor: The sepia tensor of same size and numbers of channels
+        torch.Tensor: The sepia torch.tensor of same size and numbers of channels
         as the input with shape :math:`(*, C, H, W)`.
 
     Example:
@@ -63,16 +61,16 @@ def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Te
     return sepia_out
 
 
-class Sepia(Module):
-    r"""Module that apply the sepia filter to tensors.
+class Sepia(nn.Module):
+    r"""nn.Module that apply the sepia filter to tensors.
 
     Args:
-        input: the input tensor with shape of :math:`(*, C, H, W)`.
-        rescale: If True, the output tensor will be rescaled (max values be 1. or 255).
+        input: the input torch.Tensor with shape of :math:`(*, C, H, W)`.
+        rescale: If True, the output torch.Tensor will be rescaled (max values be 1. or 255).
         eps: scalar to enforce numerical stability.
 
     Returns:
-        Tensor: The sepia tensor of same size and numbers of channels
+        torch.Tensor: The sepia torch.tensor of same size and numbers of channels
         as the input with shape :math:`(*, C, H, W)`.
 
     Example:
@@ -95,5 +93,5 @@ class Sepia(Module):
     def __repr__(self) -> str:
         return self.__class__.__name__ + f"(rescale={self.rescale}, eps={self.eps})"
 
-    def forward(self, input: Tensor) -> Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         return sepia_from_rgb(input, rescale=self.rescale, eps=self.eps)

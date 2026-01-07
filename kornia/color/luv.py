@@ -25,8 +25,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 import torch
-
-from kornia.core import ImageModule as Module
+from torch import nn
 
 from .rgb import linear_rgb_to_rgb, rgb_to_linear_rgb
 from .xyz import rgb_to_xyz, xyz_to_rgb
@@ -140,7 +139,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     return rgb_im
 
 
-class RgbToLuv(Module):
+class RgbToLuv(nn.Module):
     r"""Convert an image from RGB to Luv.
 
     The image data is assumed to be in the range of :math:`[0, 1]`. Luv
@@ -174,7 +173,7 @@ class RgbToLuv(Module):
         return rgb_to_luv(image)
 
 
-class LuvToRgb(Module):
+class LuvToRgb(nn.Module):
     r"""Convert an image from Luv to RGB.
 
     Returns:

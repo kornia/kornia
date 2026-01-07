@@ -15,23 +15,31 @@
 # limitations under the License.
 #
 
-from kornia.core import Tensor
+
+import torch
+
 from kornia.geometry.vector import Vector2
 
 
 class AffineTransform:
-    def distort(self, params: Tensor, points: Vector2) -> Vector2:
+    """Apply an affine transformation to a set of 2D points.
+
+    This class handles the scaling and shifting of coordinates, typically used
+    to map normalized coordinates to pixel coordinates.
+    """
+
+    def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         """Distort one or more Vector2 points using the affine transform.
 
         Args:
-            params: Tensor representing the affine transform parameters.
+            params: torch.Tensor representing the affine transform parameters.
             points: Vector2 representing the points to distort.
 
         Returns:
             Vector2 representing the distorted points.
 
         Example:
-            >>> params = Tensor([1., 2., 3., 4.])
+            >>> params = torch.Tensor([1., 2., 3., 4.])
             >>> points = Vector2.from_coords(1., 2.)
             >>> AffineTransform().distort(params, points)
             x: 4.0
@@ -43,18 +51,18 @@ class AffineTransform:
         v = points.y * fy + cy
         return Vector2.from_coords(u, v)
 
-    def undistort(self, params: Tensor, points: Vector2) -> Vector2:
+    def undistort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         """Undistort one or more Vector2 points using the affine transform.
 
         Args:
-            params: Tensor representing the affine transform parameters.
+            params: torch.Tensor representing the affine transform parameters.
             points: Vector2 representing the points to undistort.
 
         Returns:
             Vector2 representing the undistorted points.
 
         Example:
-            >>> params = Tensor([1., 2., 3., 4.])
+            >>> params = torch.Tensor([1., 2., 3., 4.])
             >>> points = Vector2.from_coords(1., 2.)
             >>> AffineTransform().undistort(params, points)
             x: -2.0
@@ -68,16 +76,34 @@ class AffineTransform:
 
 
 class BrownConradyTransform:
-    def distort(self, params: Tensor, points: Vector2) -> Vector2:
+    """Implement the Brown-Conrady model for lens distortion and undistortion.
+
+    The model accounts for radial distortion (due to lens shape) and tangential
+    distortion (due to lens misalignment). It is commonly used to transform
+    points between ideal pinhole projections and distorted image coordinates.
+
+    Args:
+        params: A tensor containing the distortion coefficients
+            (usually k1, k2, p1, p2, k3).
+        points: A :class:`Vector2` representing the 2D coordinates to be transformed.
+    """
+
+    def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError
 
-    def undistort(self, params: Tensor, points: Vector2) -> Vector2:
+    def undistort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError
 
 
 class KannalaBrandtK3Transform:
-    def distort(self, params: Tensor, points: Vector2) -> Vector2:
+    """Apply the Kannala-Brandt (K3) distortion model.
+
+    This model is specifically designed for fisheye lenses with significant
+    radial distortion, using a polynomial approximation for the projection.
+    """
+
+    def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError
 
-    def undistort(self, params: Tensor, points: Vector2) -> Vector2:
+    def undistort(self, params: torch.Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError

@@ -17,10 +17,11 @@
 
 from typing import Any, Dict, Optional, Tuple
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.contrib import diamond_square
-from kornia.core import Tensor
 
 
 class RandomPlasmaBrightness(IntensityAugmentationBase2D):
@@ -66,8 +67,12 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        image: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         B, C, H, W = image.shape
         roughness = params["roughness"].to(image)
         intensity = params["intensity"].to(image).view(-1, 1, 1, 1)
@@ -115,8 +120,12 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         self._param_generator = rg.PlainUniformGenerator((roughness, "roughness", None, None))
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        image: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         B, C, H, W = image.shape
         roughness = params["roughness"].to(image)
         contrast_map = 4 * diamond_square((B, C, H, W), roughness, device=image.device, dtype=image.dtype)
@@ -170,8 +179,12 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        image: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         B, _, H, W = image.shape
         roughness = params["roughness"].to(image)
         shade_intensity = params["shade_intensity"].to(image).view(-1, 1, 1, 1)

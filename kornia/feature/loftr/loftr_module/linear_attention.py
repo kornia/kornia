@@ -24,17 +24,25 @@ transformers/blob/master/fast_transformers/attention/linear_attention.py.
 from typing import Optional
 
 import torch
+import torch.nn.functional as F
+from torch import nn
 from torch.nn import Dropout
 
-from kornia.core import Module, Tensor
 
-
-def elu_feature_map(x: Tensor) -> Tensor:
+def elu_feature_map(x: torch.Tensor) -> torch.Tensor:
     """Apply elu activation."""
     return torch.nn.functional.elu(x) + 1
 
 
-class LinearAttention(Module):
+class LinearAttention(nn.Module):
+    """Implement the Linear Attention mechanism for efficient transformer processing.
+
+    This module uses the ELU-based kernel map to approximate softmax attention.
+
+    Args:
+        eps: A small value to avoid division by zero. Default: 1e-6.
+    """
+
     def __init__(self, eps: float = 1e-6) -> None:
         super().__init__()
         self.feature_map = elu_feature_map
@@ -42,12 +50,12 @@ class LinearAttention(Module):
 
     def forward(
         self,
-        queries: Tensor,
-        keys: Tensor,
-        values: Tensor,
-        q_mask: Optional[Tensor] = None,
-        kv_mask: Optional[Tensor] = None,
-    ) -> Tensor:
+        queries: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        q_mask: Optional[torch.Tensor] = None,
+        kv_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Multi-Head linear attention proposed in "Transformers are RNNs".
 
         Args:
@@ -80,7 +88,14 @@ class LinearAttention(Module):
         return queried_values.contiguous()
 
 
-class FullAttention(Module):
+class FullAttention(nn.Module):
+    """Implement the standard Multi-Head Softmax Attention.
+
+    Args:
+        use_dropout: Whether to apply dropout to the attention weights. Default: False.
+        attention_dropout: The dropout probability. Default: 0.1.
+    """
+
     def __init__(self, use_dropout: bool = False, attention_dropout: float = 0.1) -> None:
         super().__init__()
         self.use_dropout = use_dropout
@@ -88,12 +103,12 @@ class FullAttention(Module):
 
     def forward(
         self,
-        queries: Tensor,
-        keys: Tensor,
-        values: Tensor,
-        q_mask: Optional[Tensor] = None,
-        kv_mask: Optional[Tensor] = None,
-    ) -> Tensor:
+        queries: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        q_mask: Optional[torch.Tensor] = None,
+        kv_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Multi-head scaled dot-product attention, a.k.a full attention.
 
         Args:
@@ -114,7 +129,7 @@ class FullAttention(Module):
 
         # Compute the attention and the weighted average
         softmax_temp = 1.0 / queries.size(3) ** 0.5  # sqrt(D)
-        A = torch.softmax(softmax_temp * QK, dim=2)
+        A = F.softmax(softmax_temp * QK, dim=2)
         if self.use_dropout:
             A = self.dropout(A)
 

@@ -18,12 +18,12 @@
 from typing import Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import torch
+from torch import nn
 
 from kornia.augmentation.auto.base import SUBPOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.params import ParamItem
-from kornia.core import Module, Tensor
 
 from . import ops
 
@@ -90,7 +90,7 @@ class RandAugment(PolicyAugmentBase):
         self.n = n
         self.m = m
 
-    def rand_selector(self, n: int) -> Tensor:
+    def rand_selector(self, n: int) -> torch.Tensor:
         perm = torch.randperm(len(self._modules))
         idx = perm[:n]
         return idx
@@ -101,7 +101,7 @@ class RandAugment(PolicyAugmentBase):
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
         if params is None:
             idx = self.rand_selector(
                 self.n,
@@ -111,9 +111,9 @@ class RandAugment(PolicyAugmentBase):
         return self.get_children_by_params(params)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
-        named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
+        named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()
         params: List[ParamItem] = []
-        mod_param: Union[Dict[str, Tensor], List[ParamItem]]
+        mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
         m = torch.tensor([self.m / 30] * batch_shape[0])
 
         for name, module in named_modules:
