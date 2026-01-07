@@ -74,8 +74,8 @@ class RandomThinPlateSpline(AugmentationBase2D):
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         B, _, _, _ = shape
 
-        device = torch.device("cpu")
-        dtype = torch.get_default_dtype()
+        device = self.device
+        dtype = self.dtype
 
         # 5 TPS control points in normalized coordinates
         src = torch.tensor(
@@ -84,13 +84,13 @@ class RandomThinPlateSpline(AugmentationBase2D):
             dtype=dtype,
         ).expand(B, 5, 2)
 
-        # sample random displacement
-        noise = self.dist.rsample((1 if self.same_on_batch else B, 5, 2)).to(device=device, dtype=dtype)
-
         if self.same_on_batch:
-            dst = src + noise.expand(B, 5, 2)
+            noise = self.dist.rsample((1, 5, 2)).to(device=device, dtype=dtype)
+            noise = noise.expand(B, 5, 2)
         else:
-            dst = src + noise
+            noise = self.dist.rsample((B, 5, 2)).to(device=device, dtype=dtype)
+
+        dst = src + noise
 
         return {"src": src, "dst": dst}
 
