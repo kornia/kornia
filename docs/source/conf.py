@@ -239,7 +239,6 @@ else:
 code_url = f"https://github.com/kornia/kornia/blob/{code_ref}"
 
 
-
 def linkcode_resolve(domain, info):
     if domain != "py":
         return None
@@ -278,7 +277,7 @@ def linkcode_resolve(domain, info):
     if idx == -1:
         return None
 
-    file_rel = fn[idx + 1 :]  # "kornia/....py"
+    file_rel = fn[idx + 1 :]  # -> "kornia/....py"
     end = start + len(src) - 1
     return f"{code_url}/{file_rel}#L{start}-L{end}"
 
