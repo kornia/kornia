@@ -73,8 +73,25 @@ class RandomThinPlateSpline(AugmentationBase2D):
 
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         B, _, _, _ = shape
-        src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).expand(B, 5, 2)  # Bx5x2
-        dst = src + self.dist.rsample(src.shape)
+
+        device = self.device
+        dtype = self.dtype
+
+        # 5 TPS control points in normalized coordinates
+        src = torch.tensor(
+            [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]],
+            device=device,
+            dtype=dtype,
+        ).expand(B, 5, 2)
+
+        if self.same_on_batch:
+            noise = self.dist.rsample((1, 5, 2)).to(device=device, dtype=dtype)
+            noise = noise.expand(B, 5, 2)
+        else:
+            noise = self.dist.rsample((B, 5, 2)).to(device=device, dtype=dtype)
+
+        dst = src + noise
+
         return {"src": src, "dst": dst}
 
     def apply_transform(
