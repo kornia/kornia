@@ -66,6 +66,10 @@ class TestConvDistanceTransform(BaseTester):
         with pytest.raises(ValueError):
             kornia.contrib.distance_transform(sample2d, 4)
 
+        # Kernel size too small
+        with pytest.raises(ValueError):
+            kornia.contrib.distance_transform(sample2d, 1)
+
         # Invalid input dimensions (3D tensor instead of 4D or 5D)
         with pytest.raises(ValueError):
             kornia.contrib.distance_transform(sample_wrong_dims)
@@ -73,6 +77,24 @@ class TestConvDistanceTransform(BaseTester):
         # Invalid input type
         with pytest.raises(TypeError):
             kornia.contrib.distance_transform(None)
+
+        # Integer input not supported
+        sample_int = torch.randint(0, 2, (B, C, H, W), device=device)
+        with pytest.raises(TypeError):
+            kornia.contrib.distance_transform(sample_int)
+
+        # invalid h
+        with pytest.raises(ValueError):
+            kornia.contrib.distance_transform(sample2d, kernel_size=3, h=0.0)
+
+    def test_noncontiguous_multi_channel(self, device, dtype):
+        # Make H == W so transpose keeps the same shape but makes memory non-contiguous
+        B, C, H, W = 1, 2, 4, 4
+        sample = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        sample = sample.transpose(2, 3)  # now non-contiguous but same shape
+        op = kornia.contrib.DistanceTransform()
+        out = op(sample)
+        assert out.shape == sample.shape
 
     def test_value_2d(self, device, dtype):
         B, C, H, W = 1, 1, 4, 4

@@ -22,13 +22,11 @@ import math
 import torch
 from torch import nn
 
-from kornia.core import Tensor
 from kornia.filters import filter2d, filter3d
-from kornia.geometry.grid import create_meshgrid
-from kornia.utils import create_meshgrid, create_meshgrid3d
+from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
 
-def distance_transform(image: Tensor, kernel_size: int = 3, h: float = 0.35) -> Tensor:
+def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.35) -> torch.Tensor:
     r"""Approximates the Euclidean distance transform of images/volumes using cascaded convolution operations.
 
     The value at each pixel/voxel represents the distance to the nearest non-zero element.
@@ -54,7 +52,7 @@ def distance_transform(image: Tensor, kernel_size: int = 3, h: float = 0.35) -> 
         >>> dt = distance_transform(volume)
 
     """
-    if not isinstance(image, Tensor):
+    if not isinstance(image, torch.Tensor):
         raise TypeError(f"image type is not a torch.Tensor. Got {type(image)}")
 
     if not image.is_floating_point():
@@ -66,6 +64,9 @@ def distance_transform(image: Tensor, kernel_size: int = 3, h: float = 0.35) -> 
 
     if kernel_size % 2 == 0 or kernel_size < 3:
         raise ValueError("kernel_size must be an odd integer >= 3")
+
+    if not (h > 0):
+        raise ValueError("h must be a positive float")
 
     device = image.device
     dtype = image.dtype
@@ -88,7 +89,7 @@ def distance_transform(image: Tensor, kernel_size: int = 3, h: float = 0.35) -> 
         dist = torch.norm(grid[0], p=2, dim=-1)
         kernel = torch.exp(-dist / h).unsqueeze(0)
 
-        def conv_op(x: Tensor, k: Tensor) -> Tensor:
+        def conv_op(x: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
             return filter3d(x, k, border_type="replicate")
 
     out = torch.zeros_like(image)
@@ -126,12 +127,13 @@ class DistanceTransform(nn.Module):
         self.kernel_size = kernel_size
         self.h = h
 
-    def forward(self, image: Tensor) -> Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         # Reshape multi-channel inputs to batch dimension to ensure independent processing
         if image.shape[1] > 1:
             # Dynamically determine spatial dimensions (works for H,W or D,H,W)
             spatial_dims = image.shape[2:]
-            image_in = image.view(-1, 1, *spatial_dims)
+            # Use reshape to handle non-contiguous tensors safely
+            image_in = image.reshape(-1, 1, *spatial_dims)
         else:
             image_in = image
 
