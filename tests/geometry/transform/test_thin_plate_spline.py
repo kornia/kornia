@@ -235,17 +235,17 @@ class TestWarpImage(BaseTester):
 
         opts = {"device": device, "dtype": torch.float64}
         src, dst = _sample_points(batch_size, **opts)
-        
+
         # Compute TPS params without tracking gradients
         with torch.no_grad():
             kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
-    
+
         image = torch.rand(batch_size, 3, 32, 32, requires_grad=True, **opts)
-    
+
         assert self.gradcheck(
             kornia.geometry.transform.warp_image_tps,
             (image, dst, kernel, affine),
-            requires_grad=[True, False, False, False], 
+            requires_grad=[True, False, False, False],
             raise_exception=True,
             atol=1e-4,
             rtol=1e-4,
