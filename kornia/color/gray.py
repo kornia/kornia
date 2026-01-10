@@ -94,7 +94,7 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
             raise TypeError(f"Unknown data type: {image.dtype}")
     else:
         # is torch.Tensor that we make sure is in the same device/dtype
-        rgb_weights = rgb_weights.to(image.device)
+        rgb_weights = rgb_weights.to(image)
 
     # Unpack channels (View, don't copy)
     r, g, b = image.unbind(dim=-3)
@@ -102,12 +102,10 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
 
     # Accumulate results
     out = r * w_r
-    # out = out + w_g * g
     out = torch.addcmul(out, g, w_g)
-    # out = out + w_b * b
     out = torch.addcmul(out, b, w_b)
 
-    # 3. Restore channel dim
+    # Restore channel dim
     return out.unsqueeze(-3)
 
 
