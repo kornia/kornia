@@ -23,10 +23,10 @@ import torch
 
 import kornia
 
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestSaveLoadPointCloud:
+class TestSaveLoadPointCloud(BaseTester):
     def test_save_pointcloud(self):
         height, width = 10, 8
         xyz_save = torch.rand(height, width, 3)
@@ -35,13 +35,12 @@ class TestSaveLoadPointCloud:
         kornia.geometry.save_pointcloud_ply(filename, xyz_save)
 
         xyz_load = kornia.geometry.load_pointcloud_ply(filename)
-        assert_close(xyz_save.reshape(-1, 3), xyz_load)
+        self.assert_close(xyz_save.reshape(-1, 3), xyz_load)
 
         if os.path.exists(filename):
             os.remove(filename)
 
-    @staticmethod
-    def test_inf_coordinates_save_pointcloud():
+    def test_inf_coordinates_save_pointcloud(self):
         height, width = 10, 8
         xyz_save = torch.rand(height, width, 3)
 
@@ -55,7 +54,7 @@ class TestSaveLoadPointCloud:
         xyz_correct = xyz_save.reshape(-1, 3)[1:, :]
 
         xyz_load = kornia.geometry.load_pointcloud_ply(filename)
-        assert_close(xyz_correct, xyz_load)
+        self.assert_close(xyz_correct, xyz_load)
 
         if os.path.exists(filename):
             os.remove(filename)

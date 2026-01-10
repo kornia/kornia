@@ -17,15 +17,14 @@
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
 import kornia.geometry.epipolar as epi
 
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestSkewSymmetric:
+class TestSkewSymmetric(BaseTester):
     def test_smoke(self, device, dtype):
         vec = torch.rand(1, 3, device=device, dtype=dtype)
         cross_product_matrix = epi.cross_product_matrix(vec)
@@ -60,18 +59,18 @@ class TestSkewSymmetric:
         # Feed one-shot
         cross_product_matrix_whole = epi.cross_product_matrix(t)
 
-        assert_close(cross_product_matrix_parts, cross_product_matrix_whole)
+        self.assert_close(cross_product_matrix_parts, cross_product_matrix_whole)
 
     def test_mean_std(self, device, dtype):
         vec = torch.tensor([[1.0, 2.0, 3.0]], device=device, dtype=dtype)
         cross_product_matrix = epi.cross_product_matrix(vec)
-        assert_close(cross_product_matrix[..., 0, 1], -cross_product_matrix[..., 1, 0])
-        assert_close(cross_product_matrix[..., 0, 2], -cross_product_matrix[..., 2, 0])
-        assert_close(cross_product_matrix[..., 1, 2], -cross_product_matrix[..., 2, 1])
+        self.assert_close(cross_product_matrix[..., 0, 1], -cross_product_matrix[..., 1, 0])
+        self.assert_close(cross_product_matrix[..., 0, 2], -cross_product_matrix[..., 2, 0])
+        self.assert_close(cross_product_matrix[..., 1, 2], -cross_product_matrix[..., 2, 1])
 
     def test_gradcheck(self, device):
         vec = torch.ones(2, 3, device=device, requires_grad=True, dtype=torch.float64)
-        assert gradcheck(epi.cross_product_matrix, (vec,), raise_exception=True, fast_mode=True)
+        assert self.gradcheck(epi.cross_product_matrix, (vec,), raise_exception=True, fast_mode=True)
 
 
 class TestEyeLike:
