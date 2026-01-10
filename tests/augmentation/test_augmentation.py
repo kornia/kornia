@@ -4588,13 +4588,6 @@ class TestRandomElasticTransform(BaseTester):
                 assert labels_transformed[to_apply].ne(labels[to_apply]).any()
 
 
-class TestRandomThinPlateSpline:
-    def test_smoke(self, device, dtype):
-        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
-        aug = RandomThinPlateSpline(p=1.0)
-        assert img.shape == aug(img).shape
-
-
 class TestRandomBoxBlur:
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
@@ -5255,3 +5248,52 @@ class TestRandomDissolving(BaseTester):
         aug = RandomDissolving(p=1.0, keepdim=True, version="1.5", cache_dir="weights/")
         images_aug = aug(images)
         assert images_aug.shape == images.shape
+
+
+class TestRandomThinPlateSpline(CommonTests):
+    possible_params: Dict["str", Tuple] = {}
+    _augmentation_cls = RandomThinPlateSpline
+    _default_param_set: Dict["str", Any] = {}
+
+    @pytest.fixture(params=[_default_param_set], scope="class")
+    def param_set(self, request):
+        return request.param
+
+    # Disable unsupported base tests
+    def test_smoke(self, param_set):
+        pytest.skip("RandomThinPlateSpline does not implement compute_transformation")
+
+    def test_module(self):
+        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+
+    def test_random_p_1(self):
+        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+
+    def test_inverse_coordinate_check(self):
+        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+
+    def test_exception(self):
+        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+
+    def test_batch(self):
+        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+
+    def test_same_on_batch_true(self):
+        torch.manual_seed(0)
+        x = torch.randn(4, 3, 64, 64, device=self.device, dtype=self.dtype)
+        aug = self._augmentation_cls(p=1.0, same_on_batch=True)
+        _ = aug(x)
+        params = aug._params
+        assert (params["src"][0] == params["src"][1]).all()
+        for j in range(1, 4):
+            torch.testing.assert_close(params["dst"][0], params["dst"][j])
+
+    def test_same_on_batch_false(self):
+        torch.manual_seed(0)
+        x = torch.randn(4, 3, 64, 64, device=self.device, dtype=self.dtype)
+        aug = self._augmentation_cls(p=1.0, same_on_batch=False)
+        _ = aug(x)
+        params = aug._params
+        diffs = [(params["dst"][0] - params["dst"][j]).abs().sum().item() for j in range(1, 4)]
+
+        assert any(d > 0 for d in diffs)

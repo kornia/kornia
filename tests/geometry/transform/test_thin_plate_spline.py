@@ -236,7 +236,7 @@ class TestWarpImage(BaseTester):
         opts = {"device": device, "dtype": torch.float64}
         src, dst = _sample_points(batch_size, **opts)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
-        image = torch.rand(batch_size, 3, 8, 8, requires_grad=True, **opts)
+        image = torch.rand(batch_size, 3, 32, 32, requires_grad=True, **opts)
         assert self.gradcheck(
             kornia.geometry.transform.warp_image_tps,
             (image, dst, kernel, affine),
@@ -256,3 +256,15 @@ class TestWarpImage(BaseTester):
         op = kornia.geometry.transform.warp_image_tps
         op_jit = torch.jit.script(op)
         self.assert_close(op(image, dst, kernel, affine), op_jit(image, dst, kernel, affine), rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize("batch_size", [1])
+    def test_identity_warp_align_corners(self, batch_size, device, dtype):
+        image = torch.arange(9.0, device=device, dtype=dtype).reshape(1, 1, 3, 3)
+        dst = torch.tensor(
+            [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]],
+            device=device,
+            dtype=dtype,
+        ).repeat(batch_size, 1, 1)
+        kernel, affine = kornia.geometry.transform.get_tps_transform(dst, dst)
+        warped = kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine, align_corners=True)
+        self.assert_close(warped, image, atol=1e-4, rtol=1e-4)
