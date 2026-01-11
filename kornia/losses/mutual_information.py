@@ -79,8 +79,7 @@ def truncated_gaussian_kernel(x: torch.Tensor, window_radius: float = 1.0) -> to
         torch.Tensor: transformed signal
     """
     sigma = window_radius
-    x_abs = torch.abs(x)
-    mask = x_abs <= window_radius
+    mask = torch.abs(x) <= window_radius
 
     gaussian_val = torch.exp(-0.5 * (x / sigma) ** 2) / (sigma * (2 * torch.pi) ** 0.5)
 
@@ -90,7 +89,7 @@ def truncated_gaussian_kernel(x: torch.Tensor, window_radius: float = 1.0) -> to
 class Kernel(Enum):
     xu = member(xu_kernel)
     rectangular = member(rectangular_kernel)
-    gaussian = member(truncated_gaussian_kernel)
+    truncated_gaussian = member(truncated_gaussian_kernel)
 
 
 def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> torch.Tensor:

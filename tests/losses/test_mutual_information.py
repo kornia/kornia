@@ -140,7 +140,7 @@ class TestMutualInformationLoss(BaseTester):
             # 1. Create random batch with n_dims = i+1
             dims = torch.randint(low=1, high=8, size=(dim_param + 1,))
             dims = tuple(map(int, dims))
-            for kernel in [Kernel.xu, Kernel.rectangular, Kernel.gaussian]:
+            for kernel in [Kernel.xu, Kernel.rectangular, Kernel.truncated_gaussian]:
                 for _ in range(3):
                     img1 = torch.rand(dims, device=device, dtype=dtype)
                     img2 = torch.rand(dims, device=device, dtype=dtype)
