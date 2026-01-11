@@ -14,6 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
+from __future__ import annotations
+
 from typing import Optional
 
 import torch
@@ -30,15 +33,13 @@ class PaliGemma(nn.Module):
     This model combines a SigLip2 Vision Encoder with a Gemma Language Decoder.
     """
 
-    def __init__(self, config: PaliGemmaConfig):
+    def __init__(self, config: PaliGemmaConfig) -> None:
         super().__init__()
         self.config = config
 
         self.vision_tower = SigLip2VisionModel(config.vision_config)
 
         self.multi_modal_projector = nn.Linear(config.vision_config.hidden_size, config.hidden_size)
-
-        self.language_model = nn.Linear(config.hidden_size, config.vocab_size)
 
     def forward(
         self,
@@ -56,11 +57,12 @@ class PaliGemma(nn.Module):
         Returns:
             logits: Prediction scores (batch, seq_len, vocab_size)
         """
-        image_features = self.vision_tower(pixel_values)
+        vision_outputs = self.vision_tower(pixel_values)
+        image_features = vision_outputs[0]
 
         image_features = self.multi_modal_projector(image_features)
 
         batch_size, seq_len = input_ids.shape
         vocab_size = self.config.vocab_size
 
-        return torch.randn(batch_size, seq_len, vocab_size)
+        return torch.randn(batch_size, seq_len, vocab_size, device=pixel_values.device)

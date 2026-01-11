@@ -15,40 +15,44 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Optional
+
 from kornia.models.siglip2.config import SigLip2VisionConfig
 
 
+@dataclass
 class PaliGemmaConfig:
     """Configuration class for PaliGemma.
 
     Args:
         vision_config: Configuration for the SigLip2 vision encoder.
-        text_config: Configuration for the Gemma text decoder (to be added).
-        ignore_index: Index to ignore in the loss function.
-        image_token_index: Token index used for image placeholders.
         vocab_size: Size of the vocabulary.
         hidden_size: Dimension of the embeddings.
+        intermediate_size: Dimension of the intermediate (Feed Forward) layer.
+        num_hidden_layers: Number of Transformer layers in the text model.
+        num_attention_heads: Number of attention heads per transformer layer.
+        num_key_value_heads: Number of key/value heads (for multi-query attention).
+        head_dim: Dimension of each attention head.
+        max_position_embeddings: Maximum number of position embeddings.
+        ignore_index: Index to ignore in the loss function.
+        image_token_index: Token index used for image placeholders.
     """
 
-    def __init__(
-        self,
-        vision_config: SigLip2VisionConfig = None,
-        vocab_size: int = 257152,
-        hidden_size: int = 2048,
-        intermediate_size: int = 16384,
-        num_hidden_layers: int = 18,
-        num_attention_heads: int = 8,
-        num_key_value_heads: int = 1,
-        head_dim: int = 256,
-        max_position_embeddings: int = 8192,
-        **kwargs,
-    ):
-        self.vision_config = vision_config if vision_config is not None else SigLip2VisionConfig()
-        self.vocab_size = vocab_size
-        self.hidden_size = hidden_size
-        self.intermediate_size = intermediate_size
-        self.num_hidden_layers = num_hidden_layers
-        self.num_attention_heads = num_attention_heads
-        self.num_key_value_heads = num_key_value_heads
-        self.head_dim = head_dim
-        self.max_position_embeddings = max_position_embeddings
+    vision_config: Optional[SigLip2VisionConfig] = None
+    vocab_size: int = 257152
+    hidden_size: int = 2048
+    intermediate_size: int = 16384
+    num_hidden_layers: int = 18
+    num_attention_heads: int = 8
+    num_key_value_heads: int = 1
+    head_dim: int = 256
+    max_position_embeddings: int = 8192
+    ignore_index: int = -100
+    image_token_index: int = 256000
+
+    def __post_init__(self):
+        if self.vision_config is None:
+            self.vision_config = SigLip2VisionConfig()
