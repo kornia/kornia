@@ -37,13 +37,9 @@ class PaliGemma(nn.Module):
         super().__init__()
         self.config = config
 
-       
         self.vision_tower = SigLip2VisionModel(config.vision_config)
 
-       
         self.multi_modal_projector = nn.Linear(config.vision_config.hidden_size, config.hidden_size)
-
-      
 
     def forward(
         self,
@@ -61,11 +57,9 @@ class PaliGemma(nn.Module):
         Returns:
             logits: Prediction scores (batch, seq_len, vocab_size)
         """
-      
         vision_outputs = self.vision_tower(pixel_values)
         image_features = vision_outputs[0]
 
-        
         image_features = self.multi_modal_projector(image_features)
 
         batch_size, seq_len = input_ids.shape
