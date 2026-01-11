@@ -30,7 +30,7 @@ class KMeans:
 
     Args:
         num_clusters: number of clusters the data has to be assigned to
-        cluster_centers: torch.tensor of starting cluster centres can be passed instead of num_clusters
+        cluster_centers: torch.Tensor of starting cluster centres can be passed instead of num_clusters
         tolerance: float value. the algorithm terminates if the shift in centers is less than tolerance
         max_iterations: number of iterations to run the algorithm for
         seed: number to set torch manual seed for reproducibility
@@ -87,7 +87,7 @@ class KMeans:
         """Chooses num_cluster points from X as the initial cluster centers.
 
         Args:
-            X: 2D input torch.tensor to be clustered
+            X: 2D input torch.Tensor to be clustered
             num_clusters: number of desired cluster centers
 
         Returns:
@@ -104,11 +104,11 @@ class KMeans:
         """Compute pairwise squared distance between 2 sets of vectors.
 
         Args:
-            data1: 2D torch.tensor of shape N, D
-            data2: 2D torch.tensor of shape C, D
+            data1: 2D torch.Tensor of shape N, D
+            data2: 2D torch.Tensor of shape C, D
 
         Returns:
-            2D torch.tensor of shape N, C
+            2D torch.Tensor of shape N, C
 
         """
         # N*1*D
@@ -123,7 +123,7 @@ class KMeans:
         have reached.
 
         Args:
-            X: 2D input torch.tensor to be clustered
+            X: 2D input torch.Tensor to be clustered
 
         """  # noqa: D205
         # X should have only 2 dimensions
@@ -180,10 +180,10 @@ class KMeans:
         """Find the cluster center closest to each point in x.
 
         Args:
-            x: 2D torch.tensor
+            x: 2D torch.Tensor
 
         Returns:
-            1D torch.tensor containing cluster id assigned to each data point in x
+            1D torch.Tensor containing cluster id assigned to each data point in x
 
         """
         # x and cluster_centers should have same number of columns

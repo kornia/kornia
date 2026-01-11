@@ -40,7 +40,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
           to the batch form ``False``.
 
     Note:
-        Input torch.tensor must be float and normalized into [0, 1].
+        Input torch.Tensor must be float and normalized into [0, 1].
 
     Examples:
         >>> import torch

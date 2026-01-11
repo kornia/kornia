@@ -26,7 +26,7 @@ from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
 
 
 class CenterCrop3D(GeometricAugmentationBase3D):
-    r"""Apply center crop on 3D volumes (5D torch.tensor).
+    r"""Apply center crop on 3D volumes (5D torch.Tensor).
 
     Args:
         p: probability of applying the transformation for the whole batch.
@@ -43,9 +43,9 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         - Output: :math:`(B, C, out_d, out_h, out_w)`
 
     Note:
-        Input torch.tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.tensor and returned.
+        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:
         >>> import torch
@@ -86,7 +86,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         keepdim: bool = False,
     ) -> None:
         # same_on_batch is always True for CenterCrop
-        # Since PyTorch does not support ragged torch.tensor. So cropping function happens batch-wisely.
+        # Since PyTorch does not support ragged torch.Tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
         if isinstance(size, tuple):
             self.size = (size[0], size[1], size[2])

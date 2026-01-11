@@ -188,20 +188,28 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         multinomial_weights = self.random_apply_weights.clone()
         # Mix augmentation can only be applied once per forward
         mix_indices = self.get_mix_augmentation_indices(self.named_children())
-        # kick out the mix augmentations
+
         multinomial_weights[mix_indices] = 0
-        indices = torch.multinomial(
-            multinomial_weights,
-            num_samples,
-            # enable replacement if non-mix augmentation is less than required
-            replacement=num_samples > multinomial_weights.sum().item(),
-        )
+
+        total_weight = multinomial_weights.sum()
+        if total_weight == 0:
+            indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
+        else:
+            indices = torch.multinomial(
+                multinomial_weights,
+                num_samples,
+                replacement=num_samples > total_weight.item(),
+            )
 
         mix_added = False
         if with_mix and len(mix_indices) != 0:
             # Make the selection fair.
             if (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item():
-                indices[-1] = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+                mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+                if len(indices) == 0:
+                    indices = mix_idx
+                else:
+                    indices[-1] = mix_idx
                 indices = indices[torch.randperm(len(indices))]
                 mix_added = True
 
@@ -262,7 +270,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         """Compute the transformation matrix according to the provided parameters.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
@@ -385,9 +393,9 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
             batch_shape = _get_new_batch_shape(p, batch_shape)
         return batch_shape
 
-    # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.tensor
+    # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:
-        # Inline check for common PyTorch float torch.tensor case
+        # Inline check for common PyTorch float torch.Tensor case
         batch_prob = data.get("batch_prob", None)
         if batch_prob is not None:
             # Avoid repeated indexing, always fetch scalar efficiently

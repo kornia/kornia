@@ -60,7 +60,7 @@ from kornia.image import (
 from kornia.image import (
     tensor_to_image as _tensor_to_image,
 )
-from kornia.losses import one_hot as _one_hot
+from kornia.losses.one_hot import one_hot as _one_hot
 
 
 # Re-export with deprecation warnings

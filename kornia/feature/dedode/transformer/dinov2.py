@@ -100,7 +100,6 @@ class DinoVisionTransformer(nn.Module):
         ffn_bias (bool): enable bias for ffn if True
         drop_path_rate (float): stochastic depth rate
         drop_path_uniform (bool): apply uniform drop rate across blocks
-        weight_init (str): weight init scheme
         init_values (float): layer-scale init values
         embed_layer (nn.Module): patch embedding layer
         act_layer (nn.Module): MLP activation layer

@@ -20,11 +20,11 @@ from torch import nn
 
 
 def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6) -> torch.Tensor:
-    r"""Apply to a torch.tensor the sepia filter.
+    r"""Apply to a torch.Tensor the sepia filter.
 
     Args:
-        input: the input torch.tensor with shape of :math:`(*, C, H, W)`.
-        rescale: If True, the output torch.tensor will be rescaled (max values be 1. or 255).
+        input: the input torch.Tensor with shape of :math:`(*, C, H, W)`.
+        rescale: If True, the output torch.Tensor will be rescaled (max values be 1. or 255).
         eps: scalar to enforce numerical stability.
 
     Returns:
@@ -65,8 +65,8 @@ class Sepia(nn.Module):
     r"""nn.Module that apply the sepia filter to tensors.
 
     Args:
-        input: the input torch.tensor with shape of :math:`(*, C, H, W)`.
-        rescale: If True, the output torch.tensor will be rescaled (max values be 1. or 255).
+        input: the input torch.Tensor with shape of :math:`(*, C, H, W)`.
+        rescale: If True, the output torch.Tensor will be rescaled (max values be 1. or 255).
         eps: scalar to enforce numerical stability.
 
     Returns:

@@ -28,7 +28,7 @@ __all__ = ["Denormalize", "Normalize", "denormalize", "normalize", "normalize_mi
 
 
 class Normalize(nn.Module):
-    r"""Normalize a torch.tensor image with mean and standard deviation.
+    r"""Normalize a torch.Tensor image with mean and standard deviation.
 
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
@@ -40,8 +40,8 @@ class Normalize(nn.Module):
         std: Standard deviations for each channel.
 
     Shape:
-        - Input: Image torch.tensor of size :math:`(*, C, ...)`.
-        - Output: Normalised torch.tensor with same size as input :math:`(*, C, ...)`.
+        - Input: Image torch.Tensor of size :math:`(*, C, ...)`.
+        - Output: Normalised torch.Tensor with same size as input :math:`(*, C, ...)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -89,7 +89,7 @@ class Normalize(nn.Module):
 
 
 def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
-    r"""Normalize an image/video torch.tensor with mean and standard deviation.
+    r"""Normalize an image/video torch.Tensor with mean and standard deviation.
 
     .. math::
         \text{input[channel] = (input[channel] - mean[channel]) / std[channel]}
@@ -97,12 +97,12 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        data: Image torch.tensor of size :math:`(B, C, *)`.
+        data: Image torch.Tensor of size :math:`(B, C, *)`.
         mean: Mean for each channel.
         std: Standard deviations for each channel.
 
     Return:
-        Normalised torch.tensor with same size as input :math:`(B, C, *)`.
+        Normalised torch.Tensor with same size as input :math:`(B, C, *)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -122,7 +122,7 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
 
     if torch.onnx.is_in_onnx_export():
         if not isinstance(mean, torch.Tensor) or not isinstance(std, torch.Tensor):
-            raise ValueError("Only torch.tensor is accepted when converting to ONNX.")
+            raise ValueError("Only torch.Tensor is accepted when converting to ONNX.")
         if mean.shape[0] != 1 or std.shape[0] != 1:
             raise ValueError(
                 "Batch dimension must be one for broadcasting when converting to ONNX."
@@ -157,7 +157,7 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
 
 
 class Denormalize(nn.Module):
-    r"""Denormalize a torch.tensor image with mean and standard deviation.
+    r"""Denormalize a torch.Tensor image with mean and standard deviation.
 
     .. math::
         \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
@@ -169,8 +169,8 @@ class Denormalize(nn.Module):
         std: Standard deviations for each channel.
 
     Shape:
-        - Input: Image torch.tensor of size :math:`(*, C, ...)`.
-        - Output: Denormalised torch.tensor with same size as input :math:`(*, C, ...)`.
+        - Input: Image torch.Tensor of size :math:`(*, C, ...)`.
+        - Output: Denormalised torch.Tensor with same size as input :math:`(*, C, ...)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -202,7 +202,7 @@ class Denormalize(nn.Module):
 
 
 def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> torch.Tensor:
-    r"""Denormalize an image/video torch.tensor with mean and standard deviation.
+    r"""Denormalize an image/video torch.Tensor with mean and standard deviation.
 
     .. math::
         \text{input[channel] = (input[channel] * std[channel]) + mean[channel]}
@@ -210,12 +210,12 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
     Where `mean` is :math:`(M_1, ..., M_n)` and `std` :math:`(S_1, ..., S_n)` for `n` channels,
 
     Args:
-        data: Image torch.tensor of size :math:`(B, C, *)`.
+        data: Image torch.Tensor of size :math:`(B, C, *)`.
         mean: Mean for each channel.
         std: Standard deviations for each channel.
 
     Return:
-        Denormalised torch.tensor with same size as input :math:`(B, C, *)`.
+        Denormalised torch.Tensor with same size as input :math:`(B, C, *)`.
 
     Examples:
         >>> x = torch.rand(1, 4, 3, 3)
@@ -235,7 +235,7 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
 
     if torch.onnx.is_in_onnx_export():
         if not isinstance(mean, torch.Tensor) or not isinstance(std, torch.Tensor):
-            raise ValueError("Only torch.tensor is accepted when converting to ONNX.")
+            raise ValueError("Only torch.Tensor is accepted when converting to ONNX.")
         if mean.shape[0] != 1 or std.shape[0] != 1:
             raise ValueError("Batch dimension must be one for broadcasting when converting to ONNX.")
     else:
@@ -260,7 +260,7 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
 
     if mean.dim() == 1:
         mean = mean.view(1, -1, *([1] * (data.dim() - 2)))
-    # If the torch.tensor is >1D (e.g., (B, C)), reshape to (B, C, 1, ...)
+    # If the torch.Tensor is >1D (e.g., (B, C)), reshape to (B, C, 1, ...)
     else:
         while len(mean.shape) < data.dim():
             mean = mean.unsqueeze(-1)
@@ -276,23 +276,23 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
 
 @perform_keep_shape_image
 def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6) -> torch.Tensor:
-    r"""Normalise an image/video torch.tensor by MinMax and re-scales the value between a range.
+    r"""Normalise an image/video torch.Tensor by MinMax and re-scales the value between a range.
 
     The data is normalised using the following formulation:
 
     .. math::
         y_i = (b - a) * \frac{x_i - \text{min}(x)}{\text{max}(x) - \text{min}(x)} + a
 
-    torch.where :math:`a` is :math:`\text{min_val}` and :math:`b` is :math:`\text{max_val}`.
+    where :math:`a` is :math:`\text{min_val}` and :math:`b` is :math:`\text{max_val}`.
 
     Args:
-        x: The image torch.tensor to be normalised with shape :math:`(*, C, H, W)`.
+        x: The image torch.Tensor to be normalised with shape :math:`(*, C, H, W)`.
         min_val: The minimum value for the new range.
         max_val: The maximum value for the new range.
         eps: Float number to avoid zero division.
 
     Returns:
-        The normalised image torch.tensor with same shape as input :math:`(*, C, H, W)`.
+        The normalised image torch.Tensor with same shape as input :math:`(*, C, H, W)`.
 
     Example:
         >>> x = torch.rand(1, 5, 3, 3)
@@ -304,7 +304,7 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.
 
     """
     if not isinstance(x, torch.Tensor):
-        raise TypeError(f"data should be a torch.tensor. Got: {type(x)}.")
+        raise TypeError(f"data should be a torch.Tensor. Got: {type(x)}.")
 
     if not isinstance(min_val, float):
         raise TypeError(f"'min_val' should be a float. Got: {type(min_val)}.")

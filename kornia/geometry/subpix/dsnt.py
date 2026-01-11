@@ -43,7 +43,7 @@ def spatial_softmax2d(input: torch.Tensor, temperature: Optional[torch.Tensor] =
     instead applies Softmax over features at each spatial location.
 
     Args:
-        input: the input torch.tensor with shape :math:`(B, N, H, W)`.
+        input: the input torch.Tensor with shape :math:`(B, N, H, W)`.
         temperature: factor to apply to input, adjusting the "smoothness" of the output distribution.
 
     Returns:
@@ -80,7 +80,7 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
     which can be achieved using :func:`~kornia.geometry.subpixel.spatial_softmax2d`.
 
     Args:
-        input: the input torch.tensor representing dense spatial probabilities with shape :math:`(B, N, H, W)`.
+        input: the input torch.Tensor representing dense spatial probabilities with shape :math:`(B, N, H, W)`.
         normalized_coordinates: whether to return the coordinates normalized in the range
           of :math:`[-1, 1]`. Otherwise, it will return the coordinates in the range of the input shape.
 
@@ -132,7 +132,7 @@ def render_gaussian2d(
           in the range of :math:`[-1, 1]`. Otherwise, coordinates are assumed to be in the range of the output shape.
 
     Returns:
-        torch.tensor including rendered points with shape :math:`(*, H, W)`.
+        torch.Tensor including rendered points with shape :math:`(*, H, W)`.
 
     """
     if not (std.dtype == mean.dtype and std.device == mean.device):
@@ -157,7 +157,7 @@ def render_gaussian2d(
 
     # Gaussian PDF = exp(-(x - \mu)^2 / (2 \sigma^2))
     #              = exp(dists * ks),
-    #                torch.where dists = (x - \mu)^2 and ks = -1 / (2 \sigma^2)
+    #                where dists = (x - \mu)^2 and ks = -1 / (2 \sigma^2)
 
     # dists <- (x - \mu)^2
     dist_x_sq = (xs - mu_x) ** 2

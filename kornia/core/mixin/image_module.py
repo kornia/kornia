@@ -67,7 +67,7 @@ class ImageModuleMixIn:
                 else:
                     # Convert specified args to tensors
                     args = list(args)  # type:ignore
-                    for i, (arg, name) in enumerate(zip(args, func.__code__.co_varnames)):
+                    for i, (arg, name) in enumerate(zip(args, func.__code__.co_varnames)):  # ty: ignore[unresolved-attribute]
                         if name in input_names_to_handle:
                             args[i] = self.to_tensor(arg)  # type:ignore
                     # Convert specified kwargs to tensors

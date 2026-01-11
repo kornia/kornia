@@ -209,7 +209,7 @@ class DexiNed(nn.Module):
     r"""Definition of the DXtrem network from :cite:`xsoria2020dexined`.
 
     Return:
-        A list of torch.tensor with the intermediate features which the last element
+        A list of torch.Tensor with the intermediate features which the last element
         is the edges map with shape :math:`(B,1,H,W)`.
 
     Example:

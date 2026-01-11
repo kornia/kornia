@@ -170,7 +170,7 @@ def draw_first_k_couples(k: int, rdims: torch.Tensor, dv: torch.device) -> torch
 
 
 def random_samples_indices(iters: int, rdims: torch.Tensor, dv: torch.device) -> torch.Tensor:
-    """Randomly sample indices of torch.tensor."""
+    """Randomly sample indices of torch.Tensor."""
     rands = torch.rand(size=(iters, 2, rdims.shape[0]), device=dv)
     scaled_rands = rands * (rdims - 1e-8).float()
     rand_samples_rel = scaled_rands.long()

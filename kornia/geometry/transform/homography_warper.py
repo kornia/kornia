@@ -54,8 +54,8 @@ class HomographyWarper(BaseWarper):
         X_{dst} = H_{src}^{\{dst\}} * X_{src}
 
     Args:
-        height: The height of the destination torch.tensor.
-        width: The width of the destination torch.tensor.
+        height: The height of the destination torch.Tensor.
+        width: The width of the destination torch.Tensor.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
           ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
@@ -102,10 +102,10 @@ class HomographyWarper(BaseWarper):
         self._warped_grid = warp_grid(self.grid, src_homo_dst)
 
     def forward(self, patch_src: torch.Tensor, src_homo_dst: Optional[torch.Tensor] = None) -> torch.Tensor:
-        r"""Warp a torch.tensor from source into reference frame.
+        r"""Warp a torch.Tensor from source into reference frame.
 
         Args:
-            patch_src: The torch.tensor to warp.
+            patch_src: The torch.Tensor to warp.
             src_homo_dst: The homography or torch.stack of
               homographies from destination to source. The homography assumes
               normalized coordinates [-1, 1] if normalized_coordinates is True.

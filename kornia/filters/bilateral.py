@@ -92,7 +92,7 @@ def bilateral_blur(
     border_type: str = "reflect",
     color_distance_type: str = "l1",
 ) -> torch.Tensor:
-    r"""Blur a torch.tensor using a Bilateral filter.
+    r"""Blur a torch.Tensor using a Bilateral filter.
 
     .. image:: _static/img/bilateral_blur.png
 
@@ -101,7 +101,7 @@ def bilateral_blur(
     to the center pixel, but also the difference in intensity or color.
 
     Arguments:
-        input: the input torch.tensor with shape :math:`(B,C,H,W)`.
+        input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges.
@@ -116,7 +116,7 @@ def bilateral_blur(
           Default: ``'l1'``.
 
     Returns:
-        the blurred torch.tensor with shape :math:`(B, C, H, W)`.
+        the blurred torch.Tensor with shape :math:`(B, C, H, W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -137,7 +137,7 @@ def joint_bilateral_blur(
     border_type: str = "reflect",
     color_distance_type: str = "l1",
 ) -> torch.Tensor:
-    r"""Blur a torch.tensor using a Joint Bilateral filter.
+    r"""Blur a torch.Tensor using a Joint Bilateral filter.
 
     .. image:: _static/img/joint_bilateral_blur.png
 
@@ -146,8 +146,8 @@ def joint_bilateral_blur(
     a guidance image. See :func:`bilateral_blur()` for more information.
 
     Arguments:
-        input: the input torch.tensor with shape :math:`(B,C,H,W)`.
-        guidance: the guidance torch.tensor with shape :math:`(B,C,H,W)`.
+        input: the input torch.Tensor with shape :math:`(B,C,H,W)`.
+        guidance: the guidance torch.Tensor with shape :math:`(B,C,H,W)`.
         kernel_size: the size of the kernel.
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges.
@@ -161,7 +161,7 @@ def joint_bilateral_blur(
           match OpenCV implementation.
 
     Returns:
-        the blurred torch.tensor with shape :math:`(B, C, H, W)`.
+        the blurred torch.Tensor with shape :math:`(B, C, H, W)`.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)
@@ -203,7 +203,7 @@ class _BilateralBlur(nn.Module):
 
 
 class BilateralBlur(_BilateralBlur):
-    r"""Blur a torch.tensor using a Bilateral filter.
+    r"""Blur a torch.Tensor using a Bilateral filter.
 
     The operator is an edge-preserving image smoothing filter. The weight
     for each pixel in a neighborhood is determined not only by its distance
@@ -224,7 +224,7 @@ class BilateralBlur(_BilateralBlur):
           Default: ``'l1'``.
 
     Returns:
-        the blurred input torch.tensor.
+        the blurred input torch.Tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -246,7 +246,7 @@ class BilateralBlur(_BilateralBlur):
 
 
 class JointBilateralBlur(_BilateralBlur):
-    r"""Blur a torch.tensor using a Joint Bilateral filter.
+    r"""Blur a torch.Tensor using a Joint Bilateral filter.
 
     This operator is almost identical to a Bilateral filter. The only difference
     is that the color Gaussian kernel is computed based on another image called
@@ -266,7 +266,7 @@ class JointBilateralBlur(_BilateralBlur):
           match OpenCV implementation.
 
     Returns:
-        the blurred input torch.tensor.
+        the blurred input torch.Tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`

@@ -24,18 +24,18 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 def one_hot(
     labels: torch.Tensor, num_classes: int, device: torch.device, dtype: torch.dtype, eps: float = 1e-6
 ) -> torch.Tensor:
-    r"""Convert an integer label x-D torch.tensor to a one-hot (x+1)-D torch.tensor.
+    r"""Convert an integer label x-D torch.Tensor to a one-hot (x+1)-D torch.Tensor.
 
     Args:
-        labels: torch.tensor with labels of shape :math:`(N, *)`, torch.where N is batch size.
+        labels: torch.Tensor with labels of shape :math:`(N, *)`, where N is batch size.
           Each value is an integer representing correct classification.
         num_classes: number of classes in labels.
-        device: the desired device of returned torch.tensor.
-        dtype: the desired data type of returned torch.tensor.
+        device: the desired device of returned torch.Tensor.
+        dtype: the desired data type of returned torch.Tensor.
         eps: epsilon for numerical stability.
 
     Returns:
-        the labels in one hot torch.tensor of shape :math:`(N, C, *)`,
+        the labels in one hot torch.Tensor of shape :math:`(N, C, *)`,
 
     Examples:
         >>> labels = torch.LongTensor([[[0, 1], [2, 0]]])

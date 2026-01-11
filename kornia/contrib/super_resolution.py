@@ -57,7 +57,7 @@ class SuperResolution(ModelBase, ONNXExportMixin):
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
-            output torch.tensor.
+            output torch.Tensor.
 
         """
         output = self.pre_processor(images)
@@ -80,12 +80,12 @@ class SuperResolution(ModelBase, ONNXExportMixin):
         """Draw the super resolution results.
 
         Args:
-            images: input torch.tensor.
+            images: input torch.Tensor.
             edge_maps: detected edges.
             output_type: type of the output.
 
         Returns:
-            output torch.tensor.
+            output torch.Tensor.
 
         """
         if edge_maps is None:
@@ -106,14 +106,14 @@ class SuperResolution(ModelBase, ONNXExportMixin):
         """Save the super resolution results.
 
         Args:
-            images: input torch.tensor.
+            images: input torch.Tensor.
             edge_maps: detected edges.
             output_type: type of the output.
-            directory: torch.where to save outputs.
+            directory: where to save outputs.
             output_type: backend used to generate outputs.
 
         Returns:
-            output torch.tensor.
+            output torch.Tensor.
 
         """
         outputs = self.visualize(images, edge_maps, output_type)

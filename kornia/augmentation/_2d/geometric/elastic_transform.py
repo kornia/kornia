@@ -26,7 +26,7 @@ from kornia.geometry.transform import elastic_transform2d
 
 
 class RandomElasticTransform(AugmentationBase2D):
-    r"""Add random elastic transformation to a torch.tensor image.
+    r"""Add random elastic transformation to a torch.Tensor image.
 
     .. image:: _static/img/RandomElasticTransform.png
 

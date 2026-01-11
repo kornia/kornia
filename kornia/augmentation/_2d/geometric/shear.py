@@ -28,7 +28,7 @@ from kornia.geometry.transform import get_shear_matrix2d, warp_affine
 
 
 class RandomShear(GeometricAugmentationBase2D):
-    r"""Apply a random 2D shear transformation to a torch.tensor image.
+    r"""Apply a random 2D shear transformation to a torch.Tensor image.
 
     The transformation is computed so that the image center is kept invariant.
 

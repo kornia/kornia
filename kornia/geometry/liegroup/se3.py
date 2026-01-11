@@ -57,7 +57,7 @@ class Se3(nn.Module):
 
         Args:
             rotation: So3 group encompassing a rotation.
-            translation: Vector3 or translation torch.tensor with the shape of :math:`(B, 3)`.
+            translation: Vector3 or translation torch.Tensor with the shape of :math:`(B, 3)`.
 
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
@@ -306,7 +306,7 @@ class Se3(nn.Module):
         """Create a Se3 group from a matrix.
 
         Args:
-            matrix: torch.tensor of shape :math:`(B, 4, 4)`.
+            matrix: torch.Tensor of shape :math:`(B, 4, 4)`.
 
         Example:
             >>> s = Se3.from_matrix(torch.eye(4))
@@ -327,7 +327,7 @@ class Se3(nn.Module):
         """Create a Se3 group a quaternion and translation vector.
 
         Args:
-            qxyz: torch.tensor of shape :math:`(B, 7)`.
+            qxyz: torch.Tensor of shape :math:`(B, 7)`.
 
         Example:
             >>> qxyz = torch.tensor([1., 2., 3., 0., 0., 0., 1.])

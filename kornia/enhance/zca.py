@@ -26,18 +26,18 @@ __all__ = ["ZCAWhitening", "linear_transform", "zca_mean", "zca_whiten"]
 class ZCAWhitening(nn.Module):
     r"""Compute the ZCA whitening matrix transform and the mean vector and applies the transform to the data.
 
-    The data torch.tensor is flattened, and the mean :math:`\mathbf{\mu}`
+    The data torch.Tensor is flattened, and the mean :math:`\mathbf{\mu}`
     and covariance matrix :math:`\mathbf{\Sigma}` are computed from
-    the flattened data :math:`\mathbf{X} \in \mathbb{R}^{N \times D}`, torch.where
+    the flattened data :math:`\mathbf{X} \in \mathbb{R}^{N \times D}`, where
     :math:`N` is the sample size and :math:`D` is flattened dimensionality
-    (e.g. for a torch.tensor with size 5x3x2x2 :math:`N = 5` and :math:`D = 12`). The ZCA whitening
+    (e.g. for a torch.Tensor with size 5x3x2x2 :math:`N = 5` and :math:`D = 12`). The ZCA whitening
     transform is given by:
 
     .. math::
 
         \mathbf{X}_{\text{zca}} = (\mathbf{X - \mu})(US^{-\frac{1}{2}}U^T)^T
 
-    torch.where :math:`U` are the eigenvectors of :math:`\Sigma` and :math:`S` contain the corresponding
+    where :math:`U` are the eigenvectors of :math:`\Sigma` and :math:`S` contain the corresponding
     eigenvalues of :math:`\Sigma`. After the transform is applied, the output is reshaped to same shape.
 
     Args:
@@ -182,7 +182,7 @@ def zca_mean(
     See :class:`~kornia.color.ZCAWhitening` for details.
 
     Args:
-        inp: input data torch.tensor.
+        inp: input data torch.Tensor.
         dim: Specifies the dimension that serves as the samples dimension.
         unbiased: Whether to use the unbiased estimate of the covariance matrix.
         eps: a small number used for numerical stability.
@@ -277,7 +277,7 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
     See :class:`~kornia.color.ZCAWhitening` for details.
 
     Args:
-        inp: input data torch.tensor.
+        inp: input data torch.Tensor.
         dim: Specifies the dimension that serves as the samples dimension.
         unbiased: Whether to use the unbiased estimate of the covariance matrix.
         eps: a small number used for numerical stability.
@@ -320,8 +320,8 @@ def linear_transform(
     inp: torch.Tensor, transform_matrix: torch.Tensor, mean_vector: torch.Tensor, dim: int = 0
 ) -> torch.Tensor:
     r"""Given a transformation matrix and a mean vector, this function will flatten the input
-    torch.tensor along the given dimension and subtract the mean vector from it. Then the dot
-    product with the transformation matrix will be computed and then the resulting torch.tensor
+    torch.Tensor along the given dimension and subtract the mean vector from it. Then the dot
+    product with the transformation matrix will be computed and then the resulting torch.Tensor
     is reshaped to the original input shape.
 
     .. math::
@@ -343,7 +343,7 @@ def linear_transform(
         Transformed data.
 
     Example:
-        >>> # Example torch.where dim = 3
+        >>> # Example where dim = 3
         >>> inp = torch.ones((10,3,4,5))
         >>> transform_mat = torch.ones((10*3*4,10*3*4))
         >>> mean = 2*torch.ones((1,10*3*4))
@@ -351,7 +351,7 @@ def linear_transform(
         >>> print(out.shape, out.unique())  # Should a be (10,3,4,5) torch.tensor of -120s
         torch.Size([10, 3, 4, 5]) tensor([-120.])
 
-        >>> # Example torch.where dim = 0
+        >>> # Example where dim = 0
         >>> inp = torch.ones((10,2))
         >>> transform_mat = torch.ones((2,2))
         >>> mean = torch.zeros((1,2))

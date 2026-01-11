@@ -26,7 +26,7 @@ from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, ge
 
 
 class RandomResizedCrop(GeometricAugmentationBase2D):
-    r"""Crop random patches in an image torch.tensor and resizes to a given size.
+    r"""Crop random patches in an image torch.Tensor and resizes to a given size.
 
     .. image:: _static/img/RandomResizedCrop.png
 
@@ -41,7 +41,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         p: probability of the augmentation been applied.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                         to the batch form (False).
-        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.tensor based
+        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.Tensor based
                        on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
                        to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
                        differentiability.
@@ -51,9 +51,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         - Output: :math:`(B, C, out_h, out_w)`
 
     Note:
-        Input torch.tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation torch.tensor and returned.
+        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Example:
         >>> rng = torch.manual_seed(0)
@@ -91,7 +91,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         keepdim: bool = False,
         cropping_mode: str = "slice",
     ) -> None:
-        # Since PyTorch does not support ragged torch.tensor. So cropping function happens all the time.
+        # Since PyTorch does not support ragged torch.Tensor. So cropping function happens all the time.
         super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         self._param_generator = rg.ResizedCropGenerator(size, scale, ratio)
         self.flags = {

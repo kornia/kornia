@@ -27,7 +27,7 @@ from kornia.enhance import equalize_clahe
 
 
 class RandomClahe(IntensityAugmentationBase2D):
-    r"""Apply CLAHE equalization on the input torch.tensor randomly.
+    r"""Apply CLAHE equalization on the input torch.Tensor randomly.
 
     .. image:: _static/img/equalize_clahe.png
 

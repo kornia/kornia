@@ -31,7 +31,7 @@ _VALID_BORDER = {"constant", "reflect", "replicate", "circular"}
 
 
 class MotionBlur(nn.Module):
-    r"""Blur 2D images (4D torch.tensor) using the motion filter.
+    r"""Blur 2D images (4D torch.Tensor) using the motion filter.
 
     Args:
         kernel_size: motion kernel width and height. It should be odd and positive.
@@ -45,7 +45,7 @@ class MotionBlur(nn.Module):
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Returns:
-        the blurred input torch.tensor.
+        the blurred input torch.Tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -79,7 +79,7 @@ class MotionBlur(nn.Module):
 
 
 class MotionBlur3D(nn.Module):
-    r"""Blur 3D volumes (5D torch.tensor) using the motion filter.
+    r"""Blur 3D volumes (5D torch.Tensor) using the motion filter.
 
     Args:
         kernel_size: motion kernel width and height. It should be odd and positive.
@@ -93,7 +93,7 @@ class MotionBlur3D(nn.Module):
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Returns:
-        the blurred input torch.tensor.
+        the blurred input torch.Tensor.
 
     Shape:
         - Input: :math:`(B, C, D, H, W)`
@@ -151,20 +151,20 @@ def motion_blur(
     border_type: str = "constant",
     mode: str = "nearest",
 ) -> torch.Tensor:
-    r"""Perform motion blur on torch.tensor images.
+    r"""Perform motion blur on torch.Tensor images.
 
     .. image:: _static/img/motion_blur.png
 
     Args:
-        input: the input torch.tensor with shape :math:`(B, C, H, W)`.
+        input: the input torch.Tensor with shape :math:`(B, C, H, W)`.
         kernel_size: motion kernel width and height. It should be odd and positive.
         angle (Union[torch.Tensor, float]): angle of the motion blur in degrees (anti-clockwise rotation).
-            If torch.tensor, it must be :math:`(B,)`.
+            If torch.Tensor, it must be :math:`(B,)`.
         direction : forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
-            If torch.tensor, it must be :math:`(B,)`.
+            If torch.Tensor, it must be :math:`(B,)`.
         border_type: the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'constant'``.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
@@ -196,18 +196,18 @@ def motion_blur3d(
     border_type: str = "constant",
     mode: str = "nearest",
 ) -> torch.Tensor:
-    r"""Perform motion blur on 3D volumes (5D torch.tensor).
+    r"""Perform motion blur on 3D volumes (5D torch.Tensor).
 
     Args:
-        input: the input torch.tensor with shape :math:`(B, C, D, H, W)`.
+        input: the input torch.Tensor with shape :math:`(B, C, D, H, W)`.
         kernel_size: motion kernel width, height and depth. It should be odd and positive.
         angle: Range of yaw (x-axis), pitch (y-axis), roll (z-axis) to select from.
-            If torch.tensor, it must be :math:`(B, 3)`.
+            If torch.Tensor, it must be :math:`(B, 3)`.
         direction: forward/backward direction of the motion blur.
             Lower values towards -1.0 will point the motion blur towards the back (with angle provided via angle),
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
-            If torch.tensor, it must be :math:`(B,)`.
+            If torch.Tensor, it must be :math:`(B,)`.
         border_type: the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``. Default: ``'constant'``.
         mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.

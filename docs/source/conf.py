@@ -22,8 +22,42 @@ import os
 import sys
 from datetime import UTC, datetime
 
+# Monkey-patch for PyTorch compatibility with sphinx_autodoc_typehints
+# Newer versions of PyTorch removed torch.jit.annotations.compiler_flag
+import torch.jit.annotations
+
+if not hasattr(torch.jit.annotations, "compiler_flag"):
+    torch.jit.annotations.compiler_flag = None
+
 # To add an evnironment variable
 builtins.__sphinx_build__ = True
+
+# --- Patch sphinx_autodoc_defaultargs to not crash on torchscript/pybind11 callables ---
+# --- Patch sphinx_autodoc_defaultargs to not crash on torchscript/pybind11 callables ---
+try:
+    import sphinx_autodoc_defaultargs
+
+    _orig_process_docstring = sphinx_autodoc_defaultargs.process_docstring
+
+    def _safe_process_docstring(app, what, name, obj, options, lines):
+        try:
+            return _orig_process_docstring(app, what, name, obj, options, lines)
+        except ValueError as e:
+            msg = str(e).lower()
+            if "no signature found for builtin" in msg or "pybind11" in msg:
+                return  # leave docstring unchanged
+            raise
+
+    sphinx_autodoc_defaultargs.process_docstring = _safe_process_docstring
+
+except (ModuleNotFoundError, ImportError):
+    # Optional dependency not installed in some environments.
+    sphinx_autodoc_defaultargs = None
+
+except AttributeError:
+    # Extension API changed; don't patch.
+    sphinx_autodoc_defaultargs = None
+
 
 # readthedocs generated the whole documentation in an isolated environment
 # by cloning the git repo. Thus, any on-the-fly operation will not effect
@@ -196,44 +230,56 @@ html_js_files = [
 
 # Configure viewcode extension.
 # based on https://github.com/readthedocs/sphinx-autoapi/issues/202
-code_url = "https://github.com/kornia/kornia/blob/main"
+rtd_version = os.environ.get("READTHEDOCS_VERSION")
+if rtd_version and rtd_version not in {"latest", "stable"}:
+    code_ref = rtd_version
+else:
+    code_ref = "main"
+
+code_url = f"https://github.com/kornia/kornia/blob/{code_ref}"
 
 
 def linkcode_resolve(domain, info):
-    # Non-linkable objects from the starter kit in the tutorial.
-    if domain == "js" or info["module"] == "connect4":
-        return
+    if domain != "py":
+        return None
 
-    assert domain == "py", "expected only Python objects"
+    modname = info.get("module")
+    fullname = info.get("fullname")
+    if not modname or not fullname:
+        return None
 
-    mod = importlib.import_module(info["module"])
-    if "." in info["fullname"]:
-        objname, attrname = info["fullname"].split(".")
-        obj = getattr(mod, objname)
+    try:
+        mod = importlib.import_module(modname)
+    except (ImportError, ModuleNotFoundError):
+        return None
+
+    obj = mod
+    for part in fullname.split("."):
         try:
-            # object is a method of a class
-            obj = getattr(obj, attrname)
+            obj = getattr(obj, part)
         except AttributeError:
-            # object is an attribute of a class
             return None
-    else:
-        obj = getattr(mod, info["fullname"])
 
     obj = inspect.unwrap(obj)
 
     try:
-        file = inspect.getsourcefile(obj)
-        lines = inspect.getsourcelines(obj)
-    except TypeError:
-        # e.g. object is a typing.Union
+        fn = inspect.getsourcefile(obj)
+        src, start = inspect.getsourcelines(obj)
+    except (TypeError, OSError, ValueError):
         return None
-    file = os.path.relpath(file, os.path.abspath(".."))
-    if not file.startswith("kornia/"):
-        # e.g. object is a typing.NewType
-        return None
-    start, end = lines[1], lines[1] + len(lines[0]) - 1
 
-    return f"{code_url}/{file}#L{start}-L{end}"
+    if not fn:
+        return None
+
+    fn = os.path.abspath(fn).replace("\\", "/")
+    marker = "/kornia/"
+    idx = fn.rfind(marker)
+    if idx == -1:
+        return None
+
+    file_rel = fn[idx + 1 :]  # -> "kornia/....py"
+    end = start + len(src) - 1
+    return f"{code_url}/{file_rel}#L{start}-L{end}"
 
 
 # -- Options for LaTeX output ---------------------------------------------

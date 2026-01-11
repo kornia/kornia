@@ -87,7 +87,7 @@ class RandomRain(IntensityAugmentationBase2D):
         modeified_img = image.clone()
         for i in range(image.shape[0]):
             number_of_drops: int = int(params["number_of_drops_factor"][i])
-            # We generate torch.tensor with maximum number of drops, and then remove unnecessary drops.
+            # We generate torch.Tensor with maximum number of drops, and then remove unnecessary drops.
 
             coordinates_of_drops: torch.Tensor = params["coordinates_factor"][i][:number_of_drops]
             height_of_drop: int = int(params["drop_height_factor"][i])

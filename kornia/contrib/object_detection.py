@@ -93,10 +93,10 @@ class ObjectDetectorResult:
 def results_from_detections(
     detections: torch.Tensor, format: str | BoundingBoxDataFormat
 ) -> list[ObjectDetectorResult]:
-    """Convert a detection torch.tensor to a list of :py:class:`ObjectDetectorResult`.
+    """Convert a detection torch.Tensor to a list of :py:class:`ObjectDetectorResult`.
 
     Args:
-        detections: torch.tensor with shape :math:`(D, 6)`, torch.where :math:`D` is the number of
+        detections: torch.Tensor with shape :math:`(D, 6)`, where :math:`D` is the number of
             detections in the given image,
             :math:`6` represents class id, score, and `xywh` bounding box.
         format: detection format.
@@ -172,7 +172,7 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
 
         Returns:
             list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`,
-            torch.where :math:`D` is the
+            where :math:`D` is the
             number of detections in the given image, :math:`6` represents class id, score, and `xywh` bounding box.
 
         """
@@ -213,8 +213,8 @@ class ObjectDetector(ModelBase, ONNXExportMixin):
         """Save the output image(s) to a directory.
 
         Args:
-            images: input torch.tensor.
-            detections: detection torch.tensor.
+            images: input torch.Tensor.
+            detections: detection torch.Tensor.
             directory: directory to save the images.
 
         """
@@ -335,16 +335,16 @@ class BoxFiltering(nn.Module, ONNXExportMixin):
         To be ONNX-friendly, the inputs for direct forwarding need to be all tensors.
 
         Args:
-            boxes: [B, D, 6], torch.where B is the batchsize,  D is the number of detections in the image,
+            boxes: [B, D, 6], where B is the batchsize,  D is the number of detections in the image,
                 6 represent (class_id, confidence_score, x, y, w, h).
             confidence_threshold: an 0-d scalar that represents the desired threshold.
-            classes_to_keep: a 1-d torch.tensor of classes to keep. If None, keep all classes.
+            classes_to_keep: a 1-d torch.Tensor of classes to keep. If None, keep all classes.
 
         Returns:
             Union[torch.Tensor, List[torch.Tensor]]
-                If `filter_as_zero` is True, return a torch.tensor of shape [D, 6], torch.where D is the total number of
+                If `filter_as_zero` is True, return a torch.Tensor of shape [D, 6], where D is the total number of
                 detections as input.
-                If `filter_as_zero` is False, return a list of tensors of shape [D, 6], torch.where D is the number of
+                If `filter_as_zero` is False, return a list of tensors of shape [D, 6], where D is the number of
                 valid detections for each element in the batch.
 
         """

@@ -46,7 +46,7 @@ class RandomMosaic(MixAugmentationBaseV2):
          2. Crop out the outcome image according to the top-left corner and crop size.
 
     Args:
-        output_size: the output torch.tensor width and height after mosaicing.
+        output_size: the output torch.Tensor width and height after mosaicing.
         start_ratio_range: top-left (x, y) position for cropping the mosaic images.
         mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means
             each output will mix 4 images in a 2x2 grid.
@@ -60,7 +60,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         padding_mode: Type of padding. Should be: constant, reflect, replicate.
         resample: the interpolation mode.
         align_corners: interpolation flag.
-        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.tensor based
+        cropping_mode: The used algorithm to crop. ``slice`` will use advanced slicing to extract the torch.Tensor based
             on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
             to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
             differentiability.

@@ -108,7 +108,7 @@ def harris_response(
     dx: torch.Tensor = gradients[:, :, 0]
     dy: torch.Tensor = gradients[:, :, 1]
 
-    # compute the structure torch.tensor M elements
+    # compute the structure torch.Tensor M elements
 
     dx2: torch.Tensor = gaussian_blur2d(dx**2, (7, 7), (1.0, 1.0))
     dy2: torch.Tensor = gaussian_blur2d(dy**2, (7, 7), (1.0, 1.0))
@@ -286,7 +286,7 @@ def dog_response(input: torch.Tensor) -> torch.Tensor:
     r"""Compute the Difference-of-Gaussian response.
 
     Args:
-        input: a given the gaussian 5d torch.tensor :math:`(B, C, D, H, W)`.
+        input: a given the gaussian 5d torch.Tensor :math:`(B, C, D, H, W)`.
 
     Return:
         the response map per channel with shape :math:`(B, C, D-1, H, W)`.
@@ -303,7 +303,7 @@ def dog_response_single(input: torch.Tensor, sigma1: float = 1.0, sigma2: float 
     .. image:: _static/img/dog_response_single.png
 
     Args:
-        input: a given the gaussian 4d torch.tensor :math:`(B, C, H, W)`.
+        input: a given the gaussian 4d torch.Tensor :math:`(B, C, H, W)`.
         sigma1: lower gaussian sigma
         sigma2: bigger gaussian sigma
 

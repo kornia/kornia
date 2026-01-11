@@ -309,7 +309,7 @@ class Se2(nn.Module):
         """Create an Se2 group from a matrix.
 
         Args:
-            matrix: torch.tensor of shape :math:`(B, 3, 3)`.
+            matrix: torch.Tensor of shape :math:`(B, 3, 3)`.
 
         Example:
             >>> s = Se2.from_matrix(torch.eye(3).repeat(2, 1, 1))

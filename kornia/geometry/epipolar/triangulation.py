@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""nn.Module with the functionalities for triangulation."""
+"""Module with the functionalities for triangulation."""
 
 import torch
 

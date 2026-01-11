@@ -25,7 +25,7 @@ from kornia.enhance.adjust import adjust_gamma
 
 
 class RandomGamma(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the gamma of a torch.tensor image.
+    r"""Apply a random transformation to the gamma of a torch.Tensor image.
 
     This implementation aligns PIL. Hence, the output is close to TorchVision.
 

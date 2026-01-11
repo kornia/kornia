@@ -116,7 +116,7 @@ class BoxMotTracker:
 
         """
         if not (image.ndim == 4 and image.shape[0] == 1) and not image.ndim == 3:
-            raise ValueError(f"Input torch.tensor must be of shape (1, 3, H, W) or (3, H, W). Got {image.shape}")
+            raise ValueError(f"Input torch.Tensor must be of shape (1, 3, H, W) or (3, H, W). Got {image.shape}")
 
         if image.ndim == 3:
             image = image.unsqueeze(0)

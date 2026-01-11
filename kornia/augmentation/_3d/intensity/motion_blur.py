@@ -26,7 +26,7 @@ from kornia.filters import motion_blur3d
 
 
 class RandomMotionBlur3D(IntensityAugmentationBase3D):
-    r"""Apply random motion blur on 3D volumes (5D torch.tensor).
+    r"""Apply random motion blur on 3D volumes (5D torch.Tensor).
 
     Args:
         p: probability of applying the transformation.
@@ -57,9 +57,9 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
-        Input torch.tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.tensor and returned.
+        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:
         >>> import torch

@@ -54,9 +54,9 @@ class RandomTransplantation(MixAugmentationBaseV2):
           receive a transplant.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
-        data_keys: the input type sequential for applying augmentations. There must be at least one "mask" torch.tensor.
-          If no data keys are given, the first torch.tensor is assumed to be `DataKey.INPUT` and the second
-          torch.tensor `DataKey.MASK`.
+        data_keys: the input type sequential for applying augmentations. There must be at least one "mask" torch.Tensor.
+          If no data keys are given, the first torch.Tensor is assumed to be `DataKey.INPUT` and the second
+          torch.Tensor `DataKey.MASK`.
           Accepts "input", "mask".
 
     Note:
@@ -68,8 +68,8 @@ class RandomTransplantation(MixAugmentationBaseV2):
           :class:`kornia.augmentation.RandomTransplantation3D` for 3D images.
 
     Inputs:
-        - Segmentation mask torch.tensor which is used to determine the objects for transplantation: :math:`(B, *)`.
-        - (optional) Additional image or mask tensors torch.where the features are transplanted based on the first
+        - Segmentation mask torch.Tensor which is used to determine the objects for transplantation: :math:`(B, *)`.
+        - (optional) Additional image or mask tensors where the features are transplanted based on the first
           segmentation mask: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)` (`DataKey.MASK`).
 
     Returns:
@@ -217,7 +217,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
         Args:
             *input: All input tensors passed to the augmentation pipeline.
-            data_keys: Associated data key for every input torch.tensor.
+            data_keys: Associated data key for every input torch.Tensor.
             params: Dictionary of parameters computed so far by the augmentation pipeline (e.g. including the
                     `batch_prob`).
             extra_args: Optional dictionary of extra arguments with specific options for different input types.

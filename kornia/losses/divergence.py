@@ -50,8 +50,8 @@ def js_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
     r"""Calculate the Jensen-Shannon divergence loss between heatmaps.
 
     Args:
-        pred: the input torch.tensor with shape :math:`(B, N, H, W)`.
-        target: the target torch.tensor with shape :math:`(B, N, H, W)`.
+        pred: the input torch.Tensor with shape :math:`(B, N, H, W)`.
+        target: the target torch.Tensor with shape :math:`(B, N, H, W)`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by
@@ -72,8 +72,8 @@ def kl_div_loss_2d(pred: torch.Tensor, target: torch.Tensor, reduction: str = "m
     r"""Calculate the Kullback-Leibler divergence loss between heatmaps.
 
     Args:
-        pred: the input torch.tensor with shape :math:`(B, N, H, W)`.
-        target: the target torch.tensor with shape :math:`(B, N, H, W)`.
+        pred: the input torch.Tensor with shape :math:`(B, N, H, W)`.
+        target: the target torch.Tensor with shape :math:`(B, N, H, W)`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by

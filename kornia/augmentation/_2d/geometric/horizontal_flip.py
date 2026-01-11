@@ -25,13 +25,13 @@ from kornia.geometry.transform import hflip
 
 
 class RandomHorizontalFlip(GeometricAugmentationBase2D):
-    r"""Apply a random horizontal flip to a torch.tensor image or a batch of torch.tensor images.
+    r"""Apply a random horizontal flip to a torch.Tensor image or a batch of torch.Tensor images.
 
     The flip is applied with a given probability.
 
     .. image:: _static/img/RandomHorizontalFlip.png
 
-    Input should be a torch.tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
+    Input should be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(B, C, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
     will Horizontally flip the tensors and torch.cat the corresponding transformation matrix to the
