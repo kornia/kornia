@@ -49,8 +49,48 @@ def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     return kernel_val
 
 
+def rectangular_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
+    """Implementation of a rectangular kernel.
+
+    Support: [-window_radius, window_radius]. Returns 1.0 inside this range, 0.0 otherwise.
+
+    Args:
+        x (torch.Tensor): signal, any shape
+        window_radius (float): radius of window for the kernel
+
+    Returns:
+        torch.Tensor: transformed signal
+    """
+    x = torch.abs(x)
+    return torch.where(x <= window_radius, 1.0, 0.0)
+
+
+def truncated_gaussian_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
+    """Implementation of a truncated Gaussian kernel.
+
+    Support: [-window_radius, window_radius]. Returns Gaussian value inside this range, 0.0 otherwise.
+    Sigma is set to window_radius.
+
+    Args:
+        x (torch.Tensor): signal, any shape
+        window_radius (float): radius of window for the kernel (used as sigma)
+
+    Returns:
+        torch.Tensor: transformed signal
+    """
+    sigma = window_radius
+    x_abs = torch.abs(x)
+    mask = x_abs <= window_radius
+
+    gaussian_val = torch.exp(-0.5 * (x / sigma) ** 2) / (sigma * (2 * torch.pi) ** 0.5)
+
+    return torch.where(mask, gaussian_val, 0.0)
+
+
 class Kernel(Enum):
     xu = member(xu_kernel)
+    rectangular = member(rectangular_kernel)
+    gaussian = member(truncated_gaussian_kernel)
 
 
 def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> torch.Tensor:
