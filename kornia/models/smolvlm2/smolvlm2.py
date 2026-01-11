@@ -15,11 +15,13 @@
 # limitations under the License.
 #
 
-from torch import nn
 import torch
+from torch import nn
+
 
 class SmolVLM2(nn.Module):
     """SmolVLM2 scaffold. This is a placeholder implementation."""
+
     def __init__(self, vision_dim: int = 768, text_dim: int = 768) -> None:
         super().__init__()
         self.vision_proj = nn.Linear(vision_dim, vision_dim)
