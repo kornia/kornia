@@ -44,9 +44,9 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
     if len(input.shape) < 3 or input.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
 
-    # If input is int, use float32. If input is double, use double.
+    # Ensure kernel is floating point
     dtype = input.dtype if input.dtype.is_floating_point else torch.float32
-
+    
     # Standard Sepia Matrix
     kernel = torch.tensor(
         [
@@ -58,7 +58,7 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
         dtype=dtype,
     )
 
-    # Cast input to match kernel if needed (e.g. int -> float)
+    # Cast input to match kernel
     input_compute = input.to(dtype)
 
     # 1. CPU Strategy: Einsum
@@ -67,14 +67,14 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
 
     # 2. GPU Strategy: Conv2d
     else:
-        # Use .reshape() to handle non-contiguous inputs
         input_shape = input_compute.shape
         input_flat = input_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
         
         weight = kernel.view(3, 3, 1, 1)
         sepia_out_flat = F.conv2d(input_flat, weight)
         
-        sepia_out = sepia_out_flat.reshape(*input_shape)
+        # Reshape back using the stored shape tuple directly
+        sepia_out = sepia_out_flat.reshape(input_shape)
 
     if rescale:
         max_values = sepia_out.amax(dim=-1).amax(dim=-1)
