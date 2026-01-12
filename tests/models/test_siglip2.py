@@ -217,9 +217,7 @@ class TestSigLip2Model(BaseTester):
             assert torch.isfinite(output.logits_per_text).all(), "logits_per_text contains non-finite values"
 
             # Verify logit_scale is clamped: exp(log(100)) = 100 is the maximum
-            from kornia.models.siglip2.model import LOGIT_SCALE_MAX
-
-            max_allowed_scale = LOGIT_SCALE_MAX
+            max_allowed_scale = config.logit_scale_max
             actual_scale = output.logit_scale.item()
             
             # Verify within floating-point precision of expected max

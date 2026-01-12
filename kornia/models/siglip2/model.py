@@ -33,9 +33,6 @@ from .vision_encoder import SigLip2VisionModel
 
 __all__ = ["SigLip2Model", "SigLip2Result"]
 
-# Maximum value for logit_scale to prevent overflow: exp(log(100)) = 100
-LOGIT_SCALE_MAX = 100.0
-
 
 @dataclass
 class SigLip2Result:
@@ -221,7 +218,7 @@ class SigLip2Model(nn.Module):
             else None
         )
 
-        logit_scale = self.logit_scale.clamp(min=0.0, max=math.log(LOGIT_SCALE_MAX)).exp()
+        logit_scale = self.logit_scale.clamp(min=0.0, max=math.log(self.config.logit_scale_max)).exp()
         logits_per_image = None
         logits_per_text = None
         loss = None
