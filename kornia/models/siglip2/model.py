@@ -120,6 +120,8 @@ class SigLip2Model(nn.Module):
 
         # logit scale (temperature parameter)
         self.logit_scale = nn.Parameter(torch.tensor(config.logit_scale_init_value))
+        # cache log of max scale for clamping (constant value)
+        self.logit_scale_max_log = math.log(config.logit_scale_max)
 
         # logit bias
         self.logit_bias = nn.Parameter(torch.tensor(0.0))
@@ -218,7 +220,7 @@ class SigLip2Model(nn.Module):
             else None
         )
 
-        logit_scale = self.logit_scale.clamp(min=0.0, max=math.log(self.config.logit_scale_max)).exp()
+        logit_scale = self.logit_scale.clamp(min=0.0, max=self.logit_scale_max_log).exp()
         logits_per_image = None
         logits_per_text = None
         loss = None
