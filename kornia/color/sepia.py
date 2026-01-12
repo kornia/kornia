@@ -44,7 +44,6 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
     if len(input.shape) < 3 or input.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
 
-    # FORCE FLOAT: Safe check that works in JIT and Python
     if input.is_floating_point():
         dtype = input.dtype
     else:
@@ -83,7 +82,7 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
         max_values = sepia_out.amax(dim=-1).amax(dim=-1)
         sepia_out = sepia_out / (max_values[..., None, None] + eps)
 
-    return sepia_out
+    return sepia_out.contiguous()
 
 
 class Sepia(nn.Module):
