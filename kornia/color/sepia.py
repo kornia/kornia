@@ -44,8 +44,10 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
     if len(input.shape) < 3 or input.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
 
+    # If input is int, use float32. If input is double, use double.
+    dtype = input.dtype if input.dtype.is_floating_point else torch.float32
+
     # Standard Sepia Matrix
-    # Row 0: R, Row 1: G, Row 2: B
     kernel = torch.tensor(
         [
             [0.393, 0.769, 0.189],
@@ -53,25 +55,26 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
             [0.272, 0.534, 0.131],
         ],
         device=input.device,
-        dtype=input.dtype,
+        dtype=dtype,
     )
 
-    # 1. CPU Strategy: Einsum (Memory Efficient)
-    if input.device.type == "cpu":
-        sepia_out = torch.einsum("...chw,oc->...ohw", input, kernel)
+    # Cast input to match kernel if needed (e.g. int -> float)
+    input_compute = input.to(dtype)
 
-    # 2. GPU Strategy: Conv2d (Compute Efficient)
+    # 1. CPU Strategy: Einsum
+    if input.device.type == "cpu":
+        sepia_out = torch.einsum("...chw,oc->...ohw", input_compute, kernel)
+
+    # 2. GPU Strategy: Conv2d
     else:
-        # conv2d requires 4D input (B, C, H, W).
+        # Use .reshape() to handle non-contiguous inputs
+        input_shape = input_compute.shape
+        input_flat = input_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
         
-        # We flatten arbitrary batch dims into B, apply conv, then unflatten.
-        input_shape = input.shape
-        input_flat = input.view(-1, 3, input_shape[-2], input_shape[-1])
         weight = kernel.view(3, 3, 1, 1)
         sepia_out_flat = F.conv2d(input_flat, weight)
         
-        # Reshape back to original (*, 3, H, W)
-        sepia_out = sepia_out_flat.view(*input_shape)
+        sepia_out = sepia_out_flat.reshape(*input_shape)
 
     if rescale:
         max_values = sepia_out.amax(dim=-1).amax(dim=-1)
