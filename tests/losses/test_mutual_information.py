@@ -153,9 +153,7 @@ class TestMutualInformationLoss(BaseTester):
 
             # Compute batch loss
             loss_batch = mutual_information_loss(img1, img2, num_bins=64, kernel_function=kernel)
-            normalized_loss_batch = normalized_mutual_information_loss(
-                img1, img2, num_bins=64, kernel_function=kernel
-            )
+            normalized_loss_batch = normalized_mutual_information_loss(img1, img2, num_bins=64, kernel_function=kernel)
 
             # Compute iterative loss for verification
             losses = []
@@ -173,7 +171,7 @@ class TestMutualInformationLoss(BaseTester):
             loss_iterative = torch.stack(losses)
             normalized_loss_iterative = torch.stack(normalized_losses)
 
-            #Compare
+            # Compare
             assert loss_batch.shape == dims[:-1], "The shape of the batched losses for mi is wrong."
             assert normalized_loss_batch.shape == dims[:-1], "The shape of the batched losses for nmi is wrong."
 
@@ -181,8 +179,7 @@ class TestMutualInformationLoss(BaseTester):
                 f"Batch mismatch for mi! Batch: {loss_batch}, Iterative: {loss_iterative}"
             )
             assert torch.allclose(normalized_loss_batch.flatten(), normalized_loss_iterative, atol=1e-4), (
-                "Batch mismatch for nmi! Batch: "
-                f"{normalized_loss_batch}, Iterative: {normalized_loss_iterative}"
+                f"Batch mismatch for nmi! Batch: {normalized_loss_batch}, Iterative: {normalized_loss_iterative}"
             )
 
     def test_module(self, device, dtype):
