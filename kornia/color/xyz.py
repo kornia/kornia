@@ -21,6 +21,7 @@ from typing import ClassVar
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 
 
 def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
@@ -45,17 +46,20 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    r: torch.Tensor = image[..., 0, :, :]
-    g: torch.Tensor = image[..., 1, :, :]
-    b: torch.Tensor = image[..., 2, :, :]
+    # CIE RGB to XYZ Matrix (D65 White Point)
+    kernel = torch.tensor(
+        [
+            [0.412453, 0.357580, 0.180423],
+            [0.212671, 0.715160, 0.072169],
+            [0.019334, 0.119193, 0.950227],
+        ],
+        device=image.device,
+        dtype=image.dtype if image.is_floating_point() else torch.float32,
+    )
 
-    x: torch.Tensor = 0.412453 * r + 0.357580 * g + 0.180423 * b
-    y: torch.Tensor = 0.212671 * r + 0.715160 * g + 0.072169 * b
-    z: torch.Tensor = 0.019334 * r + 0.119193 * g + 0.950227 * b
+    # Apply Optimized Linear Transformation
+    return _apply_linear_transformation(image, kernel)
 
-    out: torch.Tensor = torch.stack([x, y, z], -3)
-
-    return out
 
 
 def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
@@ -78,17 +82,53 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    x: torch.Tensor = image[..., 0, :, :]
-    y: torch.Tensor = image[..., 1, :, :]
-    z: torch.Tensor = image[..., 2, :, :]
+    # CIE XYZ to RGB Matrix (D65 White Point)
+    kernel = torch.tensor(
+        [
+            [3.2404813432005266, -1.5371515162713185, -0.4985363261688878],
+            [-0.9692549499965682, 1.8759900014898907, 0.0415559265582928],
+            [0.0556466391351772, -0.2040413383665112, 1.0573110696453443],
+        ],
+        device=image.device,
+        dtype=image.dtype if image.is_floating_point() else torch.float32,
+    )
 
-    r: torch.Tensor = 3.2404813432005266 * x + -1.5371515162713185 * y + -0.4985363261688878 * z
-    g: torch.Tensor = -0.9692549499965682 * x + 1.8759900014898907 * y + 0.0415559265582928 * z
-    b: torch.Tensor = 0.0556466391351772 * x + -0.2040413383665112 * y + 1.0573110696453443 * z
+    # Apply Optimized Linear Transformation
+    return _apply_linear_transformation(image, kernel)
 
-    out: torch.Tensor = torch.stack([r, g, b], dim=-3)
 
-    return out
+def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+    """Helper to apply linear transformation with device-aware optimization (Einsum vs Conv2d)."""
+    
+    # Handle Integer inputs by casting to float
+    if image.is_floating_point():
+        dtype = image.dtype
+    else:
+        dtype = torch.float32
+    
+    image_compute = image.to(dtype)
+    kernel = kernel.to(dtype)
+
+    # BRANCH 1: CPU (Einsum)
+    if image.device.type == "cpu":
+        out = torch.einsum("...chw,oc->...ohw", image_compute, kernel)
+
+    # BRANCH 2: GPU (Conv2d)
+    else:
+        # Reshape for conv2d: (B*..., C, H, W)
+        input_shape = image_compute.shape
+        # Flatten arbitrary batch dimensions: (*, 3, H, W) -> (-1, 3, H, W)
+        input_flat = image_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
+        
+        # Reshape kernel: (3, 3) -> (3, 3, 1, 1)
+        weight = kernel.view(3, 3, 1, 1)
+        
+        out_flat = F.conv2d(input_flat, weight)
+        
+        # Unflatten back to original shape
+        out = out_flat.reshape(input_shape)
+
+    return out.contiguous()
 
 
 class RgbToXyz(nn.Module):
