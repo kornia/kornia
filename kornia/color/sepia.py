@@ -16,8 +16,8 @@
 #
 
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
 
 def sepia_from_rgb(image: torch.Tensor, rescale: bool = True, eps: float = 1e-6) -> torch.Tensor:
@@ -30,11 +30,11 @@ def sepia_from_rgb(image: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
 
     Returns:
         torch.Tensor: The sepia torch.tensor of same size and numbers of channels
-        as the input with shape :math:`(*, C, H, W)`.
+        as the input(image) with shape :math:`(*, C, H, W)`.
 
     Example:
-        >>> input = torch.ones(3, 1, 1)
-        >>> sepia_from_rgb(input, rescale=False)
+        >>> image = torch.ones(3, 1, 1)
+        >>> sepia_from_rgb(image, rescale=False)
         tensor([[[1.3510]],
         <BLANKLINE>
                 [[1.2030]],
@@ -42,19 +42,16 @@ def sepia_from_rgb(image: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
                 [[0.9370]]])
 
     """
-
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     # Standard Sepia Matrix
     # Row 0: R, Row 1: G, Row 2: B
-    kernel = torch.tensor([
-        [0.393, 0.769, 0.189],
-        [0.349, 0.686, 0.168],
-        [0.272, 0.534, 0.131]
-    ], device=image.device, dtype=image.dtype)
-    
-    if image.device.type == 'cpu':
+    kernel = torch.tensor(
+        [[0.393, 0.769, 0.189], [0.349, 0.686, 0.168], [0.272, 0.534, 0.131]], device=image.device, dtype=image.dtype
+    )
+
+    if image.device.type == "cpu":
         # CPU Strategy: Einsum (Memory Efficient)
         sepia_out = torch.einsum("...chw,oc->...ohw", image, kernel)
     else:
@@ -66,7 +63,7 @@ def sepia_from_rgb(image: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
     if rescale:
         max_values = sepia_out.amax(dim=-1).amax(dim=-1)
         sepia_out = sepia_out / (max_values[..., None, None] + eps)
-    
+
     return sepia_out
 
 
