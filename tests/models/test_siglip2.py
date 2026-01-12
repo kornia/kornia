@@ -168,9 +168,9 @@ class TestSigLip2Model(BaseTester):
             model.logit_scale.data.fill_(100.0)
             output_max = model(pixel_values=pixel_values, input_ids=input_ids)
             assert torch.isfinite(output_max.logits_per_image).all(), "Max clamp: logits contain non-finite values"
-            assert math.isclose(
-                output_max.logit_scale.item(), config.logit_scale_max, rel_tol=1e-5, abs_tol=1e-5
-            ), f"Max clamp failed: {output_max.logit_scale.item()} != {config.logit_scale_max}"
+            assert math.isclose(output_max.logit_scale.item(), config.logit_scale_max, rel_tol=1e-5, abs_tol=1e-5), (
+                f"Max clamp failed: {output_max.logit_scale.item()} != {config.logit_scale_max}"
+            )
 
             # Test min clamping
             model.logit_scale.data.fill_(-10.0)
