@@ -154,6 +154,111 @@ def filter2d(
     return out
 
 
+def correlate2d(
+    input: Tensor,
+    kernel: Tensor,
+    border_type: str = "reflect",
+    normalized: bool = False,
+    padding: str = "same",
+) -> Tensor:
+    r"""Correlate a tensor with a 2d kernel.
+
+    The function applies correlation with a given kernel to a tensor, which is an alias for
+    :func:`filter2d` with ``behaviour='corr'``. It computes the sum of the element-wise product
+    of the kernel with patches of the input signal, without flipping the kernel. This operation
+    is commonly used in signal processing and follows the scipy.signal.correlate2d convention.
+
+    Args:
+        input: the input tensor with shape of :math:`(B, C, H, W)`.
+        kernel: the kernel to be correlated with the input tensor.
+            The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
+        border_type: the padding mode to be applied before correlating.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        normalized: If True, kernel will be L1 normalized. Default: False.
+        padding: This defines the type of padding.
+            2 modes available ``'same'`` or ``'valid'``. Default: ``'same'``.
+
+    Return:
+        Tensor: the correlated tensor of same shape as input :math:`(B, C, H, W)` when
+        padding is ``'same'``, or reduced shape when padding is ``'valid'``.
+
+    Example:
+        >>> input = torch.tensor([[[
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 5., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],]]])
+        >>> kernel = torch.ones(1, 3, 3)
+        >>> correlate2d(input, kernel, padding='same')
+        tensor([[[[0., 0., 0., 0., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 0., 0., 0., 0.]]]])
+
+    .. note::
+        This is equivalent to :func:`filter2d` with ``behaviour='corr'``. See
+        `scipy.signal.correlate2d <https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.correlate2d.html>`_
+        for more details on correlation operation.
+    """
+    return filter2d(input, kernel, border_type=border_type, normalized=normalized, padding=padding, behaviour="corr")
+
+
+def convolve2d(
+    input: Tensor,
+    kernel: Tensor,
+    border_type: str = "reflect",
+    normalized: bool = False,
+    padding: str = "same",
+) -> Tensor:
+    r"""Convolve a tensor with a 2d kernel.
+
+    The function applies true convolution (kernel is flipped) with a given kernel to a tensor,
+    which is an alias for :func:`filter2d` with ``behaviour='conv'``. In true convolution,
+    the kernel is first flipped both horizontally and vertically before computing the
+    element-wise product with patches of the input signal. This operation follows the
+    scipy.signal.convolve2d convention.
+
+    Args:
+        input: the input tensor with shape of :math:`(B, C, H, W)`.
+        kernel: the kernel to be convolved with the input tensor.
+            The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
+        border_type: the padding mode to be applied before convolving.
+            The expected modes are: ``'constant'``, ``'reflect'``,
+            ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        normalized: If True, kernel will be L1 normalized. Default: False.
+        padding: This defines the type of padding.
+            2 modes available ``'same'`` or ``'valid'``. Default: ``'same'``.
+
+    Return:
+        Tensor: the convolved tensor of same shape as input :math:`(B, C, H, W)` when
+        padding is ``'same'``, or reduced shape when padding is ``'valid'``.
+
+    Example:
+        >>> input = torch.tensor([[[
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 5., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],]]])
+        >>> kernel = torch.ones(1, 3, 3)
+        >>> convolve2d(input, kernel, padding='same')
+        tensor([[[[0., 0., 0., 0., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 0., 0., 0., 0.]]]])
+
+    .. note::
+        This is equivalent to :func:`filter2d` with ``behaviour='conv'``. See
+        `scipy.signal.convolve2d <https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.convolve2d.html>`_
+        for more details on convolution operation.
+    """
+    return filter2d(input, kernel, border_type=border_type, normalized=normalized, padding=padding, behaviour="conv")
+
+
 def filter2d_separable(
     input: Tensor,
     kernel_x: Tensor,
