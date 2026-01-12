@@ -109,6 +109,8 @@ class GemmaMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
+        # Note: The activation function is GELU, but the architecture follows the GeGLU pattern
+        # (gate_proj -> GELU -> * up_proj -> down_proj)
         self.act_fn = nn.GELU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -153,7 +155,7 @@ class GemmaAttention(nn.Module):
         hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    ) -> torch.Tensor:
         bsz, q_len, _ = hidden_states.size()
 
         query_states = self.q_proj(hidden_states)
@@ -186,7 +188,7 @@ class GemmaAttention(nn.Module):
 
         attn_output = self.o_proj(attn_output)
 
-        return attn_output, attn_weights
+        return attn_output
 
 
 class GemmaDecoderLayer(nn.Module):
@@ -209,7 +211,7 @@ class GemmaDecoderLayer(nn.Module):
     ) -> torch.Tensor:
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
-        hidden_states, _ = self.self_attn(
+        hidden_states = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -282,14 +284,12 @@ class PaliGemma(nn.Module):
         """
         vision_outputs = self.vision_tower(pixel_values)
 
-        if isinstance(vision_outputs, torch.Tensor):
-            image_features = vision_outputs
+        # Simplified logic as requested by review:
+        # SigLip2VisionModel always returns a tuple/list where index 1 is the hidden state
+        if isinstance(vision_outputs, (tuple, list)):
+            image_features = vision_outputs[1]
         else:
-            image_features = vision_outputs[0]
-            for out in vision_outputs:
-                if isinstance(out, torch.Tensor) and out.dim() == 3:
-                    image_features = out
-                    break
+            image_features = vision_outputs
 
         if image_features.dim() != 3:
             image_features = image_features.unsqueeze(1)
