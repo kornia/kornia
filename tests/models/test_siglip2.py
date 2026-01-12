@@ -193,6 +193,61 @@ class TestSigLip2Model(BaseTester):
         self.assert_close(actual.image_embeds, expected.image_embeds)
         self.assert_close(actual.text_embeds, expected.text_embeds)
 
+    def test_logit_scale_clamping(self, device, dtype, config):
+        """Test that logit_scale is clamped to prevent overflow."""
+        import math
+
+        model = SigLip2Model(config).to(device, dtype)
+        batch_size = 2
+        seq_len = 10
+
+        # Set logit_scale to a very large value
+        with torch.no_grad():
+            large_logit_value = 100.0  # This would cause exp overflow without clamping
+            model.logit_scale.data.fill_(large_logit_value)
+
+            pixel_values = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
+            input_ids = _create_input_ids(batch_size, seq_len, config, device)
+
+            # Forward pass should not overflow or produce NaN
+            output = model(pixel_values=pixel_values, input_ids=input_ids)
+
+            # Verify logits are finite (no NaN, no inf)
+            assert torch.isfinite(output.logits_per_image).all(), "logits_per_image contains non-finite values"
+            assert torch.isfinite(output.logits_per_text).all(), "logits_per_text contains non-finite values"
+
+            # Verify logit_scale is clamped: exp(log(100)) = 100 is the maximum
+            from kornia.models.siglip2.model import LOGIT_SCALE_MAX
+
+            max_allowed_scale = LOGIT_SCALE_MAX
+            actual_scale = output.logit_scale.item()
+            
+            # Verify within floating-point precision of expected max
+            assert math.isclose(
+                actual_scale, max_allowed_scale, rel_tol=1e-5, abs_tol=1e-5
+            ), f"logit_scale {actual_scale} not close to expected maximum {max_allowed_scale}"
+
+    def test_logit_scale_minimum_clamping(self, device, dtype, config):
+        """Test that negative logit_scale is clamped to prevent inverted similarities."""
+        model = SigLip2Model(config).to(device, dtype)
+        batch_size = 2
+        seq_len = 10
+
+        # Set logit_scale to a negative value
+        with torch.no_grad():
+            negative_logit_value = -10.0  # Negative would invert similarities
+            model.logit_scale.data.fill_(negative_logit_value)
+
+            pixel_values = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
+            input_ids = _create_input_ids(batch_size, seq_len, config, device)
+
+            # Forward pass should clamp to minimum
+            output = model(pixel_values=pixel_values, input_ids=input_ids)
+
+            # Verify logit_scale is at least 1.0 (exp(0.0))
+            actual_scale = output.logit_scale.item()
+            assert actual_scale >= 1.0, f"logit_scale {actual_scale} is below minimum (exp(0) = 1.0)"
+
 
 class TestSigLip2Components(BaseTester):
     """Test suite for SigLip2 individual components."""

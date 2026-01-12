@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -31,6 +32,9 @@ from .text_encoder import SigLip2TextModel
 from .vision_encoder import SigLip2VisionModel
 
 __all__ = ["SigLip2Model", "SigLip2Result"]
+
+# Maximum value for logit_scale to prevent overflow: exp(log(100)) = 100
+LOGIT_SCALE_MAX = 100.0
 
 
 @dataclass
@@ -217,7 +221,7 @@ class SigLip2Model(nn.Module):
             else None
         )
 
-        logit_scale = self.logit_scale.exp()
+        logit_scale = self.logit_scale.clamp(min=0.0, max=math.log(LOGIT_SCALE_MAX)).exp()
         logits_per_image = None
         logits_per_text = None
         loss = None
