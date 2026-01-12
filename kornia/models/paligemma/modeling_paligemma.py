@@ -27,13 +27,11 @@ from kornia.models.siglip2.vision_encoder import SigLip2VisionModel
 
 from .configuration_paligemma import PaliGemmaConfig
 
-# HELPER CLASSES (Normalization, RoPE, MLP)
-
 
 class GemmaRMSNorm(nn.Module):
     """Root Mean Square Layer Normalization."""
 
-    def __init__(self, dim: int, eps: float = 1e-6):
+    def __init__(self, dim: int, eps: float = 1e-6) -> None:
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.zeros(dim))
@@ -49,7 +47,13 @@ class GemmaRMSNorm(nn.Module):
 class GemmaRotaryEmbedding(nn.Module):
     """Rotary Positional Embedding (RoPE)."""
 
-    def __init__(self, dim: int, max_position_embeddings: int = 2048, base: int = 10000, device=None):
+    def __init__(
+        self,
+        dim: int,
+        max_position_embeddings: int = 2048,
+        base: int = 10000,
+        device: Optional[torch.device] = None,
+    ) -> None:
         super().__init__()
 
         self.dim = dim
@@ -91,9 +95,12 @@ def apply_rotary_pos_emb(
 
 
 class GemmaMLP(nn.Module):
-    """Multi-Layer Perceptron (Feed Forward Network)."""
+    """Multi-Layer Perceptron.
 
-    def __init__(self, config: PaliGemmaConfig):
+    This implements the GeGLU activation pattern.
+    """
+
+    def __init__(self, config: PaliGemmaConfig) -> None:
         super().__init__()
         self.config = config
         self.hidden_size = config.hidden_size
@@ -108,13 +115,10 @@ class GemmaMLP(nn.Module):
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
-# 2. ATTENTION & DECODER LAYERS
-
-
 class GemmaAttention(nn.Module):
     """Multi-headed attention from 'Attention Is All You Need' paper."""
 
-    def __init__(self, config: PaliGemmaConfig, layer_idx: Optional[int] = None):
+    def __init__(self, config: PaliGemmaConfig, layer_idx: Optional[int] = None) -> None:
         super().__init__()
         self.config = config
         self.layer_idx = layer_idx
@@ -125,7 +129,7 @@ class GemmaAttention(nn.Module):
         self.num_key_value_heads = config.num_key_value_heads
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.max_position_embeddings = config.max_position_embeddings
-        self.rope_theta = 10000.0
+        self.rope_theta = config.rope_theta
 
         if (self.head_dim * self.num_heads) != self.hidden_size:
             raise ValueError(
@@ -141,7 +145,7 @@ class GemmaAttention(nn.Module):
         self.rotary_emb = GemmaRotaryEmbedding(
             self.head_dim,
             max_position_embeddings=self.max_position_embeddings,
-            base=self.rope_theta,
+            base=int(self.rope_theta),
         )
 
     def forward(
@@ -159,6 +163,9 @@ class GemmaAttention(nn.Module):
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+
+        if position_ids is None:
+            raise ValueError("position_ids cannot be None for GemmaAttention")
 
         cos, sin = self.rotary_emb(value_states, position_ids=position_ids)
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
@@ -185,7 +192,7 @@ class GemmaAttention(nn.Module):
 class GemmaDecoderLayer(nn.Module):
     """A single layer of the Gemma Decoder."""
 
-    def __init__(self, config: PaliGemmaConfig, layer_idx: int):
+    def __init__(self, config: PaliGemmaConfig, layer_idx: int) -> None:
         super().__init__()
         self.hidden_size = config.hidden_size
 
@@ -217,21 +224,20 @@ class GemmaDecoderLayer(nn.Module):
         return hidden_states
 
 
-# MAIN PALIGEMMA MODEL
-
-
 class PaliGemma(nn.Module):
     """PaliGemma Model for Vision-Language tasks.
 
     This model combines a SigLip2 Vision Encoder with a Gemma Language Decoder.
     """
 
-    def __init__(self, config: PaliGemmaConfig):
+    def __init__(self, config: PaliGemmaConfig) -> None:
         super().__init__()
         self.config = config
         self.padding_idx = config.ignore_index
         self.vocab_size = config.vocab_size
 
+        if config.vision_config is None:
+            raise ValueError("vision_config cannot be None")
         self.vision_tower = SigLip2VisionModel(config.vision_config)
 
         self.multi_modal_projector = nn.Linear(config.vision_config.hidden_size, config.hidden_size)
@@ -247,7 +253,7 @@ class PaliGemma(nn.Module):
 
         self.apply(self._init_weights)
 
-    def _init_weights(self, module):
+    def _init_weights(self, module: nn.Module) -> None:
         if isinstance(module, nn.Linear):
             module.weight.data.normal_(mean=0.0, std=0.02)
         elif isinstance(module, nn.Embedding):
@@ -265,29 +271,27 @@ class PaliGemma(nn.Module):
         """Forward pass of the model.
 
         Args:
-            input_ids: Text tokens (batch, seq_len)
+            input_ids: Text tokens (batch, input_seq_len)
             pixel_values: Images (batch, channels, height, width)
             attention_mask: Optional attention mask.
             position_ids: Optional position IDs.
 
         Returns:
-            logits: Prediction scores (batch, seq_len, vocab_size)
+            logits: Prediction scores (batch, total_seq_len, vocab_size), where
+                    total_seq_len = image_seq_len + input_seq_len.
         """
         vision_outputs = self.vision_tower(pixel_values)
 
-        if isinstance(vision_outputs, (tuple, list)):
-            image_features = None
+        if isinstance(vision_outputs, torch.Tensor):
+            image_features = vision_outputs
+        else:
+            image_features = vision_outputs[0]
             for out in vision_outputs:
                 if isinstance(out, torch.Tensor) and out.dim() == 3:
                     image_features = out
                     break
 
-            if image_features is None:
-                image_features = vision_outputs[0]
-        else:
-            image_features = vision_outputs
-
-        if image_features.dim() == 2:
+        if image_features.dim() != 3:
             image_features = image_features.unsqueeze(1)
 
         image_features = self.multi_modal_projector(image_features)
@@ -301,17 +305,12 @@ class PaliGemma(nn.Module):
             position_ids = torch.arange(seq_length, dtype=torch.long, device=inputs_embeds.device)
             position_ids = position_ids.unsqueeze(0).expand(inputs_embeds.shape[0], -1)
 
-        if attention_mask is None:
-            attention_mask = torch.ones(
-                (inputs_embeds.shape[0], inputs_embeds.shape[1]), dtype=torch.bool, device=inputs_embeds.device
-            )
-
         hidden_states = inputs_embeds
 
         for layer in self.layers:
             hidden_states = layer(
                 hidden_states,
-                attention_mask=None,
+                attention_mask=attention_mask,
                 position_ids=position_ids,
             )
 
