@@ -92,12 +92,14 @@ class SigLip2Config:
         text_config: Text encoder configuration.
         projection_dim: Dimension of projection layers.
         logit_scale_init_value: Initial value for logit scale (temperature).
+        logit_scale_max: Maximum value for logit_scale to prevent overflow. Default: 100.0
     """
 
     vision_config: Optional[SigLip2VisionConfig] = None
     text_config: Optional[SigLip2TextConfig] = None
     projection_dim: int = 768
     logit_scale_init_value: float = 2.6592
+    logit_scale_max: float = 100.0
 
     def __post_init__(self) -> None:
         """Initialize default configs if not provided."""
