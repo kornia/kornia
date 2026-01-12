@@ -98,8 +98,16 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
 
 
 def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
-    """Helper to apply linear transformation with device-aware optimization (Einsum vs Conv2d)."""
-    
+    """Apply a 3x3 linear color transformation with device-aware optimization.
+
+    Args:
+        image: Input image tensor with shape :math:`(*, 3, H, W)`.
+        kernel: Transformation matrix with shape :math:`(3, 3)` applied along the channel
+            dimension.
+
+    Returns:
+        Tensor with the same shape as ``image`` containing the transformed values.
+    """
     # Handle Integer inputs by casting to float
     if image.is_floating_point():
         dtype = image.dtype
@@ -107,13 +115,14 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
         dtype = torch.float32
     
     image_compute = image.to(dtype)
-    kernel = kernel.to(dtype)
+    # NOTE: kernel is already created with the correct dtype above, no need to cast again.
 
     # BRANCH 1: CPU (Einsum)
     if image.device.type == "cpu":
         out = torch.einsum("...chw,oc->...ohw", image_compute, kernel)
 
-    # BRANCH 2: GPU (Conv2d)
+    # BRANCH 2: GPU/Accelerators (Conv2d)
+    # NOTE: We assume all non-CPU devices (CUDA, MPS, XPU) provide optimized conv2d kernels.
     else:
         # Reshape for conv2d: (B*..., C, H, W)
         input_shape = image_compute.shape
