@@ -36,14 +36,12 @@ def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
         torch.Tensor: transformed signal
     """
     x_abs = x.abs().mul(1.0 / window_radius)
-    
+
     poly1 = x_abs * (-1.8 * x_abs - 0.1) + 1.0
     poly2 = x_abs * (1.8 * x_abs - 3.7) + 1.9
-    
+
     return torch.where(
-        x_abs < 0.5, 
-        poly1, 
-        torch.where(x_abs <= 1.0, poly2, torch.tensor(0.0, device=x.device, dtype=x.dtype))
+        x_abs < 0.5, poly1, torch.where(x_abs <= 1.0, poly2, torch.tensor(0.0, device=x.device, dtype=x.dtype))
     )
 
 
