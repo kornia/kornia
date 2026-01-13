@@ -44,7 +44,8 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input must be a Tensor. Got {type(image)}")
     
-    KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
+    if image.shape[-3] != 3:
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     # CIE RGB to XYZ Matrix (D65 White Point)
     kernel = torch.tensor(
@@ -78,7 +79,8 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Input must be a Tensor. Got {type(image)}")
     
-    KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
+    if image.shape[-3] != 3:
+        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     # CIE XYZ to RGB Matrix (D65 White Point)
     kernel = torch.tensor(
