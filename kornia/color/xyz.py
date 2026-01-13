@@ -41,6 +41,7 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
         >>> output = rgb_to_xyz(input)  # 2x3x4x5
 
     """
+    KORNIA_CHECK_IS_TENSOR(image)
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     # CIE RGB to XYZ Matrix (D65 White Point)
@@ -73,6 +74,7 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> output = xyz_to_rgb(input)  # 2x3x4x5
 
     """
+    KORNIA_CHECK_IS_TENSOR(image)
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     # CIE XYZ to RGB Matrix (D65 White Point)
@@ -83,7 +85,7 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
             [0.0556466391351772, -0.2040413383665112, 1.0573110696453443],
         ],
         device=image.device,
-        dtype=image.dtype
+        dtype=image.dtype if image.is_floating_point() else torch.float32
     )
 
     # Apply Optimized Linear Transformation
@@ -101,17 +103,19 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
     Returns:
         Tensor with the same shape as ``image`` containing the transformed values.
     """
-    # Handle Integer inputs by casting to float
-    image_compute = image.float()
-    kernel_compute = kernel.to(dtype=image_compute.dtype, device=image_compute.device)
+    # Propagate Dtype: Cast image to match kernel's dtype
+    #    - If kernel is float32 (input was int), this casts image to float32
+    #    - If kernel is float64 (input was double), this keeps image as float64
+    image_compute = image.to(dtype=kernel.dtype)
     input_shape = image_compute.shape
     
     # Empirical benchmarks show that einsum is faster on CPU for this specific pattern,
     # while conv2d offers significant speedups on GPU/CUDA.
     # We branch to ensure optimal performance on both devices.
+    
     # BRANCH 1: CPU (Einsum)
     if image.device.type == "cpu":
-        out = torch.einsum("...chw,oc->...ohw", image_compute, kernel_compute)
+        out = torch.einsum("...chw,oc->...ohw", image_compute, kernel)
         out = out.contiguous()
 
     # BRANCH 2: GPU/Accelerators (Conv2d)
@@ -120,14 +124,14 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
         input_flat = image_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
         
         # Reshape kernel: (3, 3) -> (3, 3, 1, 1)
-        weight = kernel_compute.view(3, 3, 1, 1)
+        weight = kernel.view(3, 3, 1, 1)
         
         out_flat = F.conv2d(input_flat, weight)
         
         # Unflatten back to original shape
         out = out_flat.reshape(input_shape)
 
-    return out.contiguous()
+    return out
 
 
 class RgbToXyz(nn.Module):
