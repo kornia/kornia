@@ -104,10 +104,10 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
     """
     # Handle Integer inputs by casting to float safely
     # If it's already floating point (e.g. float64 from gradcheck), we preserve it
-    if not image.is_floating_point():
-        image_compute = image.float()
-    else:
+    if image.is_floating_point():
         image_compute = image
+    else:
+        image_compute = image.float()
 
     # Match kernel dtype to the image (propagates float64 if needed)
     kernel_compute = kernel.to(dtype=image_compute.dtype, device=image_compute.device)
