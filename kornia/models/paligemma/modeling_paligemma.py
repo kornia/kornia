@@ -17,10 +17,10 @@
 
 from __future__ import annotations
 
-import math
 from typing import Optional, Tuple
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from kornia.models.siglip2.vision_encoder import SigLip2VisionModel
@@ -66,17 +66,15 @@ class GemmaRotaryEmbedding(nn.Module):
         inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
         position_ids_expanded = position_ids[:, None, :].float()
 
-        device_type = x.device.type
-        device_type = device_type if isinstance(device_type, str) and device_type != "mps" else "cpu"
-        with torch.autocast(device_type=device_type, enabled=False):
-            freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
-            emb = torch.cat((freqs, freqs), dim=-1)
-            cos = emb.cos()
-            sin = emb.sin()
+       
+        freqs = (inv_freq_expanded.float() @ position_ids_expanded.float()).transpose(1, 2)
+        emb = torch.cat((freqs, freqs), dim=-1)
+        cos = emb.cos()
+        sin = emb.sin()
         return cos.to(dtype=x.dtype), sin.to(dtype=x.dtype)
 
 
-def rotate_half(x: torch.Tensor) -> torch.Tensor:
+def _rotate_half(x: torch.Tensor) -> torch.Tensor:
     """Rotates half the hidden dims of the input."""
     x1 = x[..., : x.shape[-1] // 2]
     x2 = x[..., x.shape[-1] // 2 :]
@@ -89,28 +87,22 @@ def apply_rotary_pos_emb(
     """Applies Rotary Positional Embedding to query and key states."""
     cos = cos.unsqueeze(1)
     sin = sin.unsqueeze(1)
-    q_embed = (q * cos) + (rotate_half(q) * sin)
-    k_embed = (k * cos) + (rotate_half(k) * sin)
+    q_embed = (q * cos) + (_rotate_half(q) * sin)
+    k_embed = (k * cos) + (_rotate_half(k) * sin)
     return q_embed, k_embed
 
 
 class GemmaMLP(nn.Module):
-    """Multi-Layer Perceptron.
-
-    This implements the GeGLU activation pattern.
-    """
+    """Multi-Layer Perceptron implementing the GeGLU pattern."""
 
     def __init__(self, config: PaliGemmaConfig) -> None:
         super().__init__()
-        self.config = config
         self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
 
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        # Note: The activation function is GELU, but the architecture follows the GeGLU pattern
-        # (gate_proj -> GELU -> * up_proj -> down_proj)
         self.act_fn = nn.GELU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -118,11 +110,10 @@ class GemmaMLP(nn.Module):
 
 
 class GemmaAttention(nn.Module):
-    """Multi-headed attention from 'Attention Is All You Need' paper."""
+    """Multi-headed attention with RoPE and SDPA."""
 
     def __init__(self, config: PaliGemmaConfig, layer_idx: Optional[int] = None) -> None:
         super().__init__()
-        self.config = config
         self.layer_idx = layer_idx
 
         self.hidden_size = config.hidden_size
@@ -175,13 +166,14 @@ class GemmaAttention(nn.Module):
         key_states = torch.repeat_interleave(key_states, dim=1, repeats=self.num_key_value_groups)
         value_states = torch.repeat_interleave(value_states, dim=1, repeats=self.num_key_value_groups)
 
-        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
-
-        if attention_mask is not None:
-            attn_weights = attn_weights + attention_mask
-
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
-        attn_output = torch.matmul(attn_weights, value_states)
+        attn_output = F.scaled_dot_product_attention(
+            query_states,
+            key_states,
+            value_states,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+        )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.view(bsz, q_len, self.hidden_size)
@@ -279,13 +271,10 @@ class PaliGemma(nn.Module):
             position_ids: Optional position IDs.
 
         Returns:
-            logits: Prediction scores (batch, total_seq_len, vocab_size), where
-                    total_seq_len = image_seq_len + input_seq_len.
+            logits: Prediction scores (batch, total_seq_len, vocab_size).
         """
         vision_outputs = self.vision_tower(pixel_values)
 
-        # Simplified logic as requested by review:
-        # SigLip2VisionModel always returns a tuple/list where index 1 is the hidden state
         if isinstance(vision_outputs, (tuple, list)):
             image_features = vision_outputs[1]
         else:
