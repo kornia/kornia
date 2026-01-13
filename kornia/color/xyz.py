@@ -22,7 +22,7 @@ from typing import ClassVar
 import torch
 from torch import nn
 import torch.nn.functional as F
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_IS_TENSOR
 
 
 def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
@@ -52,12 +52,11 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
             [0.019334, 0.119193, 0.950227],
         ],
         device=image.device,
-        dtype=image.dtype
+        dtype=torch.float32, 
     )
 
     # Apply Optimized Linear Transformation
     return _apply_linear_transformation(image, kernel)
-
 
 
 def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
@@ -85,7 +84,7 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
             [0.0556466391351772, -0.2040413383665112, 1.0573110696453443],
         ],
         device=image.device,
-        dtype=image.dtype
+        dtype=torch.float32,
     )
 
     # Apply Optimized Linear Transformation
@@ -103,18 +102,25 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
     Returns:
         Tensor with the same shape as ``image`` containing the transformed values.
     """
-    # Handle Integer inputs by casting to float
-    image_compute = image.float()
+    # Handle Integer inputs by casting to float safely
+    # If it's already floating point (e.g. float64 from gradcheck), we preserve it
+    if not image.is_floating_point():
+        image_compute = image.float()
+    else:
+        image_compute = image
+
+    # Match kernel dtype to the image (propagates float64 if needed)
     kernel_compute = kernel.to(dtype=image_compute.dtype, device=image_compute.device)
+    
     input_shape = image_compute.shape
     
     # Empirical benchmarks show that einsum is faster on CPU for this specific pattern,
     # while conv2d offers significant speedups on GPU/CUDA.
     # We branch to ensure optimal performance on both devices.
     # BRANCH 1: CPU (Einsum)
-    if image.device.type == "cpu":
+    if image_compute.device.type == "cpu":
         out = torch.einsum("...chw,oc->...ohw", image_compute, kernel_compute)
-        out.contiguous()
+        out = out.contiguous()
 
     # BRANCH 2: GPU/Accelerators (Conv2d)
     else:
