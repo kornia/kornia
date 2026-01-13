@@ -49,7 +49,7 @@ class TestPaliGemmaModules:
 
 def test_paligemma_forward_pass() -> None:
     config = PaliGemmaConfig()
-    
+
     config.hidden_size = 32
     config.intermediate_size = 64
     config.num_hidden_layers = 1
@@ -66,6 +66,5 @@ def test_paligemma_forward_pass() -> None:
     input_ids = torch.randint(0, config.vocab_size, (1, 5))
 
     logits = model(input_ids=input_ids, pixel_values=pixel_values)
-    
-    
+
     assert logits.shape == (1, 9, config.vocab_size)
