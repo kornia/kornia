@@ -104,12 +104,7 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
         Tensor with the same shape as ``image`` containing the transformed values.
     """
     # Handle Integer inputs by casting to float
-    # Cast image to match kernel's dtype (ensures we use float32 for ints, or preserve float64)
-    if image.is_floating_point():
-        image_compute = image
-    else:
-        image_compute = image.float()
-    
+    image_compute = image.float()
     kernel_compute = kernel.to(dtype=image_compute.dtype, device=image_compute.device)
     input_shape = image_compute.shape
     
@@ -119,6 +114,7 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
     # BRANCH 1: CPU (Einsum)
     if image.device.type == "cpu":
         out = torch.einsum("...chw,oc->...ohw", image_compute, kernel_compute)
+        out.contiguous()
 
     # BRANCH 2: GPU/Accelerators (Conv2d)
     else:
