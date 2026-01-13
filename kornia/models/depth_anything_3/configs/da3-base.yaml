@@ -1,0 +1,40 @@
+net:
+  __object__:
+    path: kornia.models.depth_anything_3.architecture.dinov2.dinov2
+    name: DinoV2
+    args: as_params
+
+  name: vitb
+  out_layers: [5, 7, 9, 11]
+  alt_start: 4
+  qknorm_start: 4
+  rope_start: 4
+  cat_token: True
+
+head:
+  __object__:
+    path: kornia.models..depth_anything_3.architecture.dualdpt
+    name: DualDPT
+    args: as_params
+
+  dim_in: &head_dim_in 1536
+  output_dim: 2
+  features: &head_features 128
+  out_channels: &head_out_channels [96, 192, 384, 768]
+
+
+cam_enc:
+  __object__:
+    path: kornia.models.depth_anything_3.architecture.cam_enc
+    name: CameraEnc
+    args: as_params
+
+  dim_out: 768
+
+cam_dec:
+  __object__:
+    path: kornia.models.depth_anything_3.architecture.cam_dec
+    name: CameraDec
+    args: as_params
+
+  dim_in: 1536
