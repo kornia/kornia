@@ -19,15 +19,14 @@ from typing import Dict
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
 import kornia.geometry.epipolar as epi
 
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestTriangulation:
+class TestTriangulation(BaseTester):
     def test_smoke(self, device, dtype):
         P1 = torch.rand(1, 3, 4, device=device, dtype=dtype)
         P2 = torch.rand(1, 3, 4, device=device, dtype=dtype)
@@ -60,8 +59,8 @@ class TestTriangulation:
         X = epi.triangulate_points(P1, P2, x1, x2)
         x_reprojected = kornia.geometry.transform_points(scene["P"], X.expand(num_views, -1, -1))
 
-        assert_close(scene["points3d"], X, rtol=1e-4, atol=1e-4)
-        assert_close(scene["points2d"], x_reprojected, rtol=1e-4, atol=1e-4)
+        self.assert_close(scene["points3d"], X, rtol=1e-4, atol=1e-4)
+        self.assert_close(scene["points2d"], x_reprojected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device):
         points1 = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -70,4 +69,4 @@ class TestTriangulation:
         P1 = torch.nn.functional.pad(P1, [0, 1])
         P2 = kornia.core.ops.eye_like(3, points2)
         P2 = torch.nn.functional.pad(P2, [0, 1])
-        assert gradcheck(epi.triangulate_points, (P1, P2, points1, points2), raise_exception=True, fast_mode=True)
+        assert self.gradcheck(epi.triangulate_points, (P1, P2, points1, points2), raise_exception=True, fast_mode=True)

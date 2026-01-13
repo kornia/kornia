@@ -15,23 +15,15 @@
 # limitations under the License.
 #
 
-"""SAM-3 architecture modules for Kornia."""
-
-from __future__ import annotations
-
-from .common import Attention, MLPBlock
-from .image_encoder import ImageEncoderHiera, PatchEmbedding, ViTBlock
-from .mask_decoder import CrossAttentionTransformer, MaskDecoder
-from .prompt_encoder import PositionalEncoding, PromptEncoder
+from .config import KimiVLConfig, KimiVLProjectorConfig, MoonViTConfig
+from .model import KimiVLModel, KimiVLProjector
+from .moonvit import MoonViT
 
 __all__ = [
-    "Attention",
-    "CrossAttentionTransformer",
-    "ImageEncoderHiera",
-    "MLPBlock",
-    "MaskDecoder",
-    "PatchEmbedding",
-    "PositionalEncoding",
-    "PromptEncoder",
-    "ViTBlock",
+    "KimiVLConfig",
+    "KimiVLModel",
+    "KimiVLProjector",
+    "KimiVLProjectorConfig",
+    "MoonViT",
+    "MoonViTConfig",
 ]

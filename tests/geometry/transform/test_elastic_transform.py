@@ -17,14 +17,13 @@
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 from kornia.geometry.transform import elastic_transform2d
 
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestElasticTransform:
+class TestElasticTransform(BaseTester):
     def test_smoke(self, device, dtype):
         image = torch.rand(1, 4, 5, 5, device=device, dtype=dtype)
         noise = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
@@ -100,10 +99,12 @@ class TestElasticTransform:
         )
 
         actual = elastic_transform2d(image, noise)
-        assert_close(actual, expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(actual, expected, atol=1e-3, rtol=1e-3)
 
     @pytest.mark.parametrize("requires_grad", [True, False])
     def test_gradcheck(self, device, dtype, requires_grad):
         image = torch.rand(1, 1, 3, 3, device=device, dtype=torch.float64, requires_grad=requires_grad)
         noise = torch.rand(1, 2, 3, 3, device=device, dtype=torch.float64, requires_grad=not requires_grad)
-        assert gradcheck(elastic_transform2d, (image, noise), raise_exception=True, fast_mode=True, nondet_tol=1e-4)
+        assert self.gradcheck(
+            elastic_transform2d, (image, noise), raise_exception=True, fast_mode=True, nondet_tol=1e-4
+        )

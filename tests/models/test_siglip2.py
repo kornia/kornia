@@ -148,7 +148,8 @@ class TestSigLip2Model(BaseTester):
         assert features.shape == (batch_size, config.projection_dim)
 
     def test_return_loss(self, device, dtype, model, config):
-        """Test forward pass with return_loss=True."""
+        """Test forward pass with return_loss=True and verify logit_scale clamping."""
+        import math
 
         batch_size = 2
         pixel_values = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
@@ -160,6 +161,21 @@ class TestSigLip2Model(BaseTester):
 
         assert output.loss is not None
         assert output.loss.item() >= 0.0  # Loss should be non-negative
+
+        # Test logit_scale clamping with extreme values
+        with torch.no_grad():
+            # Test max clamping
+            model.logit_scale.data.fill_(100.0)
+            output_max = model(pixel_values=pixel_values, input_ids=input_ids)
+            assert torch.isfinite(output_max.logits_per_image).all(), "Max clamp: logits contain non-finite values"
+            assert math.isclose(output_max.logit_scale.item(), config.logit_scale_max, rel_tol=1e-5, abs_tol=1e-5), (
+                f"Max clamp failed: {output_max.logit_scale.item()} != {config.logit_scale_max}"
+            )
+
+            # Test min clamping
+            model.logit_scale.data.fill_(-10.0)
+            output_min = model(pixel_values=pixel_values, input_ids=input_ids)
+            assert output_min.logit_scale.item() >= 1.0, f"Min clamp failed: {output_min.logit_scale.item()} < 1.0"
 
     def test_gradcheck(self, device, dtype, config):
         """Test gradient computation correctness."""
