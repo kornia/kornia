@@ -41,7 +41,6 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
         >>> output = rgb_to_xyz(input)  # 2x3x4x5
 
     """
-    KORNIA_CHECK_IS_TENSOR(image)
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     # CIE RGB to XYZ Matrix (D65 White Point)
@@ -74,7 +73,6 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> output = xyz_to_rgb(input)  # 2x3x4x5
 
     """
-    KORNIA_CHECK_IS_TENSOR(image)
     KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     # CIE XYZ to RGB Matrix (D65 White Point)
@@ -108,9 +106,13 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
     kernel_compute = kernel.to(dtype=image_compute.dtype, device=image_compute.device)
     input_shape = image_compute.shape
     
+    # Empirical benchmarks show that einsum is faster on CPU for this specific pattern,
+    # while conv2d offers significant speedups on GPU/CUDA.
+    # We branch to ensure optimal performance on both devices.
     # BRANCH 1: CPU (Einsum)
     if image.device.type == "cpu":
         out = torch.einsum("...chw,oc->...ohw", image_compute, kernel_compute)
+        out = out.contiguous()
 
     # BRANCH 2: GPU/Accelerators (Conv2d)
     else:
@@ -125,7 +127,7 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
         # Unflatten back to original shape
         out = out_flat.reshape(input_shape)
 
-    return out
+    return out.contiguous()
 
 
 class RgbToXyz(nn.Module):
