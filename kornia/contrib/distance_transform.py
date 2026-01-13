@@ -22,8 +22,72 @@ import math
 import torch
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.filters import filter2d, filter3d
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
+
+
+def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float) -> torch.Tensor:
+    device = image.device
+    dtype = image.dtype
+    k_half = kernel_size // 2
+
+    n_iters = math.ceil(max(image.shape[2], image.shape[3]) / k_half)
+    grid = create_meshgrid(kernel_size, kernel_size, False, device, dtype)
+    grid = grid - k_half
+
+    dist = torch.hypot(grid[0, ..., 0], grid[0, ..., 1])
+    kernel = torch.exp(-dist / h).unsqueeze(0)
+
+    out = torch.zeros_like(image)
+    boundary = image.clone()
+    signal_ones = torch.ones_like(boundary)
+
+    for i in range(n_iters):
+        cdt = filter2d(boundary, kernel, border_type="replicate")
+        cdt = -h * torch.log(cdt)
+        cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
+
+        mask = cdt > 0
+        if not mask.any():
+            break
+
+        offset: int = i * k_half
+        out = out + (offset + cdt) * mask.to(dtype=out.dtype)
+        boundary = torch.where(mask, signal_ones, boundary)
+
+    return out
+
+
+def _distance_transform_3d_impl(image: torch.Tensor, kernel_size: int, h: float) -> torch.Tensor:
+    device = image.device
+    dtype = image.dtype
+    k_half = kernel_size // 2
+
+    n_iters = math.ceil(max(image.shape[2:]) / k_half)
+    grid = create_meshgrid3d(kernel_size, kernel_size, kernel_size, False, device, dtype)
+    grid = grid - k_half
+    dist = torch.norm(grid[0], p=2, dim=-1)
+    kernel = torch.exp(-dist / h).unsqueeze(0)
+
+    out = torch.zeros_like(image)
+    boundary = image.clone()
+    signal_ones = torch.ones_like(boundary)
+
+    for i in range(n_iters):
+        cdt = filter3d(boundary, kernel, border_type="replicate")
+        cdt = -h * torch.log(cdt)
+        cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
+
+        mask = cdt > 0
+        if not mask.any():
+            break
+
+        offset: int = i * k_half
+        out = out + (offset + cdt) * mask.to(dtype=out.dtype)
+        boundary = torch.where(mask, signal_ones, boundary)
+
+    return out
 
 
 def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.35) -> torch.Tensor:
@@ -52,65 +116,26 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
         >>> dt = distance_transform(volume)
 
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"image type is not a torch.Tensor. Got {type(image)}")
+    # Validation using KORNIA_CHECK API
+    KORNIA_CHECK_IS_TENSOR(image)
+    KORNIA_CHECK(image.is_floating_point(), "image must be a floating point tensor")
 
-    if not image.is_floating_point():
-        raise TypeError("image must be a floating point tensor")
+    KORNIA_CHECK(image.ndim in (4, 5), f"Invalid image shape, we expect BxCxHxW or BxCxDxHxW. Got: {image.shape}")
 
-    dim = len(image.shape)
-    if dim not in (4, 5):
-        raise ValueError(f"Invalid image shape, we expect 4D or 5D. Got: {image.shape}")
-
-    if kernel_size % 2 == 0 or kernel_size < 3:
-        raise ValueError("kernel_size must be an odd integer >= 3")
-
-    if not (h > 0):
-        raise ValueError("h must be a positive float")
-
-    device = image.device
-    dtype = image.dtype
-    k_half = kernel_size // 2
-
-    if dim == 4:
-        n_iters = math.ceil(max(image.shape[2], image.shape[3]) / k_half)
-        grid = create_meshgrid(kernel_size, kernel_size, False, device, dtype)
-        grid = grid - k_half
-
-        dist = torch.hypot(grid[0, ..., 0], grid[0, ..., 1])
-        kernel = torch.exp(-dist / h).unsqueeze(0)
-
-        def conv_op(x: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
-            return filter2d(x, k, border_type="replicate")
+    if image.ndim == 4:
+        KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
     else:
-        n_iters = math.ceil(max(image.shape[2:]) / k_half)
-        grid = create_meshgrid3d(kernel_size, kernel_size, kernel_size, False, device, dtype)
-        grid = grid - k_half
-        dist = torch.norm(grid[0], p=2, dim=-1)
-        kernel = torch.exp(-dist / h).unsqueeze(0)
+        KORNIA_CHECK_SHAPE(image, ["B", "C", "D", "H", "W"])
 
-        def conv_op(x: torch.Tensor, k: torch.Tensor) -> torch.Tensor:
-            return filter3d(x, k, border_type="replicate")
+    # dtype / param checks
+    KORNIA_CHECK_TYPE(kernel_size, int, "kernel_size must be an int")
+    KORNIA_CHECK(kernel_size % 2 != 0 and kernel_size >= 3, "kernel_size must be an odd integer >= 3")
+    KORNIA_CHECK(h > 0, f"h must be a positive float, got {h}")
 
-    out = torch.zeros_like(image)
-    boundary = image.clone()
-    signal_ones = torch.ones_like(boundary)
+    if image.ndim == 4:
+        return _distance_transform_2d_impl(image, kernel_size, h)
 
-    for i in range(n_iters):
-        cdt = conv_op(boundary, kernel)
-        cdt = -h * torch.log(cdt)
-
-        cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
-
-        mask = cdt > 0
-        if not mask.any():
-            break
-
-        offset: int = i * k_half
-        out = out + (offset + cdt) * mask.to(dtype=out.dtype)
-        boundary = torch.where(mask, signal_ones, boundary)
-
-    return out
+    return _distance_transform_3d_impl(image, kernel_size, h)
 
 
 class DistanceTransform(nn.Module):
