@@ -28,9 +28,13 @@ class TestPaliGemmaModules:
         conf = PaliGemmaConfig()
         conf.hidden_size = 32
         conf.intermediate_size = 64
+        conf.num_hidden_layers = 1
         conf.num_attention_heads = 4
         conf.head_dim = 8
         conf.vocab_size = 100
+
+        conf.vision_config.image_size = 32
+        conf.vision_config.patch_size = 16
         return conf
 
     def test_mlp(self, config):
@@ -46,25 +50,13 @@ class TestPaliGemmaModules:
         output = model(x, position_ids=position_ids)
         assert output.shape == (1, 10, config.hidden_size)
 
+    def test_forward(self, config):
+        model = PaliGemma(config)
+        model.eval()
 
-def test_paligemma_forward_pass() -> None:
-    config = PaliGemmaConfig()
+        pixel_values = torch.randn(1, 3, 32, 32)
+        input_ids = torch.randint(0, config.vocab_size, (1, 5))
 
-    config.hidden_size = 32
-    config.intermediate_size = 64
-    config.num_hidden_layers = 1
-    config.num_attention_heads = 4
-    config.head_dim = 8
-    config.vocab_size = 100
-    config.vision_config.image_size = 32
-    config.vision_config.patch_size = 16
+        logits = model(input_ids=input_ids, pixel_values=pixel_values)
 
-    model = PaliGemma(config)
-    model.eval()
-
-    pixel_values = torch.randn(1, 3, 32, 32)
-    input_ids = torch.randint(0, config.vocab_size, (1, 5))
-
-    logits = model(input_ids=input_ids, pixel_values=pixel_values)
-
-    assert logits.shape == (1, 9, config.vocab_size)
+        assert logits.shape == (1, 9, config.vocab_size)
