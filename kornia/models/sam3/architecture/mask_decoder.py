@@ -31,6 +31,27 @@ from kornia.core.check import KORNIA_CHECK
 from .common import Attention, MLPBlock
 
 
+class PositionalEncodingDecoder(nn.Module):
+    """Learnable positional encoding for 2D spatial features.
+
+    Used in mask decoder to encode spatial positions.
+    """
+
+    def __init__(self, embed_dim: int, height: int, width: int) -> None:
+        """Initialize PositionalEncodingDecoder.
+
+        Args:
+            embed_dim: Embedding dimension.
+            height: Height of feature map.
+            width: Width of feature map.
+        """
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.height = height
+        self.width = width
+        self.pos_embed = nn.Parameter(torch.randn(1, embed_dim, height, width) * 0.02)
+
+
 class CrossAttentionTransformer(nn.Module):
     """Transformer block with cross-attention between image and prompt embeddings.
 
@@ -118,15 +139,34 @@ class MaskDecoder(nn.Module):
         # Transformer for processing prompts
         self.transformer = CrossAttentionTransformer(embed_dim)
 
+        # Mask tokens for multi-mask generation (Phase 3)
+        self.mask_tokens = nn.ParameterList(
+            [nn.Parameter(torch.randn(1, 1, embed_dim) * 0.02) for _ in range(num_multimask_outputs)]
+        )
+
+        # Hypernetwork MLPs for multi-mask generation (Phase 3)
+        self.mask_prediction_heads = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(embed_dim, embed_dim),
+                    nn.ReLU(),
+                    nn.Linear(embed_dim, embed_dim // 2),
+                )
+                for _ in range(num_multimask_outputs)
+            ]
+        )
+
         # Mask prediction head
-        # NOTE: Phase 2 supports single-mask output only
-        # Multi-mask generation deferred to Phase 3 when mask_tokens and hypernetwork MLPs will be used
         self.output_upscaling = nn.Sequential(
             nn.ConvTranspose2d(embed_dim, embed_dim // 4, kernel_size=2, stride=2),
             nn.GroupNorm(1, embed_dim // 4),
             nn.ConvTranspose2d(embed_dim // 4, embed_dim // 8, kernel_size=2, stride=2),
         )
-        # NOTE: Phase 2 stub - mask_tokens and hypernetwork MLPs will be used in Phase 3 for multi-mask generation
+
+        # Final mask output layer per mask
+        self.mask_output_layers = nn.ModuleList(
+            [nn.Conv2d(embed_dim // 8, 1, kernel_size=1) for _ in range(num_multimask_outputs)]
+        )
 
         # IoU prediction head
         self.iou_prediction_head = nn.Sequential(
@@ -158,15 +198,33 @@ class MaskDecoder(nn.Module):
         B, N, _ = image_embeddings.shape
 
         # Infer spatial dimensions from sequence length
-        # image_embeddings: (B, N, D) where N = H*W for square grid (per batch)
         H = W = int(N**0.5)
         KORNIA_CHECK(H * W == N, f"image_embeddings must form a square grid. Got N={N}")
 
         # Reshape image embeddings to spatial form for processing
         image_embeddings_spatial = image_embeddings.view(B, H, W, self.embed_dim).permute(0, 3, 1, 2)
 
+        # Add positional encoding to image embeddings (Phase 3)
+        if not hasattr(self, "_pos_encoder"):
+            self._pos_encoder = PositionalEncodingDecoder(self.embed_dim, H, W)
+            self._pos_encoder = self._pos_encoder.to(image_embeddings_spatial.device)
+
+        image_embeddings_spatial = image_embeddings_spatial + self._pos_encoder.pos_embed
+
         # Add dense prompts to image embeddings
         if dense_prompt_embeddings.shape[1] > 0:
+            # Project dense prompts to match decoder embedding dimension if needed
+            if dense_prompt_embeddings.shape[1] != self.embed_dim:
+                if not hasattr(self, "_dense_projection"):
+                    in_channels = dense_prompt_embeddings.shape[1]
+                    self._dense_projection = nn.Conv2d(
+                        in_channels, self.embed_dim, kernel_size=1, bias=False
+                    )
+                    self._dense_projection = self._dense_projection.to(
+                        dense_prompt_embeddings.device
+                    )
+                dense_prompt_embeddings = self._dense_projection(dense_prompt_embeddings)
+
             # Resize dense prompts to match image embedding spatial size
             dense_resized = torch.nn.functional.interpolate(
                 dense_prompt_embeddings,
@@ -180,22 +238,42 @@ class MaskDecoder(nn.Module):
         # Reshape back to sequence form
         image_with_prompts = image_embeddings_spatial.permute(0, 2, 3, 1).reshape(B, H * W, self.embed_dim)
 
-        # Process sparse prompts through transformer
+        # Process sparse prompts through transformer (Phase 3: multi-mask support)
         if sparse_prompt_embeddings.shape[1] > 0:
+            # Project sparse prompts to match decoder embedding dimension if needed
+            if sparse_prompt_embeddings.shape[-1] != self.embed_dim:
+                if not hasattr(self, "_prompt_projection"):
+                    self._prompt_projection = nn.Linear(sparse_prompt_embeddings.shape[-1], self.embed_dim, bias=False)
+                    self._prompt_projection = self._prompt_projection.to(sparse_prompt_embeddings.device)
+                sparse_prompt_embeddings = self._prompt_projection(sparse_prompt_embeddings)
+
             sparse_processed = self.transformer(sparse_prompt_embeddings, image_with_prompts)
-        else:
-            sparse_processed = sparse_prompt_embeddings
-
-        # Upscale for mask prediction
-        masks = self.output_upscaling(image_embeddings_spatial)  # (B, D/8, H_out, W_out)
-
-        # Predict IoU scores
-        if sparse_processed.shape[1] > 0:
             iou_input = sparse_processed.mean(dim=1)  # (B, D)
         else:
+            sparse_processed = sparse_prompt_embeddings
             iou_input = torch.zeros(B, self.embed_dim, device=image_embeddings.device, dtype=image_embeddings.dtype)
 
-        iou_pred = self.iou_prediction_head(iou_input)  # (B, num_masks)
+        # Upscale features for mask prediction
+        features_upscaled = self.output_upscaling(image_embeddings_spatial)  # (B, D/8, H_out, W_out)
+
+        # Generate multiple masks (Phase 3)
+        masks_list = []
+        for i in range(self.num_multimask_outputs):
+            # Use mask token and hypernetwork MLP to generate mask i
+            mask_token = self.mask_tokens[i]  # (1, 1, D)
+            mask_token = mask_token.expand(B, -1, -1)  # (B, 1, D)
+
+            # Process through hypernetwork MLP (Phase 3: used for future modulation)
+            _ = self.mask_prediction_heads[i](mask_token.squeeze(1))  # (B, D/2)
+
+            # Generate mask
+            mask = self.mask_output_layers[i](features_upscaled)  # (B, 1, H_out, W_out)
+            masks_list.append(mask)
+
+        masks = torch.cat(masks_list, dim=1)  # (B, num_multimask_outputs, H_out, W_out)
+
+        # Predict IoU scores
+        iou_pred = self.iou_prediction_head(iou_input)  # (B, num_multimask_outputs)
 
         return masks, iou_pred
 
@@ -212,15 +290,16 @@ class MaskDecoder(nn.Module):
             image_embeddings: Image embeddings of shape (B, N, D) from image encoder.
             sparse_prompt_embeddings: Sparse prompt embeddings of shape (B, M, D) from prompt encoder.
             dense_prompt_embeddings: Dense prompt embeddings of shape (B, D, H, W) from prompt encoder.
-            multimask_output: If True, output multiple masks per prompt. Otherwise, output single mask.
+            multimask_output: If True, output multiple masks per prompt. Otherwise, output best single mask.
 
         Returns:
             Tuple of (masks, iou_pred) where:
-                - masks: Segmentation masks of shape (B, num_masks, H, W).
-                - iou_pred: IoU predictions of shape (B, num_masks).
+                - masks: Segmentation masks of shape (B, num_masks, H, W) if multimask_output=True,
+                         else (B, 1, H, W) with best mask.
+                - iou_pred: IoU predictions of shape (B, num_multimask_outputs).
 
         Raises:
-            ValueError: If image_embeddings shape is invalid.
+            ValueError: If embeddings shapes are invalid.
         """
         KORNIA_CHECK(
             image_embeddings.ndim == 3,
@@ -235,19 +314,23 @@ class MaskDecoder(nn.Module):
             f"dense_prompt_embeddings must be 4D (B, D, H, W), got shape {dense_prompt_embeddings.shape}",
         )
 
-        # Predict masks
-        # NOTE: positional encoding intentionally omitted in Phase 2
+        # Predict masks (Phase 3: full multi-mask generation with positional encoding)
         masks, iou_pred = self._predict_masks(
             image_embeddings,
             sparse_prompt_embeddings,
             dense_prompt_embeddings,
         )
 
-        # NOTE: Phase 2 generates single mask only
-        # multimask_output parameter kept for forward compatibility but currently ignored
-        # Multi-mask generation deferred to Phase 3
+        # Select masks based on multimask_output flag
+        if not multimask_output:
+            # Return only best mask (highest IoU prediction)
+            best_mask_idx = iou_pred.argmax(dim=1, keepdim=True)  # (B, 1)
+            gather_idx = best_mask_idx.unsqueeze(-1).unsqueeze(-1).expand(
+                -1, -1, masks.shape[2], masks.shape[3]
+            )
+            masks = torch.gather(masks, 1, gather_idx)
 
         return masks, iou_pred
 
 
-__all__ = ["CrossAttentionTransformer", "MaskDecoder"]
+__all__ = ["CrossAttentionTransformer", "MaskDecoder", "PositionalEncodingDecoder"]

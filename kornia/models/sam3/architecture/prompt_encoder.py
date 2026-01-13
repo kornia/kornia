@@ -171,10 +171,88 @@ class PromptEncoder(nn.Module):
             for i in range(N):
                 label = int(labels[b, i].item())
                 label_idx = min(label, 1)  # 0 or 1 for background/foreground
-                label_embeddings[b, i] = self.point_embeddings[label_idx].weight[0]
+                label_embeddings[b, i] = self.point_embeddings[label_idx].weight[0]  # type: ignore[index]
 
         output = pe + label_embeddings
         return output
+
+    def _encode_boxes(
+        self,
+        boxes: torch.Tensor,
+    ) -> torch.Tensor:
+        """Encode bounding box prompts into embeddings.
+
+        Encodes box corners (top-left and bottom-right) and combines them.
+
+        Args:
+            boxes: Tensor of shape (B, num_boxes, 4) with coordinates (x0, y0, x1, y1).
+
+        Returns:
+            Sparse embeddings of shape (B, num_boxes, embed_dim).
+
+        Raises:
+            ValueError: If boxes shape is invalid.
+        """
+        KORNIA_CHECK_SHAPE(boxes, ["B", "num_boxes", "4"])
+        _, _, _ = boxes.shape
+
+        # Extract corners: (x0, y0) and (x1, y1)
+        corners = boxes[..., :2], boxes[..., 2:]  # Each is (B, num_boxes, 2)
+
+        # Encode each corner with positional encoding
+        corner1_pe = self.pe_layer(corners[0])  # (B, num_boxes, embed_dim)
+        corner2_pe = self.pe_layer(corners[1])  # (B, num_boxes, embed_dim)
+
+        # Add box-specific embeddings (indices 2 and 3 for top-left and bottom-right)
+        box_start_embed = self.point_embeddings[2].weight[0]  # type: ignore[index]  # Box corner start
+        box_end_embed = self.point_embeddings[3].weight[0]  # type: ignore[index]  # Box corner end
+
+        # Combine: average corners + add box-type embedding
+        box_embeddings = (corner1_pe + corner2_pe) / 2.0
+        box_embeddings = box_embeddings + (box_start_embed + box_end_embed) / 2.0
+
+        return box_embeddings
+
+    def _encode_masks(
+        self,
+        masks: torch.Tensor,
+    ) -> torch.Tensor:
+        """Encode binary mask prompts into dense embeddings.
+
+        Performs multi-scale downsampling and semantic encoding.
+
+        Args:
+            masks: Tensor of shape (B, 1, H, W) with binary masks.
+
+        Returns:
+            Dense embeddings of shape (B, embed_dim, H_out, W_out).
+        """
+        KORNIA_CHECK_SHAPE(masks, ["B", "1", "H", "W"])
+
+        # Multi-scale downscaling with semantic processing
+        x = self.mask_downscaling(masks)  # (B, mask_in_chans, H/4, W/4)
+
+        # Resize to match expected output size (input_image_size // 4)
+        x = torch.nn.functional.interpolate(
+            x,
+            size=(self.input_image_size // 4, self.input_image_size // 4),
+            mode="bilinear",
+            align_corners=False,
+        )
+
+        # Project to embed_dim if needed (mask_in_chans may differ from embed_dim)
+        if x.shape[1] != self.embed_dim:
+            # Use learned projection
+            if not hasattr(self, "_mask_projection"):
+                self._mask_projection = nn.Linear(x.shape[1], self.embed_dim, bias=False)
+                self._mask_projection = self._mask_projection.to(x.device)
+            # Reshape for linear projection
+            B, C, H, W = x.shape
+            x_flat = x.permute(0, 2, 3, 1).reshape(-1, C)  # (B*H*W, C)
+            x_proj = self._mask_projection(x_flat)  # (B*H*W, embed_dim)
+            x = x_proj.reshape(B, H, W, self.embed_dim).permute(0, 3, 1, 2)
+
+        return x
 
     def forward(
         self,
@@ -189,18 +267,16 @@ class PromptEncoder(nn.Module):
             points: Optional tuple of (coords, labels) where:
                 - coords: Tensor of shape (B, N, 2) with normalized coordinates in [0, 1].
                 - labels: Tensor of shape (B, N) with binary labels (0 or 1).
-            boxes: Optional tensor of shape (B, num_boxes, 4) with normalized bbox coordinates.
-                Currently not implemented (returns zero embeddings).
+            boxes: Optional tensor of shape (B, num_boxes, 4) with normalized bbox coordinates (x0, y0, x1, y1).
             masks: Optional tensor of shape (B, 1, H, W) with binary masks.
-                Currently not implemented (returns zero embeddings).
 
         Returns:
             Tuple of (sparse_embeddings, dense_embeddings) where:
                 - sparse_embeddings: Tensor of shape (B, num_sparse, embed_dim) or (B, 0, embed_dim) if no prompts.
-                - dense_embeddings: Tensor of shape (B, embed_dim, H, W) or zeros if no masks.
+                - dense_embeddings: Tensor of shape (B, embed_dim, H, W).
 
         Raises:
-            ValueError: If no prompts are provided or point shapes are invalid.
+            ValueError: If prompts have invalid shapes.
         """
         sparse_embeddings = []
         B = 1  # Default batch size
@@ -224,13 +300,9 @@ class PromptEncoder(nn.Module):
             point_embeddings = self._encode_points((coords, labels))
             sparse_embeddings.append(point_embeddings)
 
-        # Process box prompts (stub)
+        # Process box prompts (Phase 3: full implementation)
         if boxes is not None:
-            KORNIA_CHECK_SHAPE(boxes, ["B", "num_boxes", "4"])
-            # Boxes are intentionally stubbed in Phase 2
-            # Full implementation (box corner encoding + corner embedding lookup) deferred to Phase 3
-            num_boxes = boxes.shape[1]
-            box_embeddings = torch.zeros(B, num_boxes, self.embed_dim, device=boxes.device, dtype=boxes.dtype)
+            box_embeddings = self._encode_boxes(boxes)
             sparse_embeddings.append(box_embeddings)
 
         # Concatenate sparse embeddings
@@ -241,17 +313,9 @@ class PromptEncoder(nn.Module):
                 device = torch.device("cpu")
             sparse_embeddings = torch.zeros(B, 0, self.embed_dim, device=device)
 
-        # Process mask prompts (stub)
+        # Process mask prompts (Phase 3: full semantic encoding)
         if masks is not None:
-            KORNIA_CHECK_SHAPE(masks, ["B", "1", "H", "W"])
-            dense_embeddings = self.mask_downscaling(masks)
-            # Resize to match expected output size
-            dense_embeddings = torch.nn.functional.interpolate(
-                dense_embeddings,
-                size=(self.input_image_size // 4, self.input_image_size // 4),
-                mode="bilinear",
-                align_corners=False,
-            )
+            dense_embeddings = self._encode_masks(masks)
         else:
             # No mask: use no_mask embedding
             if device is None:

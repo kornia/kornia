@@ -25,5 +25,7 @@ capability.
 from __future__ import annotations
 
 from .architecture import ImageEncoderHiera
+from .config import Sam3Config, Sam3ModelType
+from .model import Sam3, SegmentationResults
 
-__all__ = ["ImageEncoderHiera"]
+__all__ = ["ImageEncoderHiera", "Sam3", "Sam3Config", "Sam3ModelType", "SegmentationResults"]

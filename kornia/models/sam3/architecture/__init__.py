@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from .common import Attention, MLPBlock
 from .image_encoder import ImageEncoderHiera, PatchEmbedding, ViTBlock
-from .mask_decoder import CrossAttentionTransformer, MaskDecoder
+from .mask_decoder import CrossAttentionTransformer, MaskDecoder, PositionalEncodingDecoder
 from .prompt_encoder import PositionalEncoding, PromptEncoder
 
 __all__ = [
@@ -32,6 +32,7 @@ __all__ = [
     "MaskDecoder",
     "PatchEmbedding",
     "PositionalEncoding",
+    "PositionalEncodingDecoder",
     "PromptEncoder",
     "ViTBlock",
 ]
