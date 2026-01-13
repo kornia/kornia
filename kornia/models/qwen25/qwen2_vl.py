@@ -26,24 +26,146 @@ from torch.nn import Module
 
 
 class Qwen2VLPatchMerger(Module):
-    """Patch merger block used in the Qwen2-VL vision encoder.
-
+    """Merge image patches using 3D convolution for video/temporal support.
+    
+    This implementation uses Conv3d to match HuggingFace's architecture,
+    which supports both images and video frames by processing the temporal dimension.
+    
     Args:
-        dim: The output embedding dimension (e.g., 1280).
-        context_window: The context window size (unused in this skeleton but kept for API).
-        spatial_merge_size: The spatial merge size (unused in this skeleton).
+        dim: Output embedding dimension.
+        context_window: Context window size.
+        spatial_merge_size: Spatial merge size (patch size = 2 for temporal).
     """
 
-    def __init__(self, dim: int, context_window: int = 224, spatial_merge_size: int = 2) -> None:
+    def __init__(
+        self, 
+        dim: int, 
+        context_window: int = 224, 
+        spatial_merge_size: int = 2,
+        in_channels: int = 3,
+    ) -> None:
         super().__init__()
-        self.conv = nn.Conv2d(3, dim, kernel_size=14, stride=14)
+        self.spatial_merge_size = spatial_merge_size
+        
+        # Use Conv3d to match HuggingFace (handles temporal dimension)
+        # kernel_size: (temporal=2, height=14, width=14)
+        self.conv = nn.Conv3d(
+            in_channels=in_channels,
+            out_channels=dim,
+            kernel_size=(spatial_merge_size, 14, 14),
+            stride=(spatial_merge_size, 14, 14),
+            bias=True,
+        )
         self.ln_q = nn.LayerNorm(dim, eps=1e-6)
 
     def forward(self, x: Tensor) -> Tensor:
+        # Input: (B, C, H, W) for images
+        # For Conv3d with kernel (2, 14, 14), need at least T=2
+        if x.dim() == 4:
+            # Pad temporal dimension by duplicating the frame
+            # (B, C, H, W) -> (B, C, 2, H, W)
+            x = x.unsqueeze(2).repeat(1, 1, self.spatial_merge_size, 1, 1)
+        
+        # Conv3d: (B, C, T, H, W) -> (B, dim, T', H', W')
         x = self.conv(x)
+        
+        # Flatten spatial and temporal: (B, dim, T', H', W') -> (B, dim, T'*H'*W')
         x = x.flatten(2)
+        
+        # Transpose for LayerNorm: (B, seq_len, dim)
         x = x.transpose(1, 2)
         x = self.ln_q(x)
+        return x
+
+
+class Qwen2VLMerger(Module):
+    """Final merger layer with spatial compression and MLP.
+    
+    This matches HuggingFace's implementation which:
+    1. Compresses visual tokens spatially (2x2 patch grouping)
+    2. Applies LayerNorm
+    3. Projects through 2-layer MLP
+    
+    The spatial compression groups adjacent 2x2 patches:
+    (B, H*W, 1280) → (B, H*W/4, 1280*4) = (B, H*W/4, 5120)
+    
+    Args:
+        embed_dim: Input embedding dimension (default: 1280).
+        hidden_dim: Hidden layer dimension after compression (default: 5120).
+        out_dim: Output dimension (default: 2048).
+        spatial_merge_size: Size of spatial grouping (default: 2 for 2x2).
+    """
+    
+    def __init__(
+        self,
+        embed_dim: int = 1280,
+        hidden_dim: int = 5120,
+        out_dim: int = 2048,
+        spatial_merge_size: int = 2,
+    ) -> None:
+        super().__init__()
+        
+        self.embed_dim = embed_dim
+        self.spatial_merge_size = spatial_merge_size
+        
+        # After spatial merging, dim becomes embed_dim * (spatial_merge_size^2)
+        # For 2x2 merging: 1280 * 4 = 5120
+        merged_dim = embed_dim * (spatial_merge_size ** 2)
+        
+        # LayerNorm operates on original embed_dim (before spatial merge)
+        self.ln_q = nn.LayerNorm(embed_dim, eps=1e-6)
+        
+        # 2-layer MLP operates on merged dimension
+        # Note: HF uses indices 0 and 2 (mlp.0 and mlp.2) in state_dict
+        self.mlp = nn.Sequential(
+            nn.Linear(merged_dim, hidden_dim),  # mlp.0: 5120 → 5120
+            nn.GELU(),                           # mlp.1 (implicit)
+            nn.Linear(hidden_dim, out_dim),     # mlp.2: 5120 → 2048
+        )
+    
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass with spatial compression.
+        
+        Args:
+            x: Input tensor of shape (B, seq_len, embed_dim)
+               where seq_len = H*W from vision encoder
+        
+        Returns:
+            Output tensor of shape (B, seq_len/4, out_dim)
+        """
+        # Apply LayerNorm before spatial merging
+        x = self.ln_q(x)
+        
+        # Spatial compression: group 2x2 patches
+        # Input: (B, H*W, 1280)
+        # Need to reshape to (B, H, W, 1280) first
+        B, L, C = x.shape
+        
+        # Infer spatial dimensions (assume square feature map)
+        H = W = int(L ** 0.5)
+        assert H * W == L, f"Sequence length {L} must be a perfect square"
+        
+        # Reshape to spatial: (B, H, W, C)
+        x = x.view(B, H, W, C)
+        
+        # Group 2x2 patches: (B, H, W, C) → (B, H/2, W/2, 2, 2, C)
+        merge_size = self.spatial_merge_size
+        x = x.view(
+            B,
+            H // merge_size,
+            merge_size,
+            W // merge_size,
+            merge_size,
+            C
+        )
+        
+        # Permute and flatten: (B, H/2, W/2, 2, 2, C) → (B, H/2, W/2, C*4)
+        x = x.permute(0, 1, 3, 2, 4, 5).contiguous()
+        x = x.view(B, (H // merge_size) * (W // merge_size), C * (merge_size ** 2))
+        
+        # Apply MLP: (B, seq_len/4, 5120) → (B, seq_len/4, 2048)
+        x = self.mlp(x)
+        
         return x
 
 
@@ -66,9 +188,14 @@ class Qwen2VLRotaryEmbedding(Module):
         self.theta = theta
 
         inv_freq = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=torch.float) / dim))
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        # Changed to persistent=True so rotary embeddings are saved in state_dict
+        self.register_buffer("inv_freq", inv_freq, persistent=True)
 
     def forward(self, x: Tensor, cu_seqlens: Optional[Tensor] = None) -> Tensor:
+        # TODO: Implement proper rotary embedding computation
+        # This should compute cos/sin embeddings and return them for use in attention
+        # Current implementation is a no-op for compatibility with existing skeleton
+        # See: https://github.com/huggingface/transformers for reference implementation
         return x
 
 
@@ -82,6 +209,10 @@ class Qwen2VLVisionAttention(Module):
 
     def __init__(self, dim: int, num_heads: int = 16) -> None:
         super().__init__()
+        
+        # Validate that dimension is divisible by number of heads
+        assert dim % num_heads == 0, f"dim ({dim}) must be divisible by num_heads ({num_heads})"
+        
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
         self.scale = self.head_dim**-0.5
@@ -93,6 +224,11 @@ class Qwen2VLVisionAttention(Module):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
+
+        # TODO: Apply rotary positional embedding to q and k before attention
+        # if rot_pos_emb is not None:
+        #     q, k = apply_rotary_pos_emb(q, k, rot_pos_emb)
+        # Currently rot_pos_emb is accepted but not used
 
         x = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0)
 
@@ -170,16 +306,82 @@ class Qwen2VLVisionTransformer(Module):
         num_heads: int = 16,
         mlp_ratio: float = 4.0,
         in_channels: int = 3,
+        out_hidden_size: int = 2048,
     ) -> None:
         super().__init__()
         self.patch_embed = Qwen2VLPatchMerger(embed_dim, context_window=224, spatial_merge_size=2)
         self.blocks = nn.ModuleList([Qwen2VLVisionBlock(embed_dim, num_heads, mlp_ratio) for _ in range(depth)])
         self.rotary_pos_emb = Qwen2VLRotaryEmbedding(embed_dim // num_heads)
+        
+        # Final merger projection: embed_dim -> out_hidden_size
+        # Uses 2-layer MLP with LayerNorm to match HuggingFace
+        self.merger = Qwen2VLMerger(embed_dim=embed_dim, out_dim=out_hidden_size)
+    
+    @classmethod
+    def from_pretrained(
+        cls,
+        model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct",
+        embed_dim: int = 1280,
+        depth: int = 32,
+        num_heads: int = 16,
+        mlp_ratio: float = 4.0,
+        out_hidden_size: int = 2048,
+    ) -> "Qwen2VLVisionTransformer":
+        """Load pretrained Vision Transformer from HuggingFace.
+        
+        Args:
+            model_id: HuggingFace model identifier.
+            embed_dim: Embedding dimension (must match pretrained model).
+            depth: Number of transformer blocks (must match pretrained model).
+            num_heads: Number of attention heads (must match pretrained model).
+            mlp_ratio: MLP expansion ratio (must match pretrained model).
+        
+        Returns:
+            Qwen2VLVisionTransformer with loaded pretrained weights.
+        
+        Example:
+            >>> model = Qwen2VLVisionTransformer.from_pretrained()
+            >>> image = torch.randn(1, 3, 448, 448)
+            >>> output = model(image)
+        
+        Note:
+            This method requires the transformers library.
+            Install it with: pip install transformers
+        """
+        from .weights_loader import Qwen25WeightLoader
+        
+        # Create model instance
+        model = cls(
+            embed_dim=embed_dim,
+            depth=depth,
+            num_heads=num_heads,
+            mlp_ratio=mlp_ratio,
+            out_hidden_size=out_hidden_size,
+        )
+        
+        # Load weights
+        loader = Qwen25WeightLoader(model_id)
+        state_dict = loader.load_weights("vision_encoder")
+        
+        # Load into model (strict=False to allow missing rotary embedding keys)
+        result = model.load_state_dict(state_dict, strict=False)
+        
+        # Log any missing or unexpected keys
+        if result.missing_keys or result.unexpected_keys:
+            if result.missing_keys:
+                print(f"Warning: {len(result.missing_keys)} missing keys")
+            if result.unexpected_keys:
+                print(f"Warning: {len(result.unexpected_keys)} unexpected keys")
+        
+        return model
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.patch_embed(x)
         rot_pos_emb = self.rotary_pos_emb(x)
         for block in self.blocks:
             x = block(x, rot_pos_emb=rot_pos_emb)
-
+        
+        # Apply final projection (merger)
+        x = self.merger(x)
+        
         return x

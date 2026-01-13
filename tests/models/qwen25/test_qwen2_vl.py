@@ -30,4 +30,6 @@ class TestQwen2VL:
         output = model(input)
 
         assert output.shape[0] == batch_size
-        assert output.shape[2] == 1280
+        # Get expected output dimension from model (merger output)
+        expected_dim = model.merger.mlp[-1].out_features
+        assert output.shape[2] == expected_dim
