@@ -85,7 +85,7 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
             [0.0556466391351772, -0.2040413383665112, 1.0573110696453443],
         ],
         device=image.device,
-        dtype=image.dtype if image.is_floating_point() else torch.float32
+        dtype=image.dtype
     )
 
     # Apply Optimized Linear Transformation
@@ -103,19 +103,17 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
     Returns:
         Tensor with the same shape as ``image`` containing the transformed values.
     """
-    # Propagate Dtype: Cast image to match kernel's dtype
-    #    - If kernel is float32 (input was int), this casts image to float32
-    #    - If kernel is float64 (input was double), this keeps image as float64
-    image_compute = image.to(dtype=kernel.dtype)
+    # Handle Integer inputs by casting to float
+    image_compute = image.float()
+    kernel_compute = kernel.to(dtype=image_compute.dtype, device=image_compute.device)
     input_shape = image_compute.shape
     
     # Empirical benchmarks show that einsum is faster on CPU for this specific pattern,
     # while conv2d offers significant speedups on GPU/CUDA.
     # We branch to ensure optimal performance on both devices.
-    
     # BRANCH 1: CPU (Einsum)
     if image.device.type == "cpu":
-        out = torch.einsum("...chw,oc->...ohw", image_compute, kernel)
+        out = torch.einsum("...chw,oc->...ohw", image_compute, kernel_compute)
         out = out.contiguous()
 
     # BRANCH 2: GPU/Accelerators (Conv2d)
@@ -124,7 +122,7 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
         input_flat = image_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
         
         # Reshape kernel: (3, 3) -> (3, 3, 1, 1)
-        weight = kernel.view(3, 3, 1, 1)
+        weight = kernel_compute.view(3, 3, 1, 1)
         
         out_flat = F.conv2d(input_flat, weight)
         
