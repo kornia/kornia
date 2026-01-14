@@ -35,6 +35,7 @@ from .lovasz_hinge import LovaszHingeLoss, lovasz_hinge_loss
 from .lovasz_softmax import LovaszSoftmaxLoss, lovasz_softmax_loss
 from .ms_ssim import MS_SSIMLoss
 from .mutual_information import (
+    MIKernel,
     MILossFromRef,
     MILossFromRef2D,
     MILossFromRef3D,
@@ -67,6 +68,7 @@ __all__ = [
     "InverseDepthSmoothnessLoss",
     "LovaszHingeLoss",
     "LovaszSoftmaxLoss",
+    "MIKernel",
     "MILossFromRef",
     "MILossFromRef2D",
     "MILossFromRef3D",
