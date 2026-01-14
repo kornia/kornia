@@ -20,7 +20,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import torch
 from torch import nn
 
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.base import AugmentationBase
 
 
 class OperationBase(nn.Module):
@@ -41,14 +41,14 @@ class OperationBase(nn.Module):
 
     def __init__(
         self,
-        operation: _AugmentationBase,
+        operation: AugmentationBase,
         initial_magnitude: Optional[List[Tuple[str, Optional[float]]]] = None,
         is_batch_operation: bool = False,
         magnitude_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__()
-        if not isinstance(operation, _AugmentationBase):
+        if not isinstance(operation, AugmentationBase):
             raise ValueError(f"Only Kornia augmentations supported. Got {operation}.")
 
         self.op = operation

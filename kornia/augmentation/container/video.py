@@ -21,7 +21,7 @@ import torch
 from torch import nn
 
 import kornia.augmentation as K
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.base import AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, _get_new_batch_shape
 from kornia.geometry.boxes import Boxes
@@ -199,7 +199,7 @@ class VideoSequential(ImageSequential):
 
         params = []
         for name, module in named_modules:
-            if isinstance(module, (K.RandomCrop, _AugmentationBase, K.MixAugmentationBaseV2)):
+            if isinstance(module, (K.RandomCrop, AugmentationBase, K.MixAugmentationBaseV2)):
                 is_same_on_batch = getattr(module, "same_on_batch", False)
 
                 if self.same_on_frame and is_same_on_batch:

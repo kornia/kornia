@@ -19,13 +19,15 @@ from typing import Any, Dict, Optional
 
 from torch import Tensor
 
-from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
+from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
 
-class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
+class IntensityAugmentationBase2D(AugmentationBase2D):
     r"""IntensityAugmentationBase2D base class for customized intensity augmentation implementations.
+
+    Intensity augmentations do not modify geometry, so masks, boxes, and keypoints are passed through unchanged.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -38,13 +40,10 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
 
     """
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        return self.identity_matrix(input)
-
     def apply_non_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        # For the images where batch_prob == False.
+        """For the images where batch_prob == False."""
         return input
 
     def apply_non_transform_mask(
@@ -57,12 +56,12 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
     ) -> Tensor:
         return input
 
-    def apply_non_transform_boxes(
+    def apply_non_transform_box(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
         return input
 
-    def apply_transform_boxes(
+    def apply_transform_box(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
         return input

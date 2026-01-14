@@ -23,7 +23,7 @@ import torch
 from torch import nn
 
 import kornia.augmentation as K
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.base import AugmentationBase
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -143,7 +143,7 @@ class SequentialBase(BasicSequentialBase):
     ) -> None:
         for mod in self.children():
             # MixAugmentation does not have return transform
-            if isinstance(mod, (_AugmentationBase, K.MixAugmentationBaseV2)):
+            if isinstance(mod, (AugmentationBase, K.MixAugmentationBaseV2)):
                 if same_on_batch is not None:
                     mod.same_on_batch = same_on_batch
                 if keepdim is not None:

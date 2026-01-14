@@ -15,25 +15,23 @@
 # limitations under the License.
 #
 
+"""Base classes for 2D augmentations with flattened hierarchy."""
+
 from typing import Any, Dict, Optional
 
 import torch
 from torch import float16, float32, float64
 
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.base import AugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_input_by_shape, _validate_input_dtype
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_autocast_enabled
-from kornia.geometry.boxes import Boxes
-from kornia.geometry.keypoints import Keypoints
 
 
-class AugmentationBase2D(_AugmentationBase):
-    r"""AugmentationBase2D base class for customized augmentation implementations.
+class AugmentationBase2D(AugmentationBase):
+    r"""AugmentationBase2D base class for 2D augmentation implementations.
 
-    AugmentationBase2D aims at offering a generic base class for a greater level of customization.
-    If the subclass contains routined matrix-based transformations, `RigidAffineAugmentationBase2D`
-    might be a better fit.
+    This is the common base class for all 2D augmentations (both intensity and geometric).
+    It provides 2D tensor validation and transformation.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -45,6 +43,22 @@ class AugmentationBase2D(_AugmentationBase):
           form ``False``.
 
     """
+
+    _transform_matrix: Optional[torch.Tensor] = None
+
+    @property
+    def transform_matrix(self) -> Optional[torch.Tensor]:
+        return self._transform_matrix
+
+    def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
+        """Return 3x3 identity matrix."""
+        return eye_like(3, input)
+
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
+        """Compute transformation matrix. Override in geometric augmentations."""
+        return self.identity_matrix(input)
 
     def validate_tensor(self, input: torch.Tensor) -> None:
         """Check if the input torch.tensor is formatted as expected."""
@@ -63,116 +77,23 @@ class AugmentationBase2D(_AugmentationBase):
         else:
             return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
 
-
-class RigidAffineAugmentationBase2D(AugmentationBase2D):
-    r"""AugmentationBase2D base class for rigid/affine augmentation implementations.
-
-    RigidAffineAugmentationBase2D enables routined transformation with given transformation matrices
-    for different data types like masks, boxes, and keypoints.
-
-    Args:
-        p: probability for applying an augmentation. This param controls the augmentation probabilities
-          element-wise for a batch.
-        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
-          probabilities batch-wise.
-        same_on_batch: apply the same transformation across the batch.
-        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
-          form ``False``.
-
-    """
-
-    _transform_matrix: Optional[torch.Tensor]
-
-    @property
-    def transform_matrix(self) -> Optional[torch.Tensor]:
-        return self._transform_matrix
-
-    def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
-        """Return 3x3 identity matrix."""
-        return eye_like(3, input)
-
-    def compute_transformation(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
-    ) -> torch.Tensor:
-        raise NotImplementedError
-
-    def generate_transformation_matrix(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
-    ) -> torch.Tensor:
-        """Generate transformation matrices with the given input and param settings."""
-        batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5
-
-        in_tensor = self.transform_tensor(input)
-        if not to_apply.any():
-            trans_matrix = self.identity_matrix(in_tensor)
-        elif to_apply.all():
-            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
-        else:
-            trans_matrix_A = self.identity_matrix(in_tensor)
-            trans_matrix_B = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
-
-            if is_autocast_enabled():
-                trans_matrix_A = trans_matrix_A.type(input.dtype)
-                trans_matrix_B = trans_matrix_B.type(input.dtype)
-
-            trans_matrix = trans_matrix_A.index_put((to_apply,), trans_matrix_B)
-
-        return trans_matrix
-
-    def inverse_inputs(
-        self,
-        input: torch.Tensor,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        raise NotImplementedError
-
-    def inverse_masks(
-        self,
-        input: torch.Tensor,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        raise NotImplementedError
-
-    def inverse_boxes(
-        self,
-        input: Boxes,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-    ) -> Boxes:
-        raise NotImplementedError
-
-    def inverse_keypoints(
-        self,
-        input: Keypoints,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-    ) -> Keypoints:
-        raise NotImplementedError
-
-    def inverse_classes(
-        self,
-        input: torch.Tensor,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        raise NotImplementedError
-
     def apply_func(
         self, in_tensor: torch.Tensor, params: Dict[str, torch.Tensor], flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         if flags is None:
             flags = self.flags
 
-        trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
-        output = self.transform_inputs(in_tensor, params, flags, trans_matrix)
-        self._transform_matrix = trans_matrix
+        # Set transformation matrix to identity for base 2D augmentations
+        self._transform_matrix = self.identity_matrix(in_tensor)
+        output = self.transform_inputs(in_tensor, params, flags, self._transform_matrix)
 
         return output
+
+
+# Backward compatibility alias
+RigidAffineAugmentationBase2D = AugmentationBase2D
+
+__all__ = [
+    "AugmentationBase2D",
+    "RigidAffineAugmentationBase2D",
+]

@@ -21,13 +21,13 @@ import torch
 from torch import float16, float32, float64
 
 import kornia
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.base import AugmentationBase
 from kornia.augmentation.utils import _transform_input3d, _transform_input3d_by_shape, _validate_input_dtype
 from kornia.geometry.boxes import Boxes3D
 from kornia.geometry.keypoints import Keypoints3D
 
 
-class AugmentationBase3D(_AugmentationBase):
+class AugmentationBase3D(AugmentationBase):
     r"""AugmentationBase3D base class for customized augmentation implementations.
 
     Args:

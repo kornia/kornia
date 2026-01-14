@@ -21,7 +21,7 @@ import torch
 from torch import nn
 
 import kornia.augmentation as K
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.base import AugmentationBase
 from kornia.augmentation.utils import override_parameters
 from kornia.core import ImageModule
 from kornia.core.mixin.image_module import ImageModuleMixIn
@@ -239,7 +239,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
         for name, module in named_modules:
-            if isinstance(module, (_AugmentationBase | K.MixAugmentationBaseV2 | ImageSequentialBase)):
+            if isinstance(module, (AugmentationBase | K.MixAugmentationBaseV2 | ImageSequentialBase)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:

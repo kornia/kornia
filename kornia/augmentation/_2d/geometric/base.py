@@ -19,15 +19,20 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
-from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
+from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample
-from kornia.core.utils import _torch_inverse_cast
+from kornia.core.utils import _torch_inverse_cast, is_autocast_enabled
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
 
-class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
+class GeometricAugmentationBase2D(AugmentationBase2D):
     r"""GeometricAugmentationBase2D base class for customized geometric augmentation implementations.
+
+    This base class provides:
+    - Transformation matrix generation and tracking
+    - Inverse transformation support
+    - Proper handling of masks, boxes, and keypoints
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -40,15 +45,29 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
     """
 
-    def inverse_transform(
-        self,
-        input: torch.Tensor,
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
+    def generate_transformation_matrix(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        """By default, the exact transformation as ``apply_transform`` will be used."""
-        raise NotImplementedError
+        """Generate transformation matrices with the given input and param settings."""
+        batch_prob = params["batch_prob"]
+        to_apply = batch_prob > 0.5
+
+        in_tensor = self.transform_tensor(input)
+        if not to_apply.any():
+            trans_matrix = self.identity_matrix(in_tensor)
+        elif to_apply.all():
+            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
+        else:
+            trans_matrix_A = self.identity_matrix(in_tensor)
+            trans_matrix_B = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
+
+            if is_autocast_enabled():
+                trans_matrix_A = trans_matrix_A.type(input.dtype)
+                trans_matrix_B = trans_matrix_B.type(input.dtype)
+
+            trans_matrix = trans_matrix_A.index_put((to_apply,), trans_matrix_B)
+
+        return trans_matrix
 
     def compute_inverse_transformation(self, transform: torch.Tensor) -> torch.Tensor:
         """Compute the inverse transform of given transformation matrices."""
@@ -73,6 +92,20 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         else:
             transform = self.transform_matrix
         return torch.as_tensor(transform, device=input.device, dtype=input.dtype)
+
+    def apply_func(
+        self, in_tensor: torch.Tensor, params: Dict[str, torch.Tensor], flags: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
+        if flags is None:
+            flags = self.flags
+
+        trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
+        output = self.transform_inputs(in_tensor, params, flags, trans_matrix)
+        self._transform_matrix = trans_matrix
+
+        return output
+
+    # --- Mask/Box/Keypoint Transform Methods ---
 
     def apply_non_transform_mask(
         self,
@@ -106,23 +139,12 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             resample_method = flags["resample"]
             flags["resample"] = Resample.get("nearest")
 
-        # When align_corners=None is in flags (from extra_args), use the module's default
-        # This ensures masks use the same align_corners value as inputs for consistency
-        # However, for 'slice' cropping_mode with 'nearest' mode, align_corners must be None
-        # because crop_by_indices -> resize -> interpolate doesn't accept align_corners with nearest
-        # For 'resample' cropping_mode, warp_affine/grid_sample accepts align_corners with nearest
         if "align_corners" in flags and flags["align_corners"] is None:
             align_corners_was_none = True
             original_align_corners = None
-            # Check if we're using 'slice' cropping_mode which uses interpolate
-            # interpolate doesn't accept align_corners with nearest mode
             if flags.get("cropping_mode") == "slice":
-                # Keep align_corners=None for slice mode with nearest (interpolate requirement)
                 pass
             else:
-                # Use the module's default align_corners value from self.flags
-                # This ensures masks use the same align_corners as inputs
-                # For 'resample' mode, warp_affine/grid_sample accepts align_corners with nearest
                 flags["align_corners"] = self.flags.get("align_corners", False)
 
         output = self.apply_transform(input, params, flags, transform)
@@ -130,7 +152,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         if resample_method is not None:
             flags["resample"] = resample_method
 
-        # Restore align_corners if it was modified
         if align_corners_was_none:
             flags["align_corners"] = original_align_corners
 
@@ -206,6 +227,18 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """Process class tags corresponding to the inputs that are transformed."""
         return input
 
+    # --- Inverse Transform Methods ---
+
+    def inverse_transform(
+        self,
+        input: torch.Tensor,
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+        size: Optional[Tuple[int, int]] = None,
+    ) -> torch.Tensor:
+        """By default, the exact transformation as ``apply_transform`` will be used."""
+        raise NotImplementedError
+
     def inverse_inputs(
         self,
         input: torch.Tensor,
@@ -225,14 +258,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
         size: Optional[Tuple[int, int]] = None
         if "forward_input_shape" in params:
-            # Majorly for cropping functions
             _size = params["forward_input_shape"].tolist()
             size = (_size[-2], _size[-1])
 
-        # if no augmentation needed
         if not to_apply.any():
             output = in_tensor
-        # if all data needs to be augmented
         elif to_apply.all():
             output = self.inverse_transform(in_tensor, flags=flags, transform=transform, size=size)
         else:
@@ -258,42 +288,22 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         if "resample" in flags:
             resample_method = flags["resample"]
             flags["resample"] = Resample.get("nearest")
-        # Preserve align_corners from extra_args (kwargs) if provided
-        # This ensures masks use the same align_corners setting in inverse as in forward
         if "align_corners" in kwargs:
             align_corners_value = flags.get("align_corners")
-            # When align_corners=None is in kwargs, use the module's default
-            # This ensures masks use the same align_corners value as inputs for consistency
-            # However, for 'slice' cropping_mode with 'nearest' mode, align_corners must be None
-            # because crop_by_indices -> resize -> interpolate doesn't accept align_corners with nearest
-            # For 'resample' cropping_mode, warp_affine/grid_sample accepts align_corners with nearest
-            # We need to normalize it in kwargs too, because inverse_inputs will call
-            # _process_kwargs_to_params_and_flags which merges kwargs into flags
             if kwargs["align_corners"] is None:
                 align_corners_was_none_in_kwargs = True
-                # Check if we're using 'slice' cropping_mode which uses interpolate
-                # interpolate doesn't accept align_corners with nearest mode
                 if flags.get("cropping_mode") == "slice":
-                    # Keep align_corners=None for slice mode with nearest (interpolate requirement)
-                    # Don't modify flags or kwargs
                     pass
                 else:
-                    # Use the module's default align_corners value
-                    # This ensures masks use the same align_corners as inputs
-                    # For 'resample' mode, warp_affine/grid_sample accepts align_corners with nearest
                     normalized_align_corners = self.flags.get("align_corners", False)
                     flags["align_corners"] = normalized_align_corners
-                    # Also update kwargs to prevent _process_kwargs_to_params_and_flags from overwriting
                     kwargs["align_corners"] = normalized_align_corners
             else:
                 flags["align_corners"] = kwargs["align_corners"]
         output = self.inverse_inputs(input, params, flags, transform, **kwargs)
         if resample_method is not None:
             flags["resample"] = resample_method
-        # Restore align_corners if it was modified (mirror the modification condition)
-        # This ensures complete state restoration even if the original value was None
         if "align_corners" in kwargs:
-            # Restore kwargs to original value if it was None
             if align_corners_was_none_in_kwargs:
                 kwargs["align_corners"] = None
             flags["align_corners"] = align_corners_value
@@ -318,10 +328,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             self._params if params is None else params, flags, **kwargs
         )
 
-        # if no augmentation needed
         if not to_apply.any():
             output = input
-        # if all data needs to be augmented
         elif to_apply.all():
             output = input.transform_boxes_(transform)
         else:
@@ -337,16 +345,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
         **kwargs: Any,
     ) -> Keypoints:
-        """Inverse the transformation on keypoints.
-
-        Args:
-            input: input keypoints torch.tensor or object.
-            params: the corresponding parameters for an operation.
-            flags: static parameters.
-            transform: the inverse transformation matrix
-            kwargs: additional arguments
-
-        """
         output = input.clone()
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5
@@ -358,10 +356,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             self._params if params is None else params, flags, **kwargs
         )
 
-        # if no augmentation needed
         if not to_apply.any():
             output = input
-        # if all data needs to be augmented
         elif to_apply.all():
             output = input.transform_keypoints_(transform)
         else:

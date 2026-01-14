@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 
-from kornia.augmentation.base import _BasicAugmentationBase
+from kornia.augmentation.base import AugmentationBase
 from kornia.augmentation.utils import (
     _transform_input,
     _transform_input_by_shape,
@@ -31,7 +31,7 @@ from kornia.core.check import KORNIA_UNWRAP
 from kornia.geometry.boxes import Boxes
 
 
-class MixAugmentationBaseV2(_BasicAugmentationBase):
+class MixAugmentationBaseV2(AugmentationBase):
     r"""MixAugmentationBase base class for customized mix augmentation implementations.
 
     For any augmentation, the implementation of "generate_parameters" and "apply_transform" are required.

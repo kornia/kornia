@@ -16,13 +16,12 @@
 #
 
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 from torch import nn
 from torch.distributions import Bernoulli, Distribution
 
-from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import (
     _adapted_sampling,
     _transform_output_shape,
@@ -35,42 +34,40 @@ from kornia.geometry.keypoints import Keypoints
 TensorWithTransformMat = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 
 
-# Trick mypy into not applying contravariance rules to inputs by defining
-# forward as a value, rather than a function.  See also
-# https://github.com/python/mypy/issues/8795
-# Based on the trick that torch.nn.Module does for the forward method
-def _apply_transform_unimplemented(self: nn.Module, *input: Any) -> torch.Tensor:
+def _apply_transform_unimplemented(
+    self: nn.Module,
+    input: torch.Tensor,
+    params: Dict[str, torch.Tensor],
+    flags: Dict[str, Any],
+    transform: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
     r"""Define the computation performed at every call.
 
     Should be overridden by all subclasses.
     """
-    raise NotImplementedError(f'nn.Module [{type(self).__name__}] is missing the required "apply_tranform" function')
+    raise NotImplementedError(f'nn.Module [{type(self).__name__}] is missing the required "apply_transform" function')
 
 
-class _BasicAugmentationBase(nn.Module):
-    r"""_BasicAugmentationBase base class for customized augmentation implementations.
+class AugmentationBase(nn.Module):
+    r"""AugmentationBase base class for customized augmentation implementations.
 
-    Plain augmentation base class without the functionality of transformation matrix calculations.
-    By default, the random computations will be happened on CPU with ``torch.get_default_dtype()``.
+    This is the unified base class that combines core augmentation logic with
+    multi-datatype transform support (images, masks, boxes, keypoints).
+
+    By default, the random computations will happen on CPU with ``torch.get_default_dtype()``.
     To change this behaviour, please use ``set_rng_device_and_dtype``.
 
-    For automatically generating the corresponding ``__repr__`` with full customized parameters, you may need to
-    implement ``_param_generator`` by inheriting ``RandomGeneratorBase`` for generating random parameters and
-    put all static parameters inside ``self.flags``. You may take the advantage of ``PlainUniformGenerator`` to
-    generate simple uniform parameters with less boilerplate code.
-
     Args:
-        p: probability for applying an augmentation. This param controls the augmentation probabilities element-wise.
-        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
-          probabilities batch-wise.
+        p: probability for applying an augmentation. This param controls the augmentation
+          probabilities element-wise for a batch.
+        p_batch: probability for applying an augmentation to a batch. This param controls
+          the augmentation probabilities batch-wise.
         same_on_batch: apply the same transformation across the batch.
-        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to
-          the batch form ``False``.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
+          to the batch form ``False``.
 
     """
 
-    # TODO: Hard to support. Many codes are not ONNX-friendly that contains lots of if-else blocks, etc.
-    # Please contribute if anyone interested.
     ONNX_EXPORTABLE = False
 
     def __init__(
@@ -92,13 +89,22 @@ class _BasicAugmentationBase(nn.Module):
             self._p_gen = Bernoulli(self.p)
         if p_batch != 0.0 or p_batch != 1.0:
             self._p_batch_gen = Bernoulli(self.p_batch)
-        self._param_generator: Optional[RandomGeneratorBase] = None
         self.flags: Dict[str, Any] = {}
         self.set_rng_device_and_dtype(torch.device("cpu"), torch.get_default_dtype())
 
-    apply_transform: Callable[..., torch.Tensor] = _apply_transform_unimplemented
+    def apply_transform(
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Apply the transformation to the input."""
+        raise NotImplementedError(
+            f'nn.Module [{type(self).__name__}] is missing the required "apply_transform" function'
+        )
 
-    def to(self, *args: Any, **kwargs: Any) -> "_BasicAugmentationBase":
+    def to(self, *args: Any, **kwargs: Any) -> "AugmentationBase":
         r"""Set the device and dtype for the random number generator."""
         device, dtype, _, _ = torch._C._nn._parse_to(*args, **kwargs)
         self.set_rng_device_and_dtype(device, dtype)
@@ -106,8 +112,6 @@ class _BasicAugmentationBase(nn.Module):
 
     def __repr__(self) -> str:
         txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
-        if isinstance(self._param_generator, RandomGeneratorBase):
-            txt = f"{self._param_generator!s}, {txt}"
         for k, v in self.flags.items():
             if isinstance(v, Enum):
                 txt += f", {k}={v.name.lower()}"
@@ -137,21 +141,13 @@ class _BasicAugmentationBase(nn.Module):
         return _transform_output_shape(output, output_shape) if self.keepdim else output
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
-        if self._param_generator is not None:
-            return self._param_generator(batch_shape, self.same_on_batch)
+        """Generate random parameters for the augmentation. Override in subclasses."""
         return {}
 
     def set_rng_device_and_dtype(self, device: torch.device, dtype: torch.dtype) -> None:
-        """Change the random generation device and dtype.
-
-        Note:
-            The generated random numbers are not reproducible across different devices and dtypes.
-
-        """
+        """Change the random generation device and dtype."""
         self.device = device
         self.dtype = dtype
-        if self._param_generator is not None:
-            self._param_generator.set_rng_device_and_dtype(device, dtype)
 
     def __batch_prob_generator__(
         self,
@@ -189,8 +185,7 @@ class _BasicAugmentationBase(nn.Module):
         flags: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> Tuple[Dict[str, torch.Tensor], Dict[str, Any]]:
-        # NOTE: determine how to save self._params
-        save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
+        save_kwargs = kwargs.get("save_kwargs", False)
 
         params = self._params if params is None else params
         flags = self.flags if flags is None else flags
@@ -212,73 +207,11 @@ class _BasicAugmentationBase(nn.Module):
         if _params is None:
             _params = {}
         _params["batch_prob"] = batch_prob
-        # Added another input_size parameter for geometric transformations
-        # This might be needed for correctly inversing.
         input_size = torch.tensor(batch_shape, dtype=torch.long)
         _params.update({"forward_input_shape": input_size})
         return _params
 
-    def apply_func(self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]) -> torch.Tensor:
-        return self.apply_transform(input, params, flags)
-
-    def forward(
-        self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None, **kwargs: Any
-    ) -> torch.Tensor:
-        """Perform forward operations.
-
-        Args:
-            input: the input torch.tensor.
-            params: the corresponding parameters for an operation.
-                If None, a new parameter suite will be generated.
-            **kwargs: key-value pairs to override the parameters and flags.
-
-        Note:
-            By default, all the overwriting parameters in kwargs will not be recorded
-            as in ``self._params``. If you wish it to be recorded, you may pass
-            ``save_kwargs=True`` additionally.
-
-        """
-        in_tensor = self.__unpack_input__(input)
-        input_shape = in_tensor.shape
-        in_tensor = self.transform_tensor(in_tensor)
-        batch_shape = in_tensor.shape
-        if params is None:
-            params = self.forward_parameters(batch_shape)
-
-        if "batch_prob" not in params:
-            params["batch_prob"] = torch.tensor([True] * batch_shape[0])
-
-        params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
-
-        output = self.apply_func(in_tensor, params, flags)
-        return self.transform_output_tensor(output, input_shape) if self.keepdim else output
-
-
-class _AugmentationBase(_BasicAugmentationBase):
-    r"""_AugmentationBase base class for customized augmentation implementations.
-
-    Advanced augmentation base class with the functionality of transformation matrix calculations.
-
-    Args:
-        p: probability for applying an augmentation. This param controls the augmentation probabilities
-          element-wise for a batch.
-        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
-          probabilities batch-wise.
-        same_on_batch: apply the same transformation across the batch.
-        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
-          to the batch form ``False``.
-
-    """
-
-    def apply_transform(
-        self,
-        input: torch.Tensor,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        # apply transform for the input image torch.tensor
-        raise NotImplementedError
+    # --- Multi-datatype transform methods ---
 
     def apply_non_transform(
         self,
@@ -287,8 +220,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # apply additional transform for the images that are skipped from transformation
-        # torch.where batch_prob == False.
+        """Apply to images that are skipped from transformation (batch_prob == False)."""
         return input
 
     def transform_inputs(
@@ -313,7 +245,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_transform(in_tensor, params, flags, transform=transform)
         elif not to_apply.any():
             output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
-        else:  # If any torch.tensor needs to be transformed.
+        else:
             output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
             applied = self.apply_transform(
                 in_tensor[to_apply],
@@ -357,7 +289,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
         elif not to_apply.any():
             output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
-        else:  # If any torch.tensor needs to be transformed.
+        else:
             output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
             applied = self.apply_transform_mask(
                 in_tensor[to_apply],
@@ -391,7 +323,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_transform_box(input, params, flags, transform=transform)
         elif not to_apply.any():
             output = self.apply_non_transform_box(input, params, flags, transform=transform)
-        else:  # If any torch.tensor needs to be transformed.
+        else:
             output = self.apply_non_transform_box(input, params, flags, transform=transform)
             applied = self.apply_transform_box(
                 input[to_apply],
@@ -427,7 +359,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_transform_keypoint(input, params, flags, transform=transform)
         elif not to_apply.any():
             output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
-        else:  # If any torch.tensor needs to be transformed.
+        else:
             output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
             applied = self.apply_transform_keypoint(
                 input[to_apply],
@@ -459,7 +391,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_transform_class(input, params, flags, transform=transform)
         elif not to_apply.any():
             output = self.apply_non_transform_class(input, params, flags, transform=transform)
-        else:  # If any torch.tensor needs to be transformed.
+        else:
             output = self.apply_non_transform_class(input, params, flags, transform=transform)
             applied = self.apply_transform_class(
                 input[to_apply],
@@ -478,7 +410,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Process masks corresponding to the inputs that are no transformation applied."""
-        raise NotImplementedError
+        return input
 
     def apply_transform_mask(
         self,
@@ -562,3 +494,35 @@ class _AugmentationBase(_BasicAugmentationBase):
         output = self.transform_inputs(in_tensor, params, flags)
 
         return output
+
+    def forward(
+        self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None, **kwargs: Any
+    ) -> torch.Tensor:
+        """Perform forward operations.
+
+        Args:
+            input: the input torch.tensor.
+            params: the corresponding parameters for an operation.
+                If None, a new parameter suite will be generated.
+            **kwargs: key-value pairs to override the parameters and flags.
+
+        """
+        in_tensor = self.__unpack_input__(input)
+        input_shape = in_tensor.shape
+        in_tensor = self.transform_tensor(in_tensor)
+        batch_shape = in_tensor.shape
+        if params is None:
+            params = self.forward_parameters(batch_shape)
+
+        if "batch_prob" not in params:
+            params["batch_prob"] = torch.tensor([True] * batch_shape[0])
+
+        params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
+
+        output = self.apply_func(in_tensor, params, flags)
+        return self.transform_output_tensor(output, input_shape) if self.keepdim else output
+
+
+# Backward compatibility aliases
+_BasicAugmentationBase = AugmentationBase
+_AugmentationBase = AugmentationBase

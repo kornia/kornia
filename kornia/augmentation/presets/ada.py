@@ -30,7 +30,7 @@ from .. import (  # noqa: TID252
     RandomHorizontalFlip,
     RandomRotation90,
 )
-from ..base import _AugmentationBase  # noqa: TID252
+from ..base import AugmentationBase  # noqa: TID252
 from ..container.params import ParamItem  # noqa: TID252
 
 _data_keys_type = List[str]
@@ -101,7 +101,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
 
     def __init__(
         self,
-        *args: Union[_AugmentationBase, ImageSequential],
+        *args: Union[AugmentationBase, ImageSequential],
         initial_p: float = 1e-5,
         adjustment_speed: float = 1e-2,
         max_p: float = 0.8,
@@ -168,7 +168,7 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         scale: Union[torch.Tensor, Tuple[float, float]],
         ratio: Union[torch.Tensor, Tuple[float, float]],
         value: float,
-    ) -> Tuple[Union[_AugmentationBase, ImageSequential], ...]:
+    ) -> Tuple[Union[AugmentationBase, ImageSequential], ...]:
         # if changed in the future, please change the expected transforms list in test_presets.py
         return (
             RandomHorizontalFlip(p=1),

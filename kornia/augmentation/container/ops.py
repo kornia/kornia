@@ -24,7 +24,7 @@ from torch import nn
 from typing_extensions import ParamSpec
 
 import kornia.augmentation as K
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.base import AugmentationBase
 from kornia.constants import DataKey
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -222,7 +222,7 @@ class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
     ) -> torch.Tensor:
         if extra_args is None:
             extra_args = {}
-        if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
+        if isinstance(module, (AugmentationBase, K.MixAugmentationBaseV2)):
             input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.INPUT], **extra_args)
         elif isinstance(module, (K.container.ImageSequentialBase,)):
             input = module.transform_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
@@ -311,7 +311,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
         elif isinstance(module, K.RandomTransplantation):
             input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.MASK], **extra_args)
 
-        elif isinstance(module, (_AugmentationBase)):
+        elif isinstance(module, (AugmentationBase)):
             input = module.transform_masks(
                 input, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args
             )
@@ -359,7 +359,7 @@ class MaskSequentialOps(SequentialOpsInterface[torch.Tensor]):
                 "The support for 3d mask operations are not yet supported. You are welcome to file a PR in our repo."
             )
 
-        elif isinstance(module, (_AugmentationBase)):
+        elif isinstance(module, (AugmentationBase)):
             tfm_input = []
             params = cls.get_instance_module_param(param)
             params_i = copy.deepcopy(params)
