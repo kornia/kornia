@@ -23,7 +23,7 @@ from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMat
 from kornia.geometry import rescale, transform_points
 from kornia.tracking import HomographyTracker
 
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
 @pytest.fixture()
@@ -32,7 +32,7 @@ def data_url():
     return url
 
 
-class TestHomographyTracker:
+class TestHomographyTracker(BaseTester):
     @pytest.mark.slow
     def test_smoke(self, device):
         tracker = HomographyTracker().to(device)
@@ -77,12 +77,11 @@ class TestHomographyTracker:
         pts_src = data["pts0"].to(device, dtype) / 2.0
         pts_dst = data["pts1"].to(device, dtype) / 2.0
         # Reprojection error of 5px is OK
-        assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
+        self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
-        # TODO: Uncomment this block when relies on torch >= 1.10 or the issue kornia#2027 is solved
-        # # next frame
-        # with torch.no_grad():
-        #     torch.manual_seed(6)  # issue kornia#2027
-        #     homography, success = tracker(data["image1"])
-        # assert success
-        # assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
+
+        with torch.no_grad():
+            torch.manual_seed(6)
+            homography, success = tracker(data["image1"])
+        assert success
+        self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
