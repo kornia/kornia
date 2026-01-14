@@ -15,11 +15,10 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
 from kornia.geometry import get_perspective_transform3d, warp_perspective3d
@@ -93,7 +92,54 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
-        self._param_generator = rg.PerspectiveGenerator3D(distortion_scale)
+        self.distortion_scale = torch.as_tensor(distortion_scale)
+        if not (self.distortion_scale.dim() == 0 and 0 <= self.distortion_scale <= 1):
+            raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {self.distortion_scale}")
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        depth = batch_shape[-3]
+        height = batch_shape[-2]
+        width = batch_shape[-1]
+        _device, _dtype = self.device, self.dtype
+
+        start_points: torch.Tensor = torch.tensor(
+            [
+                [
+                    [0.0, 0, 0],
+                    [width - 1, 0, 0],
+                    [width - 1, height - 1, 0],
+                    [0, height - 1, 0],
+                    [0.0, 0, depth - 1],
+                    [width - 1, 0, depth - 1],
+                    [width - 1, height - 1, depth - 1],
+                    [0, height - 1, depth - 1],
+                ]
+            ],
+            device=_device,
+            dtype=_dtype,
+        ).expand(batch_size, -1, -1)
+
+        # generate random offset not larger than half of the image
+        fx = self.distortion_scale.item() * width / 2
+        fy = self.distortion_scale.item() * height / 2
+        fz = self.distortion_scale.item() * depth / 2
+
+        factor = torch.tensor([fx, fy, fz], device=_device, dtype=_dtype).view(-1, 1, 3)
+
+        if self.same_on_batch:
+            rand_val = torch.rand(1, 8, 3, device=_device, dtype=_dtype).expand(batch_size, -1, -1).contiguous()
+        else:
+            rand_val = torch.rand(batch_size, 8, 3, device=_device, dtype=_dtype)
+
+        pts_norm = torch.tensor(
+            [[[1, 1, 1], [-1, 1, 1], [-1, -1, 1], [1, -1, 1], [1, 1, -1], [-1, 1, -1], [-1, -1, -1], [1, -1, -1]]],
+            device=_device,
+            dtype=_dtype,
+        )
+        end_points = start_points + factor * rand_val * pts_norm
+
+        return {"start_points": start_points, "end_points": end_points}
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]

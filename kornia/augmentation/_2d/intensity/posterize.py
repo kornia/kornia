@@ -19,7 +19,6 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import posterize
 
@@ -72,8 +71,42 @@ class RandomPosterize(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        # TODO: the generator should receive the device
-        self._param_generator = rg.PosterizeGenerator(bits)
+
+        # Parse bits into a range
+        if isinstance(bits, torch.Tensor):
+            if bits.numel() == 1:
+                self.bits_range = (bits.item(), 8.0)
+            else:
+                self.bits_range = (bits[0].item(), bits[1].item())
+        elif isinstance(bits, (int, float)):
+            self.bits_range = (float(bits), 8.0)
+        else:
+            self.bits_range = (float(bits[0]), float(bits[1]))
+
+        # Validate (bits can be 0, which results in a black image)
+        if not (0 <= self.bits_range[0] <= 8 and 0 <= self.bits_range[1] <= 8):
+            raise ValueError(f"bits must be in range [0, 8]. Got {self.bits_range}")
+        # Store as tensor for auto operations compatibility
+        self.bits_factor = torch.tensor([self.bits_range[0], self.bits_range[1]])
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            bits_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.bits_range[0], self.bits_range[1])
+                .round()
+                .to(torch.int32)
+                .expand(batch_size)
+            )
+        else:
+            bits_factor = (
+                torch.empty(batch_size, device=self.device, dtype=self.dtype)
+                .uniform_(self.bits_range[0], self.bits_range[1])
+                .round()
+                .to(torch.int32)
+            )
+        return {"bits_factor": bits_factor}
 
     def apply_transform(
         self,

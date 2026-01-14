@@ -19,8 +19,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.constants import Resample
 from kornia.core.ops import eye_like
 from kornia.geometry.transform import affine
@@ -88,9 +88,22 @@ class RandomRotation(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator((degrees, "degrees", 0.0, (-360.0, 360.0)))
-
+        self.degrees_bound: torch.Tensor = _range_bound(degrees, "degrees", center=0.0, bounds=(-360.0, 360.0))
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            degrees = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.degrees_bound[0].item(), self.degrees_bound[1].item())
+                .expand(batch_size)
+            )
+        else:
+            degrees = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.degrees_bound[0].item(), self.degrees_bound[1].item()
+            )
+        return {"degrees": degrees}
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
@@ -194,9 +207,22 @@ class RandomRotation90(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator((times, "times", 0.0, (-3, 3)))
-
+        self.times_bound: torch.Tensor = _range_bound(times, "times", center=0.0, bounds=(-3, 3))
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            times = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.times_bound[0].item(), self.times_bound[1].item())
+                .expand(batch_size)
+            )
+        else:
+            times = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.times_bound[0].item(), self.times_bound[1].item()
+            )
+        return {"times": times}
 
     def compute_transformation(
         self, input: torch.Tensor, params: dict[str, torch.Tensor], flags: dict[str, Any]

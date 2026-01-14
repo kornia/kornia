@@ -19,7 +19,6 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.utils import _range_bound
 from kornia.enhance.adjust import adjust_brightness
@@ -83,9 +82,21 @@ class RandomBrightness(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.brightness: torch.Tensor = _range_bound(brightness, "brightness", center=1.0, bounds=(0.0, 2.0))
-        self._param_generator = rg.PlainUniformGenerator((self.brightness, "brightness_factor", None, None))
-
         self.clip_output = clip_output
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            brightness_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.brightness[0].item(), self.brightness[1].item())
+                .expand(batch_size)
+            )
+        else:
+            brightness_factor = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.brightness[0].item(), self.brightness[1].item()
+            )
+        return {"brightness_factor": brightness_factor}
 
     def apply_transform(
         self,

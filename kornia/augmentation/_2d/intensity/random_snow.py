@@ -19,8 +19,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.color import hls_to_rgb, rgb_to_hls
 from kornia.core.check import KORNIA_CHECK
 
@@ -61,10 +61,32 @@ class RandomSnow(IntensityAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         KORNIA_CHECK(all(0 <= el <= 1 for el in snow_coefficient), "Snow coefficient values must be between 0 and 1.")
         KORNIA_CHECK(all(1 <= el for el in brightness), "Brightness values must be greater than 1.")
-
-        self._param_generator = rg.PlainUniformGenerator(
-            (snow_coefficient, "snow_coefficient", 0.5, (0.0, 1.0)), (brightness, "brightness", None, None)
+        self.snow_coefficient_bound: torch.Tensor = _range_bound(
+            snow_coefficient, "snow_coefficient", center=0.5, bounds=(0.0, 1.0)
         )
+        self.brightness_bound: torch.Tensor = _range_bound(brightness, "brightness")
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            snow_coefficient = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.snow_coefficient_bound[0].item(), self.snow_coefficient_bound[1].item())
+                .expand(batch_size)
+            )
+            brightness = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.brightness_bound[0].item(), self.brightness_bound[1].item())
+                .expand(batch_size)
+            )
+        else:
+            snow_coefficient = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.snow_coefficient_bound[0].item(), self.snow_coefficient_bound[1].item()
+            )
+            brightness = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.brightness_bound[0].item(), self.brightness_bound[1].item()
+            )
+        return {"snow_coefficient": snow_coefficient, "brightness": brightness}
 
     def apply_transform(
         self,

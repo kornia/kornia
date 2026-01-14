@@ -15,11 +15,10 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.geometry.grid import create_meshgrid
 from kornia.geometry.transform import remap
@@ -70,11 +69,9 @@ class RandomFisheye(AugmentationBase2D):
         self._check_tensor(center_x)
         self._check_tensor(center_y)
         self._check_tensor(gamma)
-        self._param_generator = rg.PlainUniformGenerator(
-            (center_x[:, None], "center_x", None, None),
-            (center_y[:, None], "center_y", None, None),
-            (gamma[:, None], "gamma", None, None),
-        )
+        self.center_x_bound = center_x
+        self.center_y_bound = center_y
+        self.gamma_bound = gamma
 
     def _check_tensor(self, data: torch.Tensor) -> None:
         if not isinstance(data, torch.Tensor):
@@ -82,6 +79,36 @@ class RandomFisheye(AugmentationBase2D):
 
         if len(data.shape) != 1 and data.shape[0] != 2:
             raise ValueError(f"torch.Tensor must be of shape (2,). Got: {data.shape}.")
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            center_x = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.center_x_bound[0].item(), self.center_x_bound[1].item())
+                .expand(batch_size)
+            )
+            center_y = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.center_y_bound[0].item(), self.center_y_bound[1].item())
+                .expand(batch_size)
+            )
+            gamma = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.gamma_bound[0].item(), self.gamma_bound[1].item())
+                .expand(batch_size)
+            )
+        else:
+            center_x = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.center_x_bound[0].item(), self.center_x_bound[1].item()
+            )
+            center_y = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.center_y_bound[0].item(), self.center_y_bound[1].item()
+            )
+            gamma = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.gamma_bound[0].item(), self.gamma_bound[1].item()
+            )
+        return {"center_x": center_x, "center_y": center_y, "gamma": gamma}
 
     def apply_transform(
         self,

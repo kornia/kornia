@@ -20,10 +20,10 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
 from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
+from kornia.geometry.bbox import bbox_generator3d
 
 
 class RandomCrop3D(GeometricAugmentationBase3D):
@@ -106,7 +106,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
             "resample": Resample.get(resample),
             "align_corners": align_corners,
         }
-        self._param_generator = rg.CropGenerator3D(size, None)
+        self.crop_size = size
 
     def precrop_padding(self, input: torch.Tensor, flags: Optional[Dict[str, Any]] = None) -> torch.Tensor:
         flags = self.flags if flags is None else flags
@@ -135,6 +135,65 @@ class RandomCrop3D(GeometricAugmentationBase3D):
             input = F.pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
         return input
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size, _, depth, height, width = batch_shape
+        _device, _dtype = self.device, self.dtype
+
+        size = torch.tensor(self.crop_size, device=_device, dtype=_dtype).repeat(batch_size, 1)
+
+        if not (
+            isinstance(depth, (int,))
+            and isinstance(height, (int,))
+            and isinstance(width, (int,))
+            and depth > 0
+            and height > 0
+            and width > 0
+        ):
+            raise AssertionError(f"`batch_shape` should not contain negative values. Got {(batch_shape)}.")
+
+        x_diff = width - size[:, 2] + 1
+        y_diff = height - size[:, 1] + 1
+        z_diff = depth - size[:, 0] + 1
+
+        if (x_diff < 0).any() or (y_diff < 0).any() or (z_diff < 0).any():
+            raise ValueError(
+                f"input_size {(depth, height, width)} cannot be smaller than crop size {size!s} in any dimension."
+            )
+
+        if batch_size == 0:
+            return {
+                "src": torch.zeros([0, 8, 3], device=_device, dtype=_dtype),
+                "dst": torch.zeros([0, 8, 3], device=_device, dtype=_dtype),
+            }
+
+        if self.same_on_batch:
+            x_start = torch.rand(1, device=_device, dtype=_dtype).expand(batch_size)
+            y_start = torch.rand(1, device=_device, dtype=_dtype).expand(batch_size)
+            z_start = torch.rand(1, device=_device, dtype=_dtype).expand(batch_size)
+        else:
+            x_start = torch.rand(batch_size, device=_device, dtype=_dtype)
+            y_start = torch.rand(batch_size, device=_device, dtype=_dtype)
+            z_start = torch.rand(batch_size, device=_device, dtype=_dtype)
+
+        x_start = (x_start * x_diff).floor()
+        y_start = (y_start * y_diff).floor()
+        z_start = (z_start * z_diff).floor()
+
+        crop_src = bbox_generator3d(
+            x_start.view(-1), y_start.view(-1), z_start.view(-1), size[:, 2] - 1, size[:, 1] - 1, size[:, 0] - 1
+        )
+
+        crop_dst = bbox_generator3d(
+            torch.zeros(batch_size, device=_device, dtype=_dtype),
+            torch.zeros(batch_size, device=_device, dtype=_dtype),
+            torch.zeros(batch_size, device=_device, dtype=_dtype),
+            size[:, 2] - 1,
+            size[:, 1] - 1,
+            size[:, 0] - 1,
+        )
+
+        return {"src": crop_src.to(device=_device), "dst": crop_dst.to(device=_device)}
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]

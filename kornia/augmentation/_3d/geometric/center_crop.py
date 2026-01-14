@@ -19,7 +19,6 @@ from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
 from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
@@ -97,9 +96,87 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         self.flags = {"align_corners": align_corners, "resample": Resample.get(resample)}
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
-        return rg.center_crop_generator3d(
-            batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.size, device=self.device
-        )
+        batch_size = batch_shape[0]
+        depth = batch_shape[-3]
+        height = batch_shape[-2]
+        width = batch_shape[-1]
+        _device = self.device
+
+        dst_d, dst_h, dst_w = self.size
+        src_d, src_h, src_w = (depth, height, width)
+
+        if not (
+            isinstance(depth, int)
+            and depth > 0
+            and isinstance(height, int)
+            and height > 0
+            and isinstance(width, int)
+            and width > 0
+        ):
+            raise AssertionError(f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}.")
+        if not (depth >= dst_d and height >= dst_h and width >= dst_w):
+            raise AssertionError(
+                f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {self.size}."
+            )
+
+        if batch_size == 0:
+            return {"src": torch.zeros([0, 8, 3], device=_device), "dst": torch.zeros([0, 8, 3], device=_device)}
+
+        # compute start/end offsets
+        dst_d_half = dst_d / 2
+        dst_h_half = dst_h / 2
+        dst_w_half = dst_w / 2
+        src_d_half = src_d / 2
+        src_h_half = src_h / 2
+        src_w_half = src_w / 2
+
+        start_x = src_w_half - dst_w_half
+        start_y = src_h_half - dst_h_half
+        start_z = src_d_half - dst_d_half
+
+        end_x = start_x + dst_w - 1
+        end_y = start_y + dst_h - 1
+        end_z = start_z + dst_d - 1
+
+        # [x, y, z] origin
+        # top-left-front, top-right-front, bottom-right-front, bottom-left-front
+        # top-left-back, top-right-back, bottom-right-back, bottom-left-back
+        points_src: torch.Tensor = torch.tensor(
+            [
+                [
+                    [int(start_x), int(start_y), int(start_z)],
+                    [int(end_x), int(start_y), int(start_z)],
+                    [int(end_x), int(end_y), int(start_z)],
+                    [int(start_x), int(end_y), int(start_z)],
+                    [int(start_x), int(start_y), int(end_z)],
+                    [int(end_x), int(start_y), int(end_z)],
+                    [int(end_x), int(end_y), int(end_z)],
+                    [int(start_x), int(end_y), int(end_z)],
+                ]
+            ],
+            device=_device,
+            dtype=torch.long,
+        ).expand(batch_size, -1, -1)
+
+        # [x, y, z] destination
+        points_dst: torch.Tensor = torch.tensor(
+            [
+                [
+                    [0, 0, 0],
+                    [dst_w - 1, 0, 0],
+                    [dst_w - 1, dst_h - 1, 0],
+                    [0, dst_h - 1, 0],
+                    [0, 0, dst_d - 1],
+                    [dst_w - 1, 0, dst_d - 1],
+                    [dst_w - 1, dst_h - 1, dst_d - 1],
+                    [0, dst_h - 1, dst_d - 1],
+                ]
+            ],
+            device=_device,
+            dtype=torch.long,
+        ).expand(batch_size, -1, -1)
+
+        return {"src": points_src, "dst": points_dst}
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]

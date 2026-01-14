@@ -19,8 +19,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
+from kornia.augmentation.random_generator.utils import randperm
 from kornia.constants import DataKey
 
 __all__ = ["RandomJigsaw"]
@@ -66,15 +66,33 @@ class RandomJigsaw(MixAugmentationBaseV2):
         ensure_perm: bool = True,
     ) -> None:
         super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator = rg.JigsawGenerator(grid, ensure_perm)
+        self.grid = grid
+        self.ensure_perm = ensure_perm
         self.flags = {"grid": grid}
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        perm_times = self.grid[0] * self.grid[1]
+        _device = self.device
+
+        # Generate mosiac order in one shot
+        if batch_size == 0:
+            rand_ids = torch.zeros([0, perm_times], device=_device)
+        elif self.same_on_batch:
+            rand_ids = randperm(perm_times, ensure_perm=self.ensure_perm, device=_device)
+            rand_ids = torch.stack([rand_ids] * batch_size)
+        else:
+            rand_ids = torch.stack(
+                [randperm(perm_times, ensure_perm=self.ensure_perm, device=_device) for _ in range(batch_size)]
+            )
+        return {"permutation": rand_ids}
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         # different from the Base class routine. This function will not refer to any non-transformation images.
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5
         input = input[to_apply].clone()
 
         b, c, h, w = input.shape

@@ -15,12 +15,12 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.enhance import shift_rgb
 
 
@@ -102,11 +102,45 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator(
-            (r_shift_limit, "r_shift", 0, (-r_shift_limit, r_shift_limit)),
-            (g_shift_limit, "g_shift", 0, (-g_shift_limit, g_shift_limit)),
-            (b_shift_limit, "b_shift", 0, (-b_shift_limit, b_shift_limit)),
+        self.r_shift_bound: torch.Tensor = _range_bound(
+            r_shift_limit, "r_shift", center=0, bounds=(-r_shift_limit, r_shift_limit)
         )
+        self.g_shift_bound: torch.Tensor = _range_bound(
+            g_shift_limit, "g_shift", center=0, bounds=(-g_shift_limit, g_shift_limit)
+        )
+        self.b_shift_bound: torch.Tensor = _range_bound(
+            b_shift_limit, "b_shift", center=0, bounds=(-b_shift_limit, b_shift_limit)
+        )
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            r_shift = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.r_shift_bound[0].item(), self.r_shift_bound[1].item())
+                .expand(batch_size)
+            )
+            g_shift = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.g_shift_bound[0].item(), self.g_shift_bound[1].item())
+                .expand(batch_size)
+            )
+            b_shift = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.b_shift_bound[0].item(), self.b_shift_bound[1].item())
+                .expand(batch_size)
+            )
+        else:
+            r_shift = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.r_shift_bound[0].item(), self.r_shift_bound[1].item()
+            )
+            g_shift = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.g_shift_bound[0].item(), self.g_shift_bound[1].item()
+            )
+            b_shift = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.b_shift_bound[0].item(), self.b_shift_bound[1].item()
+            )
+        return {"r_shift": r_shift, "g_shift": g_shift, "b_shift": b_shift}
 
     def apply_transform(
         self,

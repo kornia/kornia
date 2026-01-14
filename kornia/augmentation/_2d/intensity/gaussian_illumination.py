@@ -20,8 +20,9 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
 from kornia.core.check import KORNIA_CHECK
+from kornia.enhance import normalize_min_max
+from kornia.filters.kernels import gaussian
 
 
 class RandomGaussianIllumination(IntensityAugmentationBase2D):
@@ -88,7 +89,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
-        # Validation and initialization of amount parameter.
+        # Validation and initialization of gain parameter.
         if isinstance(gain, (tuple, float)):
             if isinstance(gain, float):
                 gain = (gain, gain)
@@ -96,8 +97,8 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
                 gain = (gain[0], gain[0])
             elif len(gain) > 2 or len(gain) <= 0:
                 raise ValueError(
-                    "The length of gain must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of gain must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("gain must be a tuple or a float")
@@ -105,7 +106,9 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
             all(0 <= el <= 1 for el in gain),
             "gain values must be between 0 and 1. Recommended values less than 0.2.",
         )
+        self.gain = gain
 
+        # Validation and initialization of center parameter.
         if isinstance(center, (tuple, float)):
             if isinstance(center, float):
                 center = (center, center)
@@ -113,8 +116,8 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
                 center = (center[0], center[0])
             elif len(center) > 2 or len(center) <= 0:
                 raise ValueError(
-                    "The length of center must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of center must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("center must be a tuple or a float")
@@ -122,7 +125,9 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
             all(0 <= el <= 1 for el in center),
             "center of gaussian value must be between 0 and 1.",
         )
+        self.center = center
 
+        # Validation and initialization of sigma parameter.
         if isinstance(sigma, (tuple, float)):
             if isinstance(sigma, float):
                 sigma = (sigma, sigma)
@@ -130,8 +135,8 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
                 sigma = (sigma[0], sigma[0])
             elif len(sigma) > 2 or len(sigma) <= 0:
                 raise ValueError(
-                    "The length of sigma must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of sigma must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("sigma must be a tuple or a float")
@@ -139,7 +144,9 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
             all(0 <= el <= 1 for el in sigma),
             "sigma of gaussian value must be between 0 and 1.",
         )
+        self.sigma = sigma
 
+        # Validation and initialization of sign parameter.
         if isinstance(sign, (tuple, float)):
             if isinstance(sign, float):
                 sign = (sign, sign)
@@ -147,8 +154,8 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
                 sign = (sign[0], sign[0])
             elif len(sign) > 2 or len(sign) <= 0:
                 raise ValueError(
-                    "The length of sign must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple or a float."
+                    "The length of sign must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple or a float."
                 )
         else:
             raise ValueError("sign must be a tuple or a float")
@@ -156,9 +163,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
             all(-1 <= el <= 1 for el in sign),
             "sign of gaussian value must be between -1 and 1.",
         )
-
-        # Generator of random parameters and masks.
-        self._param_generator = GaussianIlluminationGenerator(gain, center, sigma, sign)
+        self.sign_range = sign
 
         def _apply_transform(
             input: torch.Tensor,
@@ -169,6 +174,74 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
             return input.add_(params["gradient"]).clamp_(0, 1)
 
         self._fn = _apply_transform
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size, channels, height, width = batch_shape
+        _device, _dtype = self.device, self.dtype
+
+        if self.same_on_batch:
+            gain_factor = (
+                torch.empty(1, 1, 1, 1, device=_device, dtype=_dtype)
+                .uniform_(self.gain[0], self.gain[1])
+                .expand(batch_size, 1, 1, 1)
+            )
+            sigma_x = width * torch.empty(1, 1, device=_device, dtype=_dtype).uniform_(
+                self.sigma[0], self.sigma[1]
+            ).expand(batch_size, 1)
+            center_x = torch.round(
+                width * torch.empty(1, 1, device=_device, dtype=_dtype).uniform_(self.center[0], self.center[1])
+            ).expand(batch_size, 1)
+            sigma_y = height * torch.empty(1, 1, device=_device, dtype=_dtype).uniform_(
+                self.sigma[0], self.sigma[1]
+            ).expand(batch_size, 1)
+            center_y = torch.round(
+                height * torch.empty(1, 1, device=_device, dtype=_dtype).uniform_(self.center[0], self.center[1])
+            ).expand(batch_size, 1)
+            sign_val = (
+                torch.empty(1, 1, 1, 1, device=_device, dtype=_dtype)
+                .uniform_(self.sign_range[0], self.sign_range[1])
+                .expand(batch_size, 1, 1, 1)
+            )
+        else:
+            gain_factor = torch.empty(batch_size, 1, 1, 1, device=_device, dtype=_dtype).uniform_(
+                self.gain[0], self.gain[1]
+            )
+            sigma_x = width * torch.empty(batch_size, 1, device=_device, dtype=_dtype).uniform_(
+                self.sigma[0], self.sigma[1]
+            )
+            center_x = torch.round(
+                width
+                * torch.empty(batch_size, 1, device=_device, dtype=_dtype).uniform_(self.center[0], self.center[1])
+            )
+            sigma_y = height * torch.empty(batch_size, 1, device=_device, dtype=_dtype).uniform_(
+                self.sigma[0], self.sigma[1]
+            )
+            center_y = torch.round(
+                height
+                * torch.empty(batch_size, 1, device=_device, dtype=_dtype).uniform_(self.center[0], self.center[1])
+            )
+            sign_val = torch.empty(batch_size, 1, 1, 1, device=_device, dtype=_dtype).uniform_(
+                self.sign_range[0], self.sign_range[1]
+            )
+
+        sign = torch.where(
+            sign_val >= 0.0,
+            torch.tensor(1.0, device=_device, dtype=_dtype),
+            torch.tensor(-1.0, device=_device, dtype=_dtype),
+        )
+
+        # Generate random gaussian for create a 2D gaussian image.
+        gauss_x = gaussian(width, sigma_x, mean=center_x, device=_device, dtype=_dtype).unsqueeze(1)
+        gauss_y = gaussian(height, sigma_y, mean=center_y, device=_device, dtype=_dtype).unsqueeze(2)
+
+        # gradient = (batch_size, channels, height, width)
+        gradient = (gauss_y @ gauss_x).unsqueeze_(1).repeat(1, channels, 1, 1)
+
+        # Normalize between 0-1 to apply the gain factor.
+        gradient = normalize_min_max(gradient, min_val=0.0, max_val=1.0)
+        gradient = sign.mul_(gain_factor).mul(gradient)
+
+        return {"gradient": gradient}
 
     def apply_transform(
         self,

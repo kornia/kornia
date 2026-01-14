@@ -19,8 +19,8 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.constants import Resample, SamplePadding
 from kornia.geometry.transform import get_translation_matrix2d, warp_affine
 
@@ -86,11 +86,79 @@ class RandomTranslate(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator: rg.TranslateGenerator = rg.TranslateGenerator(translate_x, translate_y)
+        self._translate_x_input = translate_x
+        self._translate_y_input = translate_y
+
+        # Store bounds as tensors for auto augment compatibility
+        if translate_x is not None:
+            self.translate_x = torch.as_tensor(translate_x)
+        else:
+            self.translate_x = torch.tensor([0.0, 0.0])
+
+        if translate_y is not None:
+            self.translate_y = torch.as_tensor(translate_y)
+        else:
+            self.translate_y = torch.tensor([0.0, 0.0])
+
         self.flags = {
             "resample": Resample.get(resample),
             "padding_mode": SamplePadding.get(padding_mode),
             "align_corners": align_corners,
+        }
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        height = batch_shape[-2]
+        width = batch_shape[-1]
+        _device, _dtype = self.device, self.dtype
+
+        # Parse translate_x
+        if self._translate_x_input is not None:
+            translate_x_range = _range_bound(self._translate_x_input, "translate_x", center=0.0, bounds=(-1.0, 1.0)).to(
+                device=_device, dtype=_dtype
+            )
+        else:
+            translate_x_range = torch.tensor([0.0, 0.0], device=_device, dtype=_dtype)
+
+        # Parse translate_y
+        if self._translate_y_input is not None:
+            translate_y_range = _range_bound(self._translate_y_input, "translate_y", center=0.0, bounds=(-1.0, 1.0)).to(
+                device=_device, dtype=_dtype
+            )
+        else:
+            translate_y_range = torch.tensor([0.0, 0.0], device=_device, dtype=_dtype)
+
+        # Sample translations
+        if self.same_on_batch:
+            translate_x = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(translate_x_range[0].item(), translate_x_range[1].item())
+                .expand(batch_size)
+                * width
+            )
+            translate_y = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(translate_y_range[0].item(), translate_y_range[1].item())
+                .expand(batch_size)
+                * height
+            )
+        else:
+            translate_x = (
+                torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                    translate_x_range[0].item(), translate_x_range[1].item()
+                )
+                * width
+            )
+            translate_y = (
+                torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                    translate_y_range[0].item(), translate_y_range[1].item()
+                )
+                * height
+            )
+
+        return {
+            "translate_x": translate_x,
+            "translate_y": translate_y,
         }
 
     def compute_transformation(

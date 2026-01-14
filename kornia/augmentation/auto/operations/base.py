@@ -15,20 +15,16 @@
 # limitations under the License.
 #
 
-from typing import Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Callable, Dict, List, Optional, Tuple
 
 import torch
 from torch import nn
-from torch.distributions import Bernoulli, RelaxedBernoulli
-from typing_extensions import Self
 
 from kornia.augmentation.base import _AugmentationBase
 
-T = TypeVar("T", bound="OperationBase")
-
 
 class OperationBase(nn.Module):
-    """Base class of differentiable augmentation operations.
+    """Base class for augmentation operations (simplified, non-differentiable).
 
     Args:
         operation: Kornia augmentation module.
@@ -36,9 +32,10 @@ class OperationBase(nn.Module):
             The magnitude parameter name shall align with the attribute inside the random_generator
             in each augmentation. If None, the augmentation will be randomly applied according to
             the augmentation sampling range.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         is_batch_operation: determine if to obtain the probability from `p` or `p_batch`.
             Set to True for most non-shape-persistent operations (e.g. cropping).
+        magnitude_fn: optional function to transform magnitude values.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
 
@@ -46,7 +43,6 @@ class OperationBase(nn.Module):
         self,
         operation: _AugmentationBase,
         initial_magnitude: Optional[List[Tuple[str, Optional[float]]]] = None,
-        temperature: float = 0.1,
         is_batch_operation: bool = False,
         magnitude_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
         symmetric_megnitude: bool = False,
@@ -59,17 +55,12 @@ class OperationBase(nn.Module):
 
         self._init_magnitude(initial_magnitude)
 
-        # Avoid skipping the sampling in `__batch_prob_generator__`
-        self.probability_range = (1e-7, 1 - 1e-7)
         self._is_batch_operation = is_batch_operation
+        # Store probability as a simple float (non-learnable)
         if is_batch_operation:
-            self._probability = nn.Parameter(torch.empty(1).fill_(self.op.p_batch))
+            self._probability = self.op.p_batch
         else:
-            self._probability = nn.Parameter(torch.empty(1).fill_(self.op.p))
-
-        if temperature < 0:
-            raise ValueError(f"Expect temperature value greater than 0. Got {temperature}.")
-        self.register_buffer("temperature", torch.empty(1).fill_(temperature))
+            self._probability = self.op.p
 
         self.symmetric_megnitude = symmetric_megnitude
         self._magnitude_fn = self._init_magnitude_fn(magnitude_fn)
@@ -82,7 +73,7 @@ class OperationBase(nn.Module):
 
         def _random_flip(fn: Callable[[torch.Tensor], torch.Tensor]) -> Callable[[torch.Tensor], torch.Tensor]:
             def f(x: torch.Tensor) -> torch.Tensor:
-                flip = torch.rand((x.shape[0],), device=x.device) > 0.5
+                flip = (torch.rand((x.shape[0],), device=x.device) > 0.5).float() * 2 - 1
                 return fn(x) * flip
 
             return f
@@ -94,6 +85,34 @@ class OperationBase(nn.Module):
             return _random_flip(magnitude_fn)
 
         return magnitude_fn
+
+    def _get_magnitude_range(self, factor_name: str) -> Optional[torch.Tensor]:
+        """Get the magnitude range from the augmentation operation.
+
+        Tries multiple naming conventions to find the bound tensor.
+        """
+        # Try direct name first (e.g., "brightness")
+        base_name = factor_name.replace("_factor", "")
+
+        # List of possible attribute names to check
+        possible_names = [
+            base_name,  # e.g., "brightness", "contrast"
+            f"{base_name}_bound",  # e.g., "degrees_bound", "thresholds_bound"
+            factor_name,  # original name as fallback
+        ]
+
+        for name in possible_names:
+            if hasattr(self.op, name):
+                attr = getattr(self.op, name)
+                if isinstance(attr, torch.Tensor):
+                    return attr
+
+        # Also check _param_generator for backward compatibility
+        if hasattr(self.op, "_param_generator") and self.op._param_generator is not None:
+            if hasattr(self.op._param_generator, factor_name):
+                return getattr(self.op._param_generator, factor_name)
+
+        return None
 
     def _init_magnitude(self, initial_magnitude: Optional[List[Tuple[str, Optional[float]]]]) -> None:
         if isinstance(initial_magnitude, (list, tuple)):
@@ -108,42 +127,21 @@ class OperationBase(nn.Module):
             self.magnitude_range = None
         else:
             self._factor_name = initial_magnitude[0][0]
-            if self.op._param_generator is not None:
-                self.magnitude_range = getattr(self.op._param_generator, self._factor_name)
-            else:
-                raise ValueError(f"No valid magnitude `{self._factor_name}` found in `{self.op._param_generator}`.")
+            self.magnitude_range = self._get_magnitude_range(self._factor_name)
+            if self.magnitude_range is None:
+                raise ValueError(f"No valid magnitude `{self._factor_name}` found in augmentation.")
 
             self._magnitude = None
             if initial_magnitude[0][1] is not None:
-                self._magnitude = nn.Parameter(torch.empty(1).fill_(initial_magnitude[0][1]))
-
-    def _update_probability_gen(self, relaxation: bool) -> None:
-        if relaxation:
-            if self._is_batch_operation:
-                self.op._p_batch_gen = RelaxedBernoulli(self.temperature, self.probability)
-            else:
-                self.op._p_gen = RelaxedBernoulli(self.temperature, self.probability)
-        elif self._is_batch_operation:
-            self.op._p_batch_gen = Bernoulli(self.probability)
-        else:
-            self.op._p_gen = Bernoulli(self.probability)
-
-    def train(self, mode: bool = True) -> Self:
-        self._update_probability_gen(relaxation=mode)
-
-        return super().train(mode=mode)
-
-    def eval(self) -> Self:
-        return self.train(False)
+                # Store magnitude as simple tensor (non-learnable)
+                self.register_buffer("_magnitude_value", torch.tensor([initial_magnitude[0][1]]))
+                self._magnitude = self._magnitude_value
 
     def forward_parameters(
         self, batch_shape: torch.Size, mag: Optional[torch.Tensor] = None
     ) -> Dict[str, torch.Tensor]:
         if mag is None:
             mag = self.magnitude
-        # Need to setup the sampler again for each update.
-        # Otherwise, an error for updating the same graph twice will be thrown.
-        self._update_probability_gen(relaxation=True)
         params = self.op.forward_parameters(batch_shape)
 
         if mag is not None:
@@ -181,6 +179,5 @@ class OperationBase(nn.Module):
         return mag
 
     @property
-    def probability(self) -> torch.Tensor:
-        p = self._probability.clamp(*self.probability_range)
-        return p
+    def probability(self) -> float:
+        return self._probability

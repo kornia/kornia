@@ -19,8 +19,8 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
+from kornia.augmentation.utils import _range_bound, _tuple_range_reader
 from kornia.constants import BorderType, Resample
 from kornia.filters import motion_blur3d
 
@@ -111,7 +111,88 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
-        self._param_generator = rg.MotionBlurGenerator3D(kernel_size, angle, direction)
+        self.kernel_size = kernel_size
+        self.angle = angle
+        self.direction = direction
+
+        # Validate kernel_size
+        if isinstance(self.kernel_size, int):
+            if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):
+                raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {self.kernel_size}.")
+        elif isinstance(self.kernel_size, tuple):
+            if len(self.kernel_size) != 2:
+                raise AssertionError(f"`kernel_size` must be (2,) if it is a tuple. Got {self.kernel_size}.")
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        _device, _dtype = self.device, self.dtype
+
+        angle = _tuple_range_reader(self.angle, 3, device=_device, dtype=_dtype)
+        direction = _range_bound(self.direction, "direction", center=0.0, bounds=(-1, 1)).to(
+            device=_device, dtype=_dtype
+        )
+
+        # Sample kernel size
+        if isinstance(self.kernel_size, int):
+            ksize_half = self.kernel_size // 2
+            if self.same_on_batch:
+                ksize_factor = torch.full((batch_size,), ksize_half * 2 + 1, device=_device, dtype=torch.int32)
+            else:
+                ksize_factor = torch.full((batch_size,), ksize_half * 2 + 1, device=_device, dtype=torch.int32)
+        else:
+            ksize_min, ksize_max = self.kernel_size[0] // 2, self.kernel_size[1] // 2
+            if self.same_on_batch:
+                ksize_half = torch.empty(1, device=_device, dtype=_dtype).uniform_(ksize_min, ksize_max).int().item()
+                ksize_factor = torch.full((batch_size,), ksize_half * 2 + 1, device=_device, dtype=torch.int32)
+            else:
+                ksize_factor = (
+                    torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(ksize_min, ksize_max).int() * 2 + 1
+                )
+
+        # Sample angles
+        if self.same_on_batch:
+            yaw = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(angle[0][0].item(), angle[0][1].item())
+                .expand(batch_size)
+            )
+            pitch = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(angle[1][0].item(), angle[1][1].item())
+                .expand(batch_size)
+            )
+            roll = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(angle[2][0].item(), angle[2][1].item())
+                .expand(batch_size)
+            )
+        else:
+            yaw = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(angle[0][0].item(), angle[0][1].item())
+            pitch = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                angle[1][0].item(), angle[1][1].item()
+            )
+            roll = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                angle[2][0].item(), angle[2][1].item()
+            )
+        angle_factor = torch.stack([yaw, pitch, roll], dim=1)
+
+        # Sample direction
+        if self.same_on_batch:
+            direction_factor = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(direction[0].item(), direction[1].item())
+                .expand(batch_size)
+            )
+        else:
+            direction_factor = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                direction[0].item(), direction[1].item()
+            )
+
+        return {
+            "ksize_factor": ksize_factor,
+            "angle_factor": angle_factor,
+            "direction_factor": direction_factor,
+        }
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]

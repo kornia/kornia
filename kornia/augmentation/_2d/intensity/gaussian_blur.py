@@ -20,8 +20,8 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 from torch import Tensor
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.constants import BorderType
 from kornia.filters import gaussian_blur2d
 
@@ -88,9 +88,29 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
             "separable": separable,
             "border_type": BorderType.get(border_type),
         }
-        self._param_generator = rg.RandomGaussianBlurGenerator(sigma)
+
+        if isinstance(sigma, Tensor):
+            self.sigma = sigma
+        else:
+            if sigma[1] < sigma[0]:
+                raise TypeError(f"sigma_max should be higher than sigma_min: {sigma} passed.")
+            self.sigma = _range_bound(sigma, "sigma", bounds=(0, float("inf")))
 
         self._gaussian_blur2d_fn = gaussian_blur2d
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            sigma = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.sigma[0].item(), self.sigma[1].item())
+                .expand(batch_size)
+            )
+        else:
+            sigma = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.sigma[0].item(), self.sigma[1].item()
+            )
+        return {"sigma": sigma}
 
     def apply_transform(
         self,

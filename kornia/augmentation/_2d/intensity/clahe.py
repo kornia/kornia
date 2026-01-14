@@ -17,12 +17,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.enhance import equalize_clahe
 
 
@@ -73,9 +73,22 @@ class RandomClahe(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self.clip_limit = clip_limit
-        self._param_generator = rg.PlainUniformGenerator((self.clip_limit, "clip_limit_factor", None, None))
+        self.clip_limit_bound: torch.Tensor = _range_bound(clip_limit, "clip_limit")
         self.flags = {"grid_size": grid_size, "slow_and_differentiable": slow_and_differentiable}
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            clip_limit = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.clip_limit_bound[0].item(), self.clip_limit_bound[1].item())
+                .expand(batch_size)
+            )
+        else:
+            clip_limit = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.clip_limit_bound[0].item(), self.clip_limit_bound[1].item()
+            )
+        return {"clip_limit_factor": clip_limit}
 
     def apply_transform(
         self,

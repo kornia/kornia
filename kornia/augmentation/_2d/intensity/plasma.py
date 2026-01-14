@@ -19,8 +19,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.contrib import diamond_square
 
 
@@ -62,9 +62,30 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator(
-            (roughness, "roughness", None, None), (intensity, "intensity", None, None)
-        )
+        self.roughness_bound: torch.Tensor = _range_bound(roughness, "roughness")
+        self.intensity_bound: torch.Tensor = _range_bound(intensity, "intensity")
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            roughness = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.roughness_bound[0].item(), self.roughness_bound[1].item())
+                .expand(batch_size)
+            )
+            intensity = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.intensity_bound[0].item(), self.intensity_bound[1].item())
+                .expand(batch_size)
+            )
+        else:
+            roughness = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.roughness_bound[0].item(), self.roughness_bound[1].item()
+            )
+            intensity = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.intensity_bound[0].item(), self.intensity_bound[1].item()
+            )
+        return {"roughness": roughness, "intensity": intensity}
 
     def apply_transform(
         self,
@@ -117,7 +138,21 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator((roughness, "roughness", None, None))
+        self.roughness_bound: torch.Tensor = _range_bound(roughness, "roughness")
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            roughness = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.roughness_bound[0].item(), self.roughness_bound[1].item())
+                .expand(batch_size)
+            )
+        else:
+            roughness = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.roughness_bound[0].item(), self.roughness_bound[1].item()
+            )
+        return {"roughness": roughness}
 
     def apply_transform(
         self,
@@ -172,11 +207,40 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator(
-            (roughness, "roughness", None, None),
-            (shade_intensity, "shade_intensity", None, None),
-            (shade_quantity, "shade_quantity", None, None),
-        )
+        self.roughness_bound: torch.Tensor = _range_bound(roughness, "roughness")
+        # shade_intensity can be negative (for shadow effect), so don't validate bounds
+        self.shade_intensity_bound: torch.Tensor = torch.as_tensor(shade_intensity)
+        self.shade_quantity_bound: torch.Tensor = _range_bound(shade_quantity, "shade_quantity")
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            roughness = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.roughness_bound[0].item(), self.roughness_bound[1].item())
+                .expand(batch_size)
+            )
+            shade_intensity = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.shade_intensity_bound[0].item(), self.shade_intensity_bound[1].item())
+                .expand(batch_size)
+            )
+            shade_quantity = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.shade_quantity_bound[0].item(), self.shade_quantity_bound[1].item())
+                .expand(batch_size)
+            )
+        else:
+            roughness = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.roughness_bound[0].item(), self.roughness_bound[1].item()
+            )
+            shade_intensity = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.shade_intensity_bound[0].item(), self.shade_intensity_bound[1].item()
+            )
+            shade_quantity = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.shade_quantity_bound[0].item(), self.shade_quantity_bound[1].item()
+            )
+        return {"roughness": roughness, "shade_intensity": shade_intensity, "shade_quantity": shade_quantity}
 
     def apply_transform(
         self,

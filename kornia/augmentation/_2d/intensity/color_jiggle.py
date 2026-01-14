@@ -19,8 +19,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.constants import pi
 from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
 
@@ -84,11 +84,58 @@ class ColorJiggle(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.brightness = brightness
-        self.contrast = contrast
-        self.saturation = saturation
-        self.hue = hue
-        self._param_generator = rg.ColorJiggleGenerator(brightness, contrast, saturation, hue)
+
+        self.brightness_range: torch.Tensor = _range_bound(brightness, "brightness", center=1.0)
+        self.contrast_range: torch.Tensor = _range_bound(contrast, "contrast", center=1.0)
+        self.saturation_range: torch.Tensor = _range_bound(saturation, "saturation", center=1.0)
+        self.hue_range: torch.Tensor = _range_bound(hue, "hue", bounds=(-0.5, 0.5))
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+
+        # Order must match original ColorJiggleGenerator: brightness, contrast, hue, saturation
+        if self.same_on_batch:
+            brightness_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.brightness_range[0].item(), self.brightness_range[1].item())
+                .expand(batch_size)
+            )
+            contrast_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.contrast_range[0].item(), self.contrast_range[1].item())
+                .expand(batch_size)
+            )
+            hue_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.hue_range[0].item(), self.hue_range[1].item())
+                .expand(batch_size)
+            )
+            saturation_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.saturation_range[0].item(), self.saturation_range[1].item())
+                .expand(batch_size)
+            )
+        else:
+            brightness_factor = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.brightness_range[0].item(), self.brightness_range[1].item()
+            )
+            contrast_factor = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.contrast_range[0].item(), self.contrast_range[1].item()
+            )
+            hue_factor = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.hue_range[0].item(), self.hue_range[1].item()
+            )
+            saturation_factor = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.saturation_range[0].item(), self.saturation_range[1].item()
+            )
+
+        return {
+            "brightness_factor": brightness_factor,
+            "contrast_factor": contrast_factor,
+            "hue_factor": hue_factor,
+            "saturation_factor": saturation_factor,
+            "order": torch.randperm(4, dtype=torch.long),
+        }
 
     def apply_transform(
         self,

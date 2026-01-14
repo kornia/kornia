@@ -19,8 +19,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.enhance.adjust import adjust_gamma
 
 
@@ -79,9 +79,30 @@ class RandomGamma(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator(
-            (gamma, "gamma_factor", None, None), (gain, "gain_factor", None, None)
-        )
+        self.gamma: torch.Tensor = _range_bound(gamma, "gamma")
+        self.gain: torch.Tensor = _range_bound(gain, "gain")
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            gamma_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.gamma[0].item(), self.gamma[1].item())
+                .expand(batch_size)
+            )
+            gain_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.gain[0].item(), self.gain[1].item())
+                .expand(batch_size)
+            )
+        else:
+            gamma_factor = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.gamma[0].item(), self.gamma[1].item()
+            )
+            gain_factor = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.gain[0].item(), self.gain[1].item()
+            )
+        return {"gamma_factor": gamma_factor, "gain_factor": gain_factor}
 
     def apply_transform(
         self,

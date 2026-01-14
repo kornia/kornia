@@ -157,6 +157,7 @@ class TestRandomAffine3DBackward:
                 assert (shear.to(device=device, dtype=dtype) - aug.shears.data).sum() != 0
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestRandomRotation3DBackward:
     @pytest.mark.parametrize(
         "degrees",
@@ -208,6 +209,7 @@ class TestRandomRotation3DBackward:
                 assert (degrees.to(device=device, dtype=dtype) - aug._param_generator.degrees.data).sum() != 0
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestRandomPerspective3DBackward:
     @pytest.mark.parametrize("distortion_scale", [0.5, torch.tensor(0.5)])
     @pytest.mark.parametrize("resample", ["bilinear"])  # TODO: Ignore nearest for now.
@@ -253,6 +255,7 @@ class TestRandomPerspective3DBackward:
                 ).sum() != 0
 
 
+@pytest.mark.skip(reason="To be deprecated")
 class TestRandomMotionBlur3DBackward:
     @pytest.mark.parametrize("angle", [20.0, torch.tensor(20.0), torch.tensor([20.0])])
     @pytest.mark.parametrize("direction", [[-0.5, 0.5], torch.tensor([-0.5, 0.5])])

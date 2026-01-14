@@ -17,12 +17,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation.random_generator._2d import RainGenerator
 from kornia.core.check import KORNIA_CHECK
 
 
@@ -53,21 +52,80 @@ class RandomRain(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        number_of_drops: tuple[int, int] = (1000, 2000),
-        drop_height: tuple[int, int] = (5, 20),
-        drop_width: tuple[int, int] = (-5, 5),
+        number_of_drops: Tuple[int, int] = (1000, 2000),
+        drop_height: Tuple[int, int] = (5, 20),
+        drop_width: Tuple[int, int] = (-5, 5),
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self._param_generator = RainGenerator(number_of_drops, drop_height, drop_width)
+        self.number_of_drops = number_of_drops
+        self.drop_height = drop_height
+        self.drop_width = drop_width
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        _device, _dtype = self.device, self.dtype
+
+        # Sample number of drops, drop height, drop width
+        if self.same_on_batch:
+            number_of_drops_factor = (
+                torch.empty(1, device=_device)
+                .uniform_(float(self.number_of_drops[0]), float(self.number_of_drops[1] + 1))
+                .long()
+                .expand(batch_size)
+            )
+            drop_height_factor = (
+                torch.empty(1, device=_device)
+                .uniform_(float(self.drop_height[0]), float(self.drop_height[1] + 1))
+                .long()
+                .expand(batch_size)
+            )
+            drop_width_factor = (
+                torch.empty(1, device=_device)
+                .uniform_(float(self.drop_width[0]), float(self.drop_width[1] + 1))
+                .long()
+                .expand(batch_size)
+            )
+        else:
+            number_of_drops_factor = (
+                torch.empty(batch_size, device=_device)
+                .uniform_(float(self.number_of_drops[0]), float(self.number_of_drops[1] + 1))
+                .long()
+            )
+            drop_height_factor = (
+                torch.empty(batch_size, device=_device)
+                .uniform_(float(self.drop_height[0]), float(self.drop_height[1] + 1))
+                .long()
+            )
+            drop_width_factor = (
+                torch.empty(batch_size, device=_device)
+                .uniform_(float(self.drop_width[0]), float(self.drop_width[1] + 1))
+                .long()
+            )
+
+        # Sample coordinates for drops
+        max_drops = int(number_of_drops_factor.max().item()) if number_of_drops_factor.numel() > 0 else 0
+        if self.same_on_batch:
+            coordinates_factor = (
+                torch.rand(1, max_drops, 2, device=_device, dtype=_dtype).expand(batch_size, -1, -1).contiguous()
+            )
+        else:
+            coordinates_factor = torch.rand(batch_size, max_drops, 2, device=_device, dtype=_dtype)
+
+        return {
+            "number_of_drops_factor": number_of_drops_factor,
+            "coordinates_factor": coordinates_factor,
+            "drop_height_factor": drop_height_factor,
+            "drop_width_factor": drop_width_factor,
+        }
 
     def apply_transform(
         self,
         image: torch.Tensor,
-        params: dict[str, torch.Tensor],
-        flags: dict[str, Any],
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         # Check array and drops size

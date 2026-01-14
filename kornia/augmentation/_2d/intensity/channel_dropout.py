@@ -15,12 +15,11 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation.random_generator._2d import ChannelDropoutGenerator
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 
 
@@ -97,8 +96,19 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
             f"Invalid value in `num_drop_channels`. Must be an int greater than 1. Got: {num_drop_channels}",
         )
         self.num_drop_channels = num_drop_channels
-        # Generator of random parameters.
-        self._param_generator = ChannelDropoutGenerator(self.num_drop_channels)
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size, channels, _, _ = batch_shape
+        # Generate random values for each batch and channel
+        random_vals = torch.rand(batch_size, channels, device=self.device, dtype=self.dtype)
+        if self.same_on_batch and batch_size > 1:
+            random_vals = random_vals[0:1].expand(batch_size, -1)
+
+        # Get indices of channels to drop by sorting random values
+        channel_idx = torch.argsort(random_vals, dim=1)[:, : self.num_drop_channels].to(torch.long)
+        batch_idx = torch.arange(batch_size, device=self.device, dtype=torch.long).reshape(batch_size, 1)
+
+        return {"batch_idx": batch_idx, "channel_idx": channel_idx}
 
     def apply_transform(
         self,

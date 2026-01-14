@@ -19,8 +19,8 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.enhance import sharpness
 
 
@@ -70,7 +70,21 @@ class RandomSharpness(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator((sharpness, "sharpness", 0.0, (0, float("inf"))))
+        self.sharpness_bound: torch.Tensor = _range_bound(sharpness, "sharpness", center=0.0, bounds=(0, float("inf")))
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            sharpness_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.sharpness_bound[0].item(), self.sharpness_bound[1].item())
+                .expand(batch_size)
+            )
+        else:
+            sharpness_factor = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.sharpness_bound[0].item(), self.sharpness_bound[1].item()
+            )
+        return {"sharpness": sharpness_factor}
 
     def apply_transform(
         self,

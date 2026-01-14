@@ -20,7 +20,6 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation.random_generator._2d import SaltAndPepperGenerator
 from kornia.core.check import KORNIA_CHECK
 
 
@@ -95,16 +94,16 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
                 salt_vs_pepper = (salt_vs_pepper[0], salt_vs_pepper[0])
             elif len(salt_vs_pepper) > 2 or len(salt_vs_pepper) <= 0:
                 raise ValueError(
-                    "The length of salt_vs_pepper must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple."
+                    "The length of salt_vs_pepper must be greater than 0 "
+                    "and less than or equal to 2, and it should be a tuple."
                 )
         else:
             raise ValueError("salt_vs_pepper must be a tuple or a float")
         KORNIA_CHECK(
             all(0 <= el <= 1 for el in salt_vs_pepper),
-            "Salt_vs_pepper values must be between 0 and 1. \
-                        Recommended value 0.5.",
+            "Salt_vs_pepper values must be between 0 and 1. Recommended value 0.5.",
         )
+        self.salt_vs_pepper = salt_vs_pepper
 
         if isinstance(amount, (tuple, float)):
             if isinstance(amount, float):
@@ -113,19 +112,65 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
                 amount = (amount[0], amount[0])
             elif len(amount) > 2 or len(amount) <= 0:
                 raise ValueError(
-                    "The length of amount must be greater than 0 \
-                        and less than or equal to 2, and it should be a tuple."
+                    "The length of amount must be greater than 0 and less than or equal to 2, and it should be a tuple."
                 )
         else:
             raise ValueError("amount must be a tuple or a float")
         KORNIA_CHECK(
             all(0 <= el <= 1 for el in amount),
-            "amount of noise values must be between 0 and 1. \
-                        Recommended values less than 0.2.",
+            "amount of noise values must be between 0 and 1. Recommended values less than 0.2.",
         )
+        self.amount = amount
 
-        # Generator of random parameters and masks.
-        self._param_generator = SaltAndPepperGenerator(amount, salt_vs_pepper)
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size, C, H, W = batch_shape
+
+        # Sample amount and salt_vs_pepper factors
+        if self.same_on_batch:
+            amount_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.amount[0], self.amount[1])
+                .expand(batch_size)
+            )
+            salt_pepper_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.salt_vs_pepper[0], self.salt_vs_pepper[1])
+                .expand(batch_size)
+            )
+            # Generate single mask and expand for same_on_batch
+            mask_noise_single = torch.rand(1, 1, H, W, device=self.device, dtype=self.dtype) < amount_factor[0]
+            mask_salt_single = torch.rand(1, 1, H, W, device=self.device, dtype=self.dtype) < salt_pepper_factor[0]
+            mask_noise = mask_noise_single.expand(batch_size, -1, -1, -1)
+            mask_salt = mask_salt_single.expand(batch_size, -1, -1, -1)
+        else:
+            amount_factor = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.amount[0], self.amount[1]
+            )
+            salt_pepper_factor = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.salt_vs_pepper[0], self.salt_vs_pepper[1]
+            )
+            # Generate noise masks
+            mask_noise = torch.rand(batch_size, 1, H, W, device=self.device, dtype=self.dtype) < amount_factor.view(
+                batch_size, 1, 1, 1
+            )
+            mask_salt = torch.rand(batch_size, 1, H, W, device=self.device, dtype=self.dtype) < salt_pepper_factor.view(
+                batch_size, 1, 1, 1
+            )
+
+        # Replicate mask for multiple channels
+        if C > 1:
+            mask_noise = mask_noise.expand(-1, C, -1, -1).contiguous()
+            mask_salt = mask_salt.expand(-1, C, -1, -1).contiguous()
+
+        mask_pepper = ~mask_salt & mask_noise
+        mask_salt = mask_salt & mask_noise
+
+        return {
+            "amount_factor": amount_factor,
+            "salt_and_pepper_factor": salt_pepper_factor,
+            "mask_salt": mask_salt,
+            "mask_pepper": mask_pepper,
+        }
 
     def apply_transform(
         self,

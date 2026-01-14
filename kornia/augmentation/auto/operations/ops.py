@@ -49,20 +49,15 @@ class AutoContrast(OperationBase):
     """Apply auto_contrast operation.
 
     Args:
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
+        initial_probability: the initial probability.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
 
-    def __init__(
-        self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False
-    ) -> None:
+    def __init__(self, initial_probability: float = 0.5, symmetric_megnitude: bool = False) -> None:
         super().__init__(
             K.RandomAutoContrast(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
 
@@ -71,11 +66,9 @@ class Brightness(OperationBase):
     """Apply brightness operation.
 
     Args:
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
         initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
@@ -85,13 +78,11 @@ class Brightness(OperationBase):
         initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.2, 1.8),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
             K.RandomBrightness(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("brightness_factor", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
 
@@ -100,11 +91,9 @@ class Contrast(OperationBase):
     """Apply contrast operation.
 
     Args:
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
         initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
@@ -114,13 +103,11 @@ class Contrast(OperationBase):
         initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.2, 1.8),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
             K.RandomContrast(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("contrast_factor", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
 
@@ -129,11 +116,9 @@ class Hue(OperationBase):
     """Apply hue operation.
 
     Args:
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
         initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
@@ -143,13 +128,11 @@ class Hue(OperationBase):
         initial_magnitude: Optional[float] = 0.0,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (-0.5, 0.5),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
             K.RandomHue(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("hue_factor", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
 
@@ -158,11 +141,9 @@ class Saturate(OperationBase):
     """Apply saturation operation.
 
     Args:
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
         initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
@@ -172,36 +153,27 @@ class Saturate(OperationBase):
         initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.2, 1.8),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
             K.RandomSaturation(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("saturation_factor", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
 
 
-# TODO: Equalize cannot update probabilities yet.
 class Equalize(OperationBase):
     """Apply equalize operation.
 
     Args:
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
-
-    Note:
-        Equalize cannot update probabilities yet.
+        initial_probability: the initial probability.
 
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
+    def __init__(self, initial_probability: float = 0.5) -> None:
         super().__init__(
             K.RandomEqualize(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
-            temperature=temperature,
             symmetric_megnitude=False,
         )
 
@@ -210,17 +182,14 @@ class Gray(OperationBase):
     """Apply grayscale operation.
 
     Args:
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
+        initial_probability: the initial probability.
 
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
+    def __init__(self, initial_probability: float = 0.5) -> None:
         super().__init__(
             K.RandomGrayscale(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
-            temperature=temperature,
             symmetric_megnitude=False,
         )
 
@@ -229,17 +198,14 @@ class Invert(OperationBase):
     """Apply invert operation.
 
     Args:
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
+        initial_probability: the initial probability.
 
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
+    def __init__(self, initial_probability: float = 0.5) -> None:
         super().__init__(
             K.RandomInvert(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
-            temperature=temperature,
             symmetric_megnitude=False,
         )
 
@@ -249,10 +215,8 @@ class Posterize(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
+        initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
@@ -266,13 +230,11 @@ class Posterize(OperationBase):
         initial_magnitude: Optional[float] = 4.0,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (1.0, 8.0),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
             K.RandomPosterize(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("bits_factor", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
             magnitude_fn=Posterize._process_magnitude,
         )
@@ -283,11 +245,9 @@ class Solarize(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
-        magnitude_range: the sampling range for random sampling and clamping the optimized
-        symmetric_megnitude: if to randomly assign the magnitude as negative or not.magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
+        initial_probability: the initial probability.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
 
@@ -296,13 +256,11 @@ class Solarize(OperationBase):
         initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 1.0),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
             K.RandomSolarize(magnitude_range, additions=0.0, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("thresholds", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
 
@@ -312,10 +270,8 @@ class SolarizeAdd(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
+        initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
@@ -325,13 +281,11 @@ class SolarizeAdd(OperationBase):
         initial_magnitude: Optional[float] = 0.0,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (-0.3, 0.3),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
             K.RandomSolarize(thresholds=0.5, additions=magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("additions", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
 
@@ -341,10 +295,8 @@ class Sharpness(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
+        initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
@@ -354,13 +306,11 @@ class Sharpness(OperationBase):
         initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.1, 1.9),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__(
             K.RandomSharpness(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("sharpness", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
 
@@ -369,17 +319,14 @@ class HorizontalFlip(OperationBase):
     """Apply horizontal flip operation.
 
     Args:
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
+        initial_probability: the initial probability.
 
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
+    def __init__(self, initial_probability: float = 0.5) -> None:
         super().__init__(
             K.RandomHorizontalFlip(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
-            temperature=temperature,
             symmetric_megnitude=False,
         )
 
@@ -388,16 +335,14 @@ class VerticalFlip(OperationBase):
     """Apply vertical flip operation.
 
     Args:
-        initial_magnitude: the initial magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
+        initial_probability: the initial probability.
 
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
+    def __init__(self, initial_probability: float = 0.5) -> None:
         super().__init__(
             K.RandomVerticalFlip(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
-            temperature=temperature,
             symmetric_megnitude=False,
         )
 
@@ -407,10 +352,8 @@ class Rotate(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
+        initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
@@ -420,7 +363,6 @@ class Rotate(OperationBase):
         initial_magnitude: Optional[float] = 15.0,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 30.0),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = True,
     ) -> None:
         if symmetric_megnitude and magnitude_range[0] < 0:
@@ -431,7 +373,6 @@ class Rotate(OperationBase):
         super().__init__(
             K.RandomRotation(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("degrees", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
 
@@ -441,10 +382,8 @@ class ShearX(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
+        initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
@@ -459,7 +398,6 @@ class ShearX(OperationBase):
         initial_magnitude: Optional[float] = 0.1,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 0.3),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = True,
     ) -> None:
         if symmetric_megnitude and magnitude_range[0] < 0:
@@ -470,7 +408,6 @@ class ShearX(OperationBase):
         super().__init__(
             K.RandomShear(magnitude_range, same_on_batch=False, p=initial_probability, align_corners=True),
             initial_magnitude=[("shear_x", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
             magnitude_fn=ShearX._process_magnitude,
         )
@@ -481,10 +418,8 @@ class ShearY(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
+        initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
@@ -499,7 +434,6 @@ class ShearY(OperationBase):
         initial_magnitude: Optional[float] = 0.1,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 0.3),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = True,
     ) -> None:
         if symmetric_megnitude and magnitude_range[0] < 0:
@@ -515,7 +449,6 @@ class ShearY(OperationBase):
                 align_corners=True,
             ),
             initial_magnitude=[("shear_y", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
             magnitude_fn=ShearY._process_magnitude,
         )
@@ -526,10 +459,8 @@ class TranslateX(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
+        initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
@@ -539,7 +470,6 @@ class TranslateX(OperationBase):
         initial_magnitude: Optional[float] = 0.2,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 0.5),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = True,
     ) -> None:
         if symmetric_megnitude and magnitude_range[0] < 0:
@@ -550,7 +480,6 @@ class TranslateX(OperationBase):
         super().__init__(
             K.RandomTranslate(magnitude_range, same_on_batch=False, p=initial_probability, align_corners=True),
             initial_magnitude=[("translate_x", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )
 
@@ -560,10 +489,8 @@ class TranslateY(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability. If None, the augmentation will be randomly
-            applied according to he augmentation sampling range.
+        initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
-        temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     """
@@ -573,7 +500,6 @@ class TranslateY(OperationBase):
         initial_magnitude: Optional[float] = 0.2,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 0.5),
-        temperature: float = 0.1,
         symmetric_megnitude: bool = True,
     ) -> None:
         if symmetric_megnitude and magnitude_range[0] < 0:
@@ -584,6 +510,5 @@ class TranslateY(OperationBase):
         super().__init__(
             K.RandomTranslate(None, magnitude_range, same_on_batch=False, p=initial_probability, align_corners=True),
             initial_magnitude=[("translate_y", initial_magnitude)],
-            temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
         )

@@ -19,8 +19,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.enhance import solarize
 
 
@@ -76,9 +76,30 @@ class RandomSolarize(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.PlainUniformGenerator(
-            (thresholds, "thresholds", 0.5, (0.0, 1.0)), (additions, "additions", 0.0, (-0.5, 0.5))
-        )
+        self.thresholds_bound: torch.Tensor = _range_bound(thresholds, "thresholds", center=0.5, bounds=(0.0, 1.0))
+        self.additions_bound: torch.Tensor = _range_bound(additions, "additions", center=0.0, bounds=(-0.5, 0.5))
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            thresholds = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.thresholds_bound[0].item(), self.thresholds_bound[1].item())
+                .expand(batch_size)
+            )
+            additions = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.additions_bound[0].item(), self.additions_bound[1].item())
+                .expand(batch_size)
+            )
+        else:
+            thresholds = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.thresholds_bound[0].item(), self.thresholds_bound[1].item()
+            )
+            additions = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.additions_bound[0].item(), self.additions_bound[1].item()
+            )
+        return {"thresholds": thresholds, "additions": additions}
 
     def apply_transform(
         self,

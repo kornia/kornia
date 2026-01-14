@@ -19,8 +19,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.constants import BorderType, Resample
 from kornia.filters import motion_blur
 
@@ -94,13 +94,63 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = rg.MotionBlurGenerator(kernel_size, angle, direction)
+
+        self.kernel_size = kernel_size
+        self.angle_range: torch.Tensor = _range_bound(angle, "angle", center=0.0, bounds=(-360, 360))
+        self.direction_range: torch.Tensor = _range_bound(direction, "direction", center=0.0, bounds=(-1, 1))
+
+        # Validate kernel size
+        if isinstance(kernel_size, int):
+            if not (kernel_size >= 3 and kernel_size % 2 == 1):
+                raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {kernel_size}.")
+            self.ksize_range = (kernel_size // 2, kernel_size // 2)
+        elif isinstance(kernel_size, tuple):
+            if len(kernel_size) != 2:
+                raise AssertionError(f"`kernel_size` must be (2,) if it is a tuple. Got {kernel_size}.")
+            self.ksize_range = (kernel_size[0] // 2, kernel_size[1] // 2)
+        else:
+            raise TypeError(f"Unsupported type: {type(kernel_size)}")
+
         self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
-        params = super().generate_parameters(batch_shape)
-        params["idx"] = torch.tensor([0]) if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,))
-        return params
+        batch_size = batch_shape[0]
+
+        if self.same_on_batch:
+            angle_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.angle_range[0].item(), self.angle_range[1].item())
+                .expand(batch_size)
+            )
+            direction_factor = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.direction_range[0].item(), self.direction_range[1].item())
+                .expand(batch_size)
+            )
+            ksize_factor = (
+                torch.empty(1, device=self.device).uniform_(self.ksize_range[0], self.ksize_range[1]).int() * 2 + 1
+            ).expand(batch_size)
+        else:
+            angle_factor = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.angle_range[0].item(), self.angle_range[1].item()
+            )
+            direction_factor = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.direction_range[0].item(), self.direction_range[1].item()
+            )
+            ksize_factor = (
+                torch.empty(batch_size, device=self.device).uniform_(self.ksize_range[0], self.ksize_range[1]).int() * 2
+                + 1
+            )
+
+        # Random index for kernel size selection (used for batch processing)
+        idx = torch.tensor([0]) if batch_size == 0 else torch.randint(batch_size, (1,))
+
+        return {
+            "ksize_factor": ksize_factor.to(torch.int32),
+            "angle_factor": angle_factor,
+            "direction_factor": direction_factor,
+            "idx": idx,
+        }
 
     def apply_transform(
         self,

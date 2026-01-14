@@ -20,8 +20,8 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 import kornia
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
+from kornia.augmentation.utils import _tuple_range_reader
 from kornia.constants import Resample
 from kornia.geometry import affine3d
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
@@ -105,7 +105,42 @@ class RandomRotation3D(GeometricAugmentationBase3D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
-        self._param_generator = rg.RotationGenerator3D(degrees)
+        self.degrees = degrees
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        _device, _dtype = self.device, self.dtype
+
+        degrees = _tuple_range_reader(self.degrees, 3, _device, _dtype)
+
+        if self.same_on_batch:
+            yaw = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(degrees[0][0].item(), degrees[0][1].item())
+                .expand(batch_size)
+            )
+            pitch = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(degrees[1][0].item(), degrees[1][1].item())
+                .expand(batch_size)
+            )
+            roll = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(degrees[2][0].item(), degrees[2][1].item())
+                .expand(batch_size)
+            )
+        else:
+            yaw = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                degrees[0][0].item(), degrees[0][1].item()
+            )
+            pitch = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                degrees[1][0].item(), degrees[1][1].item()
+            )
+            roll = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                degrees[2][0].item(), degrees[2][1].item()
+            )
+
+        return {"yaw": yaw, "pitch": pitch, "roll": roll}
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]

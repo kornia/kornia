@@ -20,11 +20,10 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import torch
 from torch import nn
-from torch.distributions import Bernoulli, Distribution, RelaxedBernoulli
+from torch.distributions import Bernoulli, Distribution
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import (
-    _adapted_rsampling,
     _adapted_sampling,
     _transform_output_shape,
     override_parameters,
@@ -166,9 +165,6 @@ class _BasicAugmentationBase(nn.Module):
             batch_prob = torch.zeros(1) + 1
         elif p_batch == 0:
             batch_prob = torch.zeros(1)
-        elif isinstance(self._p_batch_gen, (RelaxedBernoulli,)):
-            # NOTE: there is no simple way to know if the sampler has `rsample` or not
-            batch_prob = _adapted_rsampling((1,), self._p_batch_gen, same_on_batch)
         else:
             batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch)
 
@@ -178,8 +174,6 @@ class _BasicAugmentationBase(nn.Module):
                 elem_prob = torch.zeros(batch_shape[0]) + 1
             elif p == 0:
                 elem_prob = torch.zeros(batch_shape[0])
-            elif isinstance(self._p_gen, (RelaxedBernoulli,)):
-                elem_prob = _adapted_rsampling((batch_shape[0],), self._p_gen, same_on_batch)
             else:
                 elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch)
             batch_prob = batch_prob * elem_prob
@@ -310,7 +304,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
 
@@ -352,7 +346,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5
         ori_shape = input.shape
 
         shape = params["forward_input_shape"]
@@ -391,7 +385,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5
         output: Boxes
         if to_apply.bool().all():
             output = self.apply_transform_box(input, params, flags, transform=transform)
@@ -428,7 +422,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5
         if to_apply.all():
             output = self.apply_transform_keypoint(input, params, flags, transform=transform)
         elif not to_apply.any():
@@ -460,7 +454,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5
         if to_apply.all():
             output = self.apply_transform_class(input, params, flags, transform=transform)
         elif not to_apply.any():

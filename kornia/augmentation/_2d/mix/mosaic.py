@@ -20,11 +20,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, Resample
 from kornia.core.check import KORNIA_UNWRAP
 from kornia.core.ops import eye_like
+from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
@@ -93,8 +93,9 @@ class RandomMosaic(MixAugmentationBaseV2):
         cropping_mode: str = "slice",
     ) -> None:
         super().__init__(p=p, p_batch=1.0, same_on_batch=False, keepdim=keepdim, data_keys=data_keys)
+        self.output_size = output_size
+        self.mosaic_grid = mosaic_grid
         self.start_ratio_range = start_ratio_range
-        self._param_generator = rg.MosaicGenerator(output_size, mosaic_grid, start_ratio_range)
 
         self.flags = {
             "mosaic_grid": mosaic_grid,
@@ -104,6 +105,51 @@ class RandomMosaic(MixAugmentationBaseV2):
             "resample": Resample.get(resample),
             "align_corners": align_corners,
             "cropping_mode": cropping_mode,
+        }
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        input_sizes = (batch_shape[-2], batch_shape[-1])
+        _device, _dtype = self.device, self.dtype
+
+        perm_times = self.mosaic_grid[0] * self.mosaic_grid[1]
+        # Generate mosiac order in one shot
+        rand_ids = torch.randperm(batch_size * (perm_times - 1), device=_device) % batch_size
+        mosiac_ids = (
+            torch.cat([torch.arange(0, batch_size, device=_device), rand_ids])
+            .reshape(perm_times, batch_size)
+            .permute(1, 0)
+        )
+
+        start_corner_factor = torch.empty(batch_size, 2, device=_device, dtype=_dtype).uniform_(
+            self.start_ratio_range[0], self.start_ratio_range[1]
+        )
+        start_corner_x = start_corner_factor[:, 0] * batch_shape[-2]
+        start_corner_y = start_corner_factor[:, 1] * batch_shape[-1]
+        crop_src = bbox_generator(
+            start_corner_x,
+            start_corner_y,
+            start_corner_x.clone().fill_(input_sizes[0]),
+            start_corner_y.clone().fill_(input_sizes[1]),
+        )
+        crop_dst = torch.tensor(
+            [[[0, 0], [input_sizes[1] - 1, 0], [input_sizes[1] - 1, input_sizes[0] - 1], [0, input_sizes[0] - 1]]],
+            device=_device,
+            dtype=_dtype,
+        ).repeat(batch_size, 1, 1)
+
+        # NOTE: In case we support a list of torch.tensor images later. For a better consistency.
+        # B x 3
+        batch_shapes: torch.Tensor
+        if batch_size == 0:
+            batch_shapes = torch.zeros([0, 3], device=_device, dtype=torch.long)
+        else:
+            batch_shapes = torch.stack([torch.as_tensor(batch_shape[1:], device=_device) for _ in range(batch_size)])
+        return {
+            "permutation": mosiac_ids.to(device=_device, dtype=torch.long),
+            "src": crop_src,
+            "dst": crop_dst,
+            "batch_shapes": batch_shapes,
         }
 
     def apply_transform_mask(

@@ -20,9 +20,9 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
@@ -106,7 +106,7 @@ class RandomCrop(GeometricAugmentationBase2D):
     ) -> None:
         # Since PyTorch does not support ragged torch.tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
-        self._param_generator = rg.CropGenerator(size)
+        self.crop_size = size
         self.flags = {
             "size": size,
             "padding": padding,
@@ -117,6 +117,63 @@ class RandomCrop(GeometricAugmentationBase2D):
             "align_corners": align_corners,
             "cropping_mode": cropping_mode,
         }
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        _device, _dtype = self.device, self.dtype
+
+        if batch_size == 0:
+            return {
+                "src": torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+                "dst": torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+            }
+
+        input_size = (batch_shape[-2], batch_shape[-1])
+        if not isinstance(self.crop_size, torch.Tensor):
+            size = torch.tensor(self.crop_size, device=_device, dtype=_dtype).repeat(batch_size, 1)
+        else:
+            size = self.crop_size.to(device=_device, dtype=_dtype)
+        if size.shape != torch.Size([batch_size, 2]):
+            raise AssertionError(
+                "If `size` is a torch.tensor, it must be shaped as (B, 2). "
+                f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}."
+            )
+        if not (input_size[0] > 0 and input_size[1] > 0 and (size > 0).all()):
+            raise AssertionError(f"Got non-positive input size or size. {input_size}, {size}.")
+        size = size.floor()
+
+        x_diff = input_size[1] - size[:, 1] + 1
+        y_diff = input_size[0] - size[:, 0] + 1
+
+        # Start point will be 0 if diff < 0
+        x_diff = x_diff.clamp(0)
+        y_diff = y_diff.clamp(0)
+
+        if self.same_on_batch:
+            # If same_on_batch, select the first then repeat.
+            x_start = (torch.rand(1, device=_device, dtype=_dtype).expand(batch_size) * x_diff[0]).floor()
+            y_start = (torch.rand(1, device=_device, dtype=_dtype).expand(batch_size) * y_diff[0]).floor()
+        else:
+            x_start = (torch.rand(batch_size, device=_device, dtype=_dtype) * x_diff).floor()
+            y_start = (torch.rand(batch_size, device=_device, dtype=_dtype) * y_diff).floor()
+
+        crop_src = bbox_generator(
+            x_start.view(-1).to(device=_device, dtype=_dtype),
+            y_start.view(-1).to(device=_device, dtype=_dtype),
+            torch.where(size[:, 1] == 0, torch.tensor(input_size[1], device=_device, dtype=_dtype), size[:, 1]),
+            torch.where(size[:, 0] == 0, torch.tensor(input_size[0], device=_device, dtype=_dtype), size[:, 0]),
+        )
+
+        crop_dst = bbox_generator(
+            torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+            torch.tensor([0] * batch_size, device=_device, dtype=_dtype),
+            size[:, 1],
+            size[:, 0],
+        )
+        _output_size = size.to(dtype=torch.long)
+        _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+
+        return {"src": crop_src, "dst": crop_dst, "input_size": _input_size, "output_size": _output_size}
 
     def compute_padding(self, shape: Tuple[int, ...], flags: Optional[Dict[str, Any]] = None) -> List[int]:
         flags = self.flags if flags is None else flags

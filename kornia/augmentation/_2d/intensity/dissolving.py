@@ -19,8 +19,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.filters import StableDiffusionDissolving
 
 
@@ -66,9 +66,18 @@ class RandomDissolving(IntensityAugmentationBase2D):
         **kwargs: Any,
     ) -> None:
         super().__init__(p=p, same_on_batch=True, keepdim=keepdim)
-        self.step_range = step_range
+        self.step_range_bound: torch.Tensor = _range_bound(step_range, "step_range")
         self._dslv = StableDiffusionDissolving(version, **kwargs)
-        self._param_generator = rg.PlainUniformGenerator((self.step_range, "step_range_factor", None, None))
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        # Always same_on_batch for this augmentation
+        step_range = (
+            torch.empty(1, device=self.device, dtype=self.dtype)
+            .uniform_(self.step_range_bound[0].item(), self.step_range_bound[1].item())
+            .expand(batch_size)
+        )
+        return {"step_range_factor": step_range}
 
     def apply_transform(
         self,

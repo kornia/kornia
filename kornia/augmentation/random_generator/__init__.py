@@ -17,10 +17,10 @@
 
 """Kornia Augmentation Random Generator — Random parameter generators for augmentations.
 
-This subpackage provides random generators for 2D and 3D augmentation modules.
+Note: Individual generator classes have been deprecated. Parameter generation is now
+inlined directly into augmentation classes via the generate_parameters() method.
 """
 
-from kornia.augmentation.random_generator._2d import *
-from kornia.augmentation.random_generator._3d import *
+from .base import DistributionWithMapper, RandomGeneratorBase, UniformDistribution
 
-from .base import DistributionWithMapper, UniformDistribution
+__all__ = ["DistributionWithMapper", "RandomGeneratorBase", "UniformDistribution"]

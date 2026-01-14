@@ -19,8 +19,8 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
+from kornia.augmentation.utils import _singular_range_check, _tuple_range_reader
 from kornia.constants import Resample
 from kornia.geometry.transform.imgwarp import get_affine_matrix3d, warp_affine3d
 
@@ -141,9 +141,201 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         self.shears = shears
         self.translate = translate
         self.scale = scale
-
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
-        self._param_generator = rg.AffineGenerator3D(degrees, translate, scale, shears)
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        depth = batch_shape[-3]
+        height = batch_shape[-2]
+        width = batch_shape[-1]
+        _device, _dtype = self.device, self.dtype
+
+        if not (
+            isinstance(depth, int)
+            and depth > 0
+            and isinstance(height, int)
+            and height > 0
+            and isinstance(width, int)
+            and width > 0
+        ):
+            raise AssertionError(f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}.")
+
+        degrees = _tuple_range_reader(self.degrees, 3, _device, _dtype)
+
+        # Parse shears
+        _shear: Optional[torch.Tensor] = None
+        if self.shears is not None:
+            _shear = _tuple_range_reader(self.shears, 6, _device, _dtype)
+
+        # Parse translate
+        _translate: Optional[torch.Tensor] = None
+        if self.translate is not None:
+            _translate = torch.as_tensor(self.translate, device=_device, dtype=_dtype)
+            _singular_range_check(_translate, "translate", bounds=(0, 1), mode="3d")
+
+        # Parse scale
+        _scale: Optional[torch.Tensor] = None
+        if self.scale is not None:
+            _scale_raw = torch.as_tensor(self.scale, device=_device, dtype=_dtype)
+            if _scale_raw.shape == torch.Size([2]):
+                _scale = _scale_raw.unsqueeze(0).repeat(3, 1)
+            elif _scale_raw.shape != torch.Size([3, 2]):
+                raise ValueError(f"'scale' shall be either shape (2) or (3, 2). Got {self.scale}.")
+            else:
+                _scale = _scale_raw
+            _singular_range_check(_scale[0], "scale-x", bounds=(0, float("inf")), mode="2d")
+            _singular_range_check(_scale[1], "scale-y", bounds=(0, float("inf")), mode="2d")
+            _singular_range_check(_scale[2], "scale-z", bounds=(0, float("inf")), mode="2d")
+
+        # Sample angles
+        if self.same_on_batch:
+            yaw = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(degrees[0][0].item(), degrees[0][1].item())
+                .expand(batch_size)
+            )
+            pitch = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(degrees[1][0].item(), degrees[1][1].item())
+                .expand(batch_size)
+            )
+            roll = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(degrees[2][0].item(), degrees[2][1].item())
+                .expand(batch_size)
+            )
+        else:
+            yaw = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                degrees[0][0].item(), degrees[0][1].item()
+            )
+            pitch = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                degrees[1][0].item(), degrees[1][1].item()
+            )
+            roll = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                degrees[2][0].item(), degrees[2][1].item()
+            )
+        angles = torch.stack([yaw, pitch, roll], dim=1)
+
+        # Sample scale
+        if _scale is not None:
+            if self.same_on_batch:
+                scale_x = (
+                    torch.empty(1, device=_device, dtype=_dtype)
+                    .uniform_(_scale[0, 0].item(), _scale[0, 1].item())
+                    .expand(batch_size)
+                )
+                scale_y = (
+                    torch.empty(1, device=_device, dtype=_dtype)
+                    .uniform_(_scale[1, 0].item(), _scale[1, 1].item())
+                    .expand(batch_size)
+                )
+                scale_z = (
+                    torch.empty(1, device=_device, dtype=_dtype)
+                    .uniform_(_scale[2, 0].item(), _scale[2, 1].item())
+                    .expand(batch_size)
+                )
+            else:
+                scale_x = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                    _scale[0, 0].item(), _scale[0, 1].item()
+                )
+                scale_y = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                    _scale[1, 0].item(), _scale[1, 1].item()
+                )
+                scale_z = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                    _scale[2, 0].item(), _scale[2, 1].item()
+                )
+            scale = torch.stack([scale_x, scale_y, scale_z], dim=1)
+        else:
+            scale = torch.ones(batch_size, 3, device=_device, dtype=_dtype)
+
+        # Sample translations
+        if _translate is not None:
+            max_dx = _translate[0].item() * width
+            max_dy = _translate[1].item() * height
+            max_dz = _translate[2].item() * depth
+            if self.same_on_batch:
+                trans_x = (torch.rand(1, device=_device, dtype=_dtype) - 0.5).expand(batch_size) * max_dx * 2
+                trans_y = (torch.rand(1, device=_device, dtype=_dtype) - 0.5).expand(batch_size) * max_dy * 2
+                trans_z = (torch.rand(1, device=_device, dtype=_dtype) - 0.5).expand(batch_size) * max_dz * 2
+            else:
+                trans_x = (torch.rand(batch_size, device=_device, dtype=_dtype) - 0.5) * max_dx * 2
+                trans_y = (torch.rand(batch_size, device=_device, dtype=_dtype) - 0.5) * max_dy * 2
+                trans_z = (torch.rand(batch_size, device=_device, dtype=_dtype) - 0.5) * max_dz * 2
+            translations = torch.stack([trans_x, trans_y, trans_z], dim=1)
+        else:
+            translations = torch.zeros((batch_size, 3), device=_device, dtype=_dtype)
+
+        # Center
+        center = torch.tensor([width, height, depth], device=_device, dtype=_dtype).view(1, 3) / 2.0 - 0.5
+        center = center.expand(batch_size, -1)
+
+        # Sample shears
+        if _shear is not None:
+            if self.same_on_batch:
+                sxy = (
+                    torch.empty(1, device=_device, dtype=_dtype)
+                    .uniform_(_shear[0, 0].item(), _shear[0, 1].item())
+                    .expand(batch_size)
+                )
+                sxz = (
+                    torch.empty(1, device=_device, dtype=_dtype)
+                    .uniform_(_shear[1, 0].item(), _shear[1, 1].item())
+                    .expand(batch_size)
+                )
+                syx = (
+                    torch.empty(1, device=_device, dtype=_dtype)
+                    .uniform_(_shear[2, 0].item(), _shear[2, 1].item())
+                    .expand(batch_size)
+                )
+                syz = (
+                    torch.empty(1, device=_device, dtype=_dtype)
+                    .uniform_(_shear[3, 0].item(), _shear[3, 1].item())
+                    .expand(batch_size)
+                )
+                szx = (
+                    torch.empty(1, device=_device, dtype=_dtype)
+                    .uniform_(_shear[4, 0].item(), _shear[4, 1].item())
+                    .expand(batch_size)
+                )
+                szy = (
+                    torch.empty(1, device=_device, dtype=_dtype)
+                    .uniform_(_shear[5, 0].item(), _shear[5, 1].item())
+                    .expand(batch_size)
+                )
+            else:
+                sxy = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                    _shear[0, 0].item(), _shear[0, 1].item()
+                )
+                sxz = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                    _shear[1, 0].item(), _shear[1, 1].item()
+                )
+                syx = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                    _shear[2, 0].item(), _shear[2, 1].item()
+                )
+                syz = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                    _shear[3, 0].item(), _shear[3, 1].item()
+                )
+                szx = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                    _shear[4, 0].item(), _shear[4, 1].item()
+                )
+                szy = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                    _shear[5, 0].item(), _shear[5, 1].item()
+                )
+        else:
+            sxy = sxz = syx = syz = szx = szy = torch.zeros(batch_size, device=_device, dtype=_dtype)
+
+        return {
+            "translations": translations,
+            "center": center,
+            "scale": scale,
+            "angles": angles,
+            "sxy": sxy,
+            "sxz": sxz,
+            "syx": syx,
+            "syz": syz,
+            "szx": szx,
+            "szy": szy,
+        }
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]

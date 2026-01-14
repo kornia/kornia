@@ -19,8 +19,8 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.utils import _range_bound, _singular_range_check
 from kornia.constants import Resample, SamplePadding
 from kornia.geometry.transform import get_affine_matrix2d, warp_affine
 
@@ -104,12 +104,17 @@ class RandomAffine(GeometricAugmentationBase2D):
         same_on_batch: bool = False,
         align_corners: bool = False,
         padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
-        fill_value: Optional[Union[float, int, torch.Tensor]] = None,  # Updated type hint
+        fill_value: Optional[Union[float, int, torch.Tensor]] = None,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator: rg.AffineGenerator = rg.AffineGenerator(degrees, translate, scale, shear)
+
+        # Store parameters for generate_parameters
+        self.degrees = degrees
+        self.translate = translate
+        self.scale = scale
+        self.shear = shear
 
         if fill_value is not None and not isinstance(fill_value, torch.Tensor):
             fill_value = torch.as_tensor(fill_value)
@@ -119,6 +124,101 @@ class RandomAffine(GeometricAugmentationBase2D):
             "padding_mode": SamplePadding.get(padding_mode),
             "align_corners": align_corners,
             "fill_value": fill_value,
+        }
+
+    def _parse_shear(self, _device: torch.device, _dtype: torch.dtype) -> Optional[torch.Tensor]:
+        """Parse shear parameter into a 2x2 tensor."""
+        if self.shear is None:
+            return None
+        _shear = torch.as_tensor(self.shear, device=_device, dtype=_dtype)
+        zero = torch.tensor(0.0, device=_device, dtype=_dtype)
+        if _shear.dim() == 0:
+            _shear = torch.stack([-_shear, _shear, zero, zero]).reshape(2, 2)
+        elif _shear.shape == torch.Size([2]):
+            _shear = torch.stack([_shear[0], _shear[1], zero, zero]).reshape(2, 2)
+        elif _shear.shape == torch.Size([4]):
+            _shear = _shear.reshape(2, 2)
+        if _shear.shape != torch.Size([2, 2]):
+            raise ValueError(f"'shear' shall be either a scalar, (2,), (4,) or (2, 2). Got {self.shear}.")
+        return _shear
+
+    def _parse_scale(self, _device: torch.device, _dtype: torch.dtype) -> Optional[torch.Tensor]:
+        """Parse scale parameter into a 2x2 tensor."""
+        if self.scale is None:
+            return None
+        _scale = torch.as_tensor(self.scale, device=_device, dtype=_dtype)
+        if _scale.shape == torch.Size([2]):
+            _scale = _scale.unsqueeze(0).repeat(2, 1)
+        elif _scale.shape == torch.Size([4]):
+            _scale = _scale.reshape(2, 2)
+        elif _scale.shape != torch.Size([2, 2]):
+            raise ValueError(f"'scale' shall be either shape (2), (4), or (2, 2). Got {self.scale}.")
+        _singular_range_check(_scale[0], "scale-x", bounds=(0, float("inf")), mode="2d")
+        _singular_range_check(_scale[1], "scale-y", bounds=(0, float("inf")), mode="2d")
+        return _scale
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        height = batch_shape[-2]
+        width = batch_shape[-1]
+        _device, _dtype = self.device, self.dtype
+        n = 1 if self.same_on_batch else batch_size
+
+        # Parse parameters
+        angle_range = _range_bound(self.degrees, "degrees", 0, (-360, 360)).to(device=_device, dtype=_dtype)
+        _translate: Optional[torch.Tensor] = None
+        if self.translate is not None:
+            _translate = torch.as_tensor(self.translate, device=_device, dtype=_dtype)
+            _singular_range_check(_translate, "translate", bounds=(0, 1), mode="2d")
+        _scale = self._parse_scale(_device, _dtype)
+        _shear = self._parse_shear(_device, _dtype)
+
+        # Sample angle
+        angle = torch.empty(n, device=_device, dtype=_dtype).uniform_(angle_range[0].item(), angle_range[1].item())
+        if self.same_on_batch:
+            angle = angle.expand(batch_size)
+
+        # Sample translations
+        if _translate is not None:
+            max_dx, max_dy = _translate[0].item() * width, _translate[1].item() * height
+            tx = (torch.rand(n, device=_device, dtype=_dtype) - 0.5) * 2.0 * max_dx
+            ty = (torch.rand(n, device=_device, dtype=_dtype) - 0.5) * 2.0 * max_dy
+            if self.same_on_batch:
+                tx, ty = tx.expand(batch_size), ty.expand(batch_size)
+            translations = torch.stack([tx, ty], dim=-1)
+        else:
+            translations = torch.zeros((batch_size, 2), device=_device, dtype=_dtype)
+
+        # Center
+        center = torch.tensor([width, height], device=_device, dtype=_dtype).view(1, 2) / 2.0 - 0.5
+        center = center.expand(batch_size, -1)
+
+        # Sample scale
+        if _scale is not None:
+            scale_x = torch.empty(n, device=_device, dtype=_dtype).uniform_(_scale[0, 0].item(), _scale[0, 1].item())
+            scale_y = torch.empty(n, device=_device, dtype=_dtype).uniform_(_scale[1, 0].item(), _scale[1, 1].item())
+            if self.same_on_batch:
+                scale_x, scale_y = scale_x.expand(batch_size), scale_y.expand(batch_size)
+            scale = torch.stack([scale_x, scale_y], dim=-1)
+        else:
+            scale = torch.ones((batch_size, 2), device=_device, dtype=_dtype)
+
+        # Sample shear
+        if _shear is not None:
+            shear_x = torch.empty(n, device=_device, dtype=_dtype).uniform_(_shear[0, 0].item(), _shear[0, 1].item())
+            shear_y = torch.empty(n, device=_device, dtype=_dtype).uniform_(_shear[1, 0].item(), _shear[1, 1].item())
+            if self.same_on_batch:
+                shear_x, shear_y = shear_x.expand(batch_size), shear_y.expand(batch_size)
+        else:
+            shear_x = shear_y = torch.zeros(batch_size, device=_device, dtype=_dtype)
+
+        return {
+            "translations": translations,
+            "center": center,
+            "scale": scale,
+            "angle": angle,
+            "shear_x": shear_x,
+            "shear_y": shear_y,
         }
 
     def compute_transformation(
@@ -151,7 +251,7 @@ class RandomAffine(GeometricAugmentationBase2D):
             flags["resample"].name.lower(),
             align_corners=flags["align_corners"],
             padding_mode=flags["padding_mode"].name.lower(),
-            fill_value=flags["fill_value"],  # <--- PASS IT DOWN
+            fill_value=flags["fill_value"],
         )
 
     def inverse_transform(

@@ -19,7 +19,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, DType
 
@@ -103,7 +102,42 @@ class RandomMixUpV2(MixAugmentationBaseV2):
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
-        self._param_generator = rg.MixupGenerator(lambda_val, p=p)
+        if lambda_val is None:
+            self.lambda_val = (0.0, 1.0)
+        else:
+            self.lambda_val = (
+                lambda_val if isinstance(lambda_val, tuple) else (lambda_val[0].item(), lambda_val[1].item())
+            )
+        self.p_mixup = p
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        _device, _dtype = self.device, self.dtype
+
+        # Generate batch probabilities
+        if self.same_on_batch:
+            batch_probs = (torch.rand(1, device=_device, dtype=_dtype) < self.p_mixup).float().expand(batch_size)
+        else:
+            batch_probs = (torch.rand(batch_size, device=_device, dtype=_dtype) < self.p_mixup).float()
+
+        mixup_pairs: torch.Tensor = torch.randperm(batch_size, device=_device, dtype=_dtype).long()
+
+        if self.same_on_batch:
+            mixup_lambdas = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(self.lambda_val[0], self.lambda_val[1])
+                .expand(batch_size)
+            )
+        else:
+            mixup_lambdas = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(
+                self.lambda_val[0], self.lambda_val[1]
+            )
+        mixup_lambdas = mixup_lambdas * batch_probs
+
+        return {
+            "mixup_pairs": mixup_pairs,
+            "mixup_lambdas": mixup_lambdas,
+        }
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None

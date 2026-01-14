@@ -19,8 +19,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.utils import _range_bound
 from kornia.enhance import jpeg_codec_differentiable
 
 
@@ -66,8 +66,21 @@ class RandomJPEG(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.jpeg_quality = jpeg_quality
-        self._param_generator = rg.JPEGGenerator(jpeg_quality)
+        self.jpeg_quality_range: torch.Tensor = _range_bound(jpeg_quality, "jpeg_quality", center=50.0, bounds=(1, 100))
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            jpeg_quality = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.jpeg_quality_range[0].item(), self.jpeg_quality_range[1].item())
+                .expand(batch_size)
+            )
+        else:
+            jpeg_quality = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                self.jpeg_quality_range[0].item(), self.jpeg_quality_range[1].item()
+            )
+        return {"jpeg_quality": jpeg_quality}
 
     def apply_transform(
         self,

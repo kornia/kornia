@@ -19,7 +19,6 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 
@@ -81,10 +80,90 @@ class RandomErasing(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.scale = scale
-        self.ratio = ratio
+        self.scale = torch.as_tensor(scale)
+        self.ratio = torch.as_tensor(ratio)
         self.value = value
-        self._param_generator = rg.RectangleEraseGenerator(scale, ratio, value)
+
+        # Validate
+        if not (isinstance(value, (int, float)) and 0 <= value <= 1):
+            raise AssertionError(f"'value' must be a number between 0 - 1. Got {value}.")
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        height = batch_shape[-2]
+        width = batch_shape[-1]
+
+        if not (isinstance(height, int) and height > 0 and isinstance(width, int) and width > 0):
+            raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
+
+        images_area = height * width
+
+        # Sample scale (area proportion)
+        if self.same_on_batch:
+            target_areas = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self.scale[0].item(), self.scale[1].item())
+                .expand(batch_size)
+                * images_area
+            )
+        else:
+            target_areas = (
+                torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                    self.scale[0].item(), self.scale[1].item()
+                )
+                * images_area
+            )
+
+        # Sample aspect ratio (special handling for range crossing 1.0)
+        ratio_low, ratio_high = self.ratio[0].item(), self.ratio[1].item()
+        if ratio_low < 1.0 and ratio_high > 1.0:
+            # Sample from two sub-ranges and randomly pick
+            if self.same_on_batch:
+                aspect_ratios1 = torch.empty(1, device=self.device, dtype=self.dtype).uniform_(ratio_low, 1.0)
+                aspect_ratios2 = torch.empty(1, device=self.device, dtype=self.dtype).uniform_(1.0, ratio_high)
+                rand_idx = torch.rand(1) > 0.5
+                aspect_ratios = (aspect_ratios1 if rand_idx else aspect_ratios2).expand(batch_size)
+            else:
+                aspect_ratios1 = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(ratio_low, 1.0)
+                aspect_ratios2 = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(1.0, ratio_high)
+                rand_idxs = torch.rand(batch_size) > 0.5
+                aspect_ratios = torch.where(rand_idxs, aspect_ratios1, aspect_ratios2)
+        elif self.same_on_batch:
+            aspect_ratios = (
+                torch.empty(1, device=self.device, dtype=self.dtype).uniform_(ratio_low, ratio_high).expand(batch_size)
+            )
+        else:
+            aspect_ratios = torch.empty(batch_size, device=self.device, dtype=self.dtype).uniform_(
+                ratio_low, ratio_high
+            )
+
+        # Compute rectangle dimensions
+        heights = torch.min(
+            torch.max(torch.round((target_areas * aspect_ratios) ** 0.5), torch.tensor(1.0)),
+            torch.tensor(float(height)),
+        )
+        widths = torch.min(
+            torch.max(torch.round((target_areas / aspect_ratios) ** 0.5), torch.tensor(1.0)), torch.tensor(float(width))
+        )
+
+        # Sample position
+        if self.same_on_batch:
+            xs_ratio = torch.rand(1, device=self.device, dtype=self.dtype).expand(batch_size)
+            ys_ratio = torch.rand(1, device=self.device, dtype=self.dtype).expand(batch_size)
+        else:
+            xs_ratio = torch.rand(batch_size, device=self.device, dtype=self.dtype)
+            ys_ratio = torch.rand(batch_size, device=self.device, dtype=self.dtype)
+
+        xs = xs_ratio * (width - widths + 1)
+        ys = ys_ratio * (height - heights + 1)
+
+        return {
+            "widths": widths.floor(),
+            "heights": heights.floor(),
+            "xs": xs.floor(),
+            "ys": ys.floor(),
+            "values": torch.full((batch_size,), self.value, device=self.device, dtype=self.dtype),
+        }
 
     def apply_transform(
         self,

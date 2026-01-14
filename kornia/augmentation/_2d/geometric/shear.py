@@ -19,11 +19,8 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
-
-# from kornia.geometry.conversions import deg2rad (use torch.deg2rad instead)
 from kornia.geometry.transform import get_shear_matrix2d, warp_affine
 
 
@@ -88,11 +85,77 @@ class RandomShear(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator: rg.ShearGenerator = rg.ShearGenerator(shear)
+        self.shear = shear
+
+        # Parse and store shear bounds as tensors for auto augment compatibility
+        _shear = torch.as_tensor(shear)
+        if _shear.dim() == 0:
+            self.shear_x = torch.stack([-_shear, _shear])
+            self.shear_y = torch.stack([-_shear, _shear])
+        elif _shear.shape == torch.Size([2]):
+            self.shear_x = _shear[:2].clone()
+            self.shear_y = torch.tensor([0.0, 0.0])
+        elif _shear.shape == torch.Size([4]):
+            self.shear_x = _shear[:2].clone()
+            self.shear_y = _shear[2:].clone()
+        else:
+            self.shear_x = _shear[:2].clone() if _shear.shape[0] >= 2 else _shear.clone()
+            self.shear_y = _shear[2:].clone() if _shear.shape[0] >= 4 else torch.tensor([0.0, 0.0])
+
         self.flags = {
             "resample": Resample.get(resample),
             "padding_mode": SamplePadding.get(padding_mode),
             "align_corners": align_corners,
+        }
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        height = batch_shape[-2]
+        width = batch_shape[-1]
+        _device, _dtype = self.device, self.dtype
+
+        # Parse shear - (2,) means (min, max) for x, (4,) means (x_min, x_max, y_min, y_max)
+        _shear = torch.as_tensor(self.shear, device=_device, dtype=_dtype)
+        if _shear.dim() == 0:
+            # Scalar: symmetric shear in both x and y
+            _shear = torch.stack([-_shear, _shear, -_shear, _shear])
+        elif _shear.shape == torch.Size([2]):
+            # (min, max) for x only, y is 0
+            _shear = torch.stack(
+                [
+                    _shear[0],
+                    _shear[1],
+                    torch.tensor(0.0, device=_device, dtype=_dtype),
+                    torch.tensor(0.0, device=_device, dtype=_dtype),
+                ]
+            )
+        elif _shear.shape != torch.Size([4]):
+            raise ValueError(f"'shear' shall be either a scalar, (2,) or (4,). Got {self.shear}.")
+
+        # Sample shear
+        if self.same_on_batch:
+            shear_x = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(_shear[0].item(), _shear[1].item())
+                .expand(batch_size)
+            )
+            shear_y = (
+                torch.empty(1, device=_device, dtype=_dtype)
+                .uniform_(_shear[2].item(), _shear[3].item())
+                .expand(batch_size)
+            )
+        else:
+            shear_x = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(_shear[0].item(), _shear[1].item())
+            shear_y = torch.empty(batch_size, device=_device, dtype=_dtype).uniform_(_shear[2].item(), _shear[3].item())
+
+        # Center
+        center = torch.tensor([width, height], device=_device, dtype=_dtype).view(1, 2) / 2.0 - 0.5
+        center = center.expand(batch_size, -1)
+
+        return {
+            "shear_x": shear_x,
+            "shear_y": shear_y,
+            "center": center,
         }
 
     def compute_transformation(

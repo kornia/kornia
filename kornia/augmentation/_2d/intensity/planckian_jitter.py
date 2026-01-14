@@ -15,11 +15,10 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
@@ -179,10 +178,25 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         self.pl: torch.Tensor
 
         # the range of the sampling parameters
-        _param_min: float = 0.0
-        _param_max: float = float(self.pl.shape[0])
+        self._param_min: float = 0.0
+        self._param_max: float = float(self.pl.shape[0])
 
-        self._param_generator = rg.PlanckianJitterGenerator([_param_min, _param_max])
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        if self.same_on_batch:
+            idx = (
+                torch.empty(1, device=self.device, dtype=self.dtype)
+                .uniform_(self._param_min, self._param_max)
+                .long()
+                .expand(batch_size)
+            )
+        else:
+            idx = (
+                torch.empty(batch_size, device=self.device, dtype=self.dtype)
+                .uniform_(self._param_min, self._param_max)
+                .long()
+            )
+        return {"idx": idx}
 
     def apply_transform(
         self,

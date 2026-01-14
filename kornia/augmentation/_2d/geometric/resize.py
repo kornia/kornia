@@ -19,11 +19,12 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
 from kornia.core.ops import eye_like
+from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
+from kornia.geometry.transform.affwarp import _side_to_image_size
 
 
 class Resize(GeometricAugmentationBase2D):
@@ -52,7 +53,8 @@ class Resize(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
-        self._param_generator = rg.ResizeGenerator(resize_to=size, side=side)
+        self.output_size = size
+        self.side = side
         self.flags = {
             "size": size,
             "side": side,
@@ -60,6 +62,52 @@ class Resize(GeometricAugmentationBase2D):
             "align_corners": align_corners,
             "antialias": antialias,
         }
+
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
+        batch_size = batch_shape[0]
+        _device, _dtype = self.device, self.dtype
+
+        if batch_size == 0:
+            return {
+                "src": torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+                "dst": torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+            }
+
+        input_size = h, w = (batch_shape[-2], batch_shape[-1])
+
+        src = bbox_generator(
+            torch.tensor(0, device=_device, dtype=_dtype),
+            torch.tensor(0, device=_device, dtype=_dtype),
+            torch.tensor(input_size[1], device=_device, dtype=_dtype),
+            torch.tensor(input_size[0], device=_device, dtype=_dtype),
+        ).repeat(batch_size, 1, 1)
+
+        if isinstance(self.output_size, int):
+            aspect_ratio = w / h
+            output_size = _side_to_image_size(self.output_size, aspect_ratio, self.side)
+        else:
+            output_size = self.output_size
+
+        if not (
+            len(output_size) == 2
+            and isinstance(output_size[0], (int,))
+            and isinstance(output_size[1], (int,))
+            and output_size[0] > 0
+            and output_size[1] > 0
+        ):
+            raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {output_size}.")
+
+        dst = bbox_generator(
+            torch.tensor(0, device=_device, dtype=_dtype),
+            torch.tensor(0, device=_device, dtype=_dtype),
+            torch.tensor(output_size[1], device=_device, dtype=_dtype),
+            torch.tensor(output_size[0], device=_device, dtype=_dtype),
+        ).repeat(batch_size, 1, 1)
+
+        _input_size = torch.tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+        _output_size = torch.tensor(output_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+
+        return {"src": src, "dst": dst, "input_size": _input_size, "output_size": _output_size}
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
