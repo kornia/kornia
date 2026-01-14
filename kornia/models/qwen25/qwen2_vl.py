@@ -24,6 +24,8 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.nn import Module
 
+from kornia.core.check import KORNIA_CHECK
+
 
 class Qwen2VLPatchMerger(Module):
     """Merge image patches using 3D convolution for video/temporal support.
@@ -140,7 +142,7 @@ class Qwen2VLMerger(Module):
         B, L, C = x.shape
         
         # Calculate grid size from sequence length
-        # NOTE: This uses Python int() which gets traced as a constant in ONNX
+        # Warning: This uses Python int() which gets traced as a constant in ONNX
         # For ONNX export, the model is traced with a specific resolution
         # and that resolution is baked into the graph. Dynamic resolution
         # support would require exporting multiple ONNX models or using torch.jit.script
@@ -174,36 +176,6 @@ class Qwen2VLMerger(Module):
         return x
 
 
-class Qwen2VLRotaryEmbedding(Module):
-    """Rotary positional embedding module used in Qwen2-VL vision-language layers.
-
-    This module precomputes the inverse frequency spectrum required to build
-    rotary position embeddings (RoPE) for a given hidden dimension. The
-    frequencies are used to rotate query and key vectors in the attention mechanism,
-    encoding relative position information.
-
-    Args:
-        dim: The feature dimension to be rotated.
-        theta: The base frequency scaling factor for the rotary embedding.
-    """
-
-    def __init__(self, dim: int, theta: float = 10000.0) -> None:
-        super().__init__()
-        self.dim = dim
-        self.theta = theta
-
-        inv_freq = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=torch.float) / dim))
-        # Changed to persistent=True so rotary embeddings are saved in state_dict
-        self.register_buffer("inv_freq", inv_freq, persistent=True)
-
-    def forward(self, x: Tensor, cu_seqlens: Optional[Tensor] = None) -> Tensor:
-        # TODO: Implement proper rotary embedding computation
-        # This should compute cos/sin embeddings and return them for use in attention
-        # Current implementation is a no-op for compatibility with existing skeleton
-        # See reference implementation for proper rotary embedding computation
-        return x
-
-
 class Qwen2VLVisionAttention(Module):
     """Multi-head self-attention module used in the Qwen2-VL vision encoder.
 
@@ -216,7 +188,10 @@ class Qwen2VLVisionAttention(Module):
         super().__init__()
         
         # Validate that dimension is divisible by number of heads
-        assert dim % num_heads == 0, f"dim ({dim}) must be divisible by num_heads ({num_heads})"
+        KORNIA_CHECK(
+            dim % num_heads == 0,
+            f"dim ({dim}) must be divisible by num_heads ({num_heads})"
+        )
         
         self.num_heads = num_heads
         self.head_dim = dim // num_heads
@@ -225,15 +200,10 @@ class Qwen2VLVisionAttention(Module):
         self.qkv = nn.Linear(dim, dim * 3, bias=True)
         self.proj = nn.Linear(dim, dim, bias=True)
 
-    def forward(self, x: Tensor, cu_seqlens: Optional[Tensor] = None, rot_pos_emb: Optional[Tensor] = None) -> Tensor:
+    def forward(self, x: Tensor, cu_seqlens: Optional[Tensor] = None) -> Tensor:
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
-
-        # TODO: Apply rotary positional embedding to q and k before attention
-        # if rot_pos_emb is not None:
-        #     q, k = apply_rotary_pos_emb(q, k, rot_pos_emb)
-        # Currently rot_pos_emb is accepted but not used
 
         x = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0)
 
@@ -293,8 +263,8 @@ class Qwen2VLVisionBlock(Module):
         self.norm2 = nn.LayerNorm(dim, eps=1e-6, bias=False)
         self.mlp = Qwen2VLMLP(dim, intermediate_size)
 
-    def forward(self, x: Tensor, rot_pos_emb: Optional[Tensor] = None) -> Tensor:
-        x = x + self.attn(self.norm1(x), rot_pos_emb=rot_pos_emb)
+    def forward(self, x: Tensor) -> Tensor:
+        x = x + self.attn(self.norm1(x))
         x = x + self.mlp(self.norm2(x))
         return x
 
@@ -326,7 +296,6 @@ class Qwen2VLVisionTransformer(Module):
         super().__init__()
         self.patch_embed = Qwen2VLPatchMerger(embed_dim, context_window=224, spatial_merge_size=2)
         self.blocks = nn.ModuleList([Qwen2VLVisionBlock(embed_dim, num_heads, intermediate_size) for _ in range(depth)])
-        self.rotary_pos_emb = Qwen2VLRotaryEmbedding(embed_dim // num_heads)
         
         # Final merger projection: embed_dim -> out_hidden_size
         # Uses 2-layer MLP with LayerNorm
@@ -392,9 +361,8 @@ class Qwen2VLVisionTransformer(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.patch_embed(x)
-        rot_pos_emb = self.rotary_pos_emb(x)
         for block in self.blocks:
-            x = block(x, rot_pos_emb=rot_pos_emb)
+            x = block(x)
         
         # Apply final projection (merger)
         x = self.merger(x)

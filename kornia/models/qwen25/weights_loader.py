@@ -239,10 +239,4 @@ class Qwen25WeightLoader:
                         converted = True
                         break
             
-            # Log warning for unmapped visual keys (debugging aid)
-            if not converted and hf_key.startswith("visual.") and component in ("vision_encoder", "all"):
-                # Silently ignore decoder/projector keys, but could log if needed for debugging
-                # print(f"[DEBUG] Unmapped key: {hf_key}")
-                pass
-        
         return kornia_state_dict
