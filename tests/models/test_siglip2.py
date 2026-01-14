@@ -26,7 +26,6 @@ from kornia.models.siglip2.config import SigLip2TextConfig, SigLip2VisionConfig
 from kornia.models.siglip2.preprocessor import SigLip2ImagePreprocessor
 from kornia.models.siglip2.text_encoder import SigLip2TextEmbeddings, SigLip2TextEncoder, SigLip2TextModel
 from kornia.models.siglip2.vision_encoder import SigLip2VisionEmbeddings, SigLip2VisionEncoder, SigLip2VisionModel
-from kornia.models.siglip2 import SigLip2Model, SigLip2Config
 
 from testing.base import BaseTester
 
@@ -53,7 +52,8 @@ class TestSigLip2Model(BaseTester):
 
     def test_siglip2_logit_scale_no_nan(self):
         import torch
-        from kornia.models.siglip2 import SigLip2Model, SigLip2Config
+
+        from kornia.models.siglip2 import SigLip2Config, SigLip2Model
 
         config = SigLip2Config()
         model = SigLip2Model(config)
@@ -68,7 +68,7 @@ class TestSigLip2Model(BaseTester):
 
         assert torch.isfinite(output.logits_per_image).all()
         assert torch.isfinite(output.logits_per_text).all()
-        
+
     def test_smoke(self, device, dtype, config):
         """Test basic model instantiation."""
         model = SigLip2Model(config).to(device, dtype)
