@@ -35,18 +35,14 @@ def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     Returns:
         torch.Tensor: transformed signal
     """
-    x = torch.abs(x) / window_radius
+    x_abs = x.abs().mul(1.0 / window_radius)
 
-    kernel_val = torch.zeros_like(x)
+    poly1 = x_abs * (-1.8 * x_abs - 0.1) + 1.0
+    poly2 = x_abs * (1.8 * x_abs - 3.7) + 1.9
 
-    mask1 = x < 0.5
-    x_mask1 = x[mask1]
-    kernel_val[mask1] = -1.8 * (x_mask1**2) - 0.1 * x_mask1 + 1.0
-    mask2 = (x >= 0.5) & (x <= 1.0)
-    x_mask2 = x[mask2]
-    kernel_val[mask2] = 1.8 * (x_mask2**2) - 3.7 * x_mask2 + 1.9
-
-    return kernel_val
+    return torch.where(
+        x_abs < 0.5, poly1, torch.where(x_abs <= 1.0, poly2, torch.tensor(0.0, device=x.device, dtype=x.dtype))
+    )
 
 
 def rectangular_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
