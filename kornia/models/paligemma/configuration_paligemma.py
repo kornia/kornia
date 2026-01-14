@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from kornia.models.siglip2.config import SigLip2VisionConfig
@@ -37,11 +37,12 @@ class PaliGemmaConfig:
         num_key_value_heads: Number of key/value heads (for multi-query attention).
         head_dim: Dimension of each attention head.
         max_position_embeddings: Maximum number of position embeddings.
+        rope_theta: The base period of the RoPE embeddings.
         ignore_index: Index to ignore in the loss function.
         image_token_index: Token index used for image placeholders.
     """
 
-    vision_config: Optional[SigLip2VisionConfig] = None
+    vision_config: Optional[SigLip2VisionConfig] = field(default_factory=SigLip2VisionConfig)
     vocab_size: int = 257152
     hidden_size: int = 2048
     intermediate_size: int = 16384
@@ -50,9 +51,6 @@ class PaliGemmaConfig:
     num_key_value_heads: int = 1
     head_dim: int = 256
     max_position_embeddings: int = 8192
+    rope_theta: float = 10000.0
     ignore_index: int = -100
     image_token_index: int = 256000
-
-    def __post_init__(self):
-        if self.vision_config is None:
-            self.vision_config = SigLip2VisionConfig()
