@@ -205,12 +205,12 @@ class TestSam3Model(BaseTester):
         # Actually: 1024 / 32 = 32, then 32 * 4 = 128, but we get 256 which suggests additional upsampling
         # The actual output is 256x256 due to internal upscaling in output_upscaling
         expected_output_size = 256
-        assert result.masks.shape == (
-            B, config.num_multimask_outputs, expected_output_size, expected_output_size
-        ), f"Got {result.masks.shape}"
-        assert result.logits.shape == (
-            B, config.num_multimask_outputs, expected_output_size, expected_output_size
-        ), f"Got {result.logits.shape}"
+        assert result.masks.shape == (B, config.num_multimask_outputs, expected_output_size, expected_output_size), (
+            f"Got {result.masks.shape}"
+        )
+        assert result.logits.shape == (B, config.num_multimask_outputs, expected_output_size, expected_output_size), (
+            f"Got {result.logits.shape}"
+        )
         assert result.iou_pred.shape == (B, config.num_multimask_outputs), f"Got {result.iou_pred.shape}"
 
     def test_sam3_forward_boxes(self, device: str, dtype: torch.dtype) -> None:
@@ -226,9 +226,9 @@ class TestSam3Model(BaseTester):
 
         assert isinstance(result, SegmentationResults)
         expected_output_size = 256
-        assert result.masks.shape == (
-            B, config.num_multimask_outputs, expected_output_size, expected_output_size
-        ), f"Got {result.masks.shape}"
+        assert result.masks.shape == (B, config.num_multimask_outputs, expected_output_size, expected_output_size), (
+            f"Got {result.masks.shape}"
+        )
 
     def test_sam3_forward_masks(self, device: str, dtype: torch.dtype) -> None:
         """Test Sam3 forward pass with mask prompts."""
@@ -243,9 +243,9 @@ class TestSam3Model(BaseTester):
 
         assert isinstance(result, SegmentationResults)
         expected_output_size = 256
-        assert result.masks.shape == (
-            B, config.num_multimask_outputs, expected_output_size, expected_output_size
-        ), f"Got {result.masks.shape}"
+        assert result.masks.shape == (B, config.num_multimask_outputs, expected_output_size, expected_output_size), (
+            f"Got {result.masks.shape}"
+        )
 
     def test_sam3_forward_combined_prompts(self, device: str, dtype: torch.dtype) -> None:
         """Test Sam3 with combined prompt types."""
@@ -269,9 +269,9 @@ class TestSam3Model(BaseTester):
 
         assert isinstance(result, SegmentationResults)
         expected_output_size = 256
-        assert result.masks.shape == (
-            B, config.num_multimask_outputs, expected_output_size, expected_output_size
-        ), f"Got {result.masks.shape}"
+        assert result.masks.shape == (B, config.num_multimask_outputs, expected_output_size, expected_output_size), (
+            f"Got {result.masks.shape}"
+        )
 
     def test_sam3_multimask_output_flag(self, device: str, dtype: torch.dtype) -> None:
         """Test that multimask_output flag controls output."""

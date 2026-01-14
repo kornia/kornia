@@ -94,9 +94,7 @@ class Sam3(nn.Module):
 
         # Projection from image encoder to decoder embedding space if needed
         if config.encoder_embed_dim != config.decoder_embed_dim:
-            self.image_embedding_projection = nn.Linear(
-                config.encoder_embed_dim, config.decoder_embed_dim, bias=False
-            )
+            self.image_embedding_projection = nn.Linear(config.encoder_embed_dim, config.decoder_embed_dim, bias=False)
         else:
             self.image_embedding_projection = nn.Identity()
 

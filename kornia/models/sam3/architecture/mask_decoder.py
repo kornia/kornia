@@ -217,12 +217,8 @@ class MaskDecoder(nn.Module):
             if dense_prompt_embeddings.shape[1] != self.embed_dim:
                 if not hasattr(self, "_dense_projection"):
                     in_channels = dense_prompt_embeddings.shape[1]
-                    self._dense_projection = nn.Conv2d(
-                        in_channels, self.embed_dim, kernel_size=1, bias=False
-                    )
-                    self._dense_projection = self._dense_projection.to(
-                        dense_prompt_embeddings.device
-                    )
+                    self._dense_projection = nn.Conv2d(in_channels, self.embed_dim, kernel_size=1, bias=False)
+                    self._dense_projection = self._dense_projection.to(dense_prompt_embeddings.device)
                 dense_prompt_embeddings = self._dense_projection(dense_prompt_embeddings)
 
             # Resize dense prompts to match image embedding spatial size
@@ -325,9 +321,7 @@ class MaskDecoder(nn.Module):
         if not multimask_output:
             # Return only best mask (highest IoU prediction)
             best_mask_idx = iou_pred.argmax(dim=1, keepdim=True)  # (B, 1)
-            gather_idx = best_mask_idx.unsqueeze(-1).unsqueeze(-1).expand(
-                -1, -1, masks.shape[2], masks.shape[3]
-            )
+            gather_idx = best_mask_idx.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, masks.shape[2], masks.shape[3])
             masks = torch.gather(masks, 1, gather_idx)
 
         return masks, iou_pred
