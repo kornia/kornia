@@ -239,7 +239,7 @@ def _transform_output_shape(
         torch.Tensor
 
     """
-    out_tensor = output.clone()
+    out_tensor = output.detach()
 
     for dim in range(len(out_tensor.shape) - len(shape)):
         idx = 0
