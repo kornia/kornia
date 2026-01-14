@@ -79,7 +79,6 @@ class TestHomographyTracker(BaseTester):
         # Reprojection error of 5px is OK
         self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
-
         with torch.no_grad():
             torch.manual_seed(6)
             homography, success = tracker(data["image1"])
