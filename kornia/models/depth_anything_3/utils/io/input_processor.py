@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,8 +29,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Input processor for Depth Anything 3 (parallelized).
+"""Input processor for Depth Anything 3 (parallelized).
 
 This version removes the square center-crop step for "*crop" methods (same as your note).
 In addition, it parallelizes per-image preprocessing using the provided `parallel_execution`.
@@ -22,6 +38,7 @@ In addition, it parallelizes per-image preprocessing using the provided `paralle
 from __future__ import annotations
 
 from typing import Sequence
+
 import cv2
 import numpy as np
 import torch
@@ -75,10 +92,9 @@ class InputProcessor:
         sequential: bool | None = None,
         desc: str | None = "Preprocess",
     ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor | None]:
-        """
-        Returns:
-            (tensor, extrinsics_list, intrinsics_list)
-            tensor shape: (1, N, 3, H, W)
+        """Returns:
+        (tensor, extrinsics_list, intrinsics_list)
+        tensor shape: (1, N, 3, H, W)
         """
         sequential = self._resolve_sequential(sequential, num_workers)
         exts_list, ixts_list = self._validate_and_pack_meta(image, extrinsics, intrinsics)
@@ -100,14 +116,10 @@ class InputProcessor:
 
         batch_tensor = self._stack_batch(proc_imgs)
         out_exts = (
-            torch.from_numpy(np.asarray(out_exts)).float()
-            if out_exts is not None and out_exts[0] is not None
-            else None
+            torch.from_numpy(np.asarray(out_exts)).float() if out_exts is not None and out_exts[0] is not None else None
         )
         out_ixts = (
-            torch.from_numpy(np.asarray(out_ixts)).float()
-            if out_ixts is not None and out_ixts[0] is not None
-            else None
+            torch.from_numpy(np.asarray(out_ixts)).float() if out_ixts is not None and out_ixts[0] is not None else None
         )
         return (batch_tensor, out_exts, out_ixts)
 
@@ -157,22 +169,18 @@ class InputProcessor:
             process_res_method=process_res_method,
         )
         if not results:
-            raise RuntimeError(
-                "No preprocessing results returned. Check inputs and parallel_execution."
-            )
+            raise RuntimeError("No preprocessing results returned. Check inputs and parallel_execution.")
         return results
 
     def _unpack_results(self, results):
-        """
-        results: List[Tuple[torch.Tensor, Tuple[H, W], Optional[np.ndarray], Optional[np.ndarray]]]
+        """results: List[Tuple[torch.Tensor, Tuple[H, W], Optional[np.ndarray], Optional[np.ndarray]]]
         -> processed_images, out_sizes, out_intrinsics, out_extrinsics
         """
         try:
             processed_images, out_sizes, out_intrinsics, out_extrinsics = zip(*results)
         except Exception as e:
             raise RuntimeError(
-                "Unexpected results structure from parallel_execution: "
-                f"{type(results)} / sample: {results[0]}"
+                f"Unexpected results structure from parallel_execution: {type(results)} / sample: {results[0]}"
             ) from e
 
         return list(processed_images), list(out_sizes), list(out_intrinsics), list(out_extrinsics)
@@ -190,8 +198,7 @@ class InputProcessor:
         min_h = min(h for h, _ in out_sizes)
         min_w = min(w for _, w in out_sizes)
         logger.warn(
-            f"Images in batch have different sizes {out_sizes}; "
-            f"center-cropping all to smallest ({min_h},{min_w})"
+            f"Images in batch have different sizes {out_sizes}; center-cropping all to smallest ({min_h},{min_w})"
         )
 
         center_crop = T.CenterCrop((min_h, min_w))
@@ -349,8 +356,7 @@ class InputProcessor:
     # Make divisible by PATCH_SIZE
     # -----------------------------
     def _make_divisible_by_crop(self, img: Image.Image, patch: int) -> Image.Image:
-        """
-        Floor each dimension to the nearest multiple of PATCH_SIZE via center crop.
+        """Floor each dimension to the nearest multiple of PATCH_SIZE via center crop.
         Example: 504x377 -> 504x364
         """
         w, h = img.size
@@ -363,9 +369,7 @@ class InputProcessor:
         return img.crop((left, top, left + new_w, top + new_h))
 
     def _make_divisible_by_resize(self, img: Image.Image, patch: int) -> Image.Image:
-        """
-        Round each dimension to nearest multiple of PATCH_SIZE via small resize.
-        """
+        """Round each dimension to nearest multiple of PATCH_SIZE via small resize."""
         w, h = img.size
 
         def nearest_multiple(x: int, p: int) -> int:
@@ -412,7 +416,7 @@ if __name__ == "__main__":
         Ks_out: Sequence[np.ndarray | None] | None = None,
     ):
         B, N, C, H, W = tensor.shape
-        print(f"[{tag}] shape={tuple(tensor.shape)}  HxW=({H},{W})  div14=({H%14==0},{W%14==0})")
+        print(f"[{tag}] shape={tuple(tensor.shape)}  HxW=({H},{W})  div14=({H % 14 == 0},{W % 14 == 0})")
         assert H % 14 == 0 and W % 14 == 0, f"{tag}: output size not divisible by 14!"
         if Ks_in is not None or Ks_out is not None:
             Ks_in = Ks_in or [None] * N

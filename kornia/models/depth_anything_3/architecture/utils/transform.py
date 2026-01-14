@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +39,6 @@ def extri_intri_to_pose_encoding(
     image_size_hw=None,
 ):
     """Convert camera extrinsics and intrinsics to a compact pose encoding."""
-
     # extrinsics: BxSx3x4
     # intrinsics: BxSx3x3
     R = extrinsics[:, :, :3, :3]  # BxSx3x3
@@ -43,7 +59,6 @@ def pose_encoding_to_extri_intri(
     image_size_hw=None,
 ):
     """Convert a pose encoding back to camera extrinsics and intrinsics."""
-
     T = pose_encoding[..., :3]
     quat = pose_encoding[..., 3:7]
     fov_h = pose_encoding[..., 7]
@@ -66,10 +81,10 @@ def pose_encoding_to_extri_intri(
 
 
 def quat_to_mat(quaternions: torch.Tensor) -> torch.Tensor:
-    """
-    Quaternion Order: XYZW or say ijkr, scalar-last
+    """Quaternion Order: XYZW or say ijkr, scalar-last
 
     Convert rotations given as quaternions to rotation matrices.
+
     Args:
         quaternions: quaternions with real part last,
             as tensor of shape (..., 4).
@@ -98,8 +113,7 @@ def quat_to_mat(quaternions: torch.Tensor) -> torch.Tensor:
 
 
 def mat_to_quat(matrix: torch.Tensor) -> torch.Tensor:
-    """
-    Convert rotations given as rotation matrices to quaternions.
+    """Convert rotations given as rotation matrices to quaternions.
 
     Args:
         matrix: Rotation matrices as tensor of shape (..., 3, 3).
@@ -112,9 +126,7 @@ def mat_to_quat(matrix: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Invalid rotation matrix shape {matrix.shape}.")
 
     batch_dim = matrix.shape[:-2]
-    m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.unbind(
-        matrix.reshape(batch_dim + (9,)), dim=-1
-    )
+    m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.unbind(matrix.reshape(batch_dim + (9,)), dim=-1)
 
     q_abs = _sqrt_positive_part(
         torch.stack(
@@ -141,9 +153,7 @@ def mat_to_quat(matrix: torch.Tensor) -> torch.Tensor:
     flr = torch.tensor(0.1).to(dtype=q_abs.dtype, device=q_abs.device)
     quat_candidates = quat_by_rijk / (2.0 * q_abs[..., None].max(flr))
 
-    out = quat_candidates[F.one_hot(q_abs.argmax(dim=-1), num_classes=4) > 0.5, :].reshape(
-        batch_dim + (4,)
-    )
+    out = quat_candidates[F.one_hot(q_abs.argmax(dim=-1), num_classes=4) > 0.5, :].reshape(batch_dim + (4,))
 
     out = out[..., [1, 2, 3, 0]]
 
@@ -153,8 +163,7 @@ def mat_to_quat(matrix: torch.Tensor) -> torch.Tensor:
 
 
 def _sqrt_positive_part(x: torch.Tensor) -> torch.Tensor:
-    """
-    Returns torch.sqrt(torch.max(0, x))
+    """Returns torch.sqrt(torch.max(0, x))
     but with a zero subgradient where x is 0.
     """
     ret = torch.zeros_like(x)
@@ -167,8 +176,7 @@ def _sqrt_positive_part(x: torch.Tensor) -> torch.Tensor:
 
 
 def standardize_quaternion(quaternions: torch.Tensor) -> torch.Tensor:
-    """
-    Convert a unit quaternion to a standard form: one in which the real
+    """Convert a unit quaternion to a standard form: one in which the real
     part is non negative.
 
     Args:

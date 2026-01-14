@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +32,7 @@
 import math
 from math import isqrt
 from typing import Literal, Optional
+
 import torch
 from einops import rearrange, repeat
 from tqdm import tqdm
@@ -64,18 +82,14 @@ def render_3dgs(
     b, _, _ = extrinsics.shape
 
     if background_color is None:
-        background_color = repeat(torch.tensor([0.0, 0.0, 0.0]), "c -> b c", b=b).to(
-            gaussian_sh_coefficients
-        )
+        background_color = repeat(torch.tensor([0.0, 0.0, 0.0]), "c -> b c", b=b).to(gaussian_sh_coefficients)
 
     if use_sh:
         _, _, _, n = gaussian_sh_coefficients.shape
         degree = isqrt(n) - 1
         shs = rearrange(gaussian_sh_coefficients, "b g xyz n -> b g n xyz").contiguous()
     else:  # use color
-        shs = (
-            gaussian_sh_coefficients.squeeze(-1).sigmoid().contiguous()
-        )  # (b, g, c), normed to (0, 1)
+        shs = gaussian_sh_coefficients.squeeze(-1).sigmoid().contiguous()  # (b, g, c), normed to (0, 1)
 
     h, w = image_shape
 
@@ -119,9 +133,7 @@ def render_3dgs(
         i_opacities = index_i_gs_attr(gaussian_opacities, i)  # [N,]
         i_colors = index_i_gs_attr(shs, i)  # [N, K, 3]
         i_viewmats = rearrange(view_matrix, "(b v) ... -> b v ...", v=num_view)[i]  # [v, 4, 4]
-        i_backgrounds = rearrange(background_color, "(b v) ... -> b v ...", v=num_view)[
-            i
-        ]  # [v, 3]
+        i_backgrounds = rearrange(background_color, "(b v) ... -> b v ...", v=num_view)[i]  # [v, 3]
 
         render_colors, render_alphas, info = rasterization(
             means=i_means,
@@ -226,14 +238,14 @@ def run_renderer_in_chunk_w_trj_mode(
                 tgt_intr = []
                 for cur_idx in range(cam2world.shape[1] - 1):
                     tgt_c2w.append(
-                        interpolate_extrinsics(
-                            cam2world[b_idx, cur_idx], cam2world[b_idx, cur_idx + 1], t
-                        )[(0 if cur_idx == 0 else 1) :]
+                        interpolate_extrinsics(cam2world[b_idx, cur_idx], cam2world[b_idx, cur_idx + 1], t)[
+                            (0 if cur_idx == 0 else 1) :
+                        ]
                     )
                     tgt_intr.append(
-                        interpolate_intrinsics(
-                            intr_normed[b_idx, cur_idx], intr_normed[b_idx, cur_idx + 1], t
-                        )[(0 if cur_idx == 0 else 1) :]
+                        interpolate_intrinsics(intr_normed[b_idx, cur_idx], intr_normed[b_idx, cur_idx + 1], t)[
+                            (0 if cur_idx == 0 else 1) :
+                        ]
                     )
                 tgt_c2w_b.append(torch.cat(tgt_c2w))
                 tgt_intr_b.append(torch.cat(tgt_intr))
@@ -291,9 +303,7 @@ def run_renderer_in_chunk_w_trj_mode(
         tgt_c2w = []
         tgt_intr = []
         for b_idx in range(cam2world.shape[0]):
-            c2w_i, intr_i = render_fn(
-                cam2world[b_idx, 0], intr_normed[b_idx, 0], h=in_h, w=in_w, **extra_kwargs
-            )
+            c2w_i, intr_i = render_fn(cam2world[b_idx, 0], intr_normed[b_idx, 0], h=in_h, w=in_w, **extra_kwargs)
             tgt_c2w.append(c2w_i)
             tgt_intr.append(intr_i)
         tgt_c2w = torch.stack(tgt_c2w)

@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,15 +31,15 @@
 
 from typing import Dict as TyDict
 from typing import List, Sequence
+
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.models.depth_anything_3.architecture.dpt import DPT
 from kornia.models.depth_anything_3.architecture.utils.head_utils import activate_head_gs, custom_interpolate
 
 
 class GSDPT(DPT):
-
     def __init__(
         self,
         dim_in: int,
@@ -38,7 +55,7 @@ class GSDPT(DPT):
         conf_dim: int = 1,
         norm_type: str = "idt",  # use to match legacy GS-DPT head, "idt" / "layer"
         fusion_block_inplace: bool = False,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(
             dim_in=dim_in,
@@ -57,9 +74,7 @@ class GSDPT(DPT):
         )
         self.conf_dim = conf_dim
         if conf_dim and conf_dim > 1:
-            assert (
-                conf_activation == "linear"
-            ), "use linear prediction when using view-dependent opacity"
+            assert conf_activation == "linear", "use linear prediction when using view-dependent opacity"
 
         merger_out_dim = features if feature_only else features // 2
         self.images_merger = nn.Sequential(

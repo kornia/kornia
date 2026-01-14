@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +32,11 @@
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
 from addict import Dict
 from omegaconf import DictConfig, OmegaConf
+from torch import nn
 
 from kornia.models.depth_anything_3.cfg import create_object
-from .utils.transform import pose_encoding_to_extri_intri
 from kornia.models.depth_anything_3.utils.alignment import (
     apply_metric_scaling,
     compute_alignment_mask,
@@ -31,12 +47,14 @@ from kornia.models.depth_anything_3.utils.alignment import (
 )
 from kornia.models.depth_anything_3.utils.geometry import affine_inverse, as_homogeneous, map_pdf_to_opacity
 from kornia.models.depth_anything_3.utils.ray_utils import get_extrinsic_from_camray
-from .dinov2 import DinoV2
-from .dualdpt import DualDPT
+
 from .cam_dec import CameraDec
 from .cam_enc import CameraEnc
+from .dinov2 import DinoV2
+from .dualdpt import DualDPT
 from .gs_adapter import GaussianAdapter
 from .gsdpt import GSDPT
+from .utils.transform import pose_encoding_to_extri_intri
 
 
 def _wrap_cfg(cfg_obj):
@@ -44,8 +62,7 @@ def _wrap_cfg(cfg_obj):
 
 
 class DepthAnything3Net(nn.Module):
-    """
-    Depth Anything 3 network for depth estimation and camera pose estimation.
+    """Depth Anything 3 network for depth estimation and camera pose estimation.
 
     This network consists of:
     - Backbone: DinoV2 feature extractor
@@ -70,37 +87,25 @@ class DepthAnything3Net(nn.Module):
     PATCH_SIZE = 14
 
     def __init__(self, net, head, cam_dec=None, cam_enc=None, gs_head=None, gs_adapter=None):
-        """
-        Initialize DepthAnything3Net (for now only base)
-        """
+        """Initialize DepthAnything3Net (for now only base)"""
         super().__init__()
         self.backbone = net if isinstance(net, nn.Module) else DinoV2(**net)
         self.head = head if isinstance(head, nn.Module) else DualDPT(**head)
         self.cam_dec, self.cam_enc = None, None
         if cam_dec is not None:
-            self.cam_dec = (
-                cam_dec if isinstance(cam_dec, nn.Module) else CameraDec(**cam_dec)
-            )
-            self.cam_enc = (
-                cam_enc if isinstance(cam_enc, nn.Module) else CameraEnc(**cam_enc)
-            )
+            self.cam_dec = cam_dec if isinstance(cam_dec, nn.Module) else CameraDec(**cam_dec)
+            self.cam_enc = cam_enc if isinstance(cam_enc, nn.Module) else CameraEnc(**cam_enc)
         self.gs_adapter, self.gs_head = None, None
         if gs_head is not None and gs_adapter is not None:
-            self.gs_adapter = (
-                gs_adapter
-                if isinstance(gs_adapter, nn.Module)
-                else GaussianAdapter(**gs_adapter)
-            )
+            self.gs_adapter = gs_adapter if isinstance(gs_adapter, nn.Module) else GaussianAdapter(**gs_adapter)
             gs_out_dim = self.gs_adapter.d_in + 1
             if isinstance(gs_head, nn.Module):
-                assert (
-                    gs_head.out_dim == gs_out_dim
-                ), f"gs_head.out_dim should be {gs_out_dim}, got {gs_head.out_dim}"
+                assert gs_head.out_dim == gs_out_dim, f"gs_head.out_dim should be {gs_out_dim}, got {gs_head.out_dim}"
                 self.gs_head = gs_head
             else:
-                assert (
-                    gs_head["output_dim"] == gs_out_dim
-                ), f"gs_head output_dim should set to {gs_out_dim}, got {gs_head['output_dim']}"
+                assert gs_head["output_dim"] == gs_out_dim, (
+                    f"gs_head output_dim should set to {gs_out_dim}, got {gs_head['output_dim']}"
+                )
                 self.gs_head = GSDPT(**gs_head)
 
     def forward(
@@ -113,13 +118,12 @@ class DepthAnything3Net(nn.Module):
         use_ray_pose: bool = False,
         ref_view_strategy: str = "saddle_balanced",
     ) -> Dict[str, torch.Tensor]:
-        """
-        Forward pass through the network.
+        """Forward pass through the network.
 
         Args:
             x: Input images (B, N, 3, H, W)
-            extrinsics: Camera extrinsics (B, N, 4, 4) 
-            intrinsics: Camera intrinsics (B, N, 3, 3) 
+            extrinsics: Camera extrinsics (B, N, 4, 4)
+            intrinsics: Camera intrinsics (B, N, 3, 3)
             feat_layers: List of layer indices to extract features from
             infer_gs: Enable Gaussian Splatting branch
             use_ray_pose: Use ray-based pose estimation
@@ -150,17 +154,15 @@ class DepthAnything3Net(nn.Module):
                 output = self._process_camera_estimation(feats, H, W, output)
             if infer_gs:
                 output = self._process_gs_head(feats, H, W, output, x, extrinsics, intrinsics)
-        
-        output = self._process_mono_sky_estimation(output)    
+
+        output = self._process_mono_sky_estimation(output)
 
         # Extract auxiliary features if requested
         output.aux = self._extract_auxiliary_features(aux_feats, export_feat_layers, H, W)
 
         return output
 
-    def _process_mono_sky_estimation(
-        self, output: Dict[str, torch.Tensor]
-    ) -> Dict[str, torch.Tensor]:
+    def _process_mono_sky_estimation(self, output: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Process mono sky estimation."""
         if "sky" not in output:
             return output
@@ -169,7 +171,7 @@ class DepthAnything3Net(nn.Module):
             return output
         if (~non_sky_mask).sum() <= 10:
             return output
-        
+
         non_sky_depth = output.depth[non_sky_mask]
         if non_sky_depth.numel() > 100000:
             idx = torch.randint(0, non_sky_depth.numel(), (100000,), device=non_sky_depth.device)
@@ -179,9 +181,7 @@ class DepthAnything3Net(nn.Module):
         non_sky_max = torch.quantile(sampled_depth, 0.99)
 
         # Set sky regions to maximum depth and high confidence
-        output.depth, _ = set_sky_regions_to_max_depth(
-            output.depth, None, non_sky_mask, max_depth=non_sky_max
-        )
+        output.depth, _ = set_sky_regions_to_max_depth(output.depth, None, non_sky_mask, max_depth=non_sky_max)
         return output
 
     def _process_ray_pose_estimation(
@@ -195,9 +195,14 @@ class DepthAnything3Net(nn.Module):
                 output.ray.shape[-3],
                 output.ray.shape[-2],
             )
-            pred_extrinsic = affine_inverse(pred_extrinsic) # w2c -> c2w
+            pred_extrinsic = affine_inverse(pred_extrinsic)  # w2c -> c2w
             pred_extrinsic = pred_extrinsic[:, :, :3, :]
-            pred_intrinsic = torch.eye(3, 3)[None, None].repeat(pred_extrinsic.shape[0], pred_extrinsic.shape[1], 1, 1).clone().to(pred_extrinsic.device)
+            pred_intrinsic = (
+                torch.eye(3, 3)[None, None]
+                .repeat(pred_extrinsic.shape[0], pred_extrinsic.shape[1], 1, 1)
+                .clone()
+                .to(pred_extrinsic.device)
+            )
             pred_intrinsic[:, :, 0, 0] = pred_focal_lengths[:, :, 0] / 2 * width
             pred_intrinsic[:, :, 1, 1] = pred_focal_lengths[:, :, 1] / 2 * height
             pred_intrinsic[:, :, 0, 2] = pred_principal_points[:, :, 0] * width * 0.5
@@ -208,9 +213,7 @@ class DepthAnything3Net(nn.Module):
             output.intrinsics = pred_intrinsic
         return output
 
-    def _process_depth_head(
-        self, feats: list[torch.Tensor], H: int, W: int
-    ) -> Dict[str, torch.Tensor]:
+    def _process_depth_head(self, feats: list[torch.Tensor], H: int, W: int) -> Dict[str, torch.Tensor]:
         """Process features through the depth prediction head."""
         return self.head(feats, H, W, patch_start_idx=0)
 
@@ -253,9 +256,7 @@ class DepthAnything3Net(nn.Module):
         # we instead use the predicted camera poses for better alignment.
         ctx_extr = output.get("extrinsics", None)
         ctx_intr = output.get("intrinsics", None)
-        assert (
-            ctx_extr is not None and ctx_intr is not None
-        ), "must process camera info first if GT is not available"
+        assert ctx_extr is not None and ctx_intr is not None, "must process camera info first if GT is not available"
 
         gt_extr = extrinsics
         # homo the extr if needed
@@ -312,8 +313,7 @@ class DepthAnything3Net(nn.Module):
 
 
 class NestedDepthAnything3Net(nn.Module):
-    """
-    Nested Depth Anything 3 network with metric scaling capabilities.
+    """Nested Depth Anything 3 network with metric scaling capabilities.
 
     This network combines two DepthAnything3Net branches:
     - Main branch: Standard depth estimation
@@ -328,8 +328,7 @@ class NestedDepthAnything3Net(nn.Module):
     """
 
     def __init__(self, anyview: DictConfig, metric: DictConfig):
-        """
-        Initialize NestedDepthAnything3Net with two branches.
+        """Initialize NestedDepthAnything3Net with two branches.
 
         Args:
             preset: Configuration for main depth estimation branch
@@ -349,8 +348,7 @@ class NestedDepthAnything3Net(nn.Module):
         use_ray_pose: bool = False,
         ref_view_strategy: str = "saddle_balanced",
     ) -> Dict[str, torch.Tensor]:
-        """
-        Forward pass through both branches with metric scaling alignment.
+        """Forward pass through both branches with metric scaling alignment.
 
         Args:
             x: Input images (B, N, 3, H, W)
@@ -366,7 +364,13 @@ class NestedDepthAnything3Net(nn.Module):
         """
         # Get predictions from both branches
         output = self.da3(
-            x, extrinsics, intrinsics, export_feat_layers=export_feat_layers, infer_gs=infer_gs, use_ray_pose=use_ray_pose, ref_view_strategy=ref_view_strategy
+            x,
+            extrinsics,
+            intrinsics,
+            export_feat_layers=export_feat_layers,
+            infer_gs=infer_gs,
+            use_ray_pose=use_ray_pose,
+            ref_view_strategy=ref_view_strategy,
         )
         metric_output = self.da3_metric(x)
 

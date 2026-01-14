@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # flake8: noqa E501
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
@@ -56,7 +73,7 @@ class DualDPT(nn.Module):
         aux_pyramid_levels: int = 4,
         aux_out1_conv_num: int = 5,
         head_names: Tuple[str, str] = ("depth", "ray"),
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__()
 
@@ -86,12 +103,8 @@ class DualDPT(nn.Module):
         # design: stage strides (x4, x2, x1, /2) relative to patch grid to align to a common pivot scale
         self.resize_layers = nn.ModuleList(
             [
-                nn.ConvTranspose2d(
-                    out_channels[0], out_channels[0], kernel_size=4, stride=4, padding=0
-                ),
-                nn.ConvTranspose2d(
-                    out_channels[1], out_channels[1], kernel_size=2, stride=2, padding=0
-                ),
+                nn.ConvTranspose2d(out_channels[0], out_channels[0], kernel_size=4, stride=4, padding=0),
+                nn.ConvTranspose2d(out_channels[1], out_channels[1], kernel_size=2, stride=2, padding=0),
                 nn.Identity(),
                 nn.Conv2d(out_channels[3], out_channels[3], kernel_size=3, stride=2, padding=1),
             ]
@@ -109,9 +122,7 @@ class DualDPT(nn.Module):
         # Primary head neck + head (independent)
         head_features_1 = features
         head_features_2 = 32
-        self.scratch.output_conv1 = nn.Conv2d(
-            head_features_1, head_features_1 // 2, kernel_size=3, stride=1, padding=1
-        )
+        self.scratch.output_conv1 = nn.Conv2d(head_features_1, head_features_1 // 2, kernel_size=3, stride=1, padding=1)
         self.scratch.output_conv2 = nn.Sequential(
             nn.Conv2d(head_features_1 // 2, head_features_2, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
@@ -131,17 +142,11 @@ class DualDPT(nn.Module):
 
         # Aux final projection per level
         use_ln = True
-        ln_seq = (
-            [Permute((0, 2, 3, 1)), nn.LayerNorm(head_features_2), Permute((0, 3, 1, 2))]
-            if use_ln
-            else []
-        )
+        ln_seq = [Permute((0, 2, 3, 1)), nn.LayerNorm(head_features_2), Permute((0, 3, 1, 2))] if use_ln else []
         self.scratch.output_conv2_aux = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.Conv2d(
-                        head_features_1 // 2, head_features_2, kernel_size=3, stride=1, padding=1
-                    ),
+                    nn.Conv2d(head_features_1 // 2, head_features_2, kernel_size=3, stride=1, padding=1),
                     *ln_seq,
                     nn.ReLU(inplace=True),
                     nn.Conv2d(head_features_2, 7, kernel_size=1, stride=1, padding=0),
@@ -195,10 +200,7 @@ class DualDPT(nn.Module):
                 patch_start_idx,
             )
             out_dicts.append(out_dict)
-        out_dict = {
-            k: torch.cat([out_dict[k] for out_dict in out_dicts], dim=0)
-            for k in out_dicts[0].keys()
-        }
+        out_dict = {k: torch.cat([out_dict[k] for out_dict in out_dicts], dim=0) for k in out_dicts[0].keys()}
         out_dict = {k: v.view(B, S, *v.shape[1:]) for k, v in out_dict.items()}
         return Dict(out_dict)
 
@@ -234,9 +236,7 @@ class DualDPT(nn.Module):
         h_out = int(ph * self.patch_size / self.down_ratio)
         w_out = int(pw * self.patch_size / self.down_ratio)
 
-        fused_main = custom_interpolate(
-            fused_main, (h_out, w_out), mode="bilinear", align_corners=True
-        )
+        fused_main = custom_interpolate(fused_main, (h_out, w_out), mode="bilinear", align_corners=True)
         if self.pos_embed:
             fused_main = self._add_pos_embed(fused_main, W, H)
 
@@ -339,9 +339,7 @@ class DualDPT(nn.Module):
             return nn.Sequential(nn.Conv2d(in_ch, in_ch // 2, 3, 1, 1))
         raise ValueError(f"aux_out1_conv_num {self.aux_out1_conv_num} not supported")
 
-    def _apply_activation_single(
-        self, x: torch.Tensor, activation: str = "linear"
-    ) -> torch.Tensor:
+    def _apply_activation_single(self, x: torch.Tensor, activation: str = "linear") -> torch.Tensor:
         """
         Apply activation to single channel output, maintaining semantic consistency with value branch in multi-channel case.
         Supports: exp / relu / sigmoid / softplus / tanh / linear / expp1

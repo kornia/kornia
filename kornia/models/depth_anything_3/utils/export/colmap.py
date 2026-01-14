@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +30,9 @@
 # limitations under the License.
 
 import os
-import pycolmap
-import cv2 as cv
-import numpy as np
 
+import numpy as np
+import pycolmap
 from PIL import Image
 
 from kornia.models.depth_anything_3.specs import Prediction
@@ -69,9 +85,7 @@ def export_to_colmap(
         else:
             raise ValueError(f"Unknown process_res_method: {process_res_method}")
 
-        pycolmap_intri = np.array(
-            [intrinsic[0, 0], intrinsic[1, 1], intrinsic[0, 2], intrinsic[1, 2]]
-        )
+        pycolmap_intri = np.array([intrinsic[0, 0], intrinsic[1, 1], intrinsic[0, 2], intrinsic[1, 2]])
 
         extrinsic = prediction.extrinsics[fidx]
         cam_from_world = pycolmap.Rigid3d(pycolmap.Rotation3d(extrinsic[:3, :3]), extrinsic[:3, 3])
@@ -113,9 +127,7 @@ def export_to_colmap(
             point2d[1] *= orig_h / h
             point3d_id = point3d_ids[vidx]
             point2d_list.append(pycolmap.Point2D(point2d, point3d_id))
-            reconstruction.point3D(point3d_id).track.add_element(
-                image.image_id, len(point2d_list) - 1
-            )
+            reconstruction.point3D(point3d_id).track.add_element(image.image_id, len(point2d_list) - 1)
 
         # set and add image
         image.frame_id = image.image_id
@@ -128,9 +140,7 @@ def export_to_colmap(
 
 
 def _create_xyf(num_frames, height, width):
-    """
-    Creates a grid of pixel coordinates and frame indices (fidx) for all frames.
-    """
+    """Creates a grid of pixel coordinates and frame indices (fidx) for all frames."""
     # Create coordinate grids for a single frame
     y_grid, x_grid = np.indices((height, width), dtype=np.int32)
     x_grid = x_grid[np.newaxis, :, :]

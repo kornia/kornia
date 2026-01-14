@@ -15,27 +15,29 @@
 # limitations under the License.
 #
 
-import pytest
-import torch
 import numpy as np
+import torch
 from PIL import Image
-from testing.base import BaseTester
-from kornia.models.depth_anything_3.specs import Prediction
-from kornia.models.depth_anything_3.model import DepthAnything3
+
 from kornia.models.depth_anything_3.architecture.dinov2 import DinoV2
+from kornia.models.depth_anything_3.model import DepthAnything3
+from kornia.models.depth_anything_3.specs import Prediction
+
+from testing.base import BaseTester
+
 
 class TestDa3(BaseTester):
     def test_dinov2(self):
-        img = torch.rand(2,3,3,518,518)
+        img = torch.rand(2, 3, 3, 518, 518)
         cfg = {
-        "name": "vitb",
-        "out_layers": [5, 7, 9, 11],
-        "alt_start": 4,
-        "qknorm_start": 4,
-        "rope_start": 4,
-        "cat_token": True,
+            "name": "vitb",
+            "out_layers": [5, 7, 9, 11],
+            "alt_start": 4,
+            "qknorm_start": 4,
+            "rope_start": 4,
+            "cat_token": True,
         }
-        
+
         dino = DinoV2(**cfg)
         results = dino(img)
 
@@ -45,14 +47,11 @@ class TestDa3(BaseTester):
         images = []
         for _ in range(2):
             arr = np.random.randint(0, 256, (256, 256, 3), dtype=np.uint8)
-            img = Image.fromarray(arr, 'RGB')
+            img = Image.fromarray(arr, "RGB")
             images.append(img)
-        
+
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = DepthAnything3.from_pretrained("depth-anything/DA3-BASE",device = device)
+        model = DepthAnything3.from_pretrained("depth-anything/DA3-BASE", device=device)
         result = model.inference(images)
-        
-        assert (type(result) == Prediction)
-    
 
-
+        assert type(result) == Prediction

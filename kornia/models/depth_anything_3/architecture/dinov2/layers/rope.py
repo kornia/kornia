@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 #
 # This source code is licensed under the Apache License, Version 2.0
@@ -15,9 +32,10 @@
 
 
 from typing import Dict, Tuple
+
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 
 class PositionGetter:
@@ -35,9 +53,7 @@ class PositionGetter:
         """Initializes the position generator with an empty cache."""
         self.position_cache: Dict[Tuple[int, int], torch.Tensor] = {}
 
-    def __call__(
-        self, batch_size: int, height: int, width: int, device: torch.device
-    ) -> torch.Tensor:
+    def __call__(self, batch_size: int, height: int, width: int, device: torch.device) -> torch.Tensor:
         """Generates spatial positions for a batch of patches.
 
         Args:
@@ -172,29 +188,21 @@ class RotaryPositionEmbedding2D(nn.Module):
         """
         # Validate inputs
         assert tokens.size(-1) % 2 == 0, "Feature dimension must be even"
-        assert (
-            positions.ndim == 3 and positions.shape[-1] == 2
-        ), "Positions must have shape (batch_size, n_tokens, 2)"
+        assert positions.ndim == 3 and positions.shape[-1] == 2, "Positions must have shape (batch_size, n_tokens, 2)"
 
         # Compute feature dimension for each spatial direction
         feature_dim = tokens.size(-1) // 2
 
         # Get frequency components
         max_position = int(positions.max()) + 1
-        cos_comp, sin_comp = self._compute_frequency_components(
-            feature_dim, max_position, tokens.device, tokens.dtype
-        )
+        cos_comp, sin_comp = self._compute_frequency_components(feature_dim, max_position, tokens.device, tokens.dtype)
 
         # Split features for vertical and horizontal processing
         vertical_features, horizontal_features = tokens.chunk(2, dim=-1)
 
         # Apply RoPE separately for each dimension
-        vertical_features = self._apply_1d_rope(
-            vertical_features, positions[..., 0], cos_comp, sin_comp
-        )
-        horizontal_features = self._apply_1d_rope(
-            horizontal_features, positions[..., 1], cos_comp, sin_comp
-        )
+        vertical_features = self._apply_1d_rope(vertical_features, positions[..., 0], cos_comp, sin_comp)
+        horizontal_features = self._apply_1d_rope(horizontal_features, positions[..., 1], cos_comp, sin_comp)
 
         # Combine processed features
         return torch.cat((vertical_features, horizontal_features), dim=-1)

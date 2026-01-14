@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +30,7 @@
 # limitations under the License.
 
 import os
+
 import cv2
 import imageio
 import numpy as np
@@ -49,9 +67,7 @@ def export_to_feat_vis(
         for idx in tqdm(range(len(feats_vis))):
             img = images[idx]
             feat_vis = (feats_vis[idx] * 255).astype(np.uint8)
-            feat_vis = cv2.resize(
-                feat_vis, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST
-            )
+            feat_vis = cv2.resize(feat_vis, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
             save_path = os.path.join(out_dir, f"{k}/{idx:06d}.jpg")
             save = np.concatenate([img, feat_vis], axis=1)
             imageio.imwrite(save_path, save, quality=95)

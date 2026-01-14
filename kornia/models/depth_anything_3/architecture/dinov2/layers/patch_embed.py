@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 #
@@ -9,8 +26,8 @@
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/layers/patch_embed.py
 
 from typing import Callable, Optional, Tuple, Union
-import torch.nn as nn
-from torch import Tensor
+
+from torch import Tensor, nn
 
 
 def make_2tuple(x):
@@ -23,8 +40,7 @@ def make_2tuple(x):
 
 
 class PatchEmbed(nn.Module):
-    """
-    2D image to patch embedding: (B,C,H,W) -> (B,N,D)
+    """2D image to patch embedding: (B,C,H,W) -> (B,N,D)
 
     Args:
         img_size: Image size.
@@ -69,12 +85,8 @@ class PatchEmbed(nn.Module):
         _, _, H, W = x.shape
         patch_H, patch_W = self.patch_size
 
-        assert (
-            H % patch_H == 0
-        ), f"Input image height {H} is not a multiple of patch height {patch_H}"
-        assert (
-            W % patch_W == 0
-        ), f"Input image width {W} is not a multiple of patch width: {patch_W}"
+        assert H % patch_H == 0, f"Input image height {H} is not a multiple of patch height {patch_H}"
+        assert W % patch_W == 0, f"Input image width {W} is not a multiple of patch width: {patch_W}"
 
         x = self.proj(x)  # B C H W
         H, W = x.size(2), x.size(3)
@@ -86,9 +98,7 @@ class PatchEmbed(nn.Module):
 
     def flops(self) -> float:
         Ho, Wo = self.patches_resolution
-        flops = (
-            Ho * Wo * self.embed_dim * self.in_chans * (self.patch_size[0] * self.patch_size[1])
-        )
+        flops = Ho * Wo * self.embed_dim * self.in_chans * (self.patch_size[0] * self.patch_size[1])
         if self.norm is not None:
             flops += Ho * Wo * self.embed_dim
         return flops

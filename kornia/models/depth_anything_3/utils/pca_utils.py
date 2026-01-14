@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,8 +29,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-PCA utilities for feature visualization and dimensionality reduction (video-friendly).
+"""PCA utilities for feature visualization and dimensionality reduction (video-friendly).
 - Support frame-by-frame: transform_frame / transform_video
 - Support one-time global PCA fitting and reuse (mean, V3) for stable colors
 - Support Procrustes alignment (solving principal component order/sign/rotation jumps)
@@ -32,8 +48,7 @@ def pca_to_rgb_4d_bf16_percentile(
     return_uint8: bool = False,
     enable_autocast_bf16: bool = True,
 ):
-    """
-    Reduce numpy array of shape (49, 27, 36, 3072) to 3D via PCA and visualize as (49, 27, 36, 3).
+    """Reduce numpy array of shape (49, 27, 36, 3072) to 3D via PCA and visualize as (49, 27, 36, 3).
     - PCA uses torch.pca_lowrank (randomized SVD), defaults to GPU.
     - Uses CUDA bf16 autocast in computation (if available),
       then per-channel percentile clipping and normalization.
@@ -57,14 +72,12 @@ def pca_to_rgb_4d_bf16_percentile(
     enable_autocast_bf16 : bool
         Enable bf16 autocast on CUDA.
 
-    Returns
+    Returns:
     -------
     np.ndarray
         Array of shape (49, 27, 36, 3), float32[0,1] or uint8[0,255].
     """
-    assert (
-        x_np.ndim == 4
-    )  # and x_np.shape[-1] == 3072, f"expect (49,27,36,3072), got {x_np.shape}"
+    assert x_np.ndim == 4  # and x_np.shape[-1] == 3072, f"expect (49,27,36,3072), got {x_np.shape}"
     B1, B2, B3, D = x_np.shape
     N = B1 * B2 * B3
 
@@ -80,9 +93,7 @@ def pca_to_rgb_4d_bf16_percentile(
     q = max(int(q_oversample), k)
     clip_percent = float(clip_percent)
     if not (0.0 <= clip_percent < 50.0):
-        raise ValueError(
-            "clip_percent must be in [0, 50), e.g. 5.0 means clip 5% from top and bottom"
-        )
+        raise ValueError("clip_percent must be in [0, 50), e.g. 5.0 means clip 5% from top and bottom")
     low = clip_percent / 100.0
     high = 1.0 - low
 
@@ -125,8 +136,7 @@ def pca_to_rgb_4d_bf16_percentile(
 
 
 class PCARGBVisualizer:
-    """
-    Stable PCA→RGB for video features shaped (T, H, W, D) or a single frame (H, W, D).
+    """Stable PCA→RGB for video features shaped (T, H, W, D) or a single frame (H, W, D).
     - Global mean/V3 reference for stable colors
     - Per-frame PCA with Procrustes alignment to V3_ref (basis_mode='procrustes')
     - Percentile normalization with global or EMA stats (time-only, no spatial smoothing)
@@ -165,8 +175,7 @@ class PCARGBVisualizer:
 
     @torch.no_grad()
     def fit_reference(self, frames):
-        """
-        Fit global mean/V3 and initialize percentiles from a reference set.
+        """Fit global mean/V3 and initialize percentiles from a reference set.
         frames: ndarray (T,H,W,D) or list of (H,W,D)
         """
         if isinstance(frames, np.ndarray):
@@ -205,8 +214,7 @@ class PCARGBVisualizer:
 
     @torch.no_grad()
     def _project_with_stable_colors(self, X: torch.Tensor) -> torch.Tensor:
-        """
-        X: (N,D) where N = H*W
+        """X: (N,D) where N = H*W
         Returns PCs_raw: (N,3) using stable basis (fixed or Procrustes-aligned)
         """
         assert self.mean_ref is not None and self.V3_ref is not None, "Call fit_reference() first."
@@ -252,9 +260,7 @@ class PCARGBVisualizer:
 
     @torch.no_grad()
     def transform_frame(self, frame: np.ndarray) -> np.ndarray:
-        """
-        frame: (H,W,D) -> (H,W,3)
-        """
+        """frame: (H,W,D) -> (H,W,3)"""
         if frame.ndim != 3:
             raise ValueError("transform_frame expects (H,W,D).")
         H, W, D = frame.shape
@@ -267,8 +273,7 @@ class PCARGBVisualizer:
 
     @torch.no_grad()
     def transform_video(self, frames) -> np.ndarray:
-        """
-        frames: (T,H,W,D) or list of (H,W,D)
+        """frames: (T,H,W,D) or list of (H,W,D)
         returns: (T,H,W,3)
         """
         outs = []

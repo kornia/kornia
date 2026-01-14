@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,19 +30,20 @@
 # limitations under the License.
 
 from typing import Optional
+
 import torch
 from einops import einsum, rearrange, repeat
 from torch import nn
 
-from .utils.transform import cam_quat_xyzw_to_world_quat_wxyz
 from kornia.models.depth_anything_3.specs import Gaussians
 from kornia.models.depth_anything_3.utils.geometry import affine_inverse, get_world_rays, sample_image_grid
 from kornia.models.depth_anything_3.utils.pose_align import batch_align_poses_umeyama
 from kornia.models.depth_anything_3.utils.sh_helpers import rotate_sh
 
+from .utils.transform import cam_quat_xyzw_to_world_quat_wxyz
+
 
 class GaussianAdapter(nn.Module):
-
     def __init__(
         self,
         sh_degree: int = 0,
@@ -34,7 +52,7 @@ class GaussianAdapter(nn.Module):
         pred_offset_xy: bool = True,
         gaussian_scale_min: float = 1e-5,
         gaussian_scale_max: float = 30.0,
-        **kwargs
+        **kwargs,
     ):
         super().__init__()
         self.sh_degree = sh_degree
@@ -96,9 +114,7 @@ class GaussianAdapter(nn.Module):
             except Exception:
                 pose_scales = torch.ones_like(extrinsics[:, 0, 0, 0])
             pose_scales = torch.clamp(pose_scales, min=1 / 3.0, max=3.0)
-            cam2worlds[:, :, :3, 3] = cam2worlds[:, :, :3, 3] * rearrange(
-                pose_scales, "b -> b () ()"
-            )  # [b, i, j]
+            cam2worlds[:, :, :3, 3] = cam2worlds[:, :, :3, 3] * rearrange(pose_scales, "b -> b () ()")  # [b, i, j]
             gs_depths = gs_depths * rearrange(pose_scales, "b -> b () () ()")  # [b, v, h, w]
         # 1.3) casting xy in image space
         xy_ray, _ = sample_image_grid((H, W), device)

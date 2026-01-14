@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +30,7 @@
 # limitations under the License.
 
 from typing import List
+
 import numpy as np
 import torch
 from evo.core.trajectory import PosePath3D
@@ -26,9 +44,7 @@ def batch_apply_alignment_to_enc(
     pass
 
 
-def batch_apply_alignment_to_ext(
-    rots: torch.Tensor, trans: torch.Tensor, scales: torch.Tensor, ext: torch.Tensor
-):
+def batch_apply_alignment_to_ext(rots: torch.Tensor, trans: torch.Tensor, scales: torch.Tensor, ext: torch.Tensor):
     device, _ = ext.device, ext.dtype
     if ext.shape[-2:] == (3, 4):
         pad = torch.zeros((*ext.shape[:-2], 4, 4), dtype=ext.dtype, device=device)
@@ -37,9 +53,7 @@ def batch_apply_alignment_to_ext(
         ext = pad
     pose_est = affine_inverse(ext)
     pose_new_align_rot = rots[:, None] @ pose_est[..., :3, :3]
-    pose_new_align_trans = (
-        scales[:, None, None] * (rots[:, None] @ pose_est[..., :3, 3:])[..., 0] + trans[:, None]
-    )
+    pose_new_align_trans = scales[:, None, None] * (rots[:, None] @ pose_est[..., :3, 3:])[..., 0] + trans[:, None]
     pose_new_align = torch.zeros_like(ext)
     pose_new_align[..., :3, :3] = pose_new_align_rot
     pose_new_align[..., :3, 3] = pose_new_align_trans
@@ -108,9 +122,7 @@ def _median_nn_thresh(pose_ref, pose_est_aligned):
     return float(np.median(dists)) if dists else 0.0
 
 
-def _ransac_align_sim3(
-    pose_ref, pose_est, sub_n=None, inlier_thresh=None, max_iters=10, random_state=None
-):
+def _ransac_align_sim3(pose_ref, pose_est, sub_n=None, inlier_thresh=None, max_iters=10, random_state=None):
     rng = np.random.default_rng(random_state)
     N = pose_ref.shape[0]
     idx_all = np.arange(N)
@@ -165,8 +177,7 @@ def align_poses_umeyama(
     ransac_max_iters=10,
     random_state=None,
 ):
-    """
-    Align estimated trajectory to reference using Umeyama Sim(3).
+    """Align estimated trajectory to reference using Umeyama Sim(3).
     Default no RANSAC; if ransac=True, use RANSAC (max iterations default 10).
     - sub_n defaults to half the number of frames (rounded up, at least 3)
     - inlier_thresh defaults to median of "distance from each estimated pose to
@@ -197,7 +208,7 @@ def align_poses_umeyama(
 # def align_poses_umeyama(ext_ref: np.ndarray, ext_est: np.ndarray, return_aligned=False):
 #     """
 #     Align estimated trajectory to reference trajectory using Umeyama Sim(3)
-#     alignment (via evo PosePath3D). # noqa
+#     alignment (via evo PosePath3D).
 #     Returns rotation, translation, and scale.
 #     """
 #     # If input extrinsics are 3x4, convert to 4x4 by padding
@@ -230,11 +241,9 @@ def apply_umeyama_alignment_to_ext(
     scale: float,
     ext_est: np.ndarray,  # (...,4,4) or (...,3,4)
 ) -> np.ndarray:
-    """
-    Apply Sim(3) (R, t, s) to a batch of world-to-camera extrinsics ext_est.
+    """Apply Sim(3) (R, t, s) to a batch of world-to-camera extrinsics ext_est.
     Returns the aligned extrinsics, with the same shape as input.
     """
-
     # Allow 3x4 extrinsics: pad to 4x4
     if ext_est.shape[-2:] == (3, 4):
         pad = np.zeros((*ext_est.shape[:-2], 4, 4), dtype=ext_est.dtype)
@@ -262,8 +271,7 @@ def apply_umeyama_alignment_to_ext(
 
 
 def transform_points_sim3(points, rot, trans, scale, inverse=False):
-    """
-    Sim(3) transform point cloud
+    """Sim(3) transform point cloud
     points: (N, 3)
     rot: (3, 3)
     trans: (3,) or (1, 3)

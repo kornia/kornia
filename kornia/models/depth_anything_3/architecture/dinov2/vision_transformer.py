@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 #
 # This source code is licensed under the Apache License, Version 2.0
@@ -9,37 +26,36 @@
 
 import math
 from typing import Callable, List, Sequence, Tuple, Union
+
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.utils.checkpoint
 from einops import rearrange
+from torch import nn
 
+from kornia.models.depth_anything_3.architecture.reference_view_selector import (
+    reorder_by_reference,
+    restore_original_order,
+    select_reference_view,
+)
+from kornia.models.depth_anything_3.utils.constants import THRESH_FOR_REF_SELECTION
 from kornia.models.depth_anything_3.utils.logger import logger
 
-from .layers import LayerScale  # noqa: F401
-from .layers import Mlp  # noqa: F401
 from .layers import (  # noqa: F401
     Block,
+    LayerScale,
+    Mlp,
     PatchEmbed,
     PositionGetter,
     RotaryPositionEmbedding2D,
     SwiGLUFFNFused,
 )
-from kornia.models.depth_anything_3.architecture.reference_view_selector import (
-    RefViewStrategy,
-    select_reference_view,
-    reorder_by_reference,
-    restore_original_order,
-)
-from kornia.models.depth_anything_3.utils.constants import THRESH_FOR_REF_SELECTION
 
 # logger = logging.getLogger("dinov2")
 
 
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
-    """
-    embed_dim: output dimension for each position
+    """embed_dim: output dimension for each position
     pos: a list of positions to be encoded: size (M,)
     out: (M, D)
     """
@@ -58,16 +74,12 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     return emb
 
 
-def named_apply(
-    fn: Callable, module: nn.Module, name="", depth_first=True, include_root=False
-) -> nn.Module:
+def named_apply(fn: Callable, module: nn.Module, name="", depth_first=True, include_root=False) -> nn.Module:
     if not depth_first and include_root:
         fn(module=module, name=name)
     for child_name, child_module in module.named_children():
         child_name = ".".join((name, child_name)) if name else child_name
-        named_apply(
-            fn=fn, module=child_module, name=child_name, depth_first=depth_first, include_root=True
-        )
+        named_apply(fn=fn, module=child_module, name=child_name, depth_first=depth_first, include_root=True)
     if depth_first and include_root:
         fn(module=module, name=name)
     return module
@@ -111,37 +123,34 @@ class DinoVisionTransformer(nn.Module):
         plus_cam_token=False,
         cat_token=True,
     ):
-        """
-        Args:
-            img_size (int, tuple): input image size
-            patch_size (int, tuple): patch size
-            in_chans (int): number of input channels
-            embed_dim (int): embedding dimension
-            depth (int): depth of transformer
-            num_heads (int): number of attention heads
-            mlp_ratio (int): ratio of mlp hidden dim to embedding dim
-            qkv_bias (bool): enable bias for qkv if True
-            proj_bias (bool): enable bias for proj in attn if True
-            ffn_bias (bool): enable bias for ffn if True
-            weight_init (str): weight init scheme
-            init_values (float): layer-scale init values
-            embed_layer (nn.Module): patch embedding layer
-            act_layer (nn.Module): MLP activation layer
-            block_fn (nn.Module): transformer block class
-            ffn_layer (str): "mlp", "swiglu", "swiglufused" or "identity"
-            block_chunks: (int) split block sequence into block_chunks units for FSDP wrap
-            num_register_tokens: (int) number of extra cls tokens (so-called "registers")
-            interpolate_antialias: (str) flag to apply anti-aliasing when interpolating
-                positional embeddings
-            interpolate_offset: (float) work-around offset to apply when interpolating
-                positional embeddings
+        """Args:
+        img_size (int, tuple): input image size
+        patch_size (int, tuple): patch size
+        in_chans (int): number of input channels
+        embed_dim (int): embedding dimension
+        depth (int): depth of transformer
+        num_heads (int): number of attention heads
+        mlp_ratio (int): ratio of mlp hidden dim to embedding dim
+        qkv_bias (bool): enable bias for qkv if True
+        proj_bias (bool): enable bias for proj in attn if True
+        ffn_bias (bool): enable bias for ffn if True
+        weight_init (str): weight init scheme
+        init_values (float): layer-scale init values
+        embed_layer (nn.Module): patch embedding layer
+        act_layer (nn.Module): MLP activation layer
+        block_fn (nn.Module): transformer block class
+        ffn_layer (str): "mlp", "swiglu", "swiglufused" or "identity"
+        block_chunks: (int) split block sequence into block_chunks units for FSDP wrap
+        num_register_tokens: (int) number of extra cls tokens (so-called "registers")
+        interpolate_antialias: (str) flag to apply anti-aliasing when interpolating
+            positional embeddings
+        interpolate_offset: (float) work-around offset to apply when interpolating
+            positional embeddings
         """
         super().__init__()
         self.patch_start_idx = 1
         norm_layer = nn.LayerNorm
-        self.num_features = self.embed_dim = (
-            embed_dim  # num_features for consistency with other models
-        )
+        self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
         self.alt_start = alt_start
         self.qknorm_start = qknorm_start
         self.rope_start = rope_start
@@ -154,9 +163,7 @@ class DinoVisionTransformer(nn.Module):
         self.interpolate_antialias = interpolate_antialias
         self.interpolate_offset = interpolate_offset
 
-        self.patch_embed = embed_layer(
-            img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim
-        )
+        self.patch_embed = embed_layer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         if self.alt_start != -1:
@@ -164,17 +171,13 @@ class DinoVisionTransformer(nn.Module):
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + self.num_tokens, embed_dim))
         assert num_register_tokens >= 0
         self.register_tokens = (
-            nn.Parameter(torch.zeros(1, num_register_tokens, embed_dim))
-            if num_register_tokens
-            else None
+            nn.Parameter(torch.zeros(1, num_register_tokens, embed_dim)) if num_register_tokens else None
         )
 
         if drop_path_uniform is True:
             dpr = [drop_path_rate] * depth
         else:
-            dpr = [
-                x.item() for x in torch.linspace(0, drop_path_rate, depth)
-            ]  # stochastic depth decay rule
+            dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
         if ffn_layer == "mlp":
             logger.info("using MLP layer as FFN")
             ffn_layer = Mlp
@@ -283,9 +286,7 @@ class DinoVisionTransformer(nn.Module):
         pos = None
         pos_nodiff = None
         if self.rope is not None:
-            pos = self.position_getter(
-                B * S, H // self.patch_size, W // self.patch_size, device=device
-            )
+            pos = self.position_getter(B * S, H // self.patch_size, W // self.patch_size, device=device)
             pos = rearrange(pos, "(b s) n c -> b s n c", b=B)
             pos_nodiff = torch.zeros_like(pos).to(pos.dtype)
             if self.patch_start_idx > 0:
@@ -311,7 +312,12 @@ class DinoVisionTransformer(nn.Module):
                 g_pos = pos_nodiff
                 l_pos = pos
 
-            if self.alt_start != -1 and (i == self.alt_start - 1) and x.shape[1] >= THRESH_FOR_REF_SELECTION and kwargs.get("cam_token", None) is None:
+            if (
+                self.alt_start != -1
+                and (i == self.alt_start - 1)
+                and x.shape[1] >= THRESH_FOR_REF_SELECTION
+                and kwargs.get("cam_token", None) is None
+            ):
                 # Select reference view using configured strategy
                 strategy = kwargs.get("ref_view_strategy", "saddle_balanced")
                 logger.info(f"Selecting reference view using strategy: {strategy}")
@@ -331,9 +337,7 @@ class DinoVisionTransformer(nn.Module):
                 x[:, :, 0] = cam_token
 
             if self.alt_start != -1 and i >= self.alt_start and i % 2 == 1:
-                x = self.process_attention(
-                    x, blk, "global", pos=g_pos, attn_mask=kwargs.get("attn_mask", None)
-                )
+                x = self.process_attention(x, blk, "global", pos=g_pos, attn_mask=kwargs.get("attn_mask", None))
             else:
                 x = self.process_attention(x, blk, "local", pos=l_pos)
                 local_x = x
@@ -341,7 +345,7 @@ class DinoVisionTransformer(nn.Module):
             if i in blocks_to_take:
                 out_x = torch.cat([local_x, x], dim=-1) if self.cat_token else x
                 # Restore original view order if reordering was applied
-                if x.shape[1] >= THRESH_FOR_REF_SELECTION and self.alt_start != -1 and 'b_idx' in locals():
+                if x.shape[1] >= THRESH_FOR_REF_SELECTION and self.alt_start != -1 and "b_idx" in locals():
                     out_x = restore_original_order(out_x, b_idx)
                 output.append((out_x[:, :, 0], out_x))
             if i in export_feat_layers:
@@ -441,9 +445,7 @@ def vit_large(patch_size=16, num_register_tokens=0, depth=24, **kwargs):
 
 
 def vit_giant2(patch_size=16, num_register_tokens=0, depth=40, **kwargs):
-    """
-    Close to ViT-giant, with embed-dim 1536 and 24 heads => embed-dim per head 64
-    """
+    """Close to ViT-giant, with embed-dim 1536 and 24 heads => embed-dim per head 64"""
     model = DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=1536,

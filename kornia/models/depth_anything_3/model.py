@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,8 +28,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""
-Depth Anything 3 API module.
+"""Depth Anything 3 API module.
 
 This module provides the main API for Depth Anything 3, including model loading,
 inference, and export capabilities. It supports both single and nested model architectures.
@@ -21,15 +37,17 @@ inference, and export capabilities. It supports both single and nested model arc
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Optional, Sequence
+
 import numpy as np
 import torch
-import torch.nn as nn
 from huggingface_hub import PyTorchModelHubMixin
 from PIL import Image
-from pathlib import Path 
+from torch import nn
 
-from kornia.models.depth_anything_3.cfg import create_object, load_config
+from kornia.models.depth_anything_3.architecture.da3 import DepthAnything3Net
+from kornia.models.depth_anything_3.cfg import load_config
 from kornia.models.depth_anything_3.specs import Prediction
 from kornia.models.depth_anything_3.utils.export import export
 from kornia.models.depth_anything_3.utils.geometry import affine_inverse
@@ -37,16 +55,12 @@ from kornia.models.depth_anything_3.utils.io.input_processor import InputProcess
 from kornia.models.depth_anything_3.utils.io.output_processor import OutputProcessor
 from kornia.models.depth_anything_3.utils.logger import logger
 from kornia.models.depth_anything_3.utils.pose_align import align_poses_umeyama
-from kornia.models.depth_anything_3.architecture.da3 import DepthAnything3Net
-
-
 
 torch.backends.cudnn.benchmark = False
 
 
 class DepthAnything3(nn.Module, PyTorchModelHubMixin):
-    """
-    Depth Anything 3 main class.
+    """Depth Anything 3 main class.
 
     This class provides a high-level interface for depth estimation using Depth Anything 3.
 
@@ -70,8 +84,7 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
     _commit_hash: str | None = None  # Set by mixin when loading from Hub
 
     def __init__(self, model_name: str = "da3-base", **kwargs):
-        """
-        Initialize DepthAnything3 with specified preset.
+        """Initialize DepthAnything3 with specified preset.
 
         Args:
         model_name: The name of the model preset to use. (only da3 - base)
@@ -83,7 +96,7 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
         # Build the underlying network
         self.config = load_config(str(Path(__file__).resolve().parent / "configs" / f"{self.model_name}.yaml"))
         # prnit("okk")
-        self.model =  DepthAnything3Net(**self.config)
+        self.model = DepthAnything3Net(**self.config)
         self.model.eval()
 
         # Initialize processors
@@ -104,8 +117,7 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
         use_ray_pose: bool = False,
         ref_view_strategy: str = "saddle_balanced",
     ) -> dict[str, torch.Tensor]:
-        """
-        Forward pass through the model.
+        """Forward pass through the model.
 
         Args:
             image: Input batch with shape ``(B, N, 3, H, W)`` on the model device.
@@ -153,8 +165,7 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
         # Other export parameters, e.g., gs_ply, gs_video
         export_kwargs: Optional[dict] = {},
     ) -> Prediction:
-        """
-        Run inference on input images.
+        """Run inference on input images.
 
         Args:
             image: List of input images (numpy arrays, PIL Images, or file paths)
@@ -220,7 +231,6 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
 
         # Export if requested
         if export_dir is not None:
-
             if "gs" in export_format:
                 if infer_gs and "gs_video" not in export_format:
                     export_format = f"{export_format}-gs_video"
@@ -308,16 +318,8 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
         imgs = imgs_cpu.to(device, non_blocking=True)[None].float()
 
         # Convert camera parameters to tensors
-        ex_t = (
-            extrinsics.to(device, non_blocking=True)[None].float()
-            if extrinsics is not None
-            else None
-        )
-        in_t = (
-            intrinsics.to(device, non_blocking=True)[None].float()
-            if intrinsics is not None
-            else None
-        )
+        ex_t = extrinsics.to(device, non_blocking=True)[None].float() if extrinsics is not None else None
+        in_t = intrinsics.to(device, non_blocking=True)[None].float() if intrinsics is not None else None
 
         return imgs, ex_t, in_t
 
@@ -408,9 +410,7 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
         prediction.processed_images = processed_imgs
         return prediction
 
-    def _export_results(
-        self, prediction: Prediction, export_format: str, export_dir: str, **kwargs
-    ) -> None:
+    def _export_results(self, prediction: Prediction, export_format: str, export_dir: str, **kwargs) -> None:
         """Export results to specified format and directory."""
         start_time = time.time()
         export(prediction, export_format, export_dir, **kwargs)
@@ -418,8 +418,7 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
         logger.info(f"Export Results Done. Time: {end_time - start_time} seconds")
 
     def _get_model_device(self) -> torch.device:
-        """
-        Get the device where the model is located.
+        """Get the device where the model is located.
 
         Returns:
             Device where the model parameters are located

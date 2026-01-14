@@ -1,4 +1,20 @@
-# flake8: noqa: F722
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +30,7 @@
 # limitations under the License.
 from types import SimpleNamespace
 from typing import Optional
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -21,8 +38,7 @@ from einops import einsum
 
 
 def as_homogeneous(ext):
-    """
-    Accept (..., 3,4) or (..., 4,4) extrinsics, return (...,4,4) homogeneous matrix.
+    """Accept (..., 3,4) or (..., 4,4) extrinsics, return (...,4,4) homogeneous matrix.
     Supports torch.Tensor or np.ndarray.
     """
     if isinstance(ext, torch.Tensor):
@@ -60,9 +76,7 @@ def affine_inverse(A: torch.Tensor):
 
 
 def transpose_last_two_axes(arr):
-    """
-    for np < 2
-    """
+    """For np < 2"""
     if arr.ndim < 2:
         return arr
     axes = list(range(arr.ndim))
@@ -85,10 +99,10 @@ def affine_inverse_np(A: np.ndarray):
 
 
 def quat_to_mat(quaternions: torch.Tensor) -> torch.Tensor:
-    """
-    Quaternion Order: XYZW or say ijkr, scalar-last
+    """Quaternion Order: XYZW or say ijkr, scalar-last
 
     Convert rotations given as quaternions to rotation matrices.
+
     Args:
         quaternions: quaternions with real part last,
             as tensor of shape (..., 4).
@@ -118,8 +132,7 @@ def quat_to_mat(quaternions: torch.Tensor) -> torch.Tensor:
 
 
 def mat_to_quat(matrix: torch.Tensor) -> torch.Tensor:
-    """
-    Convert rotations given as rotation matrices to quaternions.
+    """Convert rotations given as rotation matrices to quaternions.
 
     Args:
         matrix: Rotation matrices as tensor of shape (..., 3, 3).
@@ -132,9 +145,7 @@ def mat_to_quat(matrix: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Invalid rotation matrix shape {matrix.shape}.")
 
     batch_dim = matrix.shape[:-2]
-    m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.unbind(
-        matrix.reshape(batch_dim + (9,)), dim=-1
-    )
+    m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.unbind(matrix.reshape(batch_dim + (9,)), dim=-1)
 
     q_abs = _sqrt_positive_part(
         torch.stack(
@@ -174,9 +185,7 @@ def mat_to_quat(matrix: torch.Tensor) -> torch.Tensor:
 
     # if not for numerical problems, quat_candidates[i] should be same (up to a sign),
     # forall i; we pick the best-conditioned one (with the largest denominator)
-    out = quat_candidates[F.one_hot(q_abs.argmax(dim=-1), num_classes=4) > 0.5, :].reshape(
-        batch_dim + (4,)
-    )
+    out = quat_candidates[F.one_hot(q_abs.argmax(dim=-1), num_classes=4) > 0.5, :].reshape(batch_dim + (4,))
 
     # Convert from rijk to ijkr
     out = out[..., [1, 2, 3, 0]]
@@ -187,8 +196,7 @@ def mat_to_quat(matrix: torch.Tensor) -> torch.Tensor:
 
 
 def _sqrt_positive_part(x: torch.Tensor) -> torch.Tensor:
-    """
-    Returns torch.sqrt(torch.max(0, x))
+    """Returns torch.sqrt(torch.max(0, x))
     but with a zero subgradient where x is 0.
     """
     ret = torch.zeros_like(x)
@@ -201,8 +209,7 @@ def _sqrt_positive_part(x: torch.Tensor) -> torch.Tensor:
 
 
 def standardize_quaternion(quaternions: torch.Tensor) -> torch.Tensor:
-    """
-    Convert a unit quaternion to a standard form: one in which the real
+    """Convert a unit quaternion to a standard form: one in which the real
     part is non negative.
 
     Args:
@@ -223,7 +230,6 @@ def sample_image_grid(
     torch.Tensor,  # integer indices (ij indexing), "*shape dim"
 ]:
     """Get normalized (range 0 to 1) coordinates and integer indices for an image."""
-
     # Each entry is a pixel-wise integer coordinate. In the 2D case, each entry is a
     # (row, col) coordinate.
     indices = [torch.arange(length, device=device) for length in shape]
@@ -274,7 +280,6 @@ def unproject(
     intrinsics: torch.Tensor,  # "*#batch dim+1 dim+1"
 ) -> torch.Tensor:  # "*batch dim+1"
     """Unproject 2D camera coordinates with the given Z values."""
-
     # Apply the inverse intrinsics to the coordinates.
     coordinates = homogenize_points(coordinates)
     ray_directions = einsum(
@@ -348,17 +353,19 @@ def map_pdf_to_opacity(
     # Map the probability density to an opacity.
     return 0.5 * (1 - (1 - pdf) ** exponent + pdf ** (1 / exponent))
 
+
 def normalize_homogenous_points(points):
     """Normalize the point vectors"""
     return points / points[..., -1:]
+
 
 def inverse_intrinsic_matrix(ixts):
     """ """
     return torch.inverse(ixts)
 
+
 def pixel_space_to_camera_space(pixel_space_points, depth, intrinsics):
-    """
-    Convert pixel space points to camera space points.
+    """Convert pixel space points to camera space points.
 
     Args:
         pixel_space_points (torch.Tensor): Pixel space points with shape (h, w, 2)
@@ -380,8 +387,7 @@ def pixel_space_to_camera_space(pixel_space_points, depth, intrinsics):
 
 
 def camera_space_to_world_space(camera_space_points, c2w):
-    """
-    Convert camera space points to world space points.
+    """Convert camera space points to world space points.
 
     Args:
         camera_space_points (torch.Tensor): Camera space points with shape (b, v, h, w, 3)
@@ -396,8 +402,7 @@ def camera_space_to_world_space(camera_space_points, c2w):
 
 
 def camera_space_to_pixel_space(camera_space_points, intrinsics):
-    """
-    Convert camera space points to pixel space points.
+    """Convert camera space points to pixel space points.
 
     Args:
         camera_space_points (torch.Tensor): Camera space points with shape (b, v1, v2, h, w, 3)
@@ -407,15 +412,12 @@ def camera_space_to_pixel_space(camera_space_points, intrinsics):
         torch.Tensor: World space points with shape (b, v1, v2, h, w, 2).
     """
     camera_space_points = normalize_homogenous_points(camera_space_points)
-    pixel_space_points = torch.einsum(
-        "b u i j , b v u h w j -> b v u h w i", intrinsics, camera_space_points
-    )
+    pixel_space_points = torch.einsum("b u i j , b v u h w j -> b v u h w i", intrinsics, camera_space_points)
     return pixel_space_points[..., :2]
 
 
 def world_space_to_camera_space(world_space_points, c2w):
-    """
-    Convert world space points to pixel space points.
+    """Convert world space points to pixel space points.
 
     Args:
         world_space_points (torch.Tensor): World space points with shape (b, v1, h, w, 3)
@@ -425,17 +427,12 @@ def world_space_to_camera_space(world_space_points, c2w):
         torch.Tensor: Camera space points with shape (b, v1, v2, h, w, 3).
     """
     world_space_points = homogenize_points(world_space_points)
-    camera_space_points = torch.einsum(
-        "b u i j , b v h w j -> b v u h w i", c2w.inverse(), world_space_points
-    )
+    camera_space_points = torch.einsum("b u i j , b v h w j -> b v u h w i", c2w.inverse(), world_space_points)
     return camera_space_points[..., :3]
 
 
-def unproject_depth(
-    depth, intrinsics, c2w=None, ixt_normalized=False, num_patches_x=None, num_patches_y=None
-):
-    """
-    Turn the depth map into a 3D point cloud in world space
+def unproject_depth(depth, intrinsics, c2w=None, ixt_normalized=False, num_patches_x=None, num_patches_y=None):
+    """Turn the depth map into a 3D point cloud in world space
 
     Args:
         depth: (b, v, h, w, 1)
@@ -488,9 +485,7 @@ def unproject_depth(
 
     # Compute coordinates of pixels in camera space
     pixel_space_points = torch.stack((x_grid, y_grid), dim=-1)  # (..., h, w, 2)
-    camera_points = pixel_space_to_camera_space(
-        pixel_space_points, depth, intrinsics
-    )  # (..., h, w, 3)
+    camera_points = pixel_space_to_camera_space(pixel_space_points, depth, intrinsics)  # (..., h, w, 3)
 
     # Convert points to world space
     world_points = camera_space_to_world_space(camera_points, c2w)  # (..., h, w, 3)

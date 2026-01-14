@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,8 +29,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Output processor for Depth Anything 3.
+"""Output processor for Depth Anything 3.
 
 This module handles model output processing, including tensor-to-numpy conversion,
 batch dimension removal, and Prediction object creation.
@@ -29,8 +45,7 @@ from kornia.models.depth_anything_3.specs import Prediction
 
 
 class OutputProcessor:
-    """
-    Output processor for converting model outputs to Prediction objects.
+    """Output processor for converting model outputs to Prediction objects.
 
     Handles tensor-to-numpy conversion, batch dimension removal,
     and creates structured Prediction objects with proper data types.
@@ -40,8 +55,7 @@ class OutputProcessor:
         """Initialize the output processor."""
 
     def __call__(self, model_output: dict[str, torch.Tensor]) -> Prediction:
-        """
-        Convert model output to Prediction object.
+        """Convert model output to Prediction object.
 
         Args:
             model_output: Model output dictionary containing depth, conf, extrinsics, intrinsics
@@ -75,8 +89,7 @@ class OutputProcessor:
         )
 
     def _extract_depth(self, model_output: dict[str, torch.Tensor]) -> np.ndarray:
-        """
-        Extract depth tensor from model output and convert to numpy.
+        """Extract depth tensor from model output and convert to numpy.
 
         Args:
             model_output: Model output dictionary
@@ -88,8 +101,7 @@ class OutputProcessor:
         return depth
 
     def _extract_conf(self, model_output: dict[str, torch.Tensor]) -> np.ndarray | None:
-        """
-        Extract confidence tensor from model output and convert to numpy.
+        """Extract confidence tensor from model output and convert to numpy.
 
         Args:
             model_output: Model output dictionary
@@ -103,8 +115,7 @@ class OutputProcessor:
         return conf
 
     def _extract_extrinsics(self, model_output: dict[str, torch.Tensor]) -> np.ndarray | None:
-        """
-        Extract extrinsics tensor from model output and convert to numpy.
+        """Extract extrinsics tensor from model output and convert to numpy.
 
         Args:
             model_output: Model output dictionary
@@ -118,8 +129,7 @@ class OutputProcessor:
         return extrinsics
 
     def _extract_intrinsics(self, model_output: dict[str, torch.Tensor]) -> np.ndarray | None:
-        """
-        Extract intrinsics tensor from model output and convert to numpy.
+        """Extract intrinsics tensor from model output and convert to numpy.
 
         Args:
             model_output: Model output dictionary
@@ -133,8 +143,7 @@ class OutputProcessor:
         return intrinsics
 
     def _extract_sky(self, model_output: dict[str, torch.Tensor]) -> np.ndarray | None:
-        """
-        Extract sky tensor from model output and convert to numpy.
+        """Extract sky tensor from model output and convert to numpy.
 
         Args:
             model_output: Model output dictionary
@@ -148,8 +157,7 @@ class OutputProcessor:
         return sky
 
     def _extract_aux(self, model_output: dict[str, torch.Tensor]) -> AddictDict:
-        """
-        Extract auxiliary data from model output and convert to numpy.
+        """Extract auxiliary data from model output and convert to numpy.
 
         Args:
             model_output: Model output dictionary

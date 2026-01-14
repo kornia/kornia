@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,8 +29,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Utility functions for benchmark evaluation.
+"""Utility functions for benchmark evaluation.
 
 Contains:
 - Pose evaluation metrics (AUC) and helper functions
@@ -21,16 +37,11 @@ Contains:
 - Geometry utilities (quaternion conversion, etc.)
 """
 
-from typing import Dict as TDict, Optional, Tuple, Union
-
 import numpy as np
-import open3d as o3d
 import torch
 from addict import Dict
-from scipy.spatial import KDTree
 
 from kornia.models.depth_anything_3.utils.geometry import mat_to_quat
-
 
 # =============================================================================
 # Geometry Utilities
@@ -38,8 +49,7 @@ from kornia.models.depth_anything_3.utils.geometry import mat_to_quat
 
 
 def quat2rotmat(qvec: list) -> np.ndarray:
-    """
-    Convert quaternion (WXYZ order) to rotation matrix.
+    """Convert quaternion (WXYZ order) to rotation matrix.
 
     Args:
         qvec: Quaternion as [w, x, y, z]
@@ -70,8 +80,7 @@ def quat2rotmat(qvec: list) -> np.ndarray:
 
 
 def build_pair_index(N: int, B: int = 1):
-    """
-    Build indices for all possible pairs of frames.
+    """Build indices for all possible pairs of frames.
 
     Args:
         N: Number of frames
@@ -86,8 +95,7 @@ def build_pair_index(N: int, B: int = 1):
 
 
 def compute_pose(pred_se3: torch.Tensor, gt_se3: torch.Tensor) -> Dict:
-    """
-    Compute pose estimation metrics between predicted and ground truth trajectories.
+    """Compute pose estimation metrics between predicted and ground truth trajectories.
 
     Args:
         pred_se3: Predicted SE(3) transformations [N, 4, 4]
@@ -112,8 +120,7 @@ def compute_pose(pred_se3: torch.Tensor, gt_se3: torch.Tensor) -> Dict:
 
 
 def align_to_first_camera(camera_poses: torch.Tensor) -> torch.Tensor:
-    """
-    Align all camera poses to the first camera's coordinate frame.
+    """Align all camera poses to the first camera's coordinate frame.
 
     Args:
         camera_poses: Camera poses as SE3 transformations [N, 4, 4]
@@ -129,8 +136,7 @@ def align_to_first_camera(camera_poses: torch.Tensor) -> torch.Tensor:
 def rotation_angle(
     rot_gt: torch.Tensor, rot_pred: torch.Tensor, batch_size: int = None, eps: float = 1e-15
 ) -> torch.Tensor:
-    """
-    Calculate rotation angle error between ground truth and predicted rotations.
+    """Calculate rotation angle error between ground truth and predicted rotations.
 
     Args:
         rot_gt: Ground truth rotation matrices
@@ -161,8 +167,7 @@ def translation_angle(
     batch_size: int = None,
     ambiguity: bool = True,
 ) -> torch.Tensor:
-    """
-    Calculate translation angle error between ground truth and predicted translations.
+    """Calculate translation angle error between ground truth and predicted translations.
 
     Args:
         tvec_gt: Ground truth translation vectors
@@ -188,8 +193,7 @@ def translation_angle(
 def compare_translation_by_angle(
     t_gt: torch.Tensor, t: torch.Tensor, eps: float = 1e-15, default_err: float = 1e6
 ) -> torch.Tensor:
-    """
-    Normalize the translation vectors and compute the angle between them.
+    """Normalize the translation vectors and compute the angle between them.
 
     Args:
         t_gt: Ground truth translation vectors
@@ -213,11 +217,8 @@ def compare_translation_by_angle(
     return err_t
 
 
-def calculate_auc_np(
-    r_error: np.ndarray, t_error: np.ndarray, max_threshold: int = 30
-) -> tuple:
-    """
-    Calculate the Area Under the Curve (AUC) for the given error arrays.
+def calculate_auc_np(r_error: np.ndarray, t_error: np.ndarray, max_threshold: int = 30) -> tuple:
+    """Calculate the Area Under the Curve (AUC) for the given error arrays.
 
     Args:
         r_error: Rotation error values in degrees
@@ -236,11 +237,8 @@ def calculate_auc_np(
     return np.mean(np.cumsum(normalized_histogram)), normalized_histogram
 
 
-def se3_to_relative_pose_error(
-    pred_se3: torch.Tensor, gt_se3: torch.Tensor, num_frames: int
-) -> tuple:
-    """
-    Compute rotation and translation errors between predicted and ground truth poses.
+def se3_to_relative_pose_error(pred_se3: torch.Tensor, gt_se3: torch.Tensor, num_frames: int) -> tuple:
+    """Compute rotation and translation errors between predicted and ground truth poses.
 
     Args:
         pred_se3: Predicted SE(3) transformations
@@ -263,11 +261,8 @@ def se3_to_relative_pose_error(
     return rel_rangle_deg, rel_tangle_deg
 
 
-def closed_form_inverse_se3(
-    se3: torch.Tensor, R: torch.Tensor = None, T: torch.Tensor = None
-) -> torch.Tensor:
-    """
-    Compute the inverse of each 4x4 (or 3x4) SE3 matrix in a batch.
+def closed_form_inverse_se3(se3: torch.Tensor, R: torch.Tensor = None, T: torch.Tensor = None) -> torch.Tensor:
+    """Compute the inverse of each 4x4 (or 3x4) SE3 matrix in a batch.
 
     Uses closed-form solution instead of torch.inverse() for numerical stability.
 
@@ -303,4 +298,3 @@ def closed_form_inverse_se3(
     inverted_matrix[:, :3, 3:] = top_right
 
     return inverted_matrix
-

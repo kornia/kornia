@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,19 +40,13 @@ Images are assumed to be float32 tensors with shape (channel, height, width).
 """
 
 from typing import Any, Generator, Iterable, Literal, Union
+
 import torch
 from torch import Tensor
 
 Alignment = Literal["start", "center", "end"]
 Axis = Literal["horizontal", "vertical"]
-Color = Union[
-    int,
-    float,
-    Iterable[int],
-    Iterable[float],
-    Tensor,
-    Tensor,
-]
+Color = Union[int, float, Iterable[int], Iterable[float], Tensor]
 
 
 def _sanitize_color(color: Color) -> Tensor:  # "#channel"
@@ -98,15 +109,11 @@ def overlay(
 
     # Compute spacing on the main dimension.
     main_dim = _get_main_dim(main_axis)
-    main_slice = _compute_offset(
-        base.shape[main_dim], overlay.shape[main_dim], main_axis_alignment
-    )
+    main_slice = _compute_offset(base.shape[main_dim], overlay.shape[main_dim], main_axis_alignment)
 
     # Compute spacing on the cross dimension.
     cross_dim = _get_cross_dim(main_axis)
-    cross_slice = _compute_offset(
-        base.shape[cross_dim], overlay.shape[cross_dim], cross_axis_alignment
-    )
+    cross_slice = _compute_offset(base.shape[cross_dim], overlay.shape[cross_dim], cross_axis_alignment)
 
     # Combine the slices and paste the overlay onto the base accordingly.
     selector = [..., None, None]
@@ -208,9 +215,7 @@ def add_border(
 ) -> Tensor:  # "channel new_height new_width"
     color = _sanitize_color(color).to(image)
     c, h, w = image.shape
-    result = torch.empty(
-        (c, h + 2 * border, w + 2 * border), dtype=torch.float32, device=image.device
-    )
+    result = torch.empty((c, h + 2 * border, w + 2 * border), dtype=torch.float32, device=image.device)
     result[:] = color[:, None, None]
     result[:, border : h + border, border : w + border] = image
     return result

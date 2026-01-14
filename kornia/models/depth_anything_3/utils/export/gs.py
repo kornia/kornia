@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,6 +31,7 @@
 
 import os
 from typing import Literal, Optional
+
 import moviepy.editor as mpy
 import torch
 
@@ -33,9 +51,7 @@ VIDEO_QUALITY_MAP = {
 def export_to_gs_ply(
     prediction: Prediction,
     export_dir: str,
-    gs_views_interval: Optional[
-        int
-    ] = 1,  # export GS every N views, useful for extremely dense inputs
+    gs_views_interval: Optional[int] = 1,  # export GS every N views, useful for extremely dense inputs
 ):
     gs_world = prediction.gaussians
     pred_depth = torch.from_numpy(prediction.depth).unsqueeze(-1).to(gs_world.means)  # v h w 1
@@ -151,4 +167,3 @@ def export_to_gs_video(
             fps=fps,
             ffmpeg_params=ffmpeg_params,
         )
-    return

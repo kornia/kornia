@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,8 +49,10 @@ from kornia.models.depth_anything_3.utils.geometry import as_homogeneous
 def render_stabilization_path(poses, k_size=45):
     """Rendering stabilized camera path.
     poses: [batch, 4, 4] or [batch, 3, 4],
-    return:
-        smooth path: [batch 4 4]"""
+
+    Return:
+        smooth path: [batch 4 4]
+    """
     num_frames = poses.shape[0]
     device = poses.device
     dtype = poses.dtype
@@ -44,14 +63,12 @@ def render_stabilization_path(poses, k_size=45):
 
     # Make k_size safe: positive odd and not larger than num_frames
     # 1) Ensure odd
-    if k_size < 1:
-        k_size = 1
+    k_size = max(k_size, 1)
     if k_size % 2 == 0:
         k_size += 1
     # 2) Cap to num_frames (keep odd)
     max_odd = num_frames if (num_frames % 2 == 1) else (num_frames - 1)
-    if max_odd < 1:
-        max_odd = 1  # covers num_frames == 0 theoretically
+    max_odd = max(max_odd, 1)  # covers num_frames == 0 theoretically
     k_size = min(k_size, max_odd)
     # 3) enforce a minimum of 3 when possible (for better smoothing)
     if num_frames >= 3 and k_size < 3:
@@ -59,9 +76,7 @@ def render_stabilization_path(poses, k_size=45):
 
     input_poses = []
     for i in range(num_frames):
-        input_poses.append(
-            torch.cat([poses[i, :3, 0:1], poses[i, :3, 1:2], poses[i, :3, 3:4]], dim=-1)
-        )
+        input_poses.append(torch.cat([poses[i, :3, 0:1], poses[i, :3, 1:2], poses[i, :3, 3:4]], dim=-1))
     input_poses = torch.stack(input_poses)  # (num_frames, 3, 3)
 
     # Prepare Gaussian kernel
@@ -71,9 +86,7 @@ def render_stabilization_path(poses, k_size=45):
 
     output_vectors = []
     for idx in range(3):  # For r1, r2, t
-        vec = (
-            input_poses[:, :, idx].T.unsqueeze(0).unsqueeze(0)
-        )  # (1, 1, 3, num_frames) -> (1, 1, 3, num_frames)
+        vec = input_poses[:, :, idx].T.unsqueeze(0).unsqueeze(0)  # (1, 1, 3, num_frames) -> (1, 1, 3, num_frames)
         # But actually, we want (batch=3, channel=1, width=num_frames)
         # So:
         vec = input_poses[:, :, idx].T.unsqueeze(1)  # (3, 1, num_frames)
@@ -175,7 +188,6 @@ def intersect_rays(
     """Compute the least-squares intersection of rays. Uses the math from here:
     https://math.stackexchange.com/a/1762491/286022
     """
-
     # Broadcast and stack the tensors.
     a_origins, a_directions, b_origins, b_directions = torch.broadcast_tensors(
         a_origins, a_directions, b_origins, b_directions
@@ -217,7 +229,8 @@ def generate_rotation_coordinate_frame(
     eps: float = 1e-4,
 ) -> torch.Tensor:  # "*batch 3 3"
     """Generate a coordinate frame where the Y direction is normal to the plane defined
-    by unit vectors a and b. The other axes are arbitrary."""
+    by unit vectors a and b. The other axes are arbitrary.
+    """
     device = a.device
 
     # Replace every entry in b that's parallel to the corresponding entry in a with an
@@ -266,7 +279,6 @@ def extrinsics_to_pivot_parameters(
     4. Angle in plane
     5. Twist (rotation not in plane)
     """
-
     # The pivot coordinate frame's Z axis is normal to the plane.
     pivot_axis = pivot_coordinate_frame[..., :, 1]
 
@@ -365,7 +377,6 @@ def interpolate_extrinsics(
     least-squares intersection between the look vectors of the initial and final
     extrinsics.
     """
-
     initial = initial.type(torch.float64)
     final = final.type(torch.float64)
     t = t.type(torch.float64)
@@ -424,11 +435,8 @@ def generate_wobble_transformation(
 
 
 @torch.no_grad()
-def render_wobble_inter_path(
-    cam2world: torch.Tensor, intr_normed: torch.Tensor, inter_len: int, n_skip: int = 3
-):
-    """
-    cam2world: [batch, 4, 4],
+def render_wobble_inter_path(cam2world: torch.Tensor, intr_normed: torch.Tensor, inter_len: int, n_skip: int = 3):
+    """cam2world: [batch, 4, 4],
     intr_normed: [batch, 3, 3]
     """
     frame_per_round = n_skip * inter_len

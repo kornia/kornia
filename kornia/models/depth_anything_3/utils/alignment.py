@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,19 +29,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Alignment utilities for depth estimation and metric scaling.
-"""
+"""Alignment utilities for depth estimation and metric scaling."""
 
 from typing import Tuple
+
 import torch
 
 
-def least_squares_scale_scalar(
-    a: torch.Tensor, b: torch.Tensor, eps: float = 1e-12
-) -> torch.Tensor:
-    """
-    Compute least squares scale factor s such that a ≈ s * b.
+def least_squares_scale_scalar(a: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    """Compute least squares scale factor s such that a ≈ s * b.
 
     Args:
         a: First tensor
@@ -52,8 +65,7 @@ def least_squares_scale_scalar(
 
 
 def compute_sky_mask(sky_prediction: torch.Tensor, threshold: float = 0.3) -> torch.Tensor:
-    """
-    Compute non-sky mask from sky prediction.
+    """Compute non-sky mask from sky prediction.
 
     Args:
         sky_prediction: Sky prediction tensor
@@ -74,8 +86,7 @@ def compute_alignment_mask(
     min_depth_threshold: float = 1e-3,
     min_metric_depth_threshold: float = 1e-2,
 ) -> torch.Tensor:
-    """
-    Compute mask for depth alignment based on confidence and depth thresholds.
+    """Compute mask for depth alignment based on confidence and depth thresholds.
 
     Args:
         depth_conf: Depth confidence tensor
@@ -98,8 +109,7 @@ def compute_alignment_mask(
 
 
 def sample_tensor_for_quantile(tensor: torch.Tensor, max_samples: int = 100000) -> torch.Tensor:
-    """
-    Sample tensor elements for quantile computation to reduce memory usage.
+    """Sample tensor elements for quantile computation to reduce memory usage.
 
     Args:
         tensor: Input tensor to sample
@@ -115,11 +125,8 @@ def sample_tensor_for_quantile(tensor: torch.Tensor, max_samples: int = 100000) 
     return tensor.flatten()[idx]
 
 
-def apply_metric_scaling(
-    depth: torch.Tensor, intrinsics: torch.Tensor, scale_factor: float = 300.0
-) -> torch.Tensor:
-    """
-    Apply metric scaling to depth based on camera intrinsics.
+def apply_metric_scaling(depth: torch.Tensor, intrinsics: torch.Tensor, scale_factor: float = 300.0) -> torch.Tensor:
+    """Apply metric scaling to depth based on camera intrinsics.
 
     Args:
         depth: Input depth tensor
@@ -139,8 +146,7 @@ def set_sky_regions_to_max_depth(
     non_sky_mask: torch.Tensor,
     max_depth: float = 200.0,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Set sky regions to maximum depth and high confidence.
+    """Set sky regions to maximum depth and high confidence.
 
     Args:
         depth: Depth tensor

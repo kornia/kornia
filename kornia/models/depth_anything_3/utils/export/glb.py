@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +32,7 @@
 from __future__ import annotations
 
 import os
+
 import numpy as np
 import trimesh
 
@@ -89,21 +107,13 @@ def export_to_glb(
         Path to the exported ``scene.glb`` file.
     """
     # 1) Use prediction.processed_images, which is already processed image data
-    assert (
-        prediction.processed_images is not None
-    ), "Export to GLB: prediction.processed_images is required but not available"
-    assert (
-        prediction.depth is not None
-    ), "Export to GLB: prediction.depth is required but not available"
-    assert (
-        prediction.intrinsics is not None
-    ), "Export to GLB: prediction.intrinsics is required but not available"
-    assert (
-        prediction.extrinsics is not None
-    ), "Export to GLB: prediction.extrinsics is required but not available"
-    assert (
-        prediction.conf is not None
-    ), "Export to GLB: prediction.conf is required but not available"
+    assert prediction.processed_images is not None, (
+        "Export to GLB: prediction.processed_images is required but not available"
+    )
+    assert prediction.depth is not None, "Export to GLB: prediction.depth is required but not available"
+    assert prediction.intrinsics is not None, "Export to GLB: prediction.intrinsics is required but not available"
+    assert prediction.extrinsics is not None, "Export to GLB: prediction.extrinsics is required but not available"
+    assert prediction.conf is not None, "Export to GLB: prediction.conf is required but not available"
     logger.info(f"conf_thresh_percentile: {conf_thresh_percentile}")
     logger.info(f"num max points: {num_max_points}")
     logger.info(f"Exporting to GLB with num_max_points: {num_max_points}")
@@ -141,9 +151,7 @@ def export_to_glb(
 
     # 5) Based on first camera orientation + glTF axis system, center by point cloud,
     # construct alignment transform, and apply to point cloud
-    A = _compute_alignment_transform_first_cam_glTF_center_by_points(
-        prediction.extrinsics[0], points
-    )  # (4,4)
+    A = _compute_alignment_transform_first_cam_glTF_center_by_points(prediction.extrinsics[0], points)  # (4,4)
 
     if points.shape[0] > 0:
         points = trimesh.transform_points(points, A)
@@ -190,9 +198,7 @@ def export_to_glb(
 
 
 def _as_homogeneous44(ext: np.ndarray) -> np.ndarray:
-    """
-    Accept (4,4) or (3,4) extrinsic parameters, return (4,4) homogeneous matrix.
-    """
+    """Accept (4,4) or (3,4) extrinsic parameters, return (4,4) homogeneous matrix."""
     if ext.shape == (4, 4):
         return ext
     if ext.shape == (3, 4):
@@ -210,8 +216,7 @@ def _depths_to_world_points_with_colors(
     conf: np.ndarray | None,
     conf_thr: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
-    For each frame, transform (u,v,1) through K^{-1} to get rays,
+    """For each frame, transform (u,v,1) through K^{-1} to get rays,
     multiply by depth to camera frame, then use (w2c)^{-1} to transform to world frame.
     Simultaneously extract colors.
     """
@@ -294,7 +299,6 @@ def _compute_alignment_transform_first_cam_glTF_center_by_points(
         A 4x4 homogeneous transformation matrix (torch.Tensor or np.ndarray)
         that applies these transformations.  A: X' = A @ [X;1]
     """
-
     w2c0 = _as_homogeneous44(ext_w2c0).astype(np.float64)
 
     # CV -> glTF axis transformation
@@ -359,9 +363,7 @@ def _add_cameras_to_scene(
         scene.add_geometry(path)
 
 
-def _camera_frustum_lines(
-    K: np.ndarray, ext_w2c: np.ndarray, W: int, H: int, scale: float
-) -> np.ndarray:
+def _camera_frustum_lines(K: np.ndarray, ext_w2c: np.ndarray, W: int, H: int, scale: float) -> np.ndarray:
     corners = np.array(
         [
             [0, 0, 1.0],

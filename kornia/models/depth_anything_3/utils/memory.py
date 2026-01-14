@@ -1,13 +1,29 @@
-"""
-GPU memory utility helpers.
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+"""GPU memory utility helpers.
 
 Shared cleanup and memory checking logic used by both the backend API and
 the Gradio UI to keep memory-management behavior consistent.
 """
+
 from __future__ import annotations
 
 import gc
-
 from typing import Any, Dict, Optional
 
 import torch
@@ -29,10 +45,10 @@ def get_gpu_memory_info() -> Optional[Dict[str, Any]]:
         free_memory = total_memory - reserved_memory
 
         return {
-            "total_gb": total_memory / 1024 ** 3,
-            "allocated_gb": allocated_memory / 1024 ** 3,
-            "reserved_gb": reserved_memory / 1024 ** 3,
-            "free_gb": free_memory / 1024 ** 3,
+            "total_gb": total_memory / 1024**3,
+            "allocated_gb": allocated_memory / 1024**3,
+            "reserved_gb": reserved_memory / 1024**3,
+            "free_gb": free_memory / 1024**3,
             "utilization": (reserved_memory / total_memory) * 100,
         }
     except Exception:
@@ -100,13 +116,12 @@ def check_memory_availability(required_gb: float = 2.0) -> tuple[bool, str]:
 
         return (
             True,
-            (
-                f"Memory check passed: {mem_info['free_gb']:.2f}GB available, "
-                f"{required_gb:.2f}GB required"
-            ),
+            (f"Memory check passed: {mem_info['free_gb']:.2f}GB available, {required_gb:.2f}GB required"),
         )
     except Exception as e:
         return True, f"Memory check failed: {e}, proceeding anyway"
+
+
 def estimate_memory_requirement(num_images: int, process_res: int) -> float:
     """Heuristic estimate for memory usage (GB) based on image count and resolution.
 

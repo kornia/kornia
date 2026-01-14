@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +30,10 @@
 # limitations under the License.
 
 from typing import Tuple, Union
+
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 # -----------------------------------------------------------------------------
 # Activation functions
@@ -23,8 +41,7 @@ import torch.nn.functional as F
 
 
 def activate_head_gs(out, activation="norm_exp", conf_activation="expp1", conf_dim=None):
-    """
-    Process network output to extract GS params and density values.
+    """Process network output to extract GS params and density values.
     Density could be view-dependent as SH coefficient
 
 
@@ -93,11 +110,8 @@ class Permute(nn.Module):
         return x.permute(*self.dims)
 
 
-def position_grid_to_embed(
-    pos_grid: torch.Tensor, embed_dim: int, omega_0: float = 100
-) -> torch.Tensor:
-    """
-    Convert 2D position grid (HxWx2) to sinusoidal embeddings (HxWxC)
+def position_grid_to_embed(pos_grid: torch.Tensor, embed_dim: int, omega_0: float = 100) -> torch.Tensor:
+    """Convert 2D position grid (HxWx2) to sinusoidal embeddings (HxWxC)
 
     Args:
         pos_grid: Tensor of shape (H, W, 2) containing 2D coordinates
@@ -121,8 +135,7 @@ def position_grid_to_embed(
 
 
 def make_sincos_pos_embed(embed_dim: int, pos: torch.Tensor, omega_0: float = 100) -> torch.Tensor:
-    """
-    This function generates a 1D positional embedding from a given grid using sine and cosine functions. # noqa
+    """This function generates a 1D positional embedding from a given grid using sine and cosine functions. # noqa
 
     Args:
     - embed_dim: The embedding dimension.
@@ -156,8 +169,7 @@ def create_uv_grid(
     dtype: torch.dtype = None,
     device: torch.device = None,
 ) -> torch.Tensor:
-    """
-    Create a normalized UV grid of shape (width, height, 2).
+    """Create a normalized UV grid of shape (width, height, 2).
 
     The grid spans horizontally and vertically according to an aspect ratio,
     ensuring the top-left corner is at (-x_span, -y_span) and the bottom-right
@@ -209,9 +221,7 @@ def custom_interpolate(
     mode: str = "bilinear",
     align_corners: bool = True,
 ) -> torch.Tensor:
-    """
-    Safe interpolation implementation to avoid INT_MAX overflow in torch.nn.functional.interpolate.
-    """
+    """Safe interpolation implementation to avoid INT_MAX overflow in torch.nn.functional.interpolate."""
     if size is None:
         assert scale_factor is not None, "Either size or scale_factor must be provided."
         size = (int(x.shape[-2] * scale_factor), int(x.shape[-1] * scale_factor))
@@ -221,10 +231,7 @@ def custom_interpolate(
 
     if total > INT_MAX:
         chunks = torch.chunk(x, chunks=(total // INT_MAX) + 1, dim=0)
-        outs = [
-            nn.functional.interpolate(c, size=size, mode=mode, align_corners=align_corners)
-            for c in chunks
-        ]
+        outs = [nn.functional.interpolate(c, size=size, mode=mode, align_corners=align_corners) for c in chunks]
         return torch.cat(outs, dim=0).contiguous()
 
     return nn.functional.interpolate(x, size=size, mode=mode, align_corners=align_corners)

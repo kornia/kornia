@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c), ETH Zurich and UNC Chapel Hill.
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 # All rights reserved.
@@ -35,16 +52,13 @@ import argparse
 import collections
 import os
 import struct
+
 import numpy as np
 
 CameraModel = collections.namedtuple("CameraModel", ["model_id", "model_name", "num_params"])
 Camera = collections.namedtuple("Camera", ["id", "model", "width", "height", "params"])
-BaseImage = collections.namedtuple(
-    "Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"]
-)
-Point3D = collections.namedtuple(
-    "Point3D", ["id", "xyz", "rgb", "error", "image_ids", "point2D_idxs"]
-)
+BaseImage = collections.namedtuple("Image", ["id", "qvec", "tvec", "camera_id", "name", "xys", "point3D_ids"])
+Point3D = collections.namedtuple("Point3D", ["id", "xyz", "rgb", "error", "image_ids", "point2D_idxs"])
 
 
 class Image(BaseImage):
@@ -82,7 +96,7 @@ def read_next_bytes(fid, num_bytes, format_char_sequence, endian_character="<"):
 
 
 def write_next_bytes(fid, data, format_char_sequence, endian_character="<"):
-    """pack and write to a binary file.
+    """Pack and write to a binary file.
     :param fid:
     :param data: data to send, if multiple elements are sent at the same time,
     they should be encapsuled either in a list or a tuple
@@ -98,10 +112,9 @@ def write_next_bytes(fid, data, format_char_sequence, endian_character="<"):
 
 
 def read_cameras_text(path):
-    """
-    see: src/colmap/scene/reconstruction.cc
-        void Reconstruction::WriteCamerasText(const std::string& path)
-        void Reconstruction::ReadCamerasText(const std::string& path)
+    """see: src/colmap/scene/reconstruction.cc
+    void Reconstruction::WriteCamerasText(const std::string& path)
+    void Reconstruction::ReadCamerasText(const std::string& path)
     """
     cameras = {}
     with open(path) as fid:
@@ -128,10 +141,9 @@ def read_cameras_text(path):
 
 
 def read_cameras_binary(path_to_model_file):
-    """
-    see: src/colmap/scene/reconstruction.cc
-        void Reconstruction::WriteCamerasBinary(const std::string& path)
-        void Reconstruction::ReadCamerasBinary(const std::string& path)
+    """see: src/colmap/scene/reconstruction.cc
+    void Reconstruction::WriteCamerasBinary(const std::string& path)
+    void Reconstruction::ReadCamerasBinary(const std::string& path)
     """
     cameras = {}
     with open(path_to_model_file, "rb") as fid:
@@ -161,10 +173,9 @@ def read_cameras_binary(path_to_model_file):
 
 
 def write_cameras_text(cameras, path):
-    """
-    see: src/colmap/scene/reconstruction.cc
-        void Reconstruction::WriteCamerasText(const std::string& path)
-        void Reconstruction::ReadCamerasText(const std::string& path)
+    """see: src/colmap/scene/reconstruction.cc
+    void Reconstruction::WriteCamerasText(const std::string& path)
+    void Reconstruction::ReadCamerasText(const std::string& path)
     """
     HEADER = (
         "# Camera list with one line of data per camera:\n"
@@ -180,10 +191,9 @@ def write_cameras_text(cameras, path):
 
 
 def write_cameras_binary(cameras, path_to_model_file):
-    """
-    see: src/colmap/scene/reconstruction.cc
-        void Reconstruction::WriteCamerasBinary(const std::string& path)
-        void Reconstruction::ReadCamerasBinary(const std::string& path)
+    """see: src/colmap/scene/reconstruction.cc
+    void Reconstruction::WriteCamerasBinary(const std::string& path)
+    void Reconstruction::ReadCamerasBinary(const std::string& path)
     """
     with open(path_to_model_file, "wb") as fid:
         write_next_bytes(fid, len(cameras), "Q")
@@ -197,10 +207,9 @@ def write_cameras_binary(cameras, path_to_model_file):
 
 
 def read_images_text(path):
-    """
-    see: src/colmap/scene/reconstruction.cc
-        void Reconstruction::ReadImagesText(const std::string& path)
-        void Reconstruction::WriteImagesText(const std::string& path)
+    """see: src/colmap/scene/reconstruction.cc
+    void Reconstruction::ReadImagesText(const std::string& path)
+    void Reconstruction::WriteImagesText(const std::string& path)
     """
     images = {}
     with open(path) as fid:
@@ -237,18 +246,15 @@ def read_images_text(path):
 
 
 def read_images_binary(path_to_model_file):
-    """
-    see: src/colmap/scene/reconstruction.cc
-        void Reconstruction::ReadImagesBinary(const std::string& path)
-        void Reconstruction::WriteImagesBinary(const std::string& path)
+    """see: src/colmap/scene/reconstruction.cc
+    void Reconstruction::ReadImagesBinary(const std::string& path)
+    void Reconstruction::WriteImagesBinary(const std::string& path)
     """
     images = {}
     with open(path_to_model_file, "rb") as fid:
         num_reg_images = read_next_bytes(fid, 8, "Q")[0]
         for _ in range(num_reg_images):
-            binary_image_properties = read_next_bytes(
-                fid, num_bytes=64, format_char_sequence="idddddddi"
-            )
+            binary_image_properties = read_next_bytes(fid, num_bytes=64, format_char_sequence="idddddddi")
             image_id = binary_image_properties[0]
             qvec = np.array(binary_image_properties[1:5])
             tvec = np.array(binary_image_properties[5:8])
@@ -285,10 +291,9 @@ def read_images_binary(path_to_model_file):
 
 
 def write_images_text(images, path):
-    """
-    see: src/colmap/scene/reconstruction.cc
-        void Reconstruction::ReadImagesText(const std::string& path)
-        void Reconstruction::WriteImagesText(const std::string& path)
+    """see: src/colmap/scene/reconstruction.cc
+    void Reconstruction::ReadImagesText(const std::string& path)
+    void Reconstruction::WriteImagesText(const std::string& path)
     """
     if len(images) == 0:
         mean_observations = 0
@@ -298,9 +303,7 @@ def write_images_text(images, path):
         "# Image list with two lines of data per image:\n"
         + "#   IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME\n"
         + "#   POINTS2D[] as (X, Y, POINT3D_ID)\n"
-        + "# Number of images: {}, mean observations per image: {}\n".format(
-            len(images), mean_observations
-        )
+        + f"# Number of images: {len(images)}, mean observations per image: {mean_observations}\n"
     )
 
     with open(path, "w") as fid:
@@ -323,10 +326,9 @@ def write_images_text(images, path):
 
 
 def write_images_binary(images, path_to_model_file):
-    """
-    see: src/colmap/scene/reconstruction.cc
-        void Reconstruction::ReadImagesBinary(const std::string& path)
-        void Reconstruction::WriteImagesBinary(const std::string& path)
+    """see: src/colmap/scene/reconstruction.cc
+    void Reconstruction::ReadImagesBinary(const std::string& path)
+    void Reconstruction::WriteImagesBinary(const std::string& path)
     """
     with open(path_to_model_file, "wb") as fid:
         write_next_bytes(fid, len(images), "Q")
@@ -344,10 +346,9 @@ def write_images_binary(images, path_to_model_file):
 
 
 def read_points3D_text(path):
-    """
-    see: src/colmap/scene/reconstruction.cc
-        void Reconstruction::ReadPoints3DText(const std::string& path)
-        void Reconstruction::WritePoints3DText(const std::string& path)
+    """see: src/colmap/scene/reconstruction.cc
+    void Reconstruction::ReadPoints3DText(const std::string& path)
+    void Reconstruction::WritePoints3DText(const std::string& path)
     """
     points3D = {}
     with open(path) as fid:
@@ -376,18 +377,15 @@ def read_points3D_text(path):
 
 
 def read_points3D_binary(path_to_model_file):
-    """
-    see: src/colmap/scene/reconstruction.cc
-        void Reconstruction::ReadPoints3DBinary(const std::string& path)
-        void Reconstruction::WritePoints3DBinary(const std::string& path)
+    """see: src/colmap/scene/reconstruction.cc
+    void Reconstruction::ReadPoints3DBinary(const std::string& path)
+    void Reconstruction::WritePoints3DBinary(const std::string& path)
     """
     points3D = {}
     with open(path_to_model_file, "rb") as fid:
         num_points = read_next_bytes(fid, 8, "Q")[0]
         for _ in range(num_points):
-            binary_point_line_properties = read_next_bytes(
-                fid, num_bytes=43, format_char_sequence="QdddBBBd"
-            )
+            binary_point_line_properties = read_next_bytes(fid, num_bytes=43, format_char_sequence="QdddBBBd")
             point3D_id = binary_point_line_properties[0]
             xyz = np.array(binary_point_line_properties[1:4])
             rgb = np.array(binary_point_line_properties[4:7])
@@ -412,10 +410,9 @@ def read_points3D_binary(path_to_model_file):
 
 
 def write_points3D_text(points3D, path):
-    """
-    see: src/colmap/scene/reconstruction.cc
-        void Reconstruction::ReadPoints3DText(const std::string& path)
-        void Reconstruction::WritePoints3DText(const std::string& path)
+    """see: src/colmap/scene/reconstruction.cc
+    void Reconstruction::ReadPoints3DText(const std::string& path)
+    void Reconstruction::WritePoints3DText(const std::string& path)
     """
     if len(points3D) == 0:
         mean_track_length = 0
@@ -424,9 +421,7 @@ def write_points3D_text(points3D, path):
     HEADER = (
         "# 3D point list with one line of data per point:\n"
         + "#   POINT3D_ID, X, Y, Z, R, G, B, ERROR, TRACK[] as (IMAGE_ID, POINT2D_IDX)\n"
-        + "# Number of points: {}, mean track length: {}\n".format(
-            len(points3D), mean_track_length
-        )
+        + f"# Number of points: {len(points3D)}, mean track length: {mean_track_length}\n"
     )
 
     with open(path, "w") as fid:
@@ -441,10 +436,9 @@ def write_points3D_text(points3D, path):
 
 
 def write_points3D_binary(points3D, path_to_model_file):
-    """
-    see: src/colmap/scene/reconstruction.cc
-        void Reconstruction::ReadPoints3DBinary(const std::string& path)
-        void Reconstruction::WritePoints3DBinary(const std::string& path)
+    """see: src/colmap/scene/reconstruction.cc
+    void Reconstruction::ReadPoints3DBinary(const std::string& path)
+    void Reconstruction::WritePoints3DBinary(const std::string& path)
     """
     with open(path_to_model_file, "wb") as fid:
         write_next_bytes(fid, len(points3D), "Q")

@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 # Copyright (c) 2025 ByteDance Ltd. and/or its affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,18 +31,22 @@
 
 import torch
 from einops import repeat
+
 from .geometry import unproject_depth
 
 
 def compute_optimal_rotation_intrinsics_batch(
-    rays_origin, rays_target, z_threshold=1e-4, reproj_threshold=0.2, weights=None,
-    n_sample = None,
+    rays_origin,
+    rays_target,
+    z_threshold=1e-4,
+    reproj_threshold=0.2,
+    weights=None,
+    n_sample=None,
     n_iter=100,
     num_sample_for_ransac=8,
     rand_sample_iters_idx=None,
 ):
-    """
-    Args:
+    """Args:
         rays_origin (torch.Tensor): (B, N, 3)
         rays_target (torch.Tensor): (B, N, 3)
         z_threshold (float): Threshold for z value to be considered valid.
@@ -39,7 +60,7 @@ def compute_optimal_rotation_intrinsics_batch(
     B, N, _ = rays_origin.shape
     z_mask = torch.logical_and(
         torch.abs(rays_target[:, :, 2]) > z_threshold, torch.abs(rays_origin[:, :, 2]) > z_threshold
-    ) # (B, N, 1)
+    )  # (B, N, 1)
     rays_origin = rays_origin.clone()
     rays_target = rays_target.clone()
     rays_origin[:, :, 0][z_mask] /= rays_origin[:, :, 2][z_mask]
@@ -50,17 +71,17 @@ def compute_optimal_rotation_intrinsics_batch(
     rays_origin = rays_origin[:, :, :2]
     rays_target = rays_target[:, :, :2]
     assert weights is not None, "weights must be provided"
-    weights[~z_mask] = 0 
+    weights[~z_mask] = 0
 
     A_list = []
     max_chunk_size = 2
     for i in range(0, rays_origin.shape[0], max_chunk_size):
         A = ransac_find_homography_weighted_fast_batch(
-            rays_origin[i:i+max_chunk_size],
-            rays_target[i:i+max_chunk_size],
-            weights[i:i+max_chunk_size],
+            rays_origin[i : i + max_chunk_size],
+            rays_target[i : i + max_chunk_size],
+            weights[i : i + max_chunk_size],
             n_iter=n_iter,
-            n_sample = n_sample,
+            n_sample=n_sample,
             num_sample_for_ransac=num_sample_for_ransac,
             reproj_threshold=reproj_threshold,
             rand_sample_iters_idx=rand_sample_iters_idx,
@@ -85,7 +106,7 @@ def compute_optimal_rotation_intrinsics_batch(
         R_list.append(R)
         f_list.append(f)
         pp_list.append(pp)
-        
+
     R = torch.stack(R_list)
     f = torch.stack(f_list)
     pp = torch.stack(pp_list)
@@ -109,9 +130,9 @@ def ql_decomposition(A):
     L[2] *= torch.sign(d[2])
     return Q, L
 
+
 def find_homography_least_squares_weighted_torch(src_pts, dst_pts, confident_weight):
-    """
-    src_pts: (N,2) source points (torch.Tensor, float32/float64)
+    """src_pts: (N,2) source points (torch.Tensor, float32/float64)
     dst_pts: (N,2) target points (torch.Tensor, float32/float64)
     confident_weight: (N,) weights (torch.Tensor)
     Returns: (3,3) homography matrix H (torch.Tensor)
@@ -154,8 +175,7 @@ def ransac_find_homography_weighted(
     num_sample_for_ransac=16,
     random_seed=None,
 ):
-    """
-    RANSAC version of weighted Homography estimation.
+    """RANSAC version of weighted Homography estimation.
     Sample 4 points from the top 50% weighted points each time.
     reproj_threshold: points with reprojection error less than this value are inliers
     Returns: best_H
@@ -175,15 +195,11 @@ def ransac_find_homography_weighted(
         idx = candidate_idx[torch.randperm(n_sample)[:num_sample_for_ransac]]
         # 3. Compute Homography
         try:
-            H = find_homography_least_squares_weighted_torch(
-                src_pts[idx], dst_pts[idx], confident_weight[idx]
-            )
+            H = find_homography_least_squares_weighted_torch(src_pts[idx], dst_pts[idx], confident_weight[idx])
         except Exception:
             H = torch.eye(3, dtype=src_pts.dtype, device=src_pts.device)
         # 4. Compute reprojection error for all points
-        src_homo = torch.cat(
-            [src_pts, torch.ones(N, 1, dtype=src_pts.dtype, device=src_pts.device)], dim=1
-        )
+        src_homo = torch.cat([src_pts, torch.ones(N, 1, dtype=src_pts.dtype, device=src_pts.device)], dim=1)
         proj = (H @ src_homo.T).T
         proj = proj[:, :2] / proj[:, 2:3]
         error = ((proj - dst_pts) ** 2).sum(dim=1).sqrt()  # Euclidean distance
@@ -205,11 +221,8 @@ def ransac_find_homography_weighted(
     return H_inlier
 
 
-def find_homography_least_squares_weighted_torch_batch(
-    src_pts_batch, dst_pts_batch, confident_weight_batch
-):
-    """
-    Batch version of weighted least squares Homography
+def find_homography_least_squares_weighted_torch_batch(src_pts_batch, dst_pts_batch, confident_weight_batch):
+    """Batch version of weighted least squares Homography
     src_pts_batch: (B, K, 2)
     dst_pts_batch: (B, K, 2)
     confident_weight_batch: (B, K)
@@ -243,8 +256,7 @@ def ransac_find_homography_weighted_fast(
     random_seed=None,
     rand_sample_iters_idx=None,
 ):
-    """
-    Batch version of RANSAC weighted Homography estimation.
+    """Batch version of RANSAC weighted Homography estimation.
     Returns: H_inlier
     """
     if random_seed is not None:
@@ -272,9 +284,7 @@ def ransac_find_homography_weighted_fast(
         src_pts_batch, dst_pts_batch, confident_weight_batch
     )  # (n_iter, 3, 3)
     # 5. Batch evaluate inliers for all H
-    src_homo = torch.cat(
-        [src_pts, torch.ones(N, 1, dtype=src_pts.dtype, device=src_pts.device)], dim=1
-    )  # (N,3)
+    src_homo = torch.cat([src_pts, torch.ones(N, 1, dtype=src_pts.dtype, device=src_pts.device)], dim=1)  # (N,3)
     src_homo_expand = src_homo.unsqueeze(0).expand(n_iter, N, 3)  # (n_iter, N, 3)
     dst_pts_expand = dst_pts.unsqueeze(0).expand(n_iter, N, 2)  # (n_iter, N, 2)
     confident_weight_expand = confident_weight.unsqueeze(0).expand(n_iter, N)  # (n_iter, N)
@@ -304,9 +314,7 @@ def ransac_find_homography_weighted_fast(
     inlier_dst_pts = inlier_dst_pts[sorted_idx]
     inlier_confident_weight = inlier_confident_weight[sorted_idx]
     # 7. Refit Homography using inliers
-    H_inlier = find_homography_least_squares_weighted_torch(
-        inlier_src_pts, inlier_dst_pts, inlier_confident_weight
-    )
+    H_inlier = find_homography_least_squares_weighted_torch(inlier_src_pts, inlier_dst_pts, inlier_confident_weight)
     return H_inlier
 
 
@@ -322,12 +330,12 @@ def ransac_find_homography_weighted_fast_batch(
     random_seed=None,
     rand_sample_iters_idx=None,
 ):
-    """
-    Batch version of RANSAC weighted Homography estimation (supports batch).
+    """Batch version of RANSAC weighted Homography estimation (supports batch).
     Input:
         src_pts: (B, N, 2)
         dst_pts: (B, N, 2)
         confident_weight: (B, N)
+
     Returns:
         H_inlier: (B, 3, 3)
     """
@@ -349,7 +357,7 @@ def ransac_find_homography_weighted_fast_batch(
             [torch.randperm(n_sample, device=device)[:num_sample_for_ransac] for _ in range(n_iter)],
             dim=0,
         )  # (n_iter, num_sample_for_ransac)
-    
+
     rand_idx = candidate_idx[:, rand_sample_iters_idx]  # (B, n_iter, num_sample_for_ransac)
 
     # 3. Construct batch input
@@ -369,9 +377,7 @@ def ransac_find_homography_weighted_fast_batch(
     H_batch = H_batch.unflatten(0, (cB, cN))
 
     # 5. Batch evaluate inliers for all H
-    src_homo = torch.cat(
-        [src_pts, torch.ones(B, N, 1, dtype=src_pts.dtype, device=src_pts.device)], dim=2
-    )  # (B, N, 3)
+    src_homo = torch.cat([src_pts, torch.ones(B, N, 1, dtype=src_pts.dtype, device=src_pts.device)], dim=2)  # (B, N, 3)
     src_homo_expand = src_homo.unsqueeze(1).expand(B, n_iter, N, 3)  # (B, n_iter, N, 3)
     dst_pts_expand = dst_pts.unsqueeze(1).expand(B, n_iter, N, 2)  # (B, n_iter, N, 2)
     confident_weight_expand = confident_weight.unsqueeze(1).expand(B, n_iter, N)  # (B, n_iter, N)
@@ -420,23 +426,24 @@ def ransac_find_homography_weighted_fast_batch(
     H_inlier = torch.stack(H_inlier_list, dim=0)  # (B, 3, 3)
     return H_inlier
 
+
 def get_params_for_ransac(N, device):
-    n_iter=100
-    sample_ratio=0.3
-    num_sample_for_ransac=8
+    n_iter = 100
+    sample_ratio = 0.3
+    num_sample_for_ransac = 8
     n_sample = max(num_sample_for_ransac, int(N * sample_ratio))
     rand_sample_iters_idx = torch.stack(
-            [torch.randperm(n_sample, device=device)[:num_sample_for_ransac] for _ in range(n_iter)],
-            dim=0,
-        )  # (n_iter, num_sample_for_ransac)
+        [torch.randperm(n_sample, device=device)[:num_sample_for_ransac] for _ in range(n_iter)],
+        dim=0,
+    )  # (n_iter, num_sample_for_ransac)
     return n_iter, num_sample_for_ransac, n_sample, rand_sample_iters_idx
 
 
 def camray_to_caminfo(camray, confidence=None, reproj_threshold=0.2, training=False):
-    """
-    Args:
+    """Args:
         camray: (B, S, num_patches_y, num_patches_x, 6)
         confidence: (B, S, num_patches_y, num_patches_x)
+
     Returns:
         R: (B, S, 3, 3)
         T: (B, S, 3)
@@ -453,9 +460,7 @@ def camray_to_caminfo(camray, confidence=None, reproj_threshold=0.2, training=Fa
     # repeat I_K to match camray
     I_K = I_K.unsqueeze(0).unsqueeze(0).expand(B, S, -1, -1)
 
-    cam_plane_depth = torch.ones(
-        B, S, num_patches_y, num_patches_x, 1, dtype=camray.dtype, device=camray.device
-    )
+    cam_plane_depth = torch.ones(B, S, num_patches_y, num_patches_x, 1, dtype=camray.dtype, device=camray.device)
     I_cam_plane_unproj = unproject_depth(
         cam_plane_depth,
         I_K,
@@ -466,16 +471,14 @@ def camray_to_caminfo(camray, confidence=None, reproj_threshold=0.2, training=Fa
     )  # (B, S, num_patches_y, num_patches_x, 3)
 
     camray = camray.flatten(0, 1).flatten(1, 2)  # (B*S, num_patches_y*num_patches_x, 6)
-    I_cam_plane_unproj = I_cam_plane_unproj.flatten(0, 1).flatten(
-        1, 2
-    )  # (B*S, num_patches_y*num_patches_x, 3)
+    I_cam_plane_unproj = I_cam_plane_unproj.flatten(0, 1).flatten(1, 2)  # (B*S, num_patches_y*num_patches_x, 3)
     confidence = confidence.flatten(0, 1).flatten(1, 2)  # (B*S, num_patches_y*num_patches_x)
-    
+
     # Compute optimal rotation to align rays
     N = camray.shape[-2]
     device = camray.device
     n_iter, num_sample_for_ransac, n_sample, rand_sample_iters_idx = get_params_for_ransac(N, device)
-    
+
     # Use batch processing (confidence is guaranteed to be not None at this point)
     if training:
         camray = camray.clone().detach()
@@ -486,15 +489,13 @@ def camray_to_caminfo(camray, confidence=None, reproj_threshold=0.2, training=Fa
         camray[:, :, :3],
         reproj_threshold=reproj_threshold,
         weights=confidence,
-        n_sample = n_sample,
+        n_sample=n_sample,
         n_iter=n_iter,
         num_sample_for_ransac=num_sample_for_ransac,
         rand_sample_iters_idx=rand_sample_iters_idx,
     )
 
-    T = torch.sum(camray[:, :, 3:] * confidence.unsqueeze(-1), dim=1) / torch.sum(
-        confidence, dim=-1, keepdim=True
-    )
+    T = torch.sum(camray[:, :, 3:] * confidence.unsqueeze(-1), dim=1) / torch.sum(confidence, dim=-1, keepdim=True)
 
     R = R.reshape(B, S, 3, 3)
     T = T.reshape(B, S, 3)
@@ -502,6 +503,7 @@ def camray_to_caminfo(camray, confidence=None, reproj_threshold=0.2, training=Fa
     principal_points = principal_points.reshape(B, S, 2)
 
     return R, T, 1.0 / focal_lengths, principal_points + 1.0
+
 
 def get_extrinsic_from_camray(camray, conf, patch_size_y, patch_size_x, training=False):
     pred_R, pred_T, pred_focal_lengths, pred_principal_points = camray_to_caminfo(
