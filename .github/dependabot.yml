@@ -22,7 +22,7 @@ updates:
       prefix: ⬆️
     open-pull-requests-limit: 5
     # this will group all dependencies together into single PRs for all github-actions
-    #groups:
-    #  github-actions:
-    #    patterns:
-    #      - "*"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
