@@ -89,6 +89,10 @@ exclude = ["**/*.md"]  # Exclude markdown files from wheel
 [tool.hatch.build.targets.sdist]
 include = ["kornia/", "LICENSE", "README.md"]
 
+[tool.codespell]
+ignore-words-list = "ans,hist,laf,cofusion"
+skip = "*.bib,*.ipynb"
+
 [tool.ruff]
 target-version = "py311"
 line-length = 120
