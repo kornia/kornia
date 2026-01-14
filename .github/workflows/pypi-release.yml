@@ -36,7 +36,7 @@ jobs:
     needs: build
     if: github.event_name == 'release'
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: pypi-packages-${{ github.sha }}
           path: dist
@@ -54,7 +54,7 @@ jobs:
     permissions:
       id-token: write  # Required for trusted publishing
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: pypi-packages-${{ github.sha }}
           path: dist
