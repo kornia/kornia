@@ -44,10 +44,7 @@ class TestQwen25VisionEncoder:
         # Check output shape
         assert output.dim() == 3, f"Expected (B, seq, dim), got {output.shape}"
         assert output.shape[0] == 1  # batch size
-        
-        # Get expected dimension from model
-        expected_dim = model.merger.mlp[-1].out_features
-        assert output.shape[2] == expected_dim
+        assert output.shape[2] == 2048  # merger output dimension
     
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     def test_batch_processing(self, batch_size):

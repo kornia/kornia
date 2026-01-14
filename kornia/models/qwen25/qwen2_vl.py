@@ -54,9 +54,9 @@ class Qwen2VLPatchMerger(Module):
             out_channels=dim,
             kernel_size=(spatial_merge_size, 14, 14),
             stride=(spatial_merge_size, 14, 14),
-            bias=True,
+            bias=False,  # HF doesn't use bias
         )
-        self.ln_q = nn.LayerNorm(dim, eps=1e-6)
+        # Note: HF Qwen2.5-VL doesn't have LayerNorm in patch_embed
 
     def forward(self, x: Tensor) -> Tensor:
         # Input: (B, C, H, W) for images
@@ -72,9 +72,8 @@ class Qwen2VLPatchMerger(Module):
         # Flatten spatial and temporal: (B, dim, T', H', W') -> (B, dim, T'*H'*W')
         x = x.flatten(2)
         
-        # Transpose for LayerNorm: (B, seq_len, dim)
+        # Transpose for output: (B, seq_len, dim)
         x = x.transpose(1, 2)
-        x = self.ln_q(x)
         return x
 
 
@@ -113,7 +112,7 @@ class Qwen2VLMerger(Module):
         merged_dim = embed_dim * (spatial_merge_size ** 2)
         
         # LayerNorm operates on original embed_dim (before spatial merge)
-        self.ln_q = nn.LayerNorm(embed_dim, eps=1e-6)
+        self.ln_q = nn.LayerNorm(embed_dim, eps=1e-6, bias=False)
         
         # 2-layer MLP operates on merged dimension
         # Note: HF uses indices 0 and 2 (mlp.0 and mlp.2) in state_dict
@@ -137,31 +136,37 @@ class Qwen2VLMerger(Module):
         x = self.ln_q(x)
         
         # Spatial compression: group 2x2 patches
-        # Input: (B, H*W, 1280)
-        # Need to reshape to (B, H, W, 1280) first
+        # Input: (B, H*W, C) where L=H*W is a perfect square
         B, L, C = x.shape
         
-        # Infer spatial dimensions (assume square feature map)
-        H = W = int(L ** 0.5)
-        assert H * W == L, f"Sequence length {L} must be a perfect square"
+        # Calculate grid size from sequence length
+        # NOTE: This uses Python int() which gets traced as a constant in ONNX
+        # For ONNX export, the model is traced with a specific resolution
+        # and that resolution is baked into the graph. Dynamic resolution
+        # support would require exporting multiple ONNX models or using torch.jit.script
+        import math
+        grid_size = int(math.sqrt(L))
         
-        # Reshape to spatial: (B, H, W, C)
-        x = x.view(B, H, W, C)
+        # Reshape to spatial grid: (B, L, C) -> (B, H, W, C)
+        x = x.reshape(B, grid_size, grid_size, C)
         
-        # Group 2x2 patches: (B, H, W, C) → (B, H/2, W/2, 2, 2, C)
-        merge_size = self.spatial_merge_size
-        x = x.view(
-            B,
-            H // merge_size,
-            merge_size,
-            W // merge_size,
-            merge_size,
-            C
-        )
+        # Group into 2x2 patches for spatial merging
+        merge_size = self.spatial_merge_size  # =2
+        H_merged = grid_size // merge_size
+        W_merged = grid_size // merge_size
         
-        # Permute and flatten: (B, H/2, W/2, 2, 2, C) → (B, H/2, W/2, C*4)
+        # Reshape to separate the merge patches:
+        # (B, H, W, C) -> ( B, H/2, 2, W/2, 2, C)
+        x = x.reshape(B, H_merged, merge_size, W_merged, merge_size, C)
+        
+        # Rearrange dimensions to group the 2x2 patches together:
+        # (B, H/2, 2, W/2, 2, C) -> (B, H/2, W/2, 2, 2, C)
         x = x.permute(0, 1, 3, 2, 4, 5).contiguous()
-        x = x.view(B, (H // merge_size) * (W // merge_size), C * (merge_size ** 2))
+        
+        # Flatten the 2x2 patches: (B, H/2, W/2, 2*2*C)
+        new_seq_len = H_merged * W_merged
+        merged_dim = C * (merge_size ** 2)  # 1280 * 4 = 5120
+        x = x.reshape(B, new_seq_len, merged_dim)
         
         # Apply MLP: (B, seq_len/4, 5120) → (B, seq_len/4, 2048)
         x = self.mlp(x)
@@ -238,7 +243,14 @@ class Qwen2VLVisionAttention(Module):
 
 
 class Qwen2VLMLP(Module):
-    """FeedForward MLP used in the Qwen2-VL vision transformer blocks.
+    """Gated FeedForward MLP (SwiGLU) used in Qwen2-VL vision transformer blocks.
+    
+    This implements the gated MLP architecture used in the HuggingFace Qwen2.5-VL model:
+    - gate_proj: Projects to hidden dimension, applies SiLU activation  
+    - up_proj: Projects to hidden dimension (no activation)
+    - down_proj: Projects back to original dimension
+    
+    Output = down_proj(silu(gate_proj(x)) * up_proj(x))
 
     Args:
         dim: Input and output feature dimension.
@@ -250,12 +262,15 @@ class Qwen2VLMLP(Module):
         if hidden_dim is None:
             hidden_dim = 4 * dim
 
-        self.fc1 = nn.Linear(dim, hidden_dim)
-        self.act = nn.GELU()
-        self.fc2 = nn.Linear(hidden_dim, dim)
+        # Gated MLP components (to match HuggingFace naming)
+        self.gate_proj = nn.Linear(dim, hidden_dim, bias=True)
+        self.up_proj = nn.Linear(dim, hidden_dim, bias=True)
+        self.down_proj = nn.Linear(hidden_dim, dim, bias=True)
+        self.act = nn.SiLU()  # SwiGLU uses SiLU (Swish) activation
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.fc2(self.act(self.fc1(x)))
+        # SwiGLU: down_proj(silu(gate_proj(x)) * up_proj(x))
+        return self.down_proj(self.act(self.gate_proj(x)) * self.up_proj(x))
 
 
 class Qwen2VLVisionBlock(Module):
@@ -270,13 +285,13 @@ class Qwen2VLVisionBlock(Module):
         mlp_ratio: MLP hidden dimension multiplier.
     """
 
-    def __init__(self, dim: int, num_heads: int, mlp_ratio: float = 4.0) -> None:
+    def __init__(self, dim: int, num_heads: int, intermediate_size: int = 3420) -> None:
         super().__init__()
-        self.norm1 = nn.LayerNorm(dim, eps=1e-6)
+        self.norm1 = nn.LayerNorm(dim, eps=1e-6, bias=False)
         self.attn = Qwen2VLVisionAttention(dim, num_heads=num_heads)
 
-        self.norm2 = nn.LayerNorm(dim, eps=1e-6)
-        self.mlp = Qwen2VLMLP(dim, int(dim * mlp_ratio))
+        self.norm2 = nn.LayerNorm(dim, eps=1e-6, bias=False)
+        self.mlp = Qwen2VLMLP(dim, intermediate_size)
 
     def forward(self, x: Tensor, rot_pos_emb: Optional[Tensor] = None) -> Tensor:
         x = x + self.attn(self.norm1(x), rot_pos_emb=rot_pos_emb)
@@ -304,13 +319,13 @@ class Qwen2VLVisionTransformer(Module):
         embed_dim: int = 1280,
         depth: int = 32,
         num_heads: int = 16,
-        mlp_ratio: float = 4.0,
+        intermediate_size: int = 3420,  # HF uses 3420, not 4*1280=5120
         in_channels: int = 3,
         out_hidden_size: int = 2048,
     ) -> None:
         super().__init__()
         self.patch_embed = Qwen2VLPatchMerger(embed_dim, context_window=224, spatial_merge_size=2)
-        self.blocks = nn.ModuleList([Qwen2VLVisionBlock(embed_dim, num_heads, mlp_ratio) for _ in range(depth)])
+        self.blocks = nn.ModuleList([Qwen2VLVisionBlock(embed_dim, num_heads, intermediate_size) for _ in range(depth)])
         self.rotary_pos_emb = Qwen2VLRotaryEmbedding(embed_dim // num_heads)
         
         # Final merger projection: embed_dim -> out_hidden_size
@@ -324,7 +339,7 @@ class Qwen2VLVisionTransformer(Module):
         embed_dim: int = 1280,
         depth: int = 32,
         num_heads: int = 16,
-        mlp_ratio: float = 4.0,
+        intermediate_size: int = 3420,
         out_hidden_size: int = 2048,
     ) -> "Qwen2VLVisionTransformer":
         """Load pretrained Vision Transformer from HuggingFace.
@@ -334,7 +349,7 @@ class Qwen2VLVisionTransformer(Module):
             embed_dim: Embedding dimension (must match pretrained model).
             depth: Number of transformer blocks (must match pretrained model).
             num_heads: Number of attention heads (must match pretrained model).
-            mlp_ratio: MLP expansion ratio (must match pretrained model).
+            intermediate_size: MLP hidden dimension (must match pretrained model).
         
         Returns:
             Qwen2VLVisionTransformer with loaded pretrained weights.
@@ -355,7 +370,7 @@ class Qwen2VLVisionTransformer(Module):
             embed_dim=embed_dim,
             depth=depth,
             num_heads=num_heads,
-            mlp_ratio=mlp_ratio,
+            intermediate_size=intermediate_size,
             out_hidden_size=out_hidden_size,
         )
         
