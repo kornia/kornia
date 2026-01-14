@@ -11,7 +11,3 @@ updates:
     schedule:
       interval: weekly
       day: sunday
-    reviewers:
-      - "edgarriba"
-      - "ducha-aiki"
-      - "shijianjian"
