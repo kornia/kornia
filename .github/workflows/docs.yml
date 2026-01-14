@@ -48,7 +48,7 @@ jobs:
 
       - name: Restore cache
         if: inputs.cache-path != ''
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ inputs.cache-path }}
           key: ${{ inputs.cache-key }}
