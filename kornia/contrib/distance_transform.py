@@ -15,82 +15,131 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 import math
 
 import torch
 from torch import nn
 
-from kornia.filters import filter2d
-from kornia.geometry.grid import create_meshgrid
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.filters import filter2d, filter3d
+from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
 
-def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.35) -> torch.Tensor:
-    r"""Approximates the Manhattan distance transform of images using cascaded convolution operations.
+def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float) -> torch.Tensor:
+    device = image.device
+    dtype = image.dtype
+    k_half = kernel_size // 2
 
-    The value at each pixel in the output represents the distance to the nearest non-zero pixel in the image image.
-    It uses the method described in :cite:`pham2021dtlayer`.
-    The transformation is applied independently across the channel dimension of the images.
+    n_iters = math.ceil(max(image.shape[2], image.shape[3]) / k_half)
+    grid = create_meshgrid(kernel_size, kernel_size, False, device, dtype)
+    grid = grid - k_half
 
-    Args:
-        image: Image with shape :math:`(B,C,H,W)`.
-        kernel_size: size of the convolution kernel.
-        h: value that influence the approximation of the min function.
-
-    Returns:
-        tensor with shape :math:`(B,C,H,W)`.
-
-    Example:
-        >>> tensor = torch.zeros(1, 1, 5, 5)
-        >>> tensor[:,:, 1, 2] = 1
-        >>> dt = kornia.contrib.distance_transform(tensor)
-
-    """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"image type is not a torch.Tensor. Got {type(image)}")
-
-    if not len(image.shape) == 4:
-        raise ValueError(f"Invalid image shape, we expect BxCxHxW. Got: {image.shape}")
-
-    if kernel_size % 2 == 0:
-        raise ValueError("Kernel size must be an odd number.")
-
-    # n_iters is set such that the DT will be able to propagate from any corner of the image to its far,
-    # diagonally opposite corner
-    n_iters: int = math.ceil(max(image.shape[2], image.shape[3]) / math.floor(kernel_size / 2))
-    grid = create_meshgrid(
-        kernel_size, kernel_size, normalized_coordinates=False, device=image.device, dtype=image.dtype
-    )
-
-    grid -= math.floor(kernel_size / 2)
-    kernel = torch.hypot(grid[0, :, :, 0], grid[0, :, :, 1])
-    kernel = torch.exp(kernel / -h).unsqueeze(0)
+    dist = torch.hypot(grid[0, ..., 0], grid[0, ..., 1])
+    kernel = torch.exp(-dist / h).unsqueeze(0)
 
     out = torch.zeros_like(image)
-
-    # It is possible to avoid cloning the image if boundary = image, but this would require modifying the image tensor.
     boundary = image.clone()
     signal_ones = torch.ones_like(boundary)
 
     for i in range(n_iters):
         cdt = filter2d(boundary, kernel, border_type="replicate")
         cdt = -h * torch.log(cdt)
+        cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
 
-        # We are calculating log(0) above.
-        cdt = torch.nan_to_num(cdt, posinf=0.0)
-
-        mask = torch.where(cdt > 0, 1.0, 0.0)
-        if mask.sum() == 0:
+        mask = cdt > 0
+        if not mask.any():
             break
 
-        offset: int = i * (kernel_size // 2)
-        out += (offset + cdt) * mask
-        boundary = torch.where(mask == 1, signal_ones, boundary)
+        offset: int = i * k_half
+        out = out + (offset + cdt) * mask.to(dtype=out.dtype)
+        boundary = torch.where(mask, signal_ones, boundary)
 
     return out
 
 
+def _distance_transform_3d_impl(image: torch.Tensor, kernel_size: int, h: float) -> torch.Tensor:
+    device = image.device
+    dtype = image.dtype
+    k_half = kernel_size // 2
+
+    n_iters = math.ceil(max(image.shape[2:]) / k_half)
+    grid = create_meshgrid3d(kernel_size, kernel_size, kernel_size, False, device, dtype)
+    grid = grid - k_half
+    dist = torch.norm(grid[0], p=2, dim=-1)
+    kernel = torch.exp(-dist / h).unsqueeze(0)
+
+    out = torch.zeros_like(image)
+    boundary = image.clone()
+    signal_ones = torch.ones_like(boundary)
+
+    for i in range(n_iters):
+        cdt = filter3d(boundary, kernel, border_type="replicate")
+        cdt = -h * torch.log(cdt)
+        cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
+
+        mask = cdt > 0
+        if not mask.any():
+            break
+
+        offset: int = i * k_half
+        out = out + (offset + cdt) * mask.to(dtype=out.dtype)
+        boundary = torch.where(mask, signal_ones, boundary)
+
+    return out
+
+
+def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.35) -> torch.Tensor:
+    r"""Approximates the Euclidean distance transform of images/volumes using cascaded convolution operations.
+
+    The value at each pixel/voxel represents the distance to the nearest non-zero element.
+    It uses the method described in :cite:`pham2021dtlayer`.
+    The transformation is applied independently across the channel dimension.
+
+    Args:
+        image: Image or volume with shape :math:`(B,C,H,W)` or :math:`(B,C,D,H,W)`.
+        kernel_size: size of the convolution kernel. Must be an odd number.
+        h: value that influence the approximation of the min function.
+
+    Returns:
+        tensor with the same shape as input.
+
+    Example:
+        >>> # 2D example:
+        >>> tensor = torch.zeros(1, 1, 5, 5)
+        >>> tensor[:,:, 1, 2] = 1
+        >>> dt = distance_transform(tensor)
+        >>> # 3D example:
+        >>> volume = torch.zeros(1, 1, 5, 5, 5)
+        >>> volume[:, :, 2, 2, 2] = 1
+        >>> dt = distance_transform(volume)
+
+    """
+    # Validation using KORNIA_CHECK API
+    KORNIA_CHECK_IS_TENSOR(image)
+    KORNIA_CHECK(image.is_floating_point(), "image must be a floating point tensor")
+
+    KORNIA_CHECK(image.ndim in (4, 5), f"Invalid image shape, we expect BxCxHxW or BxCxDxHxW. Got: {image.shape}")
+
+    if image.ndim == 4:
+        KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
+    else:
+        KORNIA_CHECK_SHAPE(image, ["B", "C", "D", "H", "W"])
+
+    # dtype / param checks
+    KORNIA_CHECK_TYPE(kernel_size, int, "kernel_size must be an int")
+    KORNIA_CHECK(kernel_size % 2 != 0 and kernel_size >= 3, "kernel_size must be an odd integer >= 3")
+    KORNIA_CHECK(h > 0, f"h must be a positive float, got {h}")
+
+    if image.ndim == 4:
+        return _distance_transform_2d_impl(image, kernel_size, h)
+
+    return _distance_transform_3d_impl(image, kernel_size, h)
+
+
 class DistanceTransform(nn.Module):
-    r"""Module that approximates the Manhattan (city block) distance transform of images using convolutions.
+    r"""Module that approximates the Euclidean distance transform of images/volumes using convolutions.
 
     Args:
         kernel_size: size of the convolution kernel.
@@ -104,9 +153,12 @@ class DistanceTransform(nn.Module):
         self.h = h
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        # If images have multiple channels, view the channels in the batch dimension to match kernel shape.
+        # Reshape multi-channel inputs to batch dimension to ensure independent processing
         if image.shape[1] > 1:
-            image_in = image.view(-1, 1, image.shape[-2], image.shape[-1])
+            # Dynamically determine spatial dimensions (works for H,W or D,H,W)
+            spatial_dims = image.shape[2:]
+            # Use reshape to handle non-contiguous tensors safely
+            image_in = image.reshape(-1, 1, *spatial_dims)
         else:
             image_in = image
 
