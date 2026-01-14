@@ -51,13 +51,13 @@ class Qwen25WeightLoader:
             for layer indices that will be replaced during conversion.
         """
         return {
-            # Patch embedder (conv layer - no bias in HF)
+            # Patch embedder (conv layer - no bias)
             "visual.patch_embed.proj.weight": "patch_embed.conv.weight",
-            # Note: No bias, no LayerNorm in HF patch_embed
+            # Note: No bias, no LayerNorm in patch_embed
             
             # Vision blocks - attention
             "visual.blocks.{i}.norm1.weight": "blocks.{i}.norm1.weight",
-            # No norm1.bias - HF doesn't use bias in LayerNorm
+            # No norm1.bias - LayerNorm doesn't use bias
             "visual.blocks.{i}.attn.qkv.weight": "blocks.{i}.attn.qkv.weight",
             "visual.blocks.{i}.attn.qkv.bias": "blocks.{i}.attn.qkv.bias",
             "visual.blocks.{i}.attn.proj.weight": "blocks.{i}.attn.proj.weight",
@@ -65,7 +65,7 @@ class Qwen25WeightLoader:
             
             # Vision blocks - Gated MLP (SwiGLU)
             "visual.blocks.{i}.norm2.weight": "blocks.{i}.norm2.weight",
-            # No norm2.bias - HF doesn't use bias in LayerNorm
+            # No norm2.bias - LayerNorm doesn't use bias
             "visual.blocks.{i}.mlp.gate_proj.weight": "blocks.{i}.mlp.gate_proj.weight",
             "visual.blocks.{i}.mlp.gate_proj.bias": "blocks.{i}.mlp.gate_proj.bias",
             "visual.blocks.{i}.mlp.up_proj.weight": "blocks.{i}.mlp.up_proj.weight",
@@ -75,7 +75,7 @@ class Qwen25WeightLoader:
             
             # Final merger (2-layer MLP with LayerNorm - no bias in LN)
             "visual.merger.ln_q.weight": "merger.ln_q.weight",
-            # No merger.ln_q.bias - HF doesn't use bias in LayerNorm
+            # No merger.ln_q.bias - LayerNorm doesn't use bias
             "visual.merger.mlp.0.weight": "merger.mlp.0.weight",
             "visual.merger.mlp.0.bias": "merger.mlp.0.bias",
             "visual.merger.mlp.2.weight": "merger.mlp.2.weight",

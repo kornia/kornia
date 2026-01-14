@@ -28,7 +28,7 @@ from torch.nn import Module
 class Qwen2VLPatchMerger(Module):
     """Merge image patches using 3D convolution for video/temporal support.
     
-    This implementation uses Conv3d to match HuggingFace's architecture,
+    This implementation uses Conv3d for the reference architecture,
     which supports both images and video frames by processing the temporal dimension.
     
     Args:
@@ -47,16 +47,16 @@ class Qwen2VLPatchMerger(Module):
         super().__init__()
         self.spatial_merge_size = spatial_merge_size
         
-        # Use Conv3d to match HuggingFace (handles temporal dimension)
+        # Use Conv3d to handle temporal dimension
         # kernel_size: (temporal=2, height=14, width=14)
         self.conv = nn.Conv3d(
             in_channels=in_channels,
             out_channels=dim,
             kernel_size=(spatial_merge_size, 14, 14),
             stride=(spatial_merge_size, 14, 14),
-            bias=False,  # HF doesn't use bias
+            bias=False,  # No bias in this implementation
         )
-        # Note: HF Qwen2.5-VL doesn't have LayerNorm in patch_embed
+        # Note: No LayerNorm in patch_embed for this architecture
 
     def forward(self, x: Tensor) -> Tensor:
         # Input: (B, C, H, W) for images
@@ -80,7 +80,7 @@ class Qwen2VLPatchMerger(Module):
 class Qwen2VLMerger(Module):
     """Final merger layer with spatial compression and MLP.
     
-    This matches HuggingFace's implementation which:
+    This implementation:
     1. Compresses visual tokens spatially (2x2 patch grouping)
     2. Applies LayerNorm
     3. Projects through 2-layer MLP
@@ -200,7 +200,7 @@ class Qwen2VLRotaryEmbedding(Module):
         # TODO: Implement proper rotary embedding computation
         # This should compute cos/sin embeddings and return them for use in attention
         # Current implementation is a no-op for compatibility with existing skeleton
-        # See: https://github.com/huggingface/transformers for reference implementation
+        # See reference implementation for proper rotary embedding computation
         return x
 
 
@@ -245,7 +245,7 @@ class Qwen2VLVisionAttention(Module):
 class Qwen2VLMLP(Module):
     """Gated FeedForward MLP (SwiGLU) used in Qwen2-VL vision transformer blocks.
     
-    This implements the gated MLP architecture used in the HuggingFace Qwen2.5-VL model:
+    This implements the gated MLP (SwiGLU) architecture:
     - gate_proj: Projects to hidden dimension, applies SiLU activation  
     - up_proj: Projects to hidden dimension (no activation)
     - down_proj: Projects back to original dimension
@@ -262,7 +262,7 @@ class Qwen2VLMLP(Module):
         if hidden_dim is None:
             hidden_dim = 4 * dim
 
-        # Gated MLP components (to match HuggingFace naming)
+        # Gated MLP components
         self.gate_proj = nn.Linear(dim, hidden_dim, bias=True)
         self.up_proj = nn.Linear(dim, hidden_dim, bias=True)
         self.down_proj = nn.Linear(hidden_dim, dim, bias=True)
@@ -329,7 +329,7 @@ class Qwen2VLVisionTransformer(Module):
         self.rotary_pos_emb = Qwen2VLRotaryEmbedding(embed_dim // num_heads)
         
         # Final merger projection: embed_dim -> out_hidden_size
-        # Uses 2-layer MLP with LayerNorm to match HuggingFace
+        # Uses 2-layer MLP with LayerNorm
         self.merger = Qwen2VLMerger(embed_dim=embed_dim, out_dim=out_hidden_size)
     
     @classmethod
@@ -342,10 +342,10 @@ class Qwen2VLVisionTransformer(Module):
         intermediate_size: int = 3420,
         out_hidden_size: int = 2048,
     ) -> "Qwen2VLVisionTransformer":
-        """Load pretrained Vision Transformer from HuggingFace.
+        """Load pretrained Vision Transformer.
         
         Args:
-            model_id: HuggingFace model identifier.
+            model_id: Pretrained model identifier.
             embed_dim: Embedding dimension (must match pretrained model).
             depth: Number of transformer blocks (must match pretrained model).
             num_heads: Number of attention heads (must match pretrained model).
