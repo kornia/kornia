@@ -40,6 +40,15 @@ Equalization
 .. autofunction:: equalize
 .. autofunction:: equalize_clahe
 .. autofunction:: equalize3d
+    Interactive demo
+----------------
+
+.. raw:: html
+
+    <gradio-app space="Iamabhipandat/kornia-image-equalization"></gradio-app>
+
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/Iamabhipandat/kornia-image-equalization>`_.
+
 
 .. autofunction:: histogram
 .. autofunction:: histogram2d
