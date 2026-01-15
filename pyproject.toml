@@ -78,7 +78,6 @@ docs = [
   "sphinxcontrib-gtagjs",
   "sphinxcontrib-youtube",
 ]
-x = []
 
 [tool.hatch.version]
 path = "kornia/__init__.py"
