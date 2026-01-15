@@ -32,8 +32,8 @@ def _apply_linear_transformation(
     r"""Apply a linear transformation (matrix multiplication + bias) to the image tensor.
 
     This function branches execution to maximize performance:
-    - CPU: Uses `torch.einsum` (faster for small kernels).
-    - GPU: Uses `F.conv2d` (highly optimized by cuDNN).
+    - CPU: Unbinds the channel dimension and accumulates with ``torch.add`` per output channel.
+    - GPU: Uses :func:`torch.nn.functional.conv2d` (highly optimized by cuDNN).
 
     Args:
         image: Input tensor with shape :math:`(*, C_{in}, H, W)`.
