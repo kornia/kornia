@@ -306,3 +306,79 @@ class PaliGemma(nn.Module):
         logits = self.lm_head(hidden_states)
 
         return logits
+
+    @classmethod
+    def from_pretrained(cls, model_id: str = "google/paligemma-3b-pt-224", token: Optional[str] = None) -> PaliGemma:
+        """Load pretrained weights from Hugging Face.
+
+        Args:
+            model_id: The Hugging Face model ID.
+            token: Optional authentication token for gated models.
+
+        Returns:
+            A PaliGemma model loaded with official weights.
+        """
+        try:
+            from transformers import PaliGemmaForConditionalGeneration
+        except ImportError as e:
+            raise ImportError(
+                "The 'transformers' library is required to load pretrained weights. "
+                "Please install it using: pip install transformers"
+            ) from e
+
+        hf_model = PaliGemmaForConditionalGeneration.from_pretrained(
+            model_id, device_map="cpu", token=token, torch_dtype=torch.float32
+        )
+
+        config = PaliGemmaConfig()
+        text_conf = hf_model.config.text_config
+        vis_conf = hf_model.config.vision_config
+
+        config.vocab_size = text_conf.vocab_size
+        config.hidden_size = text_conf.hidden_size
+        config.num_hidden_layers = text_conf.num_hidden_layers
+        config.num_attention_heads = text_conf.num_attention_heads
+        config.intermediate_size = text_conf.intermediate_size
+        config.num_key_value_heads = text_conf.num_key_value_heads
+
+        config.vision_config.image_size = vis_conf.image_size
+        config.vision_config.patch_size = vis_conf.patch_size
+        config.vision_config.hidden_size = vis_conf.hidden_size
+        config.vision_config.num_hidden_layers = vis_conf.num_hidden_layers
+        config.vision_config.num_attention_heads = vis_conf.num_attention_heads
+        config.vision_config.intermediate_size = vis_conf.intermediate_size
+
+        kornia_model = cls(config)
+        kornia_sd = kornia_model.state_dict()
+        hf_sd = hf_model.state_dict()
+
+        for k_key in kornia_sd.keys():
+            hf_key = None
+
+            if k_key.startswith("vision_tower."):
+                if "vision_tower.head" in k_key:
+                    continue
+                suffix = k_key.replace("vision_tower.", "")
+                if "embeddings.position_embedding" in suffix:
+                    hf_key = f"model.vision_tower.vision_model.{suffix}.weight"
+                    if hf_key not in hf_sd:
+                        hf_key = f"model.vision_tower.vision_model.{suffix}"
+                else:
+                    hf_key = f"model.vision_tower.vision_model.{suffix}"
+
+            elif k_key.startswith("multi_modal_projector."):
+                suffix = k_key.replace("multi_modal_projector.", "")
+                hf_key = f"model.multi_modal_projector.linear.{suffix}"
+
+            elif k_key.startswith("embed_tokens.") or k_key.startswith("layers.") or k_key.startswith("norm."):
+                hf_key = f"model.language_model.{k_key}"
+
+            elif k_key == "lm_head.weight":
+                hf_key = "lm_head.weight"
+
+            if hf_key and hf_key in hf_sd:
+                with torch.no_grad():
+                    if kornia_sd[k_key].shape == hf_sd[hf_key].shape:
+                        kornia_sd[k_key].copy_(hf_sd[hf_key])
+
+        return kornia_model
