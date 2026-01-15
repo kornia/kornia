@@ -20,12 +20,65 @@ from __future__ import annotations
 from typing import ClassVar
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
-def _rgb_to_y(r: torch.Tensor, g: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    y: torch.Tensor = 0.299 * r + 0.587 * g + 0.114 * b
-    return y
+
+def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor, bias: torch.Tensor | None = None) -> torch.Tensor:
+    r"""Apply a linear transformation (matrix multiplication + bias) to the image tensor.
+
+    This function branches execution to maximize performance:
+    - CPU: Uses `torch.einsum` (faster for small kernels).
+    - GPU: Uses `F.conv2d` (highly optimized by cuDNN).
+
+    Args:
+        image: Input tensor with shape :math:`(*, C_{in}, H, W)`.
+        kernel: Weight matrix with shape :math:`(C_{out}, C_{in})`.
+        bias: Bias vector with shape :math:`(C_{out})`.
+
+    Returns:
+        Output tensor with shape :math:`(*, C_{out}, H, W)`.
+    """
+    # Empirical benchmarks show that Accumulation is faster on CPU for this specific pattern,
+    # while conv2d offers significant speedups on GPU/CUDA.
+    # We branch to ensure optimal performance on both devices.
+    # BRANCH 1: CPU (Accumulation)
+    if image.device.type == "cpu":
+        # CPU Optimization: Unbind and accumulate is faster than einsum for small C_in/C_out
+        x_unbound = image.unbind(-3) 
+        out_channels = []
+
+        for i, row in enumerate(kernel):
+            # Initialize accumulator with bias (if present) to avoid creating a zero tensor
+            acc = bias[i] if bias is not None else torch.tensor(0.0, dtype=image.dtype, device=image.device)
+
+            for j, coeff in enumerate(row):
+                # acc += input[j] * coeff
+                # Using torch.add with alpha is the most efficient scalar-tensor multiplication
+                acc = torch.add(acc, x_unbound[j], alpha=float(coeff))
+            
+            out_channels.append(acc)
+
+        return torch.stack(out_channels, dim=-3)
+
+    # GPU/Accelerators path (Conv2d)
+    else:
+        input_shape = image.shape
+        B, C_in, H, W = input_shape[:-3], input_shape[-3], input_shape[-2], input_shape[-1]
+        C_out, _ = kernel.shape
+    
+        # Reshape input to (-1, C_in, H, W) for conv2d
+        input_flat = image.reshape(-1, C_in, H, W)
+        
+        # Reshape kernel to (C_out, C_in, 1, 1)
+        weight = kernel.reshape(C_out, C_in, 1, 1)
+    
+        out_flat = F.conv2d(input_flat, weight, bias)
+    
+        # Reshape back to (*, C_out, H, W)
+        return out_flat.reshape(B + (C_out, H, W))
 
 
 def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
@@ -44,21 +97,27 @@ def rgb_to_ycbcr(image: torch.Tensor) -> torch.Tensor:
         >>> output = rgb_to_ycbcr(input)  # 2x3x4x5
 
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+    KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    image_compute = image if image.is_floating_point() else image.float()
 
-    r: torch.Tensor = image[..., 0, :, :]
-    g: torch.Tensor = image[..., 1, :, :]
-    b: torch.Tensor = image[..., 2, :, :]
+    # NOTE: Coefficients are derived from the existing logic to ensure test parity:
+    # Y  = 0.299R + 0.587G + 0.114B
+    # Cb = (B - Y) * 0.564 + 0.5
+    # Cr = (R - Y) * 0.713 + 0.5
+    kernel = torch.tensor(
+        [
+            [0.299, 0.587, 0.114],
+            [-0.168636, -0.331068, 0.499704],
+            [0.499813, -0.418531, -0.081282],
+        ],
+        device=image_compute.device,
+        dtype=image_compute.dtype,
+    )
 
-    delta: float = 0.5
-    y: torch.Tensor = _rgb_to_y(r, g, b)
-    cb: torch.Tensor = (b - y) * 0.564 + delta
-    cr: torch.Tensor = (r - y) * 0.713 + delta
-    return torch.stack([y, cb, cr], -3)
+    bias = torch.tensor([0.0, 0.5, 0.5], device=image_compute.device, dtype=image_compute.dtype)
+
+    return _apply_linear_transformation(image_compute, kernel, bias)
 
 
 def rgb_to_y(image: torch.Tensor) -> torch.Tensor:
@@ -75,18 +134,13 @@ def rgb_to_y(image: torch.Tensor) -> torch.Tensor:
         >>> output = rgb_to_y(input)  # 2x1x4x5
 
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+    KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    image_compute = image if image.is_floating_point() else image.float()
 
-    r: torch.Tensor = image[..., 0:1, :, :]
-    g: torch.Tensor = image[..., 1:2, :, :]
-    b: torch.Tensor = image[..., 2:3, :, :]
+    kernel = torch.tensor([[0.299, 0.587, 0.114]], device=image_compute.device, dtype=image_compute.dtype)
 
-    y: torch.Tensor = _rgb_to_y(r, g, b)
-    return y
+    return _apply_linear_transformation(image_compute, kernel)
 
 
 def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
@@ -105,24 +159,55 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> output = ycbcr_to_rgb(input)  # 2x3x4x5
 
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+    KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    image_compute = image if image.is_floating_point() else image.float()
 
-    y: torch.Tensor = image[..., 0, :, :]
-    cb: torch.Tensor = image[..., 1, :, :]
-    cr: torch.Tensor = image[..., 2, :, :]
+    # Coefficients for YCbCr to RGB
+    # R = Y + 1.403 * (Cr - 0.5)
+    # G = Y - 0.714 * (Cr - 0.5) - 0.344 * (Cb - 0.5)
+    # B = Y + 1.773 * (Cb - 0.5)
+    #
+    # We can fold the -0.5 subtraction into the bias term to avoid creating 'image_shifted':
+    # Bias_R = 1.403 * (-0.5) = -0.7015
+    # Bias_G = (-0.714 * -0.5) + (-0.344 * -0.5) = 0.357 + 0.172 = 0.529
+    # Bias_B = 1.773 * (-0.5) = -0.8865
+    
+    # Optimized CPU Path: Explicit AXPY Unrolling
+    # 1. The YCbCr->RGB matrix has several zero coefficients (e.g., G does not depend on some inputs in valid ranges,
+    #    and the matrix has structure 1.0, 0.0, 1.403). A generic matmul multiplies by these zeros, wasting cycles.
+    # 2. We unroll the math to skip zero-ops entirely.
+    if image.device.type == "cpu":
+        y, cb, cr = image_compute.unbind(-3)
 
-    delta: float = 0.5
-    cb_shifted: torch.Tensor = cb - delta
-    cr_shifted: torch.Tensor = cr - delta
+        # R = Y + 1.403 * Cr - 0.7015
+        r = torch.add(y, cr, alpha=1.403).add_(-0.7015)
 
-    r: torch.Tensor = y + 1.403 * cr_shifted
-    g: torch.Tensor = y - 0.714 * cr_shifted - 0.344 * cb_shifted
-    b: torch.Tensor = y + 1.773 * cb_shifted
-    return torch.stack([r, g, b], -3).clamp(0, 1)
+        # G = Y - 0.714 * Cr - 0.344 * Cb + 0.529
+        g = torch.add(y, cr, alpha=-0.714).add_(cb, alpha=-0.344).add_(0.529)
+
+        # B = Y + 1.773 * Cb - 0.8865
+        b = torch.add(y, cb, alpha=1.773).add_(-0.8865)
+
+        return torch.stack([r, g, b], -3).clamp(0, 1)
+
+    kernel = torch.tensor(
+        [
+            [1.0, 0.0, 1.403],
+            [1.0, -0.344, -0.714],
+            [1.0, 1.773, 0.0],
+        ],
+        device=image_compute.device,
+        dtype=image_compute.dtype,
+    )
+    
+
+    # Pre-computed bias to avoid allocating 'image_shifted'
+    bias = torch.tensor([-0.7015, 0.529, -0.8865], device=image_compute.device, dtype=image_compute.dtype)
+
+    out = _apply_linear_transformation(image_compute, kernel, bias)
+
+    return out.clamp(0, 1)
 
 
 class RgbToYcbcr(nn.Module):

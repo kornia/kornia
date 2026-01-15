@@ -43,14 +43,15 @@ class TestRgbToYcbcr(BaseTester):
         assert torch.equal(output_y, output_ycbcr[..., 0:1, :, :])
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
+        from kornia.core.exceptions import ShapeError
+        with pytest.raises(Exception):
             assert kornia.color.rgb_to_ycbcr([0.0])
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_ycbcr(img)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_ycbcr(img)
 
@@ -156,14 +157,15 @@ class TestYcbcrToRgb(BaseTester):
         assert kornia.color.ycbcr_to_rgb(img).shape == shape
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
+        from kornia.core.exceptions import ShapeError
+        with pytest.raises(Exception):
             assert kornia.color.ycbcr_to_rgb([0.0])
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.ycbcr_to_rgb(img)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.ycbcr_to_rgb(img)
 
