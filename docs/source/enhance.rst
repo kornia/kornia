@@ -40,6 +40,7 @@ Equalization
 .. autofunction:: equalize
 .. autofunction:: equalize_clahe
 .. autofunction:: equalize3d
+
 Interactive Demo
 
 .. raw:: html
