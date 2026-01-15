@@ -20,8 +20,9 @@ from __future__ import annotations
 from typing import ClassVar
 
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
+
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
@@ -52,7 +53,7 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
             [0.019334, 0.119193, 0.950227],
         ],
         device=image.device,
-        dtype=torch.float32, 
+        dtype=torch.float32,
     )
 
     # Apply Optimized Linear Transformation
@@ -111,9 +112,9 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
 
     # Match kernel dtype to the image (propagates float64 if needed)
     kernel_compute = kernel.to(dtype=image_compute.dtype, device=image_compute.device)
-    
+
     input_shape = image_compute.shape
-    
+
     # Empirical benchmarks show that einsum is faster on CPU for this specific pattern,
     # while conv2d offers significant speedups on GPU/CUDA.
     # We branch to ensure optimal performance on both devices.
@@ -126,12 +127,12 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> t
     else:
         # Reshape for conv2d: (B*..., C, H, W)
         input_flat = image_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
-        
+
         # Reshape kernel: (3, 3) -> (3, 3, 1, 1)
         weight = kernel_compute.view(3, 3, 1, 1)
-        
+
         out_flat = F.conv2d(input_flat, weight)
-        
+
         # Unflatten back to original shape
         out = out_flat.reshape(input_shape)
 

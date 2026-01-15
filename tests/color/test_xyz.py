@@ -36,8 +36,8 @@ class TestRgbToXyz(BaseTester):
         assert kornia.color.rgb_to_xyz(img).shape == shape
 
     def test_exception(self, device, dtype):
-        from kornia.core.exceptions import TypeCheckError, ShapeError
-        
+        from kornia.core.exceptions import ShapeError, TypeCheckError
+
         with pytest.raises(TypeCheckError):
             assert kornia.color.rgb_to_xyz([0.0])
 
@@ -149,8 +149,8 @@ class TestXyzToRgb(BaseTester):
         assert kornia.color.xyz_to_rgb(img).shape == shape
 
     def test_exception(self, device, dtype):
-        from kornia.core.check import TypeCheckError, ShapeError
-        
+        from kornia.core.check import ShapeError, TypeCheckError
+
         with pytest.raises(TypeCheckError):
             assert kornia.color.xyz_to_rgb([0.0])
 
