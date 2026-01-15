@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -311,12 +311,20 @@ class PaliGemma(nn.Module):
     def from_pretrained(cls, model_id: str = "google/paligemma-3b-pt-224", token: Optional[str] = None) -> PaliGemma:
         """Load pretrained weights from Hugging Face.
 
+        .. note::
+            This method requires the ``transformers`` library to be installed.
+            The model is loaded in ``float32`` precision by default.
+
         Args:
             model_id: The Hugging Face model ID.
             token: Optional authentication token for gated models.
 
         Returns:
             A PaliGemma model loaded with official weights.
+
+        Raises:
+            ImportError: If ``transformers`` is not installed.
+            ValueError: If the model configuration is invalid.
         """
         try:
             from transformers import PaliGemmaForConditionalGeneration
@@ -329,6 +337,9 @@ class PaliGemma(nn.Module):
         hf_model = PaliGemmaForConditionalGeneration.from_pretrained(
             model_id, device_map="cpu", token=token, torch_dtype=torch.float32
         )
+
+        if not hasattr(hf_model, "config") or not hasattr(hf_model.config, "vision_config"):
+            raise ValueError(f"The model {model_id} does not seem to have a valid PaliGemma configuration.")
 
         config = PaliGemmaConfig()
         text_conf = hf_model.config.text_config
@@ -351,6 +362,8 @@ class PaliGemma(nn.Module):
         kornia_model = cls(config)
         kornia_sd = kornia_model.state_dict()
         hf_sd = hf_model.state_dict()
+
+        missing_keys: List[str] = []
 
         for k_key in kornia_sd.keys():
             hf_key = None
@@ -380,5 +393,15 @@ class PaliGemma(nn.Module):
                 with torch.no_grad():
                     if kornia_sd[k_key].shape == hf_sd[hf_key].shape:
                         kornia_sd[k_key].copy_(hf_sd[hf_key])
+                    else:
+                        missing_keys.append(
+                            f"{k_key} (Shape mismatch: {kornia_sd[k_key].shape} vs {hf_sd[hf_key].shape})"
+                        )
+            else:
+                missing_keys.append(k_key)
+
+        if len(missing_keys) > 0:
+            if len(missing_keys) > 20:
+                print(f"Warning: {len(missing_keys)} keys were not loaded. This might indicate a mapping issue.")
 
         return kornia_model

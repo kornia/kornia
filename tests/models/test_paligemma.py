@@ -35,28 +35,51 @@ class TestPaliGemmaModules:
 
         conf.vision_config.image_size = 32
         conf.vision_config.patch_size = 16
+        conf.vision_config.hidden_size = 32
+        conf.vision_config.num_hidden_layers = 1
+        conf.vision_config.num_attention_heads = 4
         return conf
 
-    def test_mlp(self, config):
-        model = GemmaMLP(config)
-        x = torch.randn(1, 10, config.hidden_size)
+    def test_mlp(self, config, device, dtype):
+        model = GemmaMLP(config).to(device=device, dtype=dtype)
+        x = torch.randn(1, 10, config.hidden_size, device=device, dtype=dtype)
         output = model(x)
         assert output.shape == (1, 10, config.hidden_size)
 
-    def test_attention(self, config):
-        model = GemmaAttention(config)
-        x = torch.randn(1, 10, config.hidden_size)
-        position_ids = torch.arange(10).unsqueeze(0)
+    def test_attention(self, config, device, dtype):
+        model = GemmaAttention(config).to(device=device, dtype=dtype)
+        x = torch.randn(1, 10, config.hidden_size, device=device, dtype=dtype)
+        position_ids = torch.arange(10, device=device).unsqueeze(0)
         output = model(x, position_ids=position_ids)
         assert output.shape == (1, 10, config.hidden_size)
 
-    def test_forward(self, config):
-        model = PaliGemma(config)
-        model.eval()
 
-        pixel_values = torch.randn(1, 3, 32, 32)
-        input_ids = torch.randint(0, config.vocab_size, (1, 5))
+class TestPaliGemma:
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    def test_smoke(self, batch_size, device, dtype):
+        config = PaliGemmaConfig()
+        config.hidden_size = 32
+        config.intermediate_size = 64
+        config.num_hidden_layers = 1
+        config.num_attention_heads = 4
+        config.head_dim = 8
+        config.vocab_size = 100
+
+        config.vision_config.image_size = 32
+        config.vision_config.patch_size = 16
+        config.vision_config.hidden_size = 32
+        config.vision_config.num_hidden_layers = 1
+        config.vision_config.num_attention_heads = 4
+
+        model = PaliGemma(config).to(device=device, dtype=dtype)
+
+        pixel_values = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
+        input_ids = torch.randint(0, config.vocab_size, (batch_size, 5), device=device)
 
         logits = model(input_ids=input_ids, pixel_values=pixel_values)
 
-        assert logits.shape == (1, 9, config.vocab_size)
+        expected_seq_len = 4 + 5
+        assert logits.shape == (batch_size, expected_seq_len, config.vocab_size)
+
+    def test_from_pretrained_interface(self):
+        assert hasattr(PaliGemma, "from_pretrained")
