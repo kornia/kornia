@@ -54,7 +54,7 @@ def _apply_linear_transformation(
 
         for i, row in enumerate(kernel):
             # Initialize accumulator with bias (if present) to avoid creating a zero tensor
-            acc = bias[i] if bias is not None else torch.tensor(0.0, dtype=image.dtype, device=image.device)
+            acc = bias[i] if bias is not None else 0.0
 
             for j, coeff in enumerate(row):
                 # acc += input[j] * coeff
