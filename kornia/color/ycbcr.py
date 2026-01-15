@@ -176,8 +176,9 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     # Bias_B = 1.773 * (-0.5) = -0.8865
 
     # Optimized CPU Path: Explicit AXPY Unrolling
-    # 1. The YCbCr->RGB matrix has several zero coefficients (e.g., G does not depend on some inputs in valid ranges,
-    #    and the matrix has structure 1.0, 0.0, 1.403). A generic matmul multiplies by these zeros, wasting cycles.
+    # 1. The YCbCr->RGB matrix has several zero coefficients (e.g., R does not depend on Cb and B does not depend on Cr,
+    #    with rows [1.0, 0.0, 1.403] and [1.0, 1.773, 0.0] respectively). A generic matmul multiplies by these zeros,
+    #    wasting cycles.
     # 2. We unroll the math to skip zero-ops entirely.
     if image.device.type == "cpu":
         y, cb, cr = image_compute.unbind(-3)
