@@ -33,6 +33,8 @@ def test_ycbcr_to_rgb(benchmark, device, dtype, torch_optimizer, B, C, H, W):
     actual = benchmark(op, data)
 
     assert actual.shape == (B, 3, H, W)
+
+
 @pytest.mark.parametrize("B", [1, 8, 32])
 @pytest.mark.parametrize("C", [3])
 @pytest.mark.parametrize("H", [128, 256, 512])
