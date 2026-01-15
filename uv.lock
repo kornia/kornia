@@ -1018,7 +1018,7 @@ requires-dist = [
     { name = "torch", specifier = ">=2.0.0" },
     { name = "transformers", marker = "extra == 'dev'", specifier = "<4.57" },
 ]
-provides-extras = ["dev", "docs", "x"]
+provides-extras = ["dev", "docs"]
 
 [[package]]
 name = "kornia-moons"
