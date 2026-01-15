@@ -11,7 +11,7 @@ def test_rgb_to_xyz_benchmark(benchmark, device, dtype, torch_optimizer, B, C, H
     """Benchmark the rgb_to_xyz function."""
     
     data = torch.rand(B, C, H, W, device=device, dtype=dtype)
-    op = torch_optimizer(xyz_to_rgb)
+    op = torch_optimizer(rgb_to_xyz)
     actual = benchmark(op, data)
     
     assert actual.shape == (B, 3, H, W)

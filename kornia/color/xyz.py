@@ -22,6 +22,7 @@ from typing import ClassVar
 import torch
 from torch import nn
 import torch.nn.functional as F
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
 def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
@@ -40,11 +41,8 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
         >>> output = rgb_to_xyz(input)  # 2x3x4x5
 
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input must be a Tensor. Got {type(image)}")
-    
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    KORNIA_CHECK_IS_TENSOR(image)
+    KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     # CIE RGB to XYZ Matrix (D65 White Point)
     kernel = torch.tensor(
@@ -75,11 +73,8 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> output = xyz_to_rgb(input)  # 2x3x4x5
 
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input must be a Tensor. Got {type(image)}")
-    
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    KORNIA_CHECK_IS_TENSOR(image)
+    KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     # CIE XYZ to RGB Matrix (D65 White Point)
     kernel = torch.tensor(
