@@ -25,6 +25,7 @@ from torch import Tensor, nn
 from torch.nn import Module
 
 from kornia.core.check import KORNIA_CHECK
+import math
 
 
 class Qwen2VLPatchMerger(Module):
@@ -146,7 +147,6 @@ class Qwen2VLMerger(Module):
         # For ONNX export, the model is traced with a specific resolution
         # and that resolution is baked into the graph. Dynamic resolution
         # support would require exporting multiple ONNX models or using torch.jit.script
-        import math
         grid_size = int(math.sqrt(L))
         
         # Reshape to spatial grid: (B, L, C) -> (B, H, W, C)
