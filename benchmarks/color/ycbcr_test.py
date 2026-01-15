@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.color import ycbcr_to_rgb, rgb_to_ycbcr
+from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
 
 
 @pytest.mark.parametrize("B", [1, 8, 32])
@@ -33,7 +33,7 @@ def test_ycbcr_to_rgb(benchmark, device, dtype, torch_optimizer, B, C, H, W):
     actual = benchmark(op, data)
 
     assert actual.shape == (B, 3, H, W)
-    
+
 
 @pytest.mark.parametrize("B", [1, 8, 32])
 @pytest.mark.parametrize("C", [3])

@@ -44,6 +44,7 @@ class TestRgbToYcbcr(BaseTester):
 
     def test_exception(self, device, dtype):
         from kornia.core.exceptions import ShapeError
+
         with pytest.raises(Exception):
             assert kornia.color.rgb_to_ycbcr([0.0])
 
@@ -158,6 +159,7 @@ class TestYcbcrToRgb(BaseTester):
 
     def test_exception(self, device, dtype):
         from kornia.core.exceptions import ShapeError
+
         with pytest.raises(Exception):
             assert kornia.color.ycbcr_to_rgb([0.0])
 

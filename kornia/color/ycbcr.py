@@ -26,7 +26,9 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
-def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor, bias: torch.Tensor | None = None) -> torch.Tensor:
+def _apply_linear_transformation(
+    image: torch.Tensor, kernel: torch.Tensor, bias: torch.Tensor | None = None
+) -> torch.Tensor:
     r"""Apply a linear transformation (matrix multiplication + bias) to the image tensor.
 
     This function branches execution to maximize performance:
@@ -47,7 +49,7 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor, bias
     # BRANCH 1: CPU (Accumulation)
     if image.device.type == "cpu":
         # CPU Optimization: Unbind and accumulate is faster than einsum for small C_in/C_out
-        x_unbound = image.unbind(-3) 
+        x_unbound = image.unbind(-3)
         out_channels = []
 
         for i, row in enumerate(kernel):
@@ -58,7 +60,7 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor, bias
                 # acc += input[j] * coeff
                 # Using torch.add with alpha is the most efficient scalar-tensor multiplication
                 acc = torch.add(acc, x_unbound[j], alpha=float(coeff))
-            
+
             out_channels.append(acc)
 
         return torch.stack(out_channels, dim=-3)
@@ -68,15 +70,15 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor, bias
         input_shape = image.shape
         B, C_in, H, W = input_shape[:-3], input_shape[-3], input_shape[-2], input_shape[-1]
         C_out, _ = kernel.shape
-    
+
         # Reshape input to (-1, C_in, H, W) for conv2d
         input_flat = image.reshape(-1, C_in, H, W)
-        
+
         # Reshape kernel to (C_out, C_in, 1, 1)
         weight = kernel.reshape(C_out, C_in, 1, 1)
-    
+
         out_flat = F.conv2d(input_flat, weight, bias)
-    
+
         # Reshape back to (*, C_out, H, W)
         return out_flat.reshape(B + (C_out, H, W))
 
@@ -172,7 +174,7 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
     # Bias_R = 1.403 * (-0.5) = -0.7015
     # Bias_G = (-0.714 * -0.5) + (-0.344 * -0.5) = 0.357 + 0.172 = 0.529
     # Bias_B = 1.773 * (-0.5) = -0.8865
-    
+
     # Optimized CPU Path: Explicit AXPY Unrolling
     # 1. The YCbCr->RGB matrix has several zero coefficients (e.g., G does not depend on some inputs in valid ranges,
     #    and the matrix has structure 1.0, 0.0, 1.403). A generic matmul multiplies by these zeros, wasting cycles.
@@ -200,7 +202,6 @@ def ycbcr_to_rgb(image: torch.Tensor) -> torch.Tensor:
         device=image_compute.device,
         dtype=image_compute.dtype,
     )
-    
 
     # Pre-computed bias to avoid allocating 'image_shifted'
     bias = torch.tensor([-0.7015, 0.529, -0.8865], device=image_compute.device, dtype=image_compute.dtype)
