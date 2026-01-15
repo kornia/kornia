@@ -56,7 +56,12 @@ class TestSepia(BaseTester):
         self.assert_close(actual, expected_tensor, rtol=1e-2, atol=1e-2)
 
     def test_exception(self, device, dtype):
-        with pytest.raises(ValueError):
+        from kornia.core.exceptions import TypeCheckError, ShapeError
+        
+        with pytest.raises(TypeCheckError):
+            assert kornia.color.sepia([0.0])
+        
+        with pytest.raises(ShapeError):
             kornia.color.sepia(torch.rand(size=(4, 1, 1), dtype=dtype, device=device))
 
     @pytest.mark.parametrize("batch_shape", [(1, 3, 8, 15), (2, 3, 11, 7), (3, 8, 15)])
