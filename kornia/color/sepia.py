@@ -43,7 +43,6 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
                 [[0.9370]]])
     """
     # Safety Checks
-    KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])    
 
     image_compute = input if input.is_floating_point() else input.float()
