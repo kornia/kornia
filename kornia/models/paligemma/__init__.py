@@ -15,23 +15,7 @@
 # limitations under the License.
 #
 
-"""SAM-3 architecture modules for Kornia."""
+from .configuration_paligemma import PaliGemmaConfig
+from .modeling_paligemma import PaliGemma
 
-from __future__ import annotations
-
-from .common import Attention, MLPBlock
-from .image_encoder import ImageEncoderHiera, PatchEmbedding, ViTBlock
-from .mask_decoder import CrossAttentionTransformer, MaskDecoder
-from .prompt_encoder import PositionalEncoding, PromptEncoder
-
-__all__ = [
-    "Attention",
-    "CrossAttentionTransformer",
-    "ImageEncoderHiera",
-    "MLPBlock",
-    "MaskDecoder",
-    "PatchEmbedding",
-    "PositionalEncoding",
-    "PromptEncoder",
-    "ViTBlock",
-]
+__all__ = ["PaliGemma", "PaliGemmaConfig"]

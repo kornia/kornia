@@ -17,14 +17,13 @@
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia.geometry.solvers as solver
 
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestQuadraticSolver:
+class TestQuadraticSolver(BaseTester):
     def test_smoke(self, device, dtype):
         coeffs = torch.rand(1, 3, device=device, dtype=dtype)
         roots = solver.solve_quadratic(coeffs)
@@ -47,14 +46,14 @@ class TestQuadraticSolver:
     )
     def test_solve_quadratic(self, coeffs, expected_solutions, device, dtype):
         roots = solver.solve_quadratic(coeffs)
-        assert_close(roots[0], expected_solutions[0])
+        self.assert_close(roots[0], expected_solutions[0])
 
     def gradcheck(self, device):
         coeffs = torch.rand(1, 3, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(solver.solve_quadratic, (coeffs), raise_exception=True, fast_mode=True)
+        assert self.gradcheck(solver.solve_quadratic, (coeffs), raise_exception=True, fast_mode=True)
 
 
-class TestCubicSolver:
+class TestCubicSolver(BaseTester):
     def test_smoke(self, device, dtype):
         coeffs = torch.rand(1, 4, device=device, dtype=dtype)
         roots = solver.solve_cubic(coeffs)
@@ -79,14 +78,14 @@ class TestCubicSolver:
     )
     def test_solve_quadratic_in_cubic(self, coeffs, expected_solutions, device, dtype):
         roots = solver.solve_cubic(coeffs)
-        assert_close(roots[0], expected_solutions[0], rtol=1e-3, atol=1e-3)
+        self.assert_close(roots[0], expected_solutions[0], rtol=1e-3, atol=1e-3)
 
     def gradcheck(self, device):
         coeffs = torch.rand(1, 4, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(solver.solve_cubic, (coeffs), raise_exception=True, fast_mode=True)
+        assert self.gradcheck(solver.solve_cubic, (coeffs), raise_exception=True, fast_mode=True)
 
 
-class TestMultiplyDegOnePoly:
+class TestMultiplyDegOnePoly(BaseTester):
     def test_smoke(self, device, dtype):
         a = torch.rand(1, 4, device=device, dtype=dtype)
         b = torch.rand(1, 4, device=device, dtype=dtype)
@@ -140,10 +139,10 @@ class TestMultiplyDegOnePoly:
         result = solver.multiply_deg_one_poly(a, b)
 
         # Compare result with expected values
-        assert_close(result, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(result, expected, rtol=1e-4, atol=1e-4)
 
 
-class TestMultiplyDegTwoOnePoly:
+class TestMultiplyDegTwoOnePoly(BaseTester):
     def test_smoke(self, device, dtype):
         a = torch.rand(1, 10, device=device, dtype=dtype)
         b = torch.rand(1, 4, device=device, dtype=dtype)
@@ -193,10 +192,10 @@ class TestMultiplyDegTwoOnePoly:
         b = b_coeffs.to(device, dtype)
         expected = expected_coeffs.to(device, dtype)
         result = solver.multiply_deg_two_one_poly(a, b)
-        assert_close(result, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(result, expected, rtol=1e-4, atol=1e-4)
 
 
-class TestDeterminantToPolynomial:
+class TestDeterminantToPolynomial(BaseTester):
     def test_smoke(self, device, dtype):
         A = torch.rand(1, 3, 13, device=device, dtype=dtype)
         poly = solver.determinant_to_polynomial(A)
@@ -246,4 +245,4 @@ class TestDeterminantToPolynomial:
         result = solver.determinant_to_polynomial(A)
 
         # Compare result with expected values
-        assert_close(result, expected, rtol=1e-5, atol=1e-5)
+        self.assert_close(result, expected, rtol=1e-5, atol=1e-5)

@@ -57,13 +57,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
 
       - name: Restore cache
         if: inputs.cache-path != ''
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ${{ inputs.cache-path }}
           key: ${{ inputs.cache-key }}
@@ -75,7 +75,7 @@ jobs:
         run: echo "name=py$(echo '${{ matrix.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.8.1
+        uses: prefix-dev/setup-pixi@v0.9.3
         with:
           pixi-version: v0.40.0
           cache: true
