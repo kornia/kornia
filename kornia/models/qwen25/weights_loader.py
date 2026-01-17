@@ -128,10 +128,14 @@ class Qwen25WeightLoader:
                     filename=filename,
                 )
 
-                # Load weights from safetensors
-                with safe_open(checkpoint_path, framework="pt", device="cpu") as f:
+                # Load weights from safetensors (filter for vision encoder only)
+                # Load to GPU if available to reduce system RAM usage
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                with safe_open(checkpoint_path, framework="pt", device=device) as f:
                     for key in f.keys():
-                        state_dict[key] = f.get_tensor(key)
+                        # Only load vision encoder to reduce memory (7GB -> 1.6GB)
+                        if key.startswith("visual."):
+                            state_dict[key] = f.get_tensor(key)
 
             except Exception as e:
                 print(f"Note: Could not load {filename}: {e}")
@@ -215,8 +219,13 @@ class Qwen25WeightLoader:
 
         # Convert keys
         kornia_state_dict = {}
+        matched_count = 0
+        vision_count = 0
 
         for hf_key, tensor in hf_state_dict.items():
+            if "visual" in hf_key:
+                vision_count += 1
+            
             # Try to match against each pattern
             converted = False
             for hf_pattern, kornia_pattern in self.hf_to_kornia_map.items():
@@ -233,6 +242,7 @@ class Qwen25WeightLoader:
                     if self._belongs_to_component(kornia_key, component):
                         kornia_state_dict[kornia_key] = tensor
                         converted = True
+                        matched_count += 1
                         break
 
         return kornia_state_dict

@@ -17,4 +17,9 @@
 
 from .qwen2_vl import Qwen2VLVisionTransformer
 
-__all__ = ["Qwen2VLVisionTransformer"]
+try:
+    from .onnx_inference import Qwen2VLVisionEncoderONNX
+    __all__ = ["Qwen2VLVisionTransformer", "Qwen2VLVisionEncoderONNX"]
+except ImportError:
+    # onnxruntime not installed
+    __all__ = ["Qwen2VLVisionTransformer"]

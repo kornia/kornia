@@ -323,7 +323,11 @@ class Qwen2VLVisionTransformer(Module):
             Install it with: pip install transformers
         """
         from .weights_loader import Qwen25WeightLoader
-
+        import torch
+        
+        # Detect device (use GPU if available to reduce RAM usage)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
         # Create model instance
         model = cls(
             embed_dim=embed_dim,
@@ -332,21 +336,23 @@ class Qwen2VLVisionTransformer(Module):
             intermediate_size=intermediate_size,
             out_hidden_size=out_hidden_size,
         )
-
+        model = model.to(device)
+        
         # Load weights
         loader = Qwen25WeightLoader(model_id)
         state_dict = loader.load_weights("vision_encoder")
 
         # Load into model (strict=False to allow missing rotary embedding keys)
         result = model.load_state_dict(state_dict, strict=False)
-
-        # Log any missing or unexpected keys
-        if result.missing_keys or result.unexpected_keys:
-            if result.missing_keys:
-                print(f"Warning: {len(result.missing_keys)} missing keys")
-            if result.unexpected_keys:
-                print(f"Warning: {len(result.unexpected_keys)} unexpected keys")
-
+        
+        # Log any missing or unexpected keys (these indicate potential issues)
+        if result.missing_keys:
+            import warnings
+            warnings.warn(f"Missing {len(result.missing_keys)} keys when loading pretrained weights")
+        if result.unexpected_keys:
+            import warnings
+            warnings.warn(f"Unexpected {len(result.unexpected_keys)} keys in pretrained weights")
+        
         return model
 
     def forward(self, x: Tensor) -> Tensor:
@@ -368,12 +374,12 @@ class Qwen2VLVisionTransformer(Module):
         # The merger requires grid_h and grid_w to be divisible by 2 for 2x2 grouping
         pad_h = (28 - H % 28) % 28
         pad_w = (28 - W % 28) % 28
-
-        if pad_h > 0 or pad_w > 0:
-            x = F.pad(x, (0, pad_w, 0, pad_h))
-            H = H + pad_h
-            W = W + pad_w
-
+        
+        # Always pad (even if 0) to avoid dynamic control flow for ONNX export
+        x = F.pad(x, (0, pad_w, 0, pad_h))
+        H = H + pad_h
+        W = W + pad_w
+        
         # Calculate grid dimensions after padding
         grid_h = H // 14
         grid_w = W // 14
