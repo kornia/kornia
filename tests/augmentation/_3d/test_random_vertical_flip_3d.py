@@ -34,6 +34,12 @@ class TestRandomVerticalFlip3D(BaseTester):
         f = RandomVerticalFlip3D(0.5)
         repr = "RandomVerticalFlip3D(p=0.5, p_batch=1.0, same_on_batch=False, return_transform=None)"
         assert str(f) == repr
+        input_tensor = torch.rand(1, 1, 2, 3, 3)
+        output = f(input_tensor)
+
+        assert isinstance(output, torch.Tensor)
+        assert output.shape == input_tensor.shape
+        assert output.dtype == input_tensor.dtype
 
     def test_random_vflip(self, device, dtype):
         f = RandomVerticalFlip3D(p=1.0)
