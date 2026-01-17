@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Union
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 class _MergerWrapper(nn.Module):
@@ -146,7 +146,7 @@ def export_vision_encoder_components(
     print("\n" + "=" * 60)
     print("EXPORT COMPLETE")
     print("=" * 60)
-    print(f"\n✓ Exported 34 components")
+    print("\n✓ Exported 34 components")
     print(f"Total size: {total_size:.2f} MB (~{total_size / 1024:.2f} GB)")
     print(f"Location: {output_dir}")
     print("\nUsage:")
@@ -157,9 +157,7 @@ def export_vision_encoder_components(
 
 def main() -> None:
     """CLI entry point for exporting ONNX components."""
-    parser = argparse.ArgumentParser(
-        description="Export Qwen2.5-VL Vision Encoder to ONNX components"
-    )
+    parser = argparse.ArgumentParser(description="Export Qwen2.5-VL Vision Encoder to ONNX components")
     parser.add_argument(
         "--output-dir",
         type=str,

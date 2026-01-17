@@ -225,7 +225,7 @@ class Qwen25WeightLoader:
         for hf_key, tensor in hf_state_dict.items():
             if "visual" in hf_key:
                 vision_count += 1
-            
+
             # Try to match against each pattern
             converted = False
             for hf_pattern, kornia_pattern in self.hf_to_kornia_map.items():
