@@ -118,5 +118,5 @@ __all__ = [
     "solarize",
     "threshold",
     "zca_mean",
-    "zca_whiten"
+    "zca_whiten",
 ]
