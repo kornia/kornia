@@ -1213,6 +1213,7 @@ class TestRandomVerticalFlip(BaseTester):
             output[..., result_coordinates[0, 1, :], result_coordinates[0, 0, :]],
             input[..., input_coordinates[0, 1, :], input_coordinates[0, 0, :]],
         )
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         input = torch.rand((3, 3), device=device, dtype=torch.float64)
