@@ -59,6 +59,7 @@ from .jpeg import JPEGCodecDifferentiable, jpeg_codec_differentiable
 from .normalize import Denormalize, Normalize, denormalize, normalize, normalize_min_max
 from .rescale import Rescale
 from .shift_rgb import shift_rgb
+from .threshold import Threshold, ThresholdType, threshold
 from .zca import ZCAWhitening, linear_transform, zca_mean, zca_whiten
 
 __all__ = [
@@ -81,6 +82,8 @@ __all__ = [
     "JPEGCodecDifferentiable",
     "Normalize",
     "Rescale",
+    "Threshold",
+    "ThresholdType",
     "ZCAWhitening",
     "add_weighted",
     "adjust_brightness",
@@ -113,6 +116,7 @@ __all__ = [
     "sharpness",
     "shift_rgb",
     "solarize",
+    "threshold",
     "zca_mean",
-    "zca_whiten",
+    "zca_whiten"
 ]
