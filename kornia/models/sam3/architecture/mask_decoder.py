@@ -31,6 +31,20 @@ from kornia.core.check import KORNIA_CHECK
 from .common import Attention, MLPBlock
 
 
+def _cast_module_to_dtype(module: nn.Module, target_dtype: torch.dtype) -> None:
+    """Cast all parameters in a module to the target dtype.
+    
+    This is a workaround for ensuring dtype consistency when .to() doesn't properly
+    convert all module parameters, particularly for float64 testing compatibility.
+    
+    Args:
+        module: The module to cast.
+        target_dtype: The target dtype to cast parameters to.
+    """
+    for param in module.parameters():
+        param.data = param.data.to(dtype=target_dtype)
+
+
 class PositionalEncodingDecoder(nn.Module):
     """Learnable positional encoding for 2D spatial features.
 
@@ -218,7 +232,7 @@ class MaskDecoder(nn.Module):
                 if not hasattr(self, "_dense_projection"):
                     in_channels = dense_prompt_embeddings.shape[1]
                     self._dense_projection = nn.Conv2d(in_channels, self.embed_dim, kernel_size=1, bias=False)
-                    self._dense_projection = self._dense_projection.to(dense_prompt_embeddings.device)
+                    self._dense_projection = self._dense_projection.to(dense_prompt_embeddings.device, dtype=dense_prompt_embeddings.dtype)
                 dense_prompt_embeddings = self._dense_projection(dense_prompt_embeddings)
 
             # Resize dense prompts to match image embedding spatial size
@@ -240,7 +254,7 @@ class MaskDecoder(nn.Module):
             if sparse_prompt_embeddings.shape[-1] != self.embed_dim:
                 if not hasattr(self, "_prompt_projection"):
                     self._prompt_projection = nn.Linear(sparse_prompt_embeddings.shape[-1], self.embed_dim, bias=False)
-                    self._prompt_projection = self._prompt_projection.to(sparse_prompt_embeddings.device)
+                    self._prompt_projection = self._prompt_projection.to(sparse_prompt_embeddings.device, dtype=sparse_prompt_embeddings.dtype)
                 sparse_prompt_embeddings = self._prompt_projection(sparse_prompt_embeddings)
 
             sparse_processed = self.transformer(sparse_prompt_embeddings, image_with_prompts)

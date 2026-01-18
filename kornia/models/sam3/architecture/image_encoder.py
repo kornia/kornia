@@ -71,6 +71,9 @@ class PatchEmbedding(nn.Module):
             x.shape[2] % self.patch_size == 0 and x.shape[3] % self.patch_size == 0,
             f"Image dimensions must be divisible by patch_size={self.patch_size}, got H={x.shape[2]}, W={x.shape[3]}",
         )
+        # Cast Conv2d weights to match input dtype to support float64
+        for param in self.proj.parameters():
+            param.data = param.data.to(dtype=x.dtype)
         x = self.proj(x)  # (B, embed_dim, H//patch_size, W//patch_size)
         x = x.flatten(2).transpose(1, 2)  # (B, H*W, embed_dim)
         x = self.norm(x)
@@ -194,7 +197,7 @@ class ImageEncoderHiera(nn.Module):
         x = self.patch_embed(x)  # (B, num_patches, embed_dim)
 
         # Add positional embedding
-        x = x + self.pos_embed
+        x = x + self.pos_embed.to(dtype=x.dtype)
 
         # Apply transformer blocks
         for block in self.blocks:

@@ -16,7 +16,7 @@
 #
 from __future__ import annotations
 
-from enum import Enum, member
+from enum import Enum
 from functools import partial
 
 import torch
@@ -50,7 +50,7 @@ def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
 
 
 class Kernel(Enum):
-    xu = member(xu_kernel)
+    xu = "xu_kernel"  # Use string reference instead
 
 
 def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> torch.Tensor:
@@ -116,11 +116,14 @@ class EntropyBasedLossBase(torch.nn.Module):
         self.eps = torch.finfo(reference_signal.dtype).eps
         self.register_buffer("signal", _normalize_signal(reference_signal, num_bins, self.eps))
         self.num_bins = num_bins
-        if kernel_function not in Kernel:
+        if not isinstance(kernel_function, Kernel):
             raise ValueError(
-                f"The passed_kernel_function is not an accepted Kernel, the available options are {list(Kernel)}."
+                f"The passed kernel_function is not an accepted Kernel, the available options are {list(Kernel)}."
             )
-        self.kernel_function = partial(kernel_function.value, window_radius=window_radius)
+        # Resolve kernel function from enum value
+        kernel_func_map = {"xu_kernel": xu_kernel}
+        kernel_fn = kernel_func_map[kernel_function.value]
+        self.kernel_function = partial(kernel_fn, window_radius=window_radius)
         self.window_radius = window_radius
         self.bin_centers = torch.arange(self.num_bins, device=self.signal.device)
 

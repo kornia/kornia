@@ -68,7 +68,7 @@ class PositionalEncoding(nn.Module):
         B, N, _ = coords.shape
 
         # Create frequency bands
-        freqs = torch.arange(0, self.embed_dim // 2, dtype=torch.float32, device=coords.device)
+        freqs = torch.arange(0, self.embed_dim // 2, dtype=coords.dtype, device=coords.device)
         freqs = 2.0 ** (freqs / (self.embed_dim // 2)) * torch.pi
 
         # Expand coordinates and frequency bands for broadcasting
@@ -245,7 +245,7 @@ class PromptEncoder(nn.Module):
             # Use learned projection
             if not hasattr(self, "_mask_projection"):
                 self._mask_projection = nn.Linear(x.shape[1], self.embed_dim, bias=False)
-                self._mask_projection = self._mask_projection.to(x.device)
+                self._mask_projection = self._mask_projection.to(x.device, dtype=x.dtype)
             # Reshape for linear projection
             B, C, H, W = x.shape
             x_flat = x.permute(0, 2, 3, 1).reshape(-1, C)  # (B*H*W, C)
@@ -311,7 +311,15 @@ class PromptEncoder(nn.Module):
         else:
             if device is None:
                 device = torch.device("cpu")
-            sparse_embeddings = torch.zeros(B, 0, self.embed_dim, device=device)
+            # Determine dtype from available inputs
+            dtype = torch.float32
+            if points is not None:
+                dtype = points[0].dtype
+            elif boxes is not None:
+                dtype = boxes.dtype
+            elif masks is not None:
+                dtype = masks.dtype
+            sparse_embeddings = torch.zeros(B, 0, self.embed_dim, device=device, dtype=dtype)
 
         # Process mask prompts (Phase 3: full semantic encoding)
         if masks is not None:
