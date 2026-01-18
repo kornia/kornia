@@ -24,10 +24,10 @@ from kornia.geometry import create_meshgrid
 from kornia.image import draw_convex_polygon, draw_rectangle
 from kornia.image.draw import draw_line, draw_point2d
 
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestDrawPoint:
+class TestDrawPoint(BaseTester):
     """Test drawing individual pixels."""
 
     def test_draw_point2d_rgb(self, dtype, device):
@@ -37,7 +37,7 @@ class TestDrawPoint:
         img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
         img = draw_point2d(img, points, color)
         for x, y in points:
-            assert_close(img[:, y, x], color.to(img.dtype))
+            self.assert_close(img[:, y, x], color.to(img.dtype))
 
     def test_draw_point2d_grayscale_third_order(self, dtype, device):
         """Test plotting multiple [x, y] points on a (1, m, n) image."""
@@ -46,7 +46,7 @@ class TestDrawPoint:
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_point2d(img, points, color)
         for x, y in points:
-            assert_close(img[:, y, x], color.to(img.dtype))
+            self.assert_close(img[:, y, x], color.to(img.dtype))
 
     def test_draw_point2d_grayscale_second_order(self, dtype, device):
         """Test plotting multiple [x, y] points on a (m, n) image."""
@@ -55,7 +55,7 @@ class TestDrawPoint:
         img = torch.zeros(8, 8, dtype=dtype, device=device)
         img = draw_point2d(img, points, color)
         for x, y in points:
-            assert_close(torch.unsqueeze(img[y, x], dim=0), color.to(img.dtype))
+            self.assert_close(torch.unsqueeze(img[y, x], dim=0), color.to(img.dtype))
 
     def test_draw_point2d_with_mismatched_dims(self, dtype, device):
         """Test that we raise if the len of the color tensor != the # of image channels."""
@@ -73,7 +73,7 @@ class TestDrawPoint:
         img = draw_point2d(img, points, color)
         assert img.dtype is torch.uint8
         for x, y in points:
-            assert_close(img[:, y, x], color.to(torch.uint8))
+            self.assert_close(img[:, y, x], color.to(torch.uint8))
 
     def test_draw_point2d_with_singleton_color_dims(self, dtype, device):
         """Ensure that plotting behavior is consistent if we have a singleton dim for the color."""
@@ -87,10 +87,10 @@ class TestDrawPoint:
         mat_img = vec_img.clone()
         drawn_mat_img = draw_point2d(mat_img, points, color_mat)
         # Ensure that we get the same underlying image back
-        assert_close(drawn_vec_img, drawn_mat_img)
+        self.assert_close(drawn_vec_img, drawn_mat_img)
 
 
-class TestDrawLine:
+class TestDrawLine(BaseTester):
     def test_draw_line_vertical(self, dtype, device):
         """Test drawing a vertical line."""
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
@@ -111,7 +111,7 @@ class TestDrawLine:
             device=device,
             dtype=dtype,
         )
-        assert_close(img, img_mask)
+        self.assert_close(img, img_mask)
 
     def test_draw_line_horizontal(self, dtype, device):
         """Test drawing a horizontal line."""
@@ -133,7 +133,7 @@ class TestDrawLine:
             device=device,
             dtype=dtype,
         )
-        assert_close(img, img_mask)
+        self.assert_close(img, img_mask)
 
     def test_draw_line_with_big_coordinates(self, dtype, device):
         """Test drawing a line with big coordinates."""
@@ -141,7 +141,7 @@ class TestDrawLine:
         img = draw_line(img, torch.tensor([200, 200]), torch.tensor([400, 200]), torch.tensor([255]))
         img_mask = torch.zeros(1, 500, 500, dtype=dtype, device=device)
         img_mask[:, 200, 200:401] = 255
-        assert_close(img, img_mask)
+        self.assert_close(img, img_mask)
 
     def test_draw_line_m_lte_neg1(self, dtype, device):
         """Test drawing a line with m <= -1."""
@@ -163,7 +163,7 @@ class TestDrawLine:
             device=device,
             dtype=dtype,
         )
-        assert_close(img, img_mask)
+        self.assert_close(img, img_mask)
 
     def test_draw_line_m_lt_0_gte_neg1(self, dtype, device):
         """Test drawing a line with -1 < m < 0."""
@@ -185,7 +185,7 @@ class TestDrawLine:
             device=device,
             dtype=dtype,
         )
-        assert_close(img, img_mask)
+        self.assert_close(img, img_mask)
 
     def test_draw_line_m_gt_0_lt_1(self, dtype, device):
         """Test drawing a line with 0 < m < 1."""
@@ -207,7 +207,7 @@ class TestDrawLine:
             device=device,
             dtype=dtype,
         )
-        assert_close(img, img_mask)
+        self.assert_close(img, img_mask)
 
     def test_draw_line_m_gte_1(self, dtype, device):
         """Test drawing a line with m >= 1."""
@@ -229,7 +229,7 @@ class TestDrawLine:
             device=device,
             dtype=dtype,
         )
-        assert_close(img, img_mask)
+        self.assert_close(img, img_mask)
 
     def test_draw_lines_batched(self, dtype, device):
         """Test drawing a line with m <= -1."""
@@ -253,7 +253,7 @@ class TestDrawLine:
             device=device,
             dtype=dtype,
         )
-        assert_close(img, img_mask)
+        self.assert_close(img, img_mask)
 
     @pytest.mark.parametrize(
         "p1", [torch.tensor([-1, 0]), torch.tensor([0, -1]), torch.tensor([8, 0]), torch.tensor([0, 8])]
@@ -313,7 +313,7 @@ class TestDrawLine:
         )
 
 
-class TestDrawRectangle:
+class TestDrawRectangle(BaseTester):
     @pytest.mark.parametrize("batch", (4, 17))
     @pytest.mark.parametrize("color", (torch.Tensor([1.0]), torch.Tensor([0.5])))
     def test_smoke(self, device, batch, color):
@@ -451,7 +451,7 @@ class TestDrawRectangle:
         )
 
 
-class TestFillConvexPolygon:
+class TestFillConvexPolygon(BaseTester):
     def test_circle(self, device, dtype):
         b, c, h, w = 1, 3, 500, 500
         n = 5000
@@ -497,7 +497,7 @@ class TestFillConvexPolygon:
         poly_im = draw_convex_polygon(im.clone(), pts, color)
         rect = torch.cat((pts[..., 0, :], pts[..., 2, :]), dim=-1)[:, None]
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
-        assert_close(rect_im, poly_im)
+        self.assert_close(rect_im, poly_im)
 
     def test_batch(self, device, dtype):
         im = torch.rand(2, 3, 12, 16, dtype=dtype, device=device)
@@ -508,7 +508,7 @@ class TestFillConvexPolygon:
         poly_im = draw_convex_polygon(im.clone(), pts, color)
         rect = torch.tensor([[[4, 4, 12, 8]], [[0, 0, 4, 4]]], dtype=dtype, device=device)
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
-        assert_close(rect_im, poly_im)
+        self.assert_close(rect_im, poly_im)
 
     def test_batch_variable_size(self, device, dtype):
         im = torch.rand(2, 3, 12, 16, dtype=dtype, device=device)
@@ -520,7 +520,7 @@ class TestFillConvexPolygon:
         poly_im = draw_convex_polygon(im.clone(), pts, color)
         rect = torch.tensor([[[4, 4, 12, 8]], [[0, 0, 4, 4]]], dtype=dtype, device=device)
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
-        assert_close(rect_im, poly_im)
+        self.assert_close(rect_im, poly_im)
 
     def test_batch_color_no_batch(self, device, dtype):
         im = torch.rand(2, 3, 12, 16, dtype=dtype, device=device)
@@ -532,7 +532,7 @@ class TestFillConvexPolygon:
         poly_im = draw_convex_polygon(im.clone(), pts, color)
         rect = torch.tensor([[[4, 4, 12, 8]], [[0, 0, 4, 4]]], dtype=dtype, device=device)
         rect_im = draw_rectangle(im.clone(), rect, color, fill=True)
-        assert_close(rect_im, poly_im)
+        self.assert_close(rect_im, poly_im)
 
     def test_out_of_bounds_rectangle(self, device, dtype):
         b, c, h, w = 1, 3, 500, 500
@@ -542,9 +542,9 @@ class TestFillConvexPolygon:
         poly_im = draw_convex_polygon(im.clone(), pts, color)
         rect = torch.cat((pts[..., 0, :], pts[..., 2, :]), dim=-1)[:, None]
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
-        assert_close(rect_im, poly_im)
+        self.assert_close(rect_im, poly_im)
         pts = -150 + torch.tensor([[[50, 50], [200, 50], [200, 250], [50, 250]]], device=device, dtype=dtype)
         poly_im = draw_convex_polygon(im.clone(), pts, color)
         rect = torch.cat((pts[..., 0, :], pts[..., 2, :]), dim=-1)[:, None]
         rect_im = draw_rectangle(im.clone(), rect, color[:, None], fill=True)
-        assert_close(rect_im, poly_im)
+        self.assert_close(rect_im, poly_im)
