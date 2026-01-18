@@ -1,5 +1,8 @@
+import os
 import sys
-sys.path.insert(0, r'C:\Users\lenovo\KORNIAAA\kornia\tests\onnx')
+script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, script_dir)
+
 import test_resize_onnx
 test_resize_onnx.test_resize_dynamo_with_binding()
 print('Test 1 passed')
