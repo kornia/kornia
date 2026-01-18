@@ -549,8 +549,6 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
         return side_size, int(side_size * aspect_ratio)
     return int(side_size / aspect_ratio), side_size
 
-
-@perform_keep_shape_image
 def resize(
     input: torch.Tensor,
     size: Union[int, Tuple[int, int]],
@@ -594,47 +592,46 @@ def resize(
     if len(input.shape) < 2:
         raise ValueError(f"Input tensor must have at least two dimensions. Got {len(input.shape)}")
 
-    input_size = h, w = input.shape[-2:]
+    original_shape = input.shape
+    h, w = input.shape[-2:]
     if isinstance(size, int):
-        if torch.onnx.is_in_onnx_export():
-            warnings.warn(
-                "Please pass the size with a tuple when exporting to ONNX to correct the tracing.", stacklevel=1
-            )
         aspect_ratio = w / h
         size = _side_to_image_size(size, aspect_ratio, side)
-
-    # Skip this dangerous if-else when converting to ONNX.
-    if not torch.onnx.is_in_onnx_export():
-        if size == input_size:
-            return input
+    if len(original_shape) == 2:
+        # (H, W) -> (1, 1, H, W)
+        input = input.unsqueeze(0).unsqueeze(0)
+    elif len(original_shape) == 3:
+        # (C, H, W) -> (1, C, H, W)
+        input = input.unsqueeze(0)
+    elif len(original_shape) > 4:
+        # Flatten all leading dims: (*, C, H, W) -> (B, C, H, W)
+        batch_size = 1
+        for d in original_shape[:-3]:
+            batch_size *= d
+        input = input.reshape(batch_size, *original_shape[-3:])
 
     factors = (h / size[0], w / size[1])
-
-    # We do bluring only for downscaling
     antialias = antialias and (max(factors) > 1)
 
     if antialias:
-        # First, we have to determine sigma
-        # Taken from skimage: https://github.com/scikit-image/scikit-image/blob/v0.19.2/skimage/transform/_warps.py#L171
         sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
 
-        # Now kernel size. Good results are for 3 sigma, but that is kind of slow. Pillow uses 1 sigma
-        # https://github.com/python-pillow/Pillow/blob/master/src/libImaging/Resample.c#L206
-        # But they do it in the 2 passes, which gives better results. Let's try 2 sigmas for now
         ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
-
-        # Make sure it is odd
-        if (ks[0] % 2) == 0:
-            ks = ks[0] + 1, ks[1]
-
-        if (ks[1] % 2) == 0:
-            ks = ks[0], ks[1] + 1
+        
+        ks = (ks[0] if ks[0] % 2 else ks[0] + 1, ks[1] if ks[1] % 2 else ks[1] + 1)
 
         input = gaussian_blur2d(input, ks, sigmas)
 
     output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
-    return output
 
+    if len(original_shape) == 2:
+        output = output[0, 0]
+    elif len(original_shape) == 3:
+        output = output[0]
+    elif len(original_shape) > 4:
+        output = output.reshape(*original_shape[:-2], size[0], size[1])
+
+    return output
 
 def resize_to_be_divisible(
     input: torch.Tensor,
