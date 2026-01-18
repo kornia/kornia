@@ -22,10 +22,10 @@ import numpy as np
 import pytest
 import torch
 
+from kornia.geometry.transform import Resize
+
 onnx = pytest.importorskip("onnx")
 ort = pytest.importorskip("onnxruntime")
-
-from kornia.geometry.transform import Resize
 
 
 def test_resize_dynamo_with_binding():

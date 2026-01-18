@@ -13,14 +13,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-
-import os
+# limitations under the License.
 import sys
+from pathlib import Path
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, script_dir)
-
+script_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(script_dir))
+# ruff: noqa: E402
 import test_resize_onnx
 
 test_resize_onnx.test_resize_dynamo_with_binding()
