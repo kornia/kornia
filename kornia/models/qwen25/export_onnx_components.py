@@ -34,7 +34,6 @@ The exported components can be loaded using Qwen2VLVisionEncoderONNX:
 """
 
 import argparse
-import math
 from pathlib import Path
 from typing import Union
 
@@ -57,7 +56,7 @@ class _MergerWrapperFixed(nn.Module):
 
 class _MergerWrapperDynamic(nn.Module):
     """ONNX-compatible merger wrapper with grid dimensions as inputs.
-    
+
     Accepts grid_h and grid_w as 0-dim tensor inputs, enabling dynamic
     aspect ratio support. Uses torch operations that ONNX can trace.
     """
@@ -69,41 +68,41 @@ class _MergerWrapperDynamic(nn.Module):
 
     def forward(self, x: torch.Tensor, grid_h: torch.Tensor, grid_w: torch.Tensor) -> torch.Tensor:
         """Forward with grid dimensions as inputs.
-        
+
         Args:
             x: Patches tensor (B, seq_len, 1280)
             grid_h: Grid height as 0-dim tensor
             grid_w: Grid width as 0-dim tensor
-        
+
         Returns:
             Features tensor (B, seq_len/4, 2048)
         """
         x = self.ln_q(x)
-        
+
         B = x.shape[0]
         C = x.shape[2]
-        
+
         # Convert grid dims for reshape - use view with computed total
         gh = grid_h.reshape(())  # Ensure 0-dim
         gw = grid_w.reshape(())
-        
+
         # Reshape to grid: (B, seq_len, C) -> (B, grid_h, grid_w, C)
         x = x.view(B, gh, gw, C)
-        
+
         # Merge 2x2: (B, H, W, C) -> (B, H/2, 2, W/2, 2, C)
         H_half = gh // 2
         W_half = gw // 2
         x = x.view(B, H_half, 2, W_half, 2, C)
-        
+
         # Permute to group 2x2
         x = x.permute(0, 1, 3, 2, 4, 5).contiguous()
-        
+
         # Flatten 2x2: (B, H/2, W/2, 4*C)
         x = x.view(B, H_half * W_half, C * 4)
-        
+
         # MLP
         x = self.mlp(x)
-        
+
         return x
 
 
@@ -210,7 +209,7 @@ def export_vision_encoder_components(
         # Create dummy grid dimensions as scalar tensors
         dummy_grid_h = torch.tensor(grid_h, dtype=torch.int64)
         dummy_grid_w = torch.tensor(grid_w, dtype=torch.int64)
-        
+
         torch.onnx.export(
             merger_wrapped,
             (dummy_patches, dummy_grid_h, dummy_grid_w),  # 3 inputs
@@ -250,14 +249,14 @@ def export_vision_encoder_components(
     print(f"\nExported 34 components ({export_mode})")
     print(f"Total size: {total_size:.2f} MB (~{total_size / 1024:.2f} GB)")
     print(f"Location: {output_dir}")
-    
+
     if dynamic:
         print("\nDynamic export: Supports ANY input size!")
         print("   Note: Input H and W must be divisible by 28.")
     else:
         print(f"\nFixed export: Only supports {h}x{w} input size.")
         print("   Use --dynamic flag for variable input sizes.")
-    
+
     print("\nUsage:")
     print("  from kornia.models.qwen25 import Qwen2VLVisionEncoderONNX")
     print(f'  encoder = Qwen2VLVisionEncoderONNX("{output_dir}")')
@@ -315,4 +314,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
