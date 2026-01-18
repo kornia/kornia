@@ -16,7 +16,7 @@
 #
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, member
 from functools import partial
 
 import torch
@@ -35,14 +35,18 @@ def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     Returns:
         torch.Tensor: transformed signal
     """
-    x_abs = x.abs().mul(1.0 / window_radius)
+    x = torch.abs(x) / window_radius
 
-    poly1 = x_abs * (-1.8 * x_abs - 0.1) + 1.0
-    poly2 = x_abs * (1.8 * x_abs - 3.7) + 1.9
+    kernel_val = torch.zeros_like(x)
 
-    return torch.where(
-        x_abs < 0.5, poly1, torch.where(x_abs <= 1.0, poly2, torch.tensor(0.0, device=x.device, dtype=x.dtype))
-    )
+    mask1 = x < 0.5
+    x_mask1 = x[mask1]
+    kernel_val[mask1] = -1.8 * (x_mask1**2) - 0.1 * x_mask1 + 1.0
+    mask2 = (x >= 0.5) & (x <= 1.0)
+    x_mask2 = x[mask2]
+    kernel_val[mask2] = 1.8 * (x_mask2**2) - 3.7 * x_mask2 + 1.9
+
+    return kernel_val
 
 
 def rectangular_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
@@ -155,10 +159,7 @@ class EntropyBasedLossBase(torch.nn.Module):
             raise ValueError(
                 f"The passed_kernel_function is not an accepted MIKernel, the available options are {list(MIKernel)}."
             )
-        # Resolve kernel function from enum value
-        kernel_func_map = {"xu_kernel": xu_kernel}
-        kernel_fn = kernel_func_map[kernel_function.value]
-        self.kernel_function = partial(kernel_fn, window_radius=window_radius)
+        self.kernel_function = partial(kernel_function.value, window_radius=window_radius)
         self.window_radius = window_radius
         self.bin_centers = torch.arange(self.num_bins, device=self.signal.device)
 
