@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import warnings
 from typing import Optional, Tuple, Union
 
 import torch
@@ -24,7 +23,6 @@ from torch import nn
 from kornia.core.ops import eye_like
 from kornia.core.utils import _extract_device_dtype
 from kornia.filters import gaussian_blur2d
-from kornia.image.utils import perform_keep_shape_image
 
 from .imgwarp import get_affine_matrix2d, get_projective_transform, get_rotation_matrix2d, warp_affine, warp_affine3d
 
@@ -549,6 +547,7 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
         return side_size, int(side_size * aspect_ratio)
     return int(side_size / aspect_ratio), side_size
 
+
 def resize(
     input: torch.Tensor,
     size: Union[int, Tuple[int, int]],
@@ -617,7 +616,7 @@ def resize(
         sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
 
         ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
-        
+
         ks = (ks[0] if ks[0] % 2 else ks[0] + 1, ks[1] if ks[1] % 2 else ks[1] + 1)
 
         input = gaussian_blur2d(input, ks, sigmas)
@@ -632,6 +631,7 @@ def resize(
         output = output.reshape(*original_shape[:-2], size[0], size[1])
 
     return output
+
 
 def resize_to_be_divisible(
     input: torch.Tensor,
