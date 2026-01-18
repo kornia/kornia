@@ -39,15 +39,18 @@ class Qwen2VLVisionEncoderONNX:
         >>> features = encoder(image)
         >>> print(features.shape)  # (1, 256, 2048)
     """
-
-    def __init__(self, components_dir: Union[str, Path]):
+    
+    def __init__(self, components_dir: Union[str, Path], providers: list = None):
         """Initialize the ONNX vision encoder pipeline.
 
         Args:
             components_dir: Directory containing the 34 ONNX component files
+            providers: ONNX Runtime execution providers (e.g., ['CUDAExecutionProvider'])
+                      If None, uses default providers (CPU)
         """
         self.components_dir = Path(components_dir)
-
+        self.providers = providers
+        
         if not self.components_dir.exists():
             raise FileNotFoundError(f"Components directory not found: {components_dir}")
 
@@ -64,14 +67,16 @@ class Qwen2VLVisionEncoderONNX:
 
         # Load merger
         self.merger = self._load_component("merger.onnx")
-
-        print(f"✓ Loaded 34 components from {components_dir}")
-
+        
+        print(f"Loaded 34 components from {components_dir}")
+    
     def _load_component(self, filename: str) -> ort.InferenceSession:
         """Load a single ONNX component."""
         path = self.components_dir / filename
         if not path.exists():
             raise FileNotFoundError(f"Component not found: {path}")
+        if self.providers:
+            return ort.InferenceSession(str(path), providers=self.providers)
         return ort.InferenceSession(str(path))
 
     def __call__(self, image: np.ndarray) -> np.ndarray:
@@ -79,27 +84,43 @@ class Qwen2VLVisionEncoderONNX:
 
         Args:
             image: Input image tensor of shape (B, 3, H, W) as float32.
-                   H and W should be multiples of 28 (will be padded if not).
-
+                   Works with any H and W (will be padded to multiples of 14 if needed).
+        
         Returns:
-            Feature tensor of shape (B, 256, 2048)
+            Feature tensor of shape (B, num_tokens, 2048)
+            where num_tokens depends on input size
         """
         # Validate input
         if image.ndim != 4:
             raise ValueError(f"Expected 4D input (B, C, H, W), got shape {image.shape}")
         if image.shape[1] != 3:
             raise ValueError(f"Expected 3 channels, got {image.shape[1]}")
-
+        
+        # Compute grid dimensions from image size
+        # The model pads internally to multiples of 14, so we match that
+        H, W = image.shape[2:4]
+        grid_h = (H + 13) // 14  # Rounds up to nearest 14
+        grid_w = (W + 13) // 14
+        
         # 1. Patch embedding
         x = self.patch_embed.run(None, {"image": image})[0]
 
         # 2. Transformer blocks (32 layers)
         for block in self.blocks:
             x = block.run(None, {"input": x})[0]
-
-        # 3. Merger (spatial compression)
-        output = self.merger.run(None, {"input": x})[0]
-
+        
+        # 3. Merger (spatial compression) - pass grid dimensions
+        grid_h_tensor = np.array(grid_h, dtype=np.int64)
+        grid_w_tensor = np.array(grid_w, dtype=np.int64)
+        output = self.merger.run(
+            None, 
+            {
+                "input": x,
+                "grid_h": grid_h_tensor,
+                "grid_w": grid_w_tensor,
+            }
+        )[0]
+        
         return output
 
     def infer(self, image: np.ndarray) -> np.ndarray:
@@ -127,8 +148,8 @@ def main():
 
     # Run inference
     features = encoder(test_image)
-
-    print("\n✓ Inference successful!")
+    
+    print(f"\nInference successful!")
     print(f"  Input shape: {test_image.shape}")
     print(f"  Output shape: {features.shape}")
     print(f"  Output mean: {features.mean():.6f}")
@@ -161,9 +182,9 @@ def main():
         print(f"  Mean difference: {mean_diff:.6f}")
 
         if max_diff < 1e-3:
-            print("\n  ✓✓✓ Validation PASSED!")
+            print("\n  Validation PASSED!")
         else:
-            print(f"\n  ✗ Validation failed (max diff: {max_diff:.6f})")
+            print(f"\n  Validation failed (max diff: {max_diff:.6f})")
 
 
 if __name__ == "__main__":

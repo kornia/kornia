@@ -368,7 +368,7 @@ class Qwen2VLVisionTransformer(Module):
             Visual features of shape (B, num_tokens, out_hidden_size)
 
         Note:
-            Input dimensions are automatically padded to be divisible by 14.
+            Input dimensions are automatically padded to be divisible by 28.
             Supports any aspect ratio (square, 16:9, 9:16, 4:3, etc.)
         """
         B, C, H, W = x.shape
