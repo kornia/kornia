@@ -35,22 +35,57 @@ def xu_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
     Returns:
         torch.Tensor: transformed signal
     """
-    x = torch.abs(x) / window_radius
+    x_abs = x.abs().mul(1.0 / window_radius)
 
-    kernel_val = torch.zeros_like(x)
+    poly1 = x_abs * (-1.8 * x_abs - 0.1) + 1.0
+    poly2 = x_abs * (1.8 * x_abs - 3.7) + 1.9
 
-    mask1 = x < 0.5
-    x_mask1 = x[mask1]
-    kernel_val[mask1] = -1.8 * (x_mask1**2) - 0.1 * x_mask1 + 1.0
-    mask2 = (x >= 0.5) & (x <= 1.0)
-    x_mask2 = x[mask2]
-    kernel_val[mask2] = 1.8 * (x_mask2**2) - 3.7 * x_mask2 + 1.9
-
-    return kernel_val
+    return torch.where(
+        x_abs < 0.5, poly1, torch.where(x_abs <= 1.0, poly2, torch.tensor(0.0, device=x.device, dtype=x.dtype))
+    )
 
 
-class Kernel(Enum):
-    xu = "xu_kernel"  # Use string reference instead
+def rectangular_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
+    """Implementation of a rectangular kernel.
+
+    Support: [-window_radius, window_radius]. Returns 1.0 inside this range, 0.0 otherwise.
+
+    Args:
+        x (torch.Tensor): signal, any shape
+        window_radius (float): radius of window for the kernel
+
+    Returns:
+        torch.Tensor: transformed signal
+    """
+    x = torch.abs(x)
+    return torch.where(x <= window_radius, 1.0, 0.0)
+
+
+def truncated_gaussian_kernel(x: torch.Tensor, window_radius: float = 1.0) -> torch.Tensor:
+    """Implementation of a truncated Gaussian kernel.
+
+    Support: [-window_radius, window_radius]. Returns Gaussian value inside this range, 0.0 otherwise.
+    Sigma is set to window_radius.
+
+    Args:
+        x (torch.Tensor): signal, any shape
+        window_radius (float): radius of window for the kernel (used as sigma)
+
+    Returns:
+        torch.Tensor: transformed signal
+    """
+    sigma = window_radius
+    mask = torch.abs(x) <= window_radius
+
+    gaussian_val = torch.exp(-0.5 * (x / sigma) ** 2) / (sigma * (2 * torch.pi) ** 0.5)
+
+    return torch.where(mask, gaussian_val, 0.0)
+
+
+class MIKernel(Enum):
+    xu = member(xu_kernel)
+    rectangular = member(rectangular_kernel)
+    truncated_gaussian = member(truncated_gaussian_kernel)
 
 
 def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> torch.Tensor:
@@ -93,7 +128,7 @@ class EntropyBasedLossBase(torch.nn.Module):
     def __init__(
         self,
         reference_signal: torch.Tensor,
-        kernel_function: Kernel = Kernel.xu,
+        kernel_function: MIKernel = MIKernel.xu,
         num_bins: int = 64,
         window_radius: float = 1.0,
     ) -> None:
@@ -102,23 +137,23 @@ class EntropyBasedLossBase(torch.nn.Module):
         Args:
             reference_signal (torch.Tensor): reference signal to which
                 other signals will be compared by the forward method
-            kernel_function (Kernel): Used kernel function for kernel
-                density estimate, by default Kernel.xu
+            kernel_function (MIKernel): Used kernel function for kernel
+                density estimate, by default MIKernel.xu
             num_bins (int): number of signal value bins in kernel
                 density estimate, by default 64
             window_radius (float): radius of the kernel's support
                 interval, by default 1.0
 
         Raises:
-            ValueError: If kernel_function is not a valid Kernel member.
+            ValueError: If kernel_function is not a valid MIKernel member.
         """
         super().__init__()
         self.eps = torch.finfo(reference_signal.dtype).eps
         self.register_buffer("signal", _normalize_signal(reference_signal, num_bins, self.eps))
         self.num_bins = num_bins
-        if not isinstance(kernel_function, Kernel):
+        if kernel_function not in MIKernel:
             raise ValueError(
-                f"The passed kernel_function is not an accepted Kernel, the available options are {list(Kernel)}."
+                f"The passed_kernel_function is not an accepted MIKernel, the available options are {list(MIKernel)}."
             )
         # Resolve kernel function from enum value
         kernel_func_map = {"xu_kernel": xu_kernel}
@@ -239,7 +274,7 @@ class MILossFromRef2D(MILossFromRef):
     def __init__(
         self,
         reference_signal: torch.Tensor,
-        kernel_function: Kernel = Kernel.xu,
+        kernel_function: MIKernel = MIKernel.xu,
         num_bins: int = 64,
         window_radius: float = 1,
     ) -> None:
@@ -250,8 +285,8 @@ class MILossFromRef2D(MILossFromRef):
                 other signals will be compared by the forward method.
                 batch of 2D images, shape (B,H,W) where B are the batch
                 dimensions.
-            kernel_function (Kernel): Used kernel function for kernel
-                density estimate, by default Kernel.xu
+            kernel_function (MIKernel): Used kernel function for kernel
+                density estimate, by default MIKernel.xu
             num_bins (int): number of signal value bins in kernel
                 density estimate, by default 64
             window_radius (float): radius of the kernel's support
@@ -292,7 +327,7 @@ class MILossFromRef3D(MILossFromRef):
     def __init__(
         self,
         reference_signal: torch.Tensor,
-        kernel_function: Kernel = Kernel.xu,
+        kernel_function: MIKernel = MIKernel.xu,
         num_bins: int = 64,
         window_radius: float = 1,
     ) -> None:
@@ -303,8 +338,8 @@ class MILossFromRef3D(MILossFromRef):
                 other signals will be compared by the forward method.
                 batch of 3D images, shape (B,D,H,W) where B are the
                 batch dimensions.
-            kernel_function (Kernel): Used kernel function for kernel
-                density estimate, by default Kernel.xu
+            kernel_function (MIKernel): Used kernel function for kernel
+                density estimate, by default MIKernel.xu
             num_bins (int): number of signal value bins in kernel
                 density estimate, by default 64
             window_radius (float): radius of the kernel's support
@@ -345,7 +380,7 @@ class NMILossFromRef2D(NMILossFromRef):
     def __init__(
         self,
         reference_signal: torch.Tensor,
-        kernel_function: Kernel = Kernel.xu,
+        kernel_function: MIKernel = MIKernel.xu,
         num_bins: int = 64,
         window_radius: float = 1,
     ) -> None:
@@ -356,8 +391,8 @@ class NMILossFromRef2D(NMILossFromRef):
                 other signals will be compared by the forward method.
                 batch of 2D images, shape (B,H,W) where B are the batch
                 dimensions.
-            kernel_function (Kernel): Used kernel function for kernel
-                density estimate, by default Kernel.xu
+            kernel_function (MIKernel): Used kernel function for kernel
+                density estimate, by default MIKernel.xu
             num_bins (int): number of signal value bins in kernel
                 density estimate, by default 64
             window_radius (float): radius of the kernel's support
@@ -398,7 +433,7 @@ class NMILossFromRef3D(NMILossFromRef):
     def __init__(
         self,
         reference_signal: torch.Tensor,
-        kernel_function: Kernel = Kernel.xu,
+        kernel_function: MIKernel = MIKernel.xu,
         num_bins: int = 64,
         window_radius: float = 1,
     ) -> None:
@@ -409,8 +444,8 @@ class NMILossFromRef3D(NMILossFromRef):
                 other signals will be compared by the forward method.
                 batch of 3D images, shape (B,D,H,W) where B are the
                 batch dimensions.
-            kernel_function (Kernel): Used kernel function for kernel
-                density estimate, by default Kernel.xu
+            kernel_function (MIKernel): Used kernel function for kernel
+                density estimate, by default MIKernel.xu
             num_bins (int): number of signal value bins in kernel
                 density estimate, by default 64
             window_radius (float): radius of the kernel's support
@@ -442,7 +477,7 @@ class NMILossFromRef3D(NMILossFromRef):
 def mutual_information_loss(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function: Kernel = Kernel.xu,
+    kernel_function: MIKernel = MIKernel.xu,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
@@ -457,8 +492,8 @@ def mutual_information_loss(
             is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of flat tensors, same shape as
             input.
-        kernel_function (Kernel): Used kernel function for kernel
-            density estimate, by default Kernel.xu
+        kernel_function (MIKernel): Used kernel function for kernel
+            density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
         window_radius (float): The smoothing window radius in KDE, in
             terms of bin width units, defaults to 1.
@@ -476,7 +511,7 @@ def mutual_information_loss(
 def mutual_information_loss_2d(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function: Kernel = Kernel.xu,
+    kernel_function: MIKernel = MIKernel.xu,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
@@ -490,8 +525,8 @@ def mutual_information_loss_2d(
         input (torch.Tensor): Batch of 2d tensors shape (B,H,W) where B
             is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of 2d tensors, same shape as input.
-        kernel_function (Kernel): Used kernel function for kernel
-            density estimate, by default Kernel.xu
+        kernel_function (MIKernel): Used kernel function for kernel
+            density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
         window_radius (float): The smoothing window radius in KDE, in
             terms of bin width units, defaults to 1.
@@ -509,7 +544,7 @@ def mutual_information_loss_2d(
 def mutual_information_loss_3d(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function: Kernel = Kernel.xu,
+    kernel_function: MIKernel = MIKernel.xu,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
@@ -523,8 +558,8 @@ def mutual_information_loss_3d(
         input (torch.Tensor): Batch of 3d tensors shape (B,D,H,W) where
             B is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of 3d tensors, same shape as input.
-        kernel_function (Kernel): Used kernel function for kernel
-            density estimate, by default Kernel.xu
+        kernel_function (MIKernel): Used kernel function for kernel
+            density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
         window_radius (float): The smoothing window radius in KDE, in
             terms of bin width units, defaults to 1.
@@ -542,7 +577,7 @@ def mutual_information_loss_3d(
 def normalized_mutual_information_loss(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function: Kernel = Kernel.xu,
+    kernel_function: MIKernel = MIKernel.xu,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
@@ -557,8 +592,8 @@ def normalized_mutual_information_loss(
             is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of flat tensors, same shape as
             input.
-        kernel_function (Kernel): Used kernel function for kernel
-            density estimate, by default Kernel.xu
+        kernel_function (MIKernel): Used kernel function for kernel
+            density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
         window_radius (float): The smoothing window radius in KDE, in
             terms of bin width units, defaults to 1.
@@ -579,7 +614,7 @@ def normalized_mutual_information_loss(
 def normalized_mutual_information_loss_2d(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function: Kernel = Kernel.xu,
+    kernel_function: MIKernel = MIKernel.xu,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
@@ -593,8 +628,8 @@ def normalized_mutual_information_loss_2d(
         input (torch.Tensor): Batch of 2d tensors shape (B,H,W) where B
             is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of 2d tensors, same shape as input.
-        kernel_function (Kernel): Used kernel function for kernel
-            density estimate, by default Kernel.xu
+        kernel_function (MIKernel): Used kernel function for kernel
+            density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
         window_radius (float): The smoothing window radius in KDE, in
             terms of bin width units, defaults to 1.
@@ -612,7 +647,7 @@ def normalized_mutual_information_loss_2d(
 def normalized_mutual_information_loss_3d(
     input: torch.Tensor,
     target: torch.Tensor,
-    kernel_function: Kernel = Kernel.xu,
+    kernel_function: MIKernel = MIKernel.xu,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
@@ -626,8 +661,8 @@ def normalized_mutual_information_loss_3d(
         input (torch.Tensor): Batch of 3d tensors shape (B,D,H,W) where
             B is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of 3d tensors, same shape as input.
-        kernel_function (Kernel): Used kernel function for kernel
-            density estimate, by default Kernel.xu
+        kernel_function (MIKernel): Used kernel function for kernel
+            density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
         window_radius (float): The smoothing window radius in KDE, in
             terms of bin width units, defaults to 1.

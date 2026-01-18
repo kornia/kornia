@@ -18,6 +18,7 @@ import pytest
 import torch
 
 from kornia.losses.mutual_information import (
+    MIKernel,
     MILossFromRef,
     NMILossFromRef,
     mutual_information_loss,
@@ -133,49 +134,53 @@ class TestMutualInformationLoss(BaseTester):
         for _ in range(10):
             self.value_ranges_check(device, dtype)
 
-    def test_batch_consistency(self, device, dtype):
+    @pytest.mark.parametrize("kernel", [MIKernel.xu, MIKernel.rectangular, MIKernel.truncated_gaussian])
+    @pytest.mark.parametrize("dim_param", range(5))
+    def test_batch_consistency(self, device, dtype, kernel, dim_param):
         torch.manual_seed(0)  # Fix seed for reproducibility
-        for dim_param in range(5):
-            # 1. Create random batch with n_dims = i+1
-            dims = torch.randint(low=1, high=8, size=(dim_param + 1,))
-            dims = tuple(map(int, dims))
-            for _ in range(10):
-                img1 = torch.rand(dims, device=device, dtype=dtype)
-                img2 = torch.rand(dims, device=device, dtype=dtype)
 
-                # flatten batch dims
-                unique_batch_dim_1 = img1.reshape((-1,) + img1.shape[-1:])
-                unique_batch_dim_2 = img2.reshape((-1,) + img1.shape[-1:])
+        # Create random dimensions
+        dims = torch.randint(low=1, high=8, size=(dim_param + 1,))
+        dims = tuple(map(int, dims))
 
-                # 2. Compute Batch Loss (The "Vectorized" way)
-                # This will likely return a scalar computed on the flattened batch (Incorrect behavior)
-                loss_batch = mutual_information_loss(img1, img2, num_bins=64)
-                normalized_loss_batch = normalized_mutual_information_loss(img1, img2, num_bins=64)
+        for _ in range(3):
+            img1 = torch.rand(dims, device=device, dtype=dtype)
+            img2 = torch.rand(dims, device=device, dtype=dtype)
 
-                # 3. Compute Iterative Loss (The "Slow but Correct" way)
-                losses = []
-                normalized_losses = []
-                for i in range(unique_batch_dim_1.shape[0]):
-                    loss = mutual_information_loss(unique_batch_dim_1[i], unique_batch_dim_2[i], num_bins=64)
-                    normalized_loss = normalized_mutual_information_loss(
-                        unique_batch_dim_1[i], unique_batch_dim_2[i], num_bins=64
-                    )
-                    losses.append(loss)
-                    normalized_losses.append(normalized_loss)
+            # flatten batch dims
+            unique_batch_dim_1 = img1.reshape((-1,) + img1.shape[-1:])
+            unique_batch_dim_2 = img2.reshape((-1,) + img1.shape[-1:])
 
-                loss_iterative = torch.stack(losses)
-                normalized_loss_iterative = torch.stack(normalized_losses)
+            # Compute batch loss
+            loss_batch = mutual_information_loss(img1, img2, num_bins=64, kernel_function=kernel)
+            normalized_loss_batch = normalized_mutual_information_loss(img1, img2, num_bins=64, kernel_function=kernel)
 
-                # 4. Compare
-                assert loss_batch.shape == dims[:-1], "The shape of the batched losses for mi is wrong."
-                assert normalized_loss_batch.shape == dims[:-1], "The shape of the batched losses for nmi is wrong."
-
-                assert torch.allclose(loss_batch.flatten(), loss_iterative, atol=1e-4), (
-                    f"Batch mismatch for mi! Batch: {loss_batch}, Iterative: {loss_iterative}"
+            # Compute iterative loss for verification
+            losses = []
+            normalized_losses = []
+            for i in range(unique_batch_dim_1.shape[0]):
+                loss = mutual_information_loss(
+                    unique_batch_dim_1[i], unique_batch_dim_2[i], num_bins=64, kernel_function=kernel
                 )
-                assert torch.allclose(normalized_loss_batch.flatten(), normalized_loss_iterative, atol=1e-4), (
-                    f"Batch mismatch for nmi! Batch: {normalized_loss_batch}, Iterative: {normalized_loss_iterative}"
+                normalized_loss = normalized_mutual_information_loss(
+                    unique_batch_dim_1[i], unique_batch_dim_2[i], num_bins=64, kernel_function=kernel
                 )
+                losses.append(loss)
+                normalized_losses.append(normalized_loss)
+
+            loss_iterative = torch.stack(losses)
+            normalized_loss_iterative = torch.stack(normalized_losses)
+
+            # Compare
+            assert loss_batch.shape == dims[:-1], "The shape of the batched losses for mi is wrong."
+            assert normalized_loss_batch.shape == dims[:-1], "The shape of the batched losses for nmi is wrong."
+
+            assert torch.allclose(loss_batch.flatten(), loss_iterative, atol=1e-4), (
+                f"Batch mismatch for mi! Batch: {loss_batch}, Iterative: {loss_iterative}"
+            )
+            assert torch.allclose(normalized_loss_batch.flatten(), normalized_loss_iterative, atol=1e-4), (
+                f"Batch mismatch for nmi! Batch: {normalized_loss_batch}, Iterative: {normalized_loss_iterative}"
+            )
 
     def test_module(self, device, dtype):
         pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)

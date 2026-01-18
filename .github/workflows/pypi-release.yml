@@ -12,10 +12,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.8.1
+        uses: prefix-dev/setup-pixi@v0.9.3
         with:
           pixi-version: v0.40.0
           cache: true
@@ -26,7 +26,7 @@ jobs:
       - name: List built packages
         run: ls -lh dist/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: pypi-packages-${{ github.sha }}
           path: dist
@@ -36,7 +36,7 @@ jobs:
     needs: build
     if: github.event_name == 'release'
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: pypi-packages-${{ github.sha }}
           path: dist
@@ -54,7 +54,7 @@ jobs:
     permissions:
       id-token: write  # Required for trusted publishing
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: pypi-packages-${{ github.sha }}
           path: dist
