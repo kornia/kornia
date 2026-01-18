@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 import torch
@@ -104,8 +105,6 @@ class Qwen25WeightLoader:
 
         try:
             # Try to download model.safetensors.index.json to discover shards
-            import json
-
             from huggingface_hub import hf_hub_download
 
             index_path = hf_hub_download(

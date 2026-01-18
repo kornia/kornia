@@ -156,14 +156,9 @@ def export_vision_encoder_components(
             "input": {0: "batch", 1: "seq_len"},
             "output": {0: "batch", 1: "seq_len"},
         }
-        merger_dynamic = {
-            "input": {0: "batch", 1: "seq_len"},
-            "output": {0: "batch", 1: "out_seq_len"},
-        }
     else:
         patch_embed_dynamic = None
         block_dynamic = None
-        merger_dynamic = None
 
     # 1. Export Patch Embedding
     print("\n[1/34] Exporting patch_embed...")

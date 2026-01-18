@@ -17,13 +17,16 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import Optional
 
+import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.nn import Module
 
 from kornia.core.check import KORNIA_CHECK
+from .weights_loader import Qwen25WeightLoader
 
 
 class Qwen2VLPatchMerger(Module):
@@ -242,7 +245,7 @@ class Qwen2VLVisionBlock(Module):
     Args:
         dim: Token embedding dimension.
         num_heads: Number of attention heads.
-        mlp_ratio: MLP hidden dimension multiplier.
+        intermediate_size: Dimension of the MLP hidden layer.
     """
 
     def __init__(self, dim: int, num_heads: int, intermediate_size: int = 3420) -> None:
@@ -269,7 +272,7 @@ class Qwen2VLVisionTransformer(Module):
         embed_dim: Embedding dimension.
         depth: Number of transformer blocks.
         num_heads: Number of attention heads.
-        mlp_ratio: MLP expansion ratio.
+        intermediate_size: Dimension of the MLP hidden layer.
         patch_size: Patch size.
         in_channels: Input channel count.
     """
@@ -309,6 +312,7 @@ class Qwen2VLVisionTransformer(Module):
             depth: Number of transformer blocks (must match pretrained model).
             num_heads: Number of attention heads (must match pretrained model).
             intermediate_size: MLP hidden dimension (must match pretrained model).
+            out_hidden_size: Output hidden dimension of the final merger projection (must match pretrained model).
 
         Returns:
             Qwen2VLVisionTransformer with loaded pretrained weights.
@@ -322,10 +326,6 @@ class Qwen2VLVisionTransformer(Module):
             This method requires the transformers library.
             Install it with: pip install transformers
         """
-        import torch
-
-        from .weights_loader import Qwen25WeightLoader
-
         # Detect device (use GPU if available to reduce RAM usage)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -348,12 +348,8 @@ class Qwen2VLVisionTransformer(Module):
 
         # Log any missing or unexpected keys (these indicate potential issues)
         if result.missing_keys:
-            import warnings
-
             warnings.warn(f"Missing {len(result.missing_keys)} keys when loading pretrained weights")
         if result.unexpected_keys:
-            import warnings
-
             warnings.warn(f"Unexpected {len(result.unexpected_keys)} keys in pretrained weights")
 
         return model
