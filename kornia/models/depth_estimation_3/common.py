@@ -1,9 +1,29 @@
-from typing import Callable, Optional,Union
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 
+from typing import Callable, Optional, Union
+
+import torch
 import torch.nn.functional as F
-from torch import Tensor,nn
+from torch import Tensor, index_add, nn, randperm
+
 
 def drop_path(x, drop_prob: float = 0.0, training: bool = False):
+    """Applies drop path regularization to the input tensor."""
     if drop_prob == 0.0 or not training:
         return x
     keep_prob = 1 - drop_prob
@@ -14,6 +34,7 @@ def drop_path(x, drop_prob: float = 0.0, training: bool = False):
     output = x * random_tensor
     return output
 
+
 class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)."""
 
@@ -23,6 +44,7 @@ class DropPath(nn.Module):
 
     def forward(self, x):
         return drop_path(x, self.drop_prob, self.training)
+
 
 class Attention(nn.Module):
     def __init__(
@@ -35,11 +57,12 @@ class Attention(nn.Module):
         proj_drop: float = 0.0,
         norm_layer: nn.Module = nn.LayerNorm,
         qk_norm: bool = False,
-        fused_attn: bool = True,  
+        fused_attn: bool = True,
         rope=None,
     ) -> None:
         super().__init__()
-        assert dim % num_heads == 0, "dim should be divisible by num_heads"
+        if dim % num_heads != 0:
+            raise ValueError("dim must be divisible by num_heads")
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = head_dim**-0.5
@@ -55,11 +78,7 @@ class Attention(nn.Module):
 
     def forward(self, x: Tensor, pos=None, attn_mask=None) -> Tensor:
         B, N, C = x.shape
-        qkv = (
-            self.qkv(x)
-            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
-            .permute(2, 0, 3, 1, 4)
-        )
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
         q, k = self.q_norm(q), self.k_norm(k)
         if self.rope is not None and pos is not None:
@@ -71,11 +90,7 @@ class Attention(nn.Module):
                 k,
                 v,
                 dropout_p=self.attn_drop.p if self.training else 0.0,
-                attn_mask=(
-                    (attn_mask)[:, None].repeat(1, self.num_heads, 1, 1)
-                    if attn_mask is not None
-                    else None
-                ),
+                attn_mask=((attn_mask)[:, None].repeat(1, self.num_heads, 1, 1) if attn_mask is not None else None),
             )
         else:
             q = q * self.scale
@@ -88,6 +103,7 @@ class Attention(nn.Module):
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
+
 
 class LayerScale(nn.Module):
     def __init__(
@@ -130,6 +146,7 @@ class Mlp(nn.Module):
         x = self.drop(x)
         return x
 
+
 class Block(nn.Module):
     def __init__(
         self,
@@ -152,7 +169,6 @@ class Block(nn.Module):
         ln_eps: float = 1e-6,
     ) -> None:
         super().__init__()
-        # print(f"biases: qkv: {qkv_bias}, proj: {proj_bias}, ffn: {ffn_bias}")
         self.norm1 = norm_layer(dim, eps=ln_eps)
         self.attn = attn_class(
             dim,
@@ -216,10 +232,10 @@ def drop_add_residual_stochastic_depth(
     sample_drop_ratio: float = 0.0,
     pos: Optional[Tensor] = None,
 ) -> Tensor:
-    # 1) extract subset using permutation
-    b, n, d = x.shape
+    """Apply stochastic depth with subset-based residual scaling."""
+    b, _, __ = x.shape
     sample_subset_size = max(int(b * (1 - sample_drop_ratio)), 1)
-    brange = (torch.randperm(b, device=x.device))[:sample_subset_size]
+    brange = (randperm(b, device=x.device))[:sample_subset_size]
     x_subset = x[brange]
 
     # 2) apply residual_func to get residual
@@ -236,14 +252,13 @@ def drop_add_residual_stochastic_depth(
     residual_scale_factor = b / sample_subset_size
 
     # 3) add the residual
-    x_plus_residual = torch.index_add(
-        x_flat, 0, brange, residual.to(dtype=x.dtype), alpha=residual_scale_factor
-    )
+    x_plus_residual = index_add(x_flat, 0, brange, residual.to(dtype=x.dtype), alpha=residual_scale_factor)
     return x_plus_residual.view_as(x)
 
 
 def get_branges_scales(x, sample_drop_ratio=0.0):
-    b, n, d = x.shape
+    """Randomly selects a subset of batch indices and computes a scale factor to compensate for dropped samples."""
+    b, _, __ = x.shape
     sample_subset_size = max(int(b * (1 - sample_drop_ratio)), 1)
     brange = (torch.randperm(b, device=x.device))[:sample_subset_size]
     residual_scale_factor = b / sample_subset_size
