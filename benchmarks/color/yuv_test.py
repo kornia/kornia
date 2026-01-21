@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.color import yuv_to_rgb, rgb_to_yuv
+from kornia.color import rgb_to_yuv, yuv_to_rgb
 
 
 @pytest.mark.parametrize("B", [1, 8, 32])

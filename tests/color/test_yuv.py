@@ -38,8 +38,7 @@ class TestRgbToYuv(BaseTester):
         assert kornia.color.rgb_to_yuv(img).shape == shape
 
     def test_exception(self, device, dtype):
-        
-        with pytest.raises((TypeError,AttributeError)):
+        with pytest.raises((TypeError, AttributeError)):
             assert kornia.color.rgb_to_yuv([0.0])
 
         with pytest.raises(ShapeError):
@@ -105,7 +104,7 @@ class TestRgbToYuv420(BaseTester):
         assert kornia.color.rgb_to_yuv420(img)[1].shape == tuple(shapeuv)
 
     def test_exception(self, device, dtype):
-        with pytest.raises((TypeError,AttributeError)):
+        with pytest.raises((TypeError, AttributeError)):
             assert kornia.color.rgb_to_yuv420([0.0])
 
         with pytest.raises(ShapeError):
@@ -260,7 +259,7 @@ class TestRgbToYuv422(BaseTester):
         assert kornia.color.rgb_to_yuv422(img)[1].shape == tuple(shapeuv)
 
     def test_exception(self, device, dtype):
-        with pytest.raises((TypeError,AttributeError)):
+        with pytest.raises((TypeError, AttributeError)):
             assert kornia.color.rgb_to_yuv422([0.0])
 
         with pytest.raises(ShapeError):
@@ -323,7 +322,7 @@ class TestYuvToRgb(BaseTester):
         assert kornia.color.yuv_to_rgb(img).shape == shape
 
     def test_exception(self, device, dtype):
-        with pytest.raises((TypeError,AttributeError)):
+        with pytest.raises((TypeError, AttributeError)):
             assert kornia.color.yuv_to_rgb([0.0])
 
         with pytest.raises(ShapeError):
@@ -390,7 +389,7 @@ class TestYuv420ToRgb(BaseTester):
         assert kornia.color.yuv420_to_rgb(imgy, imguv).shape == shape
 
     def test_exception(self, device, dtype):
-        with pytest.raises((TypeError,AttributeError)):
+        with pytest.raises((TypeError, AttributeError)):
             assert kornia.color.yuv420_to_rgb([0.0], [0.0])
 
         with pytest.raises(ShapeError):
@@ -494,7 +493,7 @@ class TestYuv422ToRgb(BaseTester):
         assert kornia.color.yuv422_to_rgb(imgy, imguv).shape == shape
 
     def test_exception(self, device, dtype):
-        with pytest.raises((TypeError,AttributeError)):
+        with pytest.raises((TypeError, AttributeError)):
             assert kornia.color.yuv422_to_rgb([0.0], [0.0])
 
         with pytest.raises(ShapeError):
