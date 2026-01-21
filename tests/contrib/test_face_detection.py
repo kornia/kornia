@@ -25,6 +25,11 @@ from kornia.contrib.face_detection import FaceKeypoint
 
 from testing.base import BaseTester
 
+@pytest.fixture(scope="module")
+def face_detector(device, dtype):
+    return kornia.contrib.FaceDetector().to(device, dtype)
+
+
 
 class TestFaceDetection(BaseTester):
     @pytest.mark.slow
@@ -102,5 +107,30 @@ class TestFaceDetection(BaseTester):
                 output_names=["loc", "conf", "iou"],
                 dynamic_axes=dynamic_axes,
             )
-
         assert model_path.is_file()
+            
+    def test_exception(self, face_detector, device, dtype):
+        img = torch.rand(1, 4, 320, 320, device=device, dtype=dtype)
+
+        with pytest.raises(RuntimeError) as err:
+            face_detector(img)
+
+        msg = str(err.value).lower()
+        assert "channel" in msg or "3" in msg
+
+
+    @pytest.mark.slow
+    def test_dynamo(self, face_detector, device, dtype, torch_optimizer):
+        torch.manual_seed(44)
+        img = torch.rand(1, 3, 320, 320, device=device, dtype=dtype)
+
+        op_compiled = torch_optimizer(face_detector)
+
+        out_ref = face_detector(img)
+        out_opt = op_compiled(img)
+
+        assert len(out_ref) == len(out_opt)
+
+        for r, o in zip(out_ref, out_opt):
+            torch.testing.assert_close(r, o, rtol=1e-4, atol=1e-4)
+
