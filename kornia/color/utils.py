@@ -8,6 +8,7 @@ def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor, bias
         image: Input image tensor with shape :math:`(*, 3, H, W)`.
         kernel: Transformation matrix with shape :math:`(3, 3)` applied along the channel
             dimension.
+        bias: Bias vector with shape :math:`(3,)` to be added to the output.
 
     Returns:
         Tensor with the same shape as ``image`` containing the transformed values.
