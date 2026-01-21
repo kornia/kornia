@@ -22,51 +22,10 @@ from typing import ClassVar
 import torch
 from torch import nn
 from torch.nn import functional as F
+
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.exceptions import ShapeError
-
-
-def _apply_linear_transformation(image: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
-    """Apply a 3x3 linear color transformation with device-aware optimization.
-
-    Args:
-        image: Input image tensor with shape :math:`(*, 3, H, W)`.
-        kernel: Transformation matrix with shape :math:`(3, 3)` applied along the channel
-            dimension.
-
-    Returns:
-        Tensor with the same shape as ``image`` containing the transformed values.
-    """
-    # Handle Integer inputs by casting to float safely
-    if image.is_floating_point():
-        image_compute = image
-    else:
-        image_compute = image.float()
-
-    # Match kernel dtype to the image (propagates float64 if needed)
-    kernel_compute = kernel.to(dtype=image_compute.dtype, device=image_compute.device)
-    input_shape = image_compute.shape
-
-    # Empirical benchmarks show that einsum is faster on CPU for this specific pattern,
-    # while conv2d offers significant speedups on GPU/CUDA.
-    # We branch to ensure optimal performance on both devices.
-    # BRANCH 1: CPU (Einsum)
-    if image_compute.device.type == "cpu":
-        out = torch.einsum("oc,...chw->...ohw", kernel, image)
-        out = out.contiguous()
-
-    # BRANCH 2: GPU/Accelerators (Conv2d)
-    else:
-        # Reshape for conv2d: (B*..., C, H, W)
-        input_flat = image_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
-
-        weight = kernel_compute.view(3, 3, 1, 1)
-        out_flat = F.conv2d(input_flat, weight)
-
-        # Unflatten back to original shape
-        out = out_flat.reshape(input_shape)
-
-    return out
+from kornia.color.utils import _apply_linear_transformation
 
 
 def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
