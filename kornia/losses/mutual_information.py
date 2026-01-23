@@ -25,6 +25,7 @@ except ImportError:
     def member(obj):
         return obj
 
+
 from functools import partial
 
 import torch
