@@ -24,6 +24,8 @@ except ImportError:
     # Polyfill for Python < 3.11
     def member(obj):
         return obj
+
+
 from functools import partial
 
 import torch
