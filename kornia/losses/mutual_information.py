@@ -16,7 +16,14 @@
 #
 from __future__ import annotations
 
-from enum import Enum, member
+try:
+    from enum import Enum, member
+except ImportError:
+    from enum import Enum
+
+    # Polyfill for Python < 3.11
+    def member(obj):
+        return obj
 from functools import partial
 
 import torch
