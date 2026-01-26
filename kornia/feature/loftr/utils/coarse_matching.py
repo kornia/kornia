@@ -112,6 +112,7 @@ class CoarseMatching(nn.Module):
                 self.log_optimal_transport = _log_optimal_transport
             try:
                 from .superglue import log_optimal_transport  # type: ignore[unresolved-import]
+
                 self.log_optimal_transport = log_optimal_transport
             except ImportError:
                 raise ImportError("download superglue.py first!") from None
