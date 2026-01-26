@@ -108,8 +108,6 @@ class CoarseMatching(nn.Module):
         if self.match_type == "dual_softmax":
             self.temperature = config["dsmax_temperature"]
         elif self.match_type == "sinkhorn":
-            if TYPE_CHECKING:
-                self.log_optimal_transport = _log_optimal_transport
             try:
                 from .superglue import log_optimal_transport  # type: ignore[unresolved-import]
 
