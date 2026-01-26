@@ -28,9 +28,6 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK
 from kornia.feature.laf import laf_to_three_points, scale_laf
 
-if TYPE_CHECKING:
-    FlashCrossAttention: Any = None
-
 try:
     from flash_attn.modules.mha import FlashCrossAttention  # type: ignore[unresolved-import]
 except ModuleNotFoundError:
