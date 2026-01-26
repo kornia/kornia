@@ -26,17 +26,11 @@
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/models/vision_transformer.py
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from torch import Tensor, nn
 
 logger = logging.getLogger("dinov2")
-
-if TYPE_CHECKING:
-    fmha: Any
-    memory_efficient_attention: Any
-    unbind: Any
-
 try:
     from xformers.ops import fmha, memory_efficient_attention, unbind  # type: ignore[unresolved-import]
 
