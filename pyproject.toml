@@ -324,7 +324,6 @@ exclude = ["tests", "docs", "conftest.py"]
 include = ["kornia"]
 
 [tool.ty.overrides.rules]
-unresolved-import = "ignore"
 unresolved-attribute = "ignore"
 call-non-callable = "ignore"
 invalid-argument-type = "ignore"
