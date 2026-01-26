@@ -40,11 +40,6 @@ from .mlp import Mlp
 
 logger = logging.getLogger("dinov2")
 
-if TYPE_CHECKING:
-    fmha: Any
-    index_select_cat: Any
-    scaled_index_add: Any
-
 try:
     from xformers.ops import fmha, index_select_cat, scaled_index_add  # type: ignore[unresolved-import]
 
