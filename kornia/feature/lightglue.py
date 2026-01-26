@@ -19,7 +19,7 @@ import math
 import warnings
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -28,8 +28,11 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK
 from kornia.feature.laf import laf_to_three_points, scale_laf
 
+if TYPE_CHECKING:
+    FlashCrossAttention: Any = None
+
 try:
-    from flash_attn.modules.mha import FlashCrossAttention
+    from flash_attn.modules.mha import FlashCrossAttention  # type: ignore[unresolved-import]
 except ModuleNotFoundError:
     FlashCrossAttention = None
 

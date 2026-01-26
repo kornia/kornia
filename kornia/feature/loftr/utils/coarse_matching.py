@@ -15,11 +15,14 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn
+
+if TYPE_CHECKING:
+    _log_optimal_transport: Any = None
 
 INF = 1e9
 
@@ -105,11 +108,13 @@ class CoarseMatching(nn.Module):
         if self.match_type == "dual_softmax":
             self.temperature = config["dsmax_temperature"]
         elif self.match_type == "sinkhorn":
+            if TYPE_CHECKING:
+                self.log_optimal_transport = _log_optimal_transport
             try:
-                from .superglue import log_optimal_transport
+                from .superglue import log_optimal_transport  # type: ignore[unresolved-import]
+                self.log_optimal_transport = log_optimal_transport
             except ImportError:
                 raise ImportError("download superglue.py first!") from None
-            self.log_optimal_transport = log_optimal_transport
             self.bin_score = nn.Parameter(torch.tensor(config["skh_init_bin_score"], requires_grad=True))
             self.skh_iters = config["skh_iters"]
             self.skh_prefilter = config["skh_prefilter"]

@@ -21,7 +21,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 import torch.nn.functional as F
 from torch import Tensor, nn
@@ -63,8 +63,11 @@ class SwiGLUFFN(nn.Module):
         return self.w3(hidden)
 
 
+if TYPE_CHECKING:
+    XFormersSwiGLU: Any = None
+
 try:
-    from xformers.ops import SwiGLU
+    from xformers.ops import SwiGLU  # type: ignore[unresolved-import]
 
     XFORMERS_AVAILABLE = True
 except ImportError:

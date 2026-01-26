@@ -26,7 +26,7 @@
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/layers/patch_embed.py
 
 import logging
-from typing import Any, Callable, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Tuple
 
 import torch
 from torch import Tensor, nn
@@ -40,9 +40,13 @@ from .mlp import Mlp
 
 logger = logging.getLogger("dinov2")
 
+if TYPE_CHECKING:
+    fmha: Any
+    index_select_cat: Any
+    scaled_index_add: Any
 
 try:
-    from xformers.ops import fmha, index_select_cat, scaled_index_add
+    from xformers.ops import fmha, index_select_cat, scaled_index_add  # type: ignore[unresolved-import]
 
     XFORMERS_AVAILABLE = True
 except ImportError:
