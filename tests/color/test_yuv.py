@@ -20,6 +20,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
+from kornia.core.exceptions import ShapeError
 
 from testing.base import BaseTester
 
@@ -37,14 +38,14 @@ class TestRgbToYuv(BaseTester):
         assert kornia.color.rgb_to_yuv(img).shape == shape
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
+        with pytest.raises((TypeError, AttributeError)):
             assert kornia.color.rgb_to_yuv([0.0])
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_yuv(img)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_yuv(img)
 
@@ -103,24 +104,23 @@ class TestRgbToYuv420(BaseTester):
         assert kornia.color.rgb_to_yuv420(img)[1].shape == tuple(shapeuv)
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
+        with pytest.raises((TypeError, AttributeError)):
             assert kornia.color.rgb_to_yuv420([0.0])
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_yuv420(img)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_yuv420(img)
 
-        # dimensionality test
-        with pytest.raises(ValueError):
+        # dimensionality tests
+        with pytest.raises(ShapeError):
             img = torch.ones(3, 2, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_yuv420(img)
 
-        # dimensionality test
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(3, 1, 2, device=device, dtype=dtype)
             assert kornia.color.rgb_to_yuv420(img)
 
@@ -259,19 +259,19 @@ class TestRgbToYuv422(BaseTester):
         assert kornia.color.rgb_to_yuv422(img)[1].shape == tuple(shapeuv)
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
+        with pytest.raises((TypeError, AttributeError)):
             assert kornia.color.rgb_to_yuv422([0.0])
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_yuv422(img)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_yuv422(img)
 
         # dimensionality test
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(3, 2, 1, device=device, dtype=dtype)
             assert kornia.color.rgb_to_yuv422(img)
 
@@ -322,14 +322,14 @@ class TestYuvToRgb(BaseTester):
         assert kornia.color.yuv_to_rgb(img).shape == shape
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
+        with pytest.raises((TypeError, AttributeError)):
             assert kornia.color.yuv_to_rgb([0.0])
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.yuv_to_rgb(img)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.yuv_to_rgb(img)
 
@@ -389,27 +389,26 @@ class TestYuv420ToRgb(BaseTester):
         assert kornia.color.yuv420_to_rgb(imgy, imguv).shape == shape
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
+        with pytest.raises((TypeError, AttributeError)):
             assert kornia.color.yuv420_to_rgb([0.0], [0.0])
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             imguv = torch.ones(1, 1, device=device, dtype=dtype)
             imgy = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.yuv420_to_rgb(imgy, imguv)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
             imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.yuv420_to_rgb(imgy, imguv)
 
-        # dimensionality test
-        with pytest.raises(ValueError):
+        # dimensionality tests
+        with pytest.raises(ShapeError):
             imgy = torch.ones(3, 2, 1, device=device, dtype=dtype)
             imguv = torch.ones(3, 1, 0, device=device, dtype=dtype)
             assert kornia.color.yuv420_to_rgb(imgy, imguv)
 
-        # dimensionality test
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             imgy = torch.ones(3, 1, 2, device=device, dtype=dtype)
             imguv = torch.ones(3, 0, 1, device=device, dtype=dtype)
             assert kornia.color.yuv420_to_rgb(imgy, imguv)
@@ -494,21 +493,21 @@ class TestYuv422ToRgb(BaseTester):
         assert kornia.color.yuv422_to_rgb(imgy, imguv).shape == shape
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
+        with pytest.raises((TypeError, AttributeError)):
             assert kornia.color.yuv422_to_rgb([0.0], [0.0])
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             imguv = torch.ones(1, 1, device=device, dtype=dtype)
             imgy = torch.ones(1, 1, device=device, dtype=dtype)
             assert kornia.color.yuv422_to_rgb(imgy, imguv)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             imgy = torch.ones(2, 2, 2, device=device, dtype=dtype)
             imguv = torch.ones(2, 1, 1, device=device, dtype=dtype)
             assert kornia.color.yuv422_to_rgb(imgy, imguv)
 
         # dimensionality test
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             imgy = torch.ones(3, 2, 1, device=device, dtype=dtype)
             imguv = torch.ones(3, 1, 0, device=device, dtype=dtype)
             assert kornia.color.yuv422_to_rgb(imgy, imguv)
