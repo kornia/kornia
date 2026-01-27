@@ -23,6 +23,7 @@ except ImportError:
 
     # Polyfill for Python < 3.11
     def member(obj):
+        """Return the object unchanged (simulates enum.member)."""
         return obj
 
 
