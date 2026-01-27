@@ -332,7 +332,6 @@ invalid-type-form = "ignore"
 no-matching-overload = "ignore"
 unsupported-operator = "ignore"
 possibly-missing-attribute = "ignore"
-too-many-positional-arguments = "ignore"
 not-subscriptable = "ignore"
 # Silenced because ty has issues with:
 # - Iterator[Enum] from metaclass __iter__ returning Iterator[object]
