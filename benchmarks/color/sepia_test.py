@@ -20,16 +20,16 @@ import torch
 
 from kornia.color import sepia_from_rgb
 
+
 @pytest.mark.parametrize("B", [1, 8, 32])
 @pytest.mark.parametrize("C", [3])
 @pytest.mark.parametrize("H", [128, 256, 512])
 @pytest.mark.parametrize("W", [128, 256, 512])
 def test_sepia_from_rgb(benchmark, device, dtype, torch_optimizer, B, C, H, W):
-    
     data = torch.rand(B, C, H, W, device=device, dtype=dtype)
-    
+
     op = torch_optimizer(sepia_from_rgb)
 
-    actual = benchmark(op,data)
+    actual = benchmark(op, data)
 
     assert actual.shape == (B, 3, H, W)

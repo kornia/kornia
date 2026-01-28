@@ -57,7 +57,7 @@ class TestSepia(BaseTester):
 
     def test_exception(self, device, dtype):
         from kornia.core.exceptions import ShapeError
-        
+
         with pytest.raises(ShapeError):
             kornia.color.sepia(torch.rand(size=(4, 1, 1), dtype=dtype, device=device))
 

@@ -16,9 +16,10 @@
 #
 
 import torch
-from torch import nn
 import torch.nn.functional as F
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from torch import nn
+
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6) -> torch.Tensor:
@@ -43,11 +44,11 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
                 [[0.9370]]])
     """
     # Safety Checks
-    KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])    
+    KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])
 
     image_compute = input if input.is_floating_point() else input.float()
     input_shape = image_compute.shape
-    
+
     # Standard Sepia Matrix
     kernel = torch.tensor(
         [
@@ -73,9 +74,9 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
 
         # Reshape kernel: (3, 3) -> (3, 3, 1, 1)
         weight = kernel.view(3, 3, 1, 1)
-        
+
         out_flat = F.conv2d(input_flat, weight)
-        
+
         # Unflatten back to original shape
         out = out_flat.reshape(input_shape)
 
