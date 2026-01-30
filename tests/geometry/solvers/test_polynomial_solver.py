@@ -333,6 +333,4 @@ class TestQuarticSolver(BaseTester):
             dtype=torch.float64,
             requires_grad=True,
         )
-        assert self.gradcheck(
-            solver.solve_quartic, (coeffs,), raise_exception=True, fast_mode=True
-        )
+        assert self.gradcheck(solver.solve_quartic, (coeffs,), raise_exception=True, fast_mode=True)
