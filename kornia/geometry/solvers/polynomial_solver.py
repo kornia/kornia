@@ -66,9 +66,7 @@ def solve_quadratic(coeffs: torch.Tensor) -> torch.Tensor:
     inv_2a = 0.5 / a
 
     # Initialize solutions torch.Tensor
-    solutions = torch.zeros(
-        (coeffs.shape[0], 2), device=coeffs.device, dtype=coeffs.dtype
-    )
+    solutions = torch.zeros((coeffs.shape[0], 2), device=coeffs.device, dtype=coeffs.dtype)
 
     # Handle cases with zero discriminant
     if torch.any(mask_zero):
@@ -135,14 +133,10 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     mask_second_order = mask_a_zero & ~mask_b_zero & ~mask_c_zero
 
     if torch.any(mask_second_order):
-        solutions[mask_second_order, 0:2] = solve_quadratic(
-            coeffs[mask_second_order, 1:]
-        )
+        solutions[mask_second_order, 0:2] = solve_quadratic(coeffs[mask_second_order, 1:])
 
     if torch.any(mask_first_order):
-        solutions[mask_first_order, 0] = torch.tensor(
-            1.0, device=a.device, dtype=a.dtype
-        )
+        solutions[mask_first_order, 0] = torch.tensor(1.0, device=a.device, dtype=a.dtype)
 
     # Normalized form x^3 + a2 * x^2 + a1 * x + a0 = 0
     inv_a = 1.0 / a[~mask_a_zero]
@@ -190,20 +184,10 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
     if torch.any(mask_D_zero):
         theta_D_zero = torch.acos(R[mask_D_zero] / torch.sqrt(-Q3[mask_D_zero]))
         sqrt_Q_D_zero = torch.sqrt(-Q[mask_D_zero])
-        x0_D_zero = (
-            2 * sqrt_Q_D_zero * torch.cos(theta_D_zero / 3.0) - b_a_3[mask_D_zero]
-        )
-        x1_D_zero = (
-            2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 2 * _PI) / 3.0)
-            - b_a_3[mask_D_zero]
-        )
-        x2_D_zero = (
-            2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 4 * _PI) / 3.0)
-            - b_a_3[mask_D_zero]
-        )
-        solutions[mask_D_zero_solutions] = torch.stack(
-            [x0_D_zero, x1_D_zero, x2_D_zero], dim=1
-        )
+        x0_D_zero = 2 * sqrt_Q_D_zero * torch.cos(theta_D_zero / 3.0) - b_a_3[mask_D_zero]
+        x1_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 2 * _PI) / 3.0) - b_a_3[mask_D_zero]
+        x2_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 4 * _PI) / 3.0) - b_a_3[mask_D_zero]
+        solutions[mask_D_zero_solutions] = torch.stack([x0_D_zero, x1_D_zero, x2_D_zero], dim=1)
 
     a_D_positive = torch.zeros_like(a)
     a_D_positive[~mask_a_zero] = D
@@ -216,18 +200,14 @@ def solve_cubic(coeffs: torch.Tensor) -> torch.Tensor:
         R_abs = torch.abs(R)
         mask_R_positive = R_abs > 1e-16
         if torch.any(mask_R_positive):
-            AD[mask_R_positive] = torch.pow(
-                R_abs[mask_R_positive] + torch.sqrt(D[mask_R_positive]), 1 / 3
-            )
+            AD[mask_R_positive] = torch.pow(R_abs[mask_R_positive] + torch.sqrt(D[mask_R_positive]), 1 / 3)
             mask_R_positive_ = R < 0
 
             if torch.any(mask_R_positive_):
                 AD[mask_R_positive_] = -AD[mask_R_positive_]
 
             BD[mask_R_positive] = -Q[mask_R_positive] / AD[mask_R_positive]
-        x0_D_positive = (
-            AD[mask_D_positive] + BD[mask_D_positive] - b_a_3[mask_D_positive]
-        )
+        x0_D_positive = AD[mask_D_positive] + BD[mask_D_positive] - b_a_3[mask_D_positive]
         solutions[mask_D_positive_solution, 0] = x0_D_positive
 
     return solutions

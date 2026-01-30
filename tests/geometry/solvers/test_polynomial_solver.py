@@ -323,7 +323,7 @@ class TestQuarticSolver(BaseTester):
         )
 
         self.assert_close(residuals, torch.zeros_like(residuals), atol=1e-3, rtol=1e-3)
-        
+
     def test_gradcheck(self, device):
         # Use a specific polynomial with distinct roots to ensure gradient stability
         # x^4 - 10x^3 + 35x^2 - 50x + 24 = 0
@@ -333,6 +333,4 @@ class TestQuarticSolver(BaseTester):
             dtype=torch.float64,
             requires_grad=True,
         )
-        self.gradcheck(
-            solver.solve_quartic, (coeffs,), raise_exception=True, fast_mode=True
-        )
+        self.gradcheck(solver.solve_quartic, (coeffs,), raise_exception=True, fast_mode=True)
