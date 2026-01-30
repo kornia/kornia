@@ -22,18 +22,11 @@ import torch
 
 import kornia
 from kornia.contrib.face_detection import FaceKeypoint
-
 from testing.base import BaseTester
 
-<<<<<<< HEAD
-
-@pytest.fixture(scope="module")
-=======
 @pytest.fixture
->>>>>>> 8c9ab163 (solved error tests on CPU)
 def face_detector(device, dtype):
     return kornia.contrib.FaceDetector().to(device, dtype)
-
 
 class TestFaceDetection(BaseTester):
     @pytest.mark.slow
