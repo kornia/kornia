@@ -26,6 +26,7 @@ from .polynomial_solver import (
     multiply_deg_two_one_poly,
     solve_cubic,
     solve_quadratic,
+    solve_quartic
 )
 
 __all__ = [

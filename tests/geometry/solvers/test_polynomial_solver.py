@@ -246,3 +246,93 @@ class TestDeterminantToPolynomial(BaseTester):
 
         # Compare result with expected values
         self.assert_close(result, expected, rtol=1e-5, atol=1e-5)
+
+
+class TestQuarticSolver(BaseTester):
+    def test_smoke(self, device, dtype):
+        coeffs = torch.rand(1, 5, device=device, dtype=dtype)
+        roots = solver.solve_quartic(coeffs)
+        assert roots.shape == (1, 4)
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 4, 7])
+    def test_shape(self, batch_size, device, dtype):
+        B: int = batch_size
+        coeffs = torch.rand(B, 5, device=device, dtype=dtype)
+        roots = solver.solve_quartic(coeffs)
+        assert roots.shape == (B, 4)
+
+    @pytest.mark.parametrize(
+        "coeffs, expected_solutions",
+        [
+            # Case 1: x^4 - 10x^3 + 35x^2 - 50x + 24 = 0 -> Roots: 1, 2, 3, 4
+            (
+                torch.tensor([[1.0, -10.0, 35.0, -50.0, 24.0]]),
+                torch.tensor([[1.0, 2.0, 3.0, 4.0]]),
+            ),
+            # Case 2: x^4 - 5x^2 + 4 = 0 -> Roots: 1, -1, 2, -2
+            (
+                torch.tensor([[1.0, 0.0, -5.0, 0.0, 4.0]]),
+                torch.tensor([[-2.0, -1.0, 1.0, 2.0]]),
+            ),
+            # Case 3: (x-2)^2 * (x-3) * (x+1) -> Roots: -1, 2, 2, 3
+            (
+                torch.tensor([[1.0, -6.0, 9.0, 4.0, -12.0]]),
+                torch.tensor([[-1.0, 2.0, 2.0, 3.0]]),
+            ),
+            # Case 4: Fallback to Cubic (a=0)
+            # 0x^4 + x^3 - 6x^2 + 11x - 6 = 0 -> Roots: 1, 2, 3. Last col remains 0.
+            (
+                torch.tensor([[0.0, 1.0, -6.0, 11.0, -6.0]]),
+                torch.tensor([[1.0, 2.0, 3.0, 0.0]]),
+            ),
+        ],
+    )
+    def test_solve_quartic(self, coeffs, expected_solutions, device, dtype):
+        coeffs = coeffs.to(device, dtype)
+        expected_solutions = expected_solutions.to(device, dtype)
+
+        roots = solver.solve_quartic(coeffs)
+
+        # Sort roots to ensure order-invariant comparison
+        roots_sorted, _ = torch.sort(roots, dim=-1)
+        expected_sorted, _ = torch.sort(expected_solutions, dim=-1)
+
+        self.assert_close(roots_sorted, expected_sorted, rtol=1e-3, atol=1e-3)
+
+    def test_random(self, device, dtype):
+        # Generate random roots and construct coefficients to ensure valid solutions exist
+        B = 5
+        true_roots = torch.randn(B, 4, device=device, dtype=dtype)
+        r1, r2, r3, r4 = true_roots.unbind(-1)
+
+        a = torch.ones(B, device=device, dtype=dtype)
+        b = -(r1 + r2 + r3 + r4)
+        c = r1 * r2 + r1 * r3 + r1 * r4 + r2 * r3 + r2 * r4 + r3 * r4
+        d = -(r1 * r2 * r3 + r1 * r2 * r4 + r1 * r3 * r4 + r2 * r3 * r4)
+        e = r1 * r2 * r3 * r4
+
+        coeffs = torch.stack([a, b, c, d, e], dim=-1)
+        computed_roots = solver.solve_quartic(coeffs)
+
+        residuals = (
+            coeffs[:, 0:1] * computed_roots**4
+            + coeffs[:, 1:2] * computed_roots**3
+            + coeffs[:, 2:3] * computed_roots**2
+            + coeffs[:, 3:4] * computed_roots
+            + coeffs[:, 4:5]
+        )
+
+        self.assert_close(residuals, torch.zeros_like(residuals), atol=1e-3, rtol=1e-3)
+
+    def gradcheck(self, device):
+        # Use a specific polynomial with distinct roots to ensure gradient stability
+        # x^4 - 10x^3 + 35x^2 - 50x + 24 = 0
+        coeffs = torch.tensor(
+            [[1.0, -10.0, 35.0, -50.0, 24.0]],
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
+        assert self.gradcheck(
+            solver.solve_quartic, (coeffs,), raise_exception=True, fast_mode=True
+        )
