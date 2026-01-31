@@ -74,45 +74,94 @@ def mean_iou(pred: torch.Tensor, target: torch.Tensor, num_classes: int, eps: fl
     ious = (conf_mat_diag + eps) / (denominator + eps)
     return ious
 
+def _convert_boxes_to_xyxy(boxes: torch.Tensor, box_format: str) -> torch.Tensor:
+    """Convert bounding boxes from various formats to xyxy format.
+    
+    Args:
+        boxes: tensor of bounding boxes in shape (N, 4).
+        box_format: box format - one of 'xyxy', 'xywh', or 'cxcywh'.
+        
+    Returns:
+        boxes in xyxy format (x1, y1, x2, y2).
+    """
+    if box_format == "xyxy":
+        return boxes
+    elif box_format == "xywh":
+        # (x, y, w, h) -> (x1, y1, x2, y2)
+        x, y, w, h = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
+        x2 = x + w
+        y2 = y + h
+        return torch.stack([x, y, x2, y2], dim=1)
+    elif box_format == "cxcywh":
+        # (cx, cy, w, h) -> (x1, y1, x2, y2)
+        cx, cy, w, h = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
+        x1 = cx - w / 2
+        y1 = cy - h / 2
+        x2 = cx + w / 2
+        y2 = cy + h / 2
+        return torch.stack([x1, y1, x2, y2], dim=1)
+    else:
+        raise ValueError(f"Unsupported box format: {box_format}. Must be one of 'xyxy', 'xywh', or 'cxcywh'.")
 
-def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor) -> torch.Tensor:
+
+def mean_iou_bbox(boxes_1: torch.Tensor, boxes_2: torch.Tensor, box_format: str = "xyxy") -> torch.Tensor:
     """Compute the IoU of the cartesian product of two sets of boxes.
-
-    Each box in each set shall be (x1, y1, x2, y2).
 
     Args:
         boxes_1: a tensor of bounding boxes in :math:`(B1, 4)`.
         boxes_2: a tensor of bounding boxes in :math:`(B2, 4)`.
+        box_format: the bounding box format. Supported formats are:
+            - 'xyxy': (x1, y1, x2, y2) where (x1, y1) is top-left and (x2, y2) is bottom-right
+            - 'xywh': (x, y, w, h) where (x, y) is top-left, w is width, h is height
+            - 'cxcywh': (cx, cy, w, h) where (cx, cy) is center, w is width, h is height
+            Default: 'xyxy'.
 
     Returns:
         a tensor in dimensions :math:`(B1, B2)`, representing the
         intersection of each of the boxes in set 1 with respect to each of the boxes in set 2.
 
     Example:
+        >>> # XYXY format
         >>> boxes_1 = torch.tensor([[40, 40, 60, 60], [30, 40, 50, 60]])
         >>> boxes_2 = torch.tensor([[40, 50, 60, 70], [30, 40, 40, 50]])
         >>> mean_iou_bbox(boxes_1, boxes_2)
         tensor([[0.3333, 0.0000],
                 [0.1429, 0.2500]])
+        >>> # XYWH format
+        >>> boxes_1_xywh = torch.tensor([[40, 40, 20, 20], [30, 40, 20, 20]])
+        >>> boxes_2_xywh = torch.tensor([[40, 50, 20, 20], [30, 40, 10, 10]])
+        >>> mean_iou_bbox(boxes_1_xywh, boxes_2_xywh, box_format='xywh')
+        tensor([[0.3333, 0.0000],
+                [0.1429, 0.2500]])
+        >>> # CXCYWH format
+        >>> boxes_1_cxcywh = torch.tensor([[50, 50, 20, 20], [40, 50, 20, 20]])
+        >>> boxes_2_cxcywh = torch.tensor([[50, 60, 20, 20], [35, 45, 10, 10]])
+        >>> mean_iou_bbox(boxes_1_cxcywh, boxes_2_cxcywh, box_format='cxcywh')
+        tensor([[0.3333, 0.0000],
+                [0.1429, 0.2500]])
 
     """
-    # TODO: support more box types. e.g. xywh,
-    if not (((boxes_1[:, 2] - boxes_1[:, 0]) > 0).all() or ((boxes_1[:, 3] - boxes_1[:, 1]) > 0).all()):
-        raise AssertionError("Boxes_1 does not follow (x1, y1, x2, y2) format.")
-    if not (((boxes_2[:, 2] - boxes_2[:, 0]) > 0).all() or ((boxes_2[:, 3] - boxes_2[:, 1]) > 0).all()):
-        raise AssertionError("Boxes_2 does not follow (x1, y1, x2, y2) format.")
-    # find intersection
-    lower_bounds = torch.max(boxes_1[:, :2].unsqueeze(1), boxes_2[:, :2].unsqueeze(0))  # (n1, n2, 2)
-    upper_bounds = torch.min(boxes_1[:, 2:].unsqueeze(1), boxes_2[:, 2:].unsqueeze(0))  # (n1, n2, 2)
+    # Convert boxes to xyxy format
+    boxes_1_xyxy = _convert_boxes_to_xyxy(boxes_1, box_format)
+    boxes_2_xyxy = _convert_boxes_to_xyxy(boxes_2, box_format)
+    
+    # Validate boxes are in proper xyxy format
+    if not (((boxes_1_xyxy[:, 2] - boxes_1_xyxy[:, 0]) > 0).all() and ((boxes_1_xyxy[:, 3] - boxes_1_xyxy[:, 1]) > 0).all()):
+        raise AssertionError("Boxes_1 contains invalid boxes after conversion.")
+    if not (((boxes_2_xyxy[:, 2] - boxes_2_xyxy[:, 0]) > 0).all() and ((boxes_2_xyxy[:, 3] - boxes_2_xyxy[:, 1]) > 0).all()):
+        raise AssertionError("Boxes_2 contains invalid boxes after conversion.")
+    
+    # Find intersection
+    lower_bounds = torch.max(boxes_1_xyxy[:, :2].unsqueeze(1), boxes_2_xyxy[:, :2].unsqueeze(0))  # (n1, n2, 2)
+    upper_bounds = torch.min(boxes_1_xyxy[:, 2:].unsqueeze(1), boxes_2_xyxy[:, 2:].unsqueeze(0))  # (n1, n2, 2)
     intersection_dims = torch.clamp(upper_bounds - lower_bounds, min=0)  # (n1, n2, 2)
     intersection = intersection_dims[:, :, 0] * intersection_dims[:, :, 1]  # (n1, n2)
 
     # Find areas of each box in both sets
-    areas_set_1 = (boxes_1[:, 2] - boxes_1[:, 0]) * (boxes_1[:, 3] - boxes_1[:, 1])  # (n1)
-    areas_set_2 = (boxes_2[:, 2] - boxes_2[:, 0]) * (boxes_2[:, 3] - boxes_2[:, 1])  # (n2)
+    areas_set_1 = (boxes_1_xyxy[:, 2] - boxes_1_xyxy[:, 0]) * (boxes_1_xyxy[:, 3] - boxes_1_xyxy[:, 1])  # (n1)
+    areas_set_2 = (boxes_2_xyxy[:, 2] - boxes_2_xyxy[:, 0]) * (boxes_2_xyxy[:, 3] - boxes_2_xyxy[:, 1])  # (n2)
 
     # Find the union
-    # PyTorch auto-broadcasts singleton dimensions
     union = areas_set_1.unsqueeze(1) + areas_set_2.unsqueeze(0) - intersection  # (n1, n2)
 
     return intersection / union  # (n1, n2)
