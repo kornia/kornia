@@ -66,7 +66,11 @@ class TestSo2(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
     def test_exception(self, batch_size, device, dtype, cdtype):
+<<<<<<< HEAD
         with pytest.raises(TypeCheckError):
+=======
+        with pytest.raises(ShapeError):
+>>>>>>> b5ed915a ([pre-commit.ci] auto fixes from pre-commit.com hooks)
             z = torch.randn(batch_size, 2, dtype=cdtype, device=device)
             assert So2(z)
         with pytest.raises(TypeCheckError):
@@ -129,7 +133,13 @@ class TestSo2(BaseTester):
         state_dict = module.state_dict()
         assert any("_z" in k for k in state_dict.keys())
 
+<<<<<<< HEAD
         new_module = MyModule(So2.identity(1, device=device, dtype=dtype)).to(device, dtype)
+=======
+        new_s = So2.identity(1, device=device, dtype=dtype)
+        new_s._z = torch.nn.Parameter(new_s._z)
+        new_module = MyModule(new_s).to(device, dtype)
+>>>>>>> b5ed915a ([pre-commit.ci] auto fixes from pre-commit.com hooks)
         new_module.load_state_dict(state_dict)
         self.assert_close(new_module.s.matrix(), s.matrix())
 
@@ -215,14 +225,16 @@ class TestSo2(BaseTester):
     def test_hat(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size,))
         m = So2.hat(theta)
-        o = torch.ones((2, 1), device=device, dtype=dtype)
-        self.assert_close((m @ o).reshape(-1, 2, 1), theta.reshape(-1, 1, 1).repeat(1, 2, 1))
+        self.assert_close(m[..., 0, 0], torch.zeros_like(theta))
+        self.assert_close(m[..., 1, 1], torch.zeros_like(theta))
+        self.assert_close(m[..., 0, 1], -theta)
+        self.assert_close(m[..., 1, 0], theta)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_vee(self, device, dtype, batch_size):
         omega = self._make_rand_data(device, dtype, (batch_size, 2, 2))
         theta = So2.vee(omega)
-        self.assert_close(omega[..., 0, 1], theta)
+        self.assert_close(omega[..., 1, 0], theta)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_hat_vee(self, device, dtype, batch_size):
@@ -274,4 +286,6 @@ class TestSo2(BaseTester):
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_adjoint(self, device, dtype, batch_size):
         s = So2.identity(batch_size, device=device, dtype=dtype)
-        self.assert_close(s.matrix(), s.adjoint())
+        adj = s.adjoint()
+        expected = torch.ones_like(adj)
+        self.assert_close(adj, expected)

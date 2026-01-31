@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import argparse
 import os
 from functools import partial
 from itertools import product
@@ -173,6 +174,7 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_slow)
 
 
+
 def pytest_addoption(parser):
     """Add options with environment variable fallbacks.
 
@@ -182,30 +184,46 @@ def pytest_addoption(parser):
         KORNIA_TEST_OPTIMIZER: Optimizer backend (default: inductor)
         KORNIA_TEST_RUNSLOW: Run slow tests (default: false)
     """
-    parser.addoption(
-        "--device",
-        action="store",
-        default=os.environ.get("KORNIA_TEST_DEVICE", "cpu"),
-        help="Device to run tests on (env: KORNIA_TEST_DEVICE)",
-    )
-    parser.addoption(
-        "--dtype",
-        action="store",
-        default=os.environ.get("KORNIA_TEST_DTYPE", "float32"),
-        help="Data type for tests (env: KORNIA_TEST_DTYPE)",
-    )
-    parser.addoption(
-        "--optimizer",
-        action="store",
-        default=os.environ.get("KORNIA_TEST_OPTIMIZER", "inductor"),
-        help="Optimizer backend (env: KORNIA_TEST_OPTIMIZER)",
-    )
-    parser.addoption(
-        "--runslow",
-        action="store_true",
-        default=os.environ.get("KORNIA_TEST_RUNSLOW", "false").lower() == "true",
-        help="Run slow tests (env: KORNIA_TEST_RUNSLOW)",
-    )
+    options = [
+        (
+            "--device",
+            {
+                "action": "store",
+                "default": os.environ.get("KORNIA_TEST_DEVICE", "cpu"),
+                "help": "Device to run tests on (env: KORNIA_TEST_DEVICE)",
+            },
+        ),
+        (
+            "--dtype",
+            {
+                "action": "store",
+                "default": os.environ.get("KORNIA_TEST_DTYPE", "float32"),
+                "help": "Data type for tests (env: KORNIA_TEST_DTYPE)",
+            },
+        ),
+        (
+            "--optimizer",
+            {
+                "action": "store",
+                "default": os.environ.get("KORNIA_TEST_OPTIMIZER", "inductor"),
+                "help": "Optimizer backend (env: KORNIA_TEST_OPTIMIZER)",
+            },
+        ),
+        (
+            "--runslow",
+            {
+                "action": "store_true",
+                "default": os.environ.get("KORNIA_TEST_RUNSLOW", "false").lower() == "true",
+                "help": "Run slow tests (env: KORNIA_TEST_RUNSLOW)",
+            },
+        ),
+    ]
+
+    for name, kwargs in options:
+        try:
+            parser.addoption(name, **kwargs)
+        except (argparse.ArgumentError, ValueError):
+            pass
 
 
 def _setup_torch_compile() -> None:

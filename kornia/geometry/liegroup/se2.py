@@ -25,7 +25,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.exceptions import ShapeError, TypeCheckError
 from kornia.geometry.liegroup._utils import check_se2_omega_shape, check_se2_t_shape, check_v_shape
 from kornia.geometry.liegroup.so2 import So2
 from kornia.geometry.vector import Vector2
@@ -36,7 +37,7 @@ def _check_se2_r_t_shape(r: So2, t: torch.Tensor) -> None:
     if ((len(z_shape) == 1) and (len(t.shape) == 2)) or ((len(z_shape) == 0) and len(t.shape) == 1):
         check_se2_t_shape(t)
     else:
-        raise ValueError(
+        raise ShapeError(
             f"Invalid input, both the inputs should be either batched or unbatched. Got: {r.z.shape} and {t.shape}"
         )
 
@@ -83,16 +84,12 @@ class Se2(nn.Module):
         super().__init__()
         KORNIA_CHECK_TYPE(rotation, So2)
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        # KORNIA_CHECK_TYPE(translation, (Vector3, torch.Tensor))
-        if not isinstance(translation, (Vector2, torch.Tensor)):
-            raise TypeError(f"translation type is {type(translation)}")
+        KORNIA_CHECK_TYPE(translation, (Vector2, torch.Tensor))
         self._translation: Vector2 | nn.Parameter
         self._rotation: So2 = rotation
         if isinstance(translation, torch.Tensor):
-            _check_se2_r_t_shape(rotation, translation)  # TODO remove
-            self._translation = nn.Parameter(translation)
-        else:
-            self._translation = translation
+            _check_se2_r_t_shape(rotation, translation)
+        self._translation = translation
 
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
@@ -133,7 +130,7 @@ class Se2(nn.Module):
             # _check_se2_r_t_shape(so2, risght)
             return so2 * right + t
         else:
-            raise TypeError(f"Unsupported type: {type(right)}")
+            raise TypeCheckError(f"Unsupported type: {type(right)}")
 
     @property
     def so2(self) -> So2:
@@ -181,12 +178,22 @@ class Se2(nn.Module):
         check_v_shape(v)
         theta = v[..., 2]
         so2 = So2.exp(theta)
-        z = torch.tensor(0.0, device=v.device, dtype=v.dtype)
-        theta_nonzeros = theta != 0.0
-        a = torch.where(theta_nonzeros, so2.z.imag / theta, z)
-        b = torch.where(theta_nonzeros, (1.0 - so2.z.real) / theta, z)
         x = v[..., 0]
         y = v[..., 1]
+
+        eps = torch.finfo(v.dtype).eps * 1e3
+        small_theta = theta.abs() <= eps
+
+        # sin(theta) / theta
+        a_large = so2.z.imag / theta
+        a_small = 1.0 - (theta**2) / 6.0
+        a = torch.where(small_theta, a_small, a_large)
+
+        # (1 - cos(theta)) / theta
+        b_large = (1.0 - so2.z.real) / theta
+        b_small = theta / 2.0 - (theta**3) / 24.0
+        b = torch.where(small_theta, b_small, b_large)
+
         t = torch.stack((a * x - b * y, b * x + a * y), -1)
         return Se2(so2, t)
 
@@ -202,17 +209,21 @@ class Se2(nn.Module):
         """
         theta = self.so2.log()
         half_theta = 0.5 * theta
+        x, y = self.t[..., 0], self.t[..., 1]
+
+        eps = torch.finfo(theta.dtype).eps * 1e3
+        small_theta = theta.abs() <= eps
+
+        # 1 - cos(theta)
         denom = self.so2.z.real - 1
-        a = torch.where(
-            denom != 0,
-            -(half_theta * self.so2.z.imag) / denom,
-            torch.tensor(0.0, device=theta.device, dtype=theta.dtype),
-        )
-        row0 = torch.stack((a, half_theta), -1)
-        row1 = torch.stack((-half_theta, a), -1)
-        V_inv = torch.stack((row0, row1), -2)
-        upsilon = V_inv @ self.t.data[..., None]
-        return torch.stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)
+        # a = -(half_theta * sin(theta)) / (cos(theta) - 1) = half_theta * cot(half_theta)
+        a_large = -(half_theta * self.so2.z.imag) / denom
+        a_small = 1.0 - (theta**2) / 12.0
+        a = torch.where(small_theta, a_small, a_large)
+
+        upsilon_0 = a * x + half_theta * y
+        upsilon_1 = -half_theta * x + a * y
+        return torch.stack((upsilon_0, upsilon_1, theta), -1)
 
     @staticmethod
     def hat(v: torch.Tensor) -> torch.Tensor:
@@ -299,7 +310,10 @@ class Se2(nn.Module):
                      [0., 0., 1.]]], grad_fn=<CopySlices>)
 
         """
-        rt = torch.cat((self.r.matrix(), self.t.data[..., None]), -1)
+        t = self.t
+        if isinstance(t, Vector2):
+            t = t._data
+        rt = torch.cat((self.r.matrix(), t[..., None]), -1)
         rt_3x3 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_3x3[..., -1, -1] = 1.0
         return rt_3x3
@@ -322,7 +336,7 @@ class Se2(nn.Module):
                     [0., 0.]], requires_grad=True)
 
         """
-        # KORNIA_CHECK_SHAPE(matrix, ["B", "3", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(matrix, ["*", "3", "3"])
         r = So2.from_matrix(matrix[..., :2, :2])
         t = matrix[..., :2, -1]
         return cls(r, t)
@@ -425,5 +439,8 @@ class Se2(nn.Module):
 
         """
         rt = self.matrix()
-        rt[..., 0:2, 2] = torch.stack((self.t.data[..., 1], -self.t.data[..., 0]), -1)
+        t = self.t
+        if isinstance(t, Vector2):
+            t = t._data
+        rt[..., 0:2, 2] = torch.stack((t[..., 1], -t[..., 0]), -1)
         return rt

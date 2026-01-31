@@ -25,7 +25,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
@@ -72,18 +72,12 @@ class Se3(nn.Module):
         """
         super().__init__()
         # KORNIA_CHECK_TYPE(rotation, (Quaternion, So3))
-        if not isinstance(rotation, (Quaternion, So3)):
-            raise TypeError(f"rotation type is {type(rotation)}")
-        # KORNIA_CHECK_TYPE(translation, (Vector3, torch.Tensor))
-        if not isinstance(translation, (Vector3, torch.Tensor)):
-            raise TypeError(f"translation type is {type(translation)}")
-        # KORNIA_CHECK_SHAPE(t, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_TYPE(rotation, (Quaternion, So3))
+        KORNIA_CHECK_TYPE(translation, (Vector3, torch.Tensor))
+        KORNIA_CHECK_SHAPE(translation, ["*", "3"])
         self._translation: Vector3 | nn.Parameter
         self._rotation: So3
-        if isinstance(translation, torch.Tensor):
-            self._translation = nn.Parameter(translation)
-        else:
-            self._translation = translation
+        self._translation = translation
         if isinstance(rotation, Quaternion):
             self._rotation = So3(rotation)
         else:
@@ -116,7 +110,7 @@ class Se3(nn.Module):
             # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
             return self._mul_se3(right)
         elif isinstance(right, (Vector3, torch.Tensor)):
-            # KORNIA_CHECK_SHAPE(right, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
+            KORNIA_CHECK_SHAPE(right, ["*", "3"])
             return so3 * right + t.data
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
@@ -168,19 +162,30 @@ class Se3(nn.Module):
             tensor([[0., 0., 0.]], requires_grad=True)
 
         """
-        # KORNIA_CHECK_SHAPE(v, ["B", "6"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(v, ["*", "6"])
         upsilon = v[..., :3]
         omega = v[..., 3:]
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
-        theta = batched_dot_product(omega, omega).sqrt()
+        theta = omega.norm(dim=-1, keepdim=True)[..., None]
         R = So3.exp(omega)
-        V = (
-            torch.eye(3, device=v.device, dtype=v.dtype)
-            + ((1 - torch.cos(theta)) / (theta**2))[..., None, None] * omega_hat
-            + ((theta - torch.sin(theta)) / (theta**3))[..., None, None] * omega_hat_sq
-        )
-        U = torch.where(theta[..., None] != 0.0, (upsilon[..., None, :] * V).sum(-1), upsilon)
+
+        eps = torch.finfo(v.dtype).eps * 1e3
+        small_theta = theta <= eps
+
+        # V matrix components
+        # (1 - cos(theta)) / theta^2
+        c1_large = (1 - torch.cos(theta)) / (theta**2)
+        c1_small = 0.5 - (theta**2) / 24.0
+        c1 = torch.where(small_theta, c1_small, c1_large)
+
+        # (theta - sin(theta)) / theta^3
+        c2_large = (theta - torch.sin(theta)) / (theta**3)
+        c2_small = 1.0 / 6.0 - (theta**2) / 120.0
+        c2 = torch.where(small_theta, c2_small, c2_large)
+
+        V = torch.eye(3, device=v.device, dtype=v.dtype) + c1 * omega_hat + c2 * omega_hat_sq
+        U = (V @ upsilon[..., None]).squeeze(-1)
         return Se3(R, U)
 
     def log(self) -> torch.Tensor:
@@ -194,17 +199,19 @@ class Se3(nn.Module):
 
         """
         omega = self.r.log()
-        theta = batched_dot_product(omega, omega).clamp_min(1e-12).sqrt()
+        theta = omega.norm(dim=-1)
         t = self.t.data
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
-        V_inv = (
-            torch.eye(3, device=omega.device, dtype=omega.dtype)
-            - 0.5 * omega_hat
-            + ((1 - theta * torch.cos(theta / 2) / (2 * torch.sin(theta / 2))) / theta.pow(2))[..., None, None]
-            * omega_hat_sq
-        )
-        t = torch.where(theta[..., None] != 0.0, (t[..., None, :] * V_inv).sum(-1), t)
+        eps = torch.finfo(omega.dtype).eps * 1e3
+        small_theta = theta <= eps
+        # (1 - theta * cos(theta/2) / (2 * sin(theta/2))) / theta^2
+        c_large = (1 - theta * torch.cos(theta / 2) / (2 * torch.sin(theta / 2))) / theta.pow(2)
+        c_small = 1.0 / 12.0 + (theta**2) / 720.0
+        c = torch.where(small_theta, c_small, c_large)
+
+        V_inv = torch.eye(3, device=omega.device, dtype=omega.dtype) - 0.5 * omega_hat + c[..., None, None] * omega_hat_sq
+        t = (V_inv @ t[..., None]).squeeze(-1)
         return torch.cat((t, omega), -1)
 
     @staticmethod
@@ -227,7 +234,7 @@ class Se3(nn.Module):
                      [ 0.,  0.,  0.,  0.]]])
 
         """
-        # KORNIA_CHECK_SHAPE(v, ["B", "6"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(v, ["*", "6"])
         upsilon, omega = v[..., :3], v[..., 3:]
         rt = torch.cat((So3.hat(omega), upsilon[..., None]), -1)
         return F.pad(rt, (0, 0, 0, 1))  # add torch.zeros bottom
@@ -249,7 +256,7 @@ class Se3(nn.Module):
             tensor([[1., 1., 1., 1., 1., 1.]])
 
         """
-        # KORNIA_CHECK_SHAPE(omega, ["B", "4", "4"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(omega, ["*", "4", "4"])
         head = omega[..., :3, -1]
         tail = So3.vee(omega[..., :3, :3])
         return torch.cat((head, tail), -1)
@@ -296,7 +303,10 @@ class Se3(nn.Module):
                     [0., 0., 0., 1.]])
 
         """
-        rt = torch.cat((self.r.matrix(), self.t.data[..., None]), -1)
+        t = self.t
+        if isinstance(t, Vector3):
+            t = t._data
+        rt = torch.cat((self.r.matrix(), t[..., None]), -1)
         rt_4x4 = F.pad(rt, (0, 0, 0, 1))  # add last row torch.zeros
         rt_4x4[..., -1, -1] = 1.0
         return rt_4x4
@@ -317,7 +327,7 @@ class Se3(nn.Module):
             tensor([0., 0., 0.], requires_grad=True)
 
         """
-        # KORNIA_CHECK_SHAPE(matrix, ["B", "4", "4"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(matrix, ["*", "4", "4"])
         r = So3.from_matrix(matrix[..., :3, :3])
         t = matrix[..., :3, -1]
         return cls(r, t)
@@ -340,7 +350,7 @@ class Se3(nn.Module):
             z: 1.0
 
         """
-        # KORNIA_CHECK_SHAPE(qxyz, ["B", "7"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(qxyz, ["*", "7"])
         q, xyz = qxyz[..., :4], qxyz[..., 4:]
         return cls(So3.from_wxyz(q), Vector3(xyz))
 
