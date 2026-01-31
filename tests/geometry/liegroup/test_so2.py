@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import ShapeError, TypeCheckError
 from kornia.geometry.liegroup import So2
 from kornia.geometry.vector import Vector2
 
@@ -65,21 +66,18 @@ class TestSo2(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
     def test_exception(self, batch_size, device, dtype, cdtype):
-        with pytest.raises(ValueError):
+        with pytest.raises(TypeCheckError):
             z = torch.randn(batch_size, 2, dtype=cdtype, device=device)
             assert So2(z)
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeCheckError):
             assert So2.identity(1, device, dtype) * [1.0, 2.0, 1.0]
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             theta = torch.rand((2, 2), dtype=dtype, device=device)
             assert So2.exp(theta)
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             theta = torch.rand((2, 2), dtype=dtype, device=device)
             assert So2.hat(theta)
-        with pytest.raises(ValueError):
-            m = torch.rand((2, 2, 1), dtype=dtype, device=device)
-            assert So2.from_matrix(m)
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             m = torch.rand((2, 2, 1), dtype=dtype, device=device)
             assert So2.from_matrix(m)
         with pytest.raises(Exception):
@@ -88,21 +86,33 @@ class TestSo2(BaseTester):
     # TODO: implement me
     def test_gradcheck(self, device):
         theta = torch.randn(2, 1, device=device, dtype=torch.float64, requires_grad=True)
-        self.gradcheck(lambda x: So2.exp(x).matrix(), (theta,))
+
+        def op(x):
+            return So2.exp(x).matrix()
+
+        self.gradcheck(op, (theta,))
 
         m = So2.random(2, device=device, dtype=torch.float64).matrix().detach().requires_grad_(True)
-        self.gradcheck(lambda x: So2.from_matrix(x).matrix(), (m,))
 
-    # TODO: implement me
+        def op_matrix(x):
+            return So2.from_matrix(x).matrix()
+
+        self.gradcheck(op_matrix, (m,))
+
     def test_jit(self, device, dtype):
         theta = torch.randn(2, 1, device=device, dtype=dtype)
-        op = lambda x: So2.exp(x).matrix()
+
+        def op(x):
+            return So2.exp(x).matrix()
+
         op_jit = torch.jit.trace(op, (theta,))
         self.assert_close(op(theta), op_jit(theta))
 
-    # TODO: implement me
     def test_module(self, device, dtype):
         s = So2.random(1, device=device, dtype=dtype)
+        # Force parameters for state_dict testing
+        s._z = torch.nn.Parameter(s._z)
+
         class MyModule(torch.nn.Module):
             def __init__(self, s):
                 super().__init__()
@@ -117,6 +127,8 @@ class TestSo2(BaseTester):
         self.assert_close(out, s * x)
 
         state_dict = module.state_dict()
+        assert any("_z" in k for k in state_dict.keys())
+
         new_module = MyModule(So2.identity(1, device=device, dtype=dtype)).to(device, dtype)
         new_module.load_state_dict(state_dict)
         self.assert_close(new_module.s.matrix(), s.matrix())

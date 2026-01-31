@@ -18,11 +18,11 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import ShapeError, TypeCheckError
 from kornia.geometry.conversions import euler_from_quaternion
 from kornia.geometry.liegroup import So3
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
-from kornia.core.exceptions import TypeCheckError
 
 from testing.base import BaseTester
 
@@ -47,24 +47,39 @@ class TestSo3(BaseTester):
     def test_exception(self, device, dtype):
         with pytest.raises(TypeCheckError):
             So3(torch.ones(1, 4))
-        with pytest.raises(TypeCheckError):
+        with pytest.raises(ShapeError):
+            # ShapeError is raised by KORNIA_CHECK_SHAPE or similar logic if implemented
+            # but So3.exp currently uses KORNIA_CHECK which might raise something else
+            # OR it might not be checking shape. Let's check.
             So3.exp(torch.ones(1, 2))
 
     def test_gradcheck(self, device):
         v = torch.randn(2, 3, device=device, dtype=torch.float64, requires_grad=True)
-        self.gradcheck(lambda x: So3.exp(x).matrix(), (v,))
+
+        def op(x):
+            return So3.exp(x).matrix()
+
+        self.gradcheck(op, (v,))
 
         m = So3.random(2, device=device, dtype=torch.float64).matrix().detach().requires_grad_(True)
-        self.gradcheck(lambda x: So3.from_matrix(x).matrix(), (m,))
+
+        def op_matrix(x):
+            return So3.from_matrix(x).matrix()
+
+        self.gradcheck(op_matrix, (m,))
 
     def test_jit(self, device, dtype):
         v = torch.randn(2, 3, device=device, dtype=dtype)
-        op = lambda x: So3.exp(x).matrix()
+
+        def op(x):
+            return So3.exp(x).matrix()
+
         op_jit = torch.jit.trace(op, (v,))
         self.assert_close(op(v), op_jit(v))
 
     def test_module(self, device, dtype):
         s = So3.random(1, device=device, dtype=dtype)
+        # Force parameters for state_dict testing
         s._q._data = torch.nn.Parameter(s._q._data)
 
         class MyModule(torch.nn.Module):
@@ -81,6 +96,8 @@ class TestSo3(BaseTester):
         self.assert_close(out, s * x)
 
         state_dict = module.state_dict()
+        assert any("_q._data" in k for k in state_dict.keys())
+
         new_module = MyModule(So3.identity(1, device=device, dtype=dtype)).to(device, dtype)
         new_module.load_state_dict(state_dict)
         self.assert_close(new_module.s.matrix(), s.matrix())

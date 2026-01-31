@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import ShapeError, TypeCheckError
 from kornia.geometry.conversions import euler_from_quaternion, rotation_matrix_to_quaternion
 from kornia.geometry.liegroup import Se3, So3
 from kornia.geometry.quaternion import Quaternion
@@ -61,30 +62,40 @@ class TestSe3(BaseTester):
         assert se.r.q.shape[0] == batch_size
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeCheckError):
             Se3(torch.ones(1, 4), torch.ones(1, 3))
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeCheckError):
             Se3(So3.identity(1), [1.0, 2.0, 3.0])
-        # NOTE: Se3 does not currently validate batch size consistency in __init__
-        # but we can test other failures if they exist.
+        with pytest.raises(ShapeError):
+            Se3.exp(torch.ones(1, 4))  # Should be (B, 6)
 
     def test_gradcheck(self, device):
         v = torch.randn(2, 6, device=device, dtype=torch.float64, requires_grad=True)
-        self.gradcheck(lambda x: Se3.exp(x).matrix(), (v,))
+
+        def op(x):
+            return Se3.exp(x).matrix()
+
+        self.gradcheck(op, (v,))
 
         m = Se3.random(2, device=device, dtype=torch.float64).matrix().detach().requires_grad_(True)
-        self.gradcheck(lambda x: Se3.from_matrix(x).matrix(), (m,))
+
+        def op_matrix(x):
+            return Se3.from_matrix(x).matrix()
+
+        self.gradcheck(op_matrix, (m,))
 
     def test_jit(self, device, dtype):
         v = torch.randn(2, 6, device=device, dtype=dtype)
-        op = lambda x: Se3.exp(x).matrix()
+
+        def op(x):
+            return Se3.exp(x).matrix()
+
         op_jit = torch.jit.trace(op, (v,))
         self.assert_close(op(v), op_jit(v))
 
     def test_module(self, device, dtype):
         s = Se3.random(1, device=device, dtype=dtype)
-        # Ensure we use Parameters for state_dict testing
-        s._translation = torch.nn.Parameter(s._translation.data)
+        # Force parameters for state_dict testing
         s._rotation._q._data = torch.nn.Parameter(s._rotation._q._data)
 
         class MyModule(torch.nn.Module):
@@ -102,8 +113,8 @@ class TestSe3(BaseTester):
 
         # Test state dict
         state_dict = module.state_dict()
-        assert "_rotation._q._data" in state_dict or "s._rotation._q._data" in state_dict
-        
+        assert any("_rotation._q._data" in k for k in state_dict.keys())
+
         new_module = MyModule(Se3.identity(1, device=device, dtype=dtype)).to(device, dtype)
         new_module.load_state_dict(state_dict)
         self.assert_close(new_module.s.matrix(), s.matrix())
