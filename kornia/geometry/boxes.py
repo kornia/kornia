@@ -462,6 +462,8 @@ class Boxes:
                 * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
                   With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
+                * 'cxcywh': boxes are assumed to be in the format ``x_center, y_center, width, height`` where
+                  ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
 
             validate_boxes: check if boxes are valid rectangles or not. Valid rectangles are those with width
                 and height >= 1 (>= 2 when mode ends with '_plus' suffix).
