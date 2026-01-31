@@ -27,6 +27,7 @@ from torch import nn
 from kornia.contrib.object_detection import BoxFiltering
 from kornia.geometry.boxes import Boxes
 
+
 def mod(a: torch.Tensor, b: int) -> torch.Tensor:
     """Compute the element-wise remainder of tensor `a` divided by integer `b`.
 

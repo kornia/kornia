@@ -553,10 +553,10 @@ class Boxes:
         elif mode == "cxcywh":
             width = boxes[..., 2] - boxes[..., 0] + 1
             height = boxes[..., 3] - boxes[..., 1] + 1
-            
+
             cx = boxes[..., 0] + (width - 1) / 2
             cy = boxes[..., 1] + (height - 1) / 2
-            
+
             boxes[..., 0] = cx
             boxes[..., 1] = cy
             boxes[..., 2] = width
