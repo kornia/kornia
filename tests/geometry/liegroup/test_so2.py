@@ -87,15 +87,39 @@ class TestSo2(BaseTester):
 
     # TODO: implement me
     def test_gradcheck(self, device):
-        pass
+        theta = torch.randn(2, 1, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(lambda x: So2.exp(x).matrix(), (theta,))
+
+        m = So2.random(2, device=device, dtype=torch.float64).matrix().detach().requires_grad_(True)
+        self.gradcheck(lambda x: So2.from_matrix(x).matrix(), (m,))
 
     # TODO: implement me
     def test_jit(self, device, dtype):
-        pass
+        theta = torch.randn(2, 1, device=device, dtype=dtype)
+        op = lambda x: So2.exp(x).matrix()
+        op_jit = torch.jit.trace(op, (theta,))
+        self.assert_close(op(theta), op_jit(theta))
 
     # TODO: implement me
     def test_module(self, device, dtype):
-        pass
+        s = So2.random(1, device=device, dtype=dtype)
+        class MyModule(torch.nn.Module):
+            def __init__(self, s):
+                super().__init__()
+                self.s = s
+
+            def forward(self, x):
+                return self.s * x
+
+        module = MyModule(s).to(device, dtype)
+        x = torch.rand(1, 2, device=device, dtype=dtype)
+        out = module(x)
+        self.assert_close(out, s * x)
+
+        state_dict = module.state_dict()
+        new_module = MyModule(So2.identity(1, device=device, dtype=dtype)).to(device, dtype)
+        new_module.load_state_dict(state_dict)
+        self.assert_close(new_module.s.matrix(), s.matrix())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
