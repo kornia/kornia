@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-
 import torch
 from torch import nn
 
@@ -35,9 +34,11 @@ class VisionEncoder(nn.Module):
         self.proj = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
-        """
+        """Forward pass of the vision encoder.
+
         Args:
             images: (B, C, H, W)
+
         Returns:
             features: (B, NumPatches, VisionDim)
         """
@@ -61,9 +62,11 @@ class MultimodalProjector(nn.Module):
         self.fc2 = nn.Linear(text_dim, text_dim)
 
     def forward(self, image_features: torch.Tensor) -> torch.Tensor:
-        """
+        """Forward pass of the multimodal projector.
+
         Args:
             image_features: (B, NumPatches, VisionDim)
+
         Returns:
             projected_features: (B, NumPatches, TextDim)
         """
@@ -82,9 +85,11 @@ class LanguageModel(nn.Module):
         self.head = nn.Linear(hidden_dim, vocab_size, bias=False)
 
     def forward(self, inputs_embeds: torch.Tensor) -> torch.Tensor:
-        """
+        """Forward pass of the language model.
+
         Args:
             inputs_embeds: (B, SeqLen, HiddenDim)
+
         Returns:
             logits: (B, SeqLen, VocabSize)
         """
