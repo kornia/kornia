@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 import torch
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 #
 # Copyright 2018 Kornia Team
@@ -33,66 +34,86 @@ import torch
 #
 
 
-# TODO: Temporary shape check functions until KORNIA_CHECK_SHAPE is ready
-def check_so2_z_shape(z: torch.Tensor) -> None:
-    z_shape = z.shape
-    len_z_shape = len(z_shape)
-    if (len_z_shape == 2 and z_shape[1] != 1) or (len_z_shape == 0 and not z.numel()) or (len_z_shape > 2):
-        raise ValueError(f"Invalid input size, we expect [B]. Got: {z.shape}")
+#TODO: Temporary shape check functions until KORNIA_CHECK_SHAPE is ready
 
+def check_so2_z_shape(z: torch.Tensor) -> None:
+    # Check if input is a scalar/unbatched: shape []
+    is_scalar = len(z.shape) == 0
+    
+    # Check if input is a flat vector: shape [B]
+    is_flat = KORNIA_CHECK_SHAPE(z, ["B"], raises=False)
+    
+    # Check if input is a column vector: shape [B, 1]
+    is_column = KORNIA_CHECK_SHAPE(z, ["B", "1"], raises=False)
+
+    if not (is_scalar or is_flat or is_column):
+        raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {z.shape}")
 
 def check_so2_t_shape(t: torch.Tensor) -> None:
-    t_shape = t.shape
-    len_t_shape = len(t_shape)
-    if ((len_t_shape == 2) and (t_shape[1] != 2)) or ((len_t_shape == 1) and (t_shape[0] != 2)) or (len_t_shape > 2):
-        raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {t_shape}")
+    # Check if input is a batch of 2D vectors: shape [B, 2]
+    is_batch_shape = KORNIA_CHECK_SHAPE(t, ["B", "2"], raises=False)
+    
+    # Check if input is a single 2D vector: shape [2]
+    is_single_shape = KORNIA_CHECK_SHAPE(t, ["2"], raises=False)
 
+    if not (is_batch_shape or is_single_shape):
+         raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {t.shape}")
 
 def check_so2_theta_shape(theta: torch.Tensor) -> None:
-    theta_shape = theta.shape
-    len_theta_shape = len(theta_shape)
-    if (
-        (len_theta_shape == 2 and theta_shape[1] != 1)
-        or (len_theta_shape == 0 and not theta.numel())
-        or (len_theta_shape > 2)
-    ):
-        raise ValueError(f"Invalid input size, we expect [B]. Got: {theta_shape}")
+    # Allow scalar
+    is_scalar = len(theta.shape) == 0
+    
+    # Check if input is a flat vector: shape [B]
+    is_flat = KORNIA_CHECK_SHAPE(theta, ["B"], raises=False)
+    
+    # Check if input is a column vector: shape [B, 1]
+    is_column = KORNIA_CHECK_SHAPE(theta, ["B", "1"], raises=False)
+
+    if not (is_scalar or is_flat or is_column):
+        raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {theta.shape}")
 
 
 def check_so2_matrix_shape(matrix: torch.Tensor) -> None:
-    matrix_shape = matrix.shape
-    len_matrix_shape = len(matrix_shape)
-    if (
-        (len_matrix_shape == 3 and (matrix_shape[1] != 2 or matrix_shape[2] != 2))
-        or (len_matrix_shape == 2 and (matrix_shape[0] != 2 or matrix_shape[1] != 2))
-        or (len_matrix_shape > 3 or len_matrix_shape < 2)
-    ):
-        raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {matrix_shape}")
+    # Allow a stack of 2x2 matrices [B, 2, 2] OR a single 2x2 matrix [2, 2]
+    is_batch = KORNIA_CHECK_SHAPE(matrix, ["B", "2", "2"], raises=False)
+    is_single = KORNIA_CHECK_SHAPE(matrix, ["2", "2"], raises=False)
+    
+    if not (is_batch or is_single):
+        raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {matrix.shape}")
 
 
 def check_so2_matrix(matrix: torch.Tensor) -> None:
-    for m in matrix.reshape(-1, 2, 2):
-        if m[0, 0] != m[1, 1] or m[0, 1] != -m[1, 0]:
-            raise ValueError("Invalid rotation matrix")
+    KORNIA_CHECK_IS_TENSOR(matrix)
+    
+    # Existing shape validation
+    if len(matrix.shape) < 2 or matrix.shape[-2:] != (2, 2):
+        raise ValueError(f"Input size must be (*, 2, 2). Got {matrix.shape}")
+
+    # Check the diagonal: m00 == m11
+    # Check the off-diagonal: m01 == -m10
+    mask_diag = torch.allclose(matrix[..., 0, 0], matrix[..., 1, 1])
+    mask_off_diag = torch.allclose(matrix[..., 0, 1], -matrix[..., 1, 0])
+
+    if not (mask_diag and mask_off_diag):
+        raise ValueError("Invalid SO2 rotation matrix: constraints m00==m11 and m01==-m10 not met.")
+
+def check_v_shape(v: torch.Tensor) -> None:
+    # Allow a batch of 3D vectors [B, 3] OR a single 3D vector [3]
+    is_batch = KORNIA_CHECK_SHAPE(v, ["B", "3"], raises=False)
+    is_single = KORNIA_CHECK_SHAPE(v, ["3"], raises=False)
+
+    if not (is_batch or is_single):
+        raise ValueError(f"Invalid input shape, we expect [B, 3], [3] Got: {v.shape}")
+
+
+def check_se2_omega_shape(matrix: torch.Tensor) -> None:
+    # Allow a stack of 3x3 matrices [B, 3, 3] OR a single 3x3 matrix [3, 3]
+    is_batch = KORNIA_CHECK_SHAPE(matrix, ["B", "3", "3"], raises=False)
+    is_single = KORNIA_CHECK_SHAPE(matrix, ["3", "3"], raises=False)
+
+    if not (is_batch or is_single):
+        raise ValueError(f"Invalid input size, we expect [B, 3, 3] or [3, 3]. Got: {matrix.shape}")
 
 
 def check_se2_t_shape(t: torch.Tensor) -> None:
     check_so2_t_shape(t)
-
-
-def check_v_shape(v: torch.Tensor) -> None:
-    v_shape = v.shape
-    len_v_shape = len(v_shape)
-    if ((len_v_shape == 2) and (v_shape[1] != 3)) or ((len_v_shape == 1) and (v_shape[0] != 3)) or (len_v_shape > 3):
-        raise ValueError(f"Invalid input shape, we expect [B, 3], [3] Got: {v_shape}")
-
-
-def check_se2_omega_shape(matrix: torch.Tensor) -> None:
-    matrix_shape = matrix.shape
-    len_matrix_shape = len(matrix_shape)
-    if (
-        (len_matrix_shape == 3 and (matrix_shape[1] != 3 or matrix_shape[2] != 3))
-        or (len_matrix_shape == 2 and (matrix_shape[0] != 3 or matrix_shape[1] != 3))
-        or (len_matrix_shape > 3 or len_matrix_shape < 2)
-    ):
-        raise ValueError(f"Invalid input size, we expect [B, 3, 3] or [3, 3]. Got: {matrix_shape}")
