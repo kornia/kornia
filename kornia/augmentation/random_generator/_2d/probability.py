@@ -22,7 +22,6 @@ from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _common_param_check
-from kornia.core import Tensor, tensor
 
 __all__ = ["ProbabilityGenerator"]
 
@@ -35,7 +34,7 @@ class ProbabilityGenerator(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - probs (Tensor): element-wise probabilities with a shape of (B,).
+            - probs (torch.Tensor): element-wise probabilities with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -56,9 +55,9 @@ class ProbabilityGenerator(RandomGeneratorBase):
         p = torch.tensor(float(self.p), device=device, dtype=dtype)
         self.sampler = Bernoulli(p)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
-        probs_mask: Tensor = _adapted_sampling((batch_size,), self.sampler, same_on_batch).bool()
+        probs_mask: torch.Tensor = _adapted_sampling((batch_size,), self.sampler, same_on_batch).bool()
         return {"probs": probs_mask}
 
 
@@ -68,7 +67,7 @@ def random_prob_generator(
     same_on_batch: bool = False,
     device: Optional[torch.device] = None,
     dtype: torch.dtype = torch.float32,
-) -> Tensor:
+) -> torch.Tensor:
     r"""Generate random probabilities for a batch of inputs.
 
     Args:
@@ -79,8 +78,8 @@ def random_prob_generator(
         dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
 
     Returns:
-        Tensor: parameters to be passed for transformation.
-            - probs (Tensor): element-wise probabilities with a shape of (B,).
+        torch.Tensor: parameters to be passed for transformation.
+            - probs (torch.Tensor): element-wise probabilities with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
@@ -92,7 +91,7 @@ def random_prob_generator(
     if not isinstance(p, (int, float)) or p > 1 or p < 0:
         raise TypeError(f"The probability should be a float number within [0, 1]. Got {type(p)}.")
 
-    _bernoulli = Bernoulli(tensor(float(p), device=device, dtype=dtype))
-    probs_mask: Tensor = _adapted_sampling((batch_size,), _bernoulli, same_on_batch).bool()
+    _bernoulli = Bernoulli(torch.tensor(float(p), device=device, dtype=dtype))
+    probs_mask: torch.Tensor = _adapted_sampling((batch_size,), _bernoulli, same_on_batch).bool()
 
     return probs_mask

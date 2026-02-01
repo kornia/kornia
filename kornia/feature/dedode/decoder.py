@@ -20,10 +20,16 @@ from typing import Any, Optional, Tuple
 import torch
 from torch import nn
 
-from kornia.core import Tensor
-
 
 class Decoder(nn.Module):
+    """Implement the decoder module for DeDoDe feature extraction.
+
+    Args:
+        layers: The architectural layers for the decoder.
+        super_resolution: Whether to apply super-resolution upsampling.
+        num_prototypes: The number of prototypes for the output head.
+    """
+
     def __init__(self, layers: Any, *args, super_resolution: bool = False, num_prototypes: int = 1, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self.layers = layers
@@ -32,8 +38,8 @@ class Decoder(nn.Module):
         self.num_prototypes = num_prototypes
 
     def forward(
-        self, features: Tensor, context: Optional[Tensor] = None, scale: Optional[int] = None
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+        self, features: torch.Tensor, context: Optional[torch.Tensor] = None, scale: Optional[int] = None
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if context is not None:
             features = torch.cat((features, context), dim=1)
         stuff = self.layers[scale](features)
@@ -42,6 +48,20 @@ class Decoder(nn.Module):
 
 
 class ConvRefiner(nn.Module):
+    """Implement a convolutional refiner for DeDoDe feature extraction.
+
+    Args:
+        in_dim: The input dimension for the refiner.
+        hidden_dim: The hidden dimension for the refiner.
+        out_dim: The output dimension for the refiner.
+        dw: Whether to use depthwise convolution.
+        kernel_size: The kernel size for the convolution.
+        hidden_blocks: The number of hidden blocks in the refiner.
+        amp: Whether to use automatic mixed precision.
+        residual: Whether to use residual connections.
+        amp_dtype: The data type for automatic mixed precision.
+    """
+
     def __init__(  # type: ignore[no-untyped-def]
         self,
         in_dim=6,
@@ -105,7 +125,7 @@ class ConvRefiner(nn.Module):
         conv2 = nn.Conv2d(out_dim, out_dim, 1, 1, 0)
         return nn.Sequential(conv1, norm, relu, conv2)
 
-    def forward(self, feats: Tensor) -> Tensor:
+    def forward(self, feats: torch.Tensor) -> torch.Tensor:
         _b, _c, _hs, _ws = feats.shape
         with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
             x0 = self.block1(feats)

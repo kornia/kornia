@@ -25,9 +25,9 @@ from testing.base import BaseTester
 
 class TestDiscreteSteerer(BaseTester):
     @pytest.mark.parametrize("num_desc, desc_dim, steerer_power", [(1, 4, 1), (2, 128, 7), (32, 128, 11)])
-    def test_shape(self, num_desc, desc_dim, steerer_power, device):
-        desc = torch.rand(num_desc, desc_dim, device=device)
-        generator = torch.rand(desc_dim, desc_dim, device=device)
+    def test_shape(self, num_desc, desc_dim, steerer_power, device, dtype):
+        desc = torch.rand(num_desc, desc_dim, device=device, dtype=dtype)
+        generator = torch.rand(desc_dim, desc_dim, device=device, dtype=dtype)
         steerer = DiscreteSteerer(generator)
         desc = steerer.steer_descriptions(desc, steerer_power=steerer_power)
         assert desc.shape == (num_desc, desc_dim)

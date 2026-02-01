@@ -15,7 +15,43 @@
 # limitations under the License.
 #
 
-from .base import ChannelsOrder, ImageLayout, ImageSize, PixelFormat
-from .image import Image
+"""Image submodule for Kornia.
 
-__all__ = ["ChannelsOrder", "Image", "ImageLayout", "ImageSize", "PixelFormat"]
+This package provides image data structures and utilities, including image layout, size, pixel format,
+and channel order definitions.
+"""
+
+from .base import ChannelsOrder, ImageLayout, ImageSize, PixelFormat
+from .draw import draw_convex_polygon, draw_line, draw_point2d, draw_rectangle
+from .image import Image
+from .image_print import image_to_string, print_image
+from .utils import (
+    ImageToTensor,
+    image_list_to_tensor,
+    image_to_tensor,
+    make_grid,
+    perform_keep_shape_image,
+    perform_keep_shape_video,
+    tensor_to_image,
+)
+
+__all__ = [
+    "ChannelsOrder",
+    "Image",
+    "ImageLayout",
+    "ImageSize",
+    "ImageToTensor",
+    "PixelFormat",
+    "draw_convex_polygon",
+    "draw_line",
+    "draw_point2d",
+    "draw_rectangle",
+    "image_list_to_tensor",
+    "image_to_string",
+    "image_to_tensor",
+    "make_grid",
+    "perform_keep_shape_image",
+    "perform_keep_shape_video",
+    "print_image",
+    "tensor_to_image",
+]

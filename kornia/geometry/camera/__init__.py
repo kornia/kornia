@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Geometry Camera — Camera models and camera-related utilities for Kornia.
+
+This subpackage provides camera models, distortion, and projection functions.
+"""
+
 from .distortion_affine import distort_points_affine, dx_distort_points_affine, undistort_points_affine
 from .distortion_kannala_brandt import (
     distort_points_kannala_brandt,

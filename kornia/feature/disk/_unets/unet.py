@@ -19,14 +19,13 @@ from __future__ import annotations
 
 from typing import Optional
 
+import torch
 from torch import nn
-
-from kornia.core import Module, Tensor
 
 from .blocks import ThinUnetDownBlock, ThinUnetUpBlock
 
 
-class Unet(Module):
+class Unet(nn.Module):
     def __init__(
         self, in_features: int = 1, up: Optional[list[int]] = None, down: Optional[list[int]] = None, size: int = 5
     ) -> None:
@@ -59,7 +58,7 @@ class Unet(Module):
         for param in self.parameters():
             self.n_params += param.numel()
 
-    def forward(self, inp: Tensor) -> Tensor:
+    def forward(self, inp: torch.Tensor) -> torch.Tensor:
         if inp.size(1) != self.in_features:
             fmt = "Expected {} feature channels in input, got {}"
             msg = fmt.format(self.in_features, inp.size(1))
@@ -70,7 +69,7 @@ class Unet(Module):
             raise ValueError(
                 f"Input image shape must be divisible by {input_size_divisor} (got {inp.size()}). "
                 "This is not inherent to DISK, but to the U-Net architecture used in pretrained models. "
-                "Please pad if necessary."
+                "Please F.pad if necessary."
             )
 
         features = [inp]

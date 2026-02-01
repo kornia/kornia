@@ -21,10 +21,9 @@ import math
 
 import torch
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.color import rgb_to_grayscale
-from kornia.core import ImageModule as Module
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .gaussian import gaussian_blur2d
@@ -33,20 +32,20 @@ from .sobel import spatial_gradient
 
 
 def canny(
-    input: Tensor,
+    input: torch.Tensor,
     low_threshold: float = 0.1,
     high_threshold: float = 0.2,
     kernel_size: tuple[int, int] | int = (5, 5),
-    sigma: tuple[float, float] | Tensor = (1, 1),
+    sigma: tuple[float, float] | torch.Tensor = (1, 1),
     hysteresis: bool = True,
     eps: float = 1e-6,
-) -> tuple[Tensor, Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Find edges of the input image and filters them using the Canny algorithm.
 
     .. image:: _static/img/canny.png
 
     Args:
-        input: input image tensor with shape :math:`(B,C,H,W)`.
+        input: input image torch.Tensor with shape :math:`(B,C,H,W)`.
         low_threshold: lower threshold for the hysteresis procedure.
         high_threshold: upper threshold for the hysteresis procedure.
         kernel_size: the size of the kernel for the gaussian blur.
@@ -89,18 +88,18 @@ def canny(
         input = rgb_to_grayscale(input)
 
     # Gaussian filter
-    blurred: Tensor = gaussian_blur2d(input, kernel_size, sigma)
+    blurred: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma)
 
     # Compute the gradients
-    gradients: Tensor = spatial_gradient(blurred, normalized=False)
+    gradients: torch.Tensor = spatial_gradient(blurred, normalized=False)
 
     # Unpack the edges
-    gx: Tensor = gradients[:, :, 0]
-    gy: Tensor = gradients[:, :, 1]
+    gx: torch.Tensor = gradients[:, :, 0]
+    gy: torch.Tensor = gradients[:, :, 1]
 
     # Compute gradient magnitude and angle
-    magnitude: Tensor = torch.sqrt(gx * gx + gy * gy + eps)
-    angle: Tensor = torch.atan2(gy, gx)
+    magnitude: torch.Tensor = torch.sqrt(gx * gx + gy * gy + eps)
+    angle: torch.Tensor = torch.atan2(gy, gx)
 
     # Radians to degrees and round to nearest 45 degree
     # degrees = angle * (180.0 / math.pi)
@@ -108,47 +107,47 @@ def canny(
     angle_45 = (angle * (4 / math.pi)).round()
 
     # Non-maximal suppression
-    nms_kernels: Tensor = get_canny_nms_kernel(device, dtype)
-    nms_magnitude: Tensor = F.conv2d(magnitude, nms_kernels, padding=nms_kernels.shape[-1] // 2)
+    nms_kernels: torch.Tensor = get_canny_nms_kernel(device, dtype)
+    nms_magnitude: torch.Tensor = F.conv2d(magnitude, nms_kernels, padding=nms_kernels.shape[-1] // 2)
 
     # Get the indices for both directions
-    positive_idx: Tensor = angle_45 % 8
+    positive_idx: torch.Tensor = angle_45 % 8
     positive_idx = positive_idx.long()
 
-    negative_idx: Tensor = (angle_45 + 4) % 8
+    negative_idx: torch.Tensor = (angle_45 + 4) % 8
     negative_idx = negative_idx.long()
 
     # Apply the non-maximum suppression to the different directions
-    channel_select_filtered_positive: Tensor = torch.gather(nms_magnitude, 1, positive_idx)
-    channel_select_filtered_negative: Tensor = torch.gather(nms_magnitude, 1, negative_idx)
+    channel_select_filtered_positive: torch.Tensor = torch.gather(nms_magnitude, 1, positive_idx)
+    channel_select_filtered_negative: torch.Tensor = torch.gather(nms_magnitude, 1, negative_idx)
 
-    channel_select_filtered: Tensor = torch.stack(
+    channel_select_filtered: torch.Tensor = torch.stack(
         [channel_select_filtered_positive, channel_select_filtered_negative], 1
     )
 
-    is_max: Tensor = channel_select_filtered.min(dim=1)[0] > 0.0
+    is_max: torch.Tensor = channel_select_filtered.min(dim=1)[0] > 0.0
 
     magnitude = magnitude * is_max
 
     # Threshold
-    edges: Tensor = F.threshold(magnitude, low_threshold, 0.0)
+    edges: torch.Tensor = F.threshold(magnitude, low_threshold, 0.0)
 
-    low: Tensor = magnitude > low_threshold
-    high: Tensor = magnitude > high_threshold
+    low: torch.Tensor = magnitude > low_threshold
+    high: torch.Tensor = magnitude > high_threshold
 
     edges = low * 0.5 + high * 0.5
     edges = edges.to(dtype)
 
     # Hysteresis
     if hysteresis:
-        edges_old: Tensor = -torch.ones(edges.shape, device=edges.device, dtype=dtype)
-        hysteresis_kernels: Tensor = get_hysteresis_kernel(device, dtype)
+        edges_old: torch.Tensor = -torch.ones(edges.shape, device=edges.device, dtype=dtype)
+        hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, dtype)
 
         while ((edges_old - edges).abs() != 0).any():
-            weak: Tensor = (edges == 0.5).float()
-            strong: Tensor = (edges == 1).float()
+            weak: torch.Tensor = (edges == 0.5).float()
+            strong: torch.Tensor = (edges == 1).float()
 
-            hysteresis_magnitude: Tensor = F.conv2d(
+            hysteresis_magnitude: torch.Tensor = F.conv2d(
                 edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1] // 2
             )
             hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).to(dtype)
@@ -162,11 +161,11 @@ def canny(
     return magnitude, edges
 
 
-class Canny(Module):
-    r"""Module that finds edges of the input image and filters them using the Canny algorithm.
+class Canny(nn.Module):
+    r"""nn.Module that finds edges of the input image and filters them using the Canny algorithm.
 
     Args:
-        input: input image tensor with shape :math:`(B,C,H,W)`.
+        input: input image torch.Tensor with shape :math:`(B,C,H,W)`.
         low_threshold: lower threshold for the hysteresis procedure.
         high_threshold: upper threshold for the hysteresis procedure.
         kernel_size: the size of the kernel for the gaussian blur.
@@ -197,7 +196,7 @@ class Canny(Module):
         low_threshold: float = 0.1,
         high_threshold: float = 0.2,
         kernel_size: tuple[int, int] | int = (5, 5),
-        sigma: tuple[float, float] | Tensor = (1, 1),
+        sigma: tuple[float, float] | torch.Tensor = (1, 1),
         hysteresis: bool = True,
         eps: float = 1e-6,
     ) -> None:
@@ -237,7 +236,7 @@ class Canny(Module):
             )
         )
 
-    def forward(self, input: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         return canny(
             input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps
         )

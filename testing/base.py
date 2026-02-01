@@ -24,7 +24,8 @@ import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_close as _assert_close
 
-from kornia.core import Dtype, Tensor
+Dtype = Union[torch.dtype, None]
+Tensor = torch.Tensor
 
 # {dtype: (rtol, atol)}
 _DTYPE_PRECISIONS = {

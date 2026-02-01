@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Geometry Transform — Geometric transformation operations for Kornia.
+
+This subpackage provides affine, crop, and other geometric transformation utilities.
+"""
+
 from .affwarp import *
 from .crop2d import *
 from .crop3d import *

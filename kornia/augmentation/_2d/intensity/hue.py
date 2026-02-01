@@ -17,16 +17,17 @@
 
 from typing import Any, Dict, Optional, Tuple
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.utils import _range_bound
 from kornia.constants import pi
-from kornia.core import Tensor
 from kornia.enhance.adjust import adjust_hue
 
 
 class RandomHue(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the hue of a tensor image.
+    r"""Apply a random transformation to the hue of a torch.Tensor image.
 
     This implementation aligns PIL. Hence, the output is close to TorchVision.
 
@@ -75,11 +76,15 @@ class RandomHue(IntensityAugmentationBase2D):
         self, hue: Tuple[float, float] = (0.0, 0.0), same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.hue: Tensor = _range_bound(hue, "hue", bounds=(-0.5, 0.5))
+        self.hue: torch.Tensor = _range_bound(hue, "hue", bounds=(-0.5, 0.5))
         self._param_generator = rg.PlainUniformGenerator((self.hue, "hue_factor", None, None))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         hue_factor = params["hue_factor"].to(input)
         return adjust_hue(input, hue_factor * 2 * pi)

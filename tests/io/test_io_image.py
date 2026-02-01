@@ -24,9 +24,8 @@ import pytest
 import requests
 import torch
 
-from kornia.core import Tensor
+from kornia.core._compat import torch_version_ge
 from kornia.io import ImageLoadType, load_image, write_image
-from kornia.utils._compat import torch_version_ge
 
 try:
     import kornia_rs
@@ -42,7 +41,7 @@ def create_random_img8(height: int, width: int, channels: int) -> np.ndarray:
     return (np.random.rand(height, width, channels) * 255).astype(np.uint8)  # noqa: NPY002
 
 
-def create_random_img8_torch(height: int, width: int, channels: int, device=None) -> Tensor:
+def create_random_img8_torch(height: int, width: int, channels: int, device=None) -> torch.Tensor:
     return (torch.rand(channels, height, width, device=device) * 255).to(torch.uint8)
 
 
@@ -84,14 +83,14 @@ def images_fn(png_image, jpg_image):
 class TestIoImage:
     def test_smoke(self, tmp_path: Path) -> None:
         height, width = 4, 5
-        img_th: Tensor = create_random_img8_torch(height, width, 3)
+        img_th: torch.Tensor = create_random_img8_torch(height, width, 3)
 
         file_path = tmp_path / "image.jpg"
         write_image(str(file_path), img_th)
 
         assert file_path.is_file()
 
-        img_load: Tensor = load_image(str(file_path), ImageLoadType.UNCHANGED)
+        img_load: torch.Tensor = load_image(str(file_path), ImageLoadType.UNCHANGED)
 
         assert img_th.shape == img_load.shape
         assert img_th.shape[1:] == (height, width)
@@ -102,7 +101,7 @@ class TestIoImage:
 
         assert file_path.is_file()
 
-        img_th: Tensor = load_image(file_path, ImageLoadType.UNCHANGED, str(device))
+        img_th: torch.Tensor = load_image(file_path, ImageLoadType.UNCHANGED, str(device))
         assert str(img_th.device) == str(device)
 
     @pytest.mark.parametrize("ext", ["png", "jpg"])
@@ -136,7 +135,7 @@ class TestIoImage:
     @pytest.mark.parametrize("channels", [3])
     def test_write_image(self, device, tmp_path, ext, channels):
         height, width = 4, 5
-        img_th: Tensor = create_random_img8_torch(height, width, channels, device)
+        img_th: torch.Tensor = create_random_img8_torch(height, width, channels, device)
 
         file_path = tmp_path / f"image.{ext}"
         write_image(file_path, img_th)

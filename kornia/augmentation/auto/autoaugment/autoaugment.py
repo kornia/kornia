@@ -17,12 +17,13 @@
 
 from typing import Iterator, List, Optional, Tuple, Union
 
+import torch
+from torch import nn
 from torch.distributions import Categorical
 
 from kornia.augmentation.auto.base import SUBPOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.params import ParamItem
-from kornia.core import Module, tensor
 
 from . import ops
 
@@ -151,13 +152,13 @@ class AutoAugment(PolicyAugmentBase):
             raise NotImplementedError(f"Invalid policy `{policy}`.")
 
         super().__init__(_policy, transformation_matrix_mode=transformation_matrix_mode)
-        selection_weights = tensor([1.0 / len(self)] * len(self))
+        selection_weights = torch.tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
         return PolicySequential(*[getattr(ops, name)(prob, mag) for name, prob, mag in subpolicy])
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
         if params is None:
             idx = self.rand_selector.sample((1,))
             return self.get_children_by_indices(idx)

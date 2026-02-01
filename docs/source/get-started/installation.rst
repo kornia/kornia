@@ -11,8 +11,7 @@ To install *Kornia*, you can do it in two different ways: using the provided `Py
 
 .. code:: bash
 
-    pip install kornia
-    pip install kornia[x]  # to get the training API !
+   pip install kornia
 
 2. From source:
 

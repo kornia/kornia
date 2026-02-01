@@ -1,0 +1,34 @@
+name: Type Check
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.9.3
+        with:
+          pixi-version: v0.40.0
+          cache: true
+
+      - name: Install dependencies
+        run: pixi run -e default install
+
+      - name: Debug - Show ty version and config
+        run: |
+          pixi run -e default ty --version
+          echo "=== pyproject.toml ty config ==="
+          grep -A 30 '\[tool.ty' pyproject.toml || echo "No ty config found"
+
+      - name: Run type checking with ty
+        run: pixi run -e default typecheck

@@ -18,13 +18,12 @@
 from __future__ import annotations
 
 import torch
-from torch import Tensor
+from torch import nn
 
-from kornia.core import Module
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
 
 
-def cauchy_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
+def cauchy_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none") -> torch.Tensor:
     r"""Criterion that computes the Cauchy [2] (aka. Lorentzian) loss.
 
     According to [1], we compute the Cauchy loss as follows:
@@ -42,8 +41,8 @@ def cauchy_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
         [2] https://files.is.tue.mpg.de/black/papers/cviu.63.1.1996.pdf
 
     Args:
-        img1: the predicted tensor with shape :math:`(*)`.
-        img2: the target tensor with the same shape as img1.
+        img1: the predicted torch.Tensor with shape :math:`(*)`.
+        img2: the target torch.Tensor with the same shape as img1.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied (default), ``'mean'``: the sum of the output will be divided
@@ -88,7 +87,7 @@ def cauchy_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
     return loss
 
 
-class CauchyLoss(Module):
+class CauchyLoss(nn.Module):
     r"""Criterion that computes the Cauchy [2] (aka. Lorentzian) loss.
 
     According to [1], we compute the Cauchy loss as follows:
@@ -113,8 +112,8 @@ class CauchyLoss(Module):
           summed.
 
     Shape:
-        - img1: the predicted tensor with shape :math:`(*)`.
-        - img2: the target tensor with the same shape as img1.
+        - img1: the predicted torch.Tensor with shape :math:`(*)`.
+        - img2: the target torch.Tensor with the same shape as img1.
 
     Example:
         >>> criterion = CauchyLoss(reduction="mean")
@@ -129,5 +128,5 @@ class CauchyLoss(Module):
         super().__init__()
         self.reduction = reduction
 
-    def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
+    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
         return cauchy_loss(img1=img1, img2=img2, reduction=self.reduction)

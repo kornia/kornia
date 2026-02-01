@@ -20,8 +20,8 @@ import re
 import pytest
 import torch
 
+from kornia.core._compat import torch_version
 from kornia.filters import InRange, in_range
-from kornia.utils._compat import torch_version
 
 from testing.base import BaseTester, assert_close
 
@@ -78,13 +78,13 @@ class TestInRange(BaseTester):
 
     def test_exception(self, device, dtype):
         input_tensor = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
-        with pytest.raises(Exception, match=r"Invalid `lower` and `upper` format. Should be tuple or Tensor."):
+        with pytest.raises(Exception, match=r"Invalid `lower` and `upper` format. Should be tuple or torch\.Tensor\."):
             InRange(lower=3, upper=3)(input_tensor)
 
-        with pytest.raises(Exception, match=r"Invalid `lower` and `upper` format. Should be tuple or Tensor."):
+        with pytest.raises(Exception, match=r"Invalid `lower` and `upper` format. Should be tuple or torch\.Tensor\."):
             InRange(lower=[0.2, 0.2], upper=[0.2, 0.2])(input_tensor)
 
-        with pytest.raises(Exception, match=r"Invalid `lower` and `upper` format. Should be tuple or Tensor."):
+        with pytest.raises(Exception, match=r"Invalid `lower` and `upper` format. Should be tuple or torch\.Tensor\."):
             InRange(lower=(0.2), upper=(0.2))(input_tensor)
 
         with pytest.raises(

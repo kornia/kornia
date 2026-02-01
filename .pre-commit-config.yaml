@@ -10,14 +10,20 @@ repos:
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: mixed-line-ending
+        args: ['--fix=lf']
       - id: requirements-txt-fixer
       - id: pretty-format-json
         exclude: ^$|.devcontainer
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.4
+    rev: v0.14.11
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
 
@@ -25,11 +31,6 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
-        args:
-          - --ignore-words-list
-          - "ans,hist,laf,cofusion"
-          - --skip
-          - "*.bib,*.ipynb"
 
   - repo: https://github.com/arkinmodi/add-license-header
     rev: v2.4.0

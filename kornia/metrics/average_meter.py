@@ -17,7 +17,7 @@
 
 from typing import Union
 
-from kornia.core import Tensor
+import torch
 
 
 class AverageMeter:
@@ -32,9 +32,9 @@ class AverageMeter:
 
     """
 
-    val: Union[float, bool, Tensor]
-    _avg: Union[float, Tensor]
-    sum: Union[float, Tensor]
+    val: Union[float, bool, torch.Tensor]
+    _avg: Union[float, torch.Tensor]
+    sum: Union[float, torch.Tensor]
     count: int
 
     def __init__(self) -> None:
@@ -46,7 +46,7 @@ class AverageMeter:
         self.sum = 0
         self.count = 0
 
-    def update(self, val: Union[float, bool, Tensor], n: int = 1) -> None:
+    def update(self, val: Union[float, bool, torch.Tensor], n: int = 1) -> None:
         self.val = val
         self.sum += val * n
         self.count += n
@@ -54,6 +54,6 @@ class AverageMeter:
 
     @property
     def avg(self) -> float:
-        if isinstance(self._avg, Tensor):
+        if isinstance(self._avg, torch.Tensor):
             return float(self._avg.item())
         return self._avg

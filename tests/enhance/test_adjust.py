@@ -1048,7 +1048,7 @@ class TestSharpness(BaseTester):
         self.assert_close(actual, expected)
 
 
-@pytest.mark.skipif(kornia.xla_is_available(), reason="issues with xla device")
+@pytest.mark.skipif(kornia.core.utils.xla_is_available(), reason="issues with xla device")
 class TestSolarize(BaseTester):
     f = kornia.enhance.solarize
 
@@ -1165,7 +1165,7 @@ class TestPosterize(BaseTester):
             assert TestPosterize.f(img, 1.0)
 
     # TODO(jian): add better cases
-    @pytest.mark.skipif(kornia.xla_is_available(), reason="issues with xla device")
+    @pytest.mark.skipif(kornia.core.utils.xla_is_available(), reason="issues with xla device")
     def test_value(self, device, dtype):
         torch.manual_seed(0)
 

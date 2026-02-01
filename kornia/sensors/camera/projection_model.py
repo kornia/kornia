@@ -17,11 +17,18 @@
 
 from __future__ import annotations
 
-from kornia.core import Tensor
+import torch
+
 from kornia.geometry.vector import Vector2, Vector3
 
 
 class Z1Projection:
+    """Project 3D points from the camera frame into the canonical $z=1$ plane.
+
+    This performs perspective division by dividing the $x$ and $y$ coordinates
+    by the depth $z$.
+    """
+
     def project(self, points: Vector3) -> Vector2:
         """Project one or more Vector3 from the camera frame into the canonical z=1 plane through perspective division.
 
@@ -40,15 +47,19 @@ class Z1Projection:
         """
         xy = points.data[..., :2]
         z = points.z
-        uv = (xy.T @ z.diag().inverse()).T if len(z.shape) else xy.T * 1 / z
+        if len(z.shape):
+            uv = (xy.mT @ torch.diag(z).inverse()).mT
+        else:
+            # For scalar z, xy is 1-D, so no transpose needed
+            uv = xy * 1 / z
         return Vector2(uv)
 
-    def unproject(self, points: Vector2, depth: Tensor | float) -> Vector3:
+    def unproject(self, points: Vector2, depth: torch.Tensor | float) -> Vector3:
         """Unproject one or more Vector2 from the canonical z=1 plane into the camera frame.
 
         Args:
             points: Vector2 representing the points to unproject.
-            depth: Tensor representing the depth of the points to unproject.
+            depth: torch.Tensor representing the depth of the points to unproject.
 
         Returns:
             Vector3 representing the unprojected points.
@@ -62,13 +73,19 @@ class Z1Projection:
 
         """
         if isinstance(depth, (float, int)):
-            depth = Tensor([depth])
+            depth = torch.Tensor([depth])
         return Vector3.from_coords(points.x * depth, points.y * depth, depth)
 
 
 class OrthographicProjection:
+    """Project 3D points using an orthographic projection model.
+
+    This model assumes parallel projection where the $z$ coordinate is
+    discarded and no perspective scaling is applied.
+    """
+
     def project(self, points: Vector3) -> Vector2:
         raise NotImplementedError
 
-    def unproject(self, points: Vector2, depth: Tensor) -> Vector3:
+    def unproject(self, points: Vector2, depth: torch.Tensor) -> Vector3:
         raise NotImplementedError

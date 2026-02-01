@@ -19,7 +19,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from kornia.core import ImageSequential, Module, Tensor, tensor
+import torch
+from torch import nn
+
+from kornia.core import ImageSequential
 from kornia.enhance.normalize import Normalize
 from kornia.enhance.rescale import Rescale
 from kornia.geometry.transform import Resize
@@ -27,7 +30,7 @@ from kornia.geometry.transform import Resize
 
 class PreprocessingLoader:
     @staticmethod
-    def normalize(mean: Tensor, std: Tensor) -> Normalize:
+    def normalize(mean: torch.Tensor, std: torch.Tensor) -> Normalize:
         return Normalize(mean=mean, std=std)
 
     @staticmethod
@@ -48,7 +51,7 @@ class PreprocessingLoader:
 class DPTImageProcessor(PreprocessingLoader):
     @staticmethod
     def from_json(json_data: dict[str, Any]) -> ImageSequential:
-        preproc_list: list[Module] = []
+        preproc_list: list[nn.Module] = []
         if json_data["do_pad"]:
             raise NotImplementedError
         if json_data["do_resize"]:
@@ -61,7 +64,7 @@ class DPTImageProcessor(PreprocessingLoader):
         if json_data["do_normalize"]:
             preproc_list.append(
                 PreprocessingLoader.normalize(
-                    mean=tensor([json_data["image_mean"]]), std=tensor([json_data["image_std"]])
+                    mean=torch.tensor([json_data["image_mean"]]), std=torch.tensor([json_data["image_std"]])
                 )
             )
         return ImageSequential(*preproc_list)

@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""IO submodule for Kornia.
+
+This package provides image input/output utilities, including image loading and writing functions.
+"""
+
 from .io import ImageLoadType, load_image, write_image
 
 __all__ = ["ImageLoadType", "load_image", "write_image"]

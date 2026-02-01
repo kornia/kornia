@@ -53,6 +53,8 @@ def named_apply(fn: Callable, module: nn.Module, name="", depth_first=True, incl
 
 
 class BlockChunk(nn.ModuleList):
+    """Implement a container for sequential execution of transformer block chunks."""
+
     def forward(self, x):
         for b in self:
             x = b(x)
@@ -60,6 +62,8 @@ class BlockChunk(nn.ModuleList):
 
 
 class DinoVisionTransformer(nn.Module):
+    """Implement the DINOv2 Vision Transformer architecture."""
+
     def __init__(
         self,
         img_size=224,
@@ -96,7 +100,6 @@ class DinoVisionTransformer(nn.Module):
         ffn_bias (bool): enable bias for ffn if True
         drop_path_rate (float): stochastic depth rate
         drop_path_uniform (bool): apply uniform drop rate across blocks
-        weight_init (str): weight init scheme
         init_values (float): layer-scale init values
         embed_layer (nn.Module): patch embedding layer
         act_layer (nn.Module): MLP activation layer

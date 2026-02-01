@@ -107,7 +107,8 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         expected = op(logits, labels, *args)
         self.assert_close(actual, expected)
 
-    def test_gradcheck(self, device):
+    @pytest.mark.grad()
+    def test_gradcheck(self, device, dtype):
         logits = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
         labels = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
 
@@ -115,7 +116,8 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         op = kornia.losses.binary_focal_loss_with_logits
         self.gradcheck(op, (logits, labels, *args))
 
-    def test_gradcheck_ignore_index(self, device):
+    @pytest.mark.grad()
+    def test_gradcheck_ignore_index(self, device, dtype):
         logits = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
         labels = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
         ignore = torch.rand(2, 3, 2, device=device) > 0.8
@@ -230,7 +232,8 @@ class TestFocalLoss(BaseTester):
         expected = op(logits, labels, *args)
         self.assert_close(actual, expected)
 
-    def test_gradcheck(self, device):
+    @pytest.mark.grad()
+    def test_gradcheck(self, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
         labels = torch.randint(num_classes, (2, 3, 2), device=device).long()

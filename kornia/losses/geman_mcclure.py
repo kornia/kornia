@@ -18,13 +18,12 @@
 from __future__ import annotations
 
 import torch
-from torch import Tensor
+from torch import nn
 
-from kornia.core import Module
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
 
 
-def geman_mcclure_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
+def geman_mcclure_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none") -> torch.Tensor:
     r"""Criterion that computes the Geman-McClure loss [2].
 
     According to [1], we compute the Geman-McClure loss as follows:
@@ -42,8 +41,8 @@ def geman_mcclure_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> T
         [2] Bayesian image analysis: An application to single photon emission tomography, Geman and McClure, 1985
 
     Args:
-        img1: the predicted tensor with shape :math:`(*)`.
-        img2: the target tensor with the same shape as img1.
+        img1: the predicted torch.Tensor with shape :math:`(*)`.
+        img2: the target torch.Tensor with the same shape as img1.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied (default), ``'mean'``: the sum of the output will be divided
@@ -90,7 +89,7 @@ def geman_mcclure_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> T
     return loss
 
 
-class GemanMcclureLoss(Module):
+class GemanMcclureLoss(nn.Module):
     r"""Criterion that computes the Geman-McClure loss [2].
 
     According to [1], we compute the Geman-McClure loss as follows:
@@ -115,8 +114,8 @@ class GemanMcclureLoss(Module):
           summed.
 
     Shape:
-        - img1: the predicted tensor with shape :math:`(*)`.
-        - img2: the target tensor with the same shape as img1.
+        - img1: the predicted torch.Tensor with shape :math:`(*)`.
+        - img2: the target torch.Tensor with the same shape as img1.
 
     Example:
         >>> criterion = GemanMcclureLoss(reduction="mean")
@@ -131,5 +130,5 @@ class GemanMcclureLoss(Module):
         super().__init__()
         self.reduction = reduction
 
-    def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
+    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
         return geman_mcclure_loss(img1=img1, img2=img2, reduction=self.reduction)

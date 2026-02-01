@@ -17,16 +17,30 @@
 
 from typing import Dict, List, NamedTuple, Optional, Union
 
-from kornia.core import Tensor
+import torch
 
 __all__ = ["ParamItem", "PatchParamItem"]
 
 
 class ParamItem(NamedTuple):
+    """Store the parameters for a single augmentation operation.
+
+    Attributes:
+        name: The name of the augmentation operation.
+        data: The dictionary of parameters or a list of nested parameters.
+    """
+
     name: str
-    data: Optional[Union[Dict[str, Tensor], List["ParamItem"]]]
+    data: Optional[Union[Dict[str, torch.Tensor], List["ParamItem"]]]
 
 
 class PatchParamItem(NamedTuple):
+    """Store parameters for patch-based augmentation operations.
+
+    Attributes:
+        indices: The list of patch indices where the augmentation is applied.
+        param: The specific :class:`ParamItem` containing the operation parameters.
+    """
+
     indices: List[int]
     param: ParamItem

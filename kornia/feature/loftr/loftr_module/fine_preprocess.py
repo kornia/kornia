@@ -21,10 +21,14 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, Tensor
 
+class FinePreprocess(nn.Module):
+    """Preprocess feature maps for fine-level matching in LoFTR.
 
-class FinePreprocess(Module):
+    Args:
+        config: A dictionary containing configuration parameters for fine-level processing.
+    """
+
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
 
@@ -47,8 +51,13 @@ class FinePreprocess(Module):
                 nn.init.kaiming_normal_(p, mode="fan_out", nonlinearity="relu")
 
     def forward(
-        self, feat_f0: Tensor, feat_f1: Tensor, feat_c0: Tensor, feat_c1: Tensor, data: Dict[str, Any]
-    ) -> Tuple[Tensor, Tensor]:
+        self,
+        feat_f0: torch.Tensor,
+        feat_f1: torch.Tensor,
+        feat_c0: torch.Tensor,
+        feat_c1: torch.Tensor,
+        data: Dict[str, Any],
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         W = self.W
         stride = data["hw0_f"][0] // data["hw0_c"][0]
 

@@ -20,19 +20,18 @@ from typing import Optional, Tuple
 
 import torch
 
-from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.utils import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask
-from kornia.utils.helpers import _torch_svd_cast
+from kornia.core.utils import _extract_device_dtype, _torch_svd_cast, safe_inverse_with_mask, safe_solve_with_mask
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+from kornia.geometry.epipolar import normalize_points
+from kornia.geometry.linalg import transform_points
 
-from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
-from .epipolar import normalize_points
-from .linalg import transform_points
-
-TupleTensor = Tuple[Tensor, Tensor]
+TupleTensor = Tuple[torch.Tensor, torch.Tensor]
 
 
-def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
+def oneway_transfer_error(
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Return transfer error in image 2 for correspondences given the homography matrix.
 
     Args:
@@ -50,22 +49,54 @@ def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool =
     """
     KORNIA_CHECK_SHAPE(H, ["B", "3", "3"])
 
-    if pts1.size(-1) == 3:
-        pts1 = convert_points_from_homogeneous(pts1)
+    if pts1.shape[-1] == 3:
+        x1y1 = convert_points_from_homogeneous(pts1)
+        x1 = x1y1[..., 0]
+        y1 = x1y1[..., 1]
+    else:
+        x1 = pts1[..., :, 0]
+        y1 = pts1[..., :, 1]
 
-    if pts2.size(-1) == 3:
-        pts2 = convert_points_from_homogeneous(pts2)
+    if pts2.shape[-1] == 3:
+        u2v2 = convert_points_from_homogeneous(pts2)
+        u2 = u2v2[..., 0]
+        v2 = u2v2[..., 1]
+    else:
+        u2 = pts2[..., :, 0]
+        v2 = pts2[..., :, 1]
+
+    # ---- Grab H entries and broadcast across N ----
+    h00 = H[..., 0, 0][..., None]
+    h01 = H[..., 0, 1][..., None]
+    h02 = H[..., 0, 2][..., None]
+    h10 = H[..., 1, 0][..., None]
+    h11 = H[..., 1, 1][..., None]
+    h12 = H[..., 1, 2][..., None]
+    h20 = H[..., 2, 0][..., None]
+    h21 = H[..., 2, 1][..., None]
+    h22 = H[..., 2, 2][..., None]
 
     # From Hartley and Zisserman, Error in one image (4.6)
     # dist = \sum_{i} ( d(x', Hx)**2)
-    pts1_in_2: Tensor = transform_points(H, pts1)
-    error_squared: Tensor = (pts1_in_2 - pts2).pow(2).sum(dim=-1)
+    # ---- Apply homography to pts1 (Euclidean) and dehomogenize ----
+    # [x'; y'; w']^T = H @ [x1, y1, 1]^T
+    x_num = h00 * x1 + h01 * y1 + h02
+    y_num = h10 * x1 + h11 * y1 + h12
+    w_den = h20 * x1 + h21 * y1 + h22
+
+    u1in2 = x_num / (w_den + eps)
+    v1in2 = y_num / (w_den + eps)
+
+    # ---- Squared transfer error in image 2 ----
+    err2 = (u1in2 - u2).pow(2) + (v1in2 - v2).pow(2)
     if squared:
-        return error_squared
-    return (error_squared + eps).sqrt()
+        return err2
+    return (err2 + eps).sqrt()
 
 
-def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:
+def symmetric_transfer_error(
+    pts1: torch.Tensor, pts2: torch.Tensor, H: torch.Tensor, squared: bool = True, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Return Symmetric transfer error for correspondences given the homography matrix.
 
     Args:
@@ -93,16 +124,18 @@ def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: boo
     # dist = \sum_{i} (d(x, H^-1 x')**2 + d(x', Hx)**2)
     H_inv, good_H = safe_inverse_with_mask(H)
 
-    there: Tensor = oneway_transfer_error(pts1, pts2, H, True, eps)
-    back: Tensor = oneway_transfer_error(pts2, pts1, H_inv, True, eps)
-    good_H_reshape: Tensor = good_H.view(-1, 1).expand_as(there)
+    there: torch.Tensor = oneway_transfer_error(pts1, pts2, H, True, eps)
+    back: torch.Tensor = oneway_transfer_error(pts2, pts1, H_inv, True, eps)
+    good_H_reshape: torch.Tensor = good_H.view(-1, 1).expand_as(there)
     out = (there + back) * good_H_reshape.to(there.dtype) + max_num * (~good_H_reshape).to(there.dtype)
     if squared:
         return out
     return (out + eps).sqrt()
 
 
-def line_segment_transfer_error_one_way(ls1: Tensor, ls2: Tensor, H: Tensor, squared: bool = False) -> Tensor:
+def line_segment_transfer_error_one_way(
+    ls1: torch.Tensor, ls2: torch.Tensor, H: torch.Tensor, squared: bool = False
+) -> torch.Tensor:
     r"""Return transfer error in image 2 for line segment correspondences given the homography matrix.
 
     Line segment end points are reprojected into image 2, and point-to-line error is calculated w.r.t. line,
@@ -180,16 +213,16 @@ def find_homography_dlt(
     A = torch.cat((ax, ay), dim=-1).reshape(ax.shape[0], -1, ax.shape[-1])
 
     if weights is None:
-        Aw = A
+        # All points are equally important
+        A = A.transpose(-2, -1) @ A
     else:
         # We should use provided weights
         if not (len(weights.shape) == 2 and weights.shape == points1.shape[:2]):
             raise AssertionError(weights.shape)
-        w_full = weights.repeat_interleave(2, dim=1)
-        Aw = torch.einsum("...ij,...i->...ij", A, w_full)
+        w_full = weights.repeat_interleave(2, dim=1).unsqueeze(1)
+        A = (A.transpose(-2, -1) * w_full) @ A
 
     if solver == "svd":
-        A = A.transpose(-2, -1) @ Aw
         try:
             _, _, V = _torch_svd_cast(A)
         except RuntimeError:
@@ -197,14 +230,8 @@ def find_homography_dlt(
             return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
         H = V[..., -1].view(-1, 3, 3)
     elif solver == "lu":
-        if points1.shape[1] > 4:
-            A = A.transpose(-2, -1) @ Aw
-            B = torch.ones(A.shape[0], A.shape[1], device=device, dtype=dtype)
-        else:
-            B = -Aw[..., -1]
-            A = Aw[..., :-1]
+        B = torch.ones(A.shape[0], A.shape[1], device=device, dtype=dtype)
         sol, _, _ = safe_solve_with_mask(B, A)
-        sol = torch.nn.functional.pad(sol, (0, 0, 0, 1), value=1) if sol.shape[1] == 8 else sol
         H = sol.reshape(-1, 3, 3)
     else:
         raise NotImplementedError
@@ -214,8 +241,8 @@ def find_homography_dlt(
 
 
 def find_homography_dlt_iterated(
-    points1: Tensor, points2: Tensor, weights: Tensor, soft_inl_th: float = 3.0, n_iter: int = 5
-) -> Tensor:
+    points1: torch.Tensor, points2: torch.Tensor, weights: torch.Tensor, soft_inl_th: float = 3.0, n_iter: int = 5
+) -> torch.Tensor:
     r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS).
 
     The linear system is solved by using the Reweighted Least Squares Solution for the 4 Points algorithm.
@@ -232,15 +259,15 @@ def find_homography_dlt_iterated(
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
-    H: Tensor = find_homography_dlt(points1, points2, weights)
+    H: torch.Tensor = find_homography_dlt(points1, points2, weights)
     for _ in range(n_iter - 1):
-        errors: Tensor = symmetric_transfer_error(points1, points2, H, False)
-        weights_new: Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
+        errors: torch.Tensor = symmetric_transfer_error(points1, points2, H, False)
+        weights_new: torch.Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
         H = find_homography_dlt(points1, points2, weights_new)
     return H
 
 
-def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
+def sample_is_valid_for_homography(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     """Implement oriented constraint check from :cite:`Marquez-Neila2015`.
 
     Analogous to https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/usac/degeneracy.cpp#L88
@@ -250,34 +277,38 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
         points2: A set of points in the second image with a tensor shape :math:`(B, 4, 2)`.
 
     Returns:
-        Mask with the minimal sample is good for homography estimation:math:`(B, 3, 3)`.
+        Mask with the minimal sample is good for homography estimation :math:`(B)`.
 
     """
     if points1.shape != points2.shape:
         raise AssertionError(points1.shape)
-    KORNIA_CHECK_SHAPE(points1, ["B", "4", "2"])
-    KORNIA_CHECK_SHAPE(points2, ["B", "4", "2"])
-    device = points1.device
-    idx_perm = torch.tensor([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]], dtype=torch.long, device=device)
-    points_src_h = convert_points_to_homogeneous(points1)
-    points_dst_h = convert_points_to_homogeneous(points2)
+    # Triples to test: (0,1,2), (0,1,3), (0,2,3), (1,2,3)
+    idx_i = torch.tensor([0, 0, 0, 1], device=points1.device)
+    J = torch.tensor([1, 1, 2, 2], device=points1.device)
+    K = torch.tensor([2, 3, 3, 3], device=points1.device)
 
-    src_perm = points_src_h[:, idx_perm]
-    dst_perm = points_dst_h[:, idx_perm]
-    left_sign = (
-        torch.linalg.cross(src_perm[..., 1:2, :], src_perm[..., 2:3, :], dim=-1)
-        @ src_perm[..., 0:1, :].permute(0, 1, 3, 2)
-    ).sign()
+    # Gather the triples for both sets: shape (B, 4, 2)
+    p1_i, p1_j, p1_k = points1[:, idx_i], points1[:, J], points1[:, K]
+    p2_i, p2_j, p2_k = points2[:, idx_i], points2[:, J], points2[:, K]
 
-    right_sign = (
-        torch.linalg.cross(dst_perm[..., 1:2, :], dst_perm[..., 2:3, :], dim=-1)
-        @ dst_perm[..., 0:1, :].permute(0, 1, 3, 2)
-    ).sign()
-    sample_is_valid = (left_sign == right_sign).view(-1, 4).min(dim=1)[0]
+    # 2D orientation (signed area) for each triple:
+    # orient(a,b,c) = cross2d(b-a, c-a) = (bx-ax)*(cy-ay) - (by-ay)*(cx-ax)
+    def _orient(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+        ab = b - a
+        ac = c - a
+        return ab[..., 0] * ac[..., 1] - ab[..., 1] * ac[..., 0]  # shape (B, 4)
+
+    left_sign = torch.sign(_orient(p1_i, p1_j, p1_k))
+    right_sign = torch.sign(_orient(p2_i, p2_j, p2_k))
+
+    # Valid if all four orientation signs match across views
+    sample_is_valid = (left_sign == right_sign).all(dim=1)
     return sample_is_valid
 
 
-def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor] = None) -> Tensor:
+def find_homography_lines_dlt(
+    ls1: torch.Tensor, ls2: torch.Tensor, weights: Optional[torch.Tensor] = None
+) -> torch.Tensor:
     """Compute the homography matrix using the DLT formulation for line correspondences.
 
     See :cite:`homolines2001` for details.
@@ -349,8 +380,8 @@ def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor
 
 
 def find_homography_lines_dlt_iterated(
-    ls1: Tensor, ls2: Tensor, weights: Tensor, soft_inl_th: float = 4.0, n_iter: int = 5
-) -> Tensor:
+    ls1: torch.Tensor, ls2: torch.Tensor, weights: torch.Tensor, soft_inl_th: float = 4.0, n_iter: int = 5
+) -> torch.Tensor:
     r"""Compute the homography matrix using the iteratively-reweighted least squares (IRWLS) from line segments.
 
     The linear system is solved by using the Reweighted Least Squares Solution for the 4 line segments algorithm.
@@ -367,9 +398,9 @@ def find_homography_lines_dlt_iterated(
         the computed homography matrix with shape :math:`(B, 3, 3)`.
 
     """
-    H: Tensor = find_homography_lines_dlt(ls1, ls2, weights)
+    H: torch.Tensor = find_homography_lines_dlt(ls1, ls2, weights)
     for _ in range(n_iter - 1):
-        errors: Tensor = line_segment_transfer_error_one_way(ls1, ls2, H, False)
-        weights_new: Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
+        errors: torch.Tensor = line_segment_transfer_error_one_way(ls1, ls2, H, False)
+        weights_new: torch.Tensor = torch.exp(-errors / (2.0 * (soft_inl_th**2)))
         H = find_homography_lines_dlt(ls1, ls2, weights_new)
     return H

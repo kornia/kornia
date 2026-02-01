@@ -21,12 +21,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, Tensor
-
 INF = 1e9
 
 
-def mask_border(m: Tensor, b: int, v: Union[Tensor, float, bool]) -> None:
+def mask_border(m: torch.Tensor, b: int, v: Union[torch.Tensor, float, bool]) -> None:
     """Mask borders with value.
 
     Args:
@@ -47,7 +45,9 @@ def mask_border(m: Tensor, b: int, v: Union[Tensor, float, bool]) -> None:
     m[:, :, :, :, -b:] = v
 
 
-def mask_border_with_padding(m: Tensor, bd: int, v: Union[Tensor, float, bool], p_m0: Tensor, p_m1: Tensor) -> None:
+def mask_border_with_padding(
+    m: torch.Tensor, bd: int, v: Union[torch.Tensor, float, bool], p_m0: torch.Tensor, p_m1: torch.Tensor
+) -> None:
     """Apply masking to a padded boarder."""
     if bd <= 0:
         return
@@ -66,7 +66,7 @@ def mask_border_with_padding(m: Tensor, bd: int, v: Union[Tensor, float, bool], 
         m[b_idx, :, :, :, w1 - bd :] = v
 
 
-def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:
+def compute_max_candidates(p_m0: torch.Tensor, p_m1: torch.Tensor) -> torch.Tensor:
     """Compute the max candidates of all pairs within a batch.
 
     Args:
@@ -80,7 +80,16 @@ def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:
     return max_cand
 
 
-class CoarseMatching(Module):
+class CoarseMatching(nn.Module):
+    """Perform coarse-level matching between two sets of feature maps.
+
+    This module calculates the confidence matrix and produces coarse matches
+    using an optimal transport layer or a dual-softmax operator.
+
+    Args:
+        config: A dictionary containing configuration parameters for the matching.
+    """
+
     def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
         self.config = config
@@ -109,11 +118,11 @@ class CoarseMatching(Module):
 
     def forward(
         self,
-        feat_c0: Tensor,
-        feat_c1: Tensor,
-        data: Dict[str, Tensor],
-        mask_c0: Optional[Tensor] = None,
-        mask_c1: Optional[Tensor] = None,
+        feat_c0: torch.Tensor,
+        feat_c1: torch.Tensor,
+        data: Dict[str, torch.Tensor],
+        mask_c0: Optional[torch.Tensor] = None,
+        mask_c1: Optional[torch.Tensor] = None,
     ) -> None:
         """Run forward.
 
@@ -137,7 +146,7 @@ class CoarseMatching(Module):
         """
         _, L, S, _ = feat_c0.size(0), feat_c0.size(1), feat_c1.size(1), feat_c0.size(2)
 
-        # normalize
+        # F.normalize
         feat_c0, feat_c1 = (feat / feat.shape[-1] ** 0.5 for feat in [feat_c0, feat_c1])
 
         if self.match_type == "dual_softmax":
@@ -173,7 +182,7 @@ class CoarseMatching(Module):
         data.update(**self.get_coarse_match(conf_matrix, data))
 
     @torch.no_grad()
-    def get_coarse_match(self, conf_matrix: Tensor, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
+    def get_coarse_match(self, conf_matrix: torch.Tensor, data: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         """Get corase matching.
 
         Args:
@@ -228,7 +237,7 @@ class CoarseMatching(Module):
         mconf = conf_matrix[b_ids, i_ids, j_ids]
 
         # 4. Random sampling of training samples for fine-level LoFTR
-        # (optional) pad samples with gt coarse-level matches
+        # (optional) F.pad samples with gt coarse-level matches
         if self.training:
             # NOTE:
             # The sampling is performed across all pairs in a batch without manually balancing
@@ -241,7 +250,7 @@ class CoarseMatching(Module):
             num_matches_train = int(num_matches_train)
             num_matches_pred = len(b_ids)
             if self.train_pad_num_gt_min >= num_matches_train:
-                msg = "min-num-gt-pad should be less than num-train-matches"
+                msg = "min-num-gt-F.pad should be less than num-train-matches"
                 raise ValueError(msg)
 
             # pred_indices is to select from prediction

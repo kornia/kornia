@@ -34,15 +34,17 @@ class TestLovaszSoftmaxLoss(BaseTester):
         assert criterion(logits, labels) is not None
 
     def test_exception(self):
+        from kornia.core.exceptions import ShapeError
+
         criterion = kornia.losses.LovaszSoftmaxLoss()
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             criterion(torch.rand(1), torch.rand(1))
-        assert "shape must be [['B', 'N', 'H', 'W']]. Got" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
-        with pytest.raises(TypeError) as errinfo:
+        with pytest.raises(ShapeError) as errinfo:
             criterion(torch.rand(1, 1, 1, 1), torch.rand(1))
-        assert "shape must be [['B', 'H', 'W']]. Got" in str(errinfo)
+        assert "Shape dimension mismatch" in str(errinfo.value) or "Expected shape" in str(errinfo.value)
 
         with pytest.raises(ValueError) as errinfo:
             criterion(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1))
@@ -92,7 +94,8 @@ class TestLovaszSoftmaxLoss(BaseTester):
 
         self.assert_close(loss, 0.5 * torch.ones_like(loss), rtol=1e-3, atol=1e-3)
 
-    def test_gradcheck(self, device):
+    @pytest.mark.grad()
+    def test_gradcheck(self, device, dtype):
         num_classes = 4
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
         labels = torch.randint(0, num_classes, (2, 3, 2), device=device)

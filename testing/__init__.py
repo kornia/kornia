@@ -14,3 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
+from .parametrized_tester import parametrized_test
+
+__all__ = ["parametrized_test"]

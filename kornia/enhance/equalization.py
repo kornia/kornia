@@ -23,8 +23,8 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 
-from kornia.utils.helpers import _torch_histc_cast
-from kornia.utils.image import perform_keep_shape_image
+from kornia.core.utils import _torch_histc_cast
+from kornia.image.utils import perform_keep_shape_image
 
 from .histogram import histogram
 

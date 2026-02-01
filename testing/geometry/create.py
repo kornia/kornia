@@ -17,32 +17,38 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 
 import kornia.geometry.epipolar as epi
-from kornia.core import Device, Dtype, Tensor, tensor, zeros
-from kornia.utils.misc import eye_like
+from kornia.core.ops import eye_like
 
 
-def create_random_homography(data: Tensor, eye_size: int, std_val: float = 1e-3) -> Tensor:
+def create_random_homography(data: torch.Tensor, eye_size: int, std_val: float = 1e-3) -> torch.Tensor:
     """Create a batch of random homographies of shape Bx3x3."""
-    std = zeros(data.shape[0], eye_size, eye_size, device=data.device, dtype=data.dtype)
+    std = torch.zeros(data.shape[0], eye_size, eye_size, device=data.device, dtype=data.dtype)
     eye = eye_like(eye_size, data)
     return eye + std.uniform_(-std_val, std_val)
 
 
-def create_rectified_fundamental_matrix(batch_size: int, dtype: Dtype = None, device: Device = None) -> Tensor:
+def create_rectified_fundamental_matrix(
+    batch_size: int, dtype: Optional[torch.dtype] = None, device: Optional[Union[str, torch.device]] = None
+) -> torch.Tensor:
     """Create a batch of rectified fundamental matrices of shape Bx3x3."""
-    F_rect = tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype).view(1, 3, 3)
+    F_rect = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype).view(
+        1, 3, 3
+    )
     F_repeat = F_rect.expand(batch_size, 3, 3)
     return F_repeat
 
 
 def create_random_fundamental_matrix(
-    batch_size: int, std_val: float = 1e-3, dtype: Dtype = None, device: Device = None
-) -> Tensor:
+    batch_size: int,
+    std_val: float = 1e-3,
+    dtype: Optional[torch.dtype] = None,
+    device: Optional[Union[str, torch.device]] = None,
+) -> torch.Tensor:
     """Create a batch of random fundamental matrices of shape Bx3x3."""
     F_rect = create_rectified_fundamental_matrix(batch_size, dtype, device)
     H_left = create_random_homography(F_rect, 3, std_val)

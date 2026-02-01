@@ -27,9 +27,9 @@ from typing import (
 )
 
 import torch
+from torch import nn
 
 import kornia
-from kornia.core import Module, Tensor, rand
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
@@ -69,7 +69,7 @@ class ONNXExportMixin:
         input_shape: Optional[list[int]] = None,
         output_shape: Optional[list[int]] = None,
         pseudo_shape: Optional[list[int]] = None,
-        model: Optional[Module] = None,
+        model: Optional[nn.Module] = None,
         save: bool = True,
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
@@ -149,8 +149,8 @@ class ONNXExportMixin:
 
     def _create_dummy_input(
         self, input_shape: list[int], pseudo_shape: Optional[list[int]] = None
-    ) -> Union[tuple[Any, ...], Tensor]:
-        return rand(
+    ) -> Union[tuple[Any, ...], torch.Tensor]:
+        return torch.rand(
             *[
                 ((self.ONNX_EXPORT_PSEUDO_SHAPE[i] if pseudo_shape is None else pseudo_shape[i]) if dim == -1 else dim)
                 for i, dim in enumerate(input_shape)
@@ -165,6 +165,8 @@ class ONNXExportMixin:
 
 
 class ONNXRuntimeMixin:
+    """Provide methods to manage ONNX Runtime inference sessions."""
+
     def _create_session(
         self,
         op: onnx.ModelProto,  # type:ignore
@@ -287,6 +289,8 @@ class ONNXRuntimeMixin:
 
 
 class ONNXMixin:
+    """Provide functionality for exporting and loading models in ONNX format."""
+
     def _load_op(
         self,
         arg: Union[onnx.ModelProto, str],  # type:ignore

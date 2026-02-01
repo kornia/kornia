@@ -15,11 +15,18 @@
 # limitations under the License.
 #
 
-from .classification import ClassificationHead
+"""Kornia Contrib — Experimental and contributed modules for Kornia.
+
+This subpackage provides community-contributed and experimental features.
+"""
+
+from kornia.models.tiny_vit import TinyViT
+
+from .boxmot_tracker import BoxMotTracker
 from .connected_components import connected_components
 from .diamond_square import diamond_square
 from .distance_transform import DistanceTransform, distance_transform
-from .edge_detection import EdgeDetector
+from .edge_detection import EdgeDetector, EdgeDetectorBuilder
 from .extract_patches import (
     CombineTensorPatches,
     ExtractTensorPatches,
@@ -32,24 +39,25 @@ from .histogram_matching import histogram_matching, interp
 from .image_stitching import ImageStitcher
 from .kmeans import KMeans
 from .lambda_module import Lambda
-from .models.tiny_vit import TinyViT
-from .object_detection import ObjectDetector
-from .vit import VisionTransformer
-from .vit_mobile import MobileViT
+from .object_detection import ObjectDetector, RTDETRDetectorBuilder
+from .super_resolution import RRDBNetBuilder, SmallSRBuilder, SuperResolution
 
 __all__ = [
-    "ClassificationHead",
+    "BoxMotTracker",
     "CombineTensorPatches",
     "DistanceTransform",
     "EdgeDetector",
+    "EdgeDetectorBuilder",
     "ExtractTensorPatches",
     "ImageStitcher",
     "KMeans",
     "Lambda",
-    "MobileViT",
     "ObjectDetector",
+    "RRDBNetBuilder",
+    "RTDETRDetectorBuilder",
+    "SmallSRBuilder",
+    "SuperResolution",
     "TinyViT",
-    "VisionTransformer",
     "combine_tensor_patches",
     "compute_padding",
     "connected_components",

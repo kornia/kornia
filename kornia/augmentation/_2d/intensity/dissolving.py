@@ -17,9 +17,10 @@
 
 from typing import Any, Dict, Optional, Tuple
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor
 from kornia.filters import StableDiffusionDissolving
 
 
@@ -36,7 +37,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
 
         * - SD 1.4
           - SD 1.5
-          - SD 2.1
+          - SD xl
         * - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.4.png
           - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-1.5.png
           - figure:: https://raw.githubusercontent.com/kornia/data/main/dslv-sd-2.1.png
@@ -59,7 +60,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
     def __init__(
         self,
         step_range: Tuple[float, float] = (100, 500),
-        version: str = "2.1",
+        version: str = "1.5",
         p: float = 0.5,
         keepdim: bool = False,
         **kwargs: Any,
@@ -70,6 +71,10 @@ class RandomDissolving(IntensityAugmentationBase2D):
         self._param_generator = rg.PlainUniformGenerator((self.step_range, "step_range_factor", None, None))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         return self._dslv(input, params["step_range_factor"][0].long().item())

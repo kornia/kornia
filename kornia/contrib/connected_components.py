@@ -18,10 +18,8 @@
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Tensor
 
-
-def connected_components(image: Tensor, num_iterations: int = 100) -> Tensor:
+def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torch.Tensor:
     r"""Compute the Connected-component labelling (CCL) algorithm.
 
     .. image:: https://github.com/kornia/data/raw/main/cells_segmented.png
@@ -49,8 +47,8 @@ def connected_components(image: Tensor, num_iterations: int = 100) -> Tensor:
         >>> img_labels = connected_components(img, num_iterations=100)
 
     """
-    if not isinstance(image, Tensor):
-        raise TypeError(f"Input imagetype is not a Tensor. Got: {type(image)}")
+    if not isinstance(image, torch.Tensor):
+        raise TypeError(f"Input imagetype is not a torch.Tensor. Got: {type(image)}")
 
     if not isinstance(num_iterations, int) or num_iterations < 1:
         raise TypeError("Input num_iterations must be a positive integer.")

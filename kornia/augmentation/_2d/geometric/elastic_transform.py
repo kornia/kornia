@@ -21,13 +21,12 @@ import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample
-from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import elastic_transform2d
 
 
 class RandomElasticTransform(AugmentationBase2D):
-    r"""Add random elastic transformation to a tensor image.
+    r"""Add random elastic transformation to a torch.Tensor image.
 
     .. image:: _static/img/RandomElasticTransform.png
 
@@ -39,7 +38,7 @@ class RandomElasticTransform(AugmentationBase2D):
           in the y and x directions, respectively.
         align_corners: Interpolation flag used by `grid_sample`.
         resample: Interpolation mode used by `grid_sample`. Either 'nearest' (0) or 'bilinear' (1).
-        padding_mode: The padding used by ```grid_sample```. Either 'zeros', 'border' or 'refection'.
+        padding_mode: The padding used by ```grid_sample```. Either 'torch.zeros', 'border' or 'refection'.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -86,7 +85,7 @@ class RandomElasticTransform(AugmentationBase2D):
             "padding_mode": padding_mode,
         }
 
-    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         B, _, H, W = shape
         if self.same_on_batch:
             noise = torch.rand(1, 2, H, W, device=self.device, dtype=self.dtype).expand(B, 2, H, W)
@@ -95,8 +94,12 @@ class RandomElasticTransform(AugmentationBase2D):
         return {"noise": noise * 2 - 1}
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         return elastic_transform2d(
             input,
             params["noise"].to(input),
@@ -109,25 +112,41 @@ class RandomElasticTransform(AugmentationBase2D):
         )
 
     def apply_non_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         return input
 
     def apply_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Process masks corresponding to the inputs that are transformed."""
         return self.apply_transform(input, params=params, flags=flags, transform=transform)
 
     def apply_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Boxes,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
     ) -> Boxes:
         """Process masks corresponding to the inputs that are transformed."""
         # We assume that boxes may not be affected too much by the deformation.
         return input
 
     def apply_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Process class tags corresponding to the inputs that are transformed."""
         return input

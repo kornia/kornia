@@ -21,8 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _tuple_range_reader
-from kornia.core import Tensor
-from kornia.utils.helpers import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype
 
 
 class RotationGenerator3D(RandomGeneratorBase):
@@ -40,9 +39,9 @@ class RotationGenerator3D(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - yaw (Tensor): element-wise rotation yaws with a shape of (B,).
-            - pitch (Tensor): element-wise rotation pitches with a shape of (B,).
-            - roll (Tensor): element-wise rotation rolls with a shape of (B,).
+            - yaw (torch.Tensor): element-wise rotation yaws with a shape of (B,).
+            - pitch (torch.Tensor): element-wise rotation pitches with a shape of (B,).
+            - roll (torch.Tensor): element-wise rotation rolls with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -54,7 +53,7 @@ class RotationGenerator3D(RandomGeneratorBase):
     def __init__(
         self,
         degrees: Union[
-            Tensor,
+            torch.Tensor,
             float,
             Tuple[float, float, float],
             Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
@@ -73,7 +72,7 @@ class RotationGenerator3D(RandomGeneratorBase):
         self.pitch_sampler = UniformDistribution(degrees[1][0], degrees[1][1], validate_args=False)
         self.roll_sampler = UniformDistribution(degrees[2][0], degrees[2][1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.degrees])

@@ -19,35 +19,34 @@ from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
+from torch import nn
 
-from kornia.core import Module, Tensor, eye, pad, zeros
 
-
-def _get_nms_kernel2d(kx: int, ky: int) -> Tensor:
+def _get_nms_kernel2d(kx: int, ky: int) -> torch.Tensor:
     """Return neigh2channels conv kernel."""
     numel: int = ky * kx
     center: int = numel // 2
-    weight = eye(numel)
+    weight = torch.eye(numel)
     weight[center, center] = 0
     return weight.view(numel, 1, ky, kx)
 
 
-def _get_nms_kernel3d(kd: int, ky: int, kx: int) -> Tensor:
+def _get_nms_kernel3d(kd: int, ky: int, kx: int) -> torch.Tensor:
     """Return neigh2channels conv kernel."""
     numel: int = kd * ky * kx
     center: int = numel // 2
-    weight = eye(numel)
+    weight = torch.eye(numel)
     weight[center, center] = 0
     return weight.view(numel, 1, kd, ky, kx)
 
 
-class NonMaximaSuppression2d(Module):
+class NonMaximaSuppression2d(nn.Module):
     r"""Apply non maxima suppression to filter.
 
     Flag `minima_are_also_good` is useful, when you want to detect both maxima and minima, e.g. for DoG
     """
 
-    kernel: Tensor
+    kernel: torch.Tensor
 
     def __init__(self, kernel_size: tuple[int, int]) -> None:
         super().__init__()
@@ -67,14 +66,14 @@ class NonMaximaSuppression2d(Module):
             return (x - 1) // 2  # zero padding function
 
         ky, kx = kernel_size  # we assume a cubic kernel
-        return pad(ky), pad(ky), pad(kx), pad(kx)
+        return (pad(ky), pad(kx), pad(ky), pad(kx))
 
-    def forward(self, x: Tensor, mask_only: bool = False) -> Tensor:
+    def forward(self, x: torch.Tensor, mask_only: bool = False) -> torch.Tensor:
         if len(x.shape) != 4:
             raise AssertionError(x.shape)
         B, CH, H, W = x.size()
         # find local maximum values
-        x_padded = pad(x, list(self.padding)[::-1], mode="replicate")
+        x_padded = F.pad(x, list(self.padding)[::-1], mode="replicate")
         B, CH, HP, WP = x_padded.size()
 
         neighborhood = F.conv2d(x_padded.view(B * CH, 1, HP, WP), self.kernel.to(x.device, x.dtype), stride=1).view(
@@ -87,7 +86,7 @@ class NonMaximaSuppression2d(Module):
         return x * (mask.to(x.dtype))
 
 
-class NonMaximaSuppression3d(Module):
+class NonMaximaSuppression3d(nn.Module):
     r"""Apply non maxima suppression to filter."""
 
     def __init__(self, kernel_size: tuple[int, int, int]) -> None:
@@ -108,15 +107,15 @@ class NonMaximaSuppression3d(Module):
             return (x - 1) // 2  # zero padding function
 
         kd, ky, kx = kernel_size  # we assume a cubic kernel
-        return pad(kd), pad(kd), pad(ky), pad(ky), pad(kx), pad(kx)
+        return (kd, kd, ky, ky, kx, kx)
 
-    def forward(self, x: Tensor, mask_only: bool = False) -> Tensor:
+    def forward(self, x: torch.Tensor, mask_only: bool = False) -> torch.Tensor:
         if len(x.shape) != 5:
             raise AssertionError(x.shape)
         # find local maximum values
         B, CH, D, H, W = x.size()
         if self.kernel_size == (3, 3, 3):
-            mask = zeros(B, CH, D, H, W, device=x.device, dtype=torch.bool)
+            mask = torch.zeros(B, CH, D, H, W, device=x.device, dtype=torch.bool)
             center = slice(1, -1)
             left = slice(0, -2)
             right = slice(2, None)
@@ -152,7 +151,7 @@ class NonMaximaSuppression3d(Module):
         else:
             max_non_center = (
                 F.conv3d(
-                    pad(x, list(self.padding)[::-1], mode="replicate"),
+                    F.pad(x, list(self.padding)[::-1], mode="replicate"),
                     self.kernel.repeat(CH, 1, 1, 1, 1).to(x.device, x.dtype),
                     stride=1,
                     groups=CH,
@@ -169,7 +168,7 @@ class NonMaximaSuppression3d(Module):
 # functional api
 
 
-def nms2d(input: Tensor, kernel_size: tuple[int, int], mask_only: bool = False) -> Tensor:
+def nms2d(input: torch.Tensor, kernel_size: tuple[int, int], mask_only: bool = False) -> torch.Tensor:
     r"""Apply non maxima suppression to filter.
 
     See :class:`~kornia.geometry.subpix.NonMaximaSuppression2d` for details.
@@ -177,7 +176,7 @@ def nms2d(input: Tensor, kernel_size: tuple[int, int], mask_only: bool = False) 
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 
 
-def nms3d(input: Tensor, kernel_size: tuple[int, int, int], mask_only: bool = False) -> Tensor:
+def nms3d(input: torch.Tensor, kernel_size: tuple[int, int, int], mask_only: bool = False) -> torch.Tensor:
     r"""Apply non maxima suppression to filter.
 
     See

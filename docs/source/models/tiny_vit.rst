@@ -28,7 +28,7 @@ You can use TinyViT models as follows.
 .. code:: python
 
     import torch
-    from kornia.contrib.models.tiny_vit import TinyViT
+    from kornia.models.tiny_vit import TinyViT
 
     model = TinyViT.from_config("5m", pretrained=True)  # ImageNet-1k pre-trained
 

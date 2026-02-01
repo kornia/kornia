@@ -75,6 +75,7 @@ class TestPSNRLoss(BaseTester):
 
         self.assert_close(op(*args), op_module(pred, target))
 
+    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         dtype = torch.float64
         pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)

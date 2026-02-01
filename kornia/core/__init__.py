@@ -15,41 +15,12 @@
 # limitations under the License.
 #
 
+"""Kornia Core — Core tensor operations, backends, and utilities for Kornia.
+
+This subpackage provides core functionality, device management, and backend support.
+"""
+
 from . import external
-from ._backend import (
-    Device,
-    Dtype,
-    Module,
-    ModuleList,
-    Parameter,
-    Sequential,
-    Tensor,
-    arange,
-    as_tensor,
-    complex,
-    concatenate,
-    cos,
-    deg2rad,
-    diag,
-    einsum,
-    eye,
-    linspace,
-    map_coordinates,
-    normalize,
-    ones,
-    ones_like,
-    pad,
-    rad2deg,
-    rand,
-    sin,
-    softmax,
-    stack,
-    tan,
-    tensor,
-    where,
-    zeros,
-    zeros_like,
-)
 from .mixin import (
     ImageModuleMixIn,
     ONNXExportMixin,
@@ -57,47 +28,17 @@ from .mixin import (
     ONNXRuntimeMixin,
 )
 from .module import ImageModule, ImageSequential
-from .tensor_wrapper import TensorWrapper  # type: ignore
+from .tensor_wrapper import TensorWrapper
 
 __all__ = [
-    "Device",
-    "Dtype",
     "ImageModule",
     "ImageModuleMixIn",
     "ImageSequential",
-    "Module",
-    "ModuleList",
     "ONNXExportMixin",
     "ONNXMixin",
     "ONNXRuntimeMixin",
-    "Parameter",
-    "Sequential",
-    "Tensor",
     "TensorWrapper",
-    "arange",
-    "as_tensor",
-    "complex",
-    "concatenate",
-    "cos",
-    "deg2rad",
-    "diag",
-    "einsum",
     "external",
-    "eye",
-    "linspace",
-    "map_coordinates",
-    "normalize",
-    "ones",
-    "ones_like",
-    "pad",
-    "rad2deg",
-    "rand",
-    "sin",
-    "softmax",
-    "stack",
-    "tan",
-    "tensor",
-    "where",
-    "zeros",
-    "zeros_like",
+    "eye_like",
+    "vec_like",
 ]

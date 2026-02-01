@@ -21,9 +21,8 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
-from kornia.core import Tensor
+from kornia.core.utils import _extract_device_dtype
 from kornia.enhance.normalize import normalize_min_max
-from kornia.utils import _extract_device_dtype
 
 
 class LinearIlluminationGenerator(RandomGeneratorBase):
@@ -71,7 +70,7 @@ class LinearIlluminationGenerator(RandomGeneratorBase):
 
         self.directions_sampler = UniformDistribution(0, 4, validate_args=False)
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         r"""Generate random 2D Gaussian illumination patterns."""
         batch_size, channels, height, width = batch_shape
         _common_param_check(batch_size, same_on_batch)
@@ -162,7 +161,7 @@ class LinearCornerIlluminationGenerator(RandomGeneratorBase):
 
         self.directions_sampler = UniformDistribution(0, 4, validate_args=False)
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         r"""Generate random 2D Gaussian illumination patterns."""
         batch_size, channels, height, width = batch_shape
         _common_param_check(batch_size, same_on_batch)

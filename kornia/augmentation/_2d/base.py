@@ -17,14 +17,15 @@
 
 from typing import Any, Dict, Optional
 
+import torch
 from torch import float16, float32, float64
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_input_by_shape, _validate_input_dtype
-from kornia.core import Tensor
+from kornia.core.ops import eye_like
+from kornia.core.utils import is_autocast_enabled
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.utils import eye_like, is_autocast_enabled
 
 
 class AugmentationBase2D(_AugmentationBase):
@@ -45,13 +46,15 @@ class AugmentationBase2D(_AugmentationBase):
 
     """
 
-    def validate_tensor(self, input: Tensor) -> None:
-        """Check if the input tensor is formatted as expected."""
+    def validate_tensor(self, input: torch.Tensor) -> None:
+        """Check if the input torch.Tensor is formatted as expected."""
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
         if len(input.shape) != 4:
             raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")
 
-    def transform_tensor(self, input: Tensor, *, shape: Optional[Tensor] = None, match_channel: bool = True) -> Tensor:
+    def transform_tensor(
+        self, input: torch.Tensor, *, shape: Optional[torch.Tensor] = None, match_channel: bool = True
+    ) -> torch.Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
 
@@ -78,20 +81,24 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
     """
 
-    _transform_matrix: Optional[Tensor]
+    _transform_matrix: Optional[torch.Tensor]
 
     @property
-    def transform_matrix(self) -> Optional[Tensor]:
+    def transform_matrix(self) -> Optional[torch.Tensor]:
         return self._transform_matrix
 
-    def identity_matrix(self, input: Tensor) -> Tensor:
+    def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return 3x3 identity matrix."""
         return eye_like(3, input)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         raise NotImplementedError
 
-    def generate_transformation_matrix(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def generate_transformation_matrix(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         """Generate transformation matrices with the given input and param settings."""
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
@@ -114,33 +121,53 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         return trans_matrix
 
     def inverse_inputs(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         raise NotImplementedError
 
     def inverse_masks(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         raise NotImplementedError
 
     def inverse_boxes(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Boxes,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
     ) -> Boxes:
         raise NotImplementedError
 
     def inverse_keypoints(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Keypoints,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
     ) -> Keypoints:
         raise NotImplementedError
 
     def inverse_classes(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self,
+        input: torch.Tensor,
+        params: Dict[str, torch.Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         raise NotImplementedError
 
     def apply_func(
-        self, in_tensor: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, in_tensor: torch.Tensor, params: Dict[str, torch.Tensor], flags: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         if flags is None:
             flags = self.flags
 

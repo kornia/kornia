@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Feature — Feature detection, description, and matching for Kornia.
+
+This subpackage provides modules for keypoint detection, descriptors, and feature matching.
+"""
+
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from .dedode import DeDoDe
 from .defmo import DeFMO

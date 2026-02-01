@@ -17,10 +17,10 @@
 
 from typing import Optional, Tuple
 
+import torch
+
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations.base import OperationBase
-from kornia.core import Tensor
-from kornia.grad_estimator import STEFunction
 
 __all__ = [
     "AutoContrast",
@@ -195,9 +195,6 @@ class Equalize(OperationBase):
     Note:
         Equalize cannot update probabilities yet.
 
-    Note:
-        STE gradient estimator applied for back propagation.
-
     """
 
     def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
@@ -206,7 +203,6 @@ class Equalize(OperationBase):
             initial_magnitude=None,
             temperature=temperature,
             symmetric_megnitude=False,
-            gradient_estimator=STEFunction,
         )
 
 
@@ -259,13 +255,10 @@ class Posterize(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
-    Note:
-        STE gradient estimator applied for back propagation.
-
     """
 
     @staticmethod
-    def _process_magnitude(magnitude: Tensor) -> Tensor:
+    def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
         return magnitude.long()
 
     def __init__(
@@ -282,7 +275,6 @@ class Posterize(OperationBase):
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
             magnitude_fn=Posterize._process_magnitude,
-            gradient_estimator=STEFunction,
         )
 
 
@@ -296,9 +288,6 @@ class Solarize(OperationBase):
         magnitude_range: the sampling range for random sampling and clamping the optimized
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
-
-    Note:
-        STE gradient estimator applied for back propagation.
 
     """
 
@@ -315,7 +304,6 @@ class Solarize(OperationBase):
             initial_magnitude=[("thresholds", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
-            gradient_estimator=STEFunction,
         )
 
 
@@ -329,9 +317,6 @@ class SolarizeAdd(OperationBase):
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
-
-    Note:
-        STE gradient estimator applied for back propagation.
 
     """
 
@@ -348,7 +333,6 @@ class SolarizeAdd(OperationBase):
             initial_magnitude=[("additions", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
-            gradient_estimator=STEFunction,
         )
 
 
@@ -466,7 +450,7 @@ class ShearX(OperationBase):
     """
 
     @staticmethod
-    def _process_magnitude(magnitude: Tensor) -> Tensor:
+    def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
         # make it sign-agnostic
         return magnitude * 180
 
@@ -506,7 +490,7 @@ class ShearY(OperationBase):
     """
 
     @staticmethod
-    def _process_magnitude(magnitude: Tensor) -> Tensor:
+    def _process_magnitude(magnitude: torch.Tensor) -> torch.Tensor:
         # make it sign-agnostic
         return magnitude * 180
 

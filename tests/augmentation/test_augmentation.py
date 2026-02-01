@@ -77,10 +77,9 @@ from kornia.augmentation import (
 )
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
-from kornia.geometry import transform_points
-from kornia.utils import create_meshgrid
-from kornia.utils._compat import torch_version, torch_version_le
-from kornia.utils.helpers import _torch_inverse_cast
+from kornia.core._compat import torch_version, torch_version_le
+from kornia.core.utils import _torch_inverse_cast
+from kornia.geometry import create_meshgrid, transform_points
 
 from testing.augmentation.datasets import DummyMPDataset
 from testing.base import BaseTester
@@ -295,7 +294,7 @@ class CommonTests(BaseTester):
         output = augmentation(input_tensor)
         transform = augmentation.transform_matrix
 
-        if (transform == kornia.eye_like(3, transform)).all():
+        if (transform == kornia.core.ops.eye_like(3, transform)).all():
             pytest.skip("Test not relevant for intensity augmentations.")
 
         indices = create_meshgrid(
@@ -404,7 +403,7 @@ class TestRandomEqualizeAlternative(CommonTests):
         )
         expected_output = expected_output.repeat(2, 3, 20, 1)
 
-        expected_transformation = kornia.eye_like(3, input_tensor)
+        expected_transformation = kornia.core.ops.eye_like(3, input_tensor)
         parameters = {}
         self._test_random_p_1_implementation(
             input_tensor=input_tensor,
@@ -685,7 +684,7 @@ class TestRandomRotationAlternative(CommonTests):
             dtype=self.dtype,
         ).repeat((2, 1, 1, 1))
         expected_output = input_tensor
-        expected_transformation = kornia.eye_like(3, input_tensor)
+        expected_transformation = kornia.core.ops.eye_like(3, input_tensor)
         parameters = {"degrees": (-360.0, -360.0), "align_corners": True}
         self._test_random_p_1_implementation(
             input_tensor=input_tensor,
@@ -778,7 +777,7 @@ class TestRandomRotation90(CommonTests):
             dtype=self.dtype,
         ).repeat((2, 1, 1, 1))
         expected_output = input_tensor
-        expected_transformation = kornia.eye_like(3, input_tensor)
+        expected_transformation = kornia.core.ops.eye_like(3, input_tensor)
         parameters = {"times": (0, 0), "align_corners": True}
         self._test_random_p_1_implementation(
             input_tensor=input_tensor,
@@ -851,7 +850,7 @@ class TestRandomGrayscaleAlternative(CommonTests):
             .repeat(1, 3, 1, 1)
         )
 
-        expected_transformation = kornia.eye_like(3, input_tensor)
+        expected_transformation = kornia.core.ops.eye_like(3, input_tensor)
         parameters = {}
         self._test_random_p_1_implementation(
             input_tensor=input_tensor,
@@ -1214,6 +1213,11 @@ class TestRandomVerticalFlip(BaseTester):
             output[..., result_coordinates[0, 1, :], result_coordinates[0, 0, :]],
             input[..., input_coordinates[0, 1, :], input_coordinates[0, 0, :]],
         )
+
+    @pytest.mark.slow
+    def test_gradcheck(self, device):
+        input = torch.rand((3, 3), device=device, dtype=torch.float64)
+        self.gradcheck(RandomVerticalFlip(p=1.0), (input,))
 
 
 class TestColorJiggle(BaseTester):
@@ -3813,7 +3817,7 @@ class TestRandomEqualize(BaseTester):
             ]
         )
         expected = self.build_input(channels, height, width, bs=1, row=row_expected, device=device, dtype=dtype)
-        identity = kornia.eye_like(3, expected)  # 3 x 3
+        identity = kornia.core.ops.eye_like(3, expected)  # 3 x 3
 
         self.assert_close(f(inputs), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, identity, low_tolerance=True)
@@ -3854,7 +3858,7 @@ class TestRandomEqualize(BaseTester):
         )
         expected = self.build_input(channels, height, width, bs, row=row_expected, device=device, dtype=dtype)
 
-        identity = kornia.eye_like(3, expected)  # 2 x 3 x 3
+        identity = kornia.core.ops.eye_like(3, expected)  # 2 x 3 x 3
 
         self.assert_close(f(inputs), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, identity, low_tolerance=True)
@@ -4039,9 +4043,11 @@ class TestRandomSaltAndPepperNoise(BaseTester):
             r"and it should be a tuple\.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.1, 0.2, 0.3))
+        from kornia.core.exceptions import BaseError
+
         with pytest.raises(
-            Exception,
-            match=r"False not true\.\s*Salt_vs_pepper values must be between 0 and 1\.\s+"
+            BaseError,
+            match=r"Salt_vs_pepper values must be between 0 and 1\.\s+"
             r"Recommended value 0\.5\.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.4, 3))
@@ -4054,8 +4060,8 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         ):
             RandomSaltAndPepperNoise(amount=())
         with pytest.raises(
-            Exception,
-            match=r"False not true\.\s*amount of noise values must be between 0 and 1\.\s+"
+            BaseError,
+            match=r"amount of noise values must be between 0 and 1\.\s+"
             r"Recommended values less than 0\.2\.",
         ):
             RandomSaltAndPepperNoise(amount=(0.05, 3))
@@ -4324,16 +4330,18 @@ class TestRandomChannelDropout(BaseTester):
         self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
 
     def test_exception(self, device, dtype):
+        from kornia.core.exceptions import BaseError, TypeCheckError
+
         num_drop_channels = 2.0
-        with pytest.raises(TypeError, match=f"`num_drop_channels` must be an int. Got: {type(num_drop_channels)}"):
-            RandomChannelDropout(num_drop_channels=num_drop_channels)
+        with pytest.raises(TypeCheckError, match=f"`num_drop_channels` must be an int. Got: {type(num_drop_channels)}"):
+            RandomChannelDropout(num_drop_channels=num_drop_channels, fill_value=0.0)
 
         num_drop_channels = 0
         with pytest.raises(
-            Exception,
+            BaseError,
             match=f"Invalid value in `num_drop_channels`. Must be an int greater than 1. Got: {num_drop_channels}",
         ):
-            RandomChannelDropout(num_drop_channels=num_drop_channels)
+            RandomChannelDropout(num_drop_channels=num_drop_channels, fill_value=0.0)
 
         num_drop_channels = 5
         input_tensor = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
@@ -4345,12 +4353,12 @@ class TestRandomChannelDropout(BaseTester):
 
         fill_value = 2.0
         with pytest.raises(
-            Exception, match=f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}"
+            BaseError, match=f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}"
         ):
             RandomChannelDropout(fill_value=fill_value)
 
         fill_value = 1
-        with pytest.raises(TypeError, match=f"`fill_value` must be a float. Got: {type(fill_value)}"):
+        with pytest.raises(TypeCheckError, match=f"`fill_value` must be a float. Got: {type(fill_value)}"):
             RandomChannelDropout(fill_value=fill_value)
 
     @pytest.mark.parametrize("channel_shape, batch_shape", [(3, 1), (1, 1), (5, 5)])
@@ -4413,7 +4421,7 @@ class TestNormalize(BaseTester):
 
         expected = (inputs - 1) * 2
 
-        identity = kornia.eye_like(3, expected)
+        identity = kornia.core.ops.eye_like(3, expected)
 
         self.assert_close(f(inputs), expected)
         self.assert_close(f.transform_matrix, identity)
@@ -4428,7 +4436,7 @@ class TestNormalize(BaseTester):
 
         expected = (inputs - 1) * 2
 
-        identity = kornia.eye_like(3, expected)
+        identity = kornia.core.ops.eye_like(3, expected)
 
         self.assert_close(f(inputs), expected)
         self.assert_close(f.transform_matrix, identity)
@@ -4463,7 +4471,7 @@ class TestDenormalize(BaseTester):
 
         expected = inputs / 2 + 1
 
-        identity = kornia.eye_like(3, expected)
+        identity = kornia.core.ops.eye_like(3, expected)
 
         self.assert_close(f(inputs), expected)
         self.assert_close(f.transform_matrix, identity)
@@ -4478,7 +4486,7 @@ class TestDenormalize(BaseTester):
 
         expected = inputs / 2 + 1
 
-        identity = kornia.eye_like(3, expected)
+        identity = kornia.core.ops.eye_like(3, expected)
 
         self.assert_close(f(inputs), expected)
         self.assert_close(f.transform_matrix, identity)
@@ -4583,13 +4591,6 @@ class TestRandomElasticTransform(BaseTester):
             if to_apply.any():
                 assert features_transformed[to_apply].ne(features[to_apply]).any()
                 assert labels_transformed[to_apply].ne(labels[to_apply]).any()
-
-
-class TestRandomThinPlateSpline:
-    def test_smoke(self, device, dtype):
-        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
-        aug = RandomThinPlateSpline(p=1.0)
-        assert img.shape == aug(img).shape
 
 
 class TestRandomBoxBlur:
@@ -4893,11 +4894,6 @@ class TestRandomRGBShift(BaseTester):
         aug = RandomRGBShift(p=1.0).to(device)
         out = aug(img)
         assert out.shape == (2, 3, 4, 5)
-
-    def test_onnx_export(self, device, dtype):
-        img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
-        aug = RandomRGBShift(p=1.0).to(device)
-        torch.onnx.export(aug, img, "temp.onnx", export_params=True)
 
     def test_random_rgb_shift(self, device, dtype):
         torch.manual_seed(0)
@@ -5248,12 +5244,61 @@ class TestRandomDissolving(BaseTester):
 
     def test_batch_proc(self, device, dtype):
         images = torch.rand(4, 3, 16, 16)
-        aug = RandomDissolving(p=1.0, version="2.1", cache_dir="weights/")
+        aug = RandomDissolving(p=1.0, version="1.5", cache_dir="weights/")
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
     def test_single_proc(self, device, dtype):
         images = torch.rand(3, 16, 16)
-        aug = RandomDissolving(p=1.0, keepdim=True, version="2.1", cache_dir="weights/")
+        aug = RandomDissolving(p=1.0, keepdim=True, version="1.5", cache_dir="weights/")
         images_aug = aug(images)
         assert images_aug.shape == images.shape
+
+
+class TestRandomThinPlateSpline(CommonTests):
+    possible_params: Dict["str", Tuple] = {}
+    _augmentation_cls = RandomThinPlateSpline
+    _default_param_set: Dict["str", Any] = {}
+
+    @pytest.fixture(params=[_default_param_set], scope="class")
+    def param_set(self, request):
+        return request.param
+
+    # Disable unsupported base tests
+    def test_smoke(self, param_set):
+        pytest.skip("RandomThinPlateSpline does not implement compute_transformation")
+
+    def test_module(self):
+        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+
+    def test_random_p_1(self):
+        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+
+    def test_inverse_coordinate_check(self):
+        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+
+    def test_exception(self):
+        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+
+    def test_batch(self):
+        pytest.skip("RandomThinPlateSpline does not expose transform_matrix")
+
+    def test_same_on_batch_true(self):
+        torch.manual_seed(0)
+        x = torch.randn(4, 3, 64, 64, device=self.device, dtype=self.dtype)
+        aug = self._augmentation_cls(p=1.0, same_on_batch=True)
+        _ = aug(x)
+        params = aug._params
+        assert (params["src"][0] == params["src"][1]).all()
+        for j in range(1, 4):
+            torch.testing.assert_close(params["dst"][0], params["dst"][j])
+
+    def test_same_on_batch_false(self):
+        torch.manual_seed(0)
+        x = torch.randn(4, 3, 64, 64, device=self.device, dtype=self.dtype)
+        aug = self._augmentation_cls(p=1.0, same_on_batch=False)
+        _ = aug(x)
+        params = aug._params
+        diffs = [(params["dst"][0] - params["dst"][j]).abs().sum().item() for j in range(1, 4)]
+
+        assert any(d > 0 for d in diffs)

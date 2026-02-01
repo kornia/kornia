@@ -20,9 +20,9 @@ import sys
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_ge
 from kornia.feature import LoFTR
 from kornia.geometry import resize
-from kornia.utils._compat import torch_version_ge
 
 from testing.base import BaseTester
 from testing.casts import dict_to

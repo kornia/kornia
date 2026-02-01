@@ -28,7 +28,7 @@ Vision Transformer (ViT)
 Kornia-ViT
 ----------
 
-We provide the operator :py:class:`~kornia.contrib.VisionTransformer` that is meant to be used across tasks.
+We provide the operator :py:class:`~kornia.models.vit.VisionTransformer` that is meant to be used across tasks.
 One can use the *ViT* in Kornia as follows:
 
 .. code:: python
@@ -41,17 +41,16 @@ Usage
 ~~~~~
 
 ``kornia-vit`` does not include any classification head.
-For this reason, we provide an :py:class:`~kornia.contrib.ClassificationHead` which can be easily combined
-with a `nn.Sequential` in order to easily build a custom image classification pipeline.
+You can easily add your own classification head using standard PyTorch modules.
 
 .. code:: python
 
     import torch.nn as nn
-    import kornia.contrib as K
+    from kornia.models.vit import VisionTransformer
 
     classifier = nn.Sequential(
-        K.VisionTransformer(image_size=224, patch_size=16),
-        K.ClassificationHead(num_classes=1000)
+        VisionTransformer(image_size=224, patch_size=16),
+        nn.Linear(768, 1000)  # Example: 768 is the default hidden_dim, 1000 is num_classes
     )
 
     img = torch.rand(1, 3, 224, 224)
@@ -64,13 +63,15 @@ class with two different classification heads:
 
 .. code:: python
 
+    from kornia.models.vit import VisionTransformer
+
     class MultiTaskTransfornmer(nn.Module):
         def __init__(self) -> None:
             super().__init__()
-            self.transformer = K.VisionTransformer(
+            self.transformer = VisionTransformer(
                 image_size=224, patch_size=16)
-            self.head1 = K.ClassificationHead(num_classes=10)
-            self.head2 = K.ClassificationHead(num_classes=50)
+            self.head1 = nn.Linear(768, 10)  # Example: 768 is the default hidden_dim
+            self.head2 = nn.Linear(768, 50)
 
         def forward(self, x: torch.Tensor):
             out = self.transformer(x)

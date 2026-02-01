@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from kornia.core import Tensor
+import torch
 
 
 @dataclass(frozen=True)
@@ -40,8 +40,8 @@ class ImageSize:
 
     """
 
-    height: int | Tensor
-    width: int | Tensor
+    height: int | torch.Tensor
+    width: int | torch.Tensor
 
 
 class ColorSpace(Enum):

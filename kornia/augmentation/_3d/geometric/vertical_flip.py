@@ -44,7 +44,7 @@ class RandomVerticalFlip3D(GeometricAugmentationBase3D):
 
     Note:
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
+        Additionally, this function accepts another transformation torch.tensor(:math:`(B, 4, 4)`), then the
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:

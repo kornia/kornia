@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Geometry Calibration — Camera calibration utilities for Kornia.
+
+This subpackage provides functions for camera calibration, distortion, and undistortion.
+"""
+
 from .distort import distort_points, tilt_projection
 from .pnp import solve_pnp_dlt
 from .undistort import undistort_image, undistort_points

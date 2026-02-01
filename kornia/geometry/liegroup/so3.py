@@ -19,11 +19,11 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
 import torch
+from torch import nn
 
-from kornia.core import Device, Dtype, Module, Tensor, concatenate, eye, stack, where, zeros, zeros_like
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import vector_to_skew_symmetric_matrix
 from kornia.geometry.linalg import batched_dot_product
@@ -31,7 +31,7 @@ from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
 
-class So3(Module):
+class So3(nn.Module):
     r"""Base class to represent the So3 group.
 
     The SO(3) is the group of all rotations about the origin of three-dimensional Euclidean space
@@ -87,17 +87,17 @@ class So3(Module):
         # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L98
         if isinstance(right, So3):
             return So3(self.q * right.q)
-        elif isinstance(right, (Tensor, Vector3)):
+        elif isinstance(right, (torch.Tensor, Vector3)):
             # KORNIA_CHECK_SHAPE(right, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
-            w = zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
-            quat = Quaternion(concatenate((w, right.data), -1))
+            w = torch.zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
+            quat = Quaternion(torch.cat((w, right.data), -1))
             out = (self.q * quat * self.q.conj()).vec
-            if isinstance(right, Tensor):
+            if isinstance(right, torch.Tensor):
                 return out
             elif isinstance(right, Vector3):
                 return Vector3(out)
         else:
-            raise TypeError(f"Not So3 or Tensor type. Got: {type(right)}")
+            raise TypeError(f"Not So3 or torch.Tensor type. Got: {type(right)}")
 
     @property
     def q(self) -> Quaternion:
@@ -105,7 +105,7 @@ class So3(Module):
         return self._q
 
     @staticmethod
-    def exp(v: Tensor) -> So3:
+    def exp(v: torch.Tensor) -> So3:
         """Convert elements of lie algebra to elements of lie group.
 
         See more: https://vision.in.tum.de/_media/members/demmeln/nurlanov2021so3log.pdf
@@ -134,7 +134,7 @@ class So3(Module):
         q = torch.cat((w, xyz), dim=-1)
         return So3(Quaternion(q))
 
-    def log(self) -> Tensor:
+    def log(self) -> torch.Tensor:
         """Convert elements of lie group  to elements of lie algebra.
 
         Example:
@@ -147,7 +147,7 @@ class So3(Module):
         """
         theta = batched_dot_product(self.q.vec, self.q.vec).sqrt()
         # NOTE: this differs from https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L33
-        omega = where(
+        omega = torch.where(
             theta[..., None] != 0,
             2 * self.q.real[..., None].acos() * self.q.vec / theta[..., None],
             2 * self.q.vec / self.q.real[..., None],
@@ -155,11 +155,11 @@ class So3(Module):
         return omega
 
     @staticmethod
-    def hat(v: Vector3 | Tensor) -> Tensor:
+    def hat(v: Vector3 | torch.Tensor) -> torch.Tensor:
         """Convert elements from vector space to lie algebra. Returns matrix of shape :math:`(B,3,3)`.
 
         Args:
-            v: Vector3 or tensor of shape :math:`(B,3)`.
+            v: Vector3 or torch.Tensor of shape :math:`(B,3)`.
 
         Example:
             >>> v = torch.ones((1,3))
@@ -171,19 +171,19 @@ class So3(Module):
 
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
-        if isinstance(v, Tensor):
+        if isinstance(v, torch.Tensor):
             # TODO: Figure out why mypy think `v` can be a Vector3 which didn't allow ellipsis on index
             a, b, c = v[..., 0], v[..., 1], v[..., 2]  # type: ignore[index]
         else:
             a, b, c = v.x, v.y, v.z
-        z = zeros_like(a)
-        row0 = stack((z, -c, b), -1)
-        row1 = stack((c, z, -a), -1)
-        row2 = stack((-b, a, z), -1)
-        return stack((row0, row1, row2), -2)
+        z = torch.zeros_like(a)
+        row0 = torch.stack((z, -c, b), -1)
+        row1 = torch.stack((c, z, -a), -1)
+        row2 = torch.stack((-b, a, z), -1)
+        return torch.stack((row0, row1, row2), -2)
 
     @staticmethod
-    def vee(omega: Tensor) -> Tensor:
+    def vee(omega: torch.Tensor) -> torch.Tensor:
         r"""Convert elements from lie algebra to vector space. Returns vector of shape :math:`(B,3)`.
 
         .. math::
@@ -203,9 +203,9 @@ class So3(Module):
         """
         # KORNIA_CHECK_SHAPE(omega, ["B", "3", "3"])  # FIXME: resolve shape bugs. @edgarriba
         a, b, c = omega[..., 2, 1], omega[..., 0, 2], omega[..., 1, 0]
-        return stack((a, b, c), -1)
+        return torch.stack((a, b, c), -1)
 
-    def matrix(self) -> Tensor:
+    def matrix(self) -> torch.Tensor:
         r"""Convert the quaternion to a rotation matrix of shape :math:`(B,3,3)`.
 
         The matrix is of the form:
@@ -229,19 +229,19 @@ class So3(Module):
         q0 = 1 - 2 * y**2 - 2 * z**2
         q1 = 2 * x * y - 2 * z * w
         q2 = 2 * x * z + 2 * y * w
-        row0 = concatenate((q0, q1, q2), -1)
+        row0 = torch.cat((q0, q1, q2), -1)
         q0 = 2 * x * y + 2 * z * w
         q1 = 1 - 2 * x**2 - 2 * z**2
         q2 = 2 * y * z - 2 * x * w
-        row1 = concatenate((q0, q1, q2), -1)
+        row1 = torch.cat((q0, q1, q2), -1)
         q0 = 2 * x * z - 2 * y * w
         q1 = 2 * y * z + 2 * x * w
         q2 = 1 - 2 * x**2 - 2 * y**2
-        row2 = concatenate((q0, q1, q2), -1)
-        return stack((row0, row1, row2), -2)
+        row2 = torch.cat((q0, q1, q2), -1)
+        return torch.stack((row0, row1, row2), -2)
 
     @classmethod
-    def from_matrix(cls, matrix: Tensor) -> So3:
+    def from_matrix(cls, matrix: torch.Tensor) -> So3:
         """Create So3 from a rotation matrix.
 
         Args:
@@ -257,8 +257,8 @@ class So3(Module):
         return cls(Quaternion.from_matrix(matrix))
 
     @classmethod
-    def from_wxyz(cls, wxyz: Tensor) -> So3:
-        """Create So3 from a tensor representing a quaternion.
+    def from_wxyz(cls, wxyz: torch.Tensor) -> So3:
+        """Create So3 from a torch.Tensor representing a quaternion.
 
         Args:
             wxyz: the quaternion to convert of shape :math:`(B,4)`.
@@ -275,7 +275,10 @@ class So3(Module):
 
     @classmethod
     def identity(
-        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Optional[Dtype] = None
+        cls,
+        batch_size: Optional[int] = None,
+        device: Optional[Union[str, torch.device, None]] = None,
+        dtype: Optional[Union[torch.dtype, None]] = None,
     ) -> So3:
         """Create a So3 group representing an identity rotation.
 
@@ -310,7 +313,10 @@ class So3(Module):
 
     @classmethod
     def random(
-        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Optional[Dtype] = None
+        cls,
+        batch_size: Optional[int] = None,
+        device: Optional[Union[str, torch.device, None]] = None,
+        dtype: Optional[Union[torch.dtype, None]] = None,
     ) -> So3:
         """Create a So3 group representing a random rotation.
 
@@ -327,39 +333,39 @@ class So3(Module):
         return cls(Quaternion.random(batch_size, device, dtype))
 
     @classmethod
-    def rot_x(cls, x: Tensor) -> So3:
+    def rot_x(cls, x: torch.Tensor) -> So3:
         """Construct a x-axis rotation.
 
         Args:
             x: the x-axis rotation angle.
 
         """
-        zs = zeros_like(x)
-        return cls.exp(stack((x, zs, zs), -1))
+        zs = torch.zeros_like(x)
+        return cls.exp(torch.stack((x, zs, zs), -1))
 
     @classmethod
-    def rot_y(cls, y: Tensor) -> So3:
+    def rot_y(cls, y: torch.Tensor) -> So3:
         """Construct a z-axis rotation.
 
         Args:
             y: the y-axis rotation angle.
 
         """
-        zs = zeros_like(y)
-        return cls.exp(stack((zs, y, zs), -1))
+        zs = torch.zeros_like(y)
+        return cls.exp(torch.stack((zs, y, zs), -1))
 
     @classmethod
-    def rot_z(cls, z: Tensor) -> So3:
+    def rot_z(cls, z: torch.Tensor) -> So3:
         """Construct a z-axis rotation.
 
         Args:
             z: the z-axis rotation angle.
 
         """
-        zs = zeros_like(z)
-        return cls.exp(stack((zs, zs, z), -1))
+        zs = torch.zeros_like(z)
+        return cls.exp(torch.stack((zs, zs, z), -1))
 
-    def adjoint(self) -> Tensor:
+    def adjoint(self) -> torch.Tensor:
         """Return the adjoint matrix of shape :math:`(B, 3, 3)`.
 
         Example:
@@ -373,7 +379,7 @@ class So3(Module):
         return self.matrix()
 
     @staticmethod
-    def right_jacobian(vec: Tensor) -> Tensor:
+    def right_jacobian(vec: torch.Tensor) -> torch.Tensor:
         """Compute the right Jacobian of So3.
 
         Args:
@@ -390,12 +396,16 @@ class So3(Module):
         # KORNIA_CHECK_SHAPE(vec, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
-        I = eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
-        Jr = I - ((1 - theta.cos()) / theta**2) * R_skew + ((theta - theta.sin()) / theta**3) * (R_skew @ R_skew)
+        I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
+        Jr = (
+            I
+            - ((1 - torch.cos(theta)) / theta**2) * R_skew
+            + ((theta - torch.sin(theta)) / theta**3) * (R_skew @ R_skew)
+        )
         return Jr
 
     @staticmethod
-    def Jr(vec: Tensor) -> Tensor:
+    def Jr(vec: torch.Tensor) -> torch.Tensor:
         """Alias for right jacobian.
 
         Args:
@@ -405,7 +415,7 @@ class So3(Module):
         return So3.right_jacobian(vec)
 
     @staticmethod
-    def left_jacobian(vec: Tensor) -> Tensor:
+    def left_jacobian(vec: torch.Tensor) -> torch.Tensor:
         """Compute the left Jacobian of So3.
 
         Args:
@@ -422,12 +432,16 @@ class So3(Module):
         # KORNIA_CHECK_SHAPE(vec, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
-        I = eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
-        Jl = I + ((1 - theta.cos()) / theta**2) * R_skew + ((theta - theta.sin()) / theta**3) * (R_skew @ R_skew)
+        I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
+        Jl = (
+            I
+            + ((1 - torch.cos(theta)) / theta**2) * R_skew
+            + ((theta - torch.sin(theta)) / theta**3) * (R_skew @ R_skew)
+        )
         return Jl
 
     @staticmethod
-    def Jl(vec: Tensor) -> Tensor:
+    def Jl(vec: torch.Tensor) -> torch.Tensor:
         """Alias for left jacobian.
 
         Args:

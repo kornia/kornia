@@ -15,72 +15,197 @@
 # limitations under the License.
 #
 
-from ._compat import torch_meshgrid
-from .download import CachedDownloader
-from .draw import draw_convex_polygon, draw_line, draw_point2d, draw_rectangle
-from .grid import create_meshgrid, create_meshgrid3d
-from .helpers import (
-    _extract_device_dtype,
-    dataclass_to_dict,
-    deprecated,
-    dict_to_dataclass,
-    get_cuda_device_if_available,
-    get_cuda_or_mps_device_if_available,
-    get_mps_device_if_available,
-    is_autocast_enabled,
-    is_mps_tensor_safe,
-    map_location_to_cpu,
-    safe_inverse_with_mask,
-    safe_solve_with_mask,
-    xla_is_available,
+"""Utils submodule for Kornia.
+
+This module has been deprecated. Functions have been moved to their respective modules.
+Import from the new locations instead (e.g., `kornia.image.draw_line` instead of `kornia.utils.draw_line`).
+"""
+
+from typing import Any
+
+from kornia.core._compat import deprecated
+from kornia.geometry import (
+    create_meshgrid as _create_meshgrid,
 )
-from .image import ImageToTensor, image_list_to_tensor, image_to_tensor, tensor_to_image
-from .image_print import image_to_string, print_image
-from .memory import batched_forward
-from .misc import (
-    differentiable_clipping,
-    differentiable_polynomial_floor,
-    differentiable_polynomial_rounding,
-    eye_like,
-    vec_like,
+from kornia.geometry import (
+    create_meshgrid3d as _create_meshgrid3d,
 )
-from .one_hot import one_hot
-from .pointcloud_io import load_pointcloud_ply, save_pointcloud_ply
-from .sample import get_sample_images
+from kornia.geometry import (
+    load_pointcloud_ply as _load_pointcloud_ply,
+)
+from kornia.geometry import (
+    save_pointcloud_ply as _save_pointcloud_ply,
+)
+from kornia.image import (
+    draw_convex_polygon as _draw_convex_polygon,
+)
+from kornia.image import (
+    draw_line as _draw_line,
+)
+from kornia.image import (
+    draw_point2d as _draw_point2d,
+)
+from kornia.image import (
+    draw_rectangle as _draw_rectangle,
+)
+from kornia.image import (
+    image_to_string as _image_to_string,
+)
+from kornia.image import (
+    image_to_tensor as _image_to_tensor,
+)
+from kornia.image import (
+    print_image as _print_image,
+)
+from kornia.image import (
+    tensor_to_image as _tensor_to_image,
+)
+from kornia.losses.one_hot import one_hot as _one_hot
+
+
+# Re-export with deprecation warnings
+@deprecated(
+    replace_with="kornia.geometry.create_meshgrid",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.geometry` instead.",
+)
+def create_meshgrid(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.geometry.create_meshgrid` instead."""
+    return _create_meshgrid(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.geometry.create_meshgrid3d",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.geometry` instead.",
+)
+def create_meshgrid3d(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.geometry.create_meshgrid3d` instead."""
+    return _create_meshgrid3d(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.geometry.load_pointcloud_ply",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.geometry` instead.",
+)
+def load_pointcloud_ply(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.geometry.load_pointcloud_ply` instead."""
+    return _load_pointcloud_ply(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.geometry.save_pointcloud_ply",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.geometry` instead.",
+)
+def save_pointcloud_ply(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.geometry.save_pointcloud_ply` instead."""
+    return _save_pointcloud_ply(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.image.draw_line",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.image` instead.",
+)
+def draw_line(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.image.draw_line` instead."""
+    return _draw_line(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.image.draw_rectangle",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.image` instead.",
+)
+def draw_rectangle(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.image.draw_rectangle` instead."""
+    return _draw_rectangle(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.image.draw_point2d",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.image` instead.",
+)
+def draw_point2d(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.image.draw_point2d` instead."""
+    return _draw_point2d(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.image.draw_convex_polygon",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.image` instead.",
+)
+def draw_convex_polygon(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.image.draw_convex_polygon` instead."""
+    return _draw_convex_polygon(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.image.image_to_string",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.image` instead.",
+)
+def image_to_string(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.image.image_to_string` instead."""
+    return _image_to_string(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.image.print_image",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.image` instead.",
+)
+def print_image(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.image.print_image` instead."""
+    return _print_image(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.image.image_to_tensor",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.image` instead.",
+)
+def image_to_tensor(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.image.image_to_tensor` instead."""
+    return _image_to_tensor(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.image.tensor_to_image",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.image` instead.",
+)
+def tensor_to_image(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.image.tensor_to_image` instead."""
+    return _tensor_to_image(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.losses.one_hot",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.losses` instead.",
+)
+def one_hot(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.losses.one_hot` instead."""
+    return _one_hot(*args, **kwargs)
+
 
 __all__ = [
-    "CachedDownloader",
-    "ImageToTensor",
-    "_extract_device_dtype",
-    "batched_forward",
     "create_meshgrid",
     "create_meshgrid3d",
-    "dataclass_to_dict",
-    "deprecated",
-    "dict_to_dataclass",
     "draw_convex_polygon",
     "draw_line",
     "draw_point2d",
     "draw_rectangle",
-    "eye_like",
-    "get_cuda_device_if_available",
-    "get_cuda_or_mps_device_if_available",
-    "get_mps_device_if_available",
-    "get_sample_images",
-    "image_list_to_tensor",
     "image_to_string",
     "image_to_tensor",
-    "is_autocast_enabled",
-    "is_mps_tensor_safe",
     "load_pointcloud_ply",
-    "map_location_to_cpu",
     "one_hot",
     "print_image",
-    "safe_inverse_with_mask",
-    "safe_solve_with_mask",
     "save_pointcloud_ply",
     "tensor_to_image",
-    "torch_meshgrid",
-    "vec_like",
-    "xla_is_available",
 ]

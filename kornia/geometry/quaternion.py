@@ -23,8 +23,8 @@ from math import pi
 from typing import Any, Optional, Tuple, Union
 
 import torch
+from torch import nn
 
-from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import (
     axis_angle_to_quaternion,
@@ -38,7 +38,7 @@ from kornia.geometry.conversions import (
 from kornia.geometry.linalg import batched_dot_product
 
 
-class Quaternion(Module):
+class Quaternion(nn.Module):
     r"""Base class to represent a Quaternion.
 
     A quaternion is a four dimensional vector representation of a rotation transformation in 3d.
@@ -50,7 +50,7 @@ class Quaternion(Module):
 
         Q = a + b \cdot \mathbf{i} + c \cdot \mathbf{j} + d \cdot \mathbf{k}
 
-    Thus, we represent a rotation quaternion as a contiguous tensor structure to
+    Thus, we represent a rotation quaternion as a contiguous torch.Tensor structure to
     perform rigid bodies transformations:
 
     .. math::
@@ -74,16 +74,16 @@ class Quaternion(Module):
 
     """
 
-    _data: Union[Tensor, Parameter]
+    _data: Union[torch.Tensor, nn.Parameter]
 
-    def __init__(self, data: Union[Tensor, Parameter]) -> None:
-        """Construct a quaternion from tensor or parameter data.
+    def __init__(self, data: Union[torch.Tensor, nn.Parameter]) -> None:
+        """Construct a quaternion from torch.Tensor or parameter data.
 
         Args:
-            data: tensor or parameter containing the quaternion data with the shape of :math:`(B, 4)`.
+            data: torch.Tensor or parameter containing the quaternion data with the shape of :math:`(B, 4)`.
 
         Example:
-            >>> # Create with tensor (no gradients tracked by default)
+            >>> # Create with torch.tensor(no gradients tracked by default)
             >>> data = torch.tensor([1., 0., 0., 0.])
             >>> q1 = Quaternion(data)
             >>> # Create with parameter (gradients tracked)
@@ -92,8 +92,8 @@ class Quaternion(Module):
 
         """
         super().__init__()
-        if not isinstance(data, (Tensor, Parameter)):
-            raise TypeError(f"Expected Tensor or Parameter, got {type(data)}")
+        if not isinstance(data, (torch.Tensor, nn.Parameter)):
+            raise TypeError(f"Expected torch.Tensor or nn.Parameter, got {type(data)}")
         # KORNIA_CHECK_SHAPE(data, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
         self._data = data
 
@@ -101,21 +101,21 @@ class Quaternion(Module):
         """Move and/or cast the quaternion data.
 
         Args:
-            *args: Arguments to pass to tensor.to()
-            **kwargs: Keyword arguments to pass to tensor.to()
+            *args: Arguments to pass to torch.Tensor.to()
+            **kwargs: Keyword arguments to pass to torch.Tensor.to()
 
         Returns:
             A new Quaternion with converted data.
         """
         return Quaternion(self._data.to(*args, **kwargs))
 
-    def _to_scalar_quaternion(self, value: Union[Tensor, float]) -> "Quaternion":
-        """Convert a scalar, tensor, or numeric value to a scalar quaternion.
+    def _to_scalar_quaternion(self, value: Union[torch.Tensor, float]) -> "Quaternion":
+        """Convert a scalar, torch.Tensor, or numeric value to a scalar quaternion.
 
         A scalar quaternion has the form [real, 0, 0, 0] where real is the input value.
 
         Args:
-            value: The scalar, tensor, or numeric value to convert.
+            value: The scalar, torch.Tensor, or numeric value to convert.
 
         Returns:
             A Quaternion object representing the scalar quaternion.
@@ -166,15 +166,15 @@ class Quaternion(Module):
         """
         return Quaternion(-self.data)
 
-    def __add__(self, right: Union["Quaternion", Tensor, float]) -> "Quaternion":
-        """Add a given quaternion, scalar, or tensor.
+    def __add__(self, right: Union["Quaternion", torch.Tensor, float]) -> "Quaternion":
+        """Add a given quaternion, scalar, or torch.Tensor.
 
         Args:
-            right: the quaternion, scalar, or tensor to add.
+            right: the quaternion, scalar, or torch.Tensor to add.
 
         Example:
             >>> q1 = Quaternion.identity()
-            >>> q2 = Quaternion(tensor([2., 0., 1., 1.]))
+            >>> q2 = Quaternion(torch.tensor([2., 0., 1., 1.]))
             >>> q3 = q1 + q2
             >>> q3.data
             tensor([3., 0., 1., 1.])
@@ -186,14 +186,14 @@ class Quaternion(Module):
             right_quat = self._to_scalar_quaternion(right)
             return Quaternion(self.data + right_quat.data)
 
-    def __sub__(self, right: Union["Quaternion", Tensor, float]) -> "Quaternion":
-        """Subtract a given quaternion, scalar, or tensor.
+    def __sub__(self, right: Union["Quaternion", torch.Tensor, float]) -> "Quaternion":
+        """Subtract a given quaternion, scalar, or torch.Tensor.
 
         Args:
-            right: the quaternion, scalar, or tensor to subtract.
+            right: the quaternion, scalar, or torch.Tensor to subtract.
 
         Example:
-            >>> q1 = Quaternion(tensor([2., 0., 1., 1.]))
+            >>> q1 = Quaternion(torch.tensor([2., 0., 1., 1.]))
             >>> q2 = Quaternion.identity()
             >>> q3 = q1 - q2
             >>> q3.data
@@ -204,13 +204,13 @@ class Quaternion(Module):
             return Quaternion(self.data - right.data)
         else:
             right_quat = self._to_scalar_quaternion(right)
-            # For scalar operations, ensure we return a tensor to preserve gradients
+            # For scalar operations, ensure we return a torch.Tensor to preserve gradients
             result_data = self.data - right_quat.data
-            if isinstance(result_data, Parameter):
-                result_data = result_data.data  # Convert to tensor to preserve gradients
+            if isinstance(result_data, nn.Parameter):
+                result_data = result_data.data  # Convert to torch.Tensor to preserve gradients
             return Quaternion(result_data)
 
-    def __mul__(self, right: Union["Quaternion", Tensor, float]) -> "Quaternion":
+    def __mul__(self, right: Union["Quaternion", torch.Tensor, float]) -> "Quaternion":
         # If right is a Quaternion, do quaternion multiplication
         if isinstance(right, Quaternion):
             new_real = self.real * right.real - batched_dot_product(self.vec, right.vec)
@@ -219,9 +219,9 @@ class Quaternion(Module):
                 + right.real[..., None] * self.vec
                 + torch.linalg.cross(self.vec, right.vec, dim=-1)
             )
-            return Quaternion(concatenate((new_real[..., None], new_vec), -1))
+            return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
 
-        # If right is a scalar/tensor, convert to scalar quaternion and multiply
+        # If right is a scalar/torch.Tensor, convert to scalar quaternion and multiply
         else:
             right_quat = self._to_scalar_quaternion(right)
             new_real = self.real * right_quat.real - batched_dot_product(self.vec, right_quat.vec)
@@ -230,10 +230,10 @@ class Quaternion(Module):
                 + right_quat.real[..., None] * self.vec
                 + torch.linalg.cross(self.vec, right_quat.vec, dim=-1)
             )
-            return Quaternion(concatenate((new_real[..., None], new_vec), -1))
+            return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
 
-    def __rmul__(self, left: Union[Tensor, float]) -> "Quaternion":
-        """Right multiplication (left * self) where left is a scalar or tensor."""
+    def __rmul__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
+        """Right multiplication (left * self) where left is a scalar or torch.Tensor."""
         left_quat = self._to_scalar_quaternion(left)
         new_real = left_quat.real * self.real - batched_dot_product(left_quat.vec, self.vec)
         new_vec = (
@@ -241,9 +241,9 @@ class Quaternion(Module):
             + self.real[..., None] * left_quat.vec
             + torch.linalg.cross(left_quat.vec, self.vec, dim=-1)
         )
-        return Quaternion(concatenate((new_real[..., None], new_vec), -1))
+        return Quaternion(torch.cat((new_real[..., None], new_vec), -1))
 
-    def __div__(self, right: Union[Tensor, "Quaternion", float]) -> "Quaternion":
+    def __div__(self, right: Union[torch.Tensor, "Quaternion", float]) -> "Quaternion":
         if isinstance(right, Quaternion):
             return self * right.inv()
         else:
@@ -257,35 +257,35 @@ class Quaternion(Module):
             if right_tensor.dim() == 0:  # scalar
                 divisor = right_tensor.expand_as(self.data[..., 0]).unsqueeze(-1).expand_as(self.data)
             else:
-                # Broadcast the tensor to match the quaternion dimensions
+                # Broadcast the torch.Tensor to match the quaternion dimensions
                 divisor = right_tensor.unsqueeze(-1).expand_as(self.data)
 
-            # For scalar operations, ensure we return a tensor to preserve gradients
+            # For scalar operations, ensure we return a torch.Tensor to preserve gradients
             result_data = self.data / divisor
-            if isinstance(result_data, Parameter):
-                result_data = result_data.data  # Convert to tensor to preserve gradients
+            if isinstance(result_data, nn.Parameter):
+                result_data = result_data.data  # Convert to torch.Tensor to preserve gradients
             return Quaternion(result_data)
 
-    def __truediv__(self, right: Union[Tensor, "Quaternion", float]) -> "Quaternion":
+    def __truediv__(self, right: Union[torch.Tensor, "Quaternion", float]) -> "Quaternion":
         return self.__div__(right)
 
-    def __radd__(self, left: Union[Tensor, float]) -> "Quaternion":
-        """Right addition (left + self) where left is a scalar or tensor."""
+    def __radd__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
+        """Right addition (left + self) where left is a scalar or torch.Tensor."""
         left_quat = self._to_scalar_quaternion(left)
         return left_quat + self
 
-    def __rsub__(self, left: Union[Tensor, float]) -> "Quaternion":
-        """Right subtraction (left - self) where left is a scalar or tensor."""
+    def __rsub__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
+        """Right subtraction (left - self) where left is a scalar or torch.Tensor."""
         left_quat = self._to_scalar_quaternion(left)
         return left_quat - self
 
-    def __rtruediv__(self, left: Union[Tensor, float]) -> "Quaternion":
-        """Right division (left / self) where left is a scalar or tensor."""
+    def __rtruediv__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
+        """Right division (left / self) where left is a scalar or torch.Tensor."""
         left_quat = self._to_scalar_quaternion(left)
         return left_quat / self
 
-    def __rdiv__(self, left: Union[Tensor, float]) -> "Quaternion":
-        """Right division (left / self) where left is a scalar or tensor."""
+    def __rdiv__(self, left: Union[torch.Tensor, float]) -> "Quaternion":
+        """Right division (left / self) where left is a scalar or torch.Tensor."""
         return self.__rtruediv__(left)
 
     def __pow__(self, t: float) -> "Quaternion":
@@ -295,29 +295,29 @@ class Quaternion(Module):
             t: raised exponent.
 
         Example:
-            >>> q = Quaternion(tensor([1., .5, 0., 0.]))
+            >>> q = Quaternion(torch.tensor([1., .5, 0., 0.]))
             >>> q_pow = q**2
 
         """
         theta = self.polar_angle[..., None]
         vec_norm = self.vec.norm(dim=-1, keepdim=True)
-        n = where(vec_norm != 0, self.vec / vec_norm, self.vec * 0)
+        n = torch.where(vec_norm != 0, self.vec / vec_norm, self.vec * 0)
         w = (t * theta).cos()
         xyz = (t * theta).sin() * n
-        return Quaternion(concatenate((w, xyz), -1))
+        return Quaternion(torch.cat((w, xyz), -1))
 
     @property
-    def data(self) -> Tensor:
+    def data(self) -> torch.Tensor:
         """Return the underlying data with shape :math:`(B, 4)`."""
         return self._data
 
     @property
-    def coeffs(self) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    def coeffs(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Return a tuple with the underlying coefficients in WXYZ order."""
         return self.w, self.x, self.y, self.z
 
     @property
-    def real(self) -> Tensor:
+    def real(self) -> torch.Tensor:
         """Return the real part with shape :math:`(B,)`.
 
         Alias for
@@ -326,12 +326,12 @@ class Quaternion(Module):
         return self.w
 
     @property
-    def vec(self) -> Tensor:
+    def vec(self) -> torch.Tensor:
         """Return the vector with the imaginary part with shape :math:`(B, 3)`."""
         return self.data[..., 1:]
 
     @property
-    def q(self) -> Tensor:
+    def q(self) -> torch.Tensor:
         """Return the underlying data with shape :math:`(B, 4)`.
 
         Alias for :func:`~kornia.geometry.quaternion.Quaternion.data`
@@ -339,7 +339,7 @@ class Quaternion(Module):
         return self.data
 
     @property
-    def scalar(self) -> Tensor:
+    def scalar(self) -> torch.Tensor:
         """Return a scalar with the real with shape :math:`(B,)`.
 
         Alias for
@@ -348,22 +348,22 @@ class Quaternion(Module):
         return self.real
 
     @property
-    def w(self) -> Tensor:
+    def w(self) -> torch.Tensor:
         """Return the :math:`q_w` with shape :math:`(B,)`."""
         return self.data[..., 0]
 
     @property
-    def x(self) -> Tensor:
+    def x(self) -> torch.Tensor:
         """Return the :math:`q_x` with shape :math:`(B,)`."""
         return self.data[..., 1]
 
     @property
-    def y(self) -> Tensor:
+    def y(self) -> torch.Tensor:
         """Return the :math:`q_y` with shape :math:`(B,)`."""
         return self.data[..., 2]
 
     @property
-    def z(self) -> Tensor:
+    def z(self) -> torch.Tensor:
         """Return the :math:`q_z` with shape :math:`(B,)`."""
         return self.data[..., 3]
 
@@ -373,7 +373,7 @@ class Quaternion(Module):
         return tuple(self.data.shape)
 
     @property
-    def polar_angle(self) -> Tensor:
+    def polar_angle(self) -> torch.Tensor:
         """Return the polar angle with shape :math:`(B,1)`.
 
         Example:
@@ -384,7 +384,7 @@ class Quaternion(Module):
         """
         return (self.scalar / self.norm()).acos()
 
-    def matrix(self) -> Tensor:
+    def matrix(self) -> torch.Tensor:
         """Convert the quaternion to a rotation matrix of shape :math:`(B, 3, 3)`.
 
         Example:
@@ -399,7 +399,7 @@ class Quaternion(Module):
         return quaternion_to_rotation_matrix(self.data)
 
     @classmethod
-    def from_matrix(cls, matrix: Tensor) -> "Quaternion":
+    def from_matrix(cls, matrix: torch.Tensor) -> "Quaternion":
         """Create a quaternion from a rotation matrix.
 
         Args:
@@ -415,7 +415,7 @@ class Quaternion(Module):
         return cls(rotation_matrix_to_quaternion(matrix))
 
     @classmethod
-    def from_euler(cls, roll: Tensor, pitch: Tensor, yaw: Tensor) -> "Quaternion":
+    def from_euler(cls, roll: torch.Tensor, pitch: torch.Tensor, yaw: torch.Tensor) -> "Quaternion":
         """Create a quaternion from Euler angles.
 
         Args:
@@ -424,21 +424,21 @@ class Quaternion(Module):
             yaw: the yaw euler angle.
 
         Example:
-            >>> roll, pitch, yaw = tensor(0), tensor(1), tensor(0)
+            >>> roll, pitch, yaw = torch.tensor(0), torch.tensor(1), torch.tensor(0)
             >>> q = Quaternion.from_euler(roll, pitch, yaw)
             >>> q.data
             tensor([0.8776, 0.0000, 0.4794, 0.0000])
 
         """
         w, x, y, z = quaternion_from_euler(roll=roll, pitch=pitch, yaw=yaw)
-        q = stack((w, x, y, z), -1)
+        q = torch.stack((w, x, y, z), -1)
         return cls(q)
 
-    def to_euler(self) -> Tuple[Tensor, Tensor, Tensor]:
+    def to_euler(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Convert the quaternion to a triple of Euler angles (roll, pitch, yaw).
 
         Example:
-            >>> q = Quaternion(tensor([2., 0., 1., 1.]))
+            >>> q = Quaternion(torch.tensor([2., 0., 1., 1.]))
             >>> roll, pitch, yaw = q.to_euler()
             >>> roll
             tensor(2.0344)
@@ -451,7 +451,7 @@ class Quaternion(Module):
         return euler_from_quaternion(self.w, self.x, self.y, self.z)
 
     @classmethod
-    def from_axis_angle(cls, axis_angle: Tensor) -> "Quaternion":
+    def from_axis_angle(cls, axis_angle: torch.Tensor) -> "Quaternion":
         """Create a quaternion from axis-angle representation.
 
         Args:
@@ -466,7 +466,7 @@ class Quaternion(Module):
         """
         return cls(axis_angle_to_quaternion(axis_angle))
 
-    def to_axis_angle(self) -> Tensor:
+    def to_axis_angle(self) -> torch.Tensor:
         """Convert the quaternion to an axis-angle representation.
 
         Example:
@@ -480,7 +480,10 @@ class Quaternion(Module):
 
     @classmethod
     def identity(
-        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None
+        cls,
+        batch_size: Optional[int] = None,
+        device: Optional[Union[str, torch.device, None]] = None,
+        dtype: Union[torch.dtype, None] = None,
     ) -> "Quaternion":
         """Create a quaternion representing an identity rotation.
 
@@ -495,7 +498,7 @@ class Quaternion(Module):
             tensor([1., 0., 0., 0.])
 
         """
-        data = tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        data = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
             data = data.repeat(batch_size, 1)
         return cls(data)
@@ -516,13 +519,16 @@ class Quaternion(Module):
             tensor([1., 0., 0., 0.])
 
         """
-        return cls(tensor([w, x, y, z]))
+        return cls(torch.tensor([w, x, y, z]))
 
     # TODO: update signature
     # def random(cls, shape: Optional[List] = None, device = None, dtype = None) -> 'Quaternion':
     @classmethod
     def random(
-        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None
+        cls,
+        batch_size: Optional[int] = None,
+        device: Optional[Union[str, torch.device, None]] = None,
+        dtype: Union[torch.dtype, None] = None,
     ) -> "Quaternion":
         """Create a random unit quaternion of shape :math:`(B, 4)`.
 
@@ -540,12 +546,12 @@ class Quaternion(Module):
         """
         rand_shape = (batch_size,) if batch_size is not None else ()
 
-        r1, r2, r3 = rand((3, *rand_shape), device=device, dtype=dtype)
+        r1, r2, r3 = torch.rand((3, *rand_shape), device=device, dtype=dtype)
         q1 = (1.0 - r1).sqrt() * ((2 * pi * r2).sin())
         q2 = (1.0 - r1).sqrt() * ((2 * pi * r2).cos())
         q3 = r1.sqrt() * (2 * pi * r3).sin()
         q4 = r1.sqrt() * (2 * pi * r3).cos()
-        return cls(stack((q1, q2, q3, q4), -1))
+        return cls(torch.stack((q1, q2, q3, q4), -1))
 
     def slerp(self, q1: "Quaternion", t: float) -> "Quaternion":
         """Return a unit quaternion spherically interpolated between quaternions self.q and q1.
@@ -567,14 +573,14 @@ class Quaternion(Module):
         q1 = q1.normalize()
         return q0 * (q0.inv() * q1) ** t
 
-    def norm(self, keepdim: bool = False) -> Tensor:
+    def norm(self, keepdim: bool = False) -> torch.Tensor:
         """Compute the norm (magnitude) of the quaternion.
 
         Args:
             keepdim: whether to retain the last dimension.
 
         Returns:
-            The norm of the quaternion(s) as a tensor.
+            The norm of the quaternion(s) as a torch.Tensor.
 
         Example:
             >>> q = Quaternion.identity()
@@ -592,7 +598,7 @@ class Quaternion(Module):
             The normalized quaternion.
 
         Example:
-            >>> q = Quaternion(tensor([2., 1., 0., 0.]))
+            >>> q = Quaternion(torch.tensor([2., 1., 0., 0.]))
             >>> q_norm = q.normalize()
 
         """
@@ -605,11 +611,11 @@ class Quaternion(Module):
             The conjugate quaternion, with the vector part negated.
 
         Example:
-            >>> q = Quaternion(tensor([1., 2., 3., 4.]))
+            >>> q = Quaternion(torch.tensor([1., 2., 3., 4.]))
             >>> q_conj = q.conj()
 
         """
-        return Quaternion(concatenate((self.real[..., None], -self.vec), -1))
+        return Quaternion(torch.cat((self.real[..., None], -self.vec), -1))
 
     def inv(self) -> "Quaternion":
         """Compute the inverse of the quaternion.
@@ -624,11 +630,11 @@ class Quaternion(Module):
         """
         return self.conj() / self.squared_norm()
 
-    def squared_norm(self) -> Tensor:
+    def squared_norm(self) -> torch.Tensor:
         """Compute the squared norm (magnitude) of the quaternion.
 
         Returns:
-            The squared norm of the quaternion(s) as a tensor.
+            The squared norm of the quaternion(s) as a torch.Tensor.
 
         Example:
             >>> q = Quaternion.identity()

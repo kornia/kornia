@@ -60,7 +60,7 @@ class TestImageHistogram2d(BaseTester):
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_jit(self, device, dtype, kernel):
         sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        sample_x, _ = torch.meshgrid(sample, sample)
+        sample_x, _ = torch.meshgrid(sample, sample, indexing="ij")
         samples = (sample_x, 0.0, 255.0, 10, None, None, False, kernel)
 
         op = TestImageHistogram2d.fcn
@@ -74,7 +74,7 @@ class TestImageHistogram2d(BaseTester):
     @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (8, 3, 1, 1)])
     def test_uniform_hist(self, device, dtype, kernel, size):
         sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        sample_x, _ = torch.meshgrid(sample, sample)
+        sample_x, _ = torch.meshgrid(sample, sample, indexing="ij")
         sample_x = sample_x.repeat(*size)
         if kernel == "gaussian":
             bandwidth = 2 * 0.4**2
@@ -88,7 +88,7 @@ class TestImageHistogram2d(BaseTester):
     @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (8, 3, 1, 1)])
     def test_uniform_dist(self, device, dtype, kernel, size):
         sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        sample_x, _ = torch.meshgrid(sample, sample)
+        sample_x, _ = torch.meshgrid(sample, sample, indexing="ij")
         sample_x = sample_x.repeat(*size)
         if kernel == "gaussian":
             bandwidth = 2 * 0.4**2
@@ -146,7 +146,7 @@ class TestHistogram2d(BaseTester):
         bandwidth = torch.tensor(2 * 0.4**2, device=device, dtype=dtype)
 
         pdf = TestHistogram2d.fcn(sample1, sample2, bins, bandwidth)
-        ans = 0.1 * kornia.eye_like(10, pdf)
+        ans = 0.1 * kornia.core.ops.eye_like(10, pdf)
         self.assert_close(ans, pdf)
 
 

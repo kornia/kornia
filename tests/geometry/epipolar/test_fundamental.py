@@ -250,7 +250,18 @@ class TestFindFundamental(BaseTester):
             device=device,
             dtype=dtype,
         )
+        # We need this voodoo, because the order of the solutions is not guaranteed by the algorithm.
         F_mat = epi.find_fundamental(points1, points2, method="7POINT")
+        ordering = []
+        for expected in Fm_expected[0]:
+            min_diff = float("inf")
+            for i, estimated in enumerate(F_mat[0]):
+                diff = (expected - estimated).abs().sum()
+                if diff < min_diff:
+                    min_diff = diff
+                    min_index = i
+            ordering.append(min_index)
+        F_mat[0] = F_mat[0][ordering]
         self.assert_close(F_mat, Fm_expected, rtol=1e-3, atol=1e-3)
 
     def test_synthetic_sampson_7point(self, device, dtype):

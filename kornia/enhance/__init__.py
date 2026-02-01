@@ -15,6 +15,11 @@
 # limitations under the License.
 #
 
+"""Kornia Enhance — Image enhancement operations for Kornia.
+
+This subpackage provides modules for brightness, contrast, and other image enhancements.
+"""
+
 from .adjust import (
     AdjustBrightness,
     AdjustBrightnessAccumulative,

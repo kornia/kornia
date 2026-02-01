@@ -17,13 +17,14 @@
 
 from __future__ import annotations
 
-from torch import Tensor
+import torch
+from torch import nn
 
-from kornia.core import Module
+# from torch import Tensor (use torch.Tensor instead)
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
 
 
-def charbonnier_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
+def charbonnier_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none") -> torch.Tensor:
     r"""Criterion that computes the Charbonnier [2] (aka. L1-L2 [3]) loss.
 
     According to [1], we compute the Charbonnier loss as follows:
@@ -47,8 +48,8 @@ def charbonnier_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Ten
         a slightly different implementation (see [4]).
 
     Args:
-        img1: the predicted tensor with shape :math:`(*)`.
-        img2: the target tensor with the same shape as img1.
+        img1: the predicted torch.Tensor with shape :math:`(*)`.
+        img2: the target torch.Tensor with the same shape as img1.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied (default), ``'mean'``: the sum of the output will be divided
@@ -93,7 +94,7 @@ def charbonnier_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Ten
     return loss
 
 
-class CharbonnierLoss(Module):
+class CharbonnierLoss(nn.Module):
     r"""Criterion that computes the Charbonnier [2] (aka. L1-L2 [3]) loss.
 
     According to [1], we compute the Charbonnier loss as follows:
@@ -124,8 +125,8 @@ class CharbonnierLoss(Module):
           summed.
 
     Shape:
-        - img1: the predicted tensor with shape :math:`(*)`.
-        - img2: the target tensor with the same shape as img1.
+        - img1: the predicted torch.Tensor with shape :math:`(*)`.
+        - img2: the target torch.Tensor with the same shape as img1.
 
     Example:
         >>> criterion = CharbonnierLoss(reduction="mean")
@@ -140,5 +141,5 @@ class CharbonnierLoss(Module):
         super().__init__()
         self.reduction = reduction
 
-    def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
+    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
         return charbonnier_loss(img1=img1, img2=img2, reduction=self.reduction)

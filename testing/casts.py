@@ -19,13 +19,13 @@ from __future__ import annotations
 
 from typing import Any, TypeVar
 
-from kornia.core import Device, Dtype, Tensor
+import torch
 
 T = TypeVar("T")
 
 
-def dict_to(data: dict[T, Any], device: Device, dtype: Dtype) -> dict[T, Any]:
+def dict_to(data: dict[T, Any], device: torch.device, dtype: torch.dtype) -> dict[T, Any]:
     out: dict[T, Any] = {}
     for key, val in data.items():
-        out[key] = val.to(device, dtype) if isinstance(val, Tensor) else val
+        out[key] = val.to(device, dtype) if isinstance(val, torch.Tensor) else val
     return out

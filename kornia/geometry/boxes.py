@@ -22,10 +22,9 @@ from typing import Optional, Tuple, cast
 import torch
 from torch import Size
 
-from kornia.core import Tensor, stack, zeros
+from kornia.core.ops import eye_like
 from kornia.geometry.bbox import validate_bbox
 from kornia.geometry.linalg import transform_points
-from kornia.utils import eye_like
 
 __all__ = ["Boxes", "Boxes3D"]
 
@@ -86,7 +85,7 @@ def _boxes_to_polygons(
         raise ValueError("We expect to create a batch of 2D boxes (quadrilaterals) in vertices format (B, N, 4, 2)")
 
     # Create (B,N,4,2) with all points in top left position of boxes
-    polygons = zeros((xmin.shape[0], xmin.shape[1], 4, 2), device=xmin.device, dtype=xmin.dtype)
+    polygons = torch.zeros((xmin.shape[0], xmin.shape[1], 4, 2), device=xmin.device, dtype=xmin.dtype)
     polygons[..., 0] = xmin.unsqueeze(-1)
     polygons[..., 1] = ymin.unsqueeze(-1)
     # Shift top-right, bottom-right, bottom-left points to the right coordinates
@@ -168,7 +167,7 @@ def _boxes3d_to_polygons3d(
 
     # Front
     # Create (B,N,4,3) with all points in front top left position of boxes
-    front_vertices = zeros((xmin.shape[0], xmin.shape[1], 4, 3), device=xmin.device, dtype=xmin.dtype)
+    front_vertices = torch.zeros((xmin.shape[0], xmin.shape[1], 4, 3), device=xmin.device, dtype=xmin.dtype)
     front_vertices[..., 0] = xmin.unsqueeze(-1)
     front_vertices[..., 1] = ymin.unsqueeze(-1)
     front_vertices[..., 2] = zmin.unsqueeze(-1)
@@ -237,12 +236,12 @@ class Boxes:
         self._data = boxes
         self._mode = mode
 
-    def __getitem__(self, key: slice | int | Tensor) -> Boxes:
+    def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes:
         new_box = type(self)(self._data[key], False)
         new_box._mode = self._mode
         return new_box
 
-    def __setitem__(self, key: slice | int | Tensor, value: Boxes) -> Boxes:
+    def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes) -> Boxes:
         self._data[key] = value._data
         return self
 
@@ -289,7 +288,10 @@ class Boxes:
         return obj
 
     def index_put(
-        self, indices: tuple[Tensor, ...] | list[Tensor], values: Tensor | Boxes, inplace: bool = False
+        self,
+        indices: tuple[torch.Tensor, ...] | list[torch.Tensor],
+        values: torch.Tensor | Boxes,
+        inplace: bool = False,
     ) -> Boxes:
         if inplace:
             _data = self._data
@@ -308,7 +310,7 @@ class Boxes:
         obj._data = _data
         return obj
 
-    def pad(self, padding_size: Tensor) -> Boxes:
+    def pad(self, padding_size: torch.Tensor) -> Boxes:
         """Pad a bounding box.
 
         Args:
@@ -321,7 +323,7 @@ class Boxes:
         self._data[..., 1] += padding_size[..., None, 2:3].to(device=self._data.device)  # top padding
         return self
 
-    def unpad(self, padding_size: Tensor) -> Boxes:
+    def unpad(self, padding_size: torch.Tensor) -> Boxes:
         """Pad a bounding box.
 
         Args:
@@ -336,11 +338,11 @@ class Boxes:
 
     def clamp(
         self,
-        topleft: Optional[Tensor | tuple[int, int]] = None,
-        botright: Optional[Tensor | tuple[int, int]] = None,
+        topleft: Optional[torch.Tensor | tuple[int, int]] = None,
+        botright: Optional[torch.Tensor | tuple[int, int]] = None,
         inplace: bool = False,
     ) -> Boxes:
-        if not (isinstance(topleft, Tensor) and isinstance(botright, Tensor)):
+        if not (isinstance(topleft, torch.Tensor) and isinstance(botright, torch.Tensor)):
             raise NotImplementedError
         if inplace:
             _data = self._data
@@ -438,6 +440,7 @@ class Boxes:
         Args:
             boxes: 2D boxes, shape of :math:`(N, 4)`, :math:`(B, N, 4)`, :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
             mode: The format in which the boxes are provided.
+            validate_boxes: Check if boxes are valid. Default is True.
 
                 * 'xyxy': boxes are assumed to be in the format ``xmin, ymin, xmax, ymax`` where ``width = xmax - xmin``
                   and ``height = ymax - ymin``. With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
@@ -628,7 +631,7 @@ class Boxes:
         else:
             out_shape = (self.shape[0], height, width)
 
-        clipped_boxes_xyxy = cast(Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
+        clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
         clipped_boxes_xyxy[..., ::2].clamp_(0, width)
         clipped_boxes_xyxy[..., 1::2].clamp_(0, height)
 
@@ -676,7 +679,7 @@ class Boxes:
         """Inplace version of :func:`Boxes.transform_boxes`."""
         return self.transform_boxes(M, inplace=True)
 
-    def translate(self, size: Tensor, method: str = "warp", inplace: bool = False) -> Boxes:
+    def translate(self, size: torch.Tensor, method: str = "warp", inplace: bool = False) -> Boxes:
         """Translate boxes by the provided size.
 
         Args:
@@ -695,7 +698,7 @@ class Boxes:
         else:
             raise NotImplementedError
 
-        M: Tensor = eye_like(3, size)
+        M: torch.Tensor = eye_like(3, size)
         M[:, :2, 2] = size
         return self.transform_boxes(M, inplace=inplace)
 
@@ -760,7 +763,7 @@ class VideoBoxes(Boxes):
 
     def to_tensor(self, mode: Optional[str] = None) -> torch.Tensor | list[torch.Tensor]:  # type: ignore[override]
         out = super().to_tensor(mode, as_padded_sequence=False)
-        if isinstance(out, Tensor):
+        if isinstance(out, torch.Tensor):
             return out.view(-1, self.temporal_channel_size, *out.shape[1:])
         # If returns a list of boxes.
         return [_out.view(-1, self.temporal_channel_size, *_out.shape[1:]) for _out in out]
@@ -814,12 +817,12 @@ class Boxes3D:
         self._data = boxes
         self._mode = mode
 
-    def __getitem__(self, key: slice | int | Tensor) -> Boxes3D:
+    def __getitem__(self, key: slice | int | torch.Tensor) -> Boxes3D:
         new_box = Boxes3D(self._data[key], False, mode="xyzxyz_plus")
         new_box._mode = self._mode
         return new_box
 
-    def __setitem__(self, key: slice | int | Tensor, value: Boxes3D) -> Boxes3D:
+    def __setitem__(self, key: slice | int | torch.Tensor, value: Boxes3D) -> Boxes3D:
         self._data[key] = value._data
         return self
 
@@ -973,7 +976,7 @@ class Boxes3D:
         batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
 
         # Create boxes in xyzxyz_plus format.
-        boxes = stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
+        boxes = torch.stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
             batched_boxes.shape[0], batched_boxes.shape[1], 6
         )
 
@@ -1061,13 +1064,15 @@ class Boxes3D:
             )
 
         if self._is_batched:  # (B, N, 8, 3)
-            mask = zeros(
+            mask = torch.zeros(
                 (self._data.shape[0], self._data.shape[1], depth, height, width),
                 dtype=self._data.dtype,
                 device=self._data.device,
             )
         else:  # (N, 8, 3)
-            mask = zeros((self._data.shape[0], depth, height, width), dtype=self._data.dtype, device=self._data.device)
+            mask = torch.zeros(
+                (self._data.shape[0], depth, height, width), dtype=self._data.dtype, device=self._data.device
+            )
 
         # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
         clipped_boxes_xyzxyz = self.to_tensor("xyzxyz")

@@ -24,7 +24,7 @@ MobileViT
 Kornia-MobileViT
 ----------------
 
-We provide :py:class:`~kornia.contrib.MobileViT` which can be used for many downstream tasks, e.g., classification, object detection and semantic segmentation.
+We provide :py:class:`~kornia.models.vit_mobile.MobileViT` which can be used for many downstream tasks, e.g., classification, object detection and semantic segmentation.
 One can use the *MobileViT* in Kornia as follows:
 
 .. code:: python
@@ -42,10 +42,10 @@ Similar to ``Kornia-ViT``, ``Kornia-MobileViT`` does not include any classificat
 .. code:: python
 
     import torch.nn as nn
-    import kornia.contrib as K
+    from kornia.models.vit_mobile import MobileViT
 
     classifier = nn.Sequential(
-        K.MobileViT(mode='xxs'),
+        MobileViT(mode='xxs'),
         nn.AvgPool2d(256 // 32, 1),
         nn.Flatten(),
         nn.Linear(320, 1000)

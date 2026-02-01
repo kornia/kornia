@@ -20,12 +20,19 @@ from typing import Any, Dict, List, Optional, Union, cast
 import torch
 from torch import nn
 
-from kornia.core import Module
-
 
 class VGG(nn.Module):
+    """Implement a flexible VGG-style backbone for feature extraction.
+
+    Args:
+        features: The convolutional feature extractor module.
+        num_classes: The number of classes for the classification head. Default: 1000.
+        init_weights: Whether to initialize weights using a predefined scheme. Default: True.
+        dropout: The dropout probability for the classifier. Default: 0.5.
+    """
+
     def __init__(
-        self, features: Module, num_classes: int = 1000, init_weights: bool = True, dropout: float = 0.5
+        self, features: nn.Module, num_classes: int = 1000, init_weights: bool = True, dropout: float = 0.5
     ) -> None:
         super().__init__()
         self.features = features
@@ -100,8 +107,6 @@ def vgg11(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
             :class:`~torchvision.models.VGG11_Weights` below for
             more details, and possible values. By default, no pre-trained
             weights are used.
-        progress (bool, optional): If True, displays a progress bar of the
-            download to stderr. Default is True.
         **kwargs: parameters passed to the ``torchvision.models.vgg.VGG``
             base class. Please refer to the `source code
             <https://github.com/pytorch/vision/blob/main/torchvision/models/vgg.py>`_
@@ -123,8 +128,6 @@ def vgg11_bn(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
             :class:`~torchvision.models.VGG11_BN_Weights` below for
             more details, and possible values. By default, no pre-trained
             weights are used.
-        progress (bool, optional): If True, displays a progress bar of the
-            download to stderr. Default is True.
         **kwargs: parameters passed to the ``torchvision.models.vgg.VGG``
             base class. Please refer to the `source code
             <https://github.com/pytorch/vision/blob/main/torchvision/models/vgg.py>`_
@@ -146,8 +149,6 @@ def vgg13(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
             :class:`~torchvision.models.VGG13_Weights` below for
             more details, and possible values. By default, no pre-trained
             weights are used.
-        progress (bool, optional): If True, displays a progress bar of the
-            download to stderr. Default is True.
         **kwargs: parameters passed to the ``torchvision.models.vgg.VGG``
             base class. Please refer to the `source code
             <https://github.com/pytorch/vision/blob/main/torchvision/models/vgg.py>`_
@@ -169,8 +170,6 @@ def vgg13_bn(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
             :class:`~torchvision.models.VGG13_BN_Weights` below for
             more details, and possible values. By default, no pre-trained
             weights are used.
-        progress (bool, optional): If True, displays a progress bar of the
-            download to stderr. Default is True.
         **kwargs: parameters passed to the ``torchvision.models.vgg.VGG``
             base class. Please refer to the `source code
             <https://github.com/pytorch/vision/blob/main/torchvision/models/vgg.py>`_
@@ -192,8 +191,6 @@ def vgg16(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
             :class:`~torchvision.models.VGG16_Weights` below for
             more details, and possible values. By default, no pre-trained
             weights are used.
-        progress (bool, optional): If True, displays a progress bar of the
-            download to stderr. Default is True.
         **kwargs: parameters passed to the ``torchvision.models.vgg.VGG``
             base class. Please refer to the `source code
             <https://github.com/pytorch/vision/blob/main/torchvision/models/vgg.py>`_
@@ -215,8 +212,6 @@ def vgg16_bn(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
             :class:`~torchvision.models.VGG16_BN_Weights` below for
             more details, and possible values. By default, no pre-trained
             weights are used.
-        progress (bool, optional): If True, displays a progress bar of the
-            download to stderr. Default is True.
         **kwargs: parameters passed to the ``torchvision.models.vgg.VGG``
             base class. Please refer to the `source code
             <https://github.com/pytorch/vision/blob/main/torchvision/models/vgg.py>`_
@@ -238,8 +233,6 @@ def vgg19(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
             :class:`~torchvision.models.VGG19_Weights` below for
             more details, and possible values. By default, no pre-trained
             weights are used.
-        progress (bool, optional): If True, displays a progress bar of the
-            download to stderr. Default is True.
         **kwargs: parameters passed to the ``torchvision.models.vgg.VGG``
             base class. Please refer to the `source code
             <https://github.com/pytorch/vision/blob/main/torchvision/models/vgg.py>`_
@@ -261,8 +254,6 @@ def vgg19_bn(*, weights: Optional[Any] = None, **kwargs: Any) -> VGG:
             :class:`~torchvision.models.VGG19_BN_Weights` below for
             more details, and possible values. By default, no pre-trained
             weights are used.
-        progress (bool, optional): If True, displays a progress bar of the
-            download to stderr. Default is True.
         **kwargs: parameters passed to the ``torchvision.models.vgg.VGG``
             base class. Please refer to the `source code
             <https://github.com/pytorch/vision/blob/main/torchvision/models/vgg.py>`_

@@ -19,8 +19,9 @@ from __future__ import annotations
 
 from typing import Optional, Union
 
+import torch
+
 from kornia.color.gray import grayscale_to_rgb
-from kornia.core import Tensor, tensor
 from kornia.core.external import PILImage as Image
 from kornia.models._hf_models import HFONNXComunnityModel
 
@@ -28,14 +29,16 @@ __all__ = ["DepthEstimation"]
 
 
 class DepthEstimation(HFONNXComunnityModel):
+    """Base class for depth estimation models compatible with HuggingFace and ONNX."""
+
     name: str = "depth_estimation"
 
-    def __call__(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:  # type: ignore[override]
+    def __call__(self, images: Union[torch.Tensor, list[torch.Tensor]]) -> Union[torch.Tensor, list[torch.Tensor]]:  # type: ignore[override]
         """Detect objects in a given list of images.
 
         Args:
-            images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
-                If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
+            images: If list of RGB images. Each image is a torch.Tensor with shape :math:`(3, H, W)`.
+                If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
             list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`, where :math:`D` is the
@@ -51,23 +54,23 @@ class DepthEstimation(HFONNXComunnityModel):
         ):
             results = [super(DepthEstimation, self).__call__(image[None].cpu().numpy())[0] for image in images]
             results = [
-                self.resize_back(tensor(result, device=image.device, dtype=image.dtype), image)
+                self.resize_back(torch.tensor(result, device=image.device, dtype=image.dtype), image)
                 for result, image in zip(results, images)
             ]
             return results
 
         result = super().__call__(images.cpu().numpy())[0]
-        result = tensor(result, device=images.device, dtype=images.dtype)
+        result = torch.tensor(result, device=images.device, dtype=images.dtype)
         return self.resize_back(result, images)
 
     def visualize(
         self,
-        images: Tensor,
-        depth_maps: Optional[Union[Tensor, list[Tensor]]] = None,
+        images: torch.Tensor,
+        depth_maps: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
         output_type: str = "torch",
         depth_type: str = "relative",
         max_depth: int = 80,
-    ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[torch.Tensor, list[torch.Tensor], list[Image.Image]]:  # type: ignore
         """Draw the segmentation results.
 
         Args:
@@ -93,12 +96,12 @@ class DepthEstimation(HFONNXComunnityModel):
                 raise ValueError(f"Unsupported depth type `{depth_type}`.")
             output.append(grayscale_to_rgb(depth_map))
 
-        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, Tensor))
+        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, torch.Tensor))
 
     def save(
         self,
-        images: Tensor,
-        depth_maps: Optional[Union[Tensor, list[Tensor]]] = None,
+        images: torch.Tensor,
+        depth_maps: Optional[Union[torch.Tensor, list[torch.Tensor]]] = None,
         directory: Optional[str] = None,
         output_type: str = "torch",
         depth_type: str = "relative",

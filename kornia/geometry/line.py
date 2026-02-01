@@ -20,17 +20,18 @@
 from typing import Iterator, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
+from torch import nn
 
-from kornia.core import Module, Parameter, Tensor, normalize, where
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.utils import _torch_svd_cast
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.plane import Hyperplane
-from kornia.utils.helpers import _torch_svd_cast
 
 __all__ = ["ParametrizedLine", "fit_line"]
 
 
-class ParametrizedLine(Module):
+class ParametrizedLine(nn.Module):
     """Class that describes a parametrize line.
 
     A parametrized line is defined by an origin point :math:`o` and a unit
@@ -41,7 +42,7 @@ class ParametrizedLine(Module):
         l(t) = o + t * d
     """
 
-    def __init__(self, origin: Tensor, direction: Tensor) -> None:
+    def __init__(self, origin: torch.Tensor, direction: torch.Tensor) -> None:
         """Initialize a parametrized line of direction and origin.
 
         Args:
@@ -55,8 +56,8 @@ class ParametrizedLine(Module):
 
         """
         super().__init__()
-        self._origin = Parameter(origin)
-        self._direction = Parameter(direction)
+        self._origin = nn.Parameter(origin)
+        self._direction = nn.Parameter(direction)
 
     def __str__(self) -> str:
         return f"Origin: {self.origin}\nDirection: {self.direction}"
@@ -64,19 +65,19 @@ class ParametrizedLine(Module):
     def __repr__(self) -> str:
         return str(self)
 
-    def __getitem__(self, idx: int) -> Tensor:
+    def __getitem__(self, idx: int) -> torch.Tensor:
         return self.origin if idx == 0 else self.direction
 
-    def __iter__(self) -> Iterator[Tensor]:
+    def __iter__(self) -> Iterator[torch.Tensor]:
         yield from (self.origin, self.direction)
 
     @property
-    def origin(self) -> Tensor:
+    def origin(self) -> torch.Tensor:
         """Return the line origin point."""
         return self._origin
 
     @property
-    def direction(self) -> Tensor:
+    def direction(self) -> torch.Tensor:
         """Return the line direction vector."""
         return self._direction
 
@@ -85,7 +86,7 @@ class ParametrizedLine(Module):
         return self.direction.shape[-1]
 
     @classmethod
-    def through(cls, p0: Tensor, p1: Tensor) -> "ParametrizedLine":
+    def through(cls, p0: torch.Tensor, p1: torch.Tensor) -> "ParametrizedLine":
         """Construct a parametrized line going from a point :math:`p0` to :math:`p1`.
 
         Args:
@@ -98,9 +99,9 @@ class ParametrizedLine(Module):
             >>> l = ParametrizedLine.through(p0, p1)
 
         """
-        return ParametrizedLine(p0, normalize((p1 - p0), p=2, dim=-1))
+        return ParametrizedLine(p0, F.normalize((p1 - p0), p=2, dim=-1))
 
-    def point_at(self, t: Union[float, Tensor]) -> Tensor:
+    def point_at(self, t: Union[float, torch.Tensor]) -> torch.Tensor:
         """Get the point at :math:`t` along this line.
 
         Args:
@@ -118,7 +119,7 @@ class ParametrizedLine(Module):
         """
         return self.origin + self.direction * t
 
-    def projection(self, point: Tensor) -> Tensor:
+    def projection(self, point: torch.Tensor) -> torch.Tensor:
         """Return the projection of a point onto the line.
 
         Args:
@@ -127,7 +128,7 @@ class ParametrizedLine(Module):
         """
         return self.origin + (self.direction @ (point - self.origin)) * self.direction
 
-    def squared_distance(self, point: Tensor) -> Tensor:
+    def squared_distance(self, point: torch.Tensor) -> torch.Tensor:
         """Return the squared distance of a point to its projection onte the line.
 
         Args:
@@ -138,7 +139,7 @@ class ParametrizedLine(Module):
         sq_norm_d = torch.sum(d * d, dim=-1)
         return sq_norm_d - proj * proj
 
-    def distance(self, point: Tensor) -> Tensor:
+    def distance(self, point: torch.Tensor) -> torch.Tensor:
         """Return the distance of a point to its projections onto the line.
 
         Args:
@@ -152,7 +153,7 @@ class ParametrizedLine(Module):
     # - intersection_point
 
     # TODO: add tests, and possibly return a mask
-    def intersect(self, plane: Hyperplane, eps: float = 1e-6) -> Tuple[Tensor, Tensor]:
+    def intersect(self, plane: Hyperplane, eps: float = 1e-6) -> Tuple[torch.Tensor, torch.Tensor]:
         """Return the intersection point between the line and a given plane.
 
         Args:
@@ -168,7 +169,7 @@ class ParametrizedLine(Module):
         dot_prod_mask = dot_prod.abs() >= eps
 
         # TODO: add check for dot product
-        res_lambda = where(
+        res_lambda = torch.where(
             dot_prod_mask,
             -(plane.offset + batched_dot_product(plane.normal.data, self.origin.data)) / dot_prod,
             torch.empty_like(dot_prod),
@@ -178,7 +179,7 @@ class ParametrizedLine(Module):
         return res_lambda, res_point
 
 
-def _fit_line_ols_2d(points: Tensor) -> ParametrizedLine:
+def _fit_line_ols_2d(points: torch.Tensor) -> ParametrizedLine:
     x = points[..., 0]
     y = points[..., 1]
     x_mean = x.mean(dim=-1, keepdim=True)
@@ -201,7 +202,7 @@ def _fit_line_ols_2d(points: Tensor) -> ParametrizedLine:
     return ParametrizedLine(origin, direction)
 
 
-def _fit_line_weighted_ols_2d(points: Tensor, weights: Tensor) -> ParametrizedLine:
+def _fit_line_weighted_ols_2d(points: torch.Tensor, weights: torch.Tensor) -> ParametrizedLine:
     x = points[..., 0]  # (B, N)
     y = points[..., 1]  # (B, N)
 
@@ -221,7 +222,7 @@ def _fit_line_weighted_ols_2d(points: Tensor, weights: Tensor) -> ParametrizedLi
     # Replace NaNs or infs from division by zero
     slope = torch.where(torch.isfinite(slope), slope, torch.zeros_like(slope))
 
-    # direction = normalize([1, slope]) or [0,1] if vertical
+    # direction = F.normalize([1, slope]) or [0,1] if vertical
     is_vertical = denom <= 1e-8
     direction = torch.cat([torch.ones_like(slope), slope], dim=-1)  # (B, 2)
     replacement = torch.tensor([0.0, 1.0], device=points.device, dtype=points.dtype)
@@ -233,7 +234,7 @@ def _fit_line_weighted_ols_2d(points: Tensor, weights: Tensor) -> ParametrizedLi
     return ParametrizedLine(origin, direction)
 
 
-def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLine:
+def fit_line(points: torch.Tensor, weights: Optional[torch.Tensor] = None) -> ParametrizedLine:
     """Fit a line from a set of points.
 
     Args:

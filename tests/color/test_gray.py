@@ -20,7 +20,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.utils._compat import torch_version
+from kornia.core._compat import torch_version
 
 from testing.base import BaseTester, assert_close
 
@@ -37,7 +37,9 @@ class TestGrayscaleToRgb(BaseTester):
         assert kornia.color.grayscale_to_rgb(img).shape == (batch_size, 3, height, width)
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
+        from kornia.core.exceptions import TypeCheckError
+
+        with pytest.raises(TypeCheckError):
             assert kornia.color.grayscale_to_rgb([0.0])
 
         with pytest.raises(ValueError):
@@ -141,7 +143,9 @@ class TestRgbToGrayscale(BaseTester):
         assert kornia.color.rgb_to_grayscale(img).shape == (batch_size, 1, height, width)
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
+        from kornia.core.exceptions import TypeCheckError
+
+        with pytest.raises(TypeCheckError):
             assert kornia.color.rgb_to_grayscale([0.0])
 
         with pytest.raises(ValueError):
@@ -249,7 +253,9 @@ class TestBgrToGrayscale(BaseTester):
         assert kornia.color.bgr_to_grayscale(img).shape == (batch_size, 1, height, width)
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
+        from kornia.core.exceptions import TypeCheckError
+
+        with pytest.raises(TypeCheckError):
             assert kornia.color.bgr_to_grayscale([0.0])
 
         with pytest.raises(ValueError):

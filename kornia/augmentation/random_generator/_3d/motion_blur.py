@@ -21,8 +21,7 @@ import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound, _tuple_range_reader
-from kornia.core import Tensor, stack
-from kornia.utils.helpers import _extract_device_dtype
+from kornia.core.utils import _extract_device_dtype
 
 
 class MotionBlurGenerator3D(RandomGeneratorBase):
@@ -43,9 +42,9 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - ksize_factor (Tensor): element-wise kernel size factors with a shape of (B,).
-            - angle_factor (Tensor): element-wise angle factors with a shape of (B,).
-            - direction_factor (Tensor): element-wise direction factors with a shape of (B,).
+            - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
+            - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
+            - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -58,12 +57,12 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         self,
         kernel_size: Union[int, Tuple[int, int]],
         angle: Union[
-            Tensor,
+            torch.Tensor,
             float,
             Tuple[float, float, float],
             Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
         ],
-        direction: Union[Tensor, float, Tuple[float, float]],
+        direction: Union[torch.Tensor, float, Tuple[float, float]],
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
@@ -75,7 +74,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        angle: Tensor = _tuple_range_reader(self.angle, 3, device=device, dtype=dtype)
+        angle: torch.Tensor = _tuple_range_reader(self.angle, 3, device=device, dtype=dtype)
         direction = _range_bound(self.direction, "direction", center=0.0, bounds=(-1, 1)).to(device=device, dtype=dtype)
         if isinstance(self.kernel_size, int):
             if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):
@@ -96,7 +95,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         self.roll_sampler = UniformDistribution(angle[2][0], angle[2][1], validate_args=False)
         self.direction_sampler = UniformDistribution(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
@@ -104,7 +103,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         yaw_factor = _adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch)
         pitch_factor = _adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch)
         roll_factor = _adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch)
-        angle_factor = stack([yaw_factor, pitch_factor, roll_factor], 1)
+        angle_factor = torch.stack([yaw_factor, pitch_factor, roll_factor], 1)
 
         direction_factor = _adapted_rsampling((batch_size,), self.direction_sampler, same_on_batch)
         ksize_factor = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).int() * 2 + 1

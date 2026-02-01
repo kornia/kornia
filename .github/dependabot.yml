@@ -5,13 +5,24 @@
 
 version: 2
 updates:
+  # Python packages
   - package-ecosystem: "pip"
     directory: "/"
     open-pull-requests-limit: 10
     schedule:
       interval: weekly
       day: sunday
-    reviewers:
-      - "edgarriba"
-      - "ducha-aiki"
-      - "shijianjian"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: ⬆️
+    open-pull-requests-limit: 5
+    # this will group all dependencies together into single PRs for all github-actions
+    groups:
+      github-actions:
+        patterns:
+          - "*"

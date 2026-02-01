@@ -18,31 +18,84 @@
 from __future__ import annotations
 
 import math
+from typing import Union
 
 import torch
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
 from kornia.constants import pi
-from kornia.core import Device, Dtype, Parameter, Tensor
-from kornia.core import ImageModule as Module
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_SHAPE,
 )
 from kornia.geometry.transform.affwarp import rescale
-from kornia.utils.image import perform_keep_shape_image
-from kornia.utils.misc import (
-    differentiable_clipping,
-    differentiable_polynomial_floor,
-    differentiable_polynomial_rounding,
-)
+from kornia.image.utils import perform_keep_shape_image
+
+_DCT8_CACHE: dict[
+    tuple[Union[torch.dtype, None], Union[str, torch.device, None]], tuple[torch.Tensor, torch.Tensor]
+] = {}
 
 __all__ = ["JPEGCodecDifferentiable", "jpeg_codec_differentiable"]
 
 
-def _get_default_qt_y(device: Device, dtype: Dtype) -> Tensor:
+def _differentiable_polynomial_rounding(input: torch.Tensor) -> torch.Tensor:
+    """Differentiable rounding.
+
+    Args:
+        input: Input tensor of any shape to be rounded.
+
+    Returns:
+        Pseudo rounded tensor of the same shape as input tensor.
+
+    """
+    input_round = input.round()
+    return input_round + (input - input_round) ** 3
+
+
+def _differentiable_polynomial_floor(input: torch.Tensor) -> torch.Tensor:
+    """Perform floor via a differentiable operation.
+
+    Args:
+        input: Input tensor of any shape to be floored.
+
+    Returns:
+        Pseudo rounded tensor of the same shape as input tensor.
+
+    """
+    input_floor = input.floor()
+    return input_floor + (input - 0.5 - input_floor) ** 3
+
+
+def _differentiable_clipping(
+    input: torch.Tensor,
+    min_val: Union[float, None] = None,
+    max_val: Union[float, None] = None,
+    scale: float = 0.02,
+) -> torch.Tensor:
+    """Clip via a differentiable and soft approximation of the clipping operation.
+
+    Args:
+        input: Input tensor of any shape.
+        min_val: Minimum value.
+        max_val: Maximum value.
+        scale: Scale value. Default 0.02.
+
+    Returns:
+        Clipped output tensor of the same shape as the input tensor.
+
+    """
+    output: torch.Tensor = input.clone()
+    if max_val is not None:
+        output[output > max_val] = -scale * (torch.exp(-output[output > max_val] + max_val) - 1.0) + max_val
+    if min_val is not None:
+        output[output < min_val] = scale * (torch.exp(output[output < min_val] - min_val) - 1.0) + min_val
+    return output
+
+
+def _get_default_qt_y(device: Union[str, torch.device, None], dtype: Union[torch.dtype, None]) -> torch.Tensor:
     """Generate default Quantization table of Y channel."""
     return torch.tensor(
         [
@@ -60,7 +113,7 @@ def _get_default_qt_y(device: Device, dtype: Dtype) -> Tensor:
     )
 
 
-def _get_default_qt_c(device: Device, dtype: Dtype) -> Tensor:
+def _get_default_qt_c(device: Union[str, torch.device, None], dtype: Union[torch.dtype, None]) -> torch.Tensor:
     """Generate default Quantization table of C channels."""
     return torch.tensor(
         [
@@ -78,108 +131,105 @@ def _get_default_qt_c(device: Device, dtype: Dtype) -> Tensor:
     )
 
 
-def _patchify_8x8(input: Tensor) -> Tensor:
+def _patchify_8x8(input: torch.Tensor) -> torch.Tensor:
     """Extract non-overlapping 8 x 8 patches from the given input image.
 
     Args:
-        input (Tensor): Input image of the shape :math:`(B, H, W)`.
+        input (torch.Tensor): Input image of the shape :math:`(B, H, W)`.
 
     Returns:
-        output (Tensor): Image patchify of the shape :math:`(B, N, 8, 8)`.
+        output (torch.Tensor): Image patchify of the shape :math:`(B, N, 8, 8)`.
 
     """
     # Get input shape
     B, H, W = input.shape
     # Patchify to shape [B, N, H // 8, W // 8]
-    output: Tensor = input.view(B, H // 8, 8, W // 8, 8).permute(0, 1, 3, 2, 4).reshape(B, -1, 8, 8)
+    output: torch.Tensor = input.view(B, H // 8, 8, W // 8, 8).permute(0, 1, 3, 2, 4).reshape(B, -1, 8, 8)
     return output
 
 
-def _unpatchify_8x8(input: Tensor, H: int, W: int) -> Tensor:
+def _unpatchify_8x8(input: torch.Tensor, H: int, W: int) -> torch.Tensor:
     """Reverse non-overlapping 8 x 8 patching.
 
     Args:
-        input (Tensor): Input image of the shape :math:`(B, N, 8, 8)`.
-        H: height of resulting tensor.
-        W: width of resulting tensor.
+        input (torch.Tensor): Input image of the shape :math:`(B, N, 8, 8)`.
+        H: height of resulting torch.Tensor.
+        W: width of resulting torch.Tensor.
 
     Returns:
-        output (Tensor): Image patchify of the shape :math:`(B, H, W)`.
+        output (torch.Tensor): Image patchify of the shape :math:`(B, H, W)`.
 
     """
     # Get input shape
     B, _N = input.shape[:2]
     # Unpatch to [B, H, W]
-    output: Tensor = input.view(B, H // 8, W // 8, 8, 8).permute(0, 1, 3, 2, 4).reshape(B, H, W)
+    output: torch.Tensor = input.view(B, H // 8, W // 8, 8, 8).permute(0, 1, 3, 2, 4).reshape(B, H, W)
     return output
 
 
-def _dct_8x8(input: Tensor) -> Tensor:
+def _dct_8x8(input: torch.Tensor) -> torch.Tensor:
     """Perform an 8 x 8 discrete cosine transform.
 
     Args:
-        input (Tensor): Patched input tensor of the shape :math:`(B, N, 8, 8)`.
+        input (torch.Tensor): Patched input torch.tensor of the shape :math:`(B, N, 8, 8)`.
 
     Returns:
-        output (Tensor): DCT output tensor of the shape :math:`(B, N, 8, 8)`.
+        output (torch.Tensor): DCT output torch.tensor of the shape :math:`(B, N, 8, 8)`.
 
     """
     # Get dtype and device
-    dtype: Dtype = input.dtype
-    device: Device = input.device
-    # Make DCT tensor and scaling
-    index: Tensor = torch.arange(8, dtype=dtype, device=device)
-    x, y, u, v = torch.meshgrid(index, index, index, index)
-    dct_tensor: Tensor = ((2.0 * x + 1.0) * u * pi / 16.0).cos() * ((2.0 * y + 1.0) * v * pi / 16.0).cos()
-    alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
-    alpha[0] = 1.0 / (2**0.5)
-    dct_scale: Tensor = torch.einsum("i, j -> ij", alpha, alpha) * 0.25
+    dtype: Union[torch.dtype, None] = input.dtype
+    device: Union[str, torch.device, None] = input.device
+    dct_tensor, dct_scale = _get_dct8_basis_scale(dtype, device)
     # Apply DCT
-    output: Tensor = dct_scale[None, None] * torch.tensordot(input - 128.0, dct_tensor)
+    output: torch.Tensor = dct_scale[None, None] * torch.tensordot(input - 128.0, dct_tensor)
     return output
 
 
-def _idct_8x8(input: Tensor) -> Tensor:
-    """Perform an 8 x 8 discrete cosine transform.
+def _idct_8x8(input: torch.Tensor) -> torch.Tensor:
+    """Perform an 8 x 8 inverse discrete cosine transform.
 
     Args:
-        input (Tensor): Patched input tensor of the shape :math:`(B, N, 8, 8)`.
+        input (torch.Tensor): Patched input torch.tensor of the shape :math:`(B, N, 8, 8)`.
 
     Returns:
-        output (Tensor): DCT output tensor of the shape :math:`(B, N, 8, 8)`.
+        output (torch.Tensor): IDCT output torch.tensor of the shape :math:`(B, N, 8, 8)`.
 
     """
-    # Get dtype and device
-    dtype: Dtype = input.dtype
-    device: Device = input.device
-    # Make and apply scaling
-    alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
+    dtype = input.dtype
+    device = input.device
+
+    idx = torch.arange(8, dtype=dtype, device=device)
+    spatial_idx = idx.unsqueeze(0)
+    freq_idx = idx.unsqueeze(1)
+
+    basis = torch.cos((2.0 * spatial_idx + 1.0) * freq_idx * pi / 16.0)
+    alpha = torch.ones(8, dtype=dtype, device=device)
     alpha[0] = 1.0 / (2**0.5)
-    dct_scale: Tensor = torch.outer(alpha, alpha)
-    input = input * dct_scale[None, None]
-    # Make DCT tensor and scaling
-    index: Tensor = torch.arange(8, dtype=dtype, device=device)
-    x, y, u, v = torch.meshgrid(index, index, index, index)
-    idct_tensor: Tensor = ((2.0 * u + 1.0) * x * pi / 16.0).cos() * ((2.0 * v + 1.0) * y * pi / 16.0).cos()
-    # Apply DCT
-    output: Tensor = 0.25 * torch.tensordot(input, idct_tensor, dims=2) + 128.0
+    dct_scale = torch.outer(alpha, alpha)
+    input = input * dct_scale
+
+    tmp = input @ basis
+    output = (tmp.transpose(-1, -2) @ basis).transpose(-1, -2)
+
+    output = output * 0.25 + 128.0
     return output
 
 
 def _jpeg_quality_to_scale(
-    compression_strength: Tensor,
-) -> Tensor:
+    compression_strength: torch.Tensor,
+) -> torch.Tensor:
     """Convert a given JPEG quality to the scaling factor.
 
     Args:
-        compression_strength (Tensor): Compression strength ranging from 0 to 100. Any shape is supported.
+        compression_strength (torch.Tensor): Compression strength ranging from 0 to 100. Any shape is supported.
 
     Returns:
-        scale (Tensor): Scaling factor to be applied to quantization matrix. Same shape as input.
+        scale (torch.Tensor): Scaling factor to be applied to quantization matrix. Same shape as input.
 
     """
     # Get scale
-    scale: Tensor = differentiable_polynomial_floor(
+    scale: torch.Tensor = _differentiable_polynomial_floor(
         torch.where(
             compression_strength < 50,
             5000.0 / compression_strength,
@@ -190,78 +240,78 @@ def _jpeg_quality_to_scale(
 
 
 def _quantize(
-    input: Tensor,
-    jpeg_quality: Tensor,
-    quantization_table: Tensor,
-) -> Tensor:
+    input: torch.Tensor,
+    jpeg_quality: torch.Tensor,
+    quantization_table: torch.Tensor,
+) -> torch.Tensor:
     """Perform quantization.
 
     Args:
-        input (Tensor): Input tensor of the shape :math:`(B, N, 8, 8)`.
-        jpeg_quality (Tensor): Compression strength to be applied, shape is :math:`(B)`.
-        quantization_table (Tensor): Quantization table of the shape :math:`(1, 8, 8)` or :math:`(B, 8, 8)`.
+        input (torch.Tensor): Input torch.tensor of the shape :math:`(B, N, 8, 8)`.
+        jpeg_quality (torch.Tensor): Compression strength to be applied, shape is :math:`(B)`.
+        quantization_table (torch.Tensor): Quantization table of the shape :math:`(1, 8, 8)` or :math:`(B, 8, 8)`.
 
     Returns:
-        output (Tensor): Quantized output tensor of the shape :math:`(B, N, 8, 8)`.
+        output (torch.Tensor): Quantized output torch.tensor of the shape :math:`(B, N, 8, 8)`.
 
     """
     # Scale quantization table
-    quantization_table_scaled: Tensor = (
+    quantization_table_scaled: torch.Tensor = (
         quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
     )
     # Perform scaling
-    quantization_table = differentiable_polynomial_floor(
-        differentiable_clipping((quantization_table_scaled + 50.0) / 100.0, 1, 255)
+    quantization_table = _differentiable_polynomial_floor(
+        _differentiable_clipping((quantization_table_scaled + 50.0) / 100.0, 1, 255)
     )
-    output: Tensor = input / quantization_table
+    output: torch.Tensor = input / quantization_table
     # Perform rounding
-    output = differentiable_polynomial_rounding(output)
+    output = _differentiable_polynomial_rounding(output)
     return output
 
 
 def _dequantize(
-    input: Tensor,
-    jpeg_quality: Tensor,
-    quantization_table: Tensor,
-) -> Tensor:
+    input: torch.Tensor,
+    jpeg_quality: torch.Tensor,
+    quantization_table: torch.Tensor,
+) -> torch.Tensor:
     """Perform dequantization.
 
     Args:
-        input (Tensor): Input tensor of the shape :math:`(B, N, 8, 8)`.
-        jpeg_quality (Tensor): Compression strength to be applied, shape is :math:`(B)`.
-        quantization_table (Tensor): Quantization table of the shape :math:`(1, 8, 8)` or :math:`(B, 8, 8)`.
+        input (torch.Tensor): Input torch.tensor of the shape :math:`(B, N, 8, 8)`.
+        jpeg_quality (torch.Tensor): Compression strength to be applied, shape is :math:`(B)`.
+        quantization_table (torch.Tensor): Quantization table of the shape :math:`(1, 8, 8)` or :math:`(B, 8, 8)`.
 
     Returns:
-        output (Tensor): Quantized output tensor of the shape :math:`(B, N, 8, 8)`.
+        output (torch.Tensor): Quantized output torch.tensor of the shape :math:`(B, N, 8, 8)`.
 
     """
     # Scale quantization table
-    quantization_table_scaled: Tensor = (
+    quantization_table_scaled: torch.Tensor = (
         quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
     )
     # Perform scaling
-    output: Tensor = input * differentiable_polynomial_floor(
-        differentiable_clipping((quantization_table_scaled + 50.0) / 100.0, 1, 255)
+    output: torch.Tensor = input * _differentiable_polynomial_floor(
+        _differentiable_clipping((quantization_table_scaled + 50.0) / 100.0, 1, 255)
     )
     return output
 
 
-def _chroma_subsampling(input_ycbcr: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+def _chroma_subsampling(input_ycbcr: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Implement chroma subsampling.
 
     Args:
-        input_ycbcr (Tensor): YCbCr input tensor of the shape :math:`(B, 3, H, W)`.
+        input_ycbcr (torch.Tensor): YCbCr input torch.tensor of the shape :math:`(B, 3, H, W)`.
 
     Returns:
-        output_y (Tensor): Y component (not-subsampled), shape is :math:`(B, H, W)`.
-        output_cb (Tensor): Cb component (subsampled), shape is :math:`(B, H // 2, W // 2)`.
-        output_cr (Tensor): Cr component (subsampled), shape is :math:`(B, H // 2, W // 2)`.
+        output_y (torch.Tensor): Y component (not-subsampled), shape is :math:`(B, H, W)`.
+        output_cb (torch.Tensor): Cb component (subsampled), shape is :math:`(B, H // 2, W // 2)`.
+        output_cr (torch.Tensor): Cr component (subsampled), shape is :math:`(B, H // 2, W // 2)`.
 
     """
     # Get components
-    output_y: Tensor = input_ycbcr[:, 0]
-    output_cb: Tensor = input_ycbcr[:, 1]
-    output_cr: Tensor = input_ycbcr[:, 2]
+    output_y: torch.Tensor = input_ycbcr[:, 0]
+    output_cb: torch.Tensor = input_ycbcr[:, 1]
+    output_cr: torch.Tensor = input_ycbcr[:, 2]
     # Perform average pooling of Cb and Cr channels
     output_cb = rescale(
         output_cb[:, None],
@@ -280,18 +330,18 @@ def _chroma_subsampling(input_ycbcr: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     return output_y, output_cb[:, 0], output_cr[:, 0]
 
 
-def _chroma_upsampling(input_c: Tensor) -> Tensor:
+def _chroma_upsampling(input_c: torch.Tensor) -> torch.Tensor:
     """Perform chroma upsampling.
 
     Args:
-        input_c (Tensor): Cb or Cr component to be upsampled of the shape :math:`(B, H, W)`.
+        input_c (torch.Tensor): Cb or Cr component to be upsampled of the shape :math:`(B, H, W)`.
 
     Returns:
-        output_c (Tensor): Upsampled C(b or r) component of the shape :math:`(B, H * 2, W * 2)`.
+        output_c (torch.Tensor): Upsampled C(b or r) component of the shape :math:`(B, H * 2, W * 2)`.
 
     """
     # Upsample component
-    output_c: Tensor = rescale(
+    output_c: torch.Tensor = rescale(
         input_c[:, None],
         factor=2.0,
         interpolation="bilinear",
@@ -302,27 +352,27 @@ def _chroma_upsampling(input_c: Tensor) -> Tensor:
 
 
 def _jpeg_encode(
-    image_rgb: Tensor,
-    jpeg_quality: Tensor,
-    quantization_table_y: Tensor,
-    quantization_table_c: Tensor,
-) -> tuple[Tensor, Tensor, Tensor]:
+    image_rgb: torch.Tensor,
+    jpeg_quality: torch.Tensor,
+    quantization_table_y: torch.Tensor,
+    quantization_table_c: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Perform JPEG encoding.
 
     Args:
-        image_rgb (Tensor): RGB input images of the shape :math:`(B, 3, H, W)`.
-        jpeg_quality (Tensor): Compression strength of the shape :math:`(B)`.
-        quantization_table_y (Tensor): Quantization table for Y channel.
-        quantization_table_c (Tensor): Quantization table for C channels.
+        image_rgb (torch.Tensor): RGB input images of the shape :math:`(B, 3, H, W)`.
+        jpeg_quality (torch.Tensor): Compression strength of the shape :math:`(B)`.
+        quantization_table_y (torch.Tensor): Quantization table for Y channel.
+        quantization_table_c (torch.Tensor): Quantization table for C channels.
 
     Returns:
-        y_encoded (Tensor): Encoded Y component of the shape :math:`(B, N, 8, 8)`.
-        cb_encoded (Tensor): Encoded Cb component of the shape :math:`(B, N, 8, 8)`.
-        cr_encoded (Tensor): Encoded Cr component of the shape :math:`(B, N, 8, 8)`.
+        y_encoded (torch.Tensor): Encoded Y component of the shape :math:`(B, N, 8, 8)`.
+        cb_encoded (torch.Tensor): Encoded Cb component of the shape :math:`(B, N, 8, 8)`.
+        cr_encoded (torch.Tensor): Encoded Cr component of the shape :math:`(B, N, 8, 8)`.
 
     """
     # Convert RGB image to YCbCr.
-    image_ycbcr: Tensor = rgb_to_ycbcr(image_rgb)
+    image_ycbcr: torch.Tensor = rgb_to_ycbcr(image_rgb)
     # Scale pixel-range to [0, 255]
     image_ycbcr = 255.0 * image_ycbcr
     # Perform chroma subsampling
@@ -335,7 +385,7 @@ def _jpeg_encode(
     )
     dct_y = _dct_8x8(input_y)
     dct_cb_cr = _dct_8x8(torch.cat((input_cb, input_cr), dim=1))
-    y_encoded: Tensor = _quantize(
+    y_encoded: torch.Tensor = _quantize(
         dct_y,
         jpeg_quality,
         quantization_table_y,
@@ -349,29 +399,29 @@ def _jpeg_encode(
 
 
 def _jpeg_decode(
-    input_y: Tensor,
-    input_cb: Tensor,
-    input_cr: Tensor,
-    jpeg_quality: Tensor,
+    input_y: torch.Tensor,
+    input_cb: torch.Tensor,
+    input_cr: torch.Tensor,
+    jpeg_quality: torch.Tensor,
     H: int,
     W: int,
-    quantization_table_y: Tensor,
-    quantization_table_c: Tensor,
-) -> Tensor:
+    quantization_table_y: torch.Tensor,
+    quantization_table_c: torch.Tensor,
+) -> torch.Tensor:
     """Perform JPEG decoding.
 
     Args:
-        input_y (Tensor): Compressed Y component of the shape :math:`(B, N, 8, 8)`.
-        input_cb (Tensor): Compressed Cb component of the shape :math:`(B, N, 8, 8)`.
-        input_cr (Tensor): Compressed Cr component of the shape :math:`(B, N, 8, 8)`.
-        jpeg_quality (Tensor): Compression strength of the shape :math:`(B)`.
+        input_y (torch.Tensor): Compressed Y component of the shape :math:`(B, N, 8, 8)`.
+        input_cb (torch.Tensor): Compressed Cb component of the shape :math:`(B, N, 8, 8)`.
+        input_cr (torch.Tensor): Compressed Cr component of the shape :math:`(B, N, 8, 8)`.
+        jpeg_quality (torch.Tensor): Compression strength of the shape :math:`(B)`.
         H (int): Original image height.
         W (int): Original image width.
-        quantization_table_y (Tensor): Quantization table for Y channel.
-        quantization_table_c (Tensor): Quantization table for C channels.
+        quantization_table_y (torch.Tensor): Quantization table for Y channel.
+        quantization_table_c (torch.Tensor): Quantization table for C channels.
 
     Returns:
-        rgb_decoded (Tensor): Decompressed RGB image of the shape :math:`(B, 3, H, W)`.
+        rgb_decoded (torch.Tensor): Decompressed RGB image of the shape :math:`(B, 3, H, W)`.
 
     """
     # Dequantize inputs
@@ -386,23 +436,23 @@ def _jpeg_decode(
         quantization_table_c,
     )
     # Perform inverse DCT
-    idct_y: Tensor = _idct_8x8(input_y)
+    idct_y: torch.Tensor = _idct_8x8(input_y)
     idct_cb, idct_cr = _idct_8x8(input_cb_cr).chunk(2, dim=1)
     # Reverse patching
-    image_y: Tensor = _unpatchify_8x8(idct_y, H, W)
-    image_cb: Tensor = _unpatchify_8x8(idct_cb, H // 2, W // 2)
-    image_cr: Tensor = _unpatchify_8x8(idct_cr, H // 2, W // 2)
+    image_y: torch.Tensor = _unpatchify_8x8(idct_y, H, W)
+    image_cb: torch.Tensor = _unpatchify_8x8(idct_cb, H // 2, W // 2)
+    image_cr: torch.Tensor = _unpatchify_8x8(idct_cr, H // 2, W // 2)
     # Perform chroma upsampling
     image_cb = _chroma_upsampling(image_cb)
     image_cr = _chroma_upsampling(image_cr)
     # Back to [0, 1] pixel-range
-    image_ycbcr: Tensor = torch.stack((image_y, image_cb, image_cr), dim=1) / 255.0
+    image_ycbcr: torch.Tensor = torch.stack((image_y, image_cb, image_cr), dim=1) / 255.0
     # Convert back to RGB space.
-    rgb_decoded: Tensor = ycbcr_to_rgb(image_ycbcr)
+    rgb_decoded: torch.Tensor = ycbcr_to_rgb(image_ycbcr)
     return rgb_decoded
 
 
-def _perform_padding(image: Tensor) -> tuple[Tensor, int, int]:
+def _perform_padding(image: torch.Tensor) -> tuple[torch.Tensor, int, int]:
     """Pad a given image to be dividable by 16.
 
     Args:
@@ -419,18 +469,18 @@ def _perform_padding(image: Tensor) -> tuple[Tensor, int, int]:
     # Compute horizontal and vertical padding
     h_pad: int = math.ceil(H / 16) * 16 - H
     w_pad: int = math.ceil(W / 16) * 16 - W
-    # Perform padding (we follow JPEG and pad only the bottom and right side of the image)
-    image_padded: Tensor = F.pad(image, (0, w_pad, 0, h_pad), "replicate")
+    # Perform padding (we follow JPEG and F.pad only the bottom and right side of the image)
+    image_padded: torch.Tensor = F.pad(image, (0, w_pad, 0, h_pad), "replicate")
     return image_padded, h_pad, w_pad
 
 
 @perform_keep_shape_image
 def jpeg_codec_differentiable(
-    image_rgb: Tensor,
-    jpeg_quality: Tensor,
-    quantization_table_y: Tensor | None = None,
-    quantization_table_c: Tensor | None = None,
-) -> Tensor:
+    image_rgb: torch.Tensor,
+    jpeg_quality: torch.Tensor,
+    quantization_table_y: torch.Tensor | None = None,
+    quantization_table_c: torch.Tensor | None = None,
+) -> torch.Tensor:
     r"""Differentiable JPEG encoding-decoding module.
 
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
@@ -508,8 +558,8 @@ def jpeg_codec_differentiable(
     KORNIA_CHECK_IS_TENSOR(image_rgb)
     KORNIA_CHECK_IS_TENSOR(jpeg_quality)
     # Get device and dtype
-    dtype: Dtype = image_rgb.dtype
-    device: Device = image_rgb.device
+    dtype: Union[torch.dtype, None] = image_rgb.dtype
+    device: Union[str, torch.device, None] = image_rgb.device
     # Use default QT if QT is not given
     quantization_table_y = _get_default_qt_y(device, dtype) if quantization_table_y is None else quantization_table_y
     quantization_table_c = _get_default_qt_c(device, dtype) if quantization_table_c is None else quantization_table_c
@@ -555,7 +605,7 @@ def jpeg_codec_differentiable(
             f"Batch dimensions do not match. "
             f"Got {image_rgb.shape[0]} images and {jpeg_quality.shape[0]} JPEG qualities.",
         )
-    # keep jpeg_quality same device as input tensor
+    # keep jpeg_quality same device as input torch.Tensor
     jpeg_quality = jpeg_quality.to(device, dtype)
     # Quantization tables to same device and dtype as input image
     quantization_table_y = quantization_table_y.to(device, dtype)
@@ -567,7 +617,7 @@ def jpeg_codec_differentiable(
         quantization_table_c=quantization_table_c,
         quantization_table_y=quantization_table_y,
     )
-    image_rgb_jpeg: Tensor = _jpeg_decode(
+    image_rgb_jpeg: torch.Tensor = _jpeg_decode(
         input_y=y_encoded,
         input_cb=cb_encoded,
         input_cr=cr_encoded,
@@ -578,13 +628,29 @@ def jpeg_codec_differentiable(
         quantization_table_y=quantization_table_y,
     )
     # Clip coded image
-    image_rgb_jpeg = differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
+    image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
     # Crop the image again to the original shape
     image_rgb_jpeg = image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
     return image_rgb_jpeg
 
 
-class JPEGCodecDifferentiable(Module):
+def _get_dct8_basis_scale(
+    dtype: Union[torch.dtype, None], device: Union[str, torch.device, None]
+) -> tuple[torch.Tensor, torch.Tensor]:
+    key = (dtype, device)
+    if key not in _DCT8_CACHE:
+        i = torch.arange(8, dtype=dtype, device=device)
+        freq = (2.0 * i + 1.0)[:, None] * i[None, :] * (pi / 16.0)
+        basis_1d = torch.cos(freq)
+        dct_tensor = basis_1d[:, None, :, None] * basis_1d[None, :, None, :]
+        alpha = torch.ones(8, dtype=dtype, device=device)
+        alpha[0] = 1.0 / (2**0.5)
+        dct_scale = torch.outer(alpha, alpha) * 0.25
+        _DCT8_CACHE[key] = (dct_tensor, dct_scale)
+    return _DCT8_CACHE[key]
+
+
+class JPEGCodecDifferentiable(nn.Module):
     r"""Differentiable JPEG encoding-decoding module.
 
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
@@ -658,27 +724,27 @@ class JPEGCodecDifferentiable(Module):
 
     def __init__(
         self,
-        quantization_table_y: Tensor | Parameter | None = None,
-        quantization_table_c: Tensor | Parameter | None = None,
+        quantization_table_y: torch.Tensor | nn.Parameter | None = None,
+        quantization_table_c: torch.Tensor | nn.Parameter | None = None,
     ) -> None:
         super().__init__()
         # Get default quantization tables if needed
         quantization_table_y = _get_default_qt_y(None, None) if quantization_table_y is None else quantization_table_y
         quantization_table_c = _get_default_qt_c(None, None) if quantization_table_c is None else quantization_table_c
-        if isinstance(quantization_table_y, Parameter):
+        if isinstance(quantization_table_y, nn.Parameter):
             self.register_parameter("quantization_table_y", quantization_table_y)
         else:
             self.register_buffer("quantization_table_y", quantization_table_y)
-        if isinstance(quantization_table_c, Parameter):
+        if isinstance(quantization_table_c, nn.Parameter):
             self.register_parameter("quantization_table_c", quantization_table_c)
         else:
             self.register_buffer("quantization_table_c", quantization_table_c)
 
     def forward(
         self,
-        image_rgb: Tensor,
-        jpeg_quality: Tensor,
-    ) -> Tensor:
+        image_rgb: torch.Tensor,
+        jpeg_quality: torch.Tensor,
+    ) -> torch.Tensor:
         device = image_rgb.device
         dtype = image_rgb.dtype
         # Move quantization tables to the same device and dtype as input
@@ -686,7 +752,7 @@ class JPEGCodecDifferentiable(Module):
         quantization_table_y = self.quantization_table_y.to(device, dtype)
         quantization_table_c = self.quantization_table_c.to(device, dtype)
         # Perform encoding-decoding
-        image_rgb_jpeg: Tensor = jpeg_codec_differentiable(
+        image_rgb_jpeg: torch.Tensor = jpeg_codec_differentiable(
             image_rgb,
             jpeg_quality=jpeg_quality,
             quantization_table_c=quantization_table_c,

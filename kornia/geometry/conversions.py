@@ -23,10 +23,9 @@ import torch
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.core import Tensor, concatenate, cos, pad, sin, stack, tensor, where, zeros_like
+from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.utils import deprecated
-from kornia.utils.helpers import _torch_inverse_cast
+from kornia.core.utils import _torch_inverse_cast
 
 __all__ = [
     "ARKitQTVecs_to_ColmapQTVecs",
@@ -77,58 +76,58 @@ __all__ = [
 ]
 
 
-def rad2deg(tensor: Tensor) -> Tensor:
+def rad2deg(tensor: torch.Tensor) -> torch.Tensor:
     r"""Convert angles from radians to degrees.
 
     Args:
-        tensor: Tensor of arbitrary shape.
+        tensor: torch.Tensor of arbitrary shape.
 
     Returns:
-        Tensor with same shape as input.
+        torch.Tensor with same shape as input.
 
     Example:
-        >>> input = tensor(3.1415926535)
+        >>> input = torch.tensor(3.1415926535)
         >>> rad2deg(input)
         tensor(180.)
 
     """
-    if not isinstance(tensor, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
+    if not isinstance(tensor, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
     return 180.0 * tensor / pi.to(tensor.device).type(tensor.dtype)
 
 
-def deg2rad(tensor: Tensor) -> Tensor:
+def deg2rad(tensor: torch.Tensor) -> torch.Tensor:
     r"""Convert angles from degrees to radians.
 
     Args:
-        tensor: Tensor of arbitrary shape.
+        tensor: torch.Tensor of arbitrary shape.
 
     Returns:
         tensor with same shape as input.
 
     Examples:
-        >>> input = tensor(180.)
+        >>> input = torch.tensor(180.)
         >>> deg2rad(input)
         tensor(3.1416)
 
     """
-    if not isinstance(tensor, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
+    if not isinstance(tensor, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
 
     return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.0
 
 
-def pol2cart(rho: Tensor, phi: Tensor) -> tuple[Tensor, Tensor]:
+def pol2cart(rho: torch.Tensor, phi: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert polar coordinates to cartesian coordinates.
 
     Args:
-        rho: Tensor of arbitrary shape.
-        phi: Tensor of same arbitrary shape.
+        rho: torch.Tensor of arbitrary shape.
+        phi: torch.Tensor of same arbitrary shape.
 
     Returns:
-        - x: Tensor with same shape as input.
-        - y: Tensor with same shape as input.
+        - x: torch.Tensor with same shape as input.
+        - y: torch.Tensor with same shape as input.
 
     Example:
         >>> rho = torch.rand(1, 3, 3)
@@ -136,25 +135,25 @@ def pol2cart(rho: Tensor, phi: Tensor) -> tuple[Tensor, Tensor]:
         >>> x, y = pol2cart(rho, phi)
 
     """
-    if not (isinstance(rho, Tensor) & isinstance(phi, Tensor)):
-        raise TypeError(f"Input type is not a Tensor. Got {type(rho)}, {type(phi)}")
+    if not (isinstance(rho, torch.Tensor) & isinstance(phi, torch.Tensor)):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(rho)}, {type(phi)}")
 
-    x = rho * cos(phi)
-    y = rho * sin(phi)
+    x = rho * torch.cos(phi)
+    y = rho * torch.sin(phi)
     return x, y
 
 
-def cart2pol(x: Tensor, y: Tensor, eps: float = 1.0e-8) -> tuple[Tensor, Tensor]:
+def cart2pol(x: torch.Tensor, y: torch.Tensor, eps: float = 1.0e-8) -> tuple[torch.Tensor, torch.Tensor]:
     """Convert cartesian coordinates to polar coordinates.
 
     Args:
-        x: Tensor of arbitrary shape.
-        y: Tensor of same arbitrary shape.
+        x: torch.Tensor of arbitrary shape.
+        y: torch.Tensor of same arbitrary shape.
         eps: To avoid division by zero.
 
     Returns:
-        - rho: Tensor with same shape as input.
-        - phi: Tensor with same shape as input.
+        - rho: torch.Tensor with same shape as input.
+        - phi: torch.Tensor with same shape as input.
 
     Example:
         >>> x = torch.rand(1, 3, 3)
@@ -162,15 +161,15 @@ def cart2pol(x: Tensor, y: Tensor, eps: float = 1.0e-8) -> tuple[Tensor, Tensor]
         >>> rho, phi = cart2pol(x, y)
 
     """
-    if not (isinstance(x, Tensor) & isinstance(y, Tensor)):
-        raise TypeError(f"Input type is not a Tensor. Got {type(x)}, {type(y)}")
+    if not (isinstance(x, torch.Tensor) & isinstance(y, torch.Tensor)):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}, {type(y)}")
 
     rho = torch.sqrt(x**2 + y**2 + eps)
     phi = torch.atan2(y, x)
     return rho, phi
 
 
-def convert_points_from_homogeneous(points: Tensor, eps: float = 1e-8) -> Tensor:
+def convert_points_from_homogeneous(points: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Convert points from homogeneous to Euclidean space.
 
     Args:
@@ -181,30 +180,30 @@ def convert_points_from_homogeneous(points: Tensor, eps: float = 1e-8) -> Tensor
         the points in Euclidean space :math:`(B, N, D-1)`.
 
     Examples:
-        >>> input = tensor([[0., 0., 1.]])
+        >>> input = torch.tensor([[0., 0., 1.]])
         >>> convert_points_from_homogeneous(input)
         tensor([[0., 0.]])
 
     """
-    if not isinstance(points, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(points)}")
+    if not isinstance(points, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(points)}")
 
     if len(points.shape) < 2:
         raise ValueError(f"Input must be at least a 2D tensor. Got {points.shape}")
 
     # we check for points at max_val
-    z_vec: Tensor = points[..., -1:]
+    z_vec: torch.Tensor = points[..., -1:]
 
     # set the results of division by zeror/near-zero to 1.0
     # follow the convention of opencv:
     # https://github.com/opencv/opencv/pull/14411/files
-    mask: Tensor = torch.abs(z_vec) > eps
-    scale = where(mask, 1.0 / (z_vec + eps), torch.ones_like(z_vec))
+    mask: torch.Tensor = torch.abs(z_vec) > eps
+    scale = torch.where(mask, 1.0 / (z_vec + eps), torch.ones_like(z_vec))
 
     return scale * points[..., :-1]
 
 
-def convert_points_to_homogeneous(points: Tensor) -> Tensor:
+def convert_points_to_homogeneous(points: torch.Tensor) -> torch.Tensor:
     r"""Convert points from Euclidean to homogeneous space.
 
     Args:
@@ -214,26 +213,26 @@ def convert_points_to_homogeneous(points: Tensor) -> Tensor:
         the points in homogeneous coordinates :math:`(*, N, D+1)`.
 
     Examples:
-        >>> input = tensor([[0., 0.]])
+        >>> input = torch.tensor([[0., 0.]])
         >>> convert_points_to_homogeneous(input)
         tensor([[0., 0., 1.]])
 
     """
-    if not isinstance(points, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(points)}")
+    if not isinstance(points, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(points)}")
     if len(points.shape) < 2:
         raise ValueError(f"Input must be at least a 2D tensor. Got {points.shape}")
 
-    return pad(points, [0, 1], "constant", 1.0)
+    return F.pad(points, [0, 1], "constant", 1.0)
 
 
-def _convert_affinematrix_to_homography_impl(A: Tensor) -> Tensor:
-    H: Tensor = pad(A, [0, 0, 0, 1], "constant", value=0.0)
+def _convert_affinematrix_to_homography_impl(A: torch.Tensor) -> torch.Tensor:
+    H: torch.Tensor = F.pad(A, [0, 0, 0, 1], "constant", value=0.0)
     H[..., -1, -1] += 1.0
     return H
 
 
-def convert_affinematrix_to_homography(A: Tensor) -> Tensor:
+def convert_affinematrix_to_homography(A: torch.Tensor) -> torch.Tensor:
     r"""Convert batch of affine matrices.
 
     Args:
@@ -243,7 +242,7 @@ def convert_affinematrix_to_homography(A: Tensor) -> Tensor:
          the homography matrix with shape of :math:`(B,3,3)`.
 
     Examples:
-        >>> A = tensor([[[1., 0., 0.],
+        >>> A = torch.tensor([[[1., 0., 0.],
         ...                    [0., 1., 0.]]])
         >>> convert_affinematrix_to_homography(A)
         tensor([[[1., 0., 0.],
@@ -251,8 +250,8 @@ def convert_affinematrix_to_homography(A: Tensor) -> Tensor:
                  [0., 0., 1.]]])
 
     """
-    if not isinstance(A, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(A)}")
+    if not isinstance(A, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(A)}")
 
     if not (len(A.shape) == 3 and A.shape[-2:] == (2, 3)):
         raise ValueError(f"Input matrix must be a Bx2x3 tensor. Got {A.shape}")
@@ -260,7 +259,7 @@ def convert_affinematrix_to_homography(A: Tensor) -> Tensor:
     return _convert_affinematrix_to_homography_impl(A)
 
 
-def convert_affinematrix_to_homography3d(A: Tensor) -> Tensor:
+def convert_affinematrix_to_homography3d(A: torch.Tensor) -> torch.Tensor:
     r"""Convert batch of 3d affine matrices.
 
     Args:
@@ -270,7 +269,7 @@ def convert_affinematrix_to_homography3d(A: Tensor) -> Tensor:
          the homography matrix with shape of :math:`(B,4,4)`.
 
     Examples:
-        >>> A = tensor([[[1., 0., 0., 0.],
+        >>> A = torch.tensor([[[1., 0., 0., 0.],
         ...                    [0., 1., 0., 0.],
         ...                    [0., 0., 1., 0.]]])
         >>> convert_affinematrix_to_homography3d(A)
@@ -280,8 +279,8 @@ def convert_affinematrix_to_homography3d(A: Tensor) -> Tensor:
                  [0., 0., 0., 1.]]])
 
     """
-    if not isinstance(A, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(A)}")
+    if not isinstance(A, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(A)}")
 
     if not (len(A.shape) == 3 and A.shape[-2:] == (3, 4)):
         raise ValueError(f"Input matrix must be a Bx3x4 tensor. Got {A.shape}")
@@ -289,7 +288,7 @@ def convert_affinematrix_to_homography3d(A: Tensor) -> Tensor:
     return _convert_affinematrix_to_homography_impl(A)
 
 
-def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
+def axis_angle_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:
     r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix.
 
     Args:
@@ -299,26 +298,26 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
         tensor of rotation matrices of shape :math:`(N, 3, 3)`.
 
     Example:
-        >>> input = tensor([[0., 0., 0.]])
+        >>> input = torch.tensor([[0., 0., 0.]])
         >>> axis_angle_to_rotation_matrix(input)  # doctest: +ELLIPSIS
         tensor([[[1., ...0., 0.],
                  [0., 1., ...0.],
                  [...0., 0., 1.]]])
 
-        >>> input = tensor([[1.5708, 0., 0.]])
+        >>> input = torch.tensor([[1.5708, 0., 0.]])
         >>> axis_angle_to_rotation_matrix(input)
         tensor([[[ 1.0000e+00,  0.0000e+00,  0.0000e+00],
                  [ 0.0000e+00, -3.6200e-06, -1.0000e+00],
                  [ 0.0000e+00,  1.0000e+00, -3.6200e-06]]])
 
     """
-    if not isinstance(axis_angle, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(axis_angle)}")
+    if not isinstance(axis_angle, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(axis_angle)}")
 
     if not axis_angle.shape[-1] == 3:
         raise ValueError(f"Input size must be a (*, 3) tensor. Got {axis_angle.shape}")
 
-    def _compute_rotation_matrix(axis_angle: Tensor, theta2: Tensor, eps: float = 1e-6) -> Tensor:
+    def _compute_rotation_matrix(axis_angle: torch.Tensor, theta2: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         theta = torch.sqrt(theta2.clamp(min=1e-12))  # clamping to ensure no nan gradients
         wxyz = axis_angle / (theta.unsqueeze(-1) + eps)  # (B, 3)
         wx, wy, wz = wxyz.unbind(dim=1)  # (B,)
@@ -354,7 +353,7 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
 
         return rot
 
-    def _compute_rotation_matrix_taylor(axis_angle: Tensor) -> Tensor:
+    def _compute_rotation_matrix_taylor(axis_angle: torch.Tensor) -> torch.Tensor:
         rx, ry, rz = axis_angle.unbind(-1)
         k_one = torch.ones_like(rx)
 
@@ -388,11 +387,11 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
 
 
 @deprecated(replace_with="axis_angle_to_rotation_matrix", version="0.7.0")
-def angle_axis_to_rotation_matrix(axis_angle: Tensor) -> Tensor:  # noqa: D103
+def angle_axis_to_rotation_matrix(axis_angle: torch.Tensor) -> torch.Tensor:  # noqa: D103
     return axis_angle_to_rotation_matrix(axis_angle)
 
 
-def rotation_matrix_to_axis_angle(rotation_matrix: Tensor) -> Tensor:
+def rotation_matrix_to_axis_angle(rotation_matrix: torch.Tensor) -> torch.Tensor:
     r"""Convert 3x3 rotation matrix to Rodrigues vector in radians.
 
     Args:
@@ -402,34 +401,34 @@ def rotation_matrix_to_axis_angle(rotation_matrix: Tensor) -> Tensor:
         Rodrigues vector transformation of shape :math:`(N, 3)`.
 
     Example:
-        >>> input = tensor([[1., 0., 0.],
+        >>> input = torch.tensor([[1., 0., 0.],
         ...                       [0., 1., 0.],
         ...                       [0., 0., 1.]])
         >>> rotation_matrix_to_axis_angle(input)
         tensor([0., 0., 0.])
 
-        >>> input = tensor([[1., 0., 0.],
+        >>> input = torch.tensor([[1., 0., 0.],
         ...                       [0., 0., -1.],
         ...                       [0., 1., 0.]])
         >>> rotation_matrix_to_axis_angle(input)
         tensor([1.5708, 0.0000, 0.0000])
 
     """
-    if not isinstance(rotation_matrix, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(rotation_matrix)}")
+    if not isinstance(rotation_matrix, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(rotation_matrix)}")
 
     if not rotation_matrix.shape[-2:] == (3, 3):
         raise ValueError(f"Input size must be a (*, 3, 3) tensor. Got {rotation_matrix.shape}")
-    quaternion: Tensor = rotation_matrix_to_quaternion(rotation_matrix)
+    quaternion: torch.Tensor = rotation_matrix_to_quaternion(rotation_matrix)
     return quaternion_to_axis_angle(quaternion)
 
 
 @deprecated(replace_with="rotation_matrix_to_axis_angle", version="0.7.0")
-def rotation_matrix_to_angle_axis(rotation_matrix: Tensor) -> Tensor:  # noqa: D103
+def rotation_matrix_to_angle_axis(rotation_matrix: torch.Tensor) -> torch.Tensor:  # noqa: D103
     return rotation_matrix_to_axis_angle(rotation_matrix)
 
 
-def rotation_matrix_to_quaternion(rotation_matrix: Tensor, eps: float = 1.0e-8) -> Tensor:
+def rotation_matrix_to_quaternion(rotation_matrix: torch.Tensor, eps: float = 1.0e-8) -> torch.Tensor:
     r"""Convert 3x3 rotation matrix to 4d quaternion vector.
 
     The quaternion vector has components in (w, x, y, z) format.
@@ -442,69 +441,69 @@ def rotation_matrix_to_quaternion(rotation_matrix: Tensor, eps: float = 1.0e-8) 
         the rotation in quaternion with shape :math:`(*, 4)`.
 
     Example:
-        >>> input = tensor([[1., 0., 0.],
+        >>> input = torch.tensor([[1., 0., 0.],
         ...                       [0., 1., 0.],
         ...                       [0., 0., 1.]])
         >>> rotation_matrix_to_quaternion(input, eps=torch.finfo(input.dtype).eps)
         tensor([1., 0., 0., 0.])
 
     """
-    if not isinstance(rotation_matrix, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(rotation_matrix)}")
+    if not isinstance(rotation_matrix, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(rotation_matrix)}")
 
     if not rotation_matrix.shape[-2:] == (3, 3):
         raise ValueError(f"Input size must be a (*, 3, 3) tensor. Got {rotation_matrix.shape}")
 
-    def safe_zero_division(numerator: Tensor, denominator: Tensor) -> Tensor:
+    def safe_zero_division(numerator: torch.Tensor, denominator: torch.Tensor) -> torch.Tensor:
         eps: float = torch.finfo(numerator.dtype).tiny
         return numerator / torch.clamp(denominator, min=eps)
 
-    rotation_matrix_vec: Tensor = rotation_matrix.reshape(*rotation_matrix.shape[:-2], 9)
+    rotation_matrix_vec: torch.Tensor = rotation_matrix.reshape(*rotation_matrix.shape[:-2], 9)
 
     m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.chunk(rotation_matrix_vec, chunks=9, dim=-1)
 
-    trace: Tensor = m00 + m11 + m22
+    trace: torch.Tensor = m00 + m11 + m22
 
-    def trace_positive_cond() -> Tensor:
+    def trace_positive_cond() -> torch.Tensor:
         sq = torch.sqrt(trace + 1.0 + eps) * 2.0  # sq = 4 * qw.
         qw = 0.25 * sq
         qx = safe_zero_division(m21 - m12, sq)
         qy = safe_zero_division(m02 - m20, sq)
         qz = safe_zero_division(m10 - m01, sq)
-        return concatenate((qw, qx, qy, qz), dim=-1)
+        return torch.cat((qw, qx, qy, qz), dim=-1)
 
-    def cond_1() -> Tensor:
+    def cond_1() -> torch.Tensor:
         sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.0  # sq = 4 * qx.
         qw = safe_zero_division(m21 - m12, sq)
         qx = 0.25 * sq
         qy = safe_zero_division(m01 + m10, sq)
         qz = safe_zero_division(m02 + m20, sq)
-        return concatenate((qw, qx, qy, qz), dim=-1)
+        return torch.cat((qw, qx, qy, qz), dim=-1)
 
-    def cond_2() -> Tensor:
+    def cond_2() -> torch.Tensor:
         sq = torch.sqrt(1.0 + m11 - m00 - m22 + eps) * 2.0  # sq = 4 * qy.
         qw = safe_zero_division(m02 - m20, sq)
         qx = safe_zero_division(m01 + m10, sq)
         qy = 0.25 * sq
         qz = safe_zero_division(m12 + m21, sq)
-        return concatenate((qw, qx, qy, qz), dim=-1)
+        return torch.cat((qw, qx, qy, qz), dim=-1)
 
-    def cond_3() -> Tensor:
+    def cond_3() -> torch.Tensor:
         sq = torch.sqrt(1.0 + m22 - m00 - m11 + eps) * 2.0  # sq = 4 * qz.
         qw = safe_zero_division(m10 - m01, sq)
         qx = safe_zero_division(m02 + m20, sq)
         qy = safe_zero_division(m12 + m21, sq)
         qz = 0.25 * sq
-        return concatenate((qw, qx, qy, qz), dim=-1)
+        return torch.cat((qw, qx, qy, qz), dim=-1)
 
-    where_2 = where(m11 > m22, cond_2(), cond_3())
-    where_1 = where((m00 > m11) & (m00 > m22), cond_1(), where_2)
+    where_2 = torch.where(m11 > m22, cond_2(), cond_3())
+    where_1 = torch.where((m00 > m11) & (m00 > m22), cond_1(), where_2)
 
-    quaternion: Tensor = where(trace > 0.0, trace_positive_cond(), where_1)
+    quaternion: torch.Tensor = torch.where(trace > 0.0, trace_positive_cond(), where_1)
     return quaternion
 
 
-def normalize_quaternion(quaternion: Tensor, eps: float = 1.0e-12) -> Tensor:
+def normalize_quaternion(quaternion: torch.Tensor, eps: float = 1.0e-12) -> torch.Tensor:
     r"""Normalize a quaternion.
 
     The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
@@ -518,13 +517,13 @@ def normalize_quaternion(quaternion: Tensor, eps: float = 1.0e-12) -> Tensor:
         the normalized quaternion of shape :math:`(*, 4)`.
 
     Example:
-        >>> quaternion = tensor((1., 0., 1., 0.))
+        >>> quaternion = torch.tensor((1., 0., 1., 0.))
         >>> normalize_quaternion(quaternion)
         tensor([0.7071, 0.0000, 0.7071, 0.0000])
 
     """
-    if not isinstance(quaternion, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(quaternion)}")
+    if not isinstance(quaternion, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(quaternion)}")
 
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
@@ -536,7 +535,7 @@ def normalize_quaternion(quaternion: Tensor, eps: float = 1.0e-12) -> Tensor:
 # https://github.com/tensorflow/graphics/blob/master/tensorflow_graphics/geometry/transformation/rotation_matrix_3d.py#L247
 
 
-def quaternion_to_rotation_matrix(quaternion: Tensor) -> Tensor:
+def quaternion_to_rotation_matrix(quaternion: torch.Tensor) -> torch.Tensor:
     r"""Convert a quaternion to a rotation matrix.
 
     The quaternion should be in (w, x, y, z) format.
@@ -549,21 +548,21 @@ def quaternion_to_rotation_matrix(quaternion: Tensor) -> Tensor:
         the rotation matrix of shape :math:`(*, 3, 3)`.
 
     Example:
-        >>> quaternion = tensor((0., 0., 0., 1.))
+        >>> quaternion = torch.tensor((0., 0., 0., 1.))
         >>> quaternion_to_rotation_matrix(quaternion)
         tensor([[-1.,  0.,  0.],
                 [ 0., -1.,  0.],
                 [ 0.,  0.,  1.]])
 
     """
-    if not isinstance(quaternion, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(quaternion)}")
+    if not isinstance(quaternion, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(quaternion)}")
 
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
     # normalize the input quaternion
-    quaternion_norm: Tensor = normalize_quaternion(quaternion)
+    quaternion_norm: torch.Tensor = normalize_quaternion(quaternion)
 
     # unpack the normalized quaternion components
     w = quaternion_norm[..., 0]
@@ -572,21 +571,21 @@ def quaternion_to_rotation_matrix(quaternion: Tensor) -> Tensor:
     z = quaternion_norm[..., 3]
 
     # compute the actual conversion
-    tx: Tensor = 2.0 * x
-    ty: Tensor = 2.0 * y
-    tz: Tensor = 2.0 * z
-    twx: Tensor = tx * w
-    twy: Tensor = ty * w
-    twz: Tensor = tz * w
-    txx: Tensor = tx * x
-    txy: Tensor = ty * x
-    txz: Tensor = tz * x
-    tyy: Tensor = ty * y
-    tyz: Tensor = tz * y
-    tzz: Tensor = tz * z
-    one: Tensor = tensor(1.0)
+    tx: torch.Tensor = 2.0 * x
+    ty: torch.Tensor = 2.0 * y
+    tz: torch.Tensor = 2.0 * z
+    twx: torch.Tensor = tx * w
+    twy: torch.Tensor = ty * w
+    twz: torch.Tensor = tz * w
+    txx: torch.Tensor = tx * x
+    txy: torch.Tensor = ty * x
+    txz: torch.Tensor = tz * x
+    tyy: torch.Tensor = ty * y
+    tyz: torch.Tensor = tz * y
+    tzz: torch.Tensor = tz * z
+    one: torch.Tensor = torch.tensor(1.0)
 
-    matrix_flat: Tensor = stack(
+    matrix_flat: torch.Tensor = torch.stack(
         (
             one - (tyy + tzz),
             txy - twz,
@@ -608,7 +607,7 @@ def quaternion_to_rotation_matrix(quaternion: Tensor) -> Tensor:
     return matrix
 
 
-def quaternion_to_axis_angle(quaternion: Tensor) -> Tensor:
+def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
     """Convert quaternion vector to axis angle of rotation in radians.
 
     The quaternion should be in (w, x, y, z) format.
@@ -626,40 +625,40 @@ def quaternion_to_axis_angle(quaternion: Tensor) -> Tensor:
         - Output: :math:`(*, 3)`
 
     Example:
-        >>> quaternion = tensor((1., 0., 0., 0.))
+        >>> quaternion = torch.tensor((1., 0., 0., 0.))
         >>> quaternion_to_axis_angle(quaternion)
         tensor([0., 0., 0.])
 
     """
-    if not torch.is_tensor(quaternion):
-        raise TypeError(f"Input type is not a Tensor. Got {type(quaternion)}")
+    if not isinstance(quaternion, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(quaternion)}")
 
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape Nx4 or 4. Got {quaternion.shape}")
 
     # unpack input and compute conversion
-    q1: Tensor = tensor([])
-    q2: Tensor = tensor([])
-    q3: Tensor = tensor([])
-    cos_theta: Tensor = tensor([])
+    q1: torch.Tensor = torch.tensor([])
+    q2: torch.Tensor = torch.tensor([])
+    q3: torch.Tensor = torch.tensor([])
+    cos_theta: torch.Tensor = torch.tensor([])
 
     cos_theta = quaternion[..., 0]
     q1 = quaternion[..., 1]
     q2 = quaternion[..., 2]
     q3 = quaternion[..., 3]
 
-    sin_squared_theta: Tensor = q1 * q1 + q2 * q2 + q3 * q3
+    sin_squared_theta: torch.Tensor = q1 * q1 + q2 * q2 + q3 * q3
 
-    sin_theta: Tensor = torch.sqrt(sin_squared_theta)
-    two_theta: Tensor = 2.0 * where(
+    sin_theta: torch.Tensor = torch.sqrt(sin_squared_theta)
+    two_theta: torch.Tensor = 2.0 * torch.where(
         cos_theta < 0.0, torch.atan2(-sin_theta, -cos_theta), torch.atan2(sin_theta, cos_theta)
     )
 
-    k_pos: Tensor = two_theta / sin_theta
-    k_neg: Tensor = 2.0 * torch.ones_like(sin_theta)
-    k: Tensor = where(sin_squared_theta > 0.0, k_pos, k_neg)
+    k_pos: torch.Tensor = two_theta / sin_theta
+    k_neg: torch.Tensor = 2.0 * torch.ones_like(sin_theta)
+    k: torch.Tensor = torch.where(sin_squared_theta > 0.0, k_pos, k_neg)
 
-    axis_angle: Tensor = torch.zeros_like(quaternion)[..., :3]
+    axis_angle: torch.Tensor = torch.zeros_like(quaternion)[..., :3]
     axis_angle[..., 0] += q1 * k
     axis_angle[..., 1] += q2 * k
     axis_angle[..., 2] += q3 * k
@@ -667,11 +666,11 @@ def quaternion_to_axis_angle(quaternion: Tensor) -> Tensor:
 
 
 @deprecated(replace_with="quaternion_to_axis_angle", version="0.7.0")
-def quaternion_to_angle_axis(quaternion: Tensor) -> Tensor:  # noqa: D103
+def quaternion_to_angle_axis(quaternion: torch.Tensor) -> torch.Tensor:  # noqa: D103
     return quaternion_to_axis_angle(quaternion)
 
 
-def quaternion_log_to_exp(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
+def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torch.Tensor:
     r"""Apply exponential map to log quaternion.
 
     The quaternion should be in (w, x, y, z) format.
@@ -685,32 +684,32 @@ def quaternion_log_to_exp(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
         the quaternion exponential map of shape :math:`(*, 4)`.
 
     Example:
-        >>> quaternion = tensor((0., 0., 0.))
+        >>> quaternion = torch.tensor((0., 0., 0.))
         >>> quaternion_log_to_exp(quaternion, eps=torch.finfo(quaternion.dtype).eps)
         tensor([1., 0., 0., 0.])
 
     """
-    if not isinstance(quaternion, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(quaternion)}")
+    if not isinstance(quaternion, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(quaternion)}")
 
     if not quaternion.shape[-1] == 3:
         raise ValueError(f"Input must be a tensor of shape (*, 3). Got {quaternion.shape}")
 
     # compute quaternion norm
-    norm_q: Tensor = torch.norm(quaternion, p=2, dim=-1, keepdim=True).clamp(min=eps)
+    norm_q: torch.Tensor = torch.norm(quaternion, p=2, dim=-1, keepdim=True).clamp(min=eps)
 
     # compute scalar and vector
-    quaternion_vector: Tensor = quaternion * sin(norm_q) / norm_q
-    quaternion_scalar: Tensor = cos(norm_q)
+    quaternion_vector: torch.Tensor = quaternion * torch.sin(norm_q) / norm_q
+    quaternion_scalar: torch.Tensor = torch.cos(norm_q)
 
     # compose quaternion and return
-    quaternion_exp: Tensor = tensor([])
-    quaternion_exp = concatenate((quaternion_scalar, quaternion_vector), dim=-1)
+    quaternion_exp: torch.Tensor = torch.tensor([])
+    quaternion_exp = torch.cat((quaternion_scalar, quaternion_vector), dim=-1)
 
     return quaternion_exp
 
 
-def quaternion_exp_to_log(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
+def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torch.Tensor:
     r"""Apply the log map to a quaternion.
 
     The quaternion should be in (w, x, y, z) format.
@@ -724,29 +723,31 @@ def quaternion_exp_to_log(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
         the quaternion log map of shape :math:`(*, 3)`.
 
     Example:
-        >>> quaternion = tensor((1., 0., 0., 0.))
+        >>> quaternion = torch.tensor((1., 0., 0., 0.))
         >>> quaternion_exp_to_log(quaternion, eps=torch.finfo(quaternion.dtype).eps)
         tensor([0., 0., 0.])
 
     """
-    if not isinstance(quaternion, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(quaternion)}")
+    if not isinstance(quaternion, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(quaternion)}")
 
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
     # unpack quaternion vector and scalar
-    quaternion_vector: Tensor = tensor([])
-    quaternion_scalar: Tensor = tensor([])
+    quaternion_vector: torch.Tensor = torch.tensor([])
+    quaternion_scalar: torch.Tensor = torch.tensor([])
 
     quaternion_scalar = quaternion[..., 0:1]
     quaternion_vector = quaternion[..., 1:4]
 
     # compute quaternion norm
-    norm_q: Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
+    norm_q: torch.Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
 
     # apply log map
-    quaternion_log: Tensor = quaternion_vector * torch.acos(torch.clamp(quaternion_scalar, min=-1.0, max=1.0)) / norm_q
+    quaternion_log: torch.Tensor = (
+        quaternion_vector * torch.acos(torch.clamp(quaternion_scalar, min=-1.0, max=1.0)) / norm_q
+    )
 
     return quaternion_log
 
@@ -755,7 +756,7 @@ def quaternion_exp_to_log(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
 # https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
 
 
-def axis_angle_to_quaternion(axis_angle: Tensor) -> Tensor:
+def axis_angle_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:
     r"""Convert an axis angle to a quaternion.
 
     The quaternion vector has components in (w, x, y, z) format.
@@ -773,35 +774,37 @@ def axis_angle_to_quaternion(axis_angle: Tensor) -> Tensor:
         - Output: :math:`(*, 4)`
 
     Example:
-        >>> axis_angle = tensor((0., 1., 0.))
+        >>> axis_angle = torch.tensor((0., 1., 0.))
         >>> axis_angle_to_quaternion(axis_angle)
         tensor([0.8776, 0.0000, 0.4794, 0.0000])
 
     """
-    if not torch.is_tensor(axis_angle):
-        raise TypeError(f"Input type is not a Tensor. Got {type(axis_angle)}")
+    if not isinstance(axis_angle, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(axis_angle)}")
 
     if not axis_angle.shape[-1] == 3:
         raise ValueError(f"Input must be a tensor of shape Nx3 or 3. Got {axis_angle.shape}")
 
     # unpack input and compute conversion
-    a0: Tensor = axis_angle[..., 0:1]
-    a1: Tensor = axis_angle[..., 1:2]
-    a2: Tensor = axis_angle[..., 2:3]
-    theta_squared: Tensor = a0 * a0 + a1 * a1 + a2 * a2
+    a0: torch.Tensor = axis_angle[..., 0:1]
+    a1: torch.Tensor = axis_angle[..., 1:2]
+    a2: torch.Tensor = axis_angle[..., 2:3]
+    theta_squared: torch.Tensor = a0 * a0 + a1 * a1 + a2 * a2
 
-    theta: Tensor = torch.sqrt(theta_squared)
-    half_theta: Tensor = theta * 0.5
+    theta: torch.Tensor = torch.sqrt(theta_squared)
+    half_theta: torch.Tensor = theta * 0.5
 
-    mask: Tensor = theta_squared > 0.0
-    ones: Tensor = torch.ones_like(half_theta)
+    mask: torch.Tensor = theta_squared > 0.0
+    ones: torch.Tensor = torch.ones_like(half_theta)
 
-    k_neg: Tensor = 0.5 * ones
-    k_pos: Tensor = sin(half_theta) / theta
-    k: Tensor = where(mask, k_pos, k_neg)
-    w: Tensor = where(mask, cos(half_theta), ones)
+    k_neg: torch.Tensor = 0.5 * ones
+    k_pos: torch.Tensor = torch.sin(half_theta) / theta
+    k: torch.Tensor = torch.where(mask, k_pos, k_neg)
+    w: torch.Tensor = torch.where(mask, torch.cos(half_theta), ones)
 
-    quaternion: Tensor = torch.zeros(size=(*axis_angle.shape[:-1], 4), dtype=axis_angle.dtype, device=axis_angle.device)
+    quaternion: torch.Tensor = torch.zeros(
+        size=(*axis_angle.shape[:-1], 4), dtype=axis_angle.dtype, device=axis_angle.device
+    )
     quaternion[..., 1:2] = a0 * k
     quaternion[..., 2:3] = a1 * k
     quaternion[..., 3:4] = a2 * k
@@ -810,14 +813,16 @@ def axis_angle_to_quaternion(axis_angle: Tensor) -> Tensor:
 
 
 @deprecated(replace_with="axis_angle_to_quaternion", version="0.7.0")
-def angle_axis_to_quaternion(axis_angle: Tensor) -> Tensor:  # noqa: D103
+def angle_axis_to_quaternion(axis_angle: torch.Tensor) -> torch.Tensor:  # noqa: D103
     return axis_angle_to_quaternion(axis_angle)
 
 
 # inspired by: https://stackoverflow.com/questions/56207448/efficient-quaternions-to-euler-transformation
 
 
-def euler_from_quaternion(w: Tensor, x: Tensor, y: Tensor, z: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+def euler_from_quaternion(
+    w: torch.Tensor, x: torch.Tensor, y: torch.Tensor, z: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """Convert a quaternion coefficients to Euler angles.
 
     Returned angles are in radians in XYZ convention.
@@ -853,7 +858,9 @@ def euler_from_quaternion(w: Tensor, x: Tensor, y: Tensor, z: Tensor) -> tuple[T
     return roll, pitch, yaw
 
 
-def quaternion_from_euler(roll: Tensor, pitch: Tensor, yaw: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+def quaternion_from_euler(
+    roll: torch.Tensor, pitch: torch.Tensor, yaw: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Convert Euler angles to quaternion coefficients.
 
     Euler angles are assumed to be in radians in XYZ convention.
@@ -893,7 +900,9 @@ def quaternion_from_euler(roll: Tensor, pitch: Tensor, yaw: Tensor) -> tuple[Ten
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L65-L71
 
 
-def normalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: int, eps: float = 1e-8) -> Tensor:
+def normalize_pixel_coordinates(
+    pixel_coordinates: torch.Tensor, height: int, width: int, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Normalize pixel coordinates between -1 and 1.
 
     Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
@@ -908,7 +917,7 @@ def normalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: i
         the normalized pixel coordinates with shape :math:`(*, 2)`.
 
     Examples:
-        >>> coords = tensor([[50., 100.]])
+        >>> coords = torch.tensor([[50., 100.]])
         >>> normalize_pixel_coordinates(coords, 100, 50)
         tensor([[1.0408, 1.0202]])
 
@@ -917,19 +926,23 @@ def normalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: i
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
 
     # compute normalization factor
-    hw: Tensor = stack(
+    hw: torch.Tensor = torch.stack(
         [
-            tensor(width, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype),
-            tensor(height, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype),
+            torch.tensor(width, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype),
+            torch.tensor(height, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype),
         ]
     )
 
-    factor: Tensor = tensor(2.0, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype) / (hw - 1).clamp(eps)
+    factor: torch.Tensor = torch.tensor(2.0, device=pixel_coordinates.device, dtype=pixel_coordinates.dtype) / (
+        hw - 1
+    ).clamp(eps)
 
     return factor * pixel_coordinates - 1
 
 
-def denormalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: int, eps: float = 1e-8) -> Tensor:
+def denormalize_pixel_coordinates(
+    pixel_coordinates: torch.Tensor, height: int, width: int, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Denormalize pixel coordinates.
 
     The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
@@ -944,7 +957,7 @@ def denormalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width:
         the denormalized pixel coordinates with shape :math:`(*, 2)`.
 
     Examples:
-        >>> coords = tensor([[-1., -1.]])
+        >>> coords = torch.tensor([[-1., -1.]])
         >>> denormalize_pixel_coordinates(coords, 100, 50)
         tensor([[0., 0.]])
 
@@ -952,16 +965,20 @@ def denormalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width:
     if pixel_coordinates.shape[-1] != 2:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
     # compute normalization factor
-    hw: Tensor = stack([tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
+    hw: torch.Tensor = (
+        torch.stack([torch.tensor(width), torch.tensor(height)])
+        .to(pixel_coordinates.device)
+        .to(pixel_coordinates.dtype)
+    )
 
-    factor: Tensor = tensor(2.0) / (hw - 1).clamp(eps)
+    factor: torch.Tensor = torch.tensor(2.0) / (hw - 1).clamp(eps)
 
-    return tensor(1.0) / factor * (pixel_coordinates + 1)
+    return torch.tensor(1.0) / factor * (pixel_coordinates + 1)
 
 
 def normalize_pixel_coordinates3d(
-    pixel_coordinates: Tensor, depth: int, height: int, width: int, eps: float = 1e-8
-) -> Tensor:
+    pixel_coordinates: torch.Tensor, depth: int, height: int, width: int, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Normalize pixel coordinates between -1 and 1.
 
     Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1).
@@ -980,18 +997,20 @@ def normalize_pixel_coordinates3d(
     if pixel_coordinates.shape[-1] != 3:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
     # compute normalization factor
-    dhw: Tensor = (
-        stack([tensor(depth), tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
+    dhw: torch.Tensor = (
+        torch.stack([torch.tensor(depth), torch.tensor(width), torch.tensor(height)])
+        .to(pixel_coordinates.device)
+        .to(pixel_coordinates.dtype)
     )
 
-    factor: Tensor = tensor(2.0) / (dhw - 1).clamp(eps)
+    factor: torch.Tensor = torch.tensor(2.0) / (dhw - 1).clamp(eps)
 
     return factor * pixel_coordinates - 1
 
 
 def denormalize_pixel_coordinates3d(
-    pixel_coordinates: Tensor, depth: int, height: int, width: int, eps: float = 1e-8
-) -> Tensor:
+    pixel_coordinates: torch.Tensor, depth: int, height: int, width: int, eps: float = 1e-8
+) -> torch.Tensor:
     r"""Denormalize pixel coordinates.
 
     The input is assumed to be -1 if on extreme left, 1 if on extreme right (x = w-1).
@@ -1010,16 +1029,18 @@ def denormalize_pixel_coordinates3d(
     if pixel_coordinates.shape[-1] != 3:
         raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
     # compute normalization factor
-    dhw: Tensor = (
-        stack([tensor(depth), tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
+    dhw: torch.Tensor = (
+        torch.stack([torch.tensor(depth), torch.tensor(width), torch.tensor(height)])
+        .to(pixel_coordinates.device)
+        .to(pixel_coordinates.dtype)
     )
 
-    factor: Tensor = tensor(2.0) / (dhw - 1).clamp(eps)
+    factor: torch.Tensor = torch.tensor(2.0) / (dhw - 1).clamp(eps)
 
-    return tensor(1.0) / factor * (pixel_coordinates + 1)
+    return torch.tensor(1.0) / factor * (pixel_coordinates + 1)
 
 
-def angle_to_rotation_matrix(angle: Tensor) -> Tensor:
+def angle_to_rotation_matrix(angle: torch.Tensor) -> torch.Tensor:
     r"""Create a rotation matrix out of angles in degrees.
 
     Args:
@@ -1034,14 +1055,14 @@ def angle_to_rotation_matrix(angle: Tensor) -> Tensor:
 
     """
     ang_rad = deg2rad(angle)
-    cos_a: Tensor = cos(ang_rad)
-    sin_a: Tensor = sin(ang_rad)
-    return stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
+    cos_a: torch.Tensor = torch.cos(ang_rad)
+    sin_a: torch.Tensor = torch.sin(ang_rad)
+    return torch.stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
 
 
 def normalize_homography(
-    dst_pix_trans_src_pix: Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
-) -> Tensor:
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
+) -> torch.Tensor:
     r"""Normalize a given homography in pixels to [-1, 1].
 
     Args:
@@ -1054,8 +1075,8 @@ def normalize_homography(
         the normalized homography of shape :math:`(B, 3, 3)`.
 
     """
-    if not isinstance(dst_pix_trans_src_pix, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(dst_pix_trans_src_pix)}")
+    if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
 
     if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
@@ -1065,13 +1086,13 @@ def normalize_homography(
     dst_h, dst_w = dsize_dst
 
     # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
 
     src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
-    dst_norm_trans_dst_pix: Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
 
     # compute chain transformations
-    dst_norm_trans_src_norm: Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
+    dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
     return dst_norm_trans_src_norm
 
 
@@ -1081,7 +1102,7 @@ def normal_transform_pixel(
     eps: float = 1e-14,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
-) -> Tensor:
+) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
     Args:
@@ -1095,7 +1116,7 @@ def normal_transform_pixel(
         normalized transform with shape :math:`(1, 3, 3)`.
 
     """
-    tr_mat = tensor([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)  # 3x3
+    tr_mat = torch.tensor([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)  # 3x3
 
     # prevent divide by zero bugs
     width_denom: float = eps if width == 1 else width - 1.0
@@ -1114,7 +1135,7 @@ def normal_transform_pixel3d(
     eps: float = 1e-14,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
-) -> Tensor:
+) -> torch.Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
     Args:
@@ -1129,7 +1150,7 @@ def normal_transform_pixel3d(
         normalized transform with shape :math:`(1, 4, 4)`.
 
     """
-    tr_mat = tensor(
+    tr_mat = torch.tensor(
         [[1.0, 0.0, 0.0, -1.0], [0.0, 1.0, 0.0, -1.0], [0.0, 0.0, 1.0, -1.0], [0.0, 0.0, 0.0, 1.0]],
         device=device,
         dtype=dtype,
@@ -1148,8 +1169,8 @@ def normal_transform_pixel3d(
 
 
 def denormalize_homography(
-    dst_pix_trans_src_pix: Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
-) -> Tensor:
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
+) -> torch.Tensor:
     r"""De-normalize a given homography in pixels from [-1, 1] to actual height and width.
 
     Args:
@@ -1162,8 +1183,8 @@ def denormalize_homography(
         the denormalized homography of shape :math:`(B, 3, 3)`.
 
     """
-    if not isinstance(dst_pix_trans_src_pix, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(dst_pix_trans_src_pix)}")
+    if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
 
     if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (3, 3)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
@@ -1173,18 +1194,18 @@ def denormalize_homography(
     dst_h, dst_w = dsize_dst
 
     # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
 
-    dst_norm_trans_dst_pix: Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
     dst_denorm_trans_dst_pix = _torch_inverse_cast(dst_norm_trans_dst_pix)
     # compute chain transformations
-    dst_norm_trans_src_norm: Tensor = dst_denorm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
+    dst_norm_trans_src_norm: torch.Tensor = dst_denorm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_norm_trans_src_pix)
     return dst_norm_trans_src_norm
 
 
 def normalize_homography3d(
-    dst_pix_trans_src_pix: Tensor, dsize_src: tuple[int, int, int], dsize_dst: tuple[int, int, int]
-) -> Tensor:
+    dst_pix_trans_src_pix: torch.Tensor, dsize_src: tuple[int, int, int], dsize_dst: tuple[int, int, int]
+) -> torch.Tensor:
     r"""Normalize a given homography in pixels to [-1, 1].
 
     Args:
@@ -1200,8 +1221,8 @@ def normalize_homography3d(
         Output: :math:`(B, 4, 4)`
 
     """
-    if not isinstance(dst_pix_trans_src_pix, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(dst_pix_trans_src_pix)}")
+    if not isinstance(dst_pix_trans_src_pix, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(dst_pix_trans_src_pix)}")
 
     if not (len(dst_pix_trans_src_pix.shape) == 3 or dst_pix_trans_src_pix.shape[-2:] == (4, 4)):
         raise ValueError(f"Input dst_pix_trans_src_pix must be a Bx3x3 tensor. Got {dst_pix_trans_src_pix.shape}")
@@ -1210,16 +1231,16 @@ def normalize_homography3d(
     src_d, src_h, src_w = dsize_src
     dst_d, dst_h, dst_w = dsize_dst
     # compute the transformation pixel/norm for src/dst
-    src_norm_trans_src_pix: Tensor = normal_transform_pixel3d(src_d, src_h, src_w).to(dst_pix_trans_src_pix)
+    src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel3d(src_d, src_h, src_w).to(dst_pix_trans_src_pix)
 
     src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
-    dst_norm_trans_dst_pix: Tensor = normal_transform_pixel3d(dst_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
+    dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel3d(dst_d, dst_h, dst_w).to(dst_pix_trans_src_pix)
     # compute chain transformations
-    dst_norm_trans_src_norm: Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
+    dst_norm_trans_src_norm: torch.Tensor = dst_norm_trans_dst_pix @ (dst_pix_trans_src_pix @ src_pix_trans_src_norm)
     return dst_norm_trans_src_norm
 
 
-def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor) -> Tensor:
+def normalize_points_with_intrinsics(point_2d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
     """Normalize points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
     Args:
@@ -1253,7 +1274,7 @@ def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor) ->
     return xy
 
 
-def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Tensor) -> Tensor:
+def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
     """Normalize points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
     Args:
@@ -1279,26 +1300,26 @@ def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Ten
     # v = fy * Y + cy
 
     # unpack coordinates
-    x_coord: Tensor = point_2d_norm[..., 0]
-    y_coord: Tensor = point_2d_norm[..., 1]
+    x_coord: torch.Tensor = point_2d_norm[..., 0]
+    y_coord: torch.Tensor = point_2d_norm[..., 1]
 
     # unpack intrinsics
-    fx: Tensor = camera_matrix[..., 0, 0]
-    fy: Tensor = camera_matrix[..., 1, 1]
-    cx: Tensor = camera_matrix[..., 0, 2]
-    cy: Tensor = camera_matrix[..., 1, 2]
+    fx: torch.Tensor = camera_matrix[..., 0, 0]
+    fy: torch.Tensor = camera_matrix[..., 1, 1]
+    cx: torch.Tensor = camera_matrix[..., 0, 2]
+    cy: torch.Tensor = camera_matrix[..., 1, 2]
 
     if len(cx.shape) < len(x_coord.shape):  # broadcast intrinsics
         cx, cy, fx, fy = cx.unsqueeze(-1), cy.unsqueeze(-1), fx.unsqueeze(-1), fy.unsqueeze(-1)
 
     # apply intrinsics ans return
-    u_coord: Tensor = x_coord * fx + cx
-    v_coord: Tensor = y_coord * fy + cy
+    u_coord: torch.Tensor = x_coord * fx + cx
+    v_coord: torch.Tensor = y_coord * fy + cy
 
-    return stack([u_coord, v_coord], dim=-1)
+    return torch.stack([u_coord, v_coord], dim=-1)
 
 
-def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
+def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
     r"""Combine 3x3 rotation matrix R and 1x3 translation vector t into 4x4 extrinsics.
 
     Args:
@@ -1319,11 +1340,11 @@ def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
     """
     KORNIA_CHECK_SHAPE(R, ["B", "3", "3"])
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
-    Rt = concatenate([R, t], dim=2)
+    Rt = torch.cat([R, t], dim=2)
     return convert_affinematrix_to_homography3d(Rt)
 
 
-def matrix4x4_to_Rt(extrinsics: Tensor) -> tuple[Tensor, Tensor]:
+def matrix4x4_to_Rt(extrinsics: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert 4x4 extrinsics into 3x3 rotation matrix R and 1x3 translation vector ts.
 
     Args:
@@ -1348,7 +1369,7 @@ def matrix4x4_to_Rt(extrinsics: Tensor) -> tuple[Tensor, Tensor]:
     return R, t
 
 
-def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
+def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: torch.Tensor) -> torch.Tensor:
     r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
 
     I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
@@ -1370,7 +1391,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
 
     """
     KORNIA_CHECK_SHAPE(extrinsics_graphics, ["B", "4", "4"])
-    invert_yz = tensor(
+    invert_yz = torch.tensor(
         [[[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1.0]]],
         dtype=extrinsics_graphics.dtype,
         device=extrinsics_graphics.device,
@@ -1378,7 +1399,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
     return extrinsics_graphics @ invert_yz
 
 
-def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
+def camtoworld_graphics_to_vision_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
 
     I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
@@ -1408,7 +1429,7 @@ def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tens
     return matrix4x4_to_Rt(mat4x4)
 
 
-def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
+def camtoworld_vision_to_graphics_4x4(extrinsics_vision: torch.Tensor) -> torch.Tensor:
     r"""Convert vision coordinate frame (e.g. OpenCV) to graphics coordinate frame (e.g. OpenGK.).
 
     I.e. flips y and z axis Graphics convention: [+x, +y, +z] == [right, up, backwards].
@@ -1430,7 +1451,7 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
 
     """
     KORNIA_CHECK_SHAPE(extrinsics_vision, ["B", "4", "4"])
-    invert_yz = tensor(
+    invert_yz = torch.tensor(
         [[[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1.0]]],
         dtype=extrinsics_vision.dtype,
         device=extrinsics_vision.device,
@@ -1438,7 +1459,7 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
     return extrinsics_vision @ invert_yz
 
 
-def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
+def camtoworld_vision_to_graphics_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.).
 
     I.e. flips y and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards].
@@ -1468,7 +1489,7 @@ def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tens
     return matrix4x4_to_Rt(mat4x4)
 
 
-def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
+def camtoworld_to_worldtocam_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert camtoworld to worldtocam frame used in Colmap.
 
     See
@@ -1496,12 +1517,12 @@ def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
 
     R_inv = R.transpose(1, 2)
-    new_t: Tensor = -R_inv @ t
+    new_t: torch.Tensor = -R_inv @ t
 
     return (R_inv, new_t)
 
 
-def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
+def worldtocam_to_camtoworld_Rt(R: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert worldtocam frame used in Colmap to camtoworld.
 
     Args:
@@ -1526,12 +1547,12 @@ def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
     KORNIA_CHECK_SHAPE(t, ["B", "3", "1"])
 
     R_inv = R.transpose(1, 2)
-    new_t: Tensor = -R_inv @ t
+    new_t: torch.Tensor = -R_inv @ t
 
     return (R_inv, new_t)
 
 
-def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Tensor]:
+def ARKitQTVecs_to_ColmapQTVecs(qvec: torch.Tensor, tvec: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Convert output of Apple ARKit screen pose to the camera-to-world transformation, expected by Colmap.
 
     Both poses in quaternion representation.
@@ -1545,7 +1566,7 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Ten
         tvec: translation vector :math:`(B, 3, 1)`, [x, y, z]
 
     Example:
-        >>> q, t = tensor([0, 1, 0, 1.])[None], torch.ones(3).reshape(1, 3, 1)
+        >>> q, t = torch.tensor([0, 1, 0, 1.])[None], torch.ones(3).reshape(1, 3, 1)
         >>> ARKitQTVecs_to_ColmapQTVecs(q, t)
         (tensor([[0.7071, 0.0000, 0.7071, 0.0000]]), tensor([[[-1.0000],
                  [-1.0000],
@@ -1562,7 +1583,7 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Ten
     return q_colmap, t_colmap
 
 
-def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
+def vector_to_skew_symmetric_matrix(vec: torch.Tensor) -> torch.Tensor:
     r"""Convert a vector to a skew symmetric matrix.
 
     A vector :math:`(v1, v2, v3)` has a corresponding skew-symmetric matrix, which is of the form:
@@ -1590,8 +1611,13 @@ def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
     if vec.shape[-1] != 3 or len(vec.shape) > 2:
         raise ValueError(f"Input vector must be of shape (B, 3) or (3,). Got {vec.shape}")
     v1, v2, v3 = vec[..., 0], vec[..., 1], vec[..., 2]
-    zeros = zeros_like(v1)
-    skew_symmetric_matrix = stack(
-        [stack([zeros, -v3, v2], dim=-1), stack([v3, zeros, -v1], dim=-1), stack([-v2, v1, zeros], dim=-1)], dim=-2
+    zeros = torch.zeros_like(v1)
+    skew_symmetric_matrix = torch.stack(
+        [
+            torch.stack([zeros, -v3, v2], dim=-1),
+            torch.stack([v3, zeros, -v1], dim=-1),
+            torch.stack([-v2, v1, zeros], dim=-1),
+        ],
+        dim=-2,
     )
     return skew_symmetric_matrix

@@ -239,19 +239,21 @@ class TestRawToRgb2x2Downscaled(BaseTester):
         )
 
     def test_exception(self, device, dtype):
-        with pytest.raises(Exception) as errinf:
-            kornia.color.raw_to_rgb_2x2_downscaled([0.0], kornia.color.CFA.BG)
-        assert "Input type is not a torch.Tensor" in str(errinf)
+        from kornia.core.exceptions import BaseError, ShapeError
 
-        with pytest.raises(TypeError) as errinf:
+        with pytest.raises(BaseError) as errinf:
+            kornia.color.raw_to_rgb_2x2_downscaled([0.0], kornia.color.CFA.BG)
+        assert "Input type is not a torch.Tensor" in str(errinf.value)
+
+        with pytest.raises(ShapeError) as errinf:
             img = torch.ones(1, 1, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GB)
-        assert "shape must be" in str(errinf)
+        assert "Shape dimension mismatch" in str(errinf.value) or "Expected shape" in str(errinf.value)
 
-        with pytest.raises(TypeError) as errinf:
+        with pytest.raises(ShapeError) as errinf:
             img = torch.ones(2, 2, 2, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.RG)
-        assert "shape must be" in str(errinf)
+        assert "Shape dimension mismatch" in str(errinf.value) or "Expected shape" in str(errinf.value)
 
         with pytest.raises(Exception) as errinf:
             img = torch.ones(1, 3, 2, device=device, dtype=dtype)

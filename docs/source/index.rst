@@ -47,10 +47,10 @@ Vision Transformer for image classification.
 .. code:: python
 
    >>> import torch.nn as nn
-   >>> import kornia.contrib as K
+   >>> from kornia.models.vit import VisionTransformer
    >>> classifier = nn.Sequential(
-   ...   K.VisionTransformer(image_size=224, patch_size=16),
-   ...   K.ClassificationHead(num_classes=1000),
+   ...   VisionTransformer(image_size=224, patch_size=16),
+   ...   nn.Linear(768, 1000),  # Example: 768 is the default hidden_dim, 1000 is num_classes
    ... )
    >>> logits = classifier(img)    # BxN
    >>> scores = logits.argmax(-1)  # B
@@ -96,7 +96,6 @@ Join the community
    get-started/about
    Tutorials <https://kornia.github.io/tutorials/>
    get-started/multi-framework-support
-   get-started/training
    OpenCV AI Kit <https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia>
    get-started/governance
 
@@ -120,12 +119,8 @@ Join the community
    models
    metrics
    morphology
-   nerf
    onnx
    tracking
-   testing
-   utils
-   x
 
 .. toctree::
    :caption: KORNIA APPLICATIONS
@@ -135,13 +130,10 @@ Join the community
    applications/visual_prompting
    applications/face_detection
    applications/image_augmentations
-   applications/image_classification
    applications/image_matching
    applications/image_stitching
    applications/image_registration
    applications/image_denoising
-   applications/semantic_segmentation
-   applications/object_detection
 
 .. toctree::
    :caption: KORNIA MODELS

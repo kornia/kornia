@@ -20,8 +20,6 @@ from typing import Iterator, Type, TypeVar, Union
 
 import torch
 
-from kornia.core import Tensor
-
 __all__ = ["BorderType", "DType", "Resample", "SamplePadding", "TKEnum", "pi"]
 
 pi = torch.tensor(3.14159265358979323846)
@@ -32,6 +30,8 @@ TKEnum = Union[str, int, T]
 
 
 class _KORNIA_EnumMeta(EnumMeta):
+    """Custom metaclass for enums to support string and integer comparisons."""
+
     def __iter__(self) -> Iterator[Enum]:  # type: ignore[override]
         return super().__iter__()
 
@@ -64,6 +64,8 @@ def _get(cls: Type[T], value: TKEnum[T]) -> T:
 
 
 class Resample(Enum, metaclass=_KORNIA_EnumMeta):
+    """Represent the resampling mode for image interpolation."""
+
     NEAREST = 0
     BILINEAR = 1
     BICUBIC = 2
@@ -74,6 +76,8 @@ class Resample(Enum, metaclass=_KORNIA_EnumMeta):
 
 
 class BorderType(Enum, metaclass=_KORNIA_EnumMeta):
+    """Represent the border padding mode for image operations."""
+
     CONSTANT = 0
     REFLECT = 1
     REPLICATE = 2
@@ -85,9 +89,12 @@ class BorderType(Enum, metaclass=_KORNIA_EnumMeta):
 
 
 class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):
+    """Represent the padding mode used during spatial sampling."""
+
     ZEROS = 0
     BORDER = 1
     REFLECTION = 2
+    FILL = 3
 
     @classmethod
     def get(cls, value: TKEnum["SamplePadding"]) -> "SamplePadding":
@@ -95,17 +102,19 @@ class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):
 
 
 class DType(Enum, metaclass=_KORNIA_EnumMeta):
+    """Represent the internal data types used across the library."""
+
     INT64 = 0
     FLOAT16 = 1
     FLOAT32 = 2
     FLOAT64 = 3
 
     @classmethod
-    def get(cls, value: Union[str, int, torch.dtype, Tensor, "DType"]) -> "DType":
+    def get(cls, value: Union[str, int, torch.dtype, torch.Tensor, "DType"]) -> "DType":
         if isinstance(value, torch.dtype):
             return cls[str(value).upper()[6:]]
 
-        elif isinstance(value, Tensor):
+        elif isinstance(value, torch.Tensor):
             return cls(int(value.item()))
 
         elif isinstance(value, str):

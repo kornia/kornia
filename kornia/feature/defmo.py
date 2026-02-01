@@ -20,8 +20,6 @@ from typing import Callable, Dict, List, Optional, Type
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor, concatenate, stack
-
 urls: Dict[str, str] = {}
 urls["defmo_encoder"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt"
 urls["defmo_rendering"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt"
@@ -50,7 +48,23 @@ def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, d
     )
 
 
-class Bottleneck(Module):
+class Bottleneck(nn.Module):
+    """Implement the Bottleneck building block for ResNet.
+
+    This block follows the ResNet V1.5 design where the stride is applied to the 3x3 convolution
+    instead of the first 1x1 convolution to better preserve spatial information.
+
+    Args:
+        inplanes: The number of input channels.
+        planes: The number of intermediate channels.
+        stride: The stride size for the convolution. Default: 1.
+        downsample: An optional module to downsample the input identity. Default: None.
+        groups: The number of blocked connections from input channels to output channels. Default: 1.
+        base_width: The width of each group. Default: 64.
+        dilation: The spacing between kernel elements. Default: 1.
+        norm_layer: The normalization layer to use. Default: None.
+    """
+
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
     # while original implementation places the stride at the first 1x1 convolution(self.conv1)
     # according to "Deep residual learning for image recognition"https://arxiv.org/abs/1512.03385.
@@ -64,11 +78,11 @@ class Bottleneck(Module):
         inplanes: int,
         planes: int,
         stride: int = 1,
-        downsample: Optional[Module] = None,
+        downsample: Optional[nn.Module] = None,
         groups: int = 1,
         base_width: int = 64,
         dilation: int = 1,
-        norm_layer: Optional[Callable[..., Module]] = None,
+        norm_layer: Optional[Callable[..., nn.Module]] = None,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -85,7 +99,7 @@ class Bottleneck(Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         identity = x
 
         out = self.conv1(x)
@@ -108,7 +122,23 @@ class Bottleneck(Module):
         return out
 
 
-class ResNet(Module):
+class ResNet(nn.Module):
+    """Implement the ResNet architecture for feature extraction.
+
+    This implementation provides a flexible backbone used as the encoder in the DeFMO framework.
+
+    Args:
+        block: The block type to use, typically :class:`Bottleneck`.
+        layers: A list containing the number of blocks in each of the four stages.
+        num_classes: The number of output classes. Default: 1000.
+        zero_init_residual: Whether to initialize the last batch norm in each residual branch to zero. Default: False.
+        groups: The number of groups for the convolution. Default: 1.
+        width_per_group: The width of each group. Default: 64.
+        replace_stride_with_dilation: A list of booleans indicating
+            if stride should be replaced by dilation in each stage. Default: None.
+        norm_layer: The normalization layer to use. Default: None.
+    """
+
     def __init__(
         self,
         block: Type[Bottleneck],
@@ -118,7 +148,7 @@ class ResNet(Module):
         groups: int = 1,
         width_per_group: int = 64,
         replace_stride_with_dilation: Optional[List[bool]] = None,
-        norm_layer: Optional[Callable[..., Module]] = None,
+        norm_layer: Optional[Callable[..., nn.Module]] = None,
     ) -> None:
         super().__init__()
         if norm_layer is None:
@@ -156,11 +186,11 @@ class ResNet(Module):
                 nn.init.constant_(m.bias, 0)
 
         # Zero-initialize the last BN in each residual branch,
-        # so that the residual branch starts with zeros, and each residual block behaves like an identity.
+        # so that the residual branch starts with torch.zeros, and each residual block behaves like an identity.
         # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
         if zero_init_residual:
             for m in self.modules():
-                if isinstance(m, Bottleneck) and isinstance(m.bn3.weight, Tensor):
+                if isinstance(m, Bottleneck) and isinstance(m.bn3.weight, torch.Tensor):
                     nn.init.constant_(m.bn3.weight, 0)
 
     def _make_layer(
@@ -198,7 +228,7 @@ class ResNet(Module):
 
         return nn.Sequential(*layers)
 
-    def _forward_impl(self, x: Tensor) -> Tensor:
+    def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
         # See note [TorchScript super()]
         x = self.conv1(x)
         x = self.bn1(x)
@@ -216,11 +246,22 @@ class ResNet(Module):
 
         return x
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self._forward_impl(x)
 
 
-class EncoderDeFMO(Module):
+class EncoderDeFMO(nn.Module):
+    """Implement the Encoder module for the Deblurring Fast Moving Objects (DeFMO) model.
+
+    The encoder extracts latent features from the concatenation of the blurred input image and
+    the estimated background. It uses a modified ResNet-50 backbone to accept 6-channel inputs.
+
+
+    Shape:
+        - Input: (B, 6, H, W) where 6 represents the concatenated blurred image and background.
+        - Output: A list of feature maps from different stages of the ResNet backbone.
+    """
+
     def __init__(self) -> None:
         super().__init__()
         model = ResNet(Bottleneck, [3, 4, 6, 3])  # ResNet50
@@ -229,11 +270,21 @@ class EncoderDeFMO(Module):
         modelc1[0] = nn.Conv2d(6, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
         self.net = nn.Sequential(modelc1, modelc2)
 
-    def forward(self, input_data: Tensor) -> Tensor:
+    def forward(self, input_data: torch.Tensor) -> torch.Tensor:
         return self.net(input_data)
 
 
-class RenderingDeFMO(Module):
+class RenderingDeFMO(nn.Module):
+    """Implement the Rendering module for the Deblurring Fast Moving Objects (DeFMO) model.
+
+    This module acts as a decoder that transforms the latent features from the encoder into
+    a temporal sequence of sharp sub-frames, recovering the object's appearance and motion.
+
+    Shape:
+        - Input: Latent feature representation from the :class:`EncoderDeFMO`.
+        - Output: (B, T, 4, H, W) where T is the number of sub-frames and 4 represents RGBA channels.
+    """
+
     def __init__(self) -> None:
         super().__init__()
         self.tsr_steps: int = 24
@@ -256,7 +307,7 @@ class RenderingDeFMO(Module):
         self.net = model
         self.times = torch.linspace(0, 1, self.tsr_steps)
 
-    def forward(self, latent: Tensor) -> Tensor:
+    def forward(self, latent: torch.Tensor) -> torch.Tensor:
         times = self.times.to(latent.device).unsqueeze(0).repeat(latent.shape[0], 1)
         renders = []
         for ki in range(times.shape[1]):
@@ -267,16 +318,16 @@ class RenderingDeFMO(Module):
                 .unsqueeze(-1)
                 .repeat(1, 1, latent.shape[2], latent.shape[3])
             )
-            latenti = concatenate((t_tensor, latent), 1)
+            latenti = torch.cat((t_tensor, latent), 1)
             result = self.net(latenti)
             renders.append(result)
-        renders_stacked = stack(renders, 1).contiguous()
+        renders_stacked = torch.stack(renders, 1).contiguous()
         renders_stacked[:, :, :4] = torch.sigmoid(renders_stacked[:, :, :4])
         return renders_stacked
 
 
-class DeFMO(Module):
-    """Module that disentangle a fast-moving object from the background and performs deblurring.
+class DeFMO(nn.Module):
+    """nn.Module that disentangle a fast-moving object from the background and performs deblurring.
 
     This is based on the original code from paper "DeFMO: Deblurring and Shape Recovery
         of Fast Moving Objects". See :cite:`DeFMO2021` for more details.
@@ -315,7 +366,7 @@ class DeFMO(Module):
             self.rendering.load_state_dict(pretrained_dict_ren, strict=True)
         self.eval()
 
-    def forward(self, input_data: Tensor) -> Tensor:
+    def forward(self, input_data: torch.Tensor) -> torch.Tensor:
         latent = self.encoder(input_data)
         x_out = self.rendering(latent)
         return x_out

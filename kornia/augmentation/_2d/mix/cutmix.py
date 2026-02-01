@@ -17,23 +17,24 @@
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, DType
-from kornia.core import Tensor, stack, zeros
 from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 
 
 class RandomCutMixV2(MixAugmentationBaseV2):
-    r"""Apply CutMix augmentation to a batch of tensor images.
+    r"""Apply CutMix augmentation to a batch of torch.Tensor images.
 
     .. image:: _static/img/RandomCutMixV2.png
 
     Implementation for `CutMix: Regularization Strategy to Train Strong Classifiers with
     Localizable Features` :cite:`yun2019cutmix`.
 
-    The function returns (inputs, labels), in which the inputs is the tensor that contains the mixup images
-    while the labels is a :math:`(\text{num_mixes}, B, 3)` tensor that contains (label_permuted_batch, lambda)
+    The function returns (inputs, labels), in which the inputs is the torch.Tensor that contains the mixup images
+    while the labels is a :math:`(\text{num_mixes}, B, 3)` torch.Tensor that contains (label_permuted_batch, lambda)
     for each cutmix.
 
     The implementation referred to the following repository: `https://github.com/clovaai/CutMix-PyTorch
@@ -62,7 +63,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         - Raw labels, shape of :math:`(B)`.
 
     Returns:
-        Tuple[Tensor, Tensor]:
+        Tuple[torch.Tensor, torch.Tensor]:
         - Adjusted image, shape of :math:`(B, C, H, W)`.
         - Raw labels, permuted labels and lambdas for each mix, shape of :math:`(B, num_mix, 3)`.
 
@@ -74,7 +75,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         >>> input = torch.rand(2, 1, 3, 3)
         >>> input[0] = torch.ones((1, 3, 3))
         >>> label = torch.tensor([0, 1])
-        >>> cutmix = RandomCutMixV2(data_keys=["input", "class"])
+        >>> cutmix = RandomCutMixV2(data_keys=["input", "class"], use_correct_lambda=True)
         >>> cutmix(input, label)
         [tensor([[[[0.8879, 0.4510, 1.0000],
                   [0.1498, 0.4015, 1.0000],
@@ -83,16 +84,16 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         <BLANKLINE>
                 [[[1.0000, 1.0000, 0.7995],
                   [1.0000, 1.0000, 0.0542],
-                  [0.4594, 0.1756, 0.9492]]]]), tensor([[[0.0000, 1.0000, 0.4444],
-                 [1.0000, 0.0000, 0.4444]]])]
+                  [0.4594, 0.1756, 0.9492]]]]), tensor([[[0.0000, 1.0000, 0.5556],
+                 [1.0000, 0.0000, 0.5556]]])]
 
     """
 
     def __init__(
         self,
         num_mix: int = 1,
-        cut_size: Optional[Union[Tensor, Tuple[float, float]]] = None,
-        beta: Optional[Union[Tensor, float]] = None,
+        cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+        beta: Optional[Union[torch.Tensor, float]] = None,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -112,7 +113,9 @@ class RandomCutMixV2(MixAugmentationBaseV2):
                 stacklevel=2,
             )
 
-    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_transform_class(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
         height, width = params["image_shape"]
 
         out_labels = []
@@ -124,7 +127,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
             lam = 1 - lam_val if self.use_correct_lambda else lam_val
 
             out_labels.append(
-                stack(
+                torch.stack(
                     [
                         input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
                         labels_permute.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
@@ -134,16 +137,16 @@ class RandomCutMixV2(MixAugmentationBaseV2):
                 )
             )
 
-        return stack(out_labels, 0)
+        return torch.stack(out_labels, 0)
 
     def apply_non_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         out_labels = []
-        lam = zeros((len(input)), device=input.device, dtype=DType.to_torch(int(params["dtype"].item())))
+        lam = torch.zeros((len(input)), device=input.device, dtype=DType.to_torch(int(params["dtype"].item())))
         for _ in range(self._param_generator.num_mix):
             out_labels.append(
-                stack(
+                torch.stack(
                     [
                         input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
                         input.to(device=input.device, dtype=DType.to_torch(int(params["dtype"].item()))),
@@ -153,11 +156,11 @@ class RandomCutMixV2(MixAugmentationBaseV2):
                 )
             )
 
-        return stack(out_labels, 0)
+        return torch.stack(out_labels, 0)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
-    ) -> Tensor:
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
+    ) -> torch.Tensor:
         height, width = input.size(2), input.size(3)
 
         out_inputs = input.clone()
