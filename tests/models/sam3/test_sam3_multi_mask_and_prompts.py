@@ -406,7 +406,7 @@ class TestSam3ModelSmoke:
 
 
 __all__ = [
-    "TestPromptEncoderPhase3",
     "TestMaskDecoderPhase3",
+    "TestPromptEncoderPhase3",
     "TestSam3ModelSmoke",
 ]
