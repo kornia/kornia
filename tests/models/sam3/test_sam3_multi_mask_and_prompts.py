@@ -26,8 +26,8 @@ from kornia.models.sam3.architecture.mask_decoder import MaskDecoder
 from kornia.models.sam3.architecture.prompt_encoder import PromptEncoder
 
 
-class TestPromptEncoderPhase3:
-    """Test PromptEncoder Phase 3 features: box and mask encoding."""
+class TestPromptEncoderMultiMask:
+    """Test PromptEncoder multi-mask features: box and mask encoding."""
 
     def test_box_prompt_encoding(self) -> None:
         """Test box prompt encoding produces corner embeddings."""
@@ -129,8 +129,8 @@ class TestPromptEncoderPhase3:
         assert sparse_emb.shape == (batch_size, expected_sparse_size, embed_dim), f"Got {sparse_emb.shape}"
 
 
-class TestMaskDecoderPhase3:
-    """Test MaskDecoder Phase 3 features: multi-mask generation."""
+class TestMaskDecoderMultiMask:
+    """Test MaskDecoder multi-mask generation features."""
 
     def test_multimask_output_true(self) -> None:
         """Test mask decoder generates multiple masks when multimask_output=True."""
@@ -406,7 +406,7 @@ class TestSam3ModelSmoke:
 
 
 __all__ = [
-    "TestMaskDecoderPhase3",
-    "TestPromptEncoderPhase3",
+    "TestMaskDecoderMultiMask",
+    "TestPromptEncoderMultiMask",
     "TestSam3ModelSmoke",
 ]
