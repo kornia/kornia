@@ -106,4 +106,34 @@ class ImageLayout:
     channels_order: ChannelsOrder
 
 
+def KORNIA_CHECK_IMAGE_LAYOUT(
+    x: torch.Tensor,
+    layout: ImageLayout,
+    msg: str | None = None,
+    raises: bool = True,
+) -> bool:
+    """Check tensor shape matches the expected ImageLayout.
+
+    Args:
+        x: tensor to validate.
+        layout: expected image layout.
+        msg: custom error message.
+        raises: if True, raise ShapeError on mismatch.
+
+    Returns:
+        True if shape matches, False otherwise (when raises=False).
+
+    """
+    from kornia.core.check import KORNIA_CHECK_SHAPE
+
+    if layout.channels_order == ChannelsOrder.CHANNELS_FIRST:
+        shape = [str(layout.channels), str(layout.image_size.height), str(layout.image_size.width)]
+    elif layout.channels_order == ChannelsOrder.CHANNELS_LAST:
+        shape = [str(layout.image_size.height), str(layout.image_size.width), str(layout.channels)]
+    else:
+        raise NotImplementedError(f"Layout {layout.channels_order} not implemented.")
+
+    return KORNIA_CHECK_SHAPE(x, shape, msg, raises)
+
+
 # TODO: define CompressedImage

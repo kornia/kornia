@@ -24,8 +24,15 @@ import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
 import kornia.color
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
+from kornia.core.check import KORNIA_CHECK
+from kornia.image.base import (
+    ChannelsOrder,
+    ColorSpace,
+    ImageLayout,
+    ImageSize,
+    KORNIA_CHECK_IMAGE_LAYOUT,
+    PixelFormat,
+)
 from kornia.image.image_print import image_to_string
 from kornia.io.io import ImageLoadType, load_image, write_image
 
@@ -84,15 +91,7 @@ class Image:
             layout: a dataclass containing the image layout information.
 
         """
-        # TODO: move this to a function KORNIA_CHECK_IMAGE_LAYOUT
-        if layout.channels_order == ChannelsOrder.CHANNELS_FIRST:
-            shape = [str(layout.channels), str(layout.image_size.height), str(layout.image_size.width)]
-        elif layout.channels_order == ChannelsOrder.CHANNELS_LAST:
-            shape = [str(layout.image_size.height), str(layout.image_size.width), str(layout.channels)]
-        else:
-            raise NotImplementedError(f"Layout {layout.channels_order} not implemented.")
-
-        KORNIA_CHECK_SHAPE(data, shape)
+        KORNIA_CHECK_IMAGE_LAYOUT(data, layout)
         KORNIA_CHECK(data.element_size() == pixel_format.bit_depth // 8, "Invalid bit depth.")
 
         self._data = data

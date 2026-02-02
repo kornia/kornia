@@ -22,7 +22,8 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_le
-from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
+from kornia.core.exceptions import ShapeError
+from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, KORNIA_CHECK_IMAGE_LAYOUT, PixelFormat
 from kornia.image.image import Image
 
 from testing.base import BaseTester
@@ -203,3 +204,16 @@ def make_image(data: torch.Tensor, cs: ColorSpace, order: ChannelsOrder) -> Imag
     pf = PixelFormat(color_space=cs, bit_depth=data.element_size() * 8)
     layout = ImageLayout(image_size=ImageSize(H, W), channels=C, channels_order=order)
     return Image(data.clone(), pf, layout)
+
+
+class TestCheckImageLayout(BaseTester):
+    def test_invalid_shape_raises(self, device):
+        data = torch.rand(3, 4, 5, device=device)
+        layout = ImageLayout(ImageSize(10, 10), 3, ChannelsOrder.CHANNELS_FIRST)
+        with pytest.raises(ShapeError):
+            KORNIA_CHECK_IMAGE_LAYOUT(data, layout)
+
+    def test_invalid_shape_no_raise(self, device):
+        data = torch.rand(3, 4, 5, device=device)
+        layout = ImageLayout(ImageSize(10, 10), 3, ChannelsOrder.CHANNELS_FIRST)
+        assert not KORNIA_CHECK_IMAGE_LAYOUT(data, layout, raises=False)
