@@ -1016,7 +1016,7 @@ requires-dist = [
     { name = "sphinxcontrib-gtagjs", marker = "extra == 'docs'" },
     { name = "sphinxcontrib-youtube", marker = "extra == 'docs'" },
     { name = "torch", specifier = ">=2.0.0" },
-    { name = "transformers", marker = "extra == 'dev'", specifier = "<4.57" },
+    { name = "transformers", marker = "extra == 'dev'", specifier = "<4.58" },
 ]
 provides-extras = ["dev", "docs"]
 

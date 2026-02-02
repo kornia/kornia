@@ -76,7 +76,9 @@ class TestPromptEncoderPoints:
         sparse_emb, dense_emb = encoder(boxes=boxes)
 
         # Check output shapes
-        assert sparse_emb.shape == (batch_size, num_boxes, embed_dim), f"Got {sparse_emb.shape}"
+        # Phase 3: boxes produce 2 embeddings per box (top-left + bottom-right corners)
+        expected_num_sparse = num_boxes * 2
+        assert sparse_emb.shape == (batch_size, expected_num_sparse, embed_dim), f"Got {sparse_emb.shape}"
         assert dense_emb.shape[0] == batch_size, f"Got {dense_emb.shape}"
 
     def test_prompt_encoder_with_masks(self) -> None:
@@ -116,7 +118,8 @@ class TestPromptEncoderPoints:
         sparse_emb, dense_emb = encoder(points=(coords, labels), boxes=boxes)
 
         # Check output shapes
-        expected_num_sparse = num_points + num_boxes
+        # Phase 3: boxes produce 2 embeddings per box (top-left + bottom-right corners)
+        expected_num_sparse = num_points + num_boxes * 2
         assert sparse_emb.shape == (batch_size, expected_num_sparse, embed_dim), f"Got {sparse_emb.shape}"
         assert dense_emb.shape[0] == batch_size, f"Got {dense_emb.shape}"
 
