@@ -175,10 +175,10 @@ class TestMaskDecoderSmoke:
         )
 
         # Check output shapes
-        # Phase 2 generates single mask regardless of multimask_output flag
+        # Phase 2 generates single mask when multimask_output=False
         assert masks.ndim == 4, f"Masks should be 4D, got {masks.ndim}D"
         assert masks.shape[0] == batch_size, f"Got {masks.shape}"
-        assert iou_pred.shape == (batch_size, decoder.num_multimask_outputs), f"Got {iou_pred.shape}"
+        assert iou_pred.shape == (batch_size, 1), f"Got {iou_pred.shape}"
 
     def test_mask_decoder_no_sparse_prompts(self) -> None:
         """Test mask decoder with no sparse prompts."""

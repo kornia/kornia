@@ -29,7 +29,6 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK
 
 from .common import Attention, MLPBlock
-from .prompt_encoder import PositionalEncoding
 
 
 class CrossAttentionTransformer(nn.Module):
@@ -123,9 +122,6 @@ class MaskDecoder(nn.Module):
         self.mask_tokens = nn.ParameterList(
             [nn.Parameter(torch.randn(1, 1, embed_dim)) for _ in range(num_multimask_outputs)]
         )
-
-        # Decoder positional encoding (Phase 3: added for spatial context)
-        self.decoder_pe = PositionalEncoding(embed_dim)
 
         # Hypernetwork MLPs for mask generation (Phase 3: added for multi-mask support)
         self.mask_mlps = nn.ModuleList([MLPBlock(embed_dim, embed_dim * 4) for _ in range(num_multimask_outputs)])
@@ -223,17 +219,22 @@ class MaskDecoder(nn.Module):
             prompt_modulation = self.mask_mlps[mask_idx](iou_input)  # (B, D)
 
             # Combine mask token with modulated prompt for multi-mask generation
-            _ = mask_token + prompt_modulation.unsqueeze(1)  # (B, 1, D)
+            combined = mask_token + prompt_modulation.unsqueeze(1)  # (B, 1, D)
 
-            # Apply mask prediction head
+            # Derive per-mask modulation scale from combined representation
+            mask_scale = combined.mean(dim=-1, keepdim=True).unsqueeze(-1)  # (B, 1, 1, 1)
+
+            # Apply mask prediction head and modulate logits with mask-specific scale
             mask_logits = self.mask_prediction_heads[mask_idx](upscaled_features)  # (B, 1, H_out, W_out)
+            mask_logits = mask_logits * mask_scale
             masks_list.append(mask_logits)
 
         # Concatenate all masks
-        masks = torch.cat(masks_list, dim=1)  # (B, num_masks, H_out, W_out)
+        masks = torch.cat(masks_list, dim=1)  # (B, num_masks_to_generate, H_out, W_out)
 
-        # Predict IoU scores
-        iou_pred = self.iou_prediction_head(iou_input)  # (B, num_masks)
+        # Predict IoU scores matching the number of generated masks
+        iou_pred_all = self.iou_prediction_head(iou_input)  # (B, num_multimask_outputs)
+        iou_pred = iou_pred_all[:, :num_masks_to_generate]  # (B, num_masks_to_generate)
 
         return masks, iou_pred
 

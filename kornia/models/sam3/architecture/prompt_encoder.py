@@ -121,8 +121,8 @@ class PromptEncoder(nn.Module):
         # Point embedding
         self.pe_layer = PositionalEncoding(embed_dim)
         self.point_embeddings = nn.ModuleList(
-            [nn.Embedding(1, embed_dim) for _ in range(4)]
-        )  # (foreground, background, box top-left, box bottom-right)
+            [nn.Embedding(1, embed_dim) for _ in range(2)]
+        )  # (background, foreground)
 
         # Box embedding (corner-type embeddings for top-left and bottom-right)
         self.corner_embeddings = nn.ModuleList(

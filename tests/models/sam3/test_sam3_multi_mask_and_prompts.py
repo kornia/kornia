@@ -182,7 +182,7 @@ class TestMaskDecoderMultiMask:
         # Phase 3: generate single mask when multimask_output=False
         assert masks.shape[1] == 1, f"Expected 1 mask, got {masks.shape[1]}"
         assert masks.ndim == 4
-        assert iou_pred.shape == (batch_size, num_multimask_outputs)
+        assert iou_pred.shape == (batch_size, 1)
 
     def test_different_num_multimask_outputs(self) -> None:
         """Test mask decoder with different num_multimask_outputs values."""
