@@ -40,7 +40,7 @@ class TestPromptEncoderPhase3:
         # Create dummy box prompts [x_min, y_min, x_max, y_max]
         boxes = torch.rand(batch_size, num_boxes, 4)
 
-        sparse_emb, dense_emb = encoder(boxes=boxes)
+        sparse_emb, _ = encoder(boxes=boxes)
 
         # Phase 3: boxes produce 2 embeddings per box (top-left + bottom-right corners)
         expected_sparse_size = num_boxes * 2
@@ -64,7 +64,7 @@ class TestPromptEncoderPhase3:
         # Create dummy mask prompts
         masks = torch.rand(batch_size, 1, img_size, img_size)
 
-        sparse_emb, dense_emb = encoder(masks=masks)
+        sparse_emb, _ = encoder(masks=masks)
 
         # Phase 3: mask encoding produces 1 sparse embedding per batch
         assert sparse_emb.shape == (batch_size, 1, embed_dim), f"Got {sparse_emb.shape}"
@@ -119,7 +119,7 @@ class TestPromptEncoderPhase3:
         boxes = torch.rand(batch_size, num_boxes, 4)
         masks = torch.rand(batch_size, 1, img_size, img_size)
 
-        sparse_emb, dense_emb = encoder(points=(coords, labels), boxes=boxes, masks=masks)
+        sparse_emb, _ = encoder(points=(coords, labels), boxes=boxes, masks=masks)
 
         # Phase 3: all prompt types combined
         # points: num_points
@@ -288,7 +288,7 @@ class TestSam3ModelSmoke:
         images = torch.randn(batch_size, 3, img_size, img_size)
         boxes = torch.tensor([[[0.1, 0.1, 0.5, 0.5]]])
 
-        masks, iou_pred = model(images, boxes=boxes)
+        masks, _ = model(images, boxes=boxes)
 
         assert masks.ndim == 4
         assert masks.shape[0] == batch_size
@@ -304,7 +304,7 @@ class TestSam3ModelSmoke:
         images = torch.randn(batch_size, 3, img_size, img_size)
         mask_prompts = torch.rand(batch_size, 1, img_size, img_size) > 0.5
 
-        masks, iou_pred = model(images, masks=mask_prompts.float())
+        masks, _ = model(images, masks=mask_prompts.float())
 
         assert masks.ndim == 4
         assert masks.shape[0] == batch_size
@@ -348,7 +348,7 @@ class TestSam3ModelSmoke:
         labels = torch.tensor([[1]])
         boxes = torch.tensor([[[0.2, 0.2, 0.8, 0.8]]])
 
-        masks, iou_pred = model(images, points=(coords, labels), boxes=boxes)
+        masks, _ = model(images, points=(coords, labels), boxes=boxes)
 
         assert masks.ndim == 4
         assert masks.shape[0] == batch_size
@@ -363,7 +363,7 @@ class TestSam3ModelSmoke:
 
         images = torch.randn(batch_size, 3, img_size, img_size)
 
-        masks, iou_pred = model(images)
+        masks, _ = model(images)
 
         assert masks.ndim == 4
         assert masks.shape[0] == batch_size
