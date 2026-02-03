@@ -77,12 +77,8 @@ class TestRgbToYuv(BaseTester):
         assert Y[1] > Y[2]  # green > blue (general property)
 
         # Neutral colors should have near-zero chroma
-        self.assert_close(
-            yuv[3, 1:], torch.zeros_like(yuv[3, 1:]), atol=1e-4, rtol=0.0
-        )
-        self.assert_close(
-            yuv[4], torch.zeros_like(yuv[4]), atol=1e-4, rtol=0.0
-        )
+        self.assert_close(yuv[3, 1:], torch.zeros_like(yuv[3, 1:]), atol=1e-4, rtol=0.0)
+        self.assert_close(yuv[4], torch.zeros_like(yuv[4]), atol=1e-4, rtol=0.0)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
@@ -101,9 +97,7 @@ class TestRgbToYuv(BaseTester):
 
     @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
-        img = torch.rand(
-            2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True
-        )
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(
             kornia.color.rgb_to_yuv,
             (img,),
