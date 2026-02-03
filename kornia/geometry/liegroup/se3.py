@@ -27,7 +27,6 @@ from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.geometry.liegroup.so3 import So3
-from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
@@ -210,7 +209,9 @@ class Se3(nn.Module):
         c_small = 1.0 / 12.0 + (theta**2) / 720.0
         c = torch.where(small_theta, c_small, c_large)
 
-        V_inv = torch.eye(3, device=omega.device, dtype=omega.dtype) - 0.5 * omega_hat + c[..., None, None] * omega_hat_sq
+        V_inv = (
+            torch.eye(3, device=omega.device, dtype=omega.dtype) - 0.5 * omega_hat + c[..., None, None] * omega_hat_sq
+        )
         t = (V_inv @ t[..., None]).squeeze(-1)
         return torch.cat((t, omega), -1)
 

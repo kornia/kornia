@@ -24,10 +24,9 @@ from typing import Optional, Union, overload
 import torch
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_TYPE
-from kornia.core.exceptions import ShapeError, TypeCheckError
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
+from kornia.core.exceptions import TypeCheckError
 from kornia.geometry.liegroup._utils import (
-    check_so2_matrix,
     check_so2_matrix_shape,
     check_so2_t_shape,
     check_so2_theta_shape,

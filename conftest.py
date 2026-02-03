@@ -174,7 +174,6 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_slow)
 
 
-
 def pytest_addoption(parser):
     """Add options with environment variable fallbacks.
 

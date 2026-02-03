@@ -25,7 +25,6 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
-from kornia.core.exceptions import ShapeError
 from kornia.geometry.conversions import vector_to_skew_symmetric_matrix
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion

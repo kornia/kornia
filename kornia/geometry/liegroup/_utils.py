@@ -19,8 +19,6 @@ import torch
 from kornia.core.exceptions import ShapeError, TypeCheckError
 
 
-
-
 # TODO: Temporary shape check functions until KORNIA_CHECK_SHAPE is ready
 def check_so2_z_shape(z: torch.Tensor) -> None:
     z_shape = z.shape
