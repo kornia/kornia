@@ -66,11 +66,7 @@ class TestSo2(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
     def test_exception(self, batch_size, device, dtype, cdtype):
-<<<<<<< HEAD
-        with pytest.raises(TypeCheckError):
-=======
         with pytest.raises(ShapeError):
->>>>>>> b5ed915a ([pre-commit.ci] auto fixes from pre-commit.com hooks)
             z = torch.randn(batch_size, 2, dtype=cdtype, device=device)
             assert So2(z)
         with pytest.raises(TypeCheckError):
@@ -133,13 +129,9 @@ class TestSo2(BaseTester):
         state_dict = module.state_dict()
         assert any("_z" in k for k in state_dict.keys())
 
-<<<<<<< HEAD
-        new_module = MyModule(So2.identity(1, device=device, dtype=dtype)).to(device, dtype)
-=======
         new_s = So2.identity(1, device=device, dtype=dtype)
         new_s._z = torch.nn.Parameter(new_s._z)
         new_module = MyModule(new_s).to(device, dtype)
->>>>>>> b5ed915a ([pre-commit.ci] auto fixes from pre-commit.com hooks)
         new_module.load_state_dict(state_dict)
         self.assert_close(new_module.s.matrix(), s.matrix())
 
