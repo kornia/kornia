@@ -207,7 +207,6 @@ class TestSe2(BaseTester):
     def test_exp(self, device, dtype, batch_size):
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         theta = torch.zeros(batch_size if batch_size is not None else (), device=device, dtype=dtype)
-        z = torch.zeros((batch_size, 2) if batch_size is not None else (2,), device=device, dtype=dtype)
         s = Se2.exp(torch.cat((t, theta[..., None]), -1))
         self.assert_close(s.r.z, So2.exp(theta).z)
         self.assert_close(s.t, t)

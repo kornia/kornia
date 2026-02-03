@@ -116,14 +116,10 @@ class TestSe3(BaseTester):
         state_dict = module.state_dict()
         assert any("_rotation._q._data" in k for k in state_dict.keys())
 
-<<<<<<< HEAD
-        new_module = MyModule(Se3.identity(1, device=device, dtype=dtype)).to(device, dtype)
-=======
         new_s = Se3.identity(1, device=device, dtype=dtype)
         new_s._rotation._q._data = torch.nn.Parameter(new_s._rotation._q._data)
         new_s._translation = torch.nn.Parameter(new_s._translation.data)
         new_module = MyModule(new_s).to(device, dtype)
->>>>>>> b5ed915a ([pre-commit.ci] auto fixes from pre-commit.com hooks)
         new_module.load_state_dict(state_dict)
         self.assert_close(new_module.s.matrix(), s.matrix())
 
