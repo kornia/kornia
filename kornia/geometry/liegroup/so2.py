@@ -24,14 +24,8 @@ from typing import Optional, Union, overload
 import torch
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
-from kornia.geometry.liegroup._utils import (
-    check_so2_matrix,
-    check_so2_matrix_shape,
-    check_so2_t_shape,
-    check_so2_theta_shape,
-    check_so2_z_shape,
-)
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+
 from kornia.geometry.vector import Vector2
 
 
@@ -71,8 +65,13 @@ class So2(nn.Module):
         """
         super().__init__()
         KORNIA_CHECK_IS_TENSOR(z)
-        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        check_so2_z_shape(z)
+        # check_so2_z_shape(z)
+        is_scalar = len(z.shape) == 0
+        is_flat = KORNIA_CHECK_SHAPE(z, ["B"], raises=False)
+        is_column = KORNIA_CHECK_SHAPE(z, ["B", "1"], raises=False)
+
+        if not (is_scalar or is_flat or is_column):
+            raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {z.shape}")
         self._z = nn.Parameter(z)
 
     def __repr__(self) -> str:
@@ -101,9 +100,12 @@ class So2(nn.Module):
         if isinstance(right, So2):
             return So2(z * right.z)
         elif isinstance(right, (Vector2, torch.Tensor)):
-            # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
             if isinstance(right, torch.Tensor):
-                check_so2_t_shape(right)
+                #check_so2_t_shape
+                is_batch_shape = KORNIA_CHECK_SHAPE(right, ["B", "2"], raises=False)
+                is_single_shape = KORNIA_CHECK_SHAPE(right, ["2"], raises=False)
+                if not (is_batch_shape or is_single_shape):
+                    raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {right.shape}")
             x = right.data[..., 0]
             y = right.data[..., 1]
             real = z.real
@@ -136,8 +138,12 @@ class So2(nn.Module):
             tensor([4.6329e-05+1.j], requires_grad=True)
 
         """
-        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        check_so2_theta_shape(theta)
+        #check_so2_theta_shape
+        is_scalar = len(theta.shape) == 0
+        is_flat = KORNIA_CHECK_SHAPE(theta, ["B"], raises=False)
+        is_column = KORNIA_CHECK_SHAPE(theta, ["B", "1"], raises=False)
+        if not (is_scalar or is_flat or is_column):
+            raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {theta.shape}")
         return So2(torch.complex(torch.cos(theta), torch.sin(theta)))
 
     def log(self) -> torch.Tensor:
@@ -166,8 +172,12 @@ class So2(nn.Module):
                     [1.5707, 0.0000]])
 
         """
-        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        check_so2_theta_shape(theta)
+        #check_so2_theta_shape
+        is_scalar = len(theta.shape) == 0
+        is_flat = KORNIA_CHECK_SHAPE(theta, ["B"], raises=False)
+        is_column = KORNIA_CHECK_SHAPE(theta, ["B", "1"], raises=False)
+        if not (is_scalar or is_flat or is_column):
+            raise ValueError(f"Invalid input size, we expect [], [B], or [B, 1]. Got: {theta.shape}")
         z = torch.zeros_like(theta)
         row0 = torch.stack((z, theta), -1)
         row1 = torch.stack((theta, z), -1)
@@ -187,8 +197,11 @@ class So2(nn.Module):
             tensor([1., 1., 1.])
 
         """
-        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        check_so2_matrix_shape(omega)
+        #check_so2_matrix_shape
+        is_batch = KORNIA_CHECK_SHAPE(omega, ["B", "2", "2"], raises=False)
+        is_single = KORNIA_CHECK_SHAPE(omega, ["2", "2"], raises=False)
+        if not (is_batch or is_single):
+            raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {omega.shape}")
         return omega[..., 0, 1]
 
     def matrix(self) -> torch.Tensor:
@@ -221,9 +234,19 @@ class So2(nn.Module):
             tensor(1.+0.j, requires_grad=True)
 
         """
-        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        check_so2_matrix_shape(matrix)
-        check_so2_matrix(matrix)
+        #check_so2_matrix_shape
+        is_batch = KORNIA_CHECK_SHAPE(matrix, ["B", "2", "2"], raises=False)
+        is_single = KORNIA_CHECK_SHAPE(matrix, ["2", "2"], raises=False)
+        if not (is_batch or is_single):
+            raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {matrix.shape}")
+        #check_so2_matrix
+        KORNIA_CHECK_IS_TENSOR(matrix)
+        if len(matrix.shape) < 2 or matrix.shape[-2:] != (2, 2):
+            raise ValueError(f"Input size must be (*, 2, 2). Got {matrix.shape}")
+        mask_diag = torch.allclose(matrix[..., 0, 0], matrix[..., 1, 1])
+        mask_off_diag = torch.allclose(matrix[..., 0, 1], -matrix[..., 1, 0])
+        if not (mask_diag and mask_off_diag):
+            raise ValueError("Invalid SO2 rotation matrix: constraints m00==m11 and m01==-m10 not met.")
         z = torch.complex(matrix[..., 0, 0], matrix[..., 1, 0])
         return cls(z)
 
