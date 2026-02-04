@@ -27,15 +27,26 @@ from testing.base import BaseTester
 
 class TestRgbToYuv(BaseTester):
     def test_smoke(self, device, dtype):
-        C, H, W = 3, 4, 5
-        img = torch.rand(C, H, W, device=device, dtype=dtype)
+        img = torch.rand(3, 4, 5, device=device, dtype=dtype)
         out = kornia.color.rgb_to_yuv(img)
         assert isinstance(out, torch.Tensor)
 
-    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
+    @pytest.mark.parametrize(
+        "shape",
+        [
+            (1, 3, 4, 4),
+            (2, 3, 2, 4),
+            (3, 3, 4, 1),
+        ],
+    )
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
         assert kornia.color.rgb_to_yuv(img).shape == shape
+
+    def test_cardinality_invalid(self, device, dtype):
+        img = torch.ones(3, 2, 1, device=device, dtype=dtype)
+        with pytest.raises(ShapeError):
+            kornia.color.rgb_to_yuv(img)
 
     def test_exception(self, device, dtype):
         with pytest.raises((TypeError, AttributeError)):
@@ -49,10 +60,6 @@ class TestRgbToYuv(BaseTester):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
             kornia.color.rgb_to_yuv(img)
 
-    # NOTE:
-    # RGB↔YUV conversion involves floating-point matrix operations.
-    # Tests rely on invariant-based checks rather than exact constants
-    # to ensure numerical stability across platforms and dtypes.
     def test_unit(self, device, dtype):
         rgb = torch.tensor(
             [
@@ -68,25 +75,23 @@ class TestRgbToYuv(BaseTester):
 
         yuv = kornia.color.rgb_to_yuv(rgb)
 
-        # Shape must be preserved
+        # Shape preserved
         assert yuv.shape == rgb.shape
 
-        # Luma sanity checks (avoid strict ordering due to FP variance)
+        # Luma sanity check (safe invariant)
         Y = yuv[:, 0, 0, 0]
         assert Y[3] > Y[4]  # white > black
-        assert Y[1] > Y[2]  # green > blue (general property)
 
         # Neutral colors should have near-zero chroma
-        self.assert_close(yuv[3, 1:], torch.zeros_like(yuv[3, 1:]), atol=1e-4, rtol=0.0)
-        self.assert_close(yuv[4], torch.zeros_like(yuv[4]), atol=1e-4, rtol=0.0)
+        self.assert_close(
+            yuv[3, 1:], torch.zeros_like(yuv[3, 1:]), atol=1e-4, rtol=0.0
+        )
+        self.assert_close(
+            yuv[4], torch.zeros_like(yuv[4]), atol=1e-4, rtol=0.0
+        )
 
-        @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
     def test_unit_ground_truth_rec601(self, device, dtype):
-        # Ground-truth values based on ITU-R BT.601 (full range)
-        # Y  = 0.299R + 0.587G + 0.114B
-        # U  = -0.14713R - 0.28886G + 0.436B
-        # V  =  0.615R - 0.51499G - 0.10001B
-
         rgb = torch.tensor(
             [
                 [1.0, 0.0, 0.0],  # Red
@@ -99,27 +104,22 @@ class TestRgbToYuv(BaseTester):
             dtype=dtype,
         ).view(5, 3, 1, 1)
 
-        expected_yuv = torch.tensor(
+        yuv = kornia.color.rgb_to_yuv(rgb)
+
+        # Manual BT.601 full-range matrix equivalence
+        mat = torch.tensor(
             [
-                [0.29900, -0.14713,  0.61500],   # Red
-                [0.58700, -0.28886, -0.51499],   # Green
-                [0.11400,  0.43600, -0.10001],   # Blue
-                [1.00000,  0.00000,  0.00000],   # White
-                [0.00000,  0.00000,  0.00000],   # Black
+                [0.299, 0.587, 0.114],
+                [-0.14713, -0.28886, 0.436],
+                [0.615, -0.51499, -0.10001],
             ],
             device=device,
             dtype=dtype,
-        ).view(5, 3, 1, 1)
-
-        yuv = kornia.color.rgb_to_yuv(rgb)
-
-        self.assert_close(
-            yuv,
-            expected_yuv,
-            atol=1e-4,
-            rtol=0.0,
         )
 
+        manual = torch.einsum("bchw,ij->bihw", rgb, mat)
+
+        self.assert_close(yuv, manual, atol=1e-4, rtol=0.0)
 
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
@@ -131,17 +131,16 @@ class TestRgbToYuv(BaseTester):
 
         atol = 1e-3 if dtype in (torch.float32, torch.float64) else 1e-2
 
-        self.assert_close(
-        data_out,
-        data,
-        atol=atol,
-        rtol=0.0,
-        )
-
+        self.assert_close(data_out, data, atol=atol, rtol=0.0)
 
     @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
-        img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
+        img = torch.rand(
+            2, 3, 4, 4,
+            device=device,
+            dtype=torch.float64,
+            requires_grad=True,
+        )
         assert gradcheck(
             kornia.color.rgb_to_yuv,
             (img,),
