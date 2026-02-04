@@ -47,7 +47,8 @@ class SmallSRNet(nn.Module):
         if pretrained:
             self.load_from_file(url)
         else:
-            weight_init(self)
+            with torch.no_grad():
+                weight_init(self)
 
     def load_from_file(self, path_file: str) -> None:
         # use torch.hub to load pretrained model
