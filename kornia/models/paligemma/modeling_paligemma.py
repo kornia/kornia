@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -166,7 +166,7 @@ class GemmaAttention(nn.Module):
         key_states = torch.repeat_interleave(key_states, dim=1, repeats=self.num_key_value_groups)
         value_states = torch.repeat_interleave(value_states, dim=1, repeats=self.num_key_value_groups)
 
-        # FIX: Ensure causal masking if mask is not provided (Critical for correctness)
+        # Ensure causal masking if mask is not provided
         is_causal = True if attention_mask is None else False
 
         attn_output = F.scaled_dot_product_attention(
@@ -265,17 +265,7 @@ class PaliGemma(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """Forward pass of the model.
-
-        Args:
-            input_ids: Text tokens (batch, input_seq_len)
-            pixel_values: Images (batch, channels, height, width)
-            attention_mask: Optional attention mask.
-            position_ids: Optional position IDs.
-
-        Returns:
-            logits: Prediction scores (batch, total_seq_len, vocab_size).
-        """
+        """Forward pass of the model."""
         vision_outputs = self.vision_tower(pixel_values)
 
         if isinstance(vision_outputs, (tuple, list)):
@@ -287,17 +277,18 @@ class PaliGemma(nn.Module):
             image_features = image_features.unsqueeze(1)
 
         image_features = self.multi_modal_projector(image_features)
+        
+        # 🔥 FIX 1: Scale Image Features by sqrt(hidden_size)
+        image_features = image_features * (self.config.hidden_size**0.5)
 
         inputs_embeds = self.embed_tokens(input_ids)
-
-        # 🔥 FIX: Scale embeddings by sqrt(hidden_size)
-        # This is a critical Gemma/PaliGemma specific scaling factor
+        
+        # 🔥 FIX 2: Scale Text Embeddings by sqrt(hidden_size)
         inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
 
         # --- Handle Placeholder Token Duplication ---
         num_images = image_features.shape[1]
-
-        # If input has more tokens than images, we assume placeholders are at the start
+        
         if inputs_embeds.shape[1] > num_images:
             inputs_embeds = inputs_embeds[:, num_images:]
         # --------------------------------------------------
@@ -362,10 +353,9 @@ class PaliGemma(nn.Module):
         hf_sd = hf_model.state_dict()
 
         # ---------------------------------------------------------------------
-        # 🔥 MANUAL MAPPING FOR CRITICAL KEYS (Projector & Embeddings)
+        # 🔥 MANUAL MAPPING FOR CRITICAL KEYS
         # ---------------------------------------------------------------------
         manual_map = {
-            # Kornia Key : HF Key
             "multi_modal_projector.weight": "model.multi_modal_projector.linear.weight",
             "multi_modal_projector.bias": "model.multi_modal_projector.linear.bias",
             "vision_tower.embeddings.position_embedding": "model.vision_tower.vision_model.embeddings.position_embedding.weight",
@@ -390,18 +380,15 @@ class PaliGemma(nn.Module):
         hf_text_keys = {k: v for k, v in hf_sd.items() if "vision_tower" not in k}
 
         for k_key, k_val in kornia_sd.items():
-            # Skip if already loaded via manual map
             if k_key in manual_map:
                 continue
-
-            # Skip Head Probe (Not needed for PaliGemma)
+            
             if "vision_tower.head" in k_key:
                 continue
 
             found = False
             search_pool = hf_vision_keys if "vision_tower" in k_key else hf_text_keys
-
-            # Layer ID Check to prevent mixing layers
+            
             layer_id = None
             parts = k_key.split(".")
             if "layers" in parts:
@@ -415,22 +402,20 @@ class PaliGemma(nn.Module):
                 if k_val.shape == hf_val.shape:
                     if layer_id and layer_id not in hf_key:
                         continue
-
-                    # Suffix Match (Last 2 parts)
+                    
                     suffix = ".".join(k_key.split(".")[-2:])
                     if hf_key.endswith(suffix):
                         with torch.no_grad():
-                            k_val.copy_(hf_val)
+                            kornia_sd[k_key].copy_(hf_val)
                         found = True
                         break
-
+            
             if not found:
                 missing_keys.append(k_key)
 
         if len(missing_keys) > 0:
             print(f"⚠️ Warning: {len(missing_keys)} keys were not loaded.")
-            for k in missing_keys[:5]:
-                print(f" - {k}")
+            for k in missing_keys[:5]: print(f" - {k}")
         else:
             print("✅ All necessary keys loaded successfully!")
 
