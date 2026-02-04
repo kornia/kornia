@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -289,14 +289,14 @@ class PaliGemma(nn.Module):
         image_features = self.multi_modal_projector(image_features)
 
         inputs_embeds = self.embed_tokens(input_ids)
-        
+
         # 🔥 FIX: Scale embeddings by sqrt(hidden_size)
         # This is a critical Gemma/PaliGemma specific scaling factor
         inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
 
         # --- Handle Placeholder Token Duplication ---
         num_images = image_features.shape[1]
-        
+
         # If input has more tokens than images, we assume placeholders are at the start
         if inputs_embeds.shape[1] > num_images:
             inputs_embeds = inputs_embeds[:, num_images:]
@@ -393,14 +393,14 @@ class PaliGemma(nn.Module):
             # Skip if already loaded via manual map
             if k_key in manual_map:
                 continue
-            
+
             # Skip Head Probe (Not needed for PaliGemma)
             if "vision_tower.head" in k_key:
                 continue
 
             found = False
             search_pool = hf_vision_keys if "vision_tower" in k_key else hf_text_keys
-            
+
             # Layer ID Check to prevent mixing layers
             layer_id = None
             parts = k_key.split(".")
@@ -415,21 +415,22 @@ class PaliGemma(nn.Module):
                 if k_val.shape == hf_val.shape:
                     if layer_id and layer_id not in hf_key:
                         continue
-                    
+
                     # Suffix Match (Last 2 parts)
                     suffix = ".".join(k_key.split(".")[-2:])
                     if hf_key.endswith(suffix):
                         with torch.no_grad():
-                            kornia_sd[k_key].copy_(hf_val)
+                            k_val.copy_(hf_val)
                         found = True
                         break
-            
+
             if not found:
                 missing_keys.append(k_key)
 
         if len(missing_keys) > 0:
             print(f"⚠️ Warning: {len(missing_keys)} keys were not loaded.")
-            for k in missing_keys[:5]: print(f" - {k}")
+            for k in missing_keys[:5]:
+                print(f" - {k}")
         else:
             print("✅ All necessary keys loaded successfully!")
 
