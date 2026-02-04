@@ -102,7 +102,8 @@ class GemmaMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        self.act_fn = nn.GELU()
+        # CHANGE: Gemma uses 'tanh' approximation for GELU
+        self.act_fn = nn.GELU(approximate="tanh")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
@@ -165,13 +166,16 @@ class GemmaAttention(nn.Module):
         key_states = torch.repeat_interleave(key_states, dim=1, repeats=self.num_key_value_groups)
         value_states = torch.repeat_interleave(value_states, dim=1, repeats=self.num_key_value_groups)
 
+        # CHANGE: Ensure causal masking if no mask is provided (Fixes the "Cheating" issue)
+        is_causal = True if attention_mask is None else False
+
         attn_output = F.scaled_dot_product_attention(
             query_states,
             key_states,
             value_states,
             attn_mask=attention_mask,
             dropout_p=0.0,
-            is_causal=False,
+            is_causal=is_causal,
         )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
@@ -286,8 +290,10 @@ class PaliGemma(nn.Module):
 
         inputs_embeds = self.embed_tokens(input_ids)
 
+        # --- FIX: Handle Placeholder Token Duplication ---
         num_images = image_features.shape[1]
-
+        
+        # If input has more tokens than images, we assume placeholders are at the start
         if inputs_embeds.shape[1] > num_images:
             inputs_embeds = inputs_embeds[:, num_images:]
         # --------------------------------------------------
@@ -315,23 +321,7 @@ class PaliGemma(nn.Module):
 
     @classmethod
     def from_pretrained(cls, model_id: str = "google/paligemma-3b-pt-224", token: Optional[str] = None) -> PaliGemma:
-        """Load pretrained weights from Hugging Face.
-
-        .. note::
-            This method requires the ``transformers`` library to be installed.
-            The model is loaded in ``float32`` precision by default.
-
-        Args:
-            model_id: The Hugging Face model ID.
-            token: Optional authentication token for gated models.
-
-        Returns:
-            A PaliGemma model loaded with official weights.
-
-        Raises:
-            ImportError: If ``transformers`` is not installed.
-            ValueError: If the model configuration is invalid.
-        """
+        """Load pretrained weights from Hugging Face."""
         try:
             from transformers import PaliGemmaForConditionalGeneration
         except ImportError as e:
