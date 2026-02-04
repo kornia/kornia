@@ -289,14 +289,14 @@ class PaliGemma(nn.Module):
         image_features = self.multi_modal_projector(image_features)
 
         inputs_embeds = self.embed_tokens(input_ids)
-        
-        # NOTE: Removed manual scaling here because it might be double-scaling 
+
+        # NOTE: Removed manual scaling here because it might be double-scaling
         # if the weights are already adapted. If match fails slightly, put it back.
         inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
 
         # --- Handle Placeholder Token Duplication ---
         num_images = image_features.shape[1]
-        
+
         # If input has more tokens than images, we assume placeholders are at the start
         if inputs_embeds.shape[1] > num_images:
             inputs_embeds = inputs_embeds[:, num_images:]
@@ -369,7 +369,7 @@ class PaliGemma(nn.Module):
 
         # --- SMART WEIGHT MAPPING (Brute Force Matcher) ---
         # Instead of guessing prefixes, we match based on the logical end of the keys.
-        
+
         # 1. Separate HF keys to avoid ambiguity (Norm weights exist in both vision and text)
         hf_vision_keys = {k: v for k, v in hf_sd.items() if "vision_tower" in k}
         hf_text_keys = {k: v for k, v in hf_sd.items() if "vision_tower" not in k}
@@ -378,42 +378,44 @@ class PaliGemma(nn.Module):
 
         for k_key, k_val in kornia_sd.items():
             found = False
-            
+
             # Decide which pool to search
             search_pool = hf_vision_keys if "vision_tower" in k_key else hf_text_keys
-            
+
             # Clean Kornia Key for matching (remove 'model.', 'vision_tower.', etc to match suffix)
             # Example: 'vision_tower.encoder.layers.0' -> 'layers.0'
-            key_suffix = k_key.split(".")[-1] # Too simple
-            
+            key_suffix = k_key.split(".")[-1]  # Too simple
+
             # Robust Matching Loop
             for hf_key, hf_val in search_pool.items():
                 # We check if the Kornia key (minus 'vision_tower' or 'language_model') matches the end of HF key
-                # Example Match: 
+                # Example Match:
                 # Kornia: vision_tower.encoder.layers.0.linear1.weight
                 # HF: model.vision_tower.vision_model.encoder.layers.0.linear1.weight
-                
+
                 # Check for Shape Match FIRST (Strongest indicator)
                 if k_val.shape == hf_val.shape:
                     # Check for name similarity
                     # Extract last 2 parts of key (e.g., 'down_proj.weight')
-                    suffix_parts = k_key.split(".")[-2:] 
+                    suffix_parts = k_key.split(".")[-2:]
                     suffix = ".".join(suffix_parts)
-                    
+
                     if hf_key.endswith(suffix):
                         # Use copy_ to update in-place
                         with torch.no_grad():
-                            kornia_sd[k_key].copy_(hf_val)
+                            k_val.copy_(hf_val)
                         found = True
                         break
-            
+
             if not found:
                 missing_keys.append(k_key)
 
         if len(missing_keys) > 0:
             print(f"⚠️ Warning: {len(missing_keys)} keys were not loaded:")
-            for k in missing_keys[:5]: print(f" - {k}")
-            if len(missing_keys) > 5: print(" ... and more.")
+            for k in missing_keys[:5]:
+                print(f" - {k}")
+            if len(missing_keys) > 5:
+                print(" ... and more.")
         else:
             print("✅ All keys loaded successfully!")
 
