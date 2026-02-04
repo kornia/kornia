@@ -26,7 +26,6 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
-
 from kornia.geometry.liegroup.so2 import So2
 from kornia.geometry.vector import Vector2
 
@@ -34,7 +33,7 @@ from kornia.geometry.vector import Vector2
 def _check_se2_r_t_shape(r: So2, t: torch.Tensor) -> None:
     z_shape = r.z.shape
     if ((len(z_shape) == 1) and (len(t.shape) == 2)) or ((len(z_shape) == 0) and len(t.shape) == 1):
-        #check_se2_t_shape
+        # check_se2_t_shape
         is_batch_shape = KORNIA_CHECK_SHAPE(t, ["B", "2"], raises=False)
         is_single_shape = KORNIA_CHECK_SHAPE(t, ["2"], raises=False)
         if not (is_batch_shape or is_single_shape):
@@ -179,7 +178,7 @@ class Se2(nn.Module):
             tensor([[0.3818, 1.3012]], requires_grad=True)
 
         """
-        #check_v_shape
+        # check_v_shape
         is_batch = KORNIA_CHECK_SHAPE(v, ["B", "3"], raises=False)
         is_single = KORNIA_CHECK_SHAPE(v, ["3"], raises=False)
         if not (is_batch or is_single):
@@ -233,7 +232,7 @@ class Se2(nn.Module):
                     [1.5707, 0.0000]])
 
         """
-        #check_v_shape
+        # check_v_shape
         is_batch = KORNIA_CHECK_SHAPE(v, ["B", "3"], raises=False)
         is_single = KORNIA_CHECK_SHAPE(v, ["3"], raises=False)
         if not (is_batch or is_single):
@@ -260,7 +259,7 @@ class Se2(nn.Module):
             tensor([1., 1., 1.])
 
         """
-        #check_se2_omega_shape
+        # check_se2_omega_shape
         is_batch = KORNIA_CHECK_SHAPE(omega, ["B", "3", "3"], raises=False)
         is_single = KORNIA_CHECK_SHAPE(omega, ["3", "3"], raises=False)
         if not (is_batch or is_single):
