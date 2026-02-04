@@ -23,7 +23,7 @@ import torch
 
 from kornia.core._compat import torch_version_le
 from kornia.core.exceptions import ShapeError
-from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, KORNIA_CHECK_IMAGE_LAYOUT, PixelFormat
+from kornia.image.base import KORNIA_CHECK_IMAGE_LAYOUT, ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
 from kornia.image.image import Image
 
 from testing.base import BaseTester

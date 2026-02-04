@@ -26,11 +26,11 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 import kornia.color
 from kornia.core.check import KORNIA_CHECK
 from kornia.image.base import (
+    KORNIA_CHECK_IMAGE_LAYOUT,
     ChannelsOrder,
     ColorSpace,
     ImageLayout,
     ImageSize,
-    KORNIA_CHECK_IMAGE_LAYOUT,
     PixelFormat,
 )
 from kornia.image.image_print import image_to_string
