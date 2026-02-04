@@ -296,7 +296,7 @@ class PaliGemma(nn.Module):
 
         # --- Handle Placeholder Token Duplication ---
         num_images = image_features.shape[1]
-        
+
         # If input has more tokens than images, we assume placeholders are at the start
         if inputs_embeds.shape[1] > num_images:
             inputs_embeds = inputs_embeds[:, num_images:]
