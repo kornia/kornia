@@ -286,10 +286,8 @@ class PaliGemma(nn.Module):
 
         inputs_embeds = self.embed_tokens(input_ids)
 
-       
         num_images = image_features.shape[1]
-        
-        
+
         if inputs_embeds.shape[1] > num_images:
             inputs_embeds = inputs_embeds[:, num_images:]
         # --------------------------------------------------
