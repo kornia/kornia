@@ -131,7 +131,9 @@ def KORNIA_CHECK_IMAGE_LAYOUT(
     elif layout.channels_order == ChannelsOrder.CHANNELS_LAST:
         shape = [str(layout.image_size.height), str(layout.image_size.width), str(layout.channels)]
     else:
-        raise NotImplementedError(f"Layout {layout.channels_order} not implemented.")
+        if raises:
+            raise NotImplementedError(f"Layout {layout.channels_order} not implemented.")
+        return False
 
     return KORNIA_CHECK_SHAPE(x, shape, msg, raises)
 

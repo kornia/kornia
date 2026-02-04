@@ -207,6 +207,16 @@ def make_image(data: torch.Tensor, cs: ColorSpace, order: ChannelsOrder) -> Imag
 
 
 class TestCheckImageLayout(BaseTester):
+    def test_channels_first_valid(self, device):
+        data = torch.rand(3, 4, 5, device=device)
+        layout = ImageLayout(ImageSize(4, 5), 3, ChannelsOrder.CHANNELS_FIRST)
+        assert KORNIA_CHECK_IMAGE_LAYOUT(data, layout)
+
+    def test_channels_last_valid(self, device):
+        data = torch.rand(4, 5, 3, device=device)
+        layout = ImageLayout(ImageSize(4, 5), 3, ChannelsOrder.CHANNELS_LAST)
+        assert KORNIA_CHECK_IMAGE_LAYOUT(data, layout)
+
     def test_invalid_shape_raises(self, device):
         data = torch.rand(3, 4, 5, device=device)
         layout = ImageLayout(ImageSize(10, 10), 3, ChannelsOrder.CHANNELS_FIRST)
