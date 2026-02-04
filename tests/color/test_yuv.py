@@ -80,6 +80,47 @@ class TestRgbToYuv(BaseTester):
         self.assert_close(yuv[3, 1:], torch.zeros_like(yuv[3, 1:]), atol=1e-4, rtol=0.0)
         self.assert_close(yuv[4], torch.zeros_like(yuv[4]), atol=1e-4, rtol=0.0)
 
+        @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+    def test_unit_ground_truth_rec601(self, device, dtype):
+        # Ground-truth values based on ITU-R BT.601 (full range)
+        # Y  = 0.299R + 0.587G + 0.114B
+        # U  = -0.14713R - 0.28886G + 0.436B
+        # V  =  0.615R - 0.51499G - 0.10001B
+
+        rgb = torch.tensor(
+            [
+                [1.0, 0.0, 0.0],  # Red
+                [0.0, 1.0, 0.0],  # Green
+                [0.0, 0.0, 1.0],  # Blue
+                [1.0, 1.0, 1.0],  # White
+                [0.0, 0.0, 0.0],  # Black
+            ],
+            device=device,
+            dtype=dtype,
+        ).view(5, 3, 1, 1)
+
+        expected_yuv = torch.tensor(
+            [
+                [0.29900, -0.14713,  0.61500],   # Red
+                [0.58700, -0.28886, -0.51499],   # Green
+                [0.11400,  0.43600, -0.10001],   # Blue
+                [1.00000,  0.00000,  0.00000],   # White
+                [0.00000,  0.00000,  0.00000],   # Black
+            ],
+            device=device,
+            dtype=dtype,
+        ).view(5, 3, 1, 1)
+
+        yuv = kornia.color.rgb_to_yuv(rgb)
+
+        self.assert_close(
+            yuv,
+            expected_yuv,
+            atol=1e-4,
+            rtol=0.0,
+        )
+
+
     def test_forth_and_back(self, device, dtype):
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
 
@@ -88,12 +129,15 @@ class TestRgbToYuv(BaseTester):
 
         data_out = rgb(yuv(data))
 
+        atol = 1e-3 if dtype in (torch.float32, torch.float64) else 1e-2
+
         self.assert_close(
-            data_out,
-            data,
-            atol=1e-3,
-            rtol=1e-3,
+        data_out,
+        data,
+        atol=atol,
+        rtol=0.0,
         )
+
 
     @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
