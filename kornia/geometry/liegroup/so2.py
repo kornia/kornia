@@ -25,7 +25,6 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-
 from kornia.geometry.vector import Vector2
 
 
@@ -101,7 +100,7 @@ class So2(nn.Module):
             return So2(z * right.z)
         elif isinstance(right, (Vector2, torch.Tensor)):
             if isinstance(right, torch.Tensor):
-                #check_so2_t_shape
+                # check_so2_t_shape
                 is_batch_shape = KORNIA_CHECK_SHAPE(right, ["B", "2"], raises=False)
                 is_single_shape = KORNIA_CHECK_SHAPE(right, ["2"], raises=False)
                 if not (is_batch_shape or is_single_shape):
@@ -138,7 +137,7 @@ class So2(nn.Module):
             tensor([4.6329e-05+1.j], requires_grad=True)
 
         """
-        #check_so2_theta_shape
+        # check_so2_theta_shape
         is_scalar = len(theta.shape) == 0
         is_flat = KORNIA_CHECK_SHAPE(theta, ["B"], raises=False)
         is_column = KORNIA_CHECK_SHAPE(theta, ["B", "1"], raises=False)
@@ -172,7 +171,7 @@ class So2(nn.Module):
                     [1.5707, 0.0000]])
 
         """
-        #check_so2_theta_shape
+        # check_so2_theta_shape
         is_scalar = len(theta.shape) == 0
         is_flat = KORNIA_CHECK_SHAPE(theta, ["B"], raises=False)
         is_column = KORNIA_CHECK_SHAPE(theta, ["B", "1"], raises=False)
@@ -197,7 +196,7 @@ class So2(nn.Module):
             tensor([1., 1., 1.])
 
         """
-        #check_so2_matrix_shape
+        # check_so2_matrix_shape
         is_batch = KORNIA_CHECK_SHAPE(omega, ["B", "2", "2"], raises=False)
         is_single = KORNIA_CHECK_SHAPE(omega, ["2", "2"], raises=False)
         if not (is_batch or is_single):
@@ -234,12 +233,12 @@ class So2(nn.Module):
             tensor(1.+0.j, requires_grad=True)
 
         """
-        #check_so2_matrix_shape
+        # check_so2_matrix_shape
         is_batch = KORNIA_CHECK_SHAPE(matrix, ["B", "2", "2"], raises=False)
         is_single = KORNIA_CHECK_SHAPE(matrix, ["2", "2"], raises=False)
         if not (is_batch or is_single):
             raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {matrix.shape}")
-        #check_so2_matrix
+        # check_so2_matrix
         KORNIA_CHECK_IS_TENSOR(matrix)
         if len(matrix.shape) < 2 or matrix.shape[-2:] != (2, 2):
             raise ValueError(f"Input size must be (*, 2, 2). Got {matrix.shape}")
