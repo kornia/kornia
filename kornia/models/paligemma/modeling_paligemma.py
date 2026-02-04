@@ -102,7 +102,7 @@ class GemmaMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        # CHANGE: Gemma uses 'tanh' approximation for GELU
+        # FIX: Gemma uses 'tanh' approximation for GELU
         self.act_fn = nn.GELU(approximate="tanh")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -166,7 +166,7 @@ class GemmaAttention(nn.Module):
         key_states = torch.repeat_interleave(key_states, dim=1, repeats=self.num_key_value_groups)
         value_states = torch.repeat_interleave(value_states, dim=1, repeats=self.num_key_value_groups)
 
-        # CHANGE: Ensure causal masking if no mask is provided (Fixes the "Cheating" issue)
+        # FIX: Ensure causal masking (prevent peeking at future tokens)
         is_causal = True if attention_mask is None else False
 
         attn_output = F.scaled_dot_product_attention(
@@ -290,9 +290,13 @@ class PaliGemma(nn.Module):
 
         inputs_embeds = self.embed_tokens(input_ids)
 
-        # --- FIX: Handle Placeholder Token Duplication ---
-        num_images = image_features.shape[1]
+        # 🔥 FIX: Scale embeddings by sqrt(hidden_size)
+        # This is a critical Gemma/PaliGemma specific scaling factor
+        inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
 
+        # --- Handle Placeholder Token Duplication ---
+        num_images = image_features.shape[1]
+        
         # If input has more tokens than images, we assume placeholders are at the start
         if inputs_embeds.shape[1] > num_images:
             inputs_embeds = inputs_embeds[:, num_images:]
