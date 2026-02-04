@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-"""
-CORRECTED PaliGemma Implementation
+"""CORRECTED PaliGemma Implementation
 
 KEY FIXES:
 1. ✅ Image token REPLACEMENT instead of concatenation
@@ -29,7 +28,7 @@ This version should achieve max_diff < 0.1 with HuggingFace
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -235,7 +234,7 @@ class PaliGemma(nn.Module):
     """PaliGemma Model for Vision-Language tasks.
 
     This model combines a SigLip2 Vision Encoder with a Gemma Language Decoder.
-    
+
     🔥 CORRECTED VERSION - Key fixes:
     - Replaces image token embeddings instead of concatenating
     - Proper input handling (expects full input_ids with <image> tokens)
@@ -293,7 +292,7 @@ class PaliGemma(nn.Module):
             logits: Prediction scores (batch, seq_len, vocab_size).
         """
         batch_size, seq_length = input_ids.shape
-        
+
         # === 1. VISION ENCODING ===
         vision_outputs = self.vision_tower(pixel_values)
 
@@ -309,14 +308,14 @@ class PaliGemma(nn.Module):
         # === 2. PROJECT TO TEXT SPACE ===
         image_features = self.multi_modal_projector(image_features)
         # Now: [batch, num_patches, hidden_size] e.g., [batch, 256, 2048]
-        
+
         num_image_patches = image_features.shape[1]
 
         # === 3. GET TEXT EMBEDDINGS WITH SCALING ===
         inputs_embeds = self.embed_tokens(input_ids)
-        
+
         # 🔥 CRITICAL: Gemma scales embeddings by sqrt(hidden_size)
-        inputs_embeds = inputs_embeds * (self.config.hidden_size ** 0.5)
+        inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
 
         # === 4. REPLACE IMAGE TOKEN EMBEDDINGS ===
         # 🔥 KEY FIX: The input_ids contains <image> tokens at the start
@@ -417,14 +416,14 @@ class PaliGemma(nn.Module):
             # Skip if already loaded via manual map
             if k_key in manual_map:
                 continue
-            
+
             # Skip Head Probe (Not needed for PaliGemma)
             if "vision_tower.head" in k_key:
                 continue
 
             found = False
             search_pool = hf_vision_keys if "vision_tower" in k_key else hf_text_keys
-            
+
             # Layer ID Check to prevent mixing layers
             layer_id = None
             parts = k_key.split(".")
@@ -439,21 +438,22 @@ class PaliGemma(nn.Module):
                 if k_val.shape == hf_val.shape:
                     if layer_id and layer_id not in hf_key:
                         continue
-                    
+
                     # Suffix Match (Last 2 parts)
                     suffix = ".".join(k_key.split(".")[-2:])
                     if hf_key.endswith(suffix):
                         with torch.no_grad():
-                            kornia_sd[k_key].copy_(hf_val)
+                            k_val.copy_(hf_val)
                         found = True
                         break
-            
+
             if not found:
                 missing_keys.append(k_key)
 
         if len(missing_keys) > 0:
             print(f"⚠️ Warning: {len(missing_keys)} keys were not loaded.")
-            for k in missing_keys[:5]: print(f" - {k}")
+            for k in missing_keys[:5]:
+                print(f" - {k}")
         else:
             print("✅ All necessary keys loaded successfully!")
 
