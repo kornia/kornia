@@ -102,7 +102,7 @@ class GemmaMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        # Using Tanh approximation for GELU as per Gemma spec
+        # FIX: Gemma uses 'tanh' approximation for GELU
         self.act_fn = nn.GELU(approximate="tanh")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -166,7 +166,7 @@ class GemmaAttention(nn.Module):
         key_states = torch.repeat_interleave(key_states, dim=1, repeats=self.num_key_value_groups)
         value_states = torch.repeat_interleave(value_states, dim=1, repeats=self.num_key_value_groups)
 
-        # Ensure causal masking if mask is not provided (Critical for correctness)
+        # FIX: Ensure causal masking if mask is not provided (Critical for correctness)
         is_causal = True if attention_mask is None else False
 
         attn_output = F.scaled_dot_product_attention(
@@ -289,14 +289,14 @@ class PaliGemma(nn.Module):
         image_features = self.multi_modal_projector(image_features)
 
         inputs_embeds = self.embed_tokens(input_ids)
-
-        # NOTE: Removed manual scaling here because it might be double-scaling
-        # if the weights are already adapted. If match fails slightly, put it back.
+        
+        # 🔥 FIX: Scale embeddings by sqrt(hidden_size)
+        # This is a critical Gemma/PaliGemma specific scaling factor
         inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
 
         # --- Handle Placeholder Token Duplication ---
         num_images = image_features.shape[1]
-
+        
         # If input has more tokens than images, we assume placeholders are at the start
         if inputs_embeds.shape[1] > num_images:
             inputs_embeds = inputs_embeds[:, num_images:]
@@ -339,21 +339,17 @@ class PaliGemma(nn.Module):
             model_id, device_map="cpu", token=token, torch_dtype=torch.float32
         )
 
-        if not hasattr(hf_model, "config") or not hasattr(hf_model.config, "vision_config"):
-            raise ValueError(f"The model {model_id} does not seem to have a valid PaliGemma configuration.")
-
-        # --- Config Copy ---
         config = PaliGemmaConfig()
         text_conf = hf_model.config.text_config
         vis_conf = hf_model.config.vision_config
 
+        # Copy Configs
         config.vocab_size = text_conf.vocab_size
         config.hidden_size = text_conf.hidden_size
         config.num_hidden_layers = text_conf.num_hidden_layers
         config.num_attention_heads = text_conf.num_attention_heads
         config.intermediate_size = text_conf.intermediate_size
         config.num_key_value_heads = text_conf.num_key_value_heads
-
         config.vision_config.image_size = vis_conf.image_size
         config.vision_config.patch_size = vis_conf.patch_size
         config.vision_config.hidden_size = vis_conf.hidden_size
@@ -365,58 +361,76 @@ class PaliGemma(nn.Module):
         kornia_sd = kornia_model.state_dict()
         hf_sd = hf_model.state_dict()
 
-        missing_keys: List[str] = []
+        # ---------------------------------------------------------------------
+        # 🔥 MANUAL MAPPING FOR CRITICAL KEYS (Projector & Embeddings)
+        # ---------------------------------------------------------------------
+        manual_map = {
+            # Kornia Key : HF Key
+            "multi_modal_projector.weight": "model.multi_modal_projector.linear.weight",
+            "multi_modal_projector.bias": "model.multi_modal_projector.linear.bias",
+            "vision_tower.embeddings.position_embedding": "model.vision_tower.vision_model.embeddings.position_embedding.weight",
+            "vision_tower.embeddings.patch_embedding.weight": "model.vision_tower.vision_model.embeddings.patch_embedding.weight",
+            "vision_tower.embeddings.patch_embedding.bias": "model.vision_tower.vision_model.embeddings.patch_embedding.bias",
+        }
 
-        # --- SMART WEIGHT MAPPING (Brute Force Matcher) ---
-        # Instead of guessing prefixes, we match based on the logical end of the keys.
+        print("⏳ Loading weights with Manual + Smart Mapping...")
+        missing_keys = []
 
-        # 1. Separate HF keys to avoid ambiguity (Norm weights exist in both vision and text)
+        # 1. Apply Manual Map First
+        for k_key, hf_key in manual_map.items():
+            if k_key in kornia_sd and hf_key in hf_sd:
+                with torch.no_grad():
+                    if kornia_sd[k_key].shape == hf_sd[hf_key].shape:
+                        kornia_sd[k_key].copy_(hf_sd[hf_key])
+                    else:
+                        print(f"❌ Shape Mismatch for {k_key}: {kornia_sd[k_key].shape} vs {hf_sd[hf_key].shape}")
+
+        # 2. Apply Smart Mapping for the rest
         hf_vision_keys = {k: v for k, v in hf_sd.items() if "vision_tower" in k}
         hf_text_keys = {k: v for k, v in hf_sd.items() if "vision_tower" not in k}
 
-        print("⏳ Loading weights with Smart Mapping...")
-
         for k_key, k_val in kornia_sd.items():
+            # Skip if already loaded via manual map
+            if k_key in manual_map:
+                continue
+            
+            # Skip Head Probe (Not needed for PaliGemma)
+            if "vision_tower.head" in k_key:
+                continue
+
             found = False
-
-            # Decide which pool to search
             search_pool = hf_vision_keys if "vision_tower" in k_key else hf_text_keys
+            
+            # Layer ID Check to prevent mixing layers
+            layer_id = None
+            parts = k_key.split(".")
+            if "layers" in parts:
+                try:
+                    idx = parts.index("layers") + 1
+                    layer_id = f"layers.{parts[idx]}."
+                except IndexError:
+                    pass
 
-            # Clean Kornia Key for matching (remove 'model.', 'vision_tower.', etc to match suffix)
-            # Example: 'vision_tower.encoder.layers.0' -> 'layers.0'
-            key_suffix = k_key.split(".")[-1]  # Too simple
-
-            # Robust Matching Loop
             for hf_key, hf_val in search_pool.items():
-                # We check if the Kornia key (minus 'vision_tower' or 'language_model') matches the end of HF key
-                # Example Match:
-                # Kornia: vision_tower.encoder.layers.0.linear1.weight
-                # HF: model.vision_tower.vision_model.encoder.layers.0.linear1.weight
-
-                # Check for Shape Match FIRST (Strongest indicator)
                 if k_val.shape == hf_val.shape:
-                    # Check for name similarity
-                    # Extract last 2 parts of key (e.g., 'down_proj.weight')
-                    suffix_parts = k_key.split(".")[-2:]
-                    suffix = ".".join(suffix_parts)
-
+                    if layer_id and layer_id not in hf_key:
+                        continue
+                    
+                    # Suffix Match (Last 2 parts)
+                    suffix = ".".join(k_key.split(".")[-2:])
                     if hf_key.endswith(suffix):
-                        # Use copy_ to update in-place
                         with torch.no_grad():
-                            k_val.copy_(hf_val)
+                            kornia_sd[k_key].copy_(hf_val)
                         found = True
                         break
-
+            
             if not found:
                 missing_keys.append(k_key)
 
         if len(missing_keys) > 0:
-            print(f"⚠️ Warning: {len(missing_keys)} keys were not loaded:")
-            for k in missing_keys[:5]:
-                print(f" - {k}")
-            if len(missing_keys) > 5:
-                print(" ... and more.")
+            print(f"⚠️ Warning: {len(missing_keys)} keys were not loaded.")
+            for k in missing_keys[:5]: print(f" - {k}")
         else:
-            print("✅ All keys loaded successfully!")
+            print("✅ All necessary keys loaded successfully!")
 
         return kornia_model
