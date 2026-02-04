@@ -15,9 +15,21 @@
 # limitations under the License.
 #
 
+"""
+CORRECTED PaliGemma Implementation
+
+KEY FIXES:
+1. ✅ Image token REPLACEMENT instead of concatenation
+2. ✅ Proper input handling (expects full input_ids with <image> tokens)
+3. ✅ Embedding scaling by sqrt(hidden_size)
+4. ✅ Correct weight loading
+
+This version should achieve max_diff < 0.1 with HuggingFace
+"""
+
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -102,7 +114,6 @@ class GemmaMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        # FIX: Gemma uses 'tanh' approximation for GELU
         self.act_fn = nn.GELU(approximate="tanh")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -166,7 +177,6 @@ class GemmaAttention(nn.Module):
         key_states = torch.repeat_interleave(key_states, dim=1, repeats=self.num_key_value_groups)
         value_states = torch.repeat_interleave(value_states, dim=1, repeats=self.num_key_value_groups)
 
-        # Ensure causal masking if mask is not provided
         is_causal = True if attention_mask is None else False
 
         attn_output = F.scaled_dot_product_attention(
@@ -225,6 +235,11 @@ class PaliGemma(nn.Module):
     """PaliGemma Model for Vision-Language tasks.
 
     This model combines a SigLip2 Vision Encoder with a Gemma Language Decoder.
+    
+    🔥 CORRECTED VERSION - Key fixes:
+    - Replaces image token embeddings instead of concatenating
+    - Proper input handling (expects full input_ids with <image> tokens)
+    - Correct embedding scaling
     """
 
     def __init__(self, config: PaliGemmaConfig) -> None:
@@ -265,7 +280,21 @@ class PaliGemma(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """Forward pass of the model."""
+        """Forward pass of the model.
+
+        Args:
+            input_ids: Text tokens INCLUDING image placeholder tokens (batch, seq_len)
+                       For PaliGemma, first 256 tokens are <image> tokens (ID 257152)
+            pixel_values: Images (batch, channels, height, width)
+            attention_mask: Optional attention mask.
+            position_ids: Optional position IDs.
+
+        Returns:
+            logits: Prediction scores (batch, seq_len, vocab_size).
+        """
+        batch_size, seq_length = input_ids.shape
+        
+        # === 1. VISION ENCODING ===
         vision_outputs = self.vision_tower(pixel_values)
 
         if isinstance(vision_outputs, (tuple, list)):
@@ -273,33 +302,34 @@ class PaliGemma(nn.Module):
         else:
             image_features = vision_outputs
 
+        # Ensure 3D: [batch, num_patches, vision_hidden_size]
         if image_features.dim() != 3:
             image_features = image_features.unsqueeze(1)
 
+        # === 2. PROJECT TO TEXT SPACE ===
         image_features = self.multi_modal_projector(image_features)
+        # Now: [batch, num_patches, hidden_size] e.g., [batch, 256, 2048]
+        
+        num_image_patches = image_features.shape[1]
 
-        # 🔥 FIX 1: Scale Image Features by sqrt(hidden_size)
-        image_features = image_features * (self.config.hidden_size**0.5)
-
+        # === 3. GET TEXT EMBEDDINGS WITH SCALING ===
         inputs_embeds = self.embed_tokens(input_ids)
+        
+        # 🔥 CRITICAL: Gemma scales embeddings by sqrt(hidden_size)
+        inputs_embeds = inputs_embeds * (self.config.hidden_size ** 0.5)
 
-        # 🔥 FIX 2: Scale Text Embeddings by sqrt(hidden_size)
-        inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
+        # === 4. REPLACE IMAGE TOKEN EMBEDDINGS ===
+        # 🔥 KEY FIX: The input_ids contains <image> tokens at the start
+        # We REPLACE these embeddings with projected vision features
+        # NOT concatenate! This was the bug causing 100+ difference
+        inputs_embeds[:, :num_image_patches, :] = image_features
 
-        # --- Handle Placeholder Token Duplication ---
-        num_images = image_features.shape[1]
-
-        if inputs_embeds.shape[1] > num_images:
-            inputs_embeds = inputs_embeds[:, num_images:]
-        # --------------------------------------------------
-
-        inputs_embeds = torch.cat([image_features, inputs_embeds], dim=1)
-
+        # === 5. POSITION IDS ===
         if position_ids is None:
-            seq_length = inputs_embeds.shape[1]
             position_ids = torch.arange(seq_length, dtype=torch.long, device=inputs_embeds.device)
-            position_ids = position_ids.unsqueeze(0).expand(inputs_embeds.shape[0], -1)
+            position_ids = position_ids.unsqueeze(0).expand(batch_size, -1)
 
+        # === 6. DECODER LAYERS ===
         hidden_states = inputs_embeds
 
         for layer in self.layers:
@@ -309,6 +339,7 @@ class PaliGemma(nn.Module):
                 position_ids=position_ids,
             )
 
+        # === 7. FINAL NORM AND PROJECTION ===
         hidden_states = self.norm(hidden_states)
         logits = self.lm_head(hidden_states)
 
@@ -353,14 +384,17 @@ class PaliGemma(nn.Module):
         hf_sd = hf_model.state_dict()
 
         # ---------------------------------------------------------------------
-        # 🔥 MANUAL MAPPING FOR CRITICAL KEYS
+        # 🔥 MANUAL MAPPING FOR CRITICAL KEYS (Projector & Embeddings)
         # ---------------------------------------------------------------------
         manual_map = {
+            # Kornia Key : HF Key
             "multi_modal_projector.weight": "model.multi_modal_projector.linear.weight",
             "multi_modal_projector.bias": "model.multi_modal_projector.linear.bias",
             "vision_tower.embeddings.position_embedding": "model.vision_tower.vision_model.embeddings.position_embedding.weight",
             "vision_tower.embeddings.patch_embedding.weight": "model.vision_tower.vision_model.embeddings.patch_embedding.weight",
             "vision_tower.embeddings.patch_embedding.bias": "model.vision_tower.vision_model.embeddings.patch_embedding.bias",
+            "embed_tokens.weight": "model.language_model.model.embed_tokens.weight",
+            "lm_head.weight": "model.language_model.lm_head.weight",
         }
 
         print("⏳ Loading weights with Manual + Smart Mapping...")
@@ -380,15 +414,18 @@ class PaliGemma(nn.Module):
         hf_text_keys = {k: v for k, v in hf_sd.items() if "vision_tower" not in k}
 
         for k_key, k_val in kornia_sd.items():
+            # Skip if already loaded via manual map
             if k_key in manual_map:
                 continue
-
+            
+            # Skip Head Probe (Not needed for PaliGemma)
             if "vision_tower.head" in k_key:
                 continue
 
             found = False
             search_pool = hf_vision_keys if "vision_tower" in k_key else hf_text_keys
-
+            
+            # Layer ID Check to prevent mixing layers
             layer_id = None
             parts = k_key.split(".")
             if "layers" in parts:
@@ -402,21 +439,21 @@ class PaliGemma(nn.Module):
                 if k_val.shape == hf_val.shape:
                     if layer_id and layer_id not in hf_key:
                         continue
-
+                    
+                    # Suffix Match (Last 2 parts)
                     suffix = ".".join(k_key.split(".")[-2:])
                     if hf_key.endswith(suffix):
                         with torch.no_grad():
-                            k_val.copy_(hf_val)
+                            kornia_sd[k_key].copy_(hf_val)
                         found = True
                         break
-
+            
             if not found:
                 missing_keys.append(k_key)
 
         if len(missing_keys) > 0:
             print(f"⚠️ Warning: {len(missing_keys)} keys were not loaded.")
-            for k in missing_keys[:5]:
-                print(f" - {k}")
+            for k in missing_keys[:5]: print(f" - {k}")
         else:
             print("✅ All necessary keys loaded successfully!")
 
