@@ -259,7 +259,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # Normalized coefficients: x^4 + A*x^3 + B*x^2 + C*x + D = 0
     a_q = a[mask_quartic]
     inv_a = 1.0 / a_q
-    
+
     A = b[mask_quartic] * inv_a
     B = c[mask_quartic] * inv_a
     C = d[mask_quartic] * inv_a
@@ -279,7 +279,7 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     # Robust Root Selection: Pick y that maximizes R^2
     A_sq = A * A
     R_sq_candidates = 0.25 * A_sq.unsqueeze(-1) - B.unsqueeze(-1) + y_roots
-    
+
     best_idx = torch.argmax(R_sq_candidates, dim=-1, keepdim=True)
     y = torch.gather(y_roots, -1, best_idx).squeeze(-1)
     R_sq = torch.gather(R_sq_candidates, -1, best_idx).squeeze(-1)
@@ -319,7 +319,8 @@ def solve_quartic(coeffs: torch.Tensor) -> torch.Tensor:
     solutions[mask_quartic, 2:4] = roots2
 
     return solutions
-    
+
+
 # Reference
 # https://github.com/danini/graph-cut-ransac/blob/master/src/pygcransac/include/
 # estimators/solver_essential_matrix_five_point_nister.h#L108
