@@ -22,6 +22,8 @@ from enum import Enum
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
+
 
 @dataclass(frozen=True)
 class ImageSize:
@@ -124,8 +126,6 @@ def KORNIA_CHECK_IMAGE_LAYOUT(
         True if shape matches, False otherwise (when raises=False).
 
     """
-    from kornia.core.check import KORNIA_CHECK_SHAPE
-
     if layout.channels_order == ChannelsOrder.CHANNELS_FIRST:
         shape = [str(layout.channels), str(layout.image_size.height), str(layout.image_size.width)]
     elif layout.channels_order == ChannelsOrder.CHANNELS_LAST:
