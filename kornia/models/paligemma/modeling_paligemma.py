@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -277,8 +277,9 @@ class PaliGemma(nn.Module):
             image_features = image_features.unsqueeze(1)
 
         image_features = self.multi_modal_projector(image_features)
-
-        # CORRECT: Scale TEXT ONLY. Do not scale image_features.
+        
+        # 🔥 FINAL FIX: SCALE BOTH TO MATCH MAGNITUDES
+        image_features = image_features * (self.config.hidden_size**0.5)
         inputs_embeds = self.embed_tokens(input_ids)
         inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
 
@@ -290,9 +291,6 @@ class PaliGemma(nn.Module):
 
         inputs_embeds = torch.cat([image_features, inputs_embeds], dim=1)
 
-        # AUTO POSITION LOGIC:
-        # If position_ids is None (which we will ensure in notebook),
-        # this block runs and generates [0, 1, ..., 259] which is CORRECT.
         if position_ids is None:
             seq_length = inputs_embeds.shape[1]
             position_ids = torch.arange(seq_length, dtype=torch.long, device=inputs_embeds.device)
@@ -351,7 +349,7 @@ class PaliGemma(nn.Module):
         hf_sd = hf_model.state_dict()
 
         # ---------------------------------------------------------------------
-        # 🔥 MANUAL MAPPING FOR CRITICAL KEYS
+        # 🔥 MANUAL MAPPING (Keeping this because it works!)
         # ---------------------------------------------------------------------
         manual_map = {
             "multi_modal_projector.weight": "model.multi_modal_projector.linear.weight",
@@ -380,13 +378,13 @@ class PaliGemma(nn.Module):
         for k_key, k_val in kornia_sd.items():
             if k_key in manual_map:
                 continue
-
+            
             if "vision_tower.head" in k_key:
                 continue
 
             found = False
             search_pool = hf_vision_keys if "vision_tower" in k_key else hf_text_keys
-
+            
             layer_id = None
             parts = k_key.split(".")
             if "layers" in parts:
@@ -400,21 +398,20 @@ class PaliGemma(nn.Module):
                 if k_val.shape == hf_val.shape:
                     if layer_id and layer_id not in hf_key:
                         continue
-
+                    
                     suffix = ".".join(k_key.split(".")[-2:])
                     if hf_key.endswith(suffix):
                         with torch.no_grad():
-                            k_val.copy_(hf_val)
+                            kornia_sd[k_key].copy_(hf_val)
                         found = True
                         break
-
+            
             if not found:
                 missing_keys.append(k_key)
 
         if len(missing_keys) > 0:
             print(f"⚠️ Warning: {len(missing_keys)} keys were not loaded.")
-            for k in missing_keys[:5]:
-                print(f" - {k}")
+            for k in missing_keys[:5]: print(f" - {k}")
         else:
             print("✅ All necessary keys loaded successfully!")
 
