@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -231,7 +231,7 @@ class PaliGemma(nn.Module):
 
         if config.vision_config is None:
             raise ValueError("vision_config cannot be None")
-        
+
         # Vision Tower & Norm
         self.vision_tower = SigLip2VisionModel(config.vision_config)
         self.vision_tower_norm = nn.LayerNorm(config.vision_config.hidden_size, eps=1e-6)
@@ -265,7 +265,6 @@ class PaliGemma(nn.Module):
         position_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Forward pass of the model."""
-        
         # 1. Vision Forward
         vision_outputs = self.vision_tower(pixel_values)
         if isinstance(vision_outputs, (tuple, list)):
@@ -275,7 +274,7 @@ class PaliGemma(nn.Module):
 
         if image_features.dim() != 3:
             image_features = image_features.unsqueeze(1)
-        
+
         # Apply Vision Norm (Critical for PaliGemma)
         image_features = self.vision_tower_norm(image_features)
 
@@ -353,7 +352,7 @@ class PaliGemma(nn.Module):
         # 🔥 SMART MAPPING (Auto-Discover Pos Embeddings)
         # ---------------------------------------------------------------------
         print("⏳ Loading weights with Smart Auto-Discovery...")
-        
+
         # 1. Known Fixed Mappings
         manual_map = {
             "vision_tower_norm.weight": "model.vision_tower.vision_model.post_layernorm.weight",
@@ -361,19 +360,19 @@ class PaliGemma(nn.Module):
             "multi_modal_projector.weight": "model.multi_modal_projector.linear.weight",
             "multi_modal_projector.bias": "model.multi_modal_projector.linear.bias",
         }
-        
+
         # 2. Add Auto-Discovered Position Embedding
         # We search Kornia SD for anything that looks like a position embedding
         for key in kornia_sd.keys():
             if "vision_tower" in key and ("pos" in key and "embed" in key):
                 print(f"🔎 Found Position Embedding Key in Kornia: {key}")
                 manual_map[key] = "model.vision_tower.vision_model.embeddings.position_embedding.weight"
-            
+
             # Also catch patch embeddings if naming is weird
             if "vision_tower" in key and "patch_embedding.weight" in key:
-                 manual_map[key] = "model.vision_tower.vision_model.embeddings.patch_embedding.weight"
+                manual_map[key] = "model.vision_tower.vision_model.embeddings.patch_embedding.weight"
             if "vision_tower" in key and "patch_embedding.bias" in key:
-                 manual_map[key] = "model.vision_tower.vision_model.embeddings.patch_embedding.bias"
+                manual_map[key] = "model.vision_tower.vision_model.embeddings.patch_embedding.bias"
 
         # 3. Apply Manual Map
         for k_key, hf_key in manual_map.items():
@@ -390,12 +389,14 @@ class PaliGemma(nn.Module):
         hf_text_keys = {k: v for k, v in hf_sd.items() if "vision_tower" not in k}
 
         for k_key, k_val in kornia_sd.items():
-            if k_key in manual_map: continue
-            if "vision_tower.head" in k_key: continue
+            if k_key in manual_map:
+                continue
+            if "vision_tower.head" in k_key:
+                continue
 
             found = False
             search_pool = hf_vision_keys if "vision_tower" in k_key else hf_text_keys
-            
+
             layer_id = None
             parts = k_key.split(".")
             if "layers" in parts:
@@ -407,13 +408,14 @@ class PaliGemma(nn.Module):
 
             for hf_key, hf_val in search_pool.items():
                 if k_val.shape == hf_val.shape:
-                    if layer_id and layer_id not in hf_key: continue
+                    if layer_id and layer_id not in hf_key:
+                        continue
                     suffix = ".".join(k_key.split(".")[-2:])
                     if hf_key.endswith(suffix):
                         with torch.no_grad():
-                            kornia_sd[k_key].copy_(hf_val)
+                            k_val.copy_(hf_val)
                         found = True
                         break
-            
+
         print("✅ Weights Loaded.")
         return kornia_model
