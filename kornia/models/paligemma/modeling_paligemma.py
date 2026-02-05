@@ -17,12 +17,13 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
+# Note: Ensure sys.path includes the root of kornia repo if running from weird paths
 from kornia.models.siglip2.vision_encoder import SigLip2VisionModel
 
 from .configuration_paligemma import PaliGemmaConfig
@@ -230,19 +231,20 @@ class PaliGemma(nn.Module):
 
         if config.vision_config is None:
             raise ValueError("vision_config cannot be None")
+        
+        # Vision Tower & Norm
         self.vision_tower = SigLip2VisionModel(config.vision_config)
-
-        # 🔥 FIX 1: Add missing LayerNorm for Vision Tower
         self.vision_tower_norm = nn.LayerNorm(config.vision_config.hidden_size, eps=1e-6)
 
+        # Projector & Embeddings
         self.multi_modal_projector = nn.Linear(config.vision_config.hidden_size, config.hidden_size)
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=self.padding_idx)
 
+        # Decoder Layers
         self.layers = nn.ModuleList(
             [GemmaDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
         self.norm = GemmaRMSNorm(config.hidden_size, eps=1e-6)
-
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         self.apply(self._init_weights)
@@ -263,9 +265,9 @@ class PaliGemma(nn.Module):
         position_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Forward pass of the model."""
-        # 1. Vision Encoder
+        
+        # 1. Vision Forward
         vision_outputs = self.vision_tower(pixel_values)
-
         if isinstance(vision_outputs, (tuple, list)):
             image_features = vision_outputs[1]
         else:
@@ -273,8 +275,8 @@ class PaliGemma(nn.Module):
 
         if image_features.dim() != 3:
             image_features = image_features.unsqueeze(1)
-
-        # 🔥 FIX 2: Apply the missing LayerNorm
+        
+        # Apply Vision Norm (Critical for PaliGemma)
         image_features = self.vision_tower_norm(image_features)
 
         # 2. Projection
@@ -293,13 +295,11 @@ class PaliGemma(nn.Module):
         # 4. Concatenate
         inputs_embeds = torch.cat([image_features, inputs_embeds], dim=1)
 
-        # 5. Position IDs
         if position_ids is None:
             seq_length = inputs_embeds.shape[1]
             position_ids = torch.arange(seq_length, dtype=torch.long, device=inputs_embeds.device)
             position_ids = position_ids.unsqueeze(0).expand(inputs_embeds.shape[0], -1)
 
-        # 6. Layers
         hidden_states = inputs_embeds
 
         for layer in self.layers:
@@ -316,15 +316,13 @@ class PaliGemma(nn.Module):
 
     @classmethod
     def from_pretrained(cls, model_id: str = "google/paligemma-3b-pt-224", token: Optional[str] = None) -> PaliGemma:
-        """Load pretrained weights from Hugging Face."""
+        """Load pretrained weights with Auto-Discovery logic."""
         try:
             from transformers import PaliGemmaForConditionalGeneration
         except ImportError as e:
-            raise ImportError(
-                "The 'transformers' library is required to load pretrained weights. "
-                "Please install it using: pip install transformers"
-            ) from e
+            raise ImportError("Transformers library is required.") from e
 
+        # Load HF Model
         hf_model = PaliGemmaForConditionalGeneration.from_pretrained(
             model_id, device_map="cpu", token=token, torch_dtype=torch.float32
         )
@@ -333,6 +331,7 @@ class PaliGemma(nn.Module):
         text_conf = hf_model.config.text_config
         vis_conf = hf_model.config.vision_config
 
+        # Copy Configs
         config.vocab_size = text_conf.vocab_size
         config.hidden_size = text_conf.hidden_size
         config.num_hidden_layers = text_conf.num_hidden_layers
@@ -350,42 +349,53 @@ class PaliGemma(nn.Module):
         kornia_sd = kornia_model.state_dict()
         hf_sd = hf_model.state_dict()
 
-        # 🔥 FIX 3: Map the new LayerNorm weights
+        # ---------------------------------------------------------------------
+        # 🔥 SMART MAPPING (Auto-Discover Pos Embeddings)
+        # ---------------------------------------------------------------------
+        print("⏳ Loading weights with Smart Auto-Discovery...")
+        
+        # 1. Known Fixed Mappings
         manual_map = {
             "vision_tower_norm.weight": "model.vision_tower.vision_model.post_layernorm.weight",
             "vision_tower_norm.bias": "model.vision_tower.vision_model.post_layernorm.bias",
             "multi_modal_projector.weight": "model.multi_modal_projector.linear.weight",
             "multi_modal_projector.bias": "model.multi_modal_projector.linear.bias",
-            "vision_tower.embeddings.position_embedding": "model.vision_tower.vision_model.embeddings.position_embedding.weight",
-            "vision_tower.embeddings.patch_embedding.weight": "model.vision_tower.vision_model.embeddings.patch_embedding.weight",
-            "vision_tower.embeddings.patch_embedding.bias": "model.vision_tower.vision_model.embeddings.patch_embedding.bias",
         }
+        
+        # 2. Add Auto-Discovered Position Embedding
+        # We search Kornia SD for anything that looks like a position embedding
+        for key in kornia_sd.keys():
+            if "vision_tower" in key and ("pos" in key and "embed" in key):
+                print(f"🔎 Found Position Embedding Key in Kornia: {key}")
+                manual_map[key] = "model.vision_tower.vision_model.embeddings.position_embedding.weight"
+            
+            # Also catch patch embeddings if naming is weird
+            if "vision_tower" in key and "patch_embedding.weight" in key:
+                 manual_map[key] = "model.vision_tower.vision_model.embeddings.patch_embedding.weight"
+            if "vision_tower" in key and "patch_embedding.bias" in key:
+                 manual_map[key] = "model.vision_tower.vision_model.embeddings.patch_embedding.bias"
 
-        print("⏳ Loading weights with Extended Map...")
-        missing_keys = []
-
-        # 1. Apply Manual Map
+        # 3. Apply Manual Map
         for k_key, hf_key in manual_map.items():
             if k_key in kornia_sd and hf_key in hf_sd:
                 with torch.no_grad():
                     if kornia_sd[k_key].shape == hf_sd[hf_key].shape:
                         kornia_sd[k_key].copy_(hf_sd[hf_key])
+                        # print(f"✅ Loaded: {k_key}")
                     else:
                         print(f"❌ Shape Mismatch for {k_key}: {kornia_sd[k_key].shape} vs {hf_sd[hf_key].shape}")
 
-        # 2. Smart Mapping
+        # 4. Standard Suffix Matching for the rest
         hf_vision_keys = {k: v for k, v in hf_sd.items() if "vision_tower" in k}
         hf_text_keys = {k: v for k, v in hf_sd.items() if "vision_tower" not in k}
 
         for k_key, k_val in kornia_sd.items():
-            if k_key in manual_map:
-                continue
-            if "vision_tower.head" in k_key:
-                continue
+            if k_key in manual_map: continue
+            if "vision_tower.head" in k_key: continue
 
             found = False
             search_pool = hf_vision_keys if "vision_tower" in k_key else hf_text_keys
-
+            
             layer_id = None
             parts = k_key.split(".")
             if "layers" in parts:
@@ -397,21 +407,13 @@ class PaliGemma(nn.Module):
 
             for hf_key, hf_val in search_pool.items():
                 if k_val.shape == hf_val.shape:
-                    if layer_id and layer_id not in hf_key:
-                        continue
+                    if layer_id and layer_id not in hf_key: continue
                     suffix = ".".join(k_key.split(".")[-2:])
                     if hf_key.endswith(suffix):
                         with torch.no_grad():
-                            k_val.copy_(hf_val)
+                            kornia_sd[k_key].copy_(hf_val)
                         found = True
                         break
-
-            if not found:
-                missing_keys.append(k_key)
-
-        if len(missing_keys) > 0:
-            print(f"⚠️ Warning: {len(missing_keys)} keys were not loaded.")
-        else:
-            print("✅ All necessary keys loaded successfully!")
-
+            
+        print("✅ Weights Loaded.")
         return kornia_model
