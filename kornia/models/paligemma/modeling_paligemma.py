@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -102,7 +102,7 @@ class GemmaMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        # FIX: Gemma uses 'tanh' approximation for GELU
+        # Using Tanh approximation for GELU
         self.act_fn = nn.GELU(approximate="tanh")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -166,7 +166,7 @@ class GemmaAttention(nn.Module):
         key_states = torch.repeat_interleave(key_states, dim=1, repeats=self.num_key_value_groups)
         value_states = torch.repeat_interleave(value_states, dim=1, repeats=self.num_key_value_groups)
 
-        # Ensure causal masking
+        # Causal Masking
         is_causal = True if attention_mask is None else False
 
         attn_output = F.scaled_dot_product_attention(
@@ -222,10 +222,7 @@ class GemmaDecoderLayer(nn.Module):
 
 
 class PaliGemma(nn.Module):
-    """PaliGemma Model for Vision-Language tasks.
-
-    This model combines a SigLip2 Vision Encoder with a Gemma Language Decoder.
-    """
+    """PaliGemma Model for Vision-Language tasks."""
 
     def __init__(self, config: PaliGemmaConfig) -> None:
         super().__init__()
@@ -266,6 +263,8 @@ class PaliGemma(nn.Module):
         position_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Forward pass of the model."""
+        
+        # 1. Vision Encoder
         vision_outputs = self.vision_tower(pixel_values)
 
         if isinstance(vision_outputs, (tuple, list)):
@@ -276,10 +275,13 @@ class PaliGemma(nn.Module):
         if image_features.dim() != 3:
             image_features = image_features.unsqueeze(1)
 
+        # 2. Projection
         image_features = self.multi_modal_projector(image_features)
+        
+        # FIX: Removed the wrong scaling on image_features
+        # image_features = image_features * (self.config.hidden_size**0.5) <--- REMOVED
 
-        # 🔥 FINAL FIX: SCALE BOTH TO MATCH MAGNITUDES
-        image_features = image_features * (self.config.hidden_size**0.5)
+        # 3. Text Embeddings (Scaled CORRECTLY)
         inputs_embeds = self.embed_tokens(input_ids)
         inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
 
@@ -289,13 +291,16 @@ class PaliGemma(nn.Module):
             inputs_embeds = inputs_embeds[:, num_images:]
         # --------------------------------------------------
 
+        # 4. Concatenate
         inputs_embeds = torch.cat([image_features, inputs_embeds], dim=1)
 
+        # 5. Position IDs (Auto Generate if None)
         if position_ids is None:
             seq_length = inputs_embeds.shape[1]
             position_ids = torch.arange(seq_length, dtype=torch.long, device=inputs_embeds.device)
             position_ids = position_ids.unsqueeze(0).expand(inputs_embeds.shape[0], -1)
 
+        # 6. Decoder Layers
         hidden_states = inputs_embeds
 
         for layer in self.layers:
@@ -348,9 +353,7 @@ class PaliGemma(nn.Module):
         kornia_sd = kornia_model.state_dict()
         hf_sd = hf_model.state_dict()
 
-        # ---------------------------------------------------------------------
-        # 🔥 MANUAL MAPPING (Keeping this because it works!)
-        # ---------------------------------------------------------------------
+        # Manual Mapping for critical keys
         manual_map = {
             "multi_modal_projector.weight": "model.multi_modal_projector.linear.weight",
             "multi_modal_projector.bias": "model.multi_modal_projector.linear.bias",
@@ -362,7 +365,7 @@ class PaliGemma(nn.Module):
         print("⏳ Loading weights with Manual + Smart Mapping...")
         missing_keys = []
 
-        # 1. Apply Manual Map First
+        # Apply Manual Map
         for k_key, hf_key in manual_map.items():
             if k_key in kornia_sd and hf_key in hf_sd:
                 with torch.no_grad():
@@ -371,20 +374,17 @@ class PaliGemma(nn.Module):
                     else:
                         print(f"❌ Shape Mismatch for {k_key}: {kornia_sd[k_key].shape} vs {hf_sd[hf_key].shape}")
 
-        # 2. Apply Smart Mapping for the rest
+        # Apply Smart Mapping
         hf_vision_keys = {k: v for k, v in hf_sd.items() if "vision_tower" in k}
         hf_text_keys = {k: v for k, v in hf_sd.items() if "vision_tower" not in k}
 
         for k_key, k_val in kornia_sd.items():
-            if k_key in manual_map:
-                continue
-
-            if "vision_tower.head" in k_key:
-                continue
+            if k_key in manual_map: continue
+            if "vision_tower.head" in k_key: continue
 
             found = False
             search_pool = hf_vision_keys if "vision_tower" in k_key else hf_text_keys
-
+            
             layer_id = None
             parts = k_key.split(".")
             if "layers" in parts:
@@ -396,23 +396,18 @@ class PaliGemma(nn.Module):
 
             for hf_key, hf_val in search_pool.items():
                 if k_val.shape == hf_val.shape:
-                    if layer_id and layer_id not in hf_key:
-                        continue
-
+                    if layer_id and layer_id not in hf_key: continue
                     suffix = ".".join(k_key.split(".")[-2:])
                     if hf_key.endswith(suffix):
                         with torch.no_grad():
-                            k_val.copy_(hf_val)
+                            kornia_sd[k_key].copy_(hf_val)
                         found = True
                         break
-
-            if not found:
-                missing_keys.append(k_key)
+            
+            if not found: missing_keys.append(k_key)
 
         if len(missing_keys) > 0:
             print(f"⚠️ Warning: {len(missing_keys)} keys were not loaded.")
-            for k in missing_keys[:5]:
-                print(f" - {k}")
         else:
             print("✅ All necessary keys loaded successfully!")
 
