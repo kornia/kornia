@@ -325,10 +325,10 @@ class TestQuarticSolver(BaseTester):
         # Generate random roots and construct coefficients to ensure valid solutions exist
         B = 10
         true_roots = torch.randn(B, 4, device=device, dtype=dtype)
-        
+
         # Sort true roots for comparison later
         true_roots_sorted, _ = torch.sort(true_roots, dim=-1)
-        
+
         r1, r2, r3, r4 = true_roots.unbind(-1)
 
         # Construct polynomial coefficients from roots
@@ -341,7 +341,7 @@ class TestQuarticSolver(BaseTester):
 
         coeffs = torch.stack([a, b, c, d, e], dim=-1)
         computed_roots = solver.solve_quartic(coeffs)
-        
+
         computed_roots_sorted, _ = torch.sort(computed_roots, dim=-1)
 
         # 1. Check Residuals (Equation satisfaction)
@@ -355,7 +355,7 @@ class TestQuarticSolver(BaseTester):
         self.assert_close(residuals, torch.zeros_like(residuals), atol=1e-3, rtol=1e-3)
 
         # 2. Check Root Matching (Stronger Test)
-        # Since we synthesized the coefficients from real roots, we expect 
+        # Since we synthesized the coefficients from real roots, we expect
         # to recover exactly those roots (no complex outputs).
         self.assert_close(computed_roots_sorted, true_roots_sorted, atol=1e-3, rtol=1e-3)
 
@@ -370,6 +370,7 @@ class TestQuarticSolver(BaseTester):
             requires_grad=True,
         )
         self.gradcheck(solver.solve_quartic, (coeffs,), raise_exception=True, fast_mode=True)
+
     def test_smoke(self, device, dtype):
         coeffs = torch.rand(1, 5, device=device, dtype=dtype)
         roots = solver.solve_quartic(coeffs)
