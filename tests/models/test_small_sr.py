@@ -220,7 +220,6 @@ class TestSmallSRNetWrapper(BaseTester):
         output = model(x)
 
         # Output should maintain similar color characteristics (roughly)
-        # This is a weak test since the model transforms the image
         assert output.shape[1] == 3  # RGB output
 
     @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
