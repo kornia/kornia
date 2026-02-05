@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -102,7 +102,6 @@ class GemmaMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        # Using Tanh approximation for GELU
         self.act_fn = nn.GELU(approximate="tanh")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -166,7 +165,6 @@ class GemmaAttention(nn.Module):
         key_states = torch.repeat_interleave(key_states, dim=1, repeats=self.num_key_value_groups)
         value_states = torch.repeat_interleave(value_states, dim=1, repeats=self.num_key_value_groups)
 
-        # Causal Masking
         is_causal = True if attention_mask is None else False
 
         attn_output = F.scaled_dot_product_attention(
@@ -233,9 +231,11 @@ class PaliGemma(nn.Module):
         if config.vision_config is None:
             raise ValueError("vision_config cannot be None")
         self.vision_tower = SigLip2VisionModel(config.vision_config)
+        
+        # 🔥 FIX 1: Add missing LayerNorm for Vision Tower
+        self.vision_tower_norm = nn.LayerNorm(config.vision_config.hidden_size, eps=1e-6)
 
         self.multi_modal_projector = nn.Linear(config.vision_config.hidden_size, config.hidden_size)
-
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=self.padding_idx)
 
         self.layers = nn.ModuleList(
@@ -263,6 +263,7 @@ class PaliGemma(nn.Module):
         position_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Forward pass of the model."""
+        
         # 1. Vision Encoder
         vision_outputs = self.vision_tower(pixel_values)
 
@@ -273,14 +274,14 @@ class PaliGemma(nn.Module):
 
         if image_features.dim() != 3:
             image_features = image_features.unsqueeze(1)
+        
+        # 🔥 FIX 2: Apply the missing LayerNorm
+        image_features = self.vision_tower_norm(image_features)
 
         # 2. Projection
         image_features = self.multi_modal_projector(image_features)
 
-        # FIX: Removed the wrong scaling on image_features
-        # image_features = image_features * (self.config.hidden_size**0.5) <--- REMOVED
-
-        # 3. Text Embeddings (Scaled CORRECTLY)
+        # 3. Text Embeddings (Scaled)
         inputs_embeds = self.embed_tokens(input_ids)
         inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
 
@@ -293,13 +294,13 @@ class PaliGemma(nn.Module):
         # 4. Concatenate
         inputs_embeds = torch.cat([image_features, inputs_embeds], dim=1)
 
-        # 5. Position IDs (Auto Generate if None)
+        # 5. Position IDs
         if position_ids is None:
             seq_length = inputs_embeds.shape[1]
             position_ids = torch.arange(seq_length, dtype=torch.long, device=inputs_embeds.device)
             position_ids = position_ids.unsqueeze(0).expand(inputs_embeds.shape[0], -1)
 
-        # 6. Decoder Layers
+        # 6. Layers
         hidden_states = inputs_embeds
 
         for layer in self.layers:
@@ -325,7 +326,6 @@ class PaliGemma(nn.Module):
                 "Please install it using: pip install transformers"
             ) from e
 
-        # Load HF Model
         hf_model = PaliGemmaForConditionalGeneration.from_pretrained(
             model_id, device_map="cpu", token=token, torch_dtype=torch.float32
         )
@@ -334,7 +334,6 @@ class PaliGemma(nn.Module):
         text_conf = hf_model.config.text_config
         vis_conf = hf_model.config.vision_config
 
-        # Copy Configs
         config.vocab_size = text_conf.vocab_size
         config.hidden_size = text_conf.hidden_size
         config.num_hidden_layers = text_conf.num_hidden_layers
@@ -352,8 +351,10 @@ class PaliGemma(nn.Module):
         kornia_sd = kornia_model.state_dict()
         hf_sd = hf_model.state_dict()
 
-        # Manual Mapping for critical keys
+        # 🔥 FIX 3: Map the new LayerNorm weights
         manual_map = {
+            "vision_tower_norm.weight": "model.vision_tower.vision_model.post_layernorm.weight",
+            "vision_tower_norm.bias": "model.vision_tower.vision_model.post_layernorm.bias",
             "multi_modal_projector.weight": "model.multi_modal_projector.linear.weight",
             "multi_modal_projector.bias": "model.multi_modal_projector.linear.bias",
             "vision_tower.embeddings.position_embedding": "model.vision_tower.vision_model.embeddings.position_embedding.weight",
@@ -361,10 +362,10 @@ class PaliGemma(nn.Module):
             "vision_tower.embeddings.patch_embedding.bias": "model.vision_tower.vision_model.embeddings.patch_embedding.bias",
         }
 
-        print("⏳ Loading weights with Manual + Smart Mapping...")
+        print("⏳ Loading weights with Extended Map...")
         missing_keys = []
 
-        # Apply Manual Map
+        # 1. Apply Manual Map
         for k_key, hf_key in manual_map.items():
             if k_key in kornia_sd and hf_key in hf_sd:
                 with torch.no_grad():
@@ -373,19 +374,17 @@ class PaliGemma(nn.Module):
                     else:
                         print(f"❌ Shape Mismatch for {k_key}: {kornia_sd[k_key].shape} vs {hf_sd[hf_key].shape}")
 
-        # Apply Smart Mapping
+        # 2. Smart Mapping
         hf_vision_keys = {k: v for k, v in hf_sd.items() if "vision_tower" in k}
         hf_text_keys = {k: v for k, v in hf_sd.items() if "vision_tower" not in k}
 
         for k_key, k_val in kornia_sd.items():
-            if k_key in manual_map:
-                continue
-            if "vision_tower.head" in k_key:
-                continue
+            if k_key in manual_map: continue
+            if "vision_tower.head" in k_key: continue
 
             found = False
             search_pool = hf_vision_keys if "vision_tower" in k_key else hf_text_keys
-
+            
             layer_id = None
             parts = k_key.split(".")
             if "layers" in parts:
@@ -397,17 +396,15 @@ class PaliGemma(nn.Module):
 
             for hf_key, hf_val in search_pool.items():
                 if k_val.shape == hf_val.shape:
-                    if layer_id and layer_id not in hf_key:
-                        continue
+                    if layer_id and layer_id not in hf_key: continue
                     suffix = ".".join(k_key.split(".")[-2:])
                     if hf_key.endswith(suffix):
                         with torch.no_grad():
-                            k_val.copy_(hf_val)
+                            kornia_sd[k_key].copy_(hf_val)
                         found = True
                         break
-
-            if not found:
-                missing_keys.append(k_key)
+            
+            if not found: missing_keys.append(k_key)
 
         if len(missing_keys) > 0:
             print(f"⚠️ Warning: {len(missing_keys)} keys were not loaded.")
