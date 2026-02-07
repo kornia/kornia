@@ -171,14 +171,23 @@ class PromptEncoder(nn.Module):
         # Encode coordinates using positional encoding
         pe = self.pe_layer(coords)  # (B, N, embed_dim)
 
-        # Simple approach: use label to select embedding
-        # NOTE: loop-based implementation for clarity; can be vectorized in future optimization
-        label_embeddings = torch.zeros(B, N, self.embed_dim, device=coords.device, dtype=coords.dtype)
-        for b in range(B):
-            for i in range(N):
-                label = int(labels[b, i].item())
-                label_idx = min(label, 1)  # 0 or 1 for background/foreground
-                label_embeddings[b, i] = self.point_embeddings[label_idx].weight[0]  # type: ignore[index]
+        # Vectorized label embedding lookup using tensor indexing
+        # Clamp labels to [0, 1] for valid embedding indices
+        label_idx = torch.clamp(labels.long(), 0, 1)  # (B, N)
+
+        # Get embeddings for all labels at once via batched indexing
+        # Stack embeddings from both label classes: (2, embed_dim)
+        label_embedding_weights = torch.stack(
+            [
+                self.point_embeddings[0].weight[0],  # type: ignore[index]
+                self.point_embeddings[1].weight[0],  # type: ignore[index]
+            ]
+        )  # (2, embed_dim)
+
+        # Use advanced indexing to gather the correct label embeddings
+        # label_idx is (B, N) with values in [0, 1]
+        # We reshape to (B*N,), index into label_embedding_weights, then reshape back
+        label_embeddings = label_embedding_weights[label_idx.view(-1)].view(B, N, self.embed_dim)  # (B, N, embed_dim)
 
         output = pe + label_embeddings
         return output

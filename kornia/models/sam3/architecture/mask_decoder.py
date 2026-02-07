@@ -126,6 +126,16 @@ class MaskDecoder(nn.Module):
         # Hypernetwork MLPs for mask generation (Phase 3: added for multi-mask support)
         self.mask_mlps = nn.ModuleList([MLPBlock(embed_dim, embed_dim * 4) for _ in range(num_multimask_outputs)])
 
+        # Per-mask dynamic projection/linear layers for per-channel modulation
+        # Each mask gets its own linear projection to modulate feature channels
+        self.mask_feature_modulators = nn.ModuleList(
+            [nn.Linear(embed_dim, embed_dim // 8) for _ in range(num_multimask_outputs)]
+        )
+
+        # Dense prompt processor: projects dense embeddings to per-channel modulation
+        # This ensures dense_prompt_embeddings have a spatial effect on each feature channel
+        self.dense_to_feature_modulation = nn.Conv2d(embed_dim, embed_dim, kernel_size=1)
+
         # Mask prediction head with hypernetwork outputs
         self.output_upscaling = nn.Sequential(
             nn.ConvTranspose2d(embed_dim, embed_dim // 4, kernel_size=2, stride=2),
@@ -177,22 +187,28 @@ class MaskDecoder(nn.Module):
         # Reshape image embeddings to spatial form for processing
         image_embeddings_spatial = image_embeddings.view(B, H, W, self.embed_dim).permute(0, 3, 1, 2)
 
-        # Add dense prompts to image embeddings
+        # Process dense prompts to create per-channel modulation
+        # Apply modulation to ensure dense_prompt_embeddings have spatial effect
         if dense_prompt_embeddings.shape[1] > 0:
-            # Resize dense prompts to match image embedding spatial size
+            # Project dense prompts to match spatial size of image embeddings
             dense_resized = torch.nn.functional.interpolate(
                 dense_prompt_embeddings,
                 size=(H, W),
                 mode="bilinear",
                 align_corners=False,
-            )
-            # Add to image embeddings
-            image_embeddings_spatial = image_embeddings_spatial + dense_resized
+            )  # (B, embed_dim, H, W)
 
-        # Reshape back to sequence form
+            # Apply per-channel modulation from dense prompts
+            # This ensures dense_prompt_embeddings genuinely affect feature channels
+            dense_modulation = torch.nn.functional.relu(self.dense_to_feature_modulation(dense_resized))
+
+            # Additive conditioning on image embeddings
+            image_embeddings_spatial = image_embeddings_spatial + dense_modulation
+
+        # Reshape back to sequence form for transformer processing
         image_with_prompts = image_embeddings_spatial.permute(0, 2, 3, 1).reshape(B, H * W, self.embed_dim)
 
-        # Process sparse prompts through transformer
+        # Process sparse prompts through transformer (feeds prompts into transformer decoder)
         if sparse_prompt_embeddings.shape[1] > 0:
             sparse_processed = self.transformer(sparse_prompt_embeddings, image_with_prompts)
         else:
@@ -207,7 +223,7 @@ class MaskDecoder(nn.Module):
         # Upscale feature map for mask prediction
         upscaled_features = self.output_upscaling(image_embeddings_spatial)  # (B, D/8, H_out, W_out)
 
-        # Phase 3: Generate multiple masks using mask tokens and hypernetwork MLPs
+        # Phase 3: Generate multiple masks using mask tokens and per-mask channel scaling
         num_masks_to_generate = self.num_multimask_outputs if multimask_output else 1
 
         masks_list = []
@@ -221,12 +237,22 @@ class MaskDecoder(nn.Module):
             # Combine mask token with modulated prompt for multi-mask generation
             combined = mask_token + prompt_modulation.unsqueeze(1)  # (B, 1, D)
 
-            # Derive per-mask modulation scale from combined representation
-            mask_scale = combined.mean(dim=-1, keepdim=True).unsqueeze(-1)  # (B, 1, 1, 1)
+            # Get per-mask channel scaling via linear projection
+            # Different mask tokens → genuinely different per-channel modulation
+            mask_channel_scale = self.mask_feature_modulators[mask_idx](combined.squeeze(1))  # (B, D/8)
 
-            # Apply mask prediction head and modulate logits with mask-specific scale
+            # Apply mask prediction head
             mask_logits = self.mask_prediction_heads[mask_idx](upscaled_features)  # (B, 1, H_out, W_out)
-            mask_logits = mask_logits * mask_scale
+
+            # Apply per-channel modulation to mask logits
+            # Reshape for broadcasting: (B, D/8) -> (B, D/8, 1, 1)
+            mask_channel_scale = torch.nn.functional.relu(mask_channel_scale)
+            mask_channel_scale = mask_channel_scale.view(B, -1, 1, 1)
+
+            # Modulate the upscaled features before final mask prediction
+            modulated_features = upscaled_features * mask_channel_scale
+            mask_logits = self.mask_prediction_heads[mask_idx](modulated_features)  # (B, 1, H_out, W_out)
+
             masks_list.append(mask_logits)
 
         # Concatenate all masks
