@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import time
 
 import pytest
 import torch
