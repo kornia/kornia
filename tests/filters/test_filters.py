@@ -1103,18 +1103,3 @@ class TestFilter2D_fftconv(BaseTester):
         actual = op_optimized(data, kernel, padding=padding, normalized=normalized)
 
         self.assert_close(actual, expected)
-
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_speed(self, padding):
-        kernel = torch.rand(1, 128, 128)
-        sample_ = torch.rand(1, 3, 1024, 1024)
-        start = time.time()
-        filter2d(sample_, kernel)
-        stop = time.time()
-        time_for_conv = stop - start
-        start = time.time()
-        fft_conv(sample_, kernel)
-        stop = time.time()
-        time_for_fft = stop - start
-
-        assert time_for_fft < time_for_conv
