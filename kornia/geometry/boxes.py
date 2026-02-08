@@ -463,7 +463,7 @@ class Boxes:
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
                   With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
                 * * 'cxcywh': boxes are assumed to be in the format ``x_center, y_center, width, height`` where
-                  ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``.
+                  ``width = xmax - xmin`` and ``height = ymax - ymin``.
                   With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
 
             validate_boxes: check if boxes are valid rectangles or not. Valid rectangles are those with width
@@ -516,8 +516,8 @@ class Boxes:
                   box width and height are defined as ``width = xmax - xmin`` and ``height = ymax - ymin``.
                 * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
-                * 'cxcywh': boxes are defined as ``x_center, y_center, width, height`` where ``width = xmax - xmin + 1``
-                  and ``height = ymax - ymin + 1``.
+                * 'cxcywh': boxes are defined as ``x_center, y_center, width, height`` where ``width = xmax - xmin``
+                  and ``height = ymax - ymin``.
             as_padded_sequence: whether to keep the pads for a list of boxes. This parameter is only valid
                 if the boxes are from a box list whilst `from_tensor`.
 
@@ -557,8 +557,8 @@ class Boxes:
             width = boxes[..., 2] - boxes[..., 0] + 1
             height = boxes[..., 3] - boxes[..., 1] + 1
 
-            cx = boxes[..., 0] + (width - 1) / 2
-            cy = boxes[..., 1] + (height - 1) / 2
+            cx = boxes[..., 0] + (width) / 2
+            cy = boxes[..., 1] + (height) / 2
 
             boxes[..., 0] = cx
             boxes[..., 1] = cy
