@@ -145,7 +145,7 @@ def filter2d(
     input = input.view(-1, tmp_kernel.size(0), input.size(-2), input.size(-1))
 
     # convolve the tensor with the kernel.
-    output = F.conv2d(input, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
+    output = F.conv2d(input, tmp_kernel, padding=0, stride=1)
 
     if padding == "same":
         out = output.view(b, c, h, w)
@@ -431,9 +431,14 @@ def fft_conv(
         input = F.pad(input, [0, 1])
     kernel_padding = [pad for i in reversed(range(2, input.ndim)) for pad in [0, input.size(i) - tmp_kernel.size(i)]]
     padded_kernel = F.pad(tmp_kernel, kernel_padding)
+<<<<<<< HEAD
     dtype = input.dtype
     signal_fr = rfftn(input.to(dtype), dim=tuple(range(2, input.ndim)))
     kernel_fr = rfftn(padded_kernel.to(dtype), dim=tuple(range(2, input.ndim)))
+=======
+    signal_fr = rfftn(input.float(), dim=tuple(range(2, input.ndim)))
+    kernel_fr = rfftn(padded_kernel.float(), dim=tuple(range(2, input.ndim)))
+>>>>>>> 657b671bd2baa0f4cd3879ce4def9f0b52953fc8
     kernel_fr.imag *= -1
     output_fr = complex_matmul(signal_fr, kernel_fr, groups=tmp_kernel.size(0))
     output_ = irfftn(output_fr, dim=tuple(range(2, input.ndim)))
