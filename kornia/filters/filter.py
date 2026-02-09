@@ -437,6 +437,7 @@ def fft_conv(
     kernel_fr.imag *= -1
     output_fr = complex_matmul(signal_fr, kernel_fr, groups=tmp_kernel.size(0))
     output_ = irfftn(output_fr, dim=tuple(range(2, input.ndim)))
+    output_ = output_.to(dtype = dtype)
     crop_slices = [slice(None), slice(None)] + [
         slice(0, (input_size[i] - tmp_kernel.size(i) + 1), stride_[i - 2]) for i in range(2, input.ndim)
     ]
