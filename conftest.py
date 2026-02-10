@@ -122,6 +122,8 @@ def torch_optimizer(optimizer_backend):
 def _parse_test_option(config, option: str, all_values: dict | set) -> list[str]:
     """Parse a test option from CLI, expanding 'all' to full list."""
     raw_value = config.getoption(option)
+    if raw_value is None:
+        return []
     if raw_value == "all":
         return list(all_values.keys()) if isinstance(all_values, dict) else list(all_values)
     return raw_value.split(",")
@@ -248,7 +250,7 @@ def pytest_sessionstart(session):
     except RuntimeError as ex:
         if "not yet supported for torch.compile" not in str(
             ex
-        ) and "Dynamo is not supported on Python 3.12+" not in str(ex):
+        ) and "Dynamo is not supported on Python 3.12+" not in str(ex) and "Python 3.14+" not in str(ex):
             raise ex
 
     os.makedirs(WEIGHTS_CACHE_DIR, exist_ok=True)
@@ -311,8 +313,17 @@ def pytest_report_header(config):
     except ImportError:
         accelerate_info = "`accelerate` not found"
 
-    import kornia_rs
-    import onnx
+    try:
+        import kornia_rs
+        kornia_rs_info = f"kornia_rs-{kornia_rs.__version__}"
+    except ImportError:
+        kornia_rs_info = "`kornia_rs` not found"
+
+    try:
+        import onnx
+        onnx_info = f"onnx-{onnx.__version__}"
+    except ImportError:
+        onnx_info = "`onnx` not found"
 
     env_info = _get_env_info()
     cached_weights = os.listdir(WEIGHTS_CACHE_DIR) if os.path.exists(WEIGHTS_CACHE_DIR) else []
@@ -338,8 +349,8 @@ main deps:
 x deps:
     - {accelerate_info}
 dev deps:
-    - kornia_rs-{kornia_rs.__version__}
-    - onnx-{onnx.__version__}
+    - {kornia_rs_info}
+    - {onnx_info}
 {gcc_info}
 available optimizers: {TEST_OPTIMIZER_BACKEND}
 model weights cached: {cached_weights}
