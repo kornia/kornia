@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import warnings
 from enum import Enum
 from pathlib import Path
 from typing import Any, Union
@@ -55,33 +54,10 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
 
     """
     # read image and return as `np.ndarray` with shape HxWxC
-    try:
-        if path_file.suffix.lower() in [".jpg", ".jpeg"]:
-            img = kornia_rs.read_image_jpegturbo(str(path_file))
-        else:
-            img = kornia_rs.read_image_any(str(path_file))
-    except Exception as e:  # noqa: BLE001
-        # Fallback to OpenCV if kornia_rs fails
-        # This is temporary to handle potential issues with kornia_rs
-        try:
-            import cv2
-
-            warnings.warn(
-                f"Failed to load image using kornia_rs: {e}. Falling back to OpenCV.", RuntimeWarning, stacklevel=2
-            )
-
-            img = cv2.imread(str(path_file), cv2.IMREAD_UNCHANGED)
-            if img is None:
-                raise e
-
-            # OpenCV loads as BGR, convert to RGB
-            if img.ndim == 3:
-                if img.shape[2] == 3:
-                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                elif img.shape[2] == 4:
-                    img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGBA)
-        except ImportError:
-            raise e from None
+    if path_file.suffix.lower() in [".jpg", ".jpeg"]:
+        img = kornia_rs.read_image_jpegturbo(str(path_file))
+    else:
+        img = kornia_rs.read_image_any(str(path_file))
 
     # convert the image to torch.Tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)
