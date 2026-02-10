@@ -121,9 +121,21 @@ def torch_optimizer(optimizer_backend):
 
 def _parse_test_option(config, option: str, all_values: dict | set) -> list[str]:
     """Parse a test option from CLI, expanding 'all' to full list."""
-    raw_value = config.getoption(option)
+    try:
+        raw_value = config.getoption(option)
+    except (ValueError, KeyError):
+        raw_value = None
+
     if raw_value is None:
+        # Fallback to defaults to avoid empty params
+        if option == "--device":
+            return ["cpu"]
+        if option == "--dtype":
+            return ["float32"]
+        if option == "--optimizer":
+            return ["inductor"]
         return []
+
     if raw_value == "all":
         return list(all_values.keys()) if isinstance(all_values, dict) else list(all_values)
     return raw_value.split(",")
