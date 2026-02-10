@@ -260,9 +260,11 @@ def pytest_sessionstart(session):
     try:
         _setup_torch_compile()
     except RuntimeError as ex:
-        if "not yet supported for torch.compile" not in str(
-            ex
-        ) and "Dynamo is not supported on Python 3.12+" not in str(ex) and "Python 3.14+" not in str(ex):
+        if (
+            "not yet supported for torch.compile" not in str(ex)
+            and "Dynamo is not supported on Python 3.12+" not in str(ex)
+            and "Python 3.14+" not in str(ex)
+        ):
             raise ex
 
     os.makedirs(WEIGHTS_CACHE_DIR, exist_ok=True)
@@ -327,12 +329,14 @@ def pytest_report_header(config):
 
     try:
         import kornia_rs
+
         kornia_rs_info = f"kornia_rs-{kornia_rs.__version__}"
     except ImportError:
         kornia_rs_info = "`kornia_rs` not found"
 
     try:
         import onnx
+
         onnx_info = f"onnx-{onnx.__version__}"
     except ImportError:
         onnx_info = "`onnx` not found"
