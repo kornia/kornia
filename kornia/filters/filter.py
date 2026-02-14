@@ -318,7 +318,9 @@ def complex_matmul(a: Tensor, b: Tensor, groups: int = 1) -> Tensor:
     imag = a.imag @ b.real + a.real @ b.imag
     real = torch.movedim(real, real.dim() - 1, 2).squeeze(-1)
     imag = torch.movedim(imag, imag.dim() - 1, 2).squeeze(-1)
+    # c = torch.zeros(real.shape, dtype=torch.complex128, device=a.device)
     c = torch.complex(real, imag)
+    # c.real, c.imag = real, imag
     return c.view(c.size(0), -1, *c.shape[3:])
 
 
@@ -386,7 +388,7 @@ def fft_conv(
                   [0., 5., 5., 5., 0.],
                   [0., 5., 5., 5., 0.],
                   [0., 5., 5., 5., 0.],
-                  [0., 0., 0., 0., 0.]]]])
+                  [0., 0., 0a., 0., 0.]]]])
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -395,15 +397,15 @@ def fft_conv(
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
-        f"Invalid border, gotcha {border_type}. Expected one of {_VALID_BORDERS}",
+        f"Invalid border, {border_type}. Expected one of {_VALID_BORDERS}",
     )
     KORNIA_CHECK(
         str(padding).lower() in _VALID_PADDING,
-        f"Invalid padding mode, gotcha {padding}. Expected one of {_VALID_PADDING}",
+        f"Invalid padding mode, {padding}. Expected one of {_VALID_PADDING}",
     )
     KORNIA_CHECK(
         str(behaviour).lower() in _VALID_BEHAVIOUR,
-        f"Invalid padding mode, gotcha {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
+        f"Invalid padding mode, {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
     # prepare kernel
     n = input.ndim - 2
