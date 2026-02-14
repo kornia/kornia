@@ -841,11 +841,11 @@ class TestFilter2D_fftconv(BaseTester):
 
         with pytest.raises(Exception) as errinfo:
             fft_conv(data, k, border_type="a")
-        assert "Invalid border, gotcha a. Ex" in str(errinfo)
+        assert "Invalid border, a. Ex" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
             fft_conv(data, k, padding="a")
-        assert "Invalid padding mode, gotcha a. Ex" in str(errinfo)
+        assert "Invalid padding mode, a. Ex" in str(errinfo)
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_mean_filter(self, padding, device, dtype):
