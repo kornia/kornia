@@ -318,7 +318,7 @@ def complex_matmul(a: Tensor, b: Tensor, groups: int = 1) -> Tensor:
     imag = a.imag @ b.real + a.real @ b.imag
     real = torch.movedim(real, real.dim() - 1, 2).squeeze(-1)
     imag = torch.movedim(imag, imag.dim() - 1, 2).squeeze(-1)
-    c = torch.complex(real,imag)
+    c = torch.complex(real, imag)
     return c.view(c.size(0), -1, *c.shape[3:])
 
 
