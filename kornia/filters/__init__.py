@@ -98,6 +98,7 @@ __all__ = [
     "filter2d",
     "filter2d_separable",
     "filter3d",
+    "fft_conv",
     "gaussian",
     "gaussian_blur2d",
     "gaussian_blur2d_t",
