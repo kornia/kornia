@@ -415,7 +415,6 @@ def fft_conv(
         tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
     else:
         tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
-        #  str(behaviour).lower() == 'conv':
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
     tmp_kernel = tmp_kernel.expand(-1, c, -1, -1)
