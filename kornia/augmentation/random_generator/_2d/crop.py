@@ -285,7 +285,7 @@ def center_crop_generator(
     height: int,
     width: int,
     size: Tuple[int, int],
-    device: Optional[Union[str, torch.device, None]] = None,
+    device: Union[None, str, torch.device] = None,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```center_crop``` transformation for center crop transform.
 
