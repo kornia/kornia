@@ -22,11 +22,14 @@ import torch
 
 import kornia
 from kornia.contrib.face_detection import FaceKeypoint
+
 from testing.base import BaseTester
+
 
 @pytest.fixture
 def face_detector(device, dtype):
     return kornia.contrib.FaceDetector().to(device, dtype)
+
 
 class TestFaceDetection(BaseTester):
     @pytest.mark.slow

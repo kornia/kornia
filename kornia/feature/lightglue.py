@@ -619,7 +619,7 @@ class LightGlue(nn.Module):
                 desc1 = desc1.index_select(1, keep1)
                 encoding1 = encoding1.index_select(-2, keep1)
                 prune1[:, ind1] += 1
-            
+
             desc0, desc1 = desc0[..., :m, :], desc1[..., :n, :]
 
             # Guard against empty-descriptors after pruning
@@ -630,7 +630,7 @@ class LightGlue(nn.Module):
                 empty_s1 = torch.zeros((b, n), device=device)
 
                 return {
-                    "log_assignment":torch.empty((b, 1, 1), device=device),
+                    "log_assignment": torch.empty((b, 1, 1), device=device),
                     "matches0": empty_m0,
                     "matches1": empty_m1,
                     "matching_scores0": empty_s0,
@@ -641,7 +641,6 @@ class LightGlue(nn.Module):
                     "prune0": torch.ones_like(empty_s0) * self.conf.n_layers,
                     "prune1": torch.ones_like(empty_s1) * self.conf.n_layers,
                 }
-        
 
         scores, _ = self.log_assignment[i](desc0, desc1)
         m0, m1, mscores0, mscores1 = filter_matches(scores, self.conf.filter_threshold)
