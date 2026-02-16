@@ -305,7 +305,7 @@ class RawToRgb(nn.Module):
     Example:
         >>> rawinput = torch.rand(2, 1, 4, 6)
         >>> rgb = RawToRgb(CFA.RG)
-        >>> output = rgb(rawinput)  # 2x3x4x5
+        >>> output = rgb(rawinput)  # 2x3x4x6
 
     """
 
