@@ -118,15 +118,35 @@ class MaskDecoder(nn.Module):
         # Transformer for processing prompts
         self.transformer = CrossAttentionTransformer(embed_dim)
 
-        # Mask prediction head
-        # NOTE: Phase 2 supports single-mask output only
-        # Multi-mask generation deferred to Phase 3 when mask_tokens and hypernetwork MLPs will be used
+        # Mask tokens (Phase 3: added for multi-mask generation)
+        self.mask_tokens = nn.ParameterList(
+            [nn.Parameter(torch.randn(1, 1, embed_dim)) for _ in range(num_multimask_outputs)]
+        )
+
+        # Hypernetwork MLPs for mask generation (Phase 3: added for multi-mask support)
+        self.mask_mlps = nn.ModuleList([MLPBlock(embed_dim, embed_dim * 4) for _ in range(num_multimask_outputs)])
+
+        # Per-mask dynamic projection/linear layers for per-channel modulation
+        # Each mask gets its own linear projection to modulate feature channels
+        self.mask_feature_modulators = nn.ModuleList(
+            [nn.Linear(embed_dim, embed_dim // 8) for _ in range(num_multimask_outputs)]
+        )
+
+        # Dense prompt processor: projects dense embeddings to per-channel modulation
+        # This ensures dense_prompt_embeddings have a spatial effect on each feature channel
+        self.dense_to_feature_modulation = nn.Conv2d(embed_dim, embed_dim, kernel_size=1)
+
+        # Mask prediction head with hypernetwork outputs
         self.output_upscaling = nn.Sequential(
             nn.ConvTranspose2d(embed_dim, embed_dim // 4, kernel_size=2, stride=2),
             nn.GroupNorm(1, embed_dim // 4),
             nn.ConvTranspose2d(embed_dim // 4, embed_dim // 8, kernel_size=2, stride=2),
         )
-        # NOTE: Phase 2 stub - mask_tokens and hypernetwork MLPs will be used in Phase 3 for multi-mask generation
+
+        # Mask prediction projection head (Phase 3: one per output mask)
+        self.mask_prediction_heads = nn.ModuleList(
+            [nn.Conv2d(embed_dim // 8, 1, kernel_size=1) for _ in range(num_multimask_outputs)]
+        )
 
         # IoU prediction head
         self.iou_prediction_head = nn.Sequential(
@@ -142,6 +162,7 @@ class MaskDecoder(nn.Module):
         image_embeddings: torch.Tensor,
         sparse_prompt_embeddings: torch.Tensor,
         dense_prompt_embeddings: torch.Tensor,
+        multimask_output: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Predict masks from embeddings.
 
@@ -149,6 +170,7 @@ class MaskDecoder(nn.Module):
             image_embeddings: Image embeddings of shape (B, N, D).
             sparse_prompt_embeddings: Sparse prompt embeddings of shape (B, M, D).
             dense_prompt_embeddings: Dense prompt embeddings of shape (B, D, H, W).
+            multimask_output: If True, generate multiple masks. Otherwise, generate single mask.
 
         Returns:
             Tuple of (masks, iou_pred) where:
@@ -165,37 +187,80 @@ class MaskDecoder(nn.Module):
         # Reshape image embeddings to spatial form for processing
         image_embeddings_spatial = image_embeddings.view(B, H, W, self.embed_dim).permute(0, 3, 1, 2)
 
-        # Add dense prompts to image embeddings
+        # Process dense prompts to create per-channel modulation
+        # Apply modulation to ensure dense_prompt_embeddings have spatial effect
         if dense_prompt_embeddings.shape[1] > 0:
-            # Resize dense prompts to match image embedding spatial size
+            # Project dense prompts to match spatial size of image embeddings
             dense_resized = torch.nn.functional.interpolate(
                 dense_prompt_embeddings,
                 size=(H, W),
                 mode="bilinear",
                 align_corners=False,
-            )
-            # Add to image embeddings
-            image_embeddings_spatial = image_embeddings_spatial + dense_resized
+            )  # (B, embed_dim, H, W)
 
-        # Reshape back to sequence form
+            # Apply per-channel modulation from dense prompts
+            # This ensures dense_prompt_embeddings genuinely affect feature channels
+            dense_modulation = torch.nn.functional.relu(self.dense_to_feature_modulation(dense_resized))
+
+            # Additive conditioning on image embeddings
+            image_embeddings_spatial = image_embeddings_spatial + dense_modulation
+
+        # Reshape back to sequence form for transformer processing
         image_with_prompts = image_embeddings_spatial.permute(0, 2, 3, 1).reshape(B, H * W, self.embed_dim)
 
-        # Process sparse prompts through transformer
+        # Process sparse prompts through transformer (feeds prompts into transformer decoder)
         if sparse_prompt_embeddings.shape[1] > 0:
             sparse_processed = self.transformer(sparse_prompt_embeddings, image_with_prompts)
         else:
             sparse_processed = sparse_prompt_embeddings
 
-        # Upscale for mask prediction
-        masks = self.output_upscaling(image_embeddings_spatial)  # (B, D/8, H_out, W_out)
-
-        # Predict IoU scores
-        if sparse_processed.shape[1] > 0:
+        # Get primary prompt representation for IoU and multi-mask decisions
+        if sparse_prompt_embeddings.shape[1] > 0:
             iou_input = sparse_processed.mean(dim=1)  # (B, D)
         else:
             iou_input = torch.zeros(B, self.embed_dim, device=image_embeddings.device, dtype=image_embeddings.dtype)
 
-        iou_pred = self.iou_prediction_head(iou_input)  # (B, num_masks)
+        # Upscale feature map for mask prediction
+        upscaled_features = self.output_upscaling(image_embeddings_spatial)  # (B, D/8, H_out, W_out)
+
+        # Phase 3: Generate multiple masks using mask tokens and per-mask channel scaling
+        num_masks_to_generate = self.num_multimask_outputs if multimask_output else 1
+
+        masks_list = []
+        for mask_idx in range(num_masks_to_generate):
+            # Get mask token for this output
+            mask_token = self.mask_tokens[mask_idx]  # (1, 1, D)
+
+            # Apply hypernetwork MLP to modulate the prompt representation
+            prompt_modulation = self.mask_mlps[mask_idx](iou_input)  # (B, D)
+
+            # Combine mask token with modulated prompt for multi-mask generation
+            combined = mask_token + prompt_modulation.unsqueeze(1)  # (B, 1, D)
+
+            # Get per-mask channel scaling via linear projection
+            # Different mask tokens → genuinely different per-channel modulation
+            mask_channel_scale = self.mask_feature_modulators[mask_idx](combined.squeeze(1))  # (B, D/8)
+
+            # Apply mask prediction head
+            mask_logits = self.mask_prediction_heads[mask_idx](upscaled_features)  # (B, 1, H_out, W_out)
+
+            # Apply per-channel modulation to mask logits
+            # Reshape for broadcasting: (B, D/8) -> (B, D/8, 1, 1)
+            mask_channel_scale = torch.nn.functional.relu(mask_channel_scale)
+            mask_channel_scale = mask_channel_scale.view(B, -1, 1, 1)
+
+            # Modulate the upscaled features before final mask prediction
+            modulated_features = upscaled_features * mask_channel_scale
+            mask_logits = self.mask_prediction_heads[mask_idx](modulated_features)  # (B, 1, H_out, W_out)
+
+            masks_list.append(mask_logits)
+
+        # Concatenate all masks
+        masks = torch.cat(masks_list, dim=1)  # (B, num_masks_to_generate, H_out, W_out)
+
+        # Predict IoU scores matching the number of generated masks
+        iou_pred_all = self.iou_prediction_head(iou_input)  # (B, num_multimask_outputs)
+        iou_pred = iou_pred_all[:, :num_masks_to_generate]  # (B, num_masks_to_generate)
 
         return masks, iou_pred
 
@@ -236,16 +301,15 @@ class MaskDecoder(nn.Module):
         )
 
         # Predict masks
-        # NOTE: positional encoding intentionally omitted in Phase 2
         masks, iou_pred = self._predict_masks(
             image_embeddings,
             sparse_prompt_embeddings,
             dense_prompt_embeddings,
+            multimask_output=multimask_output,
         )
 
-        # NOTE: Phase 2 generates single mask only
-        # multimask_output parameter kept for forward compatibility but currently ignored
-        # Multi-mask generation deferred to Phase 3
+        # Phase 3: multimask_output parameter is now respected and meaningful
+        # Generate multiple masks when multimask_output=True, single mask when False
 
         return masks, iou_pred
 

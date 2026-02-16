@@ -76,7 +76,9 @@ class TestPromptEncoderPoints:
         sparse_emb, dense_emb = encoder(boxes=boxes)
 
         # Check output shapes
-        assert sparse_emb.shape == (batch_size, num_boxes, embed_dim), f"Got {sparse_emb.shape}"
+        # Phase 3: boxes produce 2 embeddings per box (top-left + bottom-right corners)
+        expected_num_sparse = num_boxes * 2
+        assert sparse_emb.shape == (batch_size, expected_num_sparse, embed_dim), f"Got {sparse_emb.shape}"
         assert dense_emb.shape[0] == batch_size, f"Got {dense_emb.shape}"
 
     def test_prompt_encoder_with_masks(self) -> None:
@@ -116,7 +118,8 @@ class TestPromptEncoderPoints:
         sparse_emb, dense_emb = encoder(points=(coords, labels), boxes=boxes)
 
         # Check output shapes
-        expected_num_sparse = num_points + num_boxes
+        # Phase 3: boxes produce 2 embeddings per box (top-left + bottom-right corners)
+        expected_num_sparse = num_points + num_boxes * 2
         assert sparse_emb.shape == (batch_size, expected_num_sparse, embed_dim), f"Got {sparse_emb.shape}"
         assert dense_emb.shape[0] == batch_size, f"Got {dense_emb.shape}"
 
@@ -172,10 +175,10 @@ class TestMaskDecoderSmoke:
         )
 
         # Check output shapes
-        # Phase 2 generates single mask regardless of multimask_output flag
+        # Phase 2 generates single mask when multimask_output=False
         assert masks.ndim == 4, f"Masks should be 4D, got {masks.ndim}D"
         assert masks.shape[0] == batch_size, f"Got {masks.shape}"
-        assert iou_pred.shape == (batch_size, decoder.num_multimask_outputs), f"Got {iou_pred.shape}"
+        assert iou_pred.shape == (batch_size, 1), f"Got {iou_pred.shape}"
 
     def test_mask_decoder_no_sparse_prompts(self) -> None:
         """Test mask decoder with no sparse prompts."""

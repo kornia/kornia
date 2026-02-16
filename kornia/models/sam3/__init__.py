@@ -25,5 +25,6 @@ capability.
 from __future__ import annotations
 
 from .architecture import ImageEncoderHiera
+from .model import Sam3
 
-__all__ = ["ImageEncoderHiera"]
+__all__ = ["ImageEncoderHiera", "Sam3"]
