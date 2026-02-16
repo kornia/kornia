@@ -21,7 +21,7 @@ repos:
         exclude: ^$|.devcontainer
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.11
+    rev: v0.15.1
     hooks:
       - id: ruff-check
         args: [--fix, --exit-non-zero-on-fix]
@@ -33,7 +33,7 @@ repos:
       - id: codespell
 
   - repo: https://github.com/arkinmodi/add-license-header
-    rev: v2.4.0
+    rev: v2.4.1
     hooks:
       - id: add-license-header
         types: [python]
