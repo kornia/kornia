@@ -19,7 +19,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_le
-from kornia.filters import filter2d, filter2d_separable, filter3d
+from kornia.filters import convolve2d, correlate2d, filter2d, filter2d_separable, filter3d
 
 from testing.base import BaseTester
 
@@ -90,6 +90,30 @@ class TestFilter2D(BaseTester):
         self.assert_close(out_corr, corr_expected)
         out_conv = filter2d(inp, kernel, behaviour="conv")
         self.assert_close(out_conv, conv_expected)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_correlation_and_convolution_aliases(self, padding, normalized, device, dtype):
+        inp = torch.rand(2, 3, 8, 9, device=device, dtype=dtype)
+        kernel = torch.rand(1, 3, 5, device=device, dtype=dtype)
+
+        actual_corr = correlate2d(inp, kernel, normalized=normalized, padding=padding)
+        actual_conv = convolve2d(inp, kernel, normalized=normalized, padding=padding)
+        expected_corr = filter2d(inp, kernel, normalized=normalized, padding=padding, behaviour="corr")
+        expected_conv = filter2d(inp, kernel, normalized=normalized, padding=padding, behaviour="conv")
+
+        self.assert_close(actual_corr, expected_corr)
+        self.assert_close(actual_conv, expected_conv)
+
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_convolve2d_kernel_flip_relationship(self, padding, device, dtype):
+        inp = torch.rand(2, 3, 8, 9, device=device, dtype=dtype)
+        kernel = torch.rand(1, 3, 5, device=device, dtype=dtype)
+
+        actual = convolve2d(inp, kernel, padding=padding)
+        expected = correlate2d(inp, kernel.flip((-2, -1)), padding=padding)
+
+        self.assert_close(actual, expected)
 
     def test_exception(self):
         from kornia.core.exceptions import ShapeError, TypeCheckError

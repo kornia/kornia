@@ -154,6 +154,76 @@ def filter2d(
     return out
 
 
+def correlate2d(
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    border_type: str = "reflect",
+    normalized: bool = False,
+    padding: str = "same",
+) -> torch.Tensor:
+    r"""Apply 2D correlation to a tensor.
+
+    This function is an alias of :func:`filter2d` with ``behaviour="corr"``.
+
+    Args:
+        input: the input tensor with shape of :math:`(B, C, H, W)`.
+        kernel: the kernel to be correlated with the input tensor.
+          The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
+        border_type: the padding mode to be applied before correlating.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``.
+        normalized: If True, kernel will be L1 normalized.
+        padding: This defines the type of padding.
+          2 modes available ``'same'`` or ``'valid'``.
+
+    Return:
+        Tensor: the correlated tensor.
+    """
+    return filter2d(
+        input=input,
+        kernel=kernel,
+        border_type=border_type,
+        normalized=normalized,
+        padding=padding,
+        behaviour="corr",
+    )
+
+
+def convolve2d(
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    border_type: str = "reflect",
+    normalized: bool = False,
+    padding: str = "same",
+) -> torch.Tensor:
+    r"""Apply 2D convolution to a tensor.
+
+    This function is an alias of :func:`filter2d` with ``behaviour="conv"``.
+
+    Args:
+        input: the input tensor with shape of :math:`(B, C, H, W)`.
+        kernel: the kernel to be convolved with the input tensor.
+          The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``.
+        normalized: If True, kernel will be L1 normalized.
+        padding: This defines the type of padding.
+          2 modes available ``'same'`` or ``'valid'``.
+
+    Return:
+        Tensor: the convolved tensor.
+    """
+    return filter2d(
+        input=input,
+        kernel=kernel,
+        border_type=border_type,
+        normalized=normalized,
+        padding=padding,
+        behaviour="conv",
+    )
+
+
 def filter2d_separable(
     input: torch.Tensor,
     kernel_x: torch.Tensor,

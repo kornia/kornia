@@ -70,6 +70,8 @@ Filtering API
 -------------
 
 .. autofunction:: filter2d
+.. autofunction:: correlate2d
+.. autofunction:: convolve2d
 .. autofunction:: filter2d_separable
 .. autofunction:: filter3d
 
