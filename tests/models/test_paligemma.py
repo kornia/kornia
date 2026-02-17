@@ -90,7 +90,7 @@ class TestPaliGemma:
         from unittest.mock import MagicMock, patch
 
         mock_hf_model = MagicMock()
-        
+
         # Setup specific config attributes that are accessed
         mock_text_config = MagicMock()
         mock_text_config.vocab_size = 100
@@ -100,7 +100,7 @@ class TestPaliGemma:
         mock_text_config.head_dim = 8
         mock_text_config.intermediate_size = 64
         mock_text_config.num_key_value_heads = 4
-        
+
         mock_vision_config = MagicMock()
         mock_vision_config.image_size = 32
         mock_vision_config.patch_size = 16
@@ -117,7 +117,7 @@ class TestPaliGemma:
         mock_state_dict = {
             "model.vision_tower.vision_model.embeddings.patch_embedding.weight": torch.randn(32, 3, 16, 16),
             "model.vision_tower.vision_model.embeddings.patch_embedding.bias": torch.randn(32),
-            "model.vision_tower.vision_model.embeddings.position_embedding.weight": torch.randn(4, 32), # 4 patches
+            "model.vision_tower.vision_model.embeddings.position_embedding.weight": torch.randn(4, 32),  # 4 patches
             "model.vision_tower.vision_model.post_layernorm.weight": torch.randn(32),
             "model.vision_tower.vision_model.post_layernorm.bias": torch.randn(32),
             "model.multi_modal_projector.linear.weight": torch.randn(32, 32),
@@ -129,7 +129,7 @@ class TestPaliGemma:
             "model.vision_tower.vision_model.encoder.layers.0.self_attn.k_proj.weight": torch.randn(32, 32),
             "model.layers.0.self_attn.q_proj.weight": torch.randn(32, 32),
         }
-        
+
         # Ensure shapes match what Kornia expects roughly
         mock_hf_model.state_dict.return_value = mock_state_dict
 
@@ -137,7 +137,7 @@ class TestPaliGemma:
             # 1. Test basic load
             model = PaliGemma.from_pretrained("mock-model-id")
             assert isinstance(model, PaliGemma)
-            
+
             # 2. Test device placement
             # We can't easily check internal device handling with mocks unless we inspect the calls,
             # but we can check the returned model device.
@@ -149,4 +149,3 @@ class TestPaliGemma:
             else:
                 model_cpu = PaliGemma.from_pretrained("mock-model-id", device="cpu")
                 assert next(model_cpu.parameters()).device.type == "cpu"
-

@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -290,7 +290,6 @@ class PaliGemma(nn.Module):
 
         # --- Handle Placeholder Token Duplication ---
 
-
         # 4. Concatenate
         inputs_embeds = torch.cat([image_features, inputs_embeds], dim=1)
 
@@ -363,7 +362,7 @@ class PaliGemma(nn.Module):
         config.vision_config.intermediate_size = vis_conf.intermediate_size
 
         kornia_model = cls(config)
-        
+
         # If device was specified, move kornia model there before loading weights
         if device is not None:
             kornia_model = kornia_model.to(device)
@@ -386,11 +385,9 @@ class PaliGemma(nn.Module):
             "vision_tower.embeddings.position_embedding": "model.vision_tower.vision_model.embeddings.position_embedding.weight",
             "vision_tower_norm.weight": "model.vision_tower.vision_model.post_layernorm.weight",
             "vision_tower_norm.bias": "model.vision_tower.vision_model.post_layernorm.bias",
-            
             # --- Projector ---
             "multi_modal_projector.weight": "model.multi_modal_projector.linear.weight",
             "multi_modal_projector.bias": "model.multi_modal_projector.linear.bias",
-            
             # --- Language Model ---
             "embed_tokens.weight": "model.embed_tokens.weight",
             "norm.weight": "model.norm.weight",
@@ -401,7 +398,7 @@ class PaliGemma(nn.Module):
         for i in range(config.vision_config.num_hidden_layers):
             k_prefix = f"vision_tower.encoder.layers.{i}"
             hf_prefix = f"model.vision_tower.vision_model.encoder.layers.{i}"
-            
+
             mapping_rules[f"{k_prefix}.self_attn.k_proj.weight"] = f"{hf_prefix}.self_attn.k_proj.weight"
             mapping_rules[f"{k_prefix}.self_attn.v_proj.weight"] = f"{hf_prefix}.self_attn.v_proj.weight"
             mapping_rules[f"{k_prefix}.self_attn.q_proj.weight"] = f"{hf_prefix}.self_attn.q_proj.weight"
@@ -410,12 +407,12 @@ class PaliGemma(nn.Module):
             mapping_rules[f"{k_prefix}.self_attn.v_proj.bias"] = f"{hf_prefix}.self_attn.v_proj.bias"
             mapping_rules[f"{k_prefix}.self_attn.q_proj.bias"] = f"{hf_prefix}.self_attn.q_proj.bias"
             mapping_rules[f"{k_prefix}.self_attn.out_proj.bias"] = f"{hf_prefix}.self_attn.out_proj.bias"
-            
+
             mapping_rules[f"{k_prefix}.layer_norm1.weight"] = f"{hf_prefix}.layer_norm1.weight"
             mapping_rules[f"{k_prefix}.layer_norm1.bias"] = f"{hf_prefix}.layer_norm1.bias"
             mapping_rules[f"{k_prefix}.layer_norm2.weight"] = f"{hf_prefix}.layer_norm2.weight"
             mapping_rules[f"{k_prefix}.layer_norm2.bias"] = f"{hf_prefix}.layer_norm2.bias"
-            
+
             mapping_rules[f"{k_prefix}.mlp.fc1.weight"] = f"{hf_prefix}.mlp.fc1.weight"
             mapping_rules[f"{k_prefix}.mlp.fc1.bias"] = f"{hf_prefix}.mlp.fc1.bias"
             mapping_rules[f"{k_prefix}.mlp.fc2.weight"] = f"{hf_prefix}.mlp.fc2.weight"
@@ -430,23 +427,25 @@ class PaliGemma(nn.Module):
             mapping_rules[f"{k_prefix}.self_attn.k_proj.weight"] = f"{hf_prefix}.self_attn.k_proj.weight"
             mapping_rules[f"{k_prefix}.self_attn.v_proj.weight"] = f"{hf_prefix}.self_attn.v_proj.weight"
             mapping_rules[f"{k_prefix}.self_attn.o_proj.weight"] = f"{hf_prefix}.self_attn.o_proj.weight"
-            
+
             mapping_rules[f"{k_prefix}.mlp.gate_proj.weight"] = f"{hf_prefix}.mlp.gate_proj.weight"
             mapping_rules[f"{k_prefix}.mlp.up_proj.weight"] = f"{hf_prefix}.mlp.up_proj.weight"
             mapping_rules[f"{k_prefix}.mlp.down_proj.weight"] = f"{hf_prefix}.mlp.down_proj.weight"
-            
+
             mapping_rules[f"{k_prefix}.input_layernorm.weight"] = f"{hf_prefix}.input_layernorm.weight"
-            mapping_rules[f"{k_prefix}.post_attention_layernorm.weight"] = f"{hf_prefix}.post_attention_layernorm.weight"
+            mapping_rules[f"{k_prefix}.post_attention_layernorm.weight"] = (
+                f"{hf_prefix}.post_attention_layernorm.weight"
+            )
 
         # Apply Mapping
         missing_keys = []
         unexpected_keys = []
-        
+
         for k_key, hf_key in mapping_rules.items():
             if k_key not in kornia_sd:
                 # mismatch in manual map vs actual model structure
                 continue
-            
+
             if hf_key not in hf_sd:
                 # Key might be missing in HF model (unlikely for matched config)
                 missing_keys.append(hf_key)
@@ -454,9 +453,11 @@ class PaliGemma(nn.Module):
 
             with torch.no_grad():
                 if kornia_sd[k_key].shape != hf_sd[hf_key].shape:
-                     logger.warning(f"Shape mismatch: {k_key} {kornia_sd[k_key].shape} vs {hf_key} {hf_sd[hf_key].shape}")
+                    logger.warning(
+                        f"Shape mismatch: {k_key} {kornia_sd[k_key].shape} vs {hf_key} {hf_sd[hf_key].shape}"
+                    )
                 else:
                     kornia_sd[k_key].copy_(hf_sd[hf_key])
-        
+
         logger.info("Weights loaded successfully.")
         return kornia_model
