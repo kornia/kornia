@@ -380,9 +380,15 @@ class PaliGemma(nn.Module):
 
         mapping_rules = {
             # --- Vision Tower ---
-            "vision_tower.embeddings.patch_embedding.weight": "model.vision_tower.vision_model.embeddings.patch_embedding.weight",
-            "vision_tower.embeddings.patch_embedding.bias": "model.vision_tower.vision_model.embeddings.patch_embedding.bias",
-            "vision_tower.embeddings.position_embedding": "model.vision_tower.vision_model.embeddings.position_embedding.weight",
+            "vision_tower.embeddings.patch_embedding.weight": (
+                "model.vision_tower.vision_model.embeddings.patch_embedding.weight"
+            ),
+            "vision_tower.embeddings.patch_embedding.bias": (
+                "model.vision_tower.vision_model.embeddings.patch_embedding.bias"
+            ),
+            "vision_tower.embeddings.position_embedding": (
+                "model.vision_tower.vision_model.embeddings.position_embedding.weight"
+            ),
             "vision_tower_norm.weight": "model.vision_tower.vision_model.post_layernorm.weight",
             "vision_tower_norm.bias": "model.vision_tower.vision_model.post_layernorm.bias",
             # --- Projector ---
@@ -439,7 +445,6 @@ class PaliGemma(nn.Module):
 
         # Apply Mapping
         missing_keys = []
-        unexpected_keys = []
 
         for k_key, hf_key in mapping_rules.items():
             if k_key not in kornia_sd:
