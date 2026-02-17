@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import argparse
 import os
 from functools import partial
 from itertools import product
@@ -120,7 +121,21 @@ def torch_optimizer(optimizer_backend):
 
 def _parse_test_option(config, option: str, all_values: dict | set) -> list[str]:
     """Parse a test option from CLI, expanding 'all' to full list."""
-    raw_value = config.getoption(option)
+    try:
+        raw_value = config.getoption(option)
+    except (ValueError, KeyError):
+        raw_value = None
+
+    if raw_value is None:
+        # Fallback to defaults to avoid empty params
+        if option == "--device":
+            return ["cpu"]
+        if option == "--dtype":
+            return ["float32"]
+        if option == "--optimizer":
+            return ["inductor"]
+        return []
+
     if raw_value == "all":
         return list(all_values.keys()) if isinstance(all_values, dict) else list(all_values)
     return raw_value.split(",")
@@ -182,30 +197,46 @@ def pytest_addoption(parser):
         KORNIA_TEST_OPTIMIZER: Optimizer backend (default: inductor)
         KORNIA_TEST_RUNSLOW: Run slow tests (default: false)
     """
-    parser.addoption(
-        "--device",
-        action="store",
-        default=os.environ.get("KORNIA_TEST_DEVICE", "cpu"),
-        help="Device to run tests on (env: KORNIA_TEST_DEVICE)",
-    )
-    parser.addoption(
-        "--dtype",
-        action="store",
-        default=os.environ.get("KORNIA_TEST_DTYPE", "float32"),
-        help="Data type for tests (env: KORNIA_TEST_DTYPE)",
-    )
-    parser.addoption(
-        "--optimizer",
-        action="store",
-        default=os.environ.get("KORNIA_TEST_OPTIMIZER", "inductor"),
-        help="Optimizer backend (env: KORNIA_TEST_OPTIMIZER)",
-    )
-    parser.addoption(
-        "--runslow",
-        action="store_true",
-        default=os.environ.get("KORNIA_TEST_RUNSLOW", "false").lower() == "true",
-        help="Run slow tests (env: KORNIA_TEST_RUNSLOW)",
-    )
+    options = [
+        (
+            "--device",
+            {
+                "action": "store",
+                "default": os.environ.get("KORNIA_TEST_DEVICE", "cpu"),
+                "help": "Device to run tests on (env: KORNIA_TEST_DEVICE)",
+            },
+        ),
+        (
+            "--dtype",
+            {
+                "action": "store",
+                "default": os.environ.get("KORNIA_TEST_DTYPE", "float32"),
+                "help": "Data type for tests (env: KORNIA_TEST_DTYPE)",
+            },
+        ),
+        (
+            "--optimizer",
+            {
+                "action": "store",
+                "default": os.environ.get("KORNIA_TEST_OPTIMIZER", "inductor"),
+                "help": "Optimizer backend (env: KORNIA_TEST_OPTIMIZER)",
+            },
+        ),
+        (
+            "--runslow",
+            {
+                "action": "store_true",
+                "default": os.environ.get("KORNIA_TEST_RUNSLOW", "false").lower() == "true",
+                "help": "Run slow tests (env: KORNIA_TEST_RUNSLOW)",
+            },
+        ),
+    ]
+
+    for name, kwargs in options:
+        try:
+            parser.addoption(name, **kwargs)
+        except (argparse.ArgumentError, ValueError):
+            pass
 
 
 def _setup_torch_compile() -> None:
@@ -229,9 +260,11 @@ def pytest_sessionstart(session):
     try:
         _setup_torch_compile()
     except RuntimeError as ex:
-        if "not yet supported for torch.compile" not in str(
-            ex
-        ) and "Dynamo is not supported on Python 3.12+" not in str(ex):
+        if (
+            "not yet supported for torch.compile" not in str(ex)
+            and "Dynamo is not supported on Python 3.12+" not in str(ex)
+            and "Python 3.14+" not in str(ex)
+        ):
             raise ex
 
     os.makedirs(WEIGHTS_CACHE_DIR, exist_ok=True)
@@ -294,8 +327,19 @@ def pytest_report_header(config):
     except ImportError:
         accelerate_info = "`accelerate` not found"
 
-    import kornia_rs
-    import onnx
+    try:
+        import kornia_rs
+
+        kornia_rs_info = f"kornia_rs-{kornia_rs.__version__}"
+    except ImportError:
+        kornia_rs_info = "`kornia_rs` not found"
+
+    try:
+        import onnx
+
+        onnx_info = f"onnx-{onnx.__version__}"
+    except ImportError:
+        onnx_info = "`onnx` not found"
 
     env_info = _get_env_info()
     cached_weights = os.listdir(WEIGHTS_CACHE_DIR) if os.path.exists(WEIGHTS_CACHE_DIR) else []
@@ -321,8 +365,8 @@ main deps:
 x deps:
     - {accelerate_info}
 dev deps:
-    - kornia_rs-{kornia_rs.__version__}
-    - onnx-{onnx.__version__}
+    - {kornia_rs_info}
+    - {onnx_info}
 {gcc_info}
 available optimizers: {TEST_OPTIMIZER_BACKEND}
 model weights cached: {cached_weights}

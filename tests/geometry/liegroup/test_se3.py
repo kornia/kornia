@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import ShapeError, TypeCheckError
 from kornia.geometry.conversions import euler_from_quaternion, rotation_matrix_to_quaternion
 from kornia.geometry.liegroup import Se3, So3
 from kornia.geometry.quaternion import Quaternion
@@ -60,21 +61,67 @@ class TestSe3(BaseTester):
         se: Se3 = self._make_rand_se3d(device, dtype, batch_size)
         assert se.r.q.shape[0] == batch_size
 
-    # TODO: implement me
     def test_exception(self, device, dtype):
-        pass
+        with pytest.raises(TypeCheckError):
+            Se3(torch.ones(1, 4), torch.ones(1, 3))
+        with pytest.raises(TypeCheckError):
+            Se3(So3.identity(1), [1.0, 2.0, 3.0])
+        with pytest.raises(ShapeError):
+            Se3.exp(torch.ones(1, 4))  # Should be (B, 6)
 
-    # TODO: implement me
     def test_gradcheck(self, device):
-        pass
+        v = torch.randn(2, 6, device=device, dtype=torch.float64, requires_grad=True)
 
-    # TODO: implement me
+        def op(x):
+            return Se3.exp(x).matrix()
+
+        self.gradcheck(op, (v,))
+
+        m = Se3.random(2, device=device, dtype=torch.float64).matrix().detach().requires_grad_(True)
+
+        def op_matrix(x):
+            return Se3.from_matrix(x).matrix()
+
+        self.gradcheck(op_matrix, (m,))
+
     def test_jit(self, device, dtype):
-        pass
+        v = torch.randn(2, 6, device=device, dtype=dtype)
 
-    # TODO: implement me
+        def op(x):
+            return Se3.exp(x).matrix()
+
+        op_jit = torch.jit.trace(op, (v,))
+        self.assert_close(op(v), op_jit(v))
+
     def test_module(self, device, dtype):
-        pass
+        s = Se3.random(1, device=device, dtype=dtype)
+        # Force parameters for state_dict testing
+        s._rotation._q._data = torch.nn.Parameter(s._rotation._q._data)
+        s._translation = torch.nn.Parameter(s._translation.data)
+
+        class MyModule(torch.nn.Module):
+            def __init__(self, s):
+                super().__init__()
+                self.s = s
+
+            def forward(self, x):
+                return self.s * x
+
+        module = MyModule(s).to(device, dtype)
+        x = torch.rand(1, 3, device=device, dtype=dtype)
+        out = module(x)
+        self.assert_close(out, s * x)
+
+        # Test state dict
+        state_dict = module.state_dict()
+        assert any("_rotation._q._data" in k for k in state_dict.keys())
+
+        new_s = Se3.identity(1, device=device, dtype=dtype)
+        new_s._rotation._q._data = torch.nn.Parameter(new_s._rotation._q._data)
+        new_s._translation = torch.nn.Parameter(new_s._translation.data)
+        new_module = MyModule(new_s).to(device, dtype)
+        new_module.load_state_dict(state_dict)
+        self.assert_close(new_module.s.matrix(), s.matrix())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_init(self, device, dtype, batch_size):

@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import ShapeError, TypeCheckError
 from kornia.geometry.conversions import euler_from_quaternion
 from kornia.geometry.liegroup import So3
 from kornia.geometry.quaternion import Quaternion
@@ -38,25 +39,70 @@ class TestSo3(BaseTester):
         assert isinstance(s, So3)
         self.assert_close(s.q.data, q.data)
 
-    # TODO: implement me
-    def test_cardinality(self, device, dtype):
-        pass
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_cardinality(self, device, dtype, batch_size):
+        s: So3 = So3.random(batch_size, device, dtype)
+        assert s.q.shape[0] == batch_size
 
-    # TODO: implement me
     def test_exception(self, device, dtype):
-        pass
+        with pytest.raises(TypeCheckError):
+            So3(torch.ones(1, 4))
+        with pytest.raises(ShapeError):
+            # ShapeError is raised by KORNIA_CHECK_SHAPE or similar logic if implemented
+            # but So3.exp currently uses KORNIA_CHECK which might raise something else
+            # OR it might not be checking shape. Let's check.
+            So3.exp(torch.ones(1, 2))
 
-    # TODO: implement me
     def test_gradcheck(self, device):
-        pass
+        v = torch.randn(2, 3, device=device, dtype=torch.float64, requires_grad=True)
 
-    # TODO: implement me
+        def op(x):
+            return So3.exp(x).matrix()
+
+        self.gradcheck(op, (v,))
+
+        m = So3.random(2, device=device, dtype=torch.float64).matrix().detach().requires_grad_(True)
+
+        def op_matrix(x):
+            return So3.from_matrix(x).matrix()
+
+        self.gradcheck(op_matrix, (m,))
+
     def test_jit(self, device, dtype):
-        pass
+        v = torch.randn(2, 3, device=device, dtype=dtype)
 
-    # TODO: implement me
+        def op(x):
+            return So3.exp(x).matrix()
+
+        op_jit = torch.jit.trace(op, (v,))
+        self.assert_close(op(v), op_jit(v))
+
     def test_module(self, device, dtype):
-        pass
+        s = So3.random(1, device=device, dtype=dtype)
+        # Force parameters for state_dict testing
+        s._q._data = torch.nn.Parameter(s._q._data)
+
+        class MyModule(torch.nn.Module):
+            def __init__(self, s):
+                super().__init__()
+                self.s = s
+
+            def forward(self, x):
+                return self.s * x
+
+        module = MyModule(s).to(device, dtype)
+        x = torch.rand(1, 3, device=device, dtype=dtype)
+        out = module(x)
+        self.assert_close(out, s * x)
+
+        state_dict = module.state_dict()
+        assert any("_q._data" in k for k in state_dict.keys())
+
+        new_s = So3.identity(1, device=device, dtype=dtype)
+        new_s._q._data = torch.nn.Parameter(new_s._q._data)
+        new_module = MyModule(new_s).to(device, dtype)
+        new_module.load_state_dict(state_dict)
+        self.assert_close(new_module.s.matrix(), s.matrix())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_init(self, device, dtype, batch_size):

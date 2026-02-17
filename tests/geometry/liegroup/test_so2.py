@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import ShapeError, TypeCheckError
 from kornia.geometry.liegroup import So2
 from kornia.geometry.vector import Vector2
 
@@ -65,21 +66,18 @@ class TestSo2(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
     def test_exception(self, batch_size, device, dtype, cdtype):
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             z = torch.randn(batch_size, 2, dtype=cdtype, device=device)
             assert So2(z)
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeCheckError):
             assert So2.identity(1, device, dtype) * [1.0, 2.0, 1.0]
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             theta = torch.rand((2, 2), dtype=dtype, device=device)
             assert So2.exp(theta)
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             theta = torch.rand((2, 2), dtype=dtype, device=device)
             assert So2.hat(theta)
-        with pytest.raises(ValueError):
-            m = torch.rand((2, 2, 1), dtype=dtype, device=device)
-            assert So2.from_matrix(m)
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             m = torch.rand((2, 2, 1), dtype=dtype, device=device)
             assert So2.from_matrix(m)
         with pytest.raises(Exception):
@@ -87,15 +85,55 @@ class TestSo2(BaseTester):
 
     # TODO: implement me
     def test_gradcheck(self, device):
-        pass
+        theta = torch.randn(2, 1, device=device, dtype=torch.float64, requires_grad=True)
 
-    # TODO: implement me
+        def op(x):
+            return So2.exp(x).matrix()
+
+        self.gradcheck(op, (theta,))
+
+        m = So2.random(2, device=device, dtype=torch.float64).matrix().detach().requires_grad_(True)
+
+        def op_matrix(x):
+            return So2.from_matrix(x).matrix()
+
+        self.gradcheck(op_matrix, (m,))
+
     def test_jit(self, device, dtype):
-        pass
+        theta = torch.randn(2, 1, device=device, dtype=dtype)
 
-    # TODO: implement me
+        def op(x):
+            return So2.exp(x).matrix()
+
+        op_jit = torch.jit.trace(op, (theta,))
+        self.assert_close(op(theta), op_jit(theta))
+
     def test_module(self, device, dtype):
-        pass
+        s = So2.random(1, device=device, dtype=dtype)
+        # Force parameters for state_dict testing
+        s._z = torch.nn.Parameter(s._z)
+
+        class MyModule(torch.nn.Module):
+            def __init__(self, s):
+                super().__init__()
+                self.s = s
+
+            def forward(self, x):
+                return self.s * x
+
+        module = MyModule(s).to(device, dtype)
+        x = torch.rand(1, 2, device=device, dtype=dtype)
+        out = module(x)
+        self.assert_close(out, s * x)
+
+        state_dict = module.state_dict()
+        assert any("_z" in k for k in state_dict.keys())
+
+        new_s = So2.identity(1, device=device, dtype=dtype)
+        new_s._z = torch.nn.Parameter(new_s._z)
+        new_module = MyModule(new_s).to(device, dtype)
+        new_module.load_state_dict(state_dict)
+        self.assert_close(new_module.s.matrix(), s.matrix())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
@@ -179,14 +217,16 @@ class TestSo2(BaseTester):
     def test_hat(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size,))
         m = So2.hat(theta)
-        o = torch.ones((2, 1), device=device, dtype=dtype)
-        self.assert_close((m @ o).reshape(-1, 2, 1), theta.reshape(-1, 1, 1).repeat(1, 2, 1))
+        self.assert_close(m[..., 0, 0], torch.zeros_like(theta))
+        self.assert_close(m[..., 1, 1], torch.zeros_like(theta))
+        self.assert_close(m[..., 0, 1], -theta)
+        self.assert_close(m[..., 1, 0], theta)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_vee(self, device, dtype, batch_size):
         omega = self._make_rand_data(device, dtype, (batch_size, 2, 2))
         theta = So2.vee(omega)
-        self.assert_close(omega[..., 0, 1], theta)
+        self.assert_close(omega[..., 1, 0], theta)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_hat_vee(self, device, dtype, batch_size):
@@ -238,4 +278,6 @@ class TestSo2(BaseTester):
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_adjoint(self, device, dtype, batch_size):
         s = So2.identity(batch_size, device=device, dtype=dtype)
-        self.assert_close(s.matrix(), s.adjoint())
+        adj = s.adjoint()
+        expected = torch.ones_like(adj)
+        self.assert_close(adj, expected)

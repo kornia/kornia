@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from kornia.core.exceptions import ShapeError, TypeCheckError
 from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
 
@@ -64,24 +65,24 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_exception(self, device, dtype, batch_size):
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             r = So2.random(batch_size)
             t1 = torch.randn((batch_size, 1), dtype=dtype, device=device)
             t2 = torch.randn((batch_size, 3), dtype=dtype, device=device)
             Se2(r, t1)
             Se2(r, t2)
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
             Se2.exp(theta)
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             v = torch.rand((batch_size, 2), dtype=dtype, device=device)
             Se2.hat(v)
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             omega = torch.rand((4, 4), dtype=dtype, device=device)
             Se2.vee(omega)
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeCheckError):
             Se2.identity(1, device, dtype) * [1.0, 2.0, 1.0]
-        with pytest.raises(ValueError):
+        with pytest.raises(ShapeError):
             theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
             Se2.hat(theta)
         with pytest.raises(Exception):
@@ -93,17 +94,60 @@ class TestSe2(BaseTester):
             y = torch.rand(3, dtype=dtype, device=device)
             Se2.trans(x, y)
 
-    # TODO: implement me
     def test_gradcheck(self, device):
-        pass
+        v = torch.randn(2, 3, device=device, dtype=torch.float64, requires_grad=True)
 
-    # TODO: implement me
+        def op(x):
+            return Se2.exp(x).matrix()
+
+        self.gradcheck(op, (v,))
+
+        m = Se2.random(2, device=device, dtype=torch.float64).matrix().detach().requires_grad_(True)
+
+        def op_matrix(x):
+            return Se2.from_matrix(x).matrix()
+
+        self.gradcheck(op_matrix, (m,))
+
     def test_jit(self, device, dtype):
-        pass
+        v = torch.randn(2, 3, device=device, dtype=dtype)
 
-    # TODO: implement me
+        def op(x):
+            return Se2.exp(x).matrix()
+
+        op_jit = torch.jit.trace(op, (v,))
+        self.assert_close(op(v), op_jit(v))
+
     def test_module(self, device, dtype):
-        pass
+        s = Se2.random(1, device=device, dtype=dtype)
+        # Force parameters for state_dict testing
+        s.rotation._z = torch.nn.Parameter(s.rotation._z)
+        s._translation = torch.nn.Parameter(s.translation.data)
+
+        class MyModule(torch.nn.Module):
+            def __init__(self, s):
+                super().__init__()
+                self.s = s
+
+            def forward(self, x):
+                return self.s * x
+
+        module = MyModule(s).to(device, dtype)
+        x = torch.rand(1, 2, device=device, dtype=dtype)
+        out = module(x)
+        self.assert_close(out, s * x)
+
+        # Test state dict
+        state_dict = module.state_dict()
+        assert any("rotation._z" in k for k in state_dict.keys()), state_dict.keys()
+        assert any("translation" in k for k in state_dict.keys()), state_dict.keys()
+
+        new_s = Se2.identity(1, device=device, dtype=dtype)
+        new_s.rotation._z = torch.nn.Parameter(new_s.rotation._z)
+        new_s._translation = torch.nn.Parameter(new_s.translation.data)
+        new_module = MyModule(new_s).to(device, dtype)
+        new_module.load_state_dict(state_dict)
+        self.assert_close(new_module.s.matrix(), s.matrix())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_init(self, device, dtype, batch_size):
@@ -163,20 +207,17 @@ class TestSe2(BaseTester):
     def test_exp(self, device, dtype, batch_size):
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         theta = torch.zeros(batch_size if batch_size is not None else (), device=device, dtype=dtype)
-        z = torch.zeros((batch_size, 2) if batch_size is not None else (2,), device=device, dtype=dtype)
         s = Se2.exp(torch.cat((t, theta[..., None]), -1))
         self.assert_close(s.r.z, So2.exp(theta).z)
-        self.assert_close(s.t, z)
+        self.assert_close(s.t, t)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_log(self, device, dtype, batch_size):
         t = self._make_rand_data(device, dtype, (batch_size, 2))
         s = Se2(So2.identity(batch_size, device, dtype), t)
         s.log()
-        zero_vec = torch.zeros(3, device=device, dtype=dtype)
-        if batch_size is not None:
-            zero_vec = zero_vec.repeat(batch_size, 1)
-        self.assert_close(s.log(), zero_vec)
+        expected = torch.cat((t, torch.zeros_like(t[..., :1])), -1)
+        self.assert_close(s.log(), expected)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp_log(self, device, dtype, batch_size):
@@ -197,7 +238,7 @@ class TestSe2(BaseTester):
         omega = self._make_rand_data(device, dtype, input_shape=(batch_size, 3, 3))
         v = Se2.vee(omega)
         self.assert_close(torch.stack((v[..., 0], v[..., 1]), -1), omega[..., 2, :2])
-        self.assert_close(v[..., -1], omega[..., 0, 1])
+        self.assert_close(v[..., -1], omega[..., 1, 0])
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_hat_vee(self, device, dtype, batch_size):
