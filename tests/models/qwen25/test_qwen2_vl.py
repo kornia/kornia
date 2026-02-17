@@ -30,4 +30,5 @@ class TestQwen2VL:
         output = model(input)
 
         assert output.shape[0] == batch_size
-        assert output.shape[2] == 1280
+        # Merger outputs to out_hidden_size (default 2048)
+        assert output.shape[2] == 2048
