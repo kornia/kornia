@@ -17,7 +17,8 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+import logging
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -27,6 +28,8 @@ from torch import nn
 from kornia.models.siglip2.vision_encoder import SigLip2VisionModel
 
 from .configuration_paligemma import PaliGemmaConfig
+
+logger = logging.getLogger(__name__)
 
 
 class GemmaRMSNorm(nn.Module):
@@ -286,10 +289,7 @@ class PaliGemma(nn.Module):
         inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
 
         # --- Handle Placeholder Token Duplication ---
-        num_images = image_features.shape[1]
-        if inputs_embeds.shape[1] > num_images:
-            inputs_embeds = inputs_embeds[:, num_images:]
-        # --------------------------------------------------
+
 
         # 4. Concatenate
         inputs_embeds = torch.cat([image_features, inputs_embeds], dim=1)
@@ -314,16 +314,33 @@ class PaliGemma(nn.Module):
         return logits
 
     @classmethod
-    def from_pretrained(cls, model_id: str = "google/paligemma-3b-pt-224", token: Optional[str] = None) -> PaliGemma:
-        """Load pretrained weights with Auto-Discovery logic."""
+    def from_pretrained(
+        cls,
+        model_id: str = "google/paligemma-3b-pt-224",
+        token: Optional[str] = None,
+        device: Optional[torch.device] = None,
+    ) -> PaliGemma:
+        """Load pretrained weights from Hugging Face.
+
+        Args:
+            model_id: The model ID on Hugging Face Hub.
+            token: The HF token.
+            device: The device to load the model onto. If None, defaults to CPU.
+                    Loading to CPU first might require significant RAM (approx 12GB+ for 3B model).
+                    Specifying a GPU device (e.g. "cuda") is recommended for faster loading and less system RAM usage.
+
+        Returns:
+            The loaded PaliGemma model.
+        """
         try:
             from transformers import PaliGemmaForConditionalGeneration
         except ImportError as e:
             raise ImportError("Transformers library is required.") from e
 
         # Load HF Model
+        # output_loading_info=False to avoid clutter, but we can use it if debugging is needed.
         hf_model = PaliGemmaForConditionalGeneration.from_pretrained(
-            model_id, device_map="cpu", token=token, torch_dtype=torch.float32
+            model_id, device_map=device, token=token, torch_dtype=torch.float32
         )
 
         config = PaliGemmaConfig()
@@ -335,6 +352,7 @@ class PaliGemma(nn.Module):
         config.hidden_size = text_conf.hidden_size
         config.num_hidden_layers = text_conf.num_hidden_layers
         config.num_attention_heads = text_conf.num_attention_heads
+        config.head_dim = text_conf.head_dim
         config.intermediate_size = text_conf.intermediate_size
         config.num_key_value_heads = text_conf.num_key_value_heads
         config.vision_config.image_size = vis_conf.image_size
@@ -345,77 +363,100 @@ class PaliGemma(nn.Module):
         config.vision_config.intermediate_size = vis_conf.intermediate_size
 
         kornia_model = cls(config)
+        
+        # If device was specified, move kornia model there before loading weights
+        if device is not None:
+            kornia_model = kornia_model.to(device)
+
         kornia_sd = kornia_model.state_dict()
         hf_sd = hf_model.state_dict()
 
-        # ---------------------------------------------------------------------
-        # 🔥 SMART MAPPING (Auto-Discover Pos Embeddings)
-        # ---------------------------------------------------------------------
-        print("⏳ Loading weights with Smart Auto-Discovery...")
+        logger.info(f"Loading weights from {model_id}...")
 
-        # 1. Known Fixed Mappings
-        manual_map = {
+        # ---------------------------------------------------------------------
+        # Explicit Weight Mapping
+        # ---------------------------------------------------------------------
+        # We manually map Kornia keys to HF keys to ensure correctness and avoid
+        # accidental mismatches from suffix matching.
+
+        mapping_rules = {
+            # --- Vision Tower ---
+            "vision_tower.embeddings.patch_embedding.weight": "model.vision_tower.vision_model.embeddings.patch_embedding.weight",
+            "vision_tower.embeddings.patch_embedding.bias": "model.vision_tower.vision_model.embeddings.patch_embedding.bias",
+            "vision_tower.embeddings.position_embedding": "model.vision_tower.vision_model.embeddings.position_embedding.weight",
             "vision_tower_norm.weight": "model.vision_tower.vision_model.post_layernorm.weight",
             "vision_tower_norm.bias": "model.vision_tower.vision_model.post_layernorm.bias",
+            
+            # --- Projector ---
             "multi_modal_projector.weight": "model.multi_modal_projector.linear.weight",
             "multi_modal_projector.bias": "model.multi_modal_projector.linear.bias",
+            
+            # --- Language Model ---
+            "embed_tokens.weight": "model.embed_tokens.weight",
+            "norm.weight": "model.norm.weight",
+            "lm_head.weight": "lm_head.weight",
         }
 
-        # 2. Add Auto-Discovered Position Embedding
-        # We search Kornia SD for anything that looks like a position embedding
-        for key in kornia_sd.keys():
-            if "vision_tower" in key and ("pos" in key and "embed" in key):
-                print(f"🔎 Found Position Embedding Key in Kornia: {key}")
-                manual_map[key] = "model.vision_tower.vision_model.embeddings.position_embedding.weight"
+        # Map Vision Layers
+        for i in range(config.vision_config.num_hidden_layers):
+            k_prefix = f"vision_tower.encoder.layers.{i}"
+            hf_prefix = f"model.vision_tower.vision_model.encoder.layers.{i}"
+            
+            mapping_rules[f"{k_prefix}.self_attn.k_proj.weight"] = f"{hf_prefix}.self_attn.k_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.v_proj.weight"] = f"{hf_prefix}.self_attn.v_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.q_proj.weight"] = f"{hf_prefix}.self_attn.q_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.out_proj.weight"] = f"{hf_prefix}.self_attn.out_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.k_proj.bias"] = f"{hf_prefix}.self_attn.k_proj.bias"
+            mapping_rules[f"{k_prefix}.self_attn.v_proj.bias"] = f"{hf_prefix}.self_attn.v_proj.bias"
+            mapping_rules[f"{k_prefix}.self_attn.q_proj.bias"] = f"{hf_prefix}.self_attn.q_proj.bias"
+            mapping_rules[f"{k_prefix}.self_attn.out_proj.bias"] = f"{hf_prefix}.self_attn.out_proj.bias"
+            
+            mapping_rules[f"{k_prefix}.layer_norm1.weight"] = f"{hf_prefix}.layer_norm1.weight"
+            mapping_rules[f"{k_prefix}.layer_norm1.bias"] = f"{hf_prefix}.layer_norm1.bias"
+            mapping_rules[f"{k_prefix}.layer_norm2.weight"] = f"{hf_prefix}.layer_norm2.weight"
+            mapping_rules[f"{k_prefix}.layer_norm2.bias"] = f"{hf_prefix}.layer_norm2.bias"
+            
+            mapping_rules[f"{k_prefix}.mlp.fc1.weight"] = f"{hf_prefix}.mlp.fc1.weight"
+            mapping_rules[f"{k_prefix}.mlp.fc1.bias"] = f"{hf_prefix}.mlp.fc1.bias"
+            mapping_rules[f"{k_prefix}.mlp.fc2.weight"] = f"{hf_prefix}.mlp.fc2.weight"
+            mapping_rules[f"{k_prefix}.mlp.fc2.bias"] = f"{hf_prefix}.mlp.fc2.bias"
 
-            # Also catch patch embeddings if naming is weird
-            if "vision_tower" in key and "patch_embedding.weight" in key:
-                manual_map[key] = "model.vision_tower.vision_model.embeddings.patch_embedding.weight"
-            if "vision_tower" in key and "patch_embedding.bias" in key:
-                manual_map[key] = "model.vision_tower.vision_model.embeddings.patch_embedding.bias"
+        # Map Text Layers
+        for i in range(config.num_hidden_layers):
+            k_prefix = f"layers.{i}"
+            hf_prefix = f"model.layers.{i}"
 
-        # 3. Apply Manual Map
-        for k_key, hf_key in manual_map.items():
-            if k_key in kornia_sd and hf_key in hf_sd:
-                with torch.no_grad():
-                    if kornia_sd[k_key].shape == hf_sd[hf_key].shape:
-                        kornia_sd[k_key].copy_(hf_sd[hf_key])
-                        # print(f"✅ Loaded: {k_key}")
-                    else:
-                        print(f"❌ Shape Mismatch for {k_key}: {kornia_sd[k_key].shape} vs {hf_sd[hf_key].shape}")
+            mapping_rules[f"{k_prefix}.self_attn.q_proj.weight"] = f"{hf_prefix}.self_attn.q_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.k_proj.weight"] = f"{hf_prefix}.self_attn.k_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.v_proj.weight"] = f"{hf_prefix}.self_attn.v_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.o_proj.weight"] = f"{hf_prefix}.self_attn.o_proj.weight"
+            
+            mapping_rules[f"{k_prefix}.mlp.gate_proj.weight"] = f"{hf_prefix}.mlp.gate_proj.weight"
+            mapping_rules[f"{k_prefix}.mlp.up_proj.weight"] = f"{hf_prefix}.mlp.up_proj.weight"
+            mapping_rules[f"{k_prefix}.mlp.down_proj.weight"] = f"{hf_prefix}.mlp.down_proj.weight"
+            
+            mapping_rules[f"{k_prefix}.input_layernorm.weight"] = f"{hf_prefix}.input_layernorm.weight"
+            mapping_rules[f"{k_prefix}.post_attention_layernorm.weight"] = f"{hf_prefix}.post_attention_layernorm.weight"
 
-        # 4. Standard Suffix Matching for the rest
-        hf_vision_keys = {k: v for k, v in hf_sd.items() if "vision_tower" in k}
-        hf_text_keys = {k: v for k, v in hf_sd.items() if "vision_tower" not in k}
-
-        for k_key, k_val in kornia_sd.items():
-            if k_key in manual_map:
+        # Apply Mapping
+        missing_keys = []
+        unexpected_keys = []
+        
+        for k_key, hf_key in mapping_rules.items():
+            if k_key not in kornia_sd:
+                # mismatch in manual map vs actual model structure
                 continue
-            if "vision_tower.head" in k_key:
+            
+            if hf_key not in hf_sd:
+                # Key might be missing in HF model (unlikely for matched config)
+                missing_keys.append(hf_key)
                 continue
 
-            found = False
-            search_pool = hf_vision_keys if "vision_tower" in k_key else hf_text_keys
-
-            layer_id = None
-            parts = k_key.split(".")
-            if "layers" in parts:
-                try:
-                    idx = parts.index("layers") + 1
-                    layer_id = f"layers.{parts[idx]}."
-                except IndexError:
-                    pass
-
-            for hf_key, hf_val in search_pool.items():
-                if k_val.shape == hf_val.shape:
-                    if layer_id and layer_id not in hf_key:
-                        continue
-                    suffix = ".".join(k_key.split(".")[-2:])
-                    if hf_key.endswith(suffix):
-                        with torch.no_grad():
-                            k_val.copy_(hf_val)
-                        found = True
-                        break
-
-        print("✅ Weights Loaded.")
+            with torch.no_grad():
+                if kornia_sd[k_key].shape != hf_sd[hf_key].shape:
+                     logger.warning(f"Shape mismatch: {k_key} {kornia_sd[k_key].shape} vs {hf_key} {hf_sd[hf_key].shape}")
+                else:
+                    kornia_sd[k_key].copy_(hf_sd[hf_key])
+        
+        logger.info("Weights loaded successfully.")
         return kornia_model

@@ -81,5 +81,72 @@ class TestPaliGemma:
         expected_seq_len = 4 + 5
         assert logits.shape == (batch_size, expected_seq_len, config.vocab_size)
 
-    def test_from_pretrained_interface(self):
+    def test_from_pretrained_interface(self, device):
+        """Test that from_pretrained can be called and handles device placement."""
+        # Check standard interface existence
         assert hasattr(PaliGemma, "from_pretrained")
+
+        # Mocking transformers to avoid actual download
+        from unittest.mock import MagicMock, patch
+
+        mock_hf_model = MagicMock()
+        
+        # Setup specific config attributes that are accessed
+        mock_text_config = MagicMock()
+        mock_text_config.vocab_size = 100
+        mock_text_config.hidden_size = 32
+        mock_text_config.num_hidden_layers = 1
+        mock_text_config.num_attention_heads = 4
+        mock_text_config.head_dim = 8
+        mock_text_config.intermediate_size = 64
+        mock_text_config.num_key_value_heads = 4
+        
+        mock_vision_config = MagicMock()
+        mock_vision_config.image_size = 32
+        mock_vision_config.patch_size = 16
+        mock_vision_config.hidden_size = 32
+        mock_vision_config.num_hidden_layers = 1
+        mock_vision_config.num_attention_heads = 4
+        mock_vision_config.intermediate_size = 64
+
+        mock_hf_model.config.text_config = mock_text_config
+        mock_hf_model.config.vision_config = mock_vision_config
+
+        # Setup state dict with matching keys for "Explicit Mapping" coverage
+        # We need to simulate the HF keys expected by our new mapping logic
+        mock_state_dict = {
+            "model.vision_tower.vision_model.embeddings.patch_embedding.weight": torch.randn(32, 3, 16, 16),
+            "model.vision_tower.vision_model.embeddings.patch_embedding.bias": torch.randn(32),
+            "model.vision_tower.vision_model.embeddings.position_embedding.weight": torch.randn(4, 32), # 4 patches
+            "model.vision_tower.vision_model.post_layernorm.weight": torch.randn(32),
+            "model.vision_tower.vision_model.post_layernorm.bias": torch.randn(32),
+            "model.multi_modal_projector.linear.weight": torch.randn(32, 32),
+            "model.multi_modal_projector.linear.bias": torch.randn(32),
+            "model.embed_tokens.weight": torch.randn(100, 32),
+            "model.norm.weight": torch.randn(32),
+            "lm_head.weight": torch.randn(100, 32),
+            # Add one layer param for coverage
+            "model.vision_tower.vision_model.encoder.layers.0.self_attn.k_proj.weight": torch.randn(32, 32),
+            "model.layers.0.self_attn.q_proj.weight": torch.randn(32, 32),
+        }
+        
+        # Ensure shapes match what Kornia expects roughly
+        mock_hf_model.state_dict.return_value = mock_state_dict
+
+        with patch("transformers.PaliGemmaForConditionalGeneration.from_pretrained", return_value=mock_hf_model):
+            # 1. Test basic load
+            model = PaliGemma.from_pretrained("mock-model-id")
+            assert isinstance(model, PaliGemma)
+            
+            # 2. Test device placement
+            # We can't easily check internal device handling with mocks unless we inspect the calls,
+            # but we can check the returned model device.
+            # (Note: Mocks usually return CPU tensors, so actual move check depends on `torch.tensor` usage in mocks)
+            # However, we can check if the API accepts it without error.
+            if torch.cuda.is_available():
+                model_gpu = PaliGemma.from_pretrained("mock-model-id", device="cuda")
+                assert next(model_gpu.parameters()).device.type == "cuda"
+            else:
+                model_cpu = PaliGemma.from_pretrained("mock-model-id", device="cpu")
+                assert next(model_cpu.parameters()).device.type == "cpu"
+
