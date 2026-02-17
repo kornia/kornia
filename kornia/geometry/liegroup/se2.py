@@ -25,8 +25,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
-from kornia.geometry.liegroup._utils import check_se2_omega_shape, check_se2_t_shape, check_v_shape
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.geometry.liegroup.so2 import So2
 from kornia.geometry.vector import Vector2
 
@@ -34,7 +33,11 @@ from kornia.geometry.vector import Vector2
 def _check_se2_r_t_shape(r: So2, t: torch.Tensor) -> None:
     z_shape = r.z.shape
     if ((len(z_shape) == 1) and (len(t.shape) == 2)) or ((len(z_shape) == 0) and len(t.shape) == 1):
-        check_se2_t_shape(t)
+        # check_se2_t_shape
+        is_batch_shape = KORNIA_CHECK_SHAPE(t, ["B", "2"], raises=False)
+        is_single_shape = KORNIA_CHECK_SHAPE(t, ["2"], raises=False)
+        if not (is_batch_shape or is_single_shape):
+            raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {t.shape}")
     else:
         raise ValueError(
             f"Invalid input, both the inputs should be either batched or unbatched. Got: {r.z.shape} and {t.shape}"
@@ -82,8 +85,6 @@ class Se2(nn.Module):
         """
         super().__init__()
         KORNIA_CHECK_TYPE(rotation, So2)
-        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        # KORNIA_CHECK_TYPE(translation, (Vector3, torch.Tensor))
         if not isinstance(translation, (Vector2, torch.Tensor)):
             raise TypeError(f"translation type is {type(translation)}")
         self._translation: Vector2 | nn.Parameter
@@ -129,7 +130,6 @@ class Se2(nn.Module):
             KORNIA_CHECK_TYPE(right, Se2)
             return self._mul_se2(right)
         elif isinstance(right, (Vector2, torch.Tensor)):
-            # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
             # _check_se2_r_t_shape(so2, risght)
             return so2 * right + t
         else:
@@ -178,7 +178,11 @@ class Se2(nn.Module):
             tensor([[0.3818, 1.3012]], requires_grad=True)
 
         """
-        check_v_shape(v)
+        # check_v_shape
+        is_batch = KORNIA_CHECK_SHAPE(v, ["B", "3"], raises=False)
+        is_single = KORNIA_CHECK_SHAPE(v, ["3"], raises=False)
+        if not (is_batch or is_single):
+            raise ValueError(f"Invalid input shape, we expect [B, 3], [3] Got: {v.shape}")
         theta = v[..., 2]
         so2 = So2.exp(theta)
         z = torch.tensor(0.0, device=v.device, dtype=v.dtype)
@@ -228,8 +232,11 @@ class Se2(nn.Module):
                     [1.5707, 0.0000]])
 
         """
-        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        check_v_shape(v)
+        # check_v_shape
+        is_batch = KORNIA_CHECK_SHAPE(v, ["B", "3"], raises=False)
+        is_single = KORNIA_CHECK_SHAPE(v, ["3"], raises=False)
+        if not (is_batch or is_single):
+            raise ValueError(f"Invalid input shape, we expect [B, 3], [3] Got: {v.shape}")
         upsilon = torch.stack((v[..., 0], v[..., 1]), -1)
         theta = v[..., 2]
         col0 = torch.cat((So2.hat(theta), upsilon.unsqueeze(-2)), -2)
@@ -252,8 +259,11 @@ class Se2(nn.Module):
             tensor([1., 1., 1.])
 
         """
-        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        check_se2_omega_shape(omega)
+        # check_se2_omega_shape
+        is_batch = KORNIA_CHECK_SHAPE(omega, ["B", "3", "3"], raises=False)
+        is_single = KORNIA_CHECK_SHAPE(omega, ["3", "3"], raises=False)
+        if not (is_batch or is_single):
+            raise ValueError(f"Invalid input size, we expect [B, 3, 3] or [3, 3]. Got: {omega.shape}")
         upsilon = omega[..., 2, :2]
         theta = So2.vee(omega[..., :2, :2])
         return torch.cat((upsilon, theta[..., None]), -1)
