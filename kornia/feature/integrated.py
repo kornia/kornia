@@ -187,7 +187,7 @@ class SIFTFeature(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         config: Optional[Detector_config] = None,
     ) -> None:
         patch_size: int = 41
@@ -221,7 +221,7 @@ class SIFTFeatureScaleSpace(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
     ) -> None:
         if device is None:
             device = torch.device("cpu")
@@ -249,7 +249,7 @@ class GFTTAffNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         config: Optional[Detector_config] = None,
     ) -> None:
         if device is None:
@@ -274,7 +274,7 @@ class HesAffNetHardNet(LocalFeature):
         self,
         num_features: int = 2048,
         upright: bool = False,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         config: Optional[Detector_config] = None,
     ) -> None:
         if device is None:
@@ -299,7 +299,7 @@ class KeyNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         scale_laf: float = 1.0,
     ) -> None:
         if device is None:
@@ -320,7 +320,7 @@ class KeyNetAffNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         scale_laf: float = 1.0,
     ) -> None:
         if device is None:
