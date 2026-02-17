@@ -316,6 +316,8 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.
     B, C = shape[0], shape[1]
 
     x_reshaped = x.view(B, C, -1)
+
+    # TODO: use aminmax here when autograd support is avalaible for it
     x_min = x_reshaped.min(-1, keepdim=True)[0]  # Shape: (B, C, 1)
     x_max = x_reshaped.max(-1, keepdim=True)[0]  # Shape: (B, C, 1)
 
