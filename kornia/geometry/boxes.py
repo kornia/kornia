@@ -104,7 +104,7 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
         batched = boxes.ndim == 4
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == torch.Size([4, 2])):
             raise ValueError(f"Boxes shape must be (N, 4, 2) or (B, N, 4, 2) when {mode} mode. Got {boxes.shape}.")
-    elif mode.startswith("xy"):
+    elif mode.startswith("xy") or mode == "cxcywh":
         batched = boxes.ndim == 3
         if not (2 <= boxes.ndim <= 3 and boxes.shape[-1] == 4):
             raise ValueError(f"Boxes shape must be (N, 4) or (B, N, 4) when {mode} mode. Got {boxes.shape}.")
@@ -128,13 +128,15 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
         else:
             raise ValueError(f"Unknown mode {mode}")
         not validate_boxes or validate_bbox(quadrilaterals)
-    elif mode.startswith("xy"):
+    elif mode.startswith("xy") or mode == "cxcywh":
         if mode == "xyxy":
             height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]
         elif mode == "xyxy_plus":
             height, width = boxes[..., 3] - boxes[..., 1] + 1, boxes[..., 2] - boxes[..., 0] + 1
         elif mode == "xywh":
             height, width = boxes[..., 3], boxes[..., 2]
+        elif mode == "cxcywh":
+            width, height = boxes[..., 2], boxes[..., 3]
         else:
             raise ValueError(f"Unknown mode {mode}")
 
@@ -144,7 +146,11 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
             if (height <= 0).any():
                 raise ValueError("Some boxes have negative heights or 0.")
 
-        xmin, ymin = boxes[..., 0], boxes[..., 1]
+        if mode == "cxcywh":
+            xmin = boxes[..., 0] - 0.5 * width
+            ymin = boxes[..., 1] - 0.5 * height
+        else:
+            xmin, ymin = boxes[..., 0], boxes[..., 1]
         quadrilaterals = _boxes_to_polygons(xmin, ymin, width, height)
     else:
         raise ValueError(f"Unknown mode {mode}")
@@ -456,6 +462,9 @@ class Boxes:
                 * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
                   With shape :math:`(N, 4, 2)` or :math:`(B, N, 4, 2)`.
+                * * 'cxcywh': boxes are assumed to be in the format ``x_center, y_center, width, height`` where
+                  ``width = xmax - xmin`` and ``height = ymax - ymin``.
+                  With shape :math:`(N, 4)`, :math:`(B, N, 4)`.
 
             validate_boxes: check if boxes are valid rectangles or not. Valid rectangles are those with width
                 and height >= 1 (>= 2 when mode ends with '_plus' suffix).
@@ -507,6 +516,8 @@ class Boxes:
                   box width and height are defined as ``width = xmax - xmin`` and ``height = ymax - ymin``.
                 * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
+                * 'cxcywh': boxes are defined as ``x_center, y_center, width, height`` where ``width = xmax - xmin``
+                  and ``height = ymax - ymin``.
             as_padded_sequence: whether to keep the pads for a list of boxes. This parameter is only valid
                 if the boxes are from a box list whilst `from_tensor`.
 
@@ -540,6 +551,17 @@ class Boxes:
             pass
         elif mode in ("xywh", "vertices", "vertices_plus"):
             height, width = boxes[..., 3] - boxes[..., 1] + 1, boxes[..., 2] - boxes[..., 0] + 1
+            boxes[..., 2] = width
+            boxes[..., 3] = height
+        elif mode == "cxcywh":
+            width = boxes[..., 2] - boxes[..., 0] + 1
+            height = boxes[..., 3] - boxes[..., 1] + 1
+
+            cx = boxes[..., 0] + (width) / 2
+            cy = boxes[..., 1] + (height) / 2
+
+            boxes[..., 0] = cx
+            boxes[..., 1] = cy
             boxes[..., 2] = width
             boxes[..., 3] = height
         else:
