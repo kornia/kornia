@@ -58,6 +58,12 @@ build-docs = { cmd = "uv run python -m sphinx -W -b html docs/source docs/build/
 clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete && rm -rf .venv" }
 
 # ------------------------------------------------------------------------------
+# Restrict CUDA feature to supported platforms only
+# ------------------------------------------------------------------------------
+[feature.cuda]
+platforms = ["linux-64", "linux-aarch64", "win-64"]
+
+# ------------------------------------------------------------------------------
 # Feature: CUDA (PyTorch CUDA wheels) - for local GPU development
 # Requires reinstall because uv doesn't support per-environment sources
 # ------------------------------------------------------------------------------
