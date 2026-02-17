@@ -16,20 +16,23 @@
 #
 
 import torch
+import torch.nn.functional as F
 from torch import nn
+
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6) -> torch.Tensor:
     r"""Apply to a torch.Tensor the sepia filter.
 
     Args:
-        input: the input torch.Tensor with shape of :math:`(*, C, H, W)`.
+        input: the input torch.Tensor with shape of :math:`(*, 3, H, W)`.
         rescale: If True, the output torch.Tensor will be rescaled (max values be 1. or 255).
         eps: scalar to enforce numerical stability.
 
     Returns:
         torch.Tensor: The sepia torch.tensor of same size and numbers of channels
-        as the input with shape :math:`(*, C, H, W)`.
+        as the input with shape :math:`(*, 3, H, W)`.
 
     Example:
         >>> input = torch.ones(3, 1, 1)
@@ -39,26 +42,49 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
                 [[1.2030]],
         <BLANKLINE>
                 [[0.9370]]])
-
     """
-    if len(input.shape) < 3 or input.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
+    # Safety Checks
+    KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])
 
-    r = input[..., 0, :, :]
-    g = input[..., 1, :, :]
-    b = input[..., 2, :, :]
+    image_compute = input if input.is_floating_point() else input.float()
+    input_shape = image_compute.shape
 
-    r_out = 0.393 * r + 0.769 * g + 0.189 * b
-    g_out = 0.349 * r + 0.686 * g + 0.168 * b
-    b_out = 0.272 * r + 0.534 * g + 0.131 * b
+    # Standard Sepia Matrix
+    kernel = torch.tensor(
+        [
+            [0.393, 0.769, 0.189],
+            [0.349, 0.686, 0.168],
+            [0.272, 0.534, 0.131],
+        ],
+        device=image_compute.device,
+        dtype=image_compute.dtype,
+    )
 
-    sepia_out = torch.stack([r_out, g_out, b_out], dim=-3)
+    # Empirical benchmarks show that einsum is faster on CPU for this specific pattern,
+    # while conv2d offers significant speedups on GPU/CUDA.
+    # We branch to ensure optimal performance on both devices.
+    # BRANCH 1: CPU (Einsum)
+    if input.device.type == "cpu":
+        out = torch.einsum("...chw,oc->...ohw", image_compute, kernel)
+        out = out.contiguous()
+    # BRANCH 2: GPU/Accelerators (Conv2d)
+    else:
+        # Reshape for conv2d: (B*..., C, H, W)
+        input_flat = image_compute.reshape(-1, 3, input_shape[-2], input_shape[-1])
+
+        # Reshape kernel: (3, 3) -> (3, 3, 1, 1)
+        weight = kernel.view(3, 3, 1, 1)
+
+        out_flat = F.conv2d(input_flat, weight)
+
+        # Unflatten back to original shape
+        out = out_flat.reshape(input_shape)
 
     if rescale:
-        max_values = sepia_out.amax(dim=-1).amax(dim=-1)
-        sepia_out = sepia_out / (max_values[..., None, None] + eps)
+        max_values = out.amax(dim=-1).amax(dim=-1)
+        out = out / (max_values[..., None, None] + eps)
 
-    return sepia_out
+    return out
 
 
 class Sepia(nn.Module):
