@@ -15,9 +15,12 @@
 # limitations under the License.
 #
 
+import os
+
 import pytest
 import torch
 
+from kornia.config import kornia_config
 from kornia.models.small_sr import SmallSRNet, SmallSRNetWrapper
 
 from testing.base import BaseTester
@@ -48,11 +51,19 @@ class TestSmallSRNet(BaseTester):
             model(x)
 
     def test_exception_invalid_upscale_factor(self, device, dtype):
-        """Test that non-positive upscale factors are handled (model accepts them but may not work correctly)."""
-        # Note: SmallSRNet doesn't validate upscale_factor, it just uses it in PixelShuffle
-        # This test documents that behavior rather than enforcing validation
-        model_zero = SmallSRNet(upscale_factor=1, pretrained=False).to(device, dtype)
-        assert model_zero is not None
+        """Test that edge case upscale factors work correctly (upscale_factor=1 acts as identity)."""
+        # SmallSRNet doesn't validate upscale_factor, it just uses it in PixelShuffle
+        # With upscale_factor=1, PixelShuffle acts as identity (no upscaling)
+        model = SmallSRNet(upscale_factor=1, pretrained=False).to(device, dtype)
+        assert model is not None
+
+        # Test forward pass - should work without crashing
+        x = torch.randn(1, 1, 64, 64, device=device, dtype=dtype)
+        output = model(x)
+
+        # With upscale_factor=1, output dimensions should match input dimensions
+        assert output.shape == x.shape, f"Expected {x.shape}, got {output.shape}"
+        assert torch.isfinite(output).all()
 
     @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
@@ -85,7 +96,7 @@ class TestSmallSRNet(BaseTester):
     def test_feature_pretrained_loading(self, device, dtype, upscale_factor):
         """Test that pretrained weights can be loaded (only upscale_factor=3 has pretrained weights)."""
         if upscale_factor == 3:
-            # This should download and load pretrained weights
+            # download and load pretrained weights
             model = SmallSRNet(upscale_factor=upscale_factor, pretrained=True).to(device, dtype)
 
             x = torch.randn(1, 1, 224, 224, device=device, dtype=dtype)
@@ -154,8 +165,6 @@ class TestSmallSRNetWrapper(BaseTester):
     def test_exception_negative_values(self, device, dtype):
         """Test handling of invalid pixel value ranges (should still process but may produce unexpected results)."""
         model = SmallSRNetWrapper(upscale_factor=3, pretrained=False).to(device, dtype)
-
-        # RGB values should typically be [0, 1] but model shouldn't crash on negative values
         x = torch.randn(1, 3, 64, 64, device=device, dtype=dtype) - 1.0  # Negative values
         output = model(x)
 
@@ -179,8 +188,6 @@ class TestSmallSRNetWrapper(BaseTester):
     def test_feature_rgb_processing(self, device, dtype, upscale_factor):
         """Test that RGB images are processed correctly through color space conversions."""
         model = SmallSRNetWrapper(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
-
-        # Create a simple RGB test image
         x = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)  # RGB in [0, 1]
         output = model(x)
 
@@ -193,11 +200,15 @@ class TestSmallSRNetWrapper(BaseTester):
         # Output should have 3 channels (RGB)
         assert output.shape[1] == 3
 
+    @pytest.mark.slow
     def test_feature_pretrained_upscale_3x(self, device, dtype):
         """Test upscaling with pretrained weights (only available for upscale_factor=3)."""
-        model = SmallSRNetWrapper(upscale_factor=3, pretrained=True).to(device, dtype)
+        # Check if pretrained weights are cached to avoid network download attempts in offline CI
+        cache_path = os.path.join(kornia_config.hub_onnx_dir, "small_sr.pth")
+        if not os.path.exists(cache_path):
+            pytest.skip(f"Pretrained weights not cached at {cache_path}. Skipping to avoid network download.")
 
-        # Test with a realistic image
+        model = SmallSRNetWrapper(upscale_factor=3, pretrained=True).to(device, dtype)
         x = torch.rand(1, 3, 224, 224, device=device, dtype=dtype)
         output = model(x)
 
@@ -214,8 +225,6 @@ class TestSmallSRNetWrapper(BaseTester):
     def test_feature_color_space_conversion(self, device, dtype, upscale_factor):
         """Test that color space conversions (RGB->YCbCr->RGB) preserve information."""
         model = SmallSRNetWrapper(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
-
-        # Create a simple test pattern
         x = torch.ones(1, 3, 32, 32, device=device, dtype=dtype) * 0.5
         output = model(x)
 

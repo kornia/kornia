@@ -66,12 +66,15 @@ class SmallSRNet(nn.Module):
         return x
 
 
-def weight_init(model: nn.Module) -> None:
-    """Initialize model weights."""
-    torch.nn.init.orthogonal_(model.conv1.weight, torch.nn.init.calculate_gain("relu"))
-    torch.nn.init.orthogonal_(model.conv2.weight, torch.nn.init.calculate_gain("relu"))
-    torch.nn.init.orthogonal_(model.conv3.weight, torch.nn.init.calculate_gain("relu"))
-    torch.nn.init.orthogonal_(model.conv4.weight)
+def weight_init(module: nn.Module) -> None:
+    """Initialize model weights for Conv2d layers."""
+    if isinstance(module, nn.Conv2d):
+        # Use orthogonal initialization with gain for all conv layers
+        # conv4 (the last layer before pixel shuffle) uses default gain
+        if module.out_channels in {64, 32}:  # conv1, conv2, conv3
+            torch.nn.init.orthogonal_(module.weight, torch.nn.init.calculate_gain("relu"))
+        else:  # conv4 (upscale_factor**2 channels)
+            torch.nn.init.orthogonal_(module.weight)
 
 
 class SmallSRNetWrapper(nn.Module):
