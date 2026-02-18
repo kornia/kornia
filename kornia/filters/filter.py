@@ -110,15 +110,15 @@ def filter2d(
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
-        f"Invalid border, gotcha {border_type}. Expected one of {_VALID_BORDERS}",
+        f"Invalid border, {border_type}. Expected one of {_VALID_BORDERS}",
     )
     KORNIA_CHECK(
         str(padding).lower() in _VALID_PADDING,
-        f"Invalid padding mode, gotcha {padding}. Expected one of {_VALID_PADDING}",
+        f"Invalid padding mode, {padding}. Expected one of {_VALID_PADDING}",
     )
     KORNIA_CHECK(
         str(behaviour).lower() in _VALID_BEHAVIOUR,
-        f"Invalid padding mode, gotcha {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
+        f"Invalid padding mode, {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
     # prepare kernel
     b, c, h, w = input.shape
@@ -126,7 +126,6 @@ def filter2d(
         tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
     else:
         tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
-        #  str(behaviour).lower() == 'conv':
 
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
