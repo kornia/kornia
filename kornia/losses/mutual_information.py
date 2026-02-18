@@ -128,6 +128,7 @@ class EntropyBasedLossBase(torch.nn.Module):
     def __init__(
         self,
         reference_signal: torch.Tensor,
+        mask: torch.Tensor | None = None,
         kernel_function: MIKernel = MIKernel.xu,
         num_bins: int = 64,
         window_radius: float = 1.0,
@@ -137,6 +138,8 @@ class EntropyBasedLossBase(torch.nn.Module):
         Args:
             reference_signal (torch.Tensor): reference signal to which
                 other signals will be compared by the forward method
+            mask (torch.Tensor | None): mask of roi in reference_signal, by default None
+                singleton shape, equal to reference_signal.shape[:-1]. It is a common mask for all the samples in reference_signal.
             kernel_function (MIKernel): Used kernel function for kernel
                 density estimate, by default MIKernel.xu
             num_bins (int): number of signal value bins in kernel
@@ -148,8 +151,12 @@ class EntropyBasedLossBase(torch.nn.Module):
             ValueError: If kernel_function is not a valid MIKernel member.
         """
         super().__init__()
+        mask = self.fix_mask(mask, reference_signal)
         self.eps = torch.finfo(reference_signal.dtype).eps
-        self.register_buffer("signal", _normalize_signal(reference_signal, num_bins, self.eps))
+        self.initial_shape= reference_signal.shape
+        signal = reference_signal[..., mask]
+        self.register_buffer("signal", _normalize_signal(signal, num_bins, self.eps))
+        self.register_buffer("mask", mask)
         self.num_bins = num_bins
         if kernel_function not in MIKernel:
             raise ValueError(
@@ -159,7 +166,36 @@ class EntropyBasedLossBase(torch.nn.Module):
         self.window_radius = window_radius
         self.bin_centers = torch.arange(self.num_bins, device=self.signal.device)
 
-    def _compute_joint_histogram(self, other_signal: torch.Tensor, eps: float) -> torch.Tensor:
+    @staticmethod
+    def fix_mask(mask: torch.Tensor, masked_guy: torch.Tensor) -> torch.Tensor:
+        """Convert mask to correct full mask if it is None.
+
+        Args:
+            mask (torch.Tensor | None): input mask
+            masked_guy (torch.Tensor): the tensor to be masked by mask
+
+        Returns:
+            torch.Tensor: normalized mask
+        """
+        if mask is None:
+            mask = torch.tensor(1, dtype=torch.bool)
+        if mask.ndim > 1:
+            raise ValueError("the mask has to be a common mask for all elements of the batch, not a batch of masks")
+        mask = mask.broadcast_to(masked_guy.shape[-1])
+        return mask
+
+    # TODO: optimize method below, maybe with ihdex coordinates conversion
+    def trace_in_ref_mask(self, other_signal, other_mask):
+        if other_mask.all():
+            return other_signal[..., self.mask]
+
+        intermediate = torch.zeros(self.initial_shape).to(other_signal)
+        intermediate[..., other_mask] = other_signal
+        return intermediate[..., self.mask]
+
+    def _compute_joint_histogram(
+        self, other_signal: torch.Tensor, eps: float, other_mask: torch.Tensor | None = None
+    ) -> torch.Tensor:
         """Compute the joint histogram between the reference signal and another signal.
 
         Uses kernel density estimation to estimate the joint probability distribution
@@ -170,20 +206,28 @@ class EntropyBasedLossBase(torch.nn.Module):
             other_signal (torch.Tensor): Signal to compare with the reference signal.
                 Must have the same shape as the reference signal.
             eps (float): Epsilon value for numerical stability in computations.
+            other_mask (torch.Tensor): common mask of roi for all the samples in other_signal, defaults to None
 
         Returns:
             torch.Tensor: Joint histogram tensor with shape [..., num_bins, num_bins]
-                representing the estimated joint probability distribution.
+                representing the estimated joint probability distribution of the passed signals in the intersection of rois.
 
         Raises:
             ValueError: If other_signal has incompatible shape with reference signal.
         """
-        if other_signal.shape != self.signal.shape:
-            raise ValueError(f"The two signals have incompatible shapes: {other_signal.shape} and {self.signal.shape}.")
+        if other_signal.shape != self.initial_shape:
+            raise ValueError(
+                f"The two signals have incompatible shapes: {other_signal.shape} and {self.initial_shape}."
+            )
+        # normalize in restriction to mask and recast in self.signal coords
+        other_mask = self.fix_mask(other_mask, other_signal)
+        other_signal = other_signal[..., other_mask]
         other_signal = _normalize_signal(other_signal, num_bins=self.num_bins, eps=eps)
+        other_signal = self.trace_in_ref_mask(other_signal, other_mask)
+        common_mask = other_mask[self.mask]
 
-        diff_1 = self.bin_centers.unsqueeze(-1) - self.signal.unsqueeze(-2)
-        diff_2 = self.bin_centers.unsqueeze(-1) - other_signal.unsqueeze(-2)
+        diff_1 = self.bin_centers.unsqueeze(-1) - self.signal[..., common_mask].unsqueeze(-2)
+        diff_2 = self.bin_centers.unsqueeze(-1) - other_signal[..., common_mask].unsqueeze(-2)
 
         vals_1 = self.kernel_function(diff_1)
         vals_2 = self.kernel_function(diff_2)
@@ -192,7 +236,9 @@ class EntropyBasedLossBase(torch.nn.Module):
 
         return joint_histogram
 
-    def entropies(self, other_signal: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def entropies(
+        self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Compute entropy measures between the reference signal and another signal.
 
         Calculates joint entropy and marginal entropies based on the joint histogram of the two signals.
@@ -200,6 +246,7 @@ class EntropyBasedLossBase(torch.nn.Module):
         Args:
             other_signal (torch.Tensor): Signal to compare with the reference signal.
                 Must have the same shape as the reference_signal passed at instantiation.
+            other_mask (torch.Tensor): common mask of roi for all the samples in other_signal, defaults to None
 
         Returns:
             tuple[torch.Tensor, torch.Tensor, torch.Tensor]: A tuple containing:
@@ -213,12 +260,12 @@ class EntropyBasedLossBase(torch.nn.Module):
             Subclasses should implement specific loss functions based on these entropy
             measures (e.g., mutual information).
         """
-        joint_histogram = self._compute_joint_histogram(other_signal, self.eps)
+        joint_histogram = self._compute_joint_histogram(other_signal, self.eps, other_mask)
         return _joint_histogram_to_entropies(joint_histogram, eps=self.eps)
 
 
 class MILossFromRef(EntropyBasedLossBase):
-    def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
+    def forward(self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None) -> torch.Tensor:
         """Compute differentiable mutual information for self.signal and other_signal.
 
         mi = (H(X) + H(Y) - H(X,Y))
@@ -228,18 +275,19 @@ class MILossFromRef(EntropyBasedLossBase):
         Args:
             other_signal: Batch of flat tensors shape (B,N) where B is
                 the tuple of batch dimensions for self.signal, possibly empty.
+            other_mask (torch.Tensor): common mask of roi for all the samples in other_signal, defaults to None
 
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        H_x, H_y, H_xy = self.entropies(other_signal)
+        H_x, H_y, H_xy = self.entropies(other_signal, other_mask)
         mi = H_x + H_y - H_xy
 
         return -mi
 
 
 class NMILossFromRef(EntropyBasedLossBase):
-    def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
+    def forward(self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None) -> torch.Tensor:
         """Compute differentiable normalized mutual information for self.signal and other_signal.
 
         nmi = (H(X) + H(Y)) / H(X,Y)
@@ -249,11 +297,12 @@ class NMILossFromRef(EntropyBasedLossBase):
         Args:
             other_signal: Batch of flat tensors shape (B,N) where B is
                 the tuple of batch dimensions for self.signal, possibly empty.
+            other_mask (torch.Tensor): common mask of roi for all the samples in other_signal, defaults to None
 
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        H_x, H_y, H_xy = self.entropies(other_signal)
+        H_x, H_y, H_xy = self.entropies(other_signal, other_mask)
         nmi = (H_x + H_y) / H_xy
 
         return -nmi
@@ -271,6 +320,7 @@ class MILossFromRef2D(MILossFromRef):
     def __init__(
         self,
         reference_signal: torch.Tensor,
+        mask: torch.Tensor | None = None,
         kernel_function: MIKernel = MIKernel.xu,
         num_bins: int = 64,
         window_radius: float = 1,
@@ -282,6 +332,7 @@ class MILossFromRef2D(MILossFromRef):
                 other signals will be compared by the forward method.
                 batch of 2D images, shape (B,H,W) where B are the batch
                 dimensions.
+            mask (torch.Tensor | None): common mask of roi for all the samples in reference_signal, by default None
             kernel_function (MIKernel): Used kernel function for kernel
                 density estimate, by default MIKernel.xu
             num_bins (int): number of signal value bins in kernel
@@ -289,13 +340,19 @@ class MILossFromRef2D(MILossFromRef):
             window_radius (float): radius of the kernel's support
                 interval, by default 1.0
         """
-        super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
+        super().__init__(
+            self.arrange_shape(reference_signal), self.arrange_shape(mask), kernel_function, num_bins, window_radius
+        )
 
     @staticmethod
     def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
         return tensor.reshape(tensor.shape[:-2] + (-1,))
 
-    def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        other_signal: torch.Tensor,
+        other_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Compute differentiable mutual information for reference_signal and other_signal (both supposed 2D).
 
         mi = (H(X) + H(Y) - H(X,Y))
@@ -305,11 +362,12 @@ class MILossFromRef2D(MILossFromRef):
         Args:
             other_signal: Batch of flat tensors same shape (B,H,W) as
                 reference_signal passed for instantiation
+            other_mask (torch.Tensor): common mask of roi for all the samples in other_signal, defaults to None
 
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        return super().forward(self.arrange_shape(other_signal))
+        return super().forward(self.arrange_shape(other_signal), self.arrange_shape(other_mask))
 
 
 class MILossFromRef3D(MILossFromRef):
@@ -324,6 +382,7 @@ class MILossFromRef3D(MILossFromRef):
     def __init__(
         self,
         reference_signal: torch.Tensor,
+        mask: torch.Tensor | None = None,
         kernel_function: MIKernel = MIKernel.xu,
         num_bins: int = 64,
         window_radius: float = 1,
@@ -335,6 +394,7 @@ class MILossFromRef3D(MILossFromRef):
                 other signals will be compared by the forward method.
                 batch of 3D images, shape (B,D,H,W) where B are the
                 batch dimensions.
+            mask (torch.Tensor | None): common mask of roi for all the samples in reference_signal, by default None
             kernel_function (MIKernel): Used kernel function for kernel
                 density estimate, by default MIKernel.xu
             num_bins (int): number of signal value bins in kernel
@@ -342,13 +402,19 @@ class MILossFromRef3D(MILossFromRef):
             window_radius (float): radius of the kernel's support
                 interval, by default 1.0
         """
-        super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
+        super().__init__(
+            self.arrange_shape(reference_signal), self.arrange_shape(mask), kernel_function, num_bins, window_radius
+        )
 
     @staticmethod
     def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
         return tensor.reshape(tensor.shape[:-3] + (-1,))
 
-    def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        other_signal: torch.Tensor,
+        other_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Compute differentiable mutual information for reference_signal and other_signal (both supposed 3D).
 
         mi = (H(X) + H(Y) - H(X,Y))
@@ -358,11 +424,12 @@ class MILossFromRef3D(MILossFromRef):
         Args:
             other_signal: Batch of flat tensors same shape (B,D,H,W) as
                 reference_signal passed for instantiation
+            other_mask (torch.Tensor): common mask of roi for all the samples in other_signal, defaults to None
 
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        return super().forward(self.arrange_shape(other_signal))
+        return super().forward(self.arrange_shape(other_signal), self.arrange_shape(other_mask))
 
 
 class NMILossFromRef2D(NMILossFromRef):
@@ -377,6 +444,7 @@ class NMILossFromRef2D(NMILossFromRef):
     def __init__(
         self,
         reference_signal: torch.Tensor,
+        mask: torch.Tensor | None = None,
         kernel_function: MIKernel = MIKernel.xu,
         num_bins: int = 64,
         window_radius: float = 1,
@@ -388,6 +456,7 @@ class NMILossFromRef2D(NMILossFromRef):
                 other signals will be compared by the forward method.
                 batch of 2D images, shape (B,H,W) where B are the batch
                 dimensions.
+            mask (torch.Tensor | None): common mask of roi for all the samples in reference_signal, by default None
             kernel_function (MIKernel): Used kernel function for kernel
                 density estimate, by default MIKernel.xu
             num_bins (int): number of signal value bins in kernel
@@ -395,13 +464,19 @@ class NMILossFromRef2D(NMILossFromRef):
             window_radius (float): radius of the kernel's support
                 interval, by default 1.0
         """
-        super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
+        super().__init__(
+            self.arrange_shape(reference_signal), self.arrange_shape(mask), kernel_function, num_bins, window_radius
+        )
 
     @staticmethod
     def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
         return tensor.reshape(tensor.shape[:-2] + (-1,))
 
-    def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        other_signal: torch.Tensor,
+        other_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Compute differentiable mutual information for reference_signal and other_signal (both supposed 2D).
 
         nmi = (H(X) + H(Y)) / H(X,Y)
@@ -411,11 +486,12 @@ class NMILossFromRef2D(NMILossFromRef):
         Args:
             other_signal: Batch of tensors same shape (B,H,W) as
                 reference_signal passed for instantiation
+            other_mask (torch.Tensor): common mask of roi for all the samples in other_signal, defaults to None
 
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        return super().forward(self.arrange_shape(other_signal))
+        return super().forward(self.arrange_shape(other_signal), self.arrange_shape(other_mask))
 
 
 class NMILossFromRef3D(NMILossFromRef):
@@ -430,6 +506,7 @@ class NMILossFromRef3D(NMILossFromRef):
     def __init__(
         self,
         reference_signal: torch.Tensor,
+        mask: torch.Tensor | None = None,
         kernel_function: MIKernel = MIKernel.xu,
         num_bins: int = 64,
         window_radius: float = 1,
@@ -441,6 +518,7 @@ class NMILossFromRef3D(NMILossFromRef):
                 other signals will be compared by the forward method.
                 batch of 3D images, shape (B,D,H,W) where B are the
                 batch dimensions.
+            mask (torch.Tensor | None): common mask of roi for all the samples in reference_signal, by default None
             kernel_function (MIKernel): Used kernel function for kernel
                 density estimate, by default MIKernel.xu
             num_bins (int): number of signal value bins in kernel
@@ -448,13 +526,19 @@ class NMILossFromRef3D(NMILossFromRef):
             window_radius (float): radius of the kernel's support
                 interval, by default 1.0
         """
-        super().__init__(self.arrange_shape(reference_signal), kernel_function, num_bins, window_radius)
+        super().__init__(
+            self.arrange_shape(reference_signal), self.arrange_shape(mask), kernel_function, num_bins, window_radius
+        )
 
     @staticmethod
     def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
         return tensor.reshape(tensor.shape[:-3] + (-1,))
 
-    def forward(self, other_signal: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        other_signal: torch.Tensor,
+        other_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Compute differentiable mutual information for reference_signal and other_signal (both supposed 3D).
 
         nmi = (H(X) + H(Y)) / H(X,Y)
@@ -464,16 +548,19 @@ class NMILossFromRef3D(NMILossFromRef):
         Args:
             other_signal: Batch of tensors, same shape (B,D,H,W) as
                 reference_signal passed for instantiation
+            other_mask (torch.Tensor): common mask of roi for all the samples in other_signal, defaults to None
 
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        return super().forward(self.arrange_shape(other_signal))
+        return super().forward(self.arrange_shape(other_signal), self.arrange_shape(other_mask))
 
 
 def mutual_information_loss(
     input: torch.Tensor,
     target: torch.Tensor,
+    input_mask: torch.Tensor | None = None,
+    target_mask: torch.Tensor | None = None,
     kernel_function: MIKernel = MIKernel.xu,
     num_bins: int = 64,
     window_radius: float = 1.0,
@@ -489,6 +576,9 @@ def mutual_information_loss(
             is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of flat tensors, same shape as
             input.
+        input_mask (torch.Tensor): mask of roi in input, defaults to None.
+        target_mask (torch.Tensor): mask of roi in target, defaults to None.
+
         kernel_function (MIKernel): Used kernel function for kernel
             density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
@@ -500,21 +590,27 @@ def mutual_information_loss(
         of input and target)
     """
     module = MILossFromRef(
-        reference_signal=target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
+        reference_signal=target,
+        mask=target_mask,
+        kernel_function=kernel_function,
+        num_bins=num_bins,
+        window_radius=window_radius,
     )
-    return module.forward(input)
+    return module.forward(input, other_mask=input_mask)
 
 
 def mutual_information_loss_2d(
     input: torch.Tensor,
     target: torch.Tensor,
+    input_mask: torch.Tensor | None = None,
+    target_mask: torch.Tensor | None = None,
     kernel_function: MIKernel = MIKernel.xu,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
     """Compute differentiable mutual information for 2d tensors.
 
-    nmi = (H(X) + H(Y)) / H(X,Y)
+    mi = (H(X) + H(Y) - H(X,Y))
     To have a loss function, the opposite is returned.
     Can also handle two batches of 2d tensors, then a batch of loss values is returned.
 
@@ -522,6 +618,8 @@ def mutual_information_loss_2d(
         input (torch.Tensor): Batch of 2d tensors shape (B,H,W) where B
             is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of 2d tensors, same shape as input.
+        input_mask (torch.Tensor): mask of roi in input, defaults to None.
+        target_mask (torch.Tensor): mask of roi in target, defaults to None.
         kernel_function (MIKernel): Used kernel function for kernel
             density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
@@ -533,21 +631,27 @@ def mutual_information_loss_2d(
         of input and target)
     """
     module = MILossFromRef2D(
-        reference_signal=target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
+        reference_signal=target,
+        mask=target_mask,
+        kernel_function=kernel_function,
+        num_bins=num_bins,
+        window_radius=window_radius,
     )
-    return module.forward(input)
+    return module.forward(input, other_mask=input_mask)
 
 
 def mutual_information_loss_3d(
     input: torch.Tensor,
     target: torch.Tensor,
+    input_mask: torch.Tensor | None = None,
+    target_mask: torch.Tensor | None = None,
     kernel_function: MIKernel = MIKernel.xu,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
     """Compute differentiable mutual information for 3d tensors.
 
-    nmi = (H(X) + H(Y)) / H(X,Y)
+    mi = (H(X) + H(Y) - H(X,Y))
     To have a loss function, the opposite is returned.
     Can also handle two batches of 3d tensors, then a batch of loss values is returned.
 
@@ -555,6 +659,9 @@ def mutual_information_loss_3d(
         input (torch.Tensor): Batch of 3d tensors shape (B,D,H,W) where
             B is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of 3d tensors, same shape as input.
+        input_mask (torch.Tensor): mask of roi in input, defaults to None.
+        target_mask (torch.Tensor): mask of roi in target, defaults to None.
+
         kernel_function (MIKernel): Used kernel function for kernel
             density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
@@ -566,14 +673,20 @@ def mutual_information_loss_3d(
         of input and target)
     """
     module = MILossFromRef3D(
-        reference_signal=target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
+        reference_signal=target,
+        mask=target_mask,
+        kernel_function=kernel_function,
+        num_bins=num_bins,
+        window_radius=window_radius,
     )
-    return module.forward(input)
+    return module.forward(input, other_mask=input_mask)
 
 
 def normalized_mutual_information_loss(
     input: torch.Tensor,
     target: torch.Tensor,
+    input_mask: torch.Tensor | None = None,
+    target_mask: torch.Tensor | None = None,
     kernel_function: MIKernel = MIKernel.xu,
     num_bins: int = 64,
     window_radius: float = 1.0,
@@ -589,6 +702,9 @@ def normalized_mutual_information_loss(
             is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of flat tensors, same shape as
             input.
+        input_mask (torch.Tensor): mask of roi in input, defaults to None.
+        target_mask (torch.Tensor): mask of roi in target, defaults to None.
+
         kernel_function (MIKernel): Used kernel function for kernel
             density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
@@ -605,19 +721,21 @@ def normalized_mutual_information_loss(
         num_bins=num_bins,
         window_radius=window_radius,
     )
-    return module.forward(input)
+    return module.forward(input, other_mask=input_mask)
 
 
 def normalized_mutual_information_loss_2d(
     input: torch.Tensor,
     target: torch.Tensor,
+    input_mask: torch.Tensor | None = None,
+    target_mask: torch.Tensor | None = None,
     kernel_function: MIKernel = MIKernel.xu,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
     """Compute differentiable normalized mutual information for 2d tensors.
 
-    mi = (H(X) + H(Y) - H(X,Y))
+    nmi = (H(X) + H(Y)) / H(X,Y)
     To have a loss function, the opposite is returned.
     Can also handle two batches of 2d tensors, then a batch of loss values is returned.
 
@@ -625,6 +743,9 @@ def normalized_mutual_information_loss_2d(
         input (torch.Tensor): Batch of 2d tensors shape (B,H,W) where B
             is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of 2d tensors, same shape as input.
+        input_mask (torch.Tensor): mask of roi in input, defaults to None.
+        target_mask (torch.Tensor): mask of roi in target, defaults to None.
+
         kernel_function (MIKernel): Used kernel function for kernel
             density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
@@ -636,21 +757,27 @@ def normalized_mutual_information_loss_2d(
         of input and target)
     """
     module = NMILossFromRef2D(
-        reference_signal=target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
+        reference_signal=target,
+        mask=target_mask,
+        kernel_function=kernel_function,
+        num_bins=num_bins,
+        window_radius=window_radius,
     )
-    return module.forward(input)
+    return module.forward(input, other_mask=input_mask)
 
 
 def normalized_mutual_information_loss_3d(
     input: torch.Tensor,
     target: torch.Tensor,
+    input_mask: torch.Tensor | None = None,
+    target_mask: torch.Tensor | None = None,
     kernel_function: MIKernel = MIKernel.xu,
     num_bins: int = 64,
     window_radius: float = 1.0,
 ) -> torch.Tensor:
     """Compute differentiable normalized mutual information for 3d tensors.
 
-    mi = (H(X) + H(Y) - H(X,Y))
+    nmi = (H(X) + H(Y)) / H(X,Y)
     To have a loss function, the opposite is returned.
     Can also handle two batches of 3d tensors, then a batch of loss values is returned.
 
@@ -658,6 +785,9 @@ def normalized_mutual_information_loss_3d(
         input (torch.Tensor): Batch of 3d tensors shape (B,D,H,W) where
             B is any batch dimensions tuple, possibly empty.
         target (torch.Tensor): Batch of 3d tensors, same shape as input.
+        input_mask (torch.Tensor): mask of roi in input, defaults to None.
+        target_mask (torch.Tensor): mask of roi in target, defaults to None.
+
         kernel_function (MIKernel): Used kernel function for kernel
             density estimate, by default MIKernel.xu
         num_bins (int): The number of bins used for KDE, defaults to 64.
@@ -669,6 +799,10 @@ def normalized_mutual_information_loss_3d(
         of input and target)
     """
     module = NMILossFromRef3D(
-        reference_signal=target, kernel_function=kernel_function, num_bins=num_bins, window_radius=window_radius
+        reference_signal=target,
+        mask=target_mask,
+        kernel_function=kernel_function,
+        num_bins=num_bins,
+        window_radius=window_radius,
     )
-    return module.forward(input)
+    return module.forward(input, other_mask=input_mask)
