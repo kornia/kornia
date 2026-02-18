@@ -308,7 +308,7 @@ def filter3d(
     return output.view(b, c, d, h, w)
 
 
-def complex_matmul(a: Tensor, b: Tensor, groups: int = 1) -> Tensor:
+def _complex_matmul(a: Tensor, b: Tensor, groups: int = 1) -> Tensor:
     """Multiplies two complex-valued tensors."""
     a = a.view(a.size(0), groups, -1, *a.shape[2:])
     b = b.view(groups, -1, *b.shape[1:])
@@ -387,7 +387,7 @@ def fft_conv(
                   [0., 5., 5., 5., 0.],
                   [0., 5., 5., 5., 0.],
                   [0., 5., 5., 5., 0.],
-                  [0., 0., 0a., 0., 0.]]]])
+                  [0., 0., 0., 0., 0.]]]])
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -434,7 +434,7 @@ def fft_conv(
     signal_fr = rfftn(input.to(dtype), dim=tuple(range(2, input.ndim)))
     kernel_fr = rfftn(padded_kernel.to(dtype), dim=tuple(range(2, input.ndim)))
     kernel_fr.imag *= -1
-    output_fr = complex_matmul(signal_fr, kernel_fr, groups=tmp_kernel.size(0))
+    output_fr = _complex_matmul(signal_fr, kernel_fr, groups=tmp_kernel.size(0))
     output_ = irfftn(output_fr, dim=tuple(range(2, input.ndim)))
     output_ = output_.to(dtype=dtype)
     crop_slices = [slice(None), slice(None)] + [
