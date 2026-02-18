@@ -75,7 +75,7 @@ class TestPaliGemma:
         model = PaliGemma(config).to(device=device, dtype=dtype)
 
         pixel_values = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
-        
+
         # We need 4 image tokens (32/16 = 2, 2*2 = 4 patches)
         image_tokens = torch.full((batch_size, 4), config.image_token_index, device=device)
         text_tokens = torch.randint(0, config.vocab_size, (batch_size, 5), device=device)

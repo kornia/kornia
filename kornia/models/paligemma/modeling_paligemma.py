@@ -290,7 +290,7 @@ class PaliGemma(nn.Module):
         # Detect where image tokens are and replace them with projected image features.
         # This handles prompts like "<image><bos>..." or other variations.
         image_token_mask = input_ids == self.config.image_token_index
-        
+
         if image_token_mask.any():
             # Ensure the number of image tokens matches the features we have
             num_image_tokens = image_token_mask.sum().item()
