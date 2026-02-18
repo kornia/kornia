@@ -268,7 +268,17 @@ class PaliGemma(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """Forward pass of the model."""
+        """Forward pass of the model.
+
+        Args:
+            input_ids: Torch tensor with shape :math:`(B, L)` containing the text token IDs.
+            pixel_values: Torch tensor with shape :math:`(B, 3, H, W)` containing the image pixels.
+            attention_mask: Optional attention mask with shape :math:`(B, L_{total})`.
+            position_ids: Optional position IDs with shape :math:`(B, L_{total})`.
+
+        Returns:
+            Logits tensor with shape :math:`(B, L_{total}, V)`, where V is the vocab size.
+        """
         # 1. Vision Forward
         vision_outputs = self.vision_tower(pixel_values)
         if isinstance(vision_outputs, (tuple, list)):
