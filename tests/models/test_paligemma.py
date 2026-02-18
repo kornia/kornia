@@ -64,6 +64,7 @@ class TestPaliGemma:
         config.num_attention_heads = 4
         config.head_dim = 8
         config.vocab_size = 100
+        config.image_token_index = 99
 
         config.vision_config.image_size = 32
         config.vision_config.patch_size = 16
@@ -74,11 +75,15 @@ class TestPaliGemma:
         model = PaliGemma(config).to(device=device, dtype=dtype)
 
         pixel_values = torch.randn(batch_size, 3, 32, 32, device=device, dtype=dtype)
-        input_ids = torch.randint(0, config.vocab_size, (batch_size, 5), device=device)
+        
+        # We need 4 image tokens (32/16 = 2, 2*2 = 4 patches)
+        image_tokens = torch.full((batch_size, 4), config.image_token_index, device=device)
+        text_tokens = torch.randint(0, config.vocab_size, (batch_size, 5), device=device)
+        input_ids = torch.cat([image_tokens, text_tokens], dim=1)
 
         logits = model(input_ids=input_ids, pixel_values=pixel_values)
 
-        expected_seq_len = 4 + 5
+        expected_seq_len = input_ids.shape[1]  # 4 + 5 = 9
         assert logits.shape == (batch_size, expected_seq_len, config.vocab_size)
 
     def test_from_pretrained_interface(self, device):

@@ -169,7 +169,9 @@ class GemmaAttention(nn.Module):
         key_states = torch.repeat_interleave(key_states, dim=1, repeats=self.num_key_value_groups)
         value_states = torch.repeat_interleave(value_states, dim=1, repeats=self.num_key_value_groups)
 
-        is_causal = True if attention_mask is None else False
+        # PaliGemma is a decoder-only model, so it should be causal by default.
+        # If attention_mask is provided, we use it. If not, we set is_causal=True.
+        is_causal = attention_mask is None
 
         attn_output = F.scaled_dot_product_attention(
             query_states,
@@ -235,9 +237,8 @@ class PaliGemma(nn.Module):
         if config.vision_config is None:
             raise ValueError("vision_config cannot be None")
 
-        # Vision Tower & Norm
+        # Vision Tower
         self.vision_tower = SigLip2VisionModel(config.vision_config)
-        self.vision_tower_norm = nn.LayerNorm(config.vision_config.hidden_size, eps=1e-6)
 
         # Projector & Embeddings
         self.multi_modal_projector = nn.Linear(config.vision_config.hidden_size, config.hidden_size)
@@ -278,9 +279,6 @@ class PaliGemma(nn.Module):
         if image_features.dim() != 3:
             image_features = image_features.unsqueeze(1)
 
-        # Apply Vision Norm (Critical for PaliGemma)
-        image_features = self.vision_tower_norm(image_features)
-
         # 2. Projection
         image_features = self.multi_modal_projector(image_features)
 
@@ -288,10 +286,23 @@ class PaliGemma(nn.Module):
         inputs_embeds = self.embed_tokens(input_ids)
         inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
 
-        # --- Handle Placeholder Token Duplication ---
-
-        # 4. Concatenate
-        inputs_embeds = torch.cat([image_features, inputs_embeds], dim=1)
+        # 4. Robust Token Replacement
+        # Detect where image tokens are and replace them with projected image features.
+        # This handles prompts like "<image><bos>..." or other variations.
+        image_token_mask = input_ids == self.config.image_token_index
+        
+        if image_token_mask.any():
+            # Ensure the number of image tokens matches the features we have
+            num_image_tokens = image_token_mask.sum().item()
+            num_features = image_features.shape[0] * image_features.shape[1]
+            if num_image_tokens == num_features:
+                inputs_embeds = inputs_embeds.clone()
+                inputs_embeds[image_token_mask] = image_features.view(-1, image_features.shape[-1])
+            else:
+                logger.warning(
+                    f"Number of image tokens ({num_image_tokens}) does not match "
+                    f"number of image features ({num_features}). Skipping replacement."
+                )
 
         if position_ids is None:
             seq_length = inputs_embeds.shape[1]
@@ -389,8 +400,8 @@ class PaliGemma(nn.Module):
             "vision_tower.embeddings.position_embedding": (
                 "model.vision_tower.vision_model.embeddings.position_embedding.weight"
             ),
-            "vision_tower_norm.weight": "model.vision_tower.vision_model.post_layernorm.weight",
-            "vision_tower_norm.bias": "model.vision_tower.vision_model.post_layernorm.bias",
+            "vision_tower.post_layernorm.weight": "model.vision_tower.vision_model.post_layernorm.weight",
+            "vision_tower.post_layernorm.bias": "model.vision_tower.vision_model.post_layernorm.bias",
             # --- Projector ---
             "multi_modal_projector.weight": "model.multi_modal_projector.linear.weight",
             "multi_modal_projector.bias": "model.multi_modal_projector.linear.bias",
