@@ -22,10 +22,11 @@ from torch import nn
 
 
 class VisionEncoder(nn.Module):
-    """Vision encoder (e.g. SigLIP) to extract image features.
+    """Vision encoder stub representing the image tower used in SmolVLM2.
 
-    In the real model, this would be a transformer-based vision tower.
-    Here we provide a stub with the expected interface.
+    In the final implementation this module will align with the reference
+    vision backbone (e.g. SigLIP or equivalent) and support loading
+    pretrained weights from Hugging Face.
     """
 
     def __init__(self, hidden_dim: int = 768, output_dim: int = 1152) -> None:
@@ -50,9 +51,11 @@ class VisionEncoder(nn.Module):
 
 
 class MultimodalProjector(nn.Module):
-    """Projector to align vision features with the language model's embedding space.
+    """Projector aligning vision features with the language model space.
 
-    Usually an MLP.
+    This is a lightweight structural placeholder mirroring the role of the
+    multimodal projector in SmolVLM2. The architecture will be refined to
+    match the reference implementation in subsequent updates.
     """
 
     def __init__(self, vision_dim: int = 1152, text_dim: int = 2048) -> None:
@@ -74,9 +77,12 @@ class MultimodalProjector(nn.Module):
 
 
 class LanguageModel(nn.Module):
-    """Decoder-only language model.
+    """Decoder-only language model stub.
 
-    Takes a sequence of embeddings (images + text) and predicts logits.
+    This module represents the transformer-based decoder used in SmolVLM2.
+    Attention layers, positional encoding, and full decoder blocks will be
+    introduced in future updates to match the reference architecture and
+    enable pretrained weight loading.
     """
 
     def __init__(self, vocab_size: int = 32000, hidden_dim: int = 2048) -> None:
@@ -97,9 +103,22 @@ class LanguageModel(nn.Module):
 
 
 class SmolVLM2(nn.Module):
-    """SmolVLM2 model composition.
+    """SmolVLM2 architecture scaffold.
 
-    Integrates Vision Encoder, Projector, and Language Model.
+    This module defines the high-level composition of the SmolVLM2
+    vision-language model:
+
+        vision encoder → multimodal projector → language model
+
+    The current implementation provides lightweight structural components
+    intended to mirror the real architecture and will be extended to match
+    the reference implementation and support loading official pretrained
+    weights from Hugging Face.
+
+    Note:
+        This is not a functional pretrained model yet. Transformer decoder
+        blocks, positional handling, and weight-loading utilities will be
+        added in subsequent incremental updates.
     """
 
     def __init__(
