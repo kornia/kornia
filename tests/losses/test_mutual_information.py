@@ -172,8 +172,8 @@ class TestMutualInformationLoss(BaseTester):
             normalized_loss_iterative = torch.stack(normalized_losses)
 
             # Compare
-            assert loss_batch.shape == dims[:-1], "The shape of the batched losses for mi is wrong."
-            assert normalized_loss_batch.shape == dims[:-1], "The shape of the batched losses for nmi is wrong."
+            assert loss_batch.shape == dims[:-1], f"The shape of the batched losses for mi is wrong: {loss_batch.shape} vs {dims[:-1]}."
+            assert normalized_loss_batch.shape == dims[:-1], f"The shape of the batched losses for nmi is wrong: {normalized_loss_batch.shape} vs {dims[:-1]}."
 
             assert torch.allclose(loss_batch.flatten(), loss_iterative, atol=1e-4), (
                 f"Batch mismatch for mi! Batch: {loss_batch}, Iterative: {loss_iterative}"
