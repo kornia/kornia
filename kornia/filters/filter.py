@@ -430,7 +430,7 @@ def fft_conv(
     kernel_padding = [pad for i in reversed(range(2, input.ndim)) for pad in [0, input.size(i) - tmp_kernel.size(i)]]
     padded_kernel = F.pad(tmp_kernel, kernel_padding)
     dtype = input.dtype
-    signal_fr = rfftn(input.to(dtype), dim=tuple(range(2, input.ndim)))
+    signal_fr = rfftn(input, dim=tuple(range(2, input.ndim)))
     kernel_fr = rfftn(padded_kernel.to(dtype), dim=tuple(range(2, input.ndim)))
     kernel_fr.imag *= -1
     output_fr = _complex_matmul(signal_fr, kernel_fr, groups=tmp_kernel.size(0))
