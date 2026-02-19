@@ -17,15 +17,19 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
+# Note: Ensure sys.path includes the root of kornia repo if running from weird paths
 from kornia.models.siglip2.vision_encoder import SigLip2VisionModel
 
 from .configuration_paligemma import PaliGemmaConfig
+
+logger = logging.getLogger(__name__)
 
 
 class GemmaRMSNorm(nn.Module):
@@ -102,7 +106,7 @@ class GemmaMLP(nn.Module):
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
-        self.act_fn = nn.GELU()
+        self.act_fn = nn.GELU(approximate="tanh")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
@@ -165,13 +169,17 @@ class GemmaAttention(nn.Module):
         key_states = torch.repeat_interleave(key_states, dim=1, repeats=self.num_key_value_groups)
         value_states = torch.repeat_interleave(value_states, dim=1, repeats=self.num_key_value_groups)
 
+        # PaliGemma is a decoder-only model, so it should be causal by default.
+        # If attention_mask is provided, we use it. If not, we set is_causal=True.
+        is_causal = attention_mask is None
+
         attn_output = F.scaled_dot_product_attention(
             query_states,
             key_states,
             value_states,
             attn_mask=attention_mask,
             dropout_p=0.0,
-            is_causal=False,
+            is_causal=is_causal,
         )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
@@ -218,10 +226,7 @@ class GemmaDecoderLayer(nn.Module):
 
 
 class PaliGemma(nn.Module):
-    """PaliGemma Model for Vision-Language tasks.
-
-    This model combines a SigLip2 Vision Encoder with a Gemma Language Decoder.
-    """
+    """PaliGemma Model for Vision-Language tasks."""
 
     def __init__(self, config: PaliGemmaConfig) -> None:
         super().__init__()
@@ -231,17 +236,19 @@ class PaliGemma(nn.Module):
 
         if config.vision_config is None:
             raise ValueError("vision_config cannot be None")
+
+        # Vision Tower
         self.vision_tower = SigLip2VisionModel(config.vision_config)
 
+        # Projector & Embeddings
         self.multi_modal_projector = nn.Linear(config.vision_config.hidden_size, config.hidden_size)
-
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=self.padding_idx)
 
+        # Decoder Layers
         self.layers = nn.ModuleList(
             [GemmaDecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
         self.norm = GemmaRMSNorm(config.hidden_size, eps=1e-6)
-
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
         self.apply(self._init_weights)
@@ -264,16 +271,16 @@ class PaliGemma(nn.Module):
         """Forward pass of the model.
 
         Args:
-            input_ids: Text tokens (batch, input_seq_len)
-            pixel_values: Images (batch, channels, height, width)
-            attention_mask: Optional attention mask.
-            position_ids: Optional position IDs.
+            input_ids: Torch tensor with shape :math:`(B, L)` containing the text token IDs.
+            pixel_values: Torch tensor with shape :math:`(B, 3, H, W)` containing the image pixels.
+            attention_mask: Optional attention mask with shape :math:`(B, L_{total})`.
+            position_ids: Optional position IDs with shape :math:`(B, L_{total})`.
 
         Returns:
-            logits: Prediction scores (batch, total_seq_len, vocab_size).
+            Logits tensor with shape :math:`(B, L_{total}, V)`, where V is the vocab size.
         """
+        # 1. Vision Forward
         vision_outputs = self.vision_tower(pixel_values)
-
         if isinstance(vision_outputs, (tuple, list)):
             image_features = vision_outputs[1]
         else:
@@ -282,11 +289,30 @@ class PaliGemma(nn.Module):
         if image_features.dim() != 3:
             image_features = image_features.unsqueeze(1)
 
+        # 2. Projection
         image_features = self.multi_modal_projector(image_features)
 
+        # 3. Text Embeddings (Scaled)
         inputs_embeds = self.embed_tokens(input_ids)
+        inputs_embeds = inputs_embeds * (self.config.hidden_size**0.5)
 
-        inputs_embeds = torch.cat([image_features, inputs_embeds], dim=1)
+        # 4. Robust Token Replacement
+        # Detect where image tokens are and replace them with projected image features.
+        # This handles prompts like "<image><bos>..." or other variations.
+        image_token_mask = input_ids == self.config.image_token_index
+
+        if image_token_mask.any():
+            # Ensure the number of image tokens matches the features we have
+            num_image_tokens = image_token_mask.sum().item()
+            num_features = image_features.shape[0] * image_features.shape[1]
+            if num_image_tokens == num_features:
+                inputs_embeds = inputs_embeds.clone()
+                inputs_embeds[image_token_mask] = image_features.view(-1, image_features.shape[-1])
+            else:
+                logger.warning(
+                    f"Number of image tokens ({num_image_tokens}) does not match "
+                    f"number of image features ({num_features}). Skipping replacement."
+                )
 
         if position_ids is None:
             seq_length = inputs_embeds.shape[1]
@@ -306,3 +332,167 @@ class PaliGemma(nn.Module):
         logits = self.lm_head(hidden_states)
 
         return logits
+
+    @classmethod
+    def from_pretrained(
+        cls,
+        model_id: str = "google/paligemma-3b-pt-224",
+        token: Optional[str] = None,
+        device: Optional[torch.device] = None,
+    ) -> PaliGemma:
+        """Load pretrained weights from Hugging Face.
+
+        Args:
+            model_id: The model ID on Hugging Face Hub.
+            token: The HF token.
+            device: The device to load the model onto. If None, defaults to CPU.
+                    Loading to CPU first might require significant RAM (approx 12GB+ for 3B model).
+                    Specifying a GPU device (e.g. "cuda") is recommended for faster loading and less system RAM usage.
+
+        Returns:
+            The loaded PaliGemma model.
+        """
+        try:
+            from transformers import PaliGemmaForConditionalGeneration
+        except ImportError as e:
+            raise ImportError("Transformers library is required.") from e
+
+        # Load HF Model
+        # output_loading_info=False to avoid clutter, but we can use it if debugging is needed.
+        try:
+            hf_model = PaliGemmaForConditionalGeneration.from_pretrained(
+                model_id, device_map=device, token=token, torch_dtype=torch.float32
+            )
+        except Exception as e:
+            if "401" in str(e) or "403" in str(e) or "gated" in str(e).lower():
+                raise RuntimeError(
+                    f"Access to model '{model_id}' is gated. Please ensure you have "
+                    "accepted the terms on HuggingFace and are logged in using `huggingface-cli login` "
+                    "or provide a valid `token`."
+                ) from e
+            raise e
+
+        config = PaliGemmaConfig()
+        text_conf = hf_model.config.text_config
+        vis_conf = hf_model.config.vision_config
+
+        # Copy Configs
+        config.vocab_size = text_conf.vocab_size
+        config.hidden_size = text_conf.hidden_size
+        config.num_hidden_layers = text_conf.num_hidden_layers
+        config.num_attention_heads = text_conf.num_attention_heads
+        config.head_dim = text_conf.head_dim
+        config.intermediate_size = text_conf.intermediate_size
+        config.num_key_value_heads = text_conf.num_key_value_heads
+        config.vision_config.image_size = vis_conf.image_size
+        config.vision_config.patch_size = vis_conf.patch_size
+        config.vision_config.hidden_size = vis_conf.hidden_size
+        config.vision_config.num_hidden_layers = vis_conf.num_hidden_layers
+        config.vision_config.num_attention_heads = vis_conf.num_attention_heads
+        config.vision_config.intermediate_size = vis_conf.intermediate_size
+
+        kornia_model = cls(config)
+
+        # If device was specified, move kornia model there before loading weights
+        if device is not None:
+            kornia_model = kornia_model.to(device)
+
+        kornia_sd = kornia_model.state_dict()
+        hf_sd = hf_model.state_dict()
+
+        logger.info(f"Loading weights from {model_id}...")
+
+        # ---------------------------------------------------------------------
+        # Explicit Weight Mapping
+        # ---------------------------------------------------------------------
+        # We manually map Kornia keys to HF keys to ensure correctness and avoid
+        # accidental mismatches from suffix matching.
+
+        mapping_rules = {
+            # --- Vision Tower ---
+            "vision_tower.embeddings.patch_embedding.weight": (
+                "model.vision_tower.vision_model.embeddings.patch_embedding.weight"
+            ),
+            "vision_tower.embeddings.patch_embedding.bias": (
+                "model.vision_tower.vision_model.embeddings.patch_embedding.bias"
+            ),
+            "vision_tower.embeddings.position_embedding": (
+                "model.vision_tower.vision_model.embeddings.position_embedding.weight"
+            ),
+            "vision_tower.post_layernorm.weight": "model.vision_tower.vision_model.post_layernorm.weight",
+            "vision_tower.post_layernorm.bias": "model.vision_tower.vision_model.post_layernorm.bias",
+            # --- Projector ---
+            "multi_modal_projector.weight": "model.multi_modal_projector.linear.weight",
+            "multi_modal_projector.bias": "model.multi_modal_projector.linear.bias",
+            # --- Language Model ---
+            "embed_tokens.weight": "model.embed_tokens.weight",
+            "norm.weight": "model.norm.weight",
+            "lm_head.weight": "lm_head.weight",
+        }
+
+        # Map Vision Layers
+        for i in range(config.vision_config.num_hidden_layers):
+            k_prefix = f"vision_tower.encoder.layers.{i}"
+            hf_prefix = f"model.vision_tower.vision_model.encoder.layers.{i}"
+
+            mapping_rules[f"{k_prefix}.self_attn.k_proj.weight"] = f"{hf_prefix}.self_attn.k_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.v_proj.weight"] = f"{hf_prefix}.self_attn.v_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.q_proj.weight"] = f"{hf_prefix}.self_attn.q_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.out_proj.weight"] = f"{hf_prefix}.self_attn.out_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.k_proj.bias"] = f"{hf_prefix}.self_attn.k_proj.bias"
+            mapping_rules[f"{k_prefix}.self_attn.v_proj.bias"] = f"{hf_prefix}.self_attn.v_proj.bias"
+            mapping_rules[f"{k_prefix}.self_attn.q_proj.bias"] = f"{hf_prefix}.self_attn.q_proj.bias"
+            mapping_rules[f"{k_prefix}.self_attn.out_proj.bias"] = f"{hf_prefix}.self_attn.out_proj.bias"
+
+            mapping_rules[f"{k_prefix}.layer_norm1.weight"] = f"{hf_prefix}.layer_norm1.weight"
+            mapping_rules[f"{k_prefix}.layer_norm1.bias"] = f"{hf_prefix}.layer_norm1.bias"
+            mapping_rules[f"{k_prefix}.layer_norm2.weight"] = f"{hf_prefix}.layer_norm2.weight"
+            mapping_rules[f"{k_prefix}.layer_norm2.bias"] = f"{hf_prefix}.layer_norm2.bias"
+
+            mapping_rules[f"{k_prefix}.mlp.fc1.weight"] = f"{hf_prefix}.mlp.fc1.weight"
+            mapping_rules[f"{k_prefix}.mlp.fc1.bias"] = f"{hf_prefix}.mlp.fc1.bias"
+            mapping_rules[f"{k_prefix}.mlp.fc2.weight"] = f"{hf_prefix}.mlp.fc2.weight"
+            mapping_rules[f"{k_prefix}.mlp.fc2.bias"] = f"{hf_prefix}.mlp.fc2.bias"
+
+        # Map Text Layers
+        for i in range(config.num_hidden_layers):
+            k_prefix = f"layers.{i}"
+            hf_prefix = f"model.layers.{i}"
+
+            mapping_rules[f"{k_prefix}.self_attn.q_proj.weight"] = f"{hf_prefix}.self_attn.q_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.k_proj.weight"] = f"{hf_prefix}.self_attn.k_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.v_proj.weight"] = f"{hf_prefix}.self_attn.v_proj.weight"
+            mapping_rules[f"{k_prefix}.self_attn.o_proj.weight"] = f"{hf_prefix}.self_attn.o_proj.weight"
+
+            mapping_rules[f"{k_prefix}.mlp.gate_proj.weight"] = f"{hf_prefix}.mlp.gate_proj.weight"
+            mapping_rules[f"{k_prefix}.mlp.up_proj.weight"] = f"{hf_prefix}.mlp.up_proj.weight"
+            mapping_rules[f"{k_prefix}.mlp.down_proj.weight"] = f"{hf_prefix}.mlp.down_proj.weight"
+
+            mapping_rules[f"{k_prefix}.input_layernorm.weight"] = f"{hf_prefix}.input_layernorm.weight"
+            mapping_rules[f"{k_prefix}.post_attention_layernorm.weight"] = (
+                f"{hf_prefix}.post_attention_layernorm.weight"
+            )
+
+        # Apply Mapping
+        missing_keys = []
+
+        for k_key, hf_key in mapping_rules.items():
+            if k_key not in kornia_sd:
+                # mismatch in manual map vs actual model structure
+                continue
+
+            if hf_key not in hf_sd:
+                # Key might be missing in HF model (unlikely for matched config)
+                missing_keys.append(hf_key)
+                continue
+
+            with torch.no_grad():
+                if kornia_sd[k_key].shape != hf_sd[hf_key].shape:
+                    logger.warning(
+                        f"Shape mismatch: {k_key} {kornia_sd[k_key].shape} vs {hf_key} {hf_sd[hf_key].shape}"
+                    )
+                else:
+                    kornia_sd[k_key].copy_(hf_sd[hf_key])
+
+        logger.info("Weights loaded successfully.")
+        return kornia_model
