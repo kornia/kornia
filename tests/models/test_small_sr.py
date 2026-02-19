@@ -50,8 +50,8 @@ class TestSmallSRNet(BaseTester):
             x = torch.randn(1, 3, 224, 224, device=device, dtype=dtype)
             model(x)
 
-    def test_exception_invalid_upscale_factor(self, device, dtype):
-        """Test that edge case upscale factors work correctly (upscale_factor=1 acts as identity)."""
+    def test_smoke_upscale_factor_one(self, device, dtype):
+        """Test that upscale_factor=1 works correctly (PixelShuffle acts as identity)."""
         # SmallSRNet doesn't validate upscale_factor, it just uses it in PixelShuffle
         # With upscale_factor=1, PixelShuffle acts as identity (no upscaling)
         model = SmallSRNet(upscale_factor=1, pretrained=False).to(device, dtype)
@@ -92,10 +92,16 @@ class TestSmallSRNet(BaseTester):
         # Check output is finite
         assert torch.isfinite(output).all()
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
     def test_feature_pretrained_loading(self, device, dtype, upscale_factor):
         """Test that pretrained weights can be loaded (only upscale_factor=3 has pretrained weights)."""
         if upscale_factor == 3:
+            # Check if pretrained weights are cached to avoid network download attempts in offline CI
+            cache_path = os.path.join(kornia_config.hub_onnx_dir, "small_sr.pth")
+            if not os.path.exists(cache_path):
+                pytest.skip(f"Pretrained weights not cached at {cache_path}. Skipping to avoid network download.")
+
             # download and load pretrained weights
             model = SmallSRNet(upscale_factor=upscale_factor, pretrained=True).to(device, dtype)
 
@@ -223,13 +229,27 @@ class TestSmallSRNetWrapper(BaseTester):
 
     @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
     def test_feature_color_space_conversion(self, device, dtype, upscale_factor):
-        """Test that color space conversions (RGB->YCbCr->RGB) preserve information."""
+        """Test that color space conversions (RGB->YCbCr->RGB) work correctly."""
         model = SmallSRNetWrapper(upscale_factor=upscale_factor, pretrained=False).to(device, dtype)
-        x = torch.ones(1, 3, 32, 32, device=device, dtype=dtype) * 0.5
-        output = model(x)
+        model.eval()
 
-        # Output should maintain similar color characteristics (roughly)
-        assert output.shape[1] == 3  # RGB output
+        x = torch.rand(1, 3, 32, 32, device=device, dtype=dtype)
+
+        with torch.no_grad():
+            # Get wrapper output
+            wrapper_output = model(x)
+
+            # Manually replicate the pipeline to verify correctness
+            ycbcr = model.rgb_to_ycbcr(x)
+            y, cb, cr = ycbcr.split(1, dim=1)
+            out_y = model.model(y)
+            out_cb = torch.nn.functional.interpolate(cb, scale_factor=upscale_factor, mode="bicubic")
+            out_cr = torch.nn.functional.interpolate(cr, scale_factor=upscale_factor, mode="bicubic")
+            out_ycbcr = torch.cat([out_y, out_cb, out_cr], dim=1)
+            expected_output = model.ycbcr_to_rgb(out_ycbcr)
+
+        # Wrapper output should match manual pipeline
+        self.assert_close(wrapper_output, expected_output, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("upscale_factor", [2, 3, 4])
     def test_gradcheck(self, device, upscale_factor):
