@@ -337,9 +337,15 @@ def fft_conv(
     Depending on the selected padding mode, the output can either preserve
     the input spatial resolution (`'same'`) or return only the valid region
     (`'valid'`). Boundary handling is performed in the spatial domain prior
-    to the FFT.This function should be called when the kernel size if greater
-    than (20x20).
-
+    to the FFT.
+    
+    This function is recommended when the kernel size is larger than
+    approximately (20 x 20). For large kernels, FFT-based convolution is
+    computationally more efficient than direct spatial convolution,
+    reducing complexity from O(H * W * kH * kW) to approximately
+    O(H * W log(H * W)). For small kernels, however, direct convolution
+    is usually faster due to lower constant overhead.
+    
     Args:
         input: Input tensor of shape :math:`(B, C, H, W)`.
         kernel: Convolution kernel of shape :math:`(B, kH, kW)`. Each batch
