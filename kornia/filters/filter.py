@@ -310,8 +310,8 @@ def filter3d(
 def _complex_matmul(a: Tensor, b: Tensor, groups: int = 1) -> Tensor:
     """Multiplies two complex-valued tensors using einsum."""
     B = a.size(0)
-    a = a.view(B, groups, -1, *a.shape[2:])        
-    b = b.view(groups, -1, *b.shape[1:])           
+    a = a.view(B, groups, -1, *a.shape[2:])
+    b = b.view(groups, -1, *b.shape[1:])
     # b g i ... , g o i ...  -> b g o ...
     c = torch.einsum("bgix..., goix... -> bgox...", a, b)
     c = c.reshape(B, -1, *c.shape[3:])
