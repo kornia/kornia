@@ -359,9 +359,18 @@ class PaliGemma(nn.Module):
 
         # Load HF Model
         # output_loading_info=False to avoid clutter, but we can use it if debugging is needed.
-        hf_model = PaliGemmaForConditionalGeneration.from_pretrained(
-            model_id, device_map=device, token=token, torch_dtype=torch.float32
-        )
+        try:
+            hf_model = PaliGemmaForConditionalGeneration.from_pretrained(
+                model_id, device_map=device, token=token, torch_dtype=torch.float32
+            )
+        except Exception as e:
+            if "401" in str(e) or "403" in str(e) or "gated" in str(e).lower():
+                raise RuntimeError(
+                    f"Access to model '{model_id}' is gated. Please ensure you have "
+                    "accepted the terms on HuggingFace and are logged in using `huggingface-cli login` "
+                    "or provide a valid `token`."
+                ) from e
+            raise e
 
         config = PaliGemmaConfig()
         text_conf = hf_model.config.text_config
