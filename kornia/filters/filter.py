@@ -313,11 +313,8 @@ def _complex_matmul(a: Tensor, b: Tensor, groups: int = 1) -> Tensor:
     b = b.view(groups, -1, *b.shape[1:])
     a = torch.movedim(a, 2, a.dim() - 1).unsqueeze(-2)
     b = torch.movedim(b, (1, 2), (b.dim() - 1, b.dim() - 2))
-    real = a.real @ b.real - a.imag @ b.imag
-    imag = a.imag @ b.real + a.real @ b.imag
-    real = torch.movedim(real, real.dim() - 1, 2).squeeze(-1)
-    imag = torch.movedim(imag, imag.dim() - 1, 2).squeeze(-1)
-    c = torch.complex(real, imag)
+    c = a @ b
+    c = torch.movedim(c, c.dim() - 1, 2).squeeze(-1)
     c = c.to(a.device)
     return c.view(c.size(0), -1, *c.shape[3:])
 
@@ -340,7 +337,8 @@ def fft_conv(
     Depending on the selected padding mode, the output can either preserve
     the input spatial resolution (`'same'`) or return only the valid region
     (`'valid'`). Boundary handling is performed in the spatial domain prior
-    to the FFT.
+    to the FFT.This function should be called when the kernel size if greater
+    than (20x20).
 
     Args:
         input: Input tensor of shape :math:`(B, C, H, W)`.
