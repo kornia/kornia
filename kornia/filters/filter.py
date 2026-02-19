@@ -308,15 +308,14 @@ def filter3d(
 
 
 def _complex_matmul(a: Tensor, b: Tensor, groups: int = 1) -> Tensor:
-    """Multiplies two complex-valued tensors."""
-    a = a.view(a.size(0), groups, -1, *a.shape[2:])
-    b = b.view(groups, -1, *b.shape[1:])
-    a = torch.movedim(a, 2, a.dim() - 1).unsqueeze(-2)
-    b = torch.movedim(b, (1, 2), (b.dim() - 1, b.dim() - 2))
-    c = a @ b
-    c = torch.movedim(c, c.dim() - 1, 2).squeeze(-1)
-    c = c.to(a.device)
-    return c.view(c.size(0), -1, *c.shape[3:])
+    """Multiplies two complex-valued tensors using einsum."""
+    B = a.size(0)
+    a = a.view(B, groups, -1, *a.shape[2:])        
+    b = b.view(groups, -1, *b.shape[1:])           
+    # b g i ... , g o i ...  -> b g o ...
+    c = torch.einsum("bgix..., goix... -> bgox...", a, b)
+    c = c.reshape(B, -1, *c.shape[3:])
+    return c
 
 
 def fft_conv(
