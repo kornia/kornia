@@ -87,6 +87,11 @@ class MIKernel(Enum):
     rectangular = member(rectangular_kernel)
     truncated_gaussian = member(truncated_gaussian_kernel)
 
+def _flatten_mask(mask:torch.Tensor | None) ->torch.Tensor:
+    if mask is None:
+        return torch.tensor([True])
+    else:
+        return mask.view(-1)
 
 def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> torch.Tensor:
     min_val, _ = data.min(dim=-1)
@@ -341,7 +346,7 @@ class MILossFromRef2D(MILossFromRef):
                 interval, by default 1.0
         """
         super().__init__(
-            self.arrange_shape(reference_signal), self.arrange_shape(mask), kernel_function, num_bins, window_radius
+            self.arrange_shape(reference_signal), _flatten_mask(mask), kernel_function, num_bins, window_radius
         )
 
     @staticmethod
@@ -367,7 +372,7 @@ class MILossFromRef2D(MILossFromRef):
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        return super().forward(self.arrange_shape(other_signal), self.arrange_shape(other_mask))
+        return super().forward(self.arrange_shape(other_signal), _flatten_mask(other_mask))
 
 
 class MILossFromRef3D(MILossFromRef):
@@ -403,7 +408,7 @@ class MILossFromRef3D(MILossFromRef):
                 interval, by default 1.0
         """
         super().__init__(
-            self.arrange_shape(reference_signal), self.arrange_shape(mask), kernel_function, num_bins, window_radius
+            self.arrange_shape(reference_signal), _flatten_mask(mask), kernel_function, num_bins, window_radius
         )
 
     @staticmethod
@@ -429,7 +434,7 @@ class MILossFromRef3D(MILossFromRef):
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        return super().forward(self.arrange_shape(other_signal), self.arrange_shape(other_mask))
+        return super().forward(self.arrange_shape(other_signal), _flatten_mask(other_mask))
 
 
 class NMILossFromRef2D(NMILossFromRef):
@@ -465,7 +470,7 @@ class NMILossFromRef2D(NMILossFromRef):
                 interval, by default 1.0
         """
         super().__init__(
-            self.arrange_shape(reference_signal), self.arrange_shape(mask), kernel_function, num_bins, window_radius
+            self.arrange_shape(reference_signal), _flatten_mask(mask), kernel_function, num_bins, window_radius
         )
 
     @staticmethod
@@ -491,7 +496,7 @@ class NMILossFromRef2D(NMILossFromRef):
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        return super().forward(self.arrange_shape(other_signal), self.arrange_shape(other_mask))
+        return super().forward(self.arrange_shape(other_signal), _flatten_mask(other_mask))
 
 
 class NMILossFromRef3D(NMILossFromRef):
@@ -527,7 +532,7 @@ class NMILossFromRef3D(NMILossFromRef):
                 interval, by default 1.0
         """
         super().__init__(
-            self.arrange_shape(reference_signal), self.arrange_shape(mask), kernel_function, num_bins, window_radius
+            self.arrange_shape(reference_signal), _flatten_mask(mask), kernel_function, num_bins, window_radius
         )
 
     @staticmethod
@@ -553,7 +558,7 @@ class NMILossFromRef3D(NMILossFromRef):
         Returns:
             torch.Tensor: tensor of losses, shape B as above
         """
-        return super().forward(self.arrange_shape(other_signal), self.arrange_shape(other_mask))
+        return super().forward(self.arrange_shape(other_signal), _flatten_mask(other_mask))
 
 
 def mutual_information_loss(
