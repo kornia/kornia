@@ -26,7 +26,7 @@ from kornia.geometry.transform import get_translation_matrix2d, warp_affine
 
 
 class RandomTranslate(GeometricAugmentationBase2D):
-    r"""Apply a random 2D affine transformation to a torch.tensor image.
+    r"""Apply a random 2D affine transformation to a torch.Tensor image.
 
     Args:
         translate_x: tuple of maximum absolute fraction for horizontal translations.

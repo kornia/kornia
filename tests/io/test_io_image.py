@@ -24,8 +24,8 @@ import pytest
 import requests
 import torch
 
+from kornia.core._compat import torch_version_ge
 from kornia.io import ImageLoadType, load_image, write_image
-from kornia.utils._compat import torch_version_ge
 
 try:
     import kornia_rs
@@ -48,7 +48,7 @@ def create_random_img8_torch(height: int, width: int, channels: int, device=None
 def _download_image(url: str, filename: str = "") -> Path:
     # TODO: move this to testing
 
-    filename = url.split("/")[-1] if len(filename) == 0 else filename
+    filename = url.rsplit("/", maxsplit=1)[-1] if len(filename) == 0 else filename
     # Download
     bytesio = io.BytesIO(requests.get(url, timeout=60).content)
     # Save file

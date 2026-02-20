@@ -22,4 +22,10 @@ from .config import SigLip2Config
 from .model import SigLip2Model, SigLip2Result
 from .preprocessor import SigLip2ImagePreprocessor
 
-__all__ = ["SigLip2Builder", "SigLip2Config", "SigLip2ImagePreprocessor", "SigLip2Model", "SigLip2Result"]
+__all__ = [
+    "SigLip2Builder",
+    "SigLip2Config",
+    "SigLip2ImagePreprocessor",
+    "SigLip2Model",
+    "SigLip2Result",
+]

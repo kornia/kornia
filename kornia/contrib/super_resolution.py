@@ -27,7 +27,7 @@ from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.models.base import ModelBase
 from kornia.models.processors import OutputRangePostProcessor, ResizePreProcessor
 from kornia.models.small_sr import SmallSRNetWrapper
-from kornia.utils.download import CachedDownloader
+from kornia.onnx.download import CachedDownloader
 
 __all__ = ["RRDBNetBuilder", "SmallSRBuilder", "SuperResolution"]
 
@@ -57,7 +57,7 @@ class SuperResolution(ModelBase, ONNXExportMixin):
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
-            output torch.tensor.
+            output torch.Tensor.
 
         """
         output = self.pre_processor(images)
@@ -80,12 +80,12 @@ class SuperResolution(ModelBase, ONNXExportMixin):
         """Draw the super resolution results.
 
         Args:
-            images: input torch.tensor.
+            images: input torch.Tensor.
             edge_maps: detected edges.
             output_type: type of the output.
 
         Returns:
-            output torch.tensor.
+            output torch.Tensor.
 
         """
         if edge_maps is None:
@@ -106,14 +106,14 @@ class SuperResolution(ModelBase, ONNXExportMixin):
         """Save the super resolution results.
 
         Args:
-            images: input torch.tensor.
+            images: input torch.Tensor.
             edge_maps: detected edges.
             output_type: type of the output.
-            directory: torch.where to save outputs.
+            directory: where to save outputs.
             output_type: backend used to generate outputs.
 
         Returns:
-            output torch.tensor.
+            output torch.Tensor.
 
         """
         outputs = self.visualize(images, edge_maps, output_type)
@@ -163,6 +163,8 @@ class SuperResolution(ModelBase, ONNXExportMixin):
 
 
 class RRDBNetBuilder:
+    """Provide a static factory to build Residual-in-Residual Dense Block (RRDB) networks."""
+
     @staticmethod
     def build(model_name: str = "RealESRNet_x4plus", pretrained: bool = True) -> SuperResolution:
         if model_name == "RealESRGAN_x4plus":
@@ -205,6 +207,8 @@ class RRDBNetBuilder:
 
 
 class SmallSRBuilder:
+    """Provide a static factory to build lightweight Super-Resolution models."""
+
     @staticmethod
     def build(
         model_name: str = "small_sr", pretrained: bool = True, upscale_factor: int = 3, image_size: Optional[int] = None

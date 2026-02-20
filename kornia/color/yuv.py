@@ -22,6 +22,10 @@ from typing import ClassVar
 import torch
 from torch import nn
 
+from kornia.color.utils import _apply_linear_transformation
+from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.exceptions import ShapeError
+
 
 def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
     r"""Convert an RGB image to YUV.
@@ -47,23 +51,19 @@ def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:
         >>> output = rgb_to_yuv(input)  # 2x3x4x5
 
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+    KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    kernel = torch.tensor(
+        [
+            [0.299, 0.587, 0.114],
+            [-0.147, -0.289, 0.436],
+            [0.615, -0.515, -0.100],
+        ],
+        device=image.device,
+        dtype=image.dtype,
+    )
 
-    r: torch.Tensor = image[..., 0, :, :]
-    g: torch.Tensor = image[..., 1, :, :]
-    b: torch.Tensor = image[..., 2, :, :]
-
-    y: torch.Tensor = 0.299 * r + 0.587 * g + 0.114 * b
-    u: torch.Tensor = -0.147 * r - 0.289 * g + 0.436 * b
-    v: torch.Tensor = 0.615 * r - 0.515 * g - 0.100 * b
-
-    out: torch.Tensor = torch.stack([y, u, v], -3)
-
-    return out
+    return _apply_linear_transformation(image, kernel)
 
 
 def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -90,14 +90,10 @@ def rgb_to_yuv420(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x2x2x3)
 
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
-
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ValueError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
 
@@ -132,14 +128,10 @@ def rgb_to_yuv422(image: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         >>> output = rgb_to_yuv420(input)  # (2x1x4x6, 2x1x4x3)
 
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
-
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ValueError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
 
     yuvimage = rgb_to_yuv(image)
 
@@ -167,23 +159,19 @@ def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> output = yuv_to_rgb(input)  # 2x3x4x5
 
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+    KORNIA_CHECK_SHAPE(image, ["*", "3", "H", "W"])
 
-    if image.dim() < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    kernel = torch.tensor(
+        [
+            [1.0, 0.0, 1.14],
+            [1.0, -0.396, -0.581],
+            [1.0, 2.029, 0.0],
+        ],
+        device=image.device,
+        dtype=image.dtype,
+    )
 
-    y: torch.Tensor = image[..., 0, :, :]
-    u: torch.Tensor = image[..., 1, :, :]
-    v: torch.Tensor = image[..., 2, :, :]
-
-    r: torch.Tensor = y + 1.14 * v  # coefficient for g is 0
-    g: torch.Tensor = y + -0.396 * u - 0.581 * v
-    b: torch.Tensor = y + 2.029 * u  # coefficient for b is 0
-
-    out: torch.Tensor = torch.stack([r, g, b], -3)
-
-    return out
+    return _apply_linear_transformation(image, kernel)
 
 
 def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
@@ -211,20 +199,11 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x6
 
     """
-    if not isinstance(imagey, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(imagey)}")
-
-    if not isinstance(imageuv, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(imageuv)}")
-
-    if len(imagey.shape) < 3 or imagey.shape[-3] != 1:
-        raise ValueError(f"Input imagey size must have a shape of (*, 1, H, W). Got {imagey.shape}")
-
-    if len(imageuv.shape) < 3 or imageuv.shape[-3] != 2:
-        raise ValueError(f"Input imageuv size must have a shape of (*, 2, H/2, W/2). Got {imageuv.shape}")
+    KORNIA_CHECK_SHAPE(imagey, ["*", "1", "H", "W"])
+    KORNIA_CHECK_SHAPE(imageuv, ["*", "2", "H", "W"])
 
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ValueError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
+        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
 
     if (
         len(imageuv.shape) < 2
@@ -232,7 +211,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         or imagey.shape[-2] / imageuv.shape[-2] != 2
         or imagey.shape[-1] / imageuv.shape[-1] != 2
     ):
-        raise ValueError(
+        raise ShapeError(
             f"Input imageuv H&W must be half the size of the luma plane. Got {imagey.shape} and {imageuv.shape}"
         )
 
@@ -241,7 +220,6 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         [imagey, imageuv.repeat_interleave(2, dim=-1).repeat_interleave(2, dim=-2)],
         dim=-3,
     )
-    # then convert the yuv444 torch.tensor
 
     return yuv_to_rgb(yuv444image)
 
@@ -271,29 +249,20 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x5
 
     """
-    if not isinstance(imagey, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(imagey)}")
-
-    if not isinstance(imageuv, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(imageuv)}")
-
-    if len(imagey.shape) < 3 or imagey.shape[-3] != 1:
-        raise ValueError(f"Input imagey size must have a shape of (*, 1, H, W). Got {imagey.shape}")
-
-    if len(imageuv.shape) < 3 or imageuv.shape[-3] != 2:
-        raise ValueError(f"Input imageuv size must have a shape of (*, 2, H, W/2). Got {imageuv.shape}")
+    KORNIA_CHECK_SHAPE(imagey, ["*", "1", "H", "W"])
+    KORNIA_CHECK_SHAPE(imageuv, ["*", "2", "H", "W"])
 
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
-        raise ValueError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
+        raise ShapeError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
 
     if len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-1] / imageuv.shape[-1] != 2:
-        raise ValueError(
+        raise ShapeError(
             f"Input imageuv W must be half the size of the luma plane. Got {imagey.shape} and {imageuv.shape}"
         )
 
     # first upsample
     yuv444image = torch.cat([imagey, imageuv.repeat_interleave(2, dim=-1)], dim=-3)
-    # then convert the yuv444 torch.tensor
+
     return yuv_to_rgb(yuv444image)
 
 

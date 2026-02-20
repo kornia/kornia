@@ -33,6 +33,19 @@ from kornia.models.common import LayerNorm2d
 
 
 class PromptEncoder(nn.Module):
+    """Encode sparse (points, boxes) and dense (masks) prompts into embeddings.
+
+    This module transforms different types of prompts into a common embedding space
+    to be consumed by the mask decoder.
+
+    Args:
+        embed_dim: The internal embedding dimension.
+        image_embedding_size: The spatial resolution of the image embedding as $(H, W)$.
+        input_image_size: The resolution of the input image as $(H, W)$.
+        mask_in_chans: The number of hidden channels used for encoding input masks.
+        activation: The activation function for the mask encoder. Default: :class:`nn.GELU`.
+    """
+
     def __init__(
         self,
         embed_dim: int,

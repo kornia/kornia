@@ -31,10 +31,16 @@ from torch import nn
 from torch.nn.utils.fusion import fuse_conv_bn_weights
 
 from kornia.models.common import ConvNormAct
-from kornia.utils._compat import torch_meshgrid
 
 
 class RepVggBlock(nn.Module):
+    """Implement the re-parameterizable VGG-style block.
+
+    Args:
+        in_channels: The number of input channels.
+        out_channels: The number of output channels.
+    """
+
     def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 3, act="none")
@@ -76,6 +82,15 @@ class RepVggBlock(nn.Module):
 
 
 class CSPRepLayer(nn.Module):
+    """Implement the Cross-Stage Partial Rep-layer.
+
+    Args:
+        in_channels: The number of input channels.
+        out_channels: The number of output channels.
+        num_blocks: The number of RepVggBlocks to include.
+        expansion: The expansion factor for the internal channels. Default: 1.0.
+    """
+
     def __init__(self, in_channels: int, out_channels: int, num_blocks: int, expansion: float = 1.0) -> None:
         super().__init__()
         hidden_channels = int(out_channels * expansion)
@@ -95,6 +110,15 @@ class CSPRepLayer(nn.Module):
 # almost identical to nn.TransformerEncoderLayer
 # but add positional embeddings to q and k
 class AIFI(nn.Module):
+    """Implement the All-scale Indoor/Outdoor Feature Interaction (AIFI) module.
+
+    Args:
+        embed_dim: The dimension of the input embeddings.
+        num_heads: The number of attention heads.
+        dim_feedforward: The dimension of the feed-forward network.
+        dropout: The dropout probability. Default: 0.0.
+    """
+
     def __init__(self, embed_dim: int, num_heads: int, dim_feedforward: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout)  # NOTE: batch_first = False
@@ -156,7 +180,7 @@ class AIFI(nn.Module):
         """
         xs = torch.arange(w, device=device, dtype=dtype)
         ys = torch.arange(h, device=device, dtype=dtype)
-        grid_x, grid_y = torch_meshgrid([xs, ys], indexing="ij")
+        grid_x, grid_y = torch.meshgrid([xs, ys], indexing="ij")
 
         pos_dim = embed_dim // 4
         omega = torch.arange(pos_dim, device=device, dtype=dtype) / pos_dim
@@ -170,6 +194,13 @@ class AIFI(nn.Module):
 
 
 class TransformerEncoder(nn.Module):
+    """Implement a transformer encoder comprising multiple encoder layers.
+
+    Args:
+        encoder_layer: An instance of a transformer encoder layer.
+        num_layers: The total number of encoder layers to stack.
+    """
+
     def __init__(self, encoder_layer: nn.Module, num_layers: int) -> None:
         super().__init__()
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(num_layers)])
@@ -186,6 +217,14 @@ class TransformerEncoder(nn.Module):
 
 
 class CCFM(nn.Module):
+    """Implement the Cross-Column Feature Mixing (CCFM) module.
+
+    Args:
+        num_fmaps: The number of input feature maps.
+        hidden_dim: The hidden dimension for the fusion layers.
+        expansion: The expansion ratio for the internal layers. Default: 1.0.
+    """
+
     def __init__(self, num_fmaps: int, hidden_dim: int, expansion: float = 1.0) -> None:
         super().__init__()
         self.lateral_convs = nn.ModuleList()
@@ -226,6 +265,12 @@ class CCFM(nn.Module):
 
 
 class HybridEncoder(nn.Module):
+    """Implement the Efficient Hybrid Encoder for RT-DETR.
+
+    This module combines multi-scale feature fusion with Intra-scale
+    Feature Interaction using transformer layers.
+    """
+
     def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int, expansion: float = 1.0) -> None:
         super().__init__()
         self.input_proj = nn.ModuleList(

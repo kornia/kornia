@@ -31,7 +31,7 @@ from kornia.enhance import (
 
 
 class ColorJitter(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.tensor image.
+    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.Tensor image.
 
     This implementation aligns PIL. Hence, the output is close to TorchVision. However, it does not
     follow the color theory and is not be actively maintained. Prefer using
@@ -130,9 +130,7 @@ class ColorJitter(IntensityAugmentationBase2D):
                 if (params["saturation_factor"] != 1).any()
                 else img
             ),
-            lambda img: (
-                self._hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img
-            ),
+            lambda img: self._hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img,
         ]
 
         jittered = input

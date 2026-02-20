@@ -29,9 +29,9 @@ from kornia.augmentation.utils import (
     _transform_output_shape,
     override_parameters,
 )
+from kornia.core.utils import is_autocast_enabled
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.utils import is_autocast_enabled
 
 TensorWithTransformMat = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 
@@ -130,7 +130,7 @@ class _BasicAugmentationBase(nn.Module):
         raise NotImplementedError
 
     def validate_tensor(self, input: torch.Tensor) -> None:
-        """Check if the input torch.tensor is formatted as expected."""
+        """Check if the input torch.Tensor is formatted as expected."""
         raise NotImplementedError
 
     def transform_output_tensor(self, output: torch.Tensor, output_shape: Tuple[int, ...]) -> torch.Tensor:
@@ -233,7 +233,7 @@ class _BasicAugmentationBase(nn.Module):
         """Perform forward operations.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             params: the corresponding parameters for an operation.
                 If None, a new parameter suite will be generated.
             **kwargs: key-value pairs to override the parameters and flags.
@@ -283,7 +283,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # apply transform for the input image torch.tensor
+        # apply transform for the input image torch.Tensor
         raise NotImplementedError
 
     def apply_non_transform(
@@ -294,7 +294,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         # apply additional transform for the images that are skipped from transformation
-        # torch.where batch_prob == False.
+        # where batch_prob == False.
         return input
 
     def transform_inputs(
@@ -319,7 +319,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_transform(in_tensor, params, flags, transform=transform)
         elif not to_apply.any():
             output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
-        else:  # If any torch.tensor needs to be transformed.
+        else:  # If any torch.Tensor needs to be transformed.
             output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
             applied = self.apply_transform(
                 in_tensor[to_apply],
@@ -363,7 +363,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
         elif not to_apply.any():
             output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
-        else:  # If any torch.tensor needs to be transformed.
+        else:  # If any torch.Tensor needs to be transformed.
             output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
             applied = self.apply_transform_mask(
                 in_tensor[to_apply],
@@ -397,7 +397,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_transform_box(input, params, flags, transform=transform)
         elif not to_apply.any():
             output = self.apply_non_transform_box(input, params, flags, transform=transform)
-        else:  # If any torch.tensor needs to be transformed.
+        else:  # If any torch.Tensor needs to be transformed.
             output = self.apply_non_transform_box(input, params, flags, transform=transform)
             applied = self.apply_transform_box(
                 input[to_apply],
@@ -433,7 +433,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_transform_keypoint(input, params, flags, transform=transform)
         elif not to_apply.any():
             output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
-        else:  # If any torch.tensor needs to be transformed.
+        else:  # If any torch.Tensor needs to be transformed.
             output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
             applied = self.apply_transform_keypoint(
                 input[to_apply],
@@ -465,7 +465,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_transform_class(input, params, flags, transform=transform)
         elif not to_apply.any():
             output = self.apply_non_transform_class(input, params, flags, transform=transform)
-        else:  # If any torch.tensor needs to be transformed.
+        else:  # If any torch.Tensor needs to be transformed.
             output = self.apply_non_transform_class(input, params, flags, transform=transform)
             applied = self.apply_transform_class(
                 input[to_apply],

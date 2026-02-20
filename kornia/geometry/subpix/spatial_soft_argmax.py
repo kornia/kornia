@@ -23,11 +23,11 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core._compat import torch_version_ge
+from kornia.core.utils import safe_solve_with_mask
 from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
-from kornia.utils import create_meshgrid, create_meshgrid3d
-from kornia.utils._compat import torch_version_ge
-from kornia.utils.helpers import safe_solve_with_mask
+from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
 from .dsnt import spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
@@ -275,7 +275,7 @@ def conv_soft_argmax2d(
     .. math::
         val(X) = \frac{\sum{x * exp(x / T)  \in X}} {\sum{exp(x / T)  \in X}}
 
-    torch.where :math:`T` is temperature.
+    where :math:`T` is temperature.
 
     Args:
         input: the given heatmap with shape :math:`(N, C, H_{in}, W_{in})`.
@@ -293,7 +293,7 @@ def conv_soft_argmax2d(
         On each window, the function computed returns with shapes :math:`(N, C, 2, H_{out},
         W_{out})`, :math:`(N, C, H_{out}, W_{out})`,
 
-        torch.where
+        where
 
          .. math::
              H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[0] -
@@ -315,7 +315,7 @@ def conv_soft_argmax2d(
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     if temperature <= 0:
-        raise ValueError(f"Temperature should be positive float or torch.tensor. Got: {temperature}")
+        raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
 
     b, c, h, w = input.shape
     ky, kx = kernel_size
@@ -390,7 +390,7 @@ def conv_soft_argmax3d(
     .. math::
              val(X) = \frac{\sum{x * exp(x / T)  \in X}} {\sum{exp(x / T)  \in X}}
 
-    torch.where ``T`` is temperature.
+    where ``T`` is temperature.
 
     Args:
         input: the given heatmap with shape :math:`(N, C, D_{in}, H_{in}, W_{in})`.
@@ -410,7 +410,7 @@ def conv_soft_argmax3d(
         On each window, the function computed returns with shapes :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`,
         :math:`(N, C, D_{out}, H_{out}, W_{out})`,
 
-        torch.where
+        where
 
          .. math::
              D_{out} = \left\lfloor\frac{D_{in}  + 2 \times \text{padding}[0] -
@@ -436,7 +436,7 @@ def conv_soft_argmax3d(
         raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
 
     if temperature <= 0:
-        raise ValueError(f"Temperature should be positive float or torch.tensor. Got: {temperature}")
+        raise ValueError(f"Temperature should be positive float or torch.Tensor. Got: {temperature}")
 
     b, c, d, h, w = input.shape
     kz, ky, kx = kernel_size
@@ -570,7 +570,7 @@ def conv_quad_interp3d(
         the location and value per each 3x3x3 window which contains strict extremum, similar to one done is SIFT.
         :math:`(N, C, 3, D_{out}, H_{out}, W_{out})`, :math:`(N, C, D_{out}, H_{out}, W_{out})`,
 
-        torch.where
+        where
 
          .. math::
              D_{out} = \left\lfloor\frac{D_{in}  + 2 \times \text{padding}[0] -
@@ -599,7 +599,7 @@ def conv_quad_interp3d(
     grid_global: torch.Tensor = create_meshgrid3d(D, H, W, False, device=input.device).permute(0, 4, 1, 2, 3)
     grid_global = grid_global.to(input.dtype)
 
-    # to determine the location we are solving system of linear equations Ax = b, torch.where b is 1st order gradient
+    # to determine the location we are solving system of linear equations Ax = b, where b is 1st order gradient
     # and A is Hessian matrix
     b: torch.Tensor = spatial_gradient3d(input, order=1, mode="diff")
     b = b.permute(0, 1, 3, 4, 5, 2).reshape(-1, 3, 1)
@@ -621,7 +621,7 @@ def conv_quad_interp3d(
     x_solved: torch.Tensor = torch.zeros_like(b)
     x_solved_masked, _, solved_correctly = safe_solve_with_mask(b[nms_mask.view(-1)], Hes[nms_mask.view(-1)])
 
-    #  Kill those points, torch.where we cannot solve
+    #  Kill those points, where we cannot solve
     new_nms_mask = nms_mask.masked_scatter(nms_mask, solved_correctly)
 
     x_solved[torch.where(new_nms_mask.view(-1, 1, 1))[0]] = x_solved_masked[solved_correctly]

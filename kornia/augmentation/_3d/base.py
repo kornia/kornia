@@ -40,7 +40,7 @@ class AugmentationBase3D(_AugmentationBase):
     """
 
     def validate_tensor(self, input: torch.Tensor) -> None:
-        """Check if the input torch.tensor is formatted as expected."""
+        """Check if the input torch.Tensor is formatted as expected."""
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
         if len(input.shape) != 5:
             raise RuntimeError(f"Expect (B, C, D, H, W). Got {input.shape}.")
@@ -57,7 +57,7 @@ class AugmentationBase3D(_AugmentationBase):
 
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return 4x4 identity matrix."""
-        return kornia.eye_like(4, input)
+        return kornia.core.ops.eye_like(4, input)
 
 
 class RigidAffineAugmentationBase3D(AugmentationBase3D):

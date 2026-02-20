@@ -63,8 +63,8 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
         s = maxc - minc
         # weird behaviour with undefined vars in JIT...
         # scripting requires image_hls be defined even if it is not used :S
-        h = l_  # assign to any torch.tensor...
-        image_hls = l_  # assign to any torch.tensor...
+        h = l_  # assign to any torch.Tensor...
+        image_hls = l_  # assign to any torch.Tensor...
     else:
         # define the resulting image to avoid the torch.stack([h, l, s])
         # so, h, l and s require inplace operations
@@ -81,7 +81,7 @@ def rgb_to_hls(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     # precompute image / (max - min)
     im = image / (s + eps).unsqueeze(-3)
 
-    # epsilon cannot be inside the torch.where to avoid precision issues
+    # epsilon cannot be inside the where to avoid precision issues
     s /= torch.where(l_ < 1.0, l_, 2.0 - l_) + eps  # saturation
     l_ /= 2  # luminance
 

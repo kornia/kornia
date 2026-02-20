@@ -59,7 +59,7 @@ class TestTransformPoints(BaseTester):
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         points = torch.ones(1, 2, 2, device=device, dtype=dtype)
-        transform = kornia.eye_like(3, points)
+        transform = kornia.core.ops.eye_like(3, points)
         op = kornia.geometry.transform_points
         op_script = torch_optimizer(op)
         actual = op_script(transform, points)

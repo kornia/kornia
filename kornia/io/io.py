@@ -26,7 +26,7 @@ import torch
 
 import kornia
 from kornia.core.check import KORNIA_CHECK
-from kornia.utils import image_to_tensor, tensor_to_image
+from kornia.image.utils import image_to_tensor, tensor_to_image
 
 
 class ImageLoadType(Enum):
@@ -47,10 +47,10 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
 
     Args:
         path_file: Path to a valid image file.
-        device: the device torch.where you want to get your image placed.
+        device: the device where you want to get your image placed.
 
     Return:
-        Image torch.tensor with shape :math:`(3,H,W)`.
+        Image torch.Tensor with shape :math:`(3,H,W)`.
 
     """
     # read image and return as `np.ndarray` with shape HxWxC
@@ -59,23 +59,23 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
     else:
         img = kornia_rs.read_image_any(str(path_file))
 
-    # convert the image to torch.tensor with shape CxHxW
+    # convert the image to torch.Tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)
 
-    # move the torch.tensor to the desired device,
+    # move the torch.Tensor to the desired device,
     dev = device if isinstance(device, torch.device) or device is None else torch.device(device)
 
     return img_t.to(device=dev)
 
 
 def _to_float32(image: torch.Tensor) -> torch.Tensor:
-    """Convert an image torch.tensor to float32."""
+    """Convert an image torch.Tensor to float32."""
     KORNIA_CHECK(image.dtype == torch.uint8)
     return image.float() / 255.0
 
 
 def _to_uint8(image: torch.Tensor) -> torch.Tensor:
-    """Convert an image torch.tensor to uint8."""
+    """Convert an image torch.Tensor to uint8."""
     KORNIA_CHECK(image.dtype == torch.float32)
     return image.mul(255.0).byte()
 
@@ -90,10 +90,10 @@ def load_image(
     Args:
         path_file: Path to a valid image file.
         desired_type: the desired image type, defined by color space and dtype.
-        device: the device torch.where you want to get your image placed.
+        device: the device where you want to get your image placed.
 
     Return:
-        Image torch.tensor with shape :math:`(3,H,W)`.
+        Image torch.Tensor with shape :math:`(3,H,W)`.
 
     """
     if not isinstance(path_file, Path):
@@ -186,7 +186,7 @@ def write_image(path_file: str | Path, image: torch.Tensor, quality: int = 80) -
 
     Args:
         path_file: Path to a valid image file.
-        image: Image torch.tensor with shape :math:`(3,H,W)`, `(1,H,W)` and `(H,W)`.
+        image: Image torch.Tensor with shape :math:`(3,H,W)`, `(1,H,W)` and `(H,W)`.
         quality: The quality of the JPEG encoding. If the file extension is .png or .tiff, the quality is ignored.
 
     Return:

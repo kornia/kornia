@@ -103,13 +103,13 @@ class VisualPrompter:
     def preprocess_image(
         self, x: torch.Tensor, mean: Optional[torch.Tensor] = None, std: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """Normalize and F.pad a torch.tensor.
+        """Normalize and F.pad a torch.Tensor.
 
         For F.normalize the tensor: will prioritize the `mean` and `std` passed as argument,
         if None will use the default
         Sam Dataset values.
 
-        For F.pad the tensor: Will F.pad the torch.tensor into the right and bottom to match with the size of
+        For F.pad the tensor: Will F.pad the torch.Tensor into the right and bottom to match with the size of
         `self.model.image_encoder.img_size`
 
         Args:
@@ -202,7 +202,7 @@ class VisualPrompter:
         if data_keys is None:
             data_keys = []
 
-        # prevent unpacking torch.tensor when creating the output dict (issue #2627)
+        # prevent unpacking torch.Tensor when creating the output dict (issue #2627)
         if not isinstance(transformed_prompts, (list, tuple)):
             transformed_prompts = [transformed_prompts]
         return {key: transformed_prompts[idx] for idx, key in enumerate(data_keys)}
@@ -267,9 +267,9 @@ class VisualPrompter:
             keypoints_labels: Labels for the point prompts. 1 indicates a foreground point and 0 indicates a background
                              point. Shape :math:`(K, N)`. Where `N` is the number of points, and `K` the number of
                              prompts.
-            boxes: A box prompt to the model. If a torch.tensor, should be in a xyxy mode. Shape :math:`(K, 4)`
+            boxes: A box prompt to the model. If a torch.Tensor, should be in a xyxy mode. Shape :math:`(K, 4)`
             masks: A low resolution mask input to the model, typically coming from a previous prediction
-                   iteration. Has shape :math:`(K, 1, H, W)`, torch.where for SAM, H=W=256.
+                   iteration. Has shape :math:`(K, 1, H, W)`, where for SAM, H=W=256.
             multimask_output: If true, the model will return three masks. For ambiguous input prompts (such as a
                               single click), this will often produce better masks than a single prediction. If only
                               a single mask is needed, the model's predicted quality score can be used to select the

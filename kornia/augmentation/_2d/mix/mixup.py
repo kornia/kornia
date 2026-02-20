@@ -25,14 +25,14 @@ from kornia.constants import DataKey, DType
 
 
 class RandomMixUpV2(MixAugmentationBaseV2):
-    r"""Apply MixUp augmentation to a batch of torch.tensor images.
+    r"""Apply MixUp augmentation to a batch of torch.Tensor images.
 
     .. image:: _static/img/RandomMixUpV2.png
 
     Implementation for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
 
-    The function returns (inputs, labels), in which the inputs is the torch.tensor that contains the mixup images
-    while the labels is a :math:`(B, 3)` torch.tensor that contains (label_batch, label_permuted_batch, lambda) for
+    The function returns (inputs, labels), in which the inputs is the torch.Tensor that contains the mixup images
+    while the labels is a :math:`(B, 3)` torch.Tensor that contains (label_batch, label_permuted_batch, lambda) for
     each image.
 
     The implementation is on top of the following repository:

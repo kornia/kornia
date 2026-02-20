@@ -262,7 +262,7 @@ class Se2(nn.Module):
     def identity(
         cls,
         batch_size: Optional[int] = None,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> Se2:
         """Create a Se2 group representing an identity rotation and zero translation.
@@ -309,7 +309,7 @@ class Se2(nn.Module):
         """Create an Se2 group from a matrix.
 
         Args:
-            matrix: torch.tensor of shape :math:`(B, 3, 3)`.
+            matrix: torch.Tensor of shape :math:`(B, 3, 3)`.
 
         Example:
             >>> s = Se2.from_matrix(torch.eye(3).repeat(2, 1, 1))
@@ -352,7 +352,7 @@ class Se2(nn.Module):
     def random(
         cls,
         batch_size: Optional[int] = None,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> Se2:
         """Create a Se2 group representing a random transformation.

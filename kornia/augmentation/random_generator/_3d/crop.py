@@ -22,8 +22,8 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator3d
-from kornia.utils.helpers import _extract_device_dtype
 
 
 class CropGenerator3D(RandomGeneratorBase):
@@ -31,7 +31,7 @@ class CropGenerator3D(RandomGeneratorBase):
 
     Args:
         size (tuple): Desired size of the crop operation, like (d, h, w).
-            If torch.tensor, it must be (B, 3).
+            If torch.Tensor, it must be (B, 3).
         resize_to (tuple): Desired output size of the crop, like (d, h, w). If None, no resize will be performed.
 
     Returns:
@@ -75,7 +75,7 @@ class CropGenerator3D(RandomGeneratorBase):
             size = self.size.to(device=_device, dtype=_dtype)
         if size.shape != torch.Size([batch_size, 3]):
             raise AssertionError(
-                "If `size` is a torch.tensor, it must be shaped as (B, 3). "
+                "If `size` is a torch.Tensor, it must be shaped as (B, 3). "
                 f"Got {size.shape} while expecting {torch.Size([batch_size, 3])}."
             )
         if not (
@@ -161,12 +161,12 @@ def center_crop_generator3d(
     height: int,
     width: int,
     size: Tuple[int, int, int],
-    device: Optional[Union[str, torch.device, None]] = None,
+    device: Union[None, str, torch.device] = None,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
 
     Args:
-        batch_size (int): the torch.tensor batch size.
+        batch_size (int): the torch.Tensor batch size.
         depth (int) : depth of the image.
         height (int) : height of the image.
         width (int): width of the image.

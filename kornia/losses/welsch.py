@@ -43,8 +43,8 @@ def welsch_loss(img1: torch.Tensor, img2: torch.Tensor, reduction: str = "none")
         [3] https://link.springer.com/article/10.1007/BF00054839
 
     Args:
-        img1: the predicted torch.tensor with shape :math:`(*)`.
-        img2: the target torch.tensor with the same shape as img1.
+        img1: the predicted torch.Tensor with shape :math:`(*)`.
+        img2: the target torch.Tensor with the same shape as img1.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied (default), ``'mean'``: the sum of the output will be divided
@@ -113,8 +113,8 @@ class WelschLoss(nn.Module):
           summed.
 
     Shape:
-        - img1: the predicted torch.tensor with shape :math:`(*)`.
-        - img2: the target torch.tensor with the same shape as img1.
+        - img1: the predicted torch.Tensor with shape :math:`(*)`.
+        - img2: the target torch.Tensor with the same shape as img1.
 
     Example:
         >>> criterion = WelschLoss(reduction="mean")

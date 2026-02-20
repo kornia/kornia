@@ -35,7 +35,7 @@ from kornia.augmentation.random_generator import (
     ResizedCropGenerator,
     center_crop_generator,
 )
-from kornia.utils._compat import torch_version_ge
+from kornia.core._compat import torch_version_ge
 
 from testing.base import assert_close
 

@@ -56,6 +56,13 @@ def weight_init(m: nn.Module) -> None:
 
 
 class CoFusion(nn.Module):
+    """Implement the weight-fusion layer for multi-scale edge maps.
+
+    Args:
+        in_ch: The number of input channels.
+        out_ch: The number of output channels.
+    """
+
     def __init__(self, in_ch: int, out_ch: int) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(in_ch, 64, kernel_size=3, stride=1, padding=1)
@@ -114,6 +121,13 @@ class _DenseBlock(nn.Sequential):
 
 
 class UpConvBlock(nn.Module):
+    """Implement an upsampling convolutional block for edge refinement.
+
+    Args:
+        in_features: The number of input channels.
+        up_scale: The scale factor for upsampling.
+    """
+
     def __init__(self, in_features: int, up_scale: int) -> None:
         super().__init__()
         self.up_factor = 2
@@ -146,6 +160,15 @@ class UpConvBlock(nn.Module):
 
 
 class SingleConvBlock(nn.Module):
+    """Implement a single convolutional layer with optional Batch Normalization.
+
+    Args:
+        in_features: The number of input channels.
+        out_features: The number of output channels.
+        stride: The stride of the convolution.
+        use_bs: Whether to use Batch Normalization. Default: True.
+    """
+
     def __init__(self, in_features: int, out_features: int, stride: int, use_bs: bool = True) -> None:
         super().__init__()
         self.use_bn = use_bs
@@ -160,6 +183,8 @@ class SingleConvBlock(nn.Module):
 
 
 class DoubleConvBlock(nn.Sequential):
+    """Apply two consecutive convolutional blocks for edge feature extraction."""
+
     def __init__(
         self,
         in_features: int,
@@ -184,7 +209,7 @@ class DexiNed(nn.Module):
     r"""Definition of the DXtrem network from :cite:`xsoria2020dexined`.
 
     Return:
-        A list of torch.tensor with the intermediate features which the last element
+        A list of torch.Tensor with the intermediate features which the last element
         is the edges map with shape :math:`(B,1,H,W)`.
 
     Example:

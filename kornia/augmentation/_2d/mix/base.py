@@ -76,13 +76,13 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        # NOTE: apply_transform receives the whole torch.tensor, but returns only altered elements.
+        # NOTE: apply_transform receives the whole torch.Tensor, but returns only altered elements.
         raise NotImplementedError
 
     def apply_non_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        # For the images torch.where batch_prob == False.
+        # For the images where batch_prob == False.
         return input
 
     def transform_input(
@@ -120,7 +120,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         # input is BxNx4x2 or Boxes.
         if isinstance(input, torch.Tensor):
             if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
-                raise RuntimeError(f"Only BxNx4x2 torch.tensor is supported. Got {input.shape}.")
+                raise RuntimeError(f"Only BxNx4x2 torch.Tensor is supported. Got {input.shape}.")
             input = Boxes(input, False, mode="vertices_plus")
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.

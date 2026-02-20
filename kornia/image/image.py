@@ -24,10 +24,17 @@ import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
 import kornia.color
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
+from kornia.core.check import KORNIA_CHECK
+from kornia.image.base import (
+    KORNIA_CHECK_IMAGE_LAYOUT,
+    ChannelsOrder,
+    ColorSpace,
+    ImageLayout,
+    ImageSize,
+    PixelFormat,
+)
+from kornia.image.image_print import image_to_string
 from kornia.io.io import ImageLoadType, load_image, write_image
-from kornia.utils.image_print import image_to_string
 
 # placeholder for numpy
 np_ndarray = Any
@@ -40,7 +47,7 @@ class Image:
     .. note::
 
         Disclaimer: This class provides the minimum functionality for image manipulation. However, as soon
-        as you start to experiment with advanced torch.tensor manipulation, you might expect fancy
+        as you start to experiment with advanced torch.Tensor manipulation, you might expect fancy
         polymorphic behaviours.
 
     .. warning::
@@ -48,7 +55,7 @@ class Image:
         This API is experimental and might suffer changes in the future.
 
     Args:
-        data: a torch torch.tensor containing the image data.
+        data: a torch torch.Tensor containing the image data.
         layout: a dataclass containing the image layout information.
 
     Examples:
@@ -79,20 +86,12 @@ class Image:
         """Image constructor.
 
         Args:
-            data: a torch torch.tensor containing the image data.
+            data: a torch torch.Tensor containing the image data.
             pixel_format: the pixel format of the image.
             layout: a dataclass containing the image layout information.
 
         """
-        # TODO: move this to a function KORNIA_CHECK_IMAGE_LAYOUT
-        if layout.channels_order == ChannelsOrder.CHANNELS_FIRST:
-            shape = [str(layout.channels), str(layout.image_size.height), str(layout.image_size.width)]
-        elif layout.channels_order == ChannelsOrder.CHANNELS_LAST:
-            shape = [str(layout.image_size.height), str(layout.image_size.width), str(layout.channels)]
-        else:
-            raise NotImplementedError(f"Layout {layout.channels_order} not implemented.")
-
-        KORNIA_CHECK_SHAPE(data, shape)
+        KORNIA_CHECK_IMAGE_LAYOUT(data, layout)
         KORNIA_CHECK(data.element_size() == pixel_format.bit_depth // 8, "Invalid bit depth.")
 
         self._data = data
@@ -127,7 +126,7 @@ class Image:
 
     @property
     def data(self) -> torch.Tensor:
-        """Return the underlying torch.tensor data."""
+        """Return the underlying torch.Tensor data."""
         return self._data
 
     @property
@@ -278,13 +277,13 @@ class Image:
         color_space: ColorSpace = ColorSpace.RGB,
         channels_order: ChannelsOrder = ChannelsOrder.CHANNELS_LAST,
     ) -> Image:
-        """Construct an image torch.tensor from a numpy array.
+        """Construct an image torch.Tensor from a numpy array.
 
         Args:
             data: a numpy array containing the image data.
             color_space: the color space of the image.
             pixel_format: the pixel format of the image.
-            channels_order: what dimension the channels are in the image torch.tensor.
+            channels_order: what dimension the channels are in the image torch.Tensor.
 
         Example:
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
@@ -309,16 +308,16 @@ class Image:
         # create the image layout based on the input data
         layout = ImageLayout(image_size=image_size, channels=channels, channels_order=channels_order)
 
-        # create the image torch.tensor
+        # create the image torch.Tensor
         return cls(torch.from_numpy(data), pixel_format, layout)
 
     def to_numpy(self) -> np_ndarray:
-        """Return a numpy array in cpu from the image torch.tensor."""
+        """Return a numpy array in cpu from the image torch.Tensor."""
         return self.data.cpu().detach().numpy()
 
     @classmethod
     def from_dlpack(cls, data: DLPack) -> Image:
-        """Construct an image torch.tensor from a DLPack capsule.
+        """Construct an image torch.Tensor from a DLPack capsule.
 
         Args:
             data: a DLPack capsule from numpy, tvm or jax.
@@ -342,12 +341,12 @@ class Image:
         return cls(_data, pixel_format, layout)
 
     def to_dlpack(self) -> DLPack:
-        """Return a DLPack capsule from the image torch.tensor."""
+        """Return a DLPack capsule from the image torch.Tensor."""
         return to_dlpack(self.data)
 
     @classmethod
     def from_file(cls, file_path: str | Path) -> Image:
-        """Construct an image torch.tensor from a file.
+        """Construct an image torch.Tensor from a file.
 
         Args:
             file_path: the path to the file to read the image from.
@@ -385,7 +384,7 @@ class Image:
         write_image(file_path, data)
 
     def print(self, max_width: int = 256) -> None:
-        """Print the image torch.tensor to the console.
+        """Print the image torch.Tensor to the console.
 
         Args:
             max_width: the maximum width of the image to print.

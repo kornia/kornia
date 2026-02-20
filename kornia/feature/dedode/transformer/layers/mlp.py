@@ -32,6 +32,16 @@ from torch import Tensor, nn
 
 
 class Mlp(nn.Module):
+    """Implement the Multi-Layer Perceptron (MLP) used in transformer blocks.
+
+    Args:
+        in_features: The number of input features.
+        hidden_features: The number of hidden layer features. Default: None.
+        out_features: The number of output features. Default: None.
+        act_layer: The activation function to use. Default: :class:`nn.GELU`.
+        drop: The dropout probability. Default: 0.0.
+    """
+
     def __init__(
         self,
         in_features: int,

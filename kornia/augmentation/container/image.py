@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union, cast
 
 import torch
 from torch import nn
@@ -24,8 +24,8 @@ import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import override_parameters
 from kornia.core import ImageModule
-from kornia.core.module import ImageModuleMixIn
-from kornia.utils import eye_like
+from kornia.core.mixin.image_module import ImageModuleMixIn
+from kornia.core.ops import eye_like
 
 from .base import ImageSequentialBase
 from .params import ParamItem
@@ -188,20 +188,28 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         multinomial_weights = self.random_apply_weights.clone()
         # Mix augmentation can only be applied once per forward
         mix_indices = self.get_mix_augmentation_indices(self.named_children())
-        # kick out the mix augmentations
+
         multinomial_weights[mix_indices] = 0
-        indices = torch.multinomial(
-            multinomial_weights,
-            num_samples,
-            # enable replacement if non-mix augmentation is less than required
-            replacement=num_samples > multinomial_weights.sum().item(),
-        )
+
+        total_weight = multinomial_weights.sum()
+        if total_weight == 0:
+            indices = torch.tensor([], device=multinomial_weights.device, dtype=torch.long)
+        else:
+            indices = torch.multinomial(
+                multinomial_weights,
+                num_samples,
+                replacement=num_samples > total_weight.item(),
+            )
 
         mix_added = False
         if with_mix and len(mix_indices) != 0:
             # Make the selection fair.
             if (torch.rand(1) < ((len(mix_indices) + len(indices)) / len(self))).item():
-                indices[-1] = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+                mix_idx = torch.multinomial((~multinomial_weights.bool()).float(), 1)
+                if len(indices) == 0:
+                    indices = mix_idx
+                else:
+                    indices[-1] = mix_idx
                 indices = indices[torch.randperm(len(indices))]
                 mix_added = True
 
@@ -262,7 +270,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         """Compute the transformation matrix according to the provided parameters.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.
@@ -338,7 +346,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         self,
         *inputs: Any,
         input_names_to_handle: Optional[List[Any]] = None,
-        output_type: str = "tensor",
+        output_type: Literal["pt", "numpy", "pil"] = "pt",
         **kwargs: Any,
     ) -> Any:
         """Overwrite the __call__ function to handle various inputs.
@@ -346,7 +354,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         Args:
             inputs: Inputs to operate on.
             input_names_to_handle: List of input names to convert, if None, handle all inputs.
-            output_type: Desired output type ('tensor', 'numpy', or 'pil').
+            output_type: Desired output type ('pt', 'numpy', or 'pil').
             kwargs: Additional arguments.
 
         Returns:
@@ -359,7 +367,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 input_names_to_handle=input_names_to_handle, output_type=output_type
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            if output_type == "tensor":
+            if output_type == "pt":
                 self._output_image = self._detach_tensor_to_cpu(_output_image)
             else:
                 self._output_image = _output_image
@@ -385,9 +393,9 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
             batch_shape = _get_new_batch_shape(p, batch_shape)
         return batch_shape
 
-    # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.tensor
+    # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:
-        # Inline check for common PyTorch float torch.tensor case
+        # Inline check for common PyTorch float torch.Tensor case
         batch_prob = data.get("batch_prob", None)
         if batch_prob is not None:
             # Avoid repeated indexing, always fetch scalar efficiently

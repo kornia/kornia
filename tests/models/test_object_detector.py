@@ -22,8 +22,8 @@ import pytest
 import torch
 
 import kornia
+from kornia.core._compat import torch_version_lt
 from kornia.models.rt_detr import RTDETR, DETRPostProcessor, RTDETRConfig
-from kornia.utils._compat import torch_version_lt
 
 from testing.base import BaseTester
 

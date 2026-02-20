@@ -20,8 +20,8 @@ import re
 import pytest
 import torch
 
+from kornia.core._compat import torch_version
 from kornia.filters import InRange, in_range
-from kornia.utils._compat import torch_version
 
 from testing.base import BaseTester, assert_close
 

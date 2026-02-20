@@ -19,9 +19,9 @@
 import pytest
 import torch
 
+from kornia.core._compat import torch_version_lt
 from kornia.models.efficient_vit import EfficientViT, EfficientViTConfig
 from kornia.models.efficient_vit import backbone as vit
-from kornia.utils._compat import torch_version_lt
 
 
 class TestEfficientViT:

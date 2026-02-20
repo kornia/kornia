@@ -25,6 +25,8 @@ __all__ = ["DepthAnythingONNXBuilder"]
 
 
 class DepthAnythingONNXBuilder:
+    """Provide static methods to build DepthAnything models for ONNX inference."""
+
     @staticmethod
     def build(
         model_name: str = "depth-anything-v2-small", model_type: str = "model", cache_dir: Optional[str] = None
@@ -49,13 +51,10 @@ class DepthAnythingONNXBuilder:
                 The directory where the model should be cached.
 
         Returns:
-            str: The name of the output ONNX file.
+            DepthEstimation: The depth estimation model.
 
-        .. code-block:: python
-
-            images = kornia.utils.sample.get_sample_images()
-            model = DepthAnythingONNXBuilder.build()
-            model.save(images)
+        Note:
+            To use this model, load an image tensor (shape: ``(1, C, H, W)``) and call ``model.save(image)``.
 
         """
         if model_name not in [

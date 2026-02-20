@@ -51,6 +51,28 @@ except ImportError:
 
 
 class Block(nn.Module):
+    """Implement a transformer block with attention and feed-forward sublayers.
+
+    Args:
+        dim: Embedding dimension of the input and output features.
+        num_heads: Number of attention heads.
+        mlp_ratio: Expansion ratio used to compute the hidden dimension of the feed-forward network
+            as ``int(dim * mlp_ratio)``.
+        qkv_bias: If True, add a learnable bias to the query, key and value projections.
+        proj_bias: If True, add a learnable bias to the output projection of the attention layer.
+        ffn_bias: If True, add a learnable bias to the linear layers in the feed-forward network.
+        drop: Dropout probability applied after attention projection and inside the feed-forward network.
+        attn_drop: Dropout probability applied to the attention weights.
+        init_values: Initial value for the :class:`LayerScale` modules. If falsy, LayerScale is disabled
+            and an identity mapping is used instead.
+        drop_path: Stochastic depth probability for dropping the residual branch.
+        act_layer: Callable that constructs the activation layer used in the feed-forward network.
+        norm_layer: Callable that constructs the normalization layers applied before attention and
+            feed-forward sublayers.
+        attn_class: Callable that constructs the attention module.
+        ffn_layer: Callable that constructs the feed-forward network module.
+    """
+
     def __init__(
         self,
         dim: int,
@@ -221,6 +243,8 @@ def drop_add_residual_stochastic_depth_list(
 
 
 class NestedTensorBlock(Block):
+    """Implement a Transformer block capable of processing :class:`torch.NestedTensor` inputs."""
+
     def forward_nested(self, x_list: List[Tensor]) -> List[Tensor]:
         """x_list contains a list of tensors to nest together and run."""
         KORNIA_CHECK(isinstance(self.attn, MemEffAttention))

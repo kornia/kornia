@@ -29,6 +29,8 @@ __all__ = ["DepthEstimation"]
 
 
 class DepthEstimation(HFONNXComunnityModel):
+    """Base class for depth estimation models compatible with HuggingFace and ONNX."""
+
     name: str = "depth_estimation"
 
     def __call__(self, images: Union[torch.Tensor, list[torch.Tensor]]) -> Union[torch.Tensor, list[torch.Tensor]]:  # type: ignore[override]

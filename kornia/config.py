@@ -23,6 +23,8 @@ __all__ = ["InstallationMode", "kornia_config"]
 
 
 class InstallationMode(str, Enum):
+    """Represent the installation mode for external dependencies."""
+
     # Ask the user if to install the dependencies
     ASK = "ASK"
     # Install the dependencies
@@ -37,6 +39,8 @@ class InstallationMode(str, Enum):
 
 
 class LazyLoaderConfig:
+    """Configure lazy loading behavior for external dependencies."""
+
     _installation_mode: InstallationMode = InstallationMode.ASK
 
     @property
@@ -61,6 +65,8 @@ class LazyLoaderConfig:
 
 @dataclass
 class KorniaConfig:
+    """Configure Kornia's behavior."""
+
     hub_models_dir: str
     hub_onnx_dir: str
     output_dir: str = "kornia_outputs"

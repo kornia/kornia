@@ -25,7 +25,7 @@ from kornia.enhance import jpeg_codec_differentiable
 
 
 class RandomJPEG(IntensityAugmentationBase2D):
-    r"""Applies random (differentiable) JPEG coding to a torch.tensor image.
+    r"""Applies random (differentiable) JPEG coding to a torch.Tensor image.
 
     .. image:: _static/img/RandomJPEG.png
 

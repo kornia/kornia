@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -95,6 +96,9 @@ class SigLip2Model(nn.Module):
         super().__init__()
         self.config = config
 
+        if config.vision_config is None or config.text_config is None:
+            raise ValueError("vision_config and text_config must be provided")
+
         # vision and text encoders
         self.vision_model = SigLip2VisionModel(config.vision_config)
         self.text_model = SigLip2TextModel(config.text_config)
@@ -116,6 +120,8 @@ class SigLip2Model(nn.Module):
 
         # logit scale (temperature parameter)
         self.logit_scale = nn.Parameter(torch.tensor(config.logit_scale_init_value))
+        # cache log of max scale for clamping (constant value)
+        self.logit_scale_max_log = math.log(config.logit_scale_max)
 
         # logit bias
         self.logit_bias = nn.Parameter(torch.tensor(0.0))
@@ -214,7 +220,7 @@ class SigLip2Model(nn.Module):
             else None
         )
 
-        logit_scale = self.logit_scale.exp()
+        logit_scale = self.logit_scale.clamp(min=0.0, max=self.logit_scale_max_log).exp()
         logits_per_image = None
         logits_per_text = None
         loss = None

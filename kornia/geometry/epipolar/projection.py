@@ -15,17 +15,16 @@
 # limitations under the License.
 #
 
-"""nn.Module for image projections."""
+"""Module for image projections."""
 
 from typing import Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from torch.linalg import qr as linalg_qr
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.utils import eye_like, vec_like
-from kornia.utils.helpers import _torch_svd_cast
+from kornia.core.ops import eye_like, vec_like
+from kornia.core.utils import _torch_svd_cast
 
 from .numeric import cross_product_matrix
 
@@ -37,8 +36,8 @@ def intrinsics_like(focal: float, input: torch.Tensor) -> torch.Tensor:
 
     Args:
         focal: the focal length for the camera matrix.
-        input: image torch.tensor that will determine the batch size and image height
-          and width. It is assumed to be a torch.tensor in the shape of :math:`(B, C, H, W)`.
+        input: image tensor that will determine the batch size and image height
+          and width. It is assumed to be a tensor in the shape of :math:`(B, C, H, W)`.
 
     Returns:
         The camera matrix with the shape of :math:`(B, 3, 3)`.
@@ -84,7 +83,7 @@ def scale_intrinsics(camera_matrix: torch.Tensor, scale_factor: Union[float, tor
 
     Args:
         camera_matrix: the camera calibration matrix containing the intrinsic
-          parameters. The expected shape for the torch.tensor is :math:`(B, 3, 3)`.
+          parameters. The expected shape for the tensor is :math:`(B, 3, 3)`.
         scale_factor: the scaling factor to be applied.
 
     Returns:
@@ -120,10 +119,10 @@ def projection_from_KRt(K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> to
         raise AssertionError
 
     Rt = torch.cat([R, t], dim=-1)  # 3x4
-    Rt_h = F.pad(Rt, [0, 0, 0, 1], "constant", 0.0)  # 4x4
+    Rt_h = torch.nn.functional.pad(Rt, [0, 0, 0, 1], "constant", 0.0)  # 4x4
     Rt_h[..., -1, -1] += 1.0
 
-    K_h = F.pad(K, [0, 1, 0, 1], "constant", 0.0)  # 4x4
+    K_h = torch.nn.functional.pad(K, [0, 1, 0, 1], "constant", 0.0)  # 4x4
     K_h[..., -1, -1] += 1.0
 
     return K @ Rt

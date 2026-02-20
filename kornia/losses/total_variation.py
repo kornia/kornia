@@ -33,7 +33,7 @@ def total_variation(img: torch.Tensor, reduction: str = "sum") -> torch.Tensor:
          in the output, ``'sum'``: the output will be summed.
 
     Return:
-         a torch.tensor with shape :math:`(*,)`.
+         a torch.Tensor with shape :math:`(*,)`.
 
     Examples:
         >>> total_variation(torch.ones(4, 4))

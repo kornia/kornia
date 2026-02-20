@@ -36,7 +36,7 @@ class CFA(Enum):
     On top of this care is taken to make it reversible going raw -> rgb -> raw. the raw samples remain intact
     during conversion and only unknown samples are interpolated.
 
-    The names are based on the OpenCV convention torch.where the BG indicates pixel 1,1 (counting from 0,0) is
+    The names are based on the OpenCV convention where the BG indicates pixel 1,1 (counting from 0,0) is
     blue and its neighbour to the right is green. In that case the top left pixel is red. Other options are GB, RG and
     GR
 
@@ -110,7 +110,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
         raise ValueError(f"Unsupported CFA Got {cfa}.")
 
     # upscaling r and b with bi-linear gives reasonable quality
-    # Note that depending on torch.where these are sampled we need to F.pad appropriately
+    # Note that depending on where these are sampled we need to F.pad appropriately
     # the bilinear filter will pretty much be based on for example this layout (RG)
     # (which needs to be padded bottom right)
     # +-+-+
@@ -212,7 +212,7 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    # pick the torch.tensor with green pixels
+    # pick the torch.Tensor with green pixels
     # clone to make sure grad works
     output: torch.Tensor = image[..., 1:2, :, :].clone()
 
@@ -305,7 +305,7 @@ class RawToRgb(nn.Module):
     Example:
         >>> rawinput = torch.rand(2, 1, 4, 6)
         >>> rgb = RawToRgb(CFA.RG)
-        >>> output = rgb(rawinput)  # 2x3x4x5
+        >>> output = rgb(rawinput)  # 2x3x4x6
 
     """
 

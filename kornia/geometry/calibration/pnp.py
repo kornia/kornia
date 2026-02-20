@@ -21,10 +21,10 @@ import torch
 from torch.linalg import qr as linalg_qr
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
+from kornia.core.ops import eye_like
+from kornia.core.utils import _torch_linalg_svdvals, _torch_svd_cast
 from kornia.geometry.conversions import convert_points_to_homogeneous, normalize_points_with_intrinsics
 from kornia.geometry.linalg import transform_points
-from kornia.utils import eye_like
-from kornia.utils.helpers import _torch_linalg_svdvals, _torch_svd_cast
 
 
 def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -85,18 +85,18 @@ def solve_pnp_dlt(
     twisted cubic. However, this function does not check for this condition.
 
     Args:
-        world_points : A torch.tensor with shape :math:`(B, N, 3)` representing
+        world_points : A torch.Tensor with shape :math:`(B, N, 3)` representing
           the points in the world space.
-        img_points : A torch.tensor with shape :math:`(B, N, 2)` representing
+        img_points : A torch.Tensor with shape :math:`(B, N, 2)` representing
           the points in the image space.
-        intrinsics : A torch.tensor with shape :math:`(B, 3, 3)` representing
+        intrinsics : A torch.Tensor with shape :math:`(B, 3, 3)` representing
           the intrinsic matrices.
-        weights : A torch.tensor with shape :math:`(B, N)` representing the
+        weights : A torch.Tensor with shape :math:`(B, N)` representing the
             weights for each point. If None, all points are considered to be equally important.
         svd_eps : A small float value to avoid numerical precision issues.
 
     Returns:
-        A torch.tensor with shape :math:`(B, 3, 4)` representing the estimated world to
+        A torch.Tensor with shape :math:`(B, 3, 4)` representing the estimated world to
         camera transformation matrices (also known as the extrinsic matrices).
 
     Example:

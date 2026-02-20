@@ -22,8 +22,8 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
-from kornia.utils.helpers import _extract_device_dtype
 
 __all__ = ["MosaicGenerator"]
 
@@ -32,14 +32,14 @@ class MosaicGenerator(RandomGeneratorBase):
     r"""Generate mixup indexes and lambdas for a batch of inputs.
 
     Args:
-        output_size: the output torch.tensor width and height after mosaicing.
+        output_size: the output torch.Tensor width and height after mosaicing.
         mosaic_grid: the number of images and image arrangement. e.g. (2, 2) means
             each output will mix 4 images in a 2x2 grid.
         start_ratio_range: top-left (x, y) position for cropping the mosaic images.
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - mosaic_ids (torch.Tensor): a shape of (B, N) torch.tensor, torch.where n is the number of mosaic images.
+            - mosaic_ids (torch.Tensor): a shape of (B, N) torch.tensor, where n is the number of mosaic images.
             - src (torch.Tensor): cropping bounding boxes with a shape of (B, 4, 2).
             - dst (torch.Tensor): output bounding boxes with a shape (B, 4, 2).
             - batch_shapes (torch.Tensor): image shapes in the batch with a shape of (B, 3).
@@ -109,7 +109,7 @@ class MosaicGenerator(RandomGeneratorBase):
             device=_device,
             dtype=_dtype,
         ).repeat(batch_size, 1, 1)
-        # NOTE: In case we support a list of torch.tensor images later. For a better consistency.
+        # NOTE: In case we support a list of torch.Tensor images later. For a better consistency.
         # B x 3
 
         batch_shapes: torch.Tensor

@@ -56,3 +56,27 @@ When reviewing code changes, verify:
 - PR includes proof of local test execution (test logs)
 - Code uses `kornia` utilities instead of reinventing existing functionality
 - Comments are written in English and verified by a human with a good understanding of the code
+
+## PR-Issue Alignment Review
+
+When reviewing pull requests, ensure strict alignment with the linked issue:
+
+1. **Issue Link Verification**:
+   - Verify the PR description contains a valid issue reference (e.g., "Fixes #123" or "Closes #123")
+   - Confirm the linked issue exists and is open (or was open when the PR was created)
+
+2. **Assignment Verification**:
+   - Check that the PR author is assigned to the linked issue
+   - If not assigned, request that a maintainer assign the issue before proceeding with review
+
+3. **Scope Matching**:
+   - **Critical**: Verify that the PR implementation strictly matches what the issue describes
+   - The PR should not include changes beyond the scope of the linked issue
+   - If the PR includes additional features or changes not mentioned in the issue, request that those be split into separate issues/PRs
+   - Compare the PR description, code changes, and tests against the issue description to ensure alignment
+
+4. **Issue Approval Status**:
+   - Verify the linked issue has been reviewed and approved by a maintainer
+   - Issues with the `triage` label may not have been fully reviewed yet
+
+**Reviewer Action**: If the PR does not match the issue scope or requirements, clearly explain the mismatch and request that the PR be updated to strictly align with the issue, or that additional changes be moved to separate issues/PRs.

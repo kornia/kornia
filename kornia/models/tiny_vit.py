@@ -37,6 +37,17 @@ def _make_pair(x: int | tuple[int, int]) -> tuple[int, int]:
 
 
 class ConvBN(nn.Sequential):
+    """Implement a sequential block containing a convolution followed by Batch Normalization.
+
+    Args:
+        in_channels: The number of input channels.
+        out_channels: The number of output channels.
+        kernel_size: The size of the convolving kernel. Default: 1.
+        stride: The stride of the convolution. Default: 1.
+        padding: The zero-padding added to both sides of the input. Default: 0.
+        groups: The number of blocked connections from input to output. Default: 1.
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -54,6 +65,17 @@ class ConvBN(nn.Sequential):
 
 
 class PatchEmbed(nn.Sequential):
+    """Perform patch embedding using a series of convolutions.
+
+    This module divides the input image into patches and projects them into
+    the embedding dimension.
+
+    Args:
+        in_channels: The number of input image channels.
+        embed_dim: The dimension of the resulting embeddings.
+        activation: The activation layer to use. Default: :class:`nn.GELU`.
+    """
+
     def __init__(self, in_channels: int, embed_dim: int, activation: type[nn.Module] = nn.GELU) -> None:
         super().__init__()
         self.seq = nn.Sequential(
@@ -62,6 +84,17 @@ class PatchEmbed(nn.Sequential):
 
 
 class MBConv(nn.Module):
+    """Implement the Mobile Inverted Residual Bottleneck Convolution layer.
+
+    Args:
+        in_channels: The number of input channels.
+        out_channels: The number of output channels.
+        expansion: The expansion ratio for the hidden dimension.
+        kernel_size: The convolution kernel size.
+        stride: The stride of the convolution.
+        dropout: The dropout rate for the stochastic depth.
+    """
+
     def __init__(
         self,
         in_channels: int,
@@ -83,6 +116,15 @@ class MBConv(nn.Module):
 
 
 class PatchMerging(nn.Module):
+    """Implement the patch merging layer for downsampling in TinyViT.
+
+    Args:
+        input_resolution: The height and width of the input feature map.
+        dim: The number of input channels.
+        out_dim: The number of output channels.
+        act: The activation function class. Default: nn.GELU.
+    """
+
     def __init__(
         self,
         input_resolution: int | tuple[int, int],
@@ -107,6 +149,18 @@ class PatchMerging(nn.Module):
 
 
 class ConvLayer(nn.Module):
+    """Implement a convolutional layer with optional checkpointing and downsample.
+
+    Args:
+        dim: The number of input channels.
+        depth: The number of blocks in the convolutional layer.
+        activation: The activation function to use. Default: :class:`nn.GELU`.
+        drop_path: The dropout rate for the stochastic depth. Default: 0.0.
+        downsample: The downsample module to use. Default: None.
+        use_checkpoint: Whether to use checkpointing for memory efficiency. Default: False.
+        conv_expand_ratio: The expansion ratio for the hidden dimension. Default: 4.0.
+    """
+
     def __init__(
         self,
         dim: int,
@@ -139,6 +193,16 @@ class ConvLayer(nn.Module):
 
 
 class MLP(nn.Sequential):
+    """Implement a multi-layer perceptron (MLP) with optional dropout.
+
+    Args:
+        in_features: The number of input features.
+        hidden_features: The number of hidden features.
+        out_features: The number of output features.
+        activation: The activation function to use. Default: :class:`nn.GELU`.
+        drop: The dropout rate. Default: 0.0.
+    """
+
     def __init__(
         self,
         in_features: int,
@@ -160,6 +224,16 @@ class MLP(nn.Sequential):
 # - different relative position encoding mechanism (separable/decomposed vs joint)
 # - this impl supports attn_ratio (increase output size for value), though it is not used
 class Attention(nn.Module):
+    """Implement an attention mechanism with optional relative position encoding.
+
+    Args:
+        dim: The number of input channels.
+        key_dim: The dimension of the key.
+        num_heads: The number of attention heads. Default: 8.
+        attn_ratio: The ratio of the attention dimension. Default: 4.0.
+        resolution: The resolution of the input feature map. Default: (14, 14).
+    """
+
     def __init__(
         self,
         dim: int,
@@ -227,6 +301,22 @@ class Attention(nn.Module):
 
 
 class TinyViTBlock(nn.Module):
+    """Implement a single block of the TinyViT architecture.
+
+    This block consists of multi-head self-attention and a feed-forward network
+    with residual connections.
+
+    Args:
+        dim: The input dimension size.
+        input_resolution: The height and width of the input feature map.
+        num_heads: The number of attention heads.
+        window_size: The size of the local attention window.
+        mlp_ratio: The ratio of MLP hidden dimension to embedding dimension.
+        drop: The dropout rate. Default: 0.0.
+        drop_path: The stochastic depth rate. Default: 0.0.
+        layer_scale_init_value: The initial value for layer scaling. Default: 1e-5.
+    """
+
     def __init__(
         self,
         dim: int,
@@ -273,6 +363,26 @@ class TinyViTBlock(nn.Module):
 
 
 class BasicLayer(nn.Module):
+    """Implement a basic layer of the TinyViT architecture.
+
+    This layer consists of a series of TinyViT blocks, each followed by a patch
+    merging operation.
+
+    Args:
+        dim: The input dimension size.
+        input_resolution: The height and width of the input feature map.
+        depth: The number of blocks in the layer.
+        num_heads: The number of attention heads.
+        window_size: The size of the local attention window.
+        mlp_ratio: The ratio of MLP hidden dimension to embedding dimension.
+        drop: The dropout rate. Default: 0.0.
+        drop_path: The stochastic depth rate. Default: 0.0.
+        downsample: The downsample module to use. Default: None.
+        use_checkpoint: Whether to use checkpointing for memory efficiency. Default: False.
+        local_conv_size: The size of the local convolution kernel. Default: 3.
+        activation: The activation function to use. Default: :class:`nn.GELU`.
+    """
+
     def __init__(
         self,
         dim: int,

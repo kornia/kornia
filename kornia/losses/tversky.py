@@ -60,7 +60,7 @@ def tversky_loss(
     Args:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
         target: labels tensor with shape :math:`(N, H, W)` where each value
-          is :math:`0 ≤ targets[i] ≤ C-1`.
+          is in range :math:`0 ≤ targets[i] ≤ C-1`.
         alpha: the first coefficient in the denominator.
         beta: the second coefficient in the denominator.
         eps: scalar for numerical stability.

@@ -22,6 +22,8 @@ from enum import Enum
 
 import torch
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
+
 
 @dataclass(frozen=True)
 class ImageSize:
@@ -104,6 +106,36 @@ class ImageLayout:
     image_size: ImageSize
     channels: int
     channels_order: ChannelsOrder
+
+
+def KORNIA_CHECK_IMAGE_LAYOUT(
+    x: torch.Tensor,
+    layout: ImageLayout,
+    msg: str | None = None,
+    raises: bool = True,
+) -> bool:
+    """Check tensor shape matches the expected ImageLayout.
+
+    Args:
+        x: tensor to validate.
+        layout: expected image layout.
+        msg: custom error message.
+        raises: if True, raise ShapeError on mismatch.
+
+    Returns:
+        True if shape matches, False otherwise (when raises=False).
+
+    """
+    if layout.channels_order == ChannelsOrder.CHANNELS_FIRST:
+        shape = [str(layout.channels), str(layout.image_size.height), str(layout.image_size.width)]
+    elif layout.channels_order == ChannelsOrder.CHANNELS_LAST:
+        shape = [str(layout.image_size.height), str(layout.image_size.width), str(layout.channels)]
+    else:
+        if raises:
+            raise NotImplementedError(f"Layout {layout.channels_order} not implemented.")
+        return False
+
+    return KORNIA_CHECK_SHAPE(x, shape, msg, raises)
 
 
 # TODO: define CompressedImage

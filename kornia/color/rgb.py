@@ -119,7 +119,7 @@ def bgr_to_rgba(image: torch.Tensor, alpha_val: Union[float, torch.Tensor]) -> t
 
     Args:
         image: BGR Image to be converted to RGBA of shape :math:`(*,3,H,W)`.
-        alpha_val: A float number for the alpha value or a torch.tensor
+        alpha_val: A float number for the alpha value or a torch.Tensor
           of shape :math:`(*,1,H,W)`.
 
     Returns:
@@ -155,8 +155,8 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
     Args:
         image: The RGBA image to be converted, with shape :math:`(*,4,H,W)`.
         background_color: An optional background color. It can be a *tuple or list* of 3 floats,
-            a torch.tensor of shape :math:`(*,3,H,W)` for a per-pixel background, or a broadcastable
-            torch.tensor (e.g., :math:`(*,3,1,1)`). If None, a white background is used.
+            a torch.Tensor of shape :math:`(*,3,H,W)` for a per-pixel background, or a broadcastable
+            torch.Tensor (e.g., :math:`(*,3,1,1)`). If None, a white background is used.
 
     Returns:
         The converted RGB image with shape :math:`(*,3,H,W)`.
@@ -188,7 +188,7 @@ def rgba_to_rgb(image: torch.Tensor, background_color: Optional[torch.Tensor] = 
     elif isinstance(background_color, torch.Tensor):
         if background_color.shape[-3] != 3:
             raise ValueError(
-                f"background_color torch.tensor must have 3 channels in dimension -3. "
+                f"background_color torch.Tensor must have 3 channels in dimension -3. "
                 f"Got shape {background_color.shape}"
             )
         background_rgb = background_color
@@ -415,7 +415,7 @@ class RgbToRgba(nn.Module):
     Add an alpha channel to existing RGB image.
 
     Args:
-        alpha_val: A float number for the alpha value or a torch.tensor
+        alpha_val: A float number for the alpha value or a torch.Tensor
           of shape :math:`(*,1,H,W)`.
 
     Returns:
@@ -451,7 +451,7 @@ class BgrToRgba(nn.Module):
     Add an alpha channel to existing RGB image.
 
     Args:
-        alpha_val: A float number for the alpha value or a torch.tensor
+        alpha_val: A float number for the alpha value or a torch.Tensor
           of shape :math:`(*,1,H,W)`.
 
     Returns:

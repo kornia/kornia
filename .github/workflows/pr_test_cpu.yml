@@ -4,6 +4,12 @@ on:
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'LICENSE'
+      - 'COPYRIGHT'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
@@ -20,15 +26,15 @@ jobs:
       hash: ${{ steps.hashid.outputs.weights-hash }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.8.1
+        uses: prefix-dev/setup-pixi@v0.9.4
         with:
           pixi-version: v0.40.0
           cache: true
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: cache-weights
         with:
           path: weights/
@@ -85,19 +91,8 @@ jobs:
     needs: [pre-tests]
     uses: ./.github/workflows/tutorials.yml
 
-  docs:
-    needs: [pre-tests]
-    uses: ./.github/workflows/docs.yml
-    with:
-      python-version: '["3.11"]'
-      cache-path: weights/
-      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
-      cache-restore-keys: |
-        model-weights-${{ needs.pre-tests.outputs.hash }}
-        model-weights-
-
   collector:
-    needs: [tests, tutorials, typecheck, docs]
+    needs: [tests, tutorials, typecheck]
     if: always()
     runs-on: ubuntu-latest
     steps:

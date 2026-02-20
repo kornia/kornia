@@ -159,7 +159,7 @@ class So3(nn.Module):
         """Convert elements from vector space to lie algebra. Returns matrix of shape :math:`(B,3,3)`.
 
         Args:
-            v: Vector3 or torch.tensor of shape :math:`(B,3)`.
+            v: Vector3 or torch.Tensor of shape :math:`(B,3)`.
 
         Example:
             >>> v = torch.ones((1,3))
@@ -258,7 +258,7 @@ class So3(nn.Module):
 
     @classmethod
     def from_wxyz(cls, wxyz: torch.Tensor) -> So3:
-        """Create So3 from a torch.tensor representing a quaternion.
+        """Create So3 from a torch.Tensor representing a quaternion.
 
         Args:
             wxyz: the quaternion to convert of shape :math:`(B,4)`.
@@ -277,8 +277,8 @@ class So3(nn.Module):
     def identity(
         cls,
         batch_size: Optional[int] = None,
-        device: Optional[Union[str, torch.device, None]] = None,
-        dtype: Optional[Union[torch.dtype, None]] = None,
+        device: Union[None, str, torch.device] = None,
+        dtype: Union[None, torch.dtype] = None,
     ) -> So3:
         """Create a So3 group representing an identity rotation.
 
@@ -315,8 +315,8 @@ class So3(nn.Module):
     def random(
         cls,
         batch_size: Optional[int] = None,
-        device: Optional[Union[str, torch.device, None]] = None,
-        dtype: Optional[Union[torch.dtype, None]] = None,
+        device: Union[None, str, torch.device] = None,
+        dtype: Union[None, torch.dtype] = None,
     ) -> So3:
         """Create a So3 group representing a random rotation.
 

@@ -17,15 +17,15 @@
 
 import math
 import warnings
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, cast
 
 import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, HeatMapRefineCfg, JunctionRefineCfg, LineDetectorCfg
 from kornia.geometry.bbox import nms
-from kornia.utils import dataclass_to_dict, dict_to_dataclass, torch_meshgrid
 
 from .backbones import SOLD2Net
 
@@ -64,7 +64,7 @@ class SOLD2_detector(nn.Module):
                 category=DeprecationWarning,
                 stacklevel=2,
             )
-            config = dict_to_dataclass(config, DetectorCfg)
+            config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
         super().__init__()
         # Initialize some parameters
         self.config = config if config is not None else DetectorCfg()
@@ -420,7 +420,7 @@ class LineSegmentDetectionModule:
             device=device,
         )
 
-        h1_grid, w1_grid, h2_grid, w2_grid = torch_meshgrid(
+        h1_grid, w1_grid, h2_grid, w2_grid = torch.meshgrid(
             [perturb_vec, perturb_vec, perturb_vec, perturb_vec], indexing="ij"
         )
 
@@ -564,7 +564,7 @@ class LineSegmentDetectionModule:
 
 
 def line_map_to_segments(junctions: torch.Tensor, line_map: torch.Tensor) -> torch.Tensor:
-    """Convert a junction connectivity map to a Nx2x2 torch.tensor of segments."""
+    """Convert a junction connectivity map to a Nx2x2 torch.Tensor of segments."""
     junc_loc1, junc_loc2 = torch.where(torch.triu(line_map))
     segments = torch.stack([junctions[junc_loc1], junctions[junc_loc2]], 1)
     return segments

@@ -158,14 +158,14 @@ class ColorMap:
         self.colors = self._generate_color_map(base_colormap_data, num_colors)
 
     def _generate_color_map(self, base_colormap: list[RGBColor], num_colors: int) -> torch.Tensor:
-        r"""Generate a colormap torch.tensor using interpolation.
+        r"""Generate a colormap torch.Tensor using interpolation.
 
         Args:
             base_colormap: A list of RGB colors defining the colormap.
             num_colors: Number of colors in the colormap.
 
         Returns:
-            A torch.tensor representing the colormap.
+            A torch.Tensor representing the colormap.
 
         """
         tensor_colors = torch.tensor(list(base_colormap), dtype=self._dtype, device=self._device).T
@@ -182,22 +182,22 @@ class ColorMap:
 
 
 def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tensor:
-    r"""Apply to a gray torch.tensor a colormap.
+    r"""Apply to a gray torch.Tensor a colormap.
 
     .. image:: _static/img/apply_colormap.png
 
     Args:
-        input_tensor: the input torch.tensor of image.
-        colormap: the colormap desired to be applied to the input torch.tensor.
+        input_tensor: the input torch.Tensor of image.
+        colormap: the colormap desired to be applied to the input torch.Tensor.
 
     Returns:
-        A RGB torch.tensor with the applied color map into the input_tensor.
+        A RGB torch.Tensor with the applied color map into the input_tensor.
 
     Raises:
         ValueError: If `colormap` is not a ColorMap object.
 
     .. note::
-        The input torch.tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
+        The input torch.Tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
 
     Example:
         >>> input_tensor = torch.tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]])
@@ -223,7 +223,7 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
     KORNIA_CHECK(
         input_tensor.dtype in valid_types, f"`input_tensor` must be a {valid_types}. Got: {input_tensor.dtype}"
     )
-    KORNIA_CHECK(len(input_tensor.shape) in (3, 4), "Wrong input torch.tensor dimension.")
+    KORNIA_CHECK(len(input_tensor.shape) in (3, 4), "Wrong input torch.Tensor dimension.")
     if len(input_tensor.shape) == 3:
         input_tensor = input_tensor.unsqueeze_(0)
 
@@ -256,13 +256,13 @@ class ApplyColorMap(nn.Module):
         dtype: The data type of the generated colormap.
 
     Returns:
-        A RGB torch.tensor with the applied color map into the input_tensor
+        A RGB torch.Tensor with the applied color map into the input_tensor
 
     Raises:
         ValueError: If `colormap` is not a ColorMap object.
 
     .. note::
-        The input torch.tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
+        The input torch.Tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
 
     Example:
         >>> input_tensor = torch.tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]])
@@ -290,16 +290,16 @@ class ApplyColorMap(nn.Module):
         self.colormap = colormap
 
     def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        r"""Apply the colormap to the input torch.tensor.
+        r"""Apply the colormap to the input torch.Tensor.
 
         Args:
-            input_tensor: The input torch.tensor representing the grayscale image.
+            input_tensor: The input torch.Tensor representing the grayscale image.
 
         .. note::
-        The input torch.tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
+        The input torch.Tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
 
         Returns:
-            The output torch.tensor representing the image with the applied colormap.
+            The output torch.Tensor representing the image with the applied colormap.
 
         """
         return apply_colormap(input_tensor, self.colormap)

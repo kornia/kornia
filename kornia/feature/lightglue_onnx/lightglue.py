@@ -178,7 +178,7 @@ class OnnxLightGlue:
         matches, mscores = binding.get_outputs()
 
         # TODO: The following is an unnecessary copy. Replace with a better solution when torch supports
-        # constructing a torch.tensor from a data pointer, or when ORT supports converting to torch torch.tensor.
+        # constructing a torch.Tensor from a data pointer, or when ORT supports converting to torch torch.Tensor.
         # https://github.com/microsoft/onnxruntime/issues/15963
         outputs = {
             "matches": torch.from_dlpack(matches.numpy()).to(self.device),

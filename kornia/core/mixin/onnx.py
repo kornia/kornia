@@ -165,6 +165,8 @@ class ONNXExportMixin:
 
 
 class ONNXRuntimeMixin:
+    """Provide methods to manage ONNX Runtime inference sessions."""
+
     def _create_session(
         self,
         op: onnx.ModelProto,  # type:ignore
@@ -287,6 +289,8 @@ class ONNXRuntimeMixin:
 
 
 class ONNXMixin:
+    """Provide functionality for exporting and loading models in ONNX format."""
+
     def _load_op(
         self,
         arg: Union[onnx.ModelProto, str],  # type:ignore

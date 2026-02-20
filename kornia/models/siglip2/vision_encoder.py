@@ -225,7 +225,7 @@ class SigLip2VisionEncoder(nn.Module):
         Returns:
             Tuple of (last_hidden_state,) or (last_hidden_state, all_hidden_states).
         """
-        all_hidden_states = [] if output_hidden_states else None
+        all_hidden_states: list[torch.Tensor] = []
 
         for layer in self.layers:
             if output_hidden_states:

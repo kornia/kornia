@@ -22,8 +22,8 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core.ops import eye_like
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
-from kornia.utils import eye_like
 
 
 class Resize(GeometricAugmentationBase2D):

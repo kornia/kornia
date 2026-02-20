@@ -42,7 +42,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
         kernel_size: the blurring kernel size.
 
     Returns:
-        the blurred input torch.tensor with shape :math:`(B,C,H,W)`.
+        the blurred input torch.Tensor with shape :math:`(B,C,H,W)`.
 
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_operators.html>`__.
@@ -78,7 +78,7 @@ class MedianBlur(nn.Module):
         kernel_size: the blurring kernel size.
 
     Returns:
-        the blurred input torch.tensor.
+        the blurred input torch.Tensor.
 
     Shape:
         - Input: :math:`(B, C, H, W)`

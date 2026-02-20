@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
 
@@ -41,7 +41,7 @@ jobs:
         run: echo "name=py$(echo '${{ matrix.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.8.1
+        uses: prefix-dev/setup-pixi@v0.9.4
         with:
           pixi-version: v0.40.0
           cache: true
@@ -50,13 +50,17 @@ jobs:
       - name: Install kornia
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: "kornia/tutorials"
           path: "tutorials-repo/"
 
       - name: Install dependencies
         working-directory: ./tutorials-repo/
+        env:
+          PIP_NO_CACHE_DIR: "1"
+          PIP_INDEX_URL: "https://download.pytorch.org/whl/cpu"
+          PIP_EXTRA_INDEX_URL: "https://pypi.org/simple"
         run: make setup
 
       - name: Check deps

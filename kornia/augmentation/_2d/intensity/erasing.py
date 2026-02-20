@@ -25,7 +25,7 @@ from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 
 
 class RandomErasing(IntensityAugmentationBase2D):
-    r"""Erase a random rectangle of a torch.tensor image according to a probability p value.
+    r"""Erase a random rectangle of a torch.Tensor image according to a probability p value.
 
     .. image:: _static/img/RandomErasing.png
 
@@ -50,9 +50,9 @@ class RandomErasing(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Note:
-        Input torch.tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation torch.tensor and returned.
+        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:
         >>> rng = torch.manual_seed(0)

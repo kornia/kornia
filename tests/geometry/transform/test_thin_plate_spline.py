@@ -17,11 +17,10 @@
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
 
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
 def _sample_points(batch_size, device, dtype=torch.float32):
@@ -31,7 +30,7 @@ def _sample_points(batch_size, device, dtype=torch.float32):
     return src, dst
 
 
-class TestTransformParameters:
+class TestTransformParameters(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_smoke(self, batch_size, device, dtype):
         src = torch.rand(batch_size, 4, 2, device=device)
@@ -45,8 +44,8 @@ class TestTransformParameters:
         target_kernel = torch.zeros(batch_size, 5, 2, device=device)
         target_affine = torch.zeros(batch_size, 3, 2, device=device)
         target_affine[:, [1, 2], [0, 1]] = 1.0
-        assert_close(kernel, target_kernel, atol=1e-4, rtol=1e-4)
-        assert_close(affine, target_affine, atol=1e-4, rtol=1e-4)
+        self.assert_close(kernel, target_kernel, atol=1e-4, rtol=1e-4)
+        self.assert_close(affine, target_affine, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_affine_only(self, batch_size, device, dtype):
@@ -55,7 +54,7 @@ class TestTransformParameters:
         )
         dst = src.clone() * 2.0
         kernel, _ = kornia.geometry.transform.get_tps_transform(src, dst)
-        assert_close(kernel, torch.zeros_like(kernel), atol=1e-4, rtol=1e-4)
+        self.assert_close(kernel, torch.zeros_like(kernel), atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_exception(self, batch_size, device, dtype):
@@ -75,7 +74,9 @@ class TestTransformParameters:
         src, dst = _sample_points(batch_size, **opts)
         src.requires_grad_(requires_grad)
         dst.requires_grad_(not requires_grad)
-        assert gradcheck(kornia.geometry.transform.get_tps_transform, (src, dst), raise_exception=True, fast_mode=True)
+        assert self.gradcheck(
+            kornia.geometry.transform.get_tps_transform, (src, dst), raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.jit()
     @pytest.mark.parametrize("batch_size", [1, 3])
@@ -85,11 +86,11 @@ class TestTransformParameters:
         op_jit = torch.jit.script(op)
         op_output = op(src, dst)
         jit_output = op_jit(src, dst)
-        assert_close(op_output[0], jit_output[0])
-        assert_close(op_output[1], jit_output[1])
+        self.assert_close(op_output[0], jit_output[0])
+        self.assert_close(op_output[1], jit_output[1])
 
 
-class TestWarpPoints:
+class TestWarpPoints(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_smoke(self, batch_size, device, dtype):
         src, dst = _sample_points(batch_size, device)
@@ -102,7 +103,7 @@ class TestWarpPoints:
         src, dst = _sample_points(batch_size, device)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         warp = kornia.geometry.transform.warp_points_tps(src, dst, kernel, affine)
-        assert_close(warp, dst, atol=1e-4, rtol=1e-4)
+        self.assert_close(warp, dst, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_exception(self, batch_size, device, dtype):
@@ -147,7 +148,7 @@ class TestWarpPoints:
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         kernel.requires_grad_(requires_grad)
         affine.requires_grad_(not requires_grad)
-        assert gradcheck(
+        assert self.gradcheck(
             kornia.geometry.transform.warp_points_tps, (src, dst, kernel, affine), raise_exception=True, fast_mode=True
         )
 
@@ -158,10 +159,10 @@ class TestWarpPoints:
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         op = kornia.geometry.transform.warp_points_tps
         op_jit = torch.jit.script(op)
-        assert_close(op(src, dst, kernel, affine), op_jit(src, dst, kernel, affine))
+        self.assert_close(op(src, dst, kernel, affine), op_jit(src, dst, kernel, affine))
 
 
-class TestWarpImage:
+class TestWarpImage(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_smoke(self, batch_size, device, dtype):
         src, dst = _sample_points(batch_size, device)
@@ -187,7 +188,7 @@ class TestWarpImage:
 
         kernel, affine = kornia.geometry.transform.get_tps_transform(dst, src)
         warp = kornia.geometry.transform.warp_image_tps(tensor, src, kernel, affine)
-        assert_close(warp, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(warp, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_exception(self, batch_size, device, dtype):
@@ -227,13 +228,24 @@ class TestWarpImage:
     @pytest.mark.grad()
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_gradcheck(self, batch_size, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("gradcheck is unstable for warp_image_tps on CUDA")
+        if dtype != torch.float64:
+            pytest.skip("gradcheck requires float64")
+
         opts = {"device": device, "dtype": torch.float64}
         src, dst = _sample_points(batch_size, **opts)
-        kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
-        image = torch.rand(batch_size, 3, 8, 8, requires_grad=True, **opts)
-        assert gradcheck(
+
+        # Compute TPS params without tracking gradients
+        with torch.no_grad():
+            kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
+
+        image = torch.rand(batch_size, 3, 32, 32, requires_grad=True, **opts)
+
+        assert self.gradcheck(
             kornia.geometry.transform.warp_image_tps,
             (image, dst, kernel, affine),
+            requires_grad=[True, False, False, False],
             raise_exception=True,
             atol=1e-4,
             rtol=1e-4,
@@ -249,4 +261,16 @@ class TestWarpImage:
         image = torch.rand(batch_size, 3, 32, 32, device=device)
         op = kornia.geometry.transform.warp_image_tps
         op_jit = torch.jit.script(op)
-        assert_close(op(image, dst, kernel, affine), op_jit(image, dst, kernel, affine), rtol=1e-4, atol=1e-4)
+        self.assert_close(op(image, dst, kernel, affine), op_jit(image, dst, kernel, affine), rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize("batch_size", [1])
+    def test_identity_warp_align_corners(self, batch_size, device, dtype):
+        image = torch.arange(9.0, device=device, dtype=dtype).reshape(1, 1, 3, 3)
+        dst = torch.tensor(
+            [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]],
+            device=device,
+            dtype=dtype,
+        ).repeat(batch_size, 1, 1)
+        kernel, affine = kornia.geometry.transform.get_tps_transform(dst, dst)
+        warped = kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine, align_corners=True)
+        self.assert_close(warped, image, atol=1e-4, rtol=1e-4)

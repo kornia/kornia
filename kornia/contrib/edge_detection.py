@@ -108,7 +108,7 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
                 If torch.Tensor, a torch.Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
-            output torch.tensor.
+            output torch.Tensor.
 
         """
         images, image_sizes = self.pre_processor(images)
@@ -124,12 +124,12 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         """Draw the edge detection results.
 
         Args:
-            images: input torch.tensor.
+            images: input torch.Tensor.
             edge_maps: detected edges.
             output_type: type of the output.
 
         Returns:
-            output torch.tensor.
+            output torch.Tensor.
 
         """
         if edge_maps is None:
@@ -150,13 +150,13 @@ class EdgeDetector(ModelBase, ONNXExportMixin):
         """Save the edge detection results.
 
         Args:
-            images: input torch.tensor.
+            images: input torch.Tensor.
             edge_maps: detected edges.
             output_type: type of the output.
-            directory: torch.where to save outputs.
+            directory: where to save outputs.
 
         Returns:
-            output torch.tensor.
+            output torch.Tensor.
 
         """
         outputs = self.visualize(images, edge_maps, output_type)
@@ -212,11 +212,8 @@ class EdgeDetectorBuilder:
     This is a high-level API that builds edge detection models like :py:class:`kornia.models.DexiNed`
     and wraps them with :py:class:`EdgeDetector`.
 
-    .. code-block:: python
-
-        images = kornia.utils.sample.get_sample_images()
-        model = EdgeDetectorBuilder.build()
-        model.save(images)
+    Note:
+        To use this model, load image tensors and call ``model.save(images)``.
     """
 
     @staticmethod

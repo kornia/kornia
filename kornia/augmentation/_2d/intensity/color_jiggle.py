@@ -26,7 +26,7 @@ from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjus
 
 
 class ColorJiggle(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.tensor image.
+    r"""Apply a random transformation to the brightness, contrast, saturation and hue of a torch.Tensor image.
 
     .. image:: _static/img/ColorJiggle.png
 
@@ -98,15 +98,17 @@ class ColorJiggle(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         transforms = [
-            lambda img: adjust_brightness(img, params["brightness_factor"] - 1)
-            if (params["brightness_factor"] - 1 != 0).any()
-            else img,
-            lambda img: adjust_contrast(img, params["contrast_factor"])
-            if (params["contrast_factor"] != 1).any()
-            else img,
-            lambda img: adjust_saturation(img, params["saturation_factor"])
-            if (params["saturation_factor"] != 1).any()
-            else img,
+            lambda img: (
+                adjust_brightness(img, params["brightness_factor"] - 1)
+                if (params["brightness_factor"] - 1 != 0).any()
+                else img
+            ),
+            lambda img: (
+                adjust_contrast(img, params["contrast_factor"]) if (params["contrast_factor"] != 1).any() else img
+            ),
+            lambda img: (
+                adjust_saturation(img, params["saturation_factor"]) if (params["saturation_factor"] != 1).any() else img
+            ),
             lambda img: adjust_hue(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img,
         ]
 

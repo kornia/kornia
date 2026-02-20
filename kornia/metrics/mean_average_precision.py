@@ -37,11 +37,11 @@ def mean_average_precision(
     Background class (0 index) is excluded.
 
     Args:
-        pred_boxes: a torch.tensor list of predicted bounding boxes.
-        pred_labels: a torch.tensor list of predicted labels.
-        pred_scores: a torch.tensor list of predicted labels' scores.
-        gt_boxes: a torch.tensor list of ground truth bounding boxes.
-        gt_labels: a torch.tensor list of ground truth labels.
+        pred_boxes: a torch.Tensor list of predicted bounding boxes.
+        pred_labels: a torch.Tensor list of predicted labels.
+        pred_scores: a torch.Tensor list of predicted labels' scores.
+        gt_boxes: a torch.Tensor list of ground truth bounding boxes.
+        gt_labels: a torch.Tensor list of ground truth labels.
         n_classes: the number of classes.
         threshold: count as a positive if the overlap is greater than the threshold.
 
@@ -59,7 +59,7 @@ def mean_average_precision(
     if not len(pred_boxes) == len(pred_labels) == len(pred_scores) == len(gt_boxes) == len(gt_labels):
         raise AssertionError
 
-    # Store all (true) objects in a single continuous torch.tensor while keeping track of the image it is from
+    # Store all (true) objects in a single continuous torch.Tensor while keeping track of the image it is from
     gt_images = []
     for i, labels in enumerate(gt_labels):
         gt_images.extend([i] * labels.size(0))
@@ -71,7 +71,7 @@ def mean_average_precision(
     if not _gt_images.size(0) == _gt_boxes.size(0) == _gt_labels.size(0):
         raise AssertionError
 
-    # Store all detections in a single continuous torch.tensor while keeping track of the image it is from
+    # Store all detections in a single continuous torch.Tensor while keeping track of the image it is from
     pred_images = []
     for i, labels in enumerate(pred_labels):
         pred_images.extend([i] * labels.size(0))

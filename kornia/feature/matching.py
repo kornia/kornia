@@ -22,9 +22,9 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
+from kornia.core.utils import is_mps_tensor_safe
 from kornia.feature.laf import get_laf_center
 from kornia.feature.steerers import DiscreteSteerer
-from kornia.utils.helpers import is_mps_tensor_safe
 
 from .adalam import get_adalam_default_config, match_adalam
 
@@ -70,7 +70,7 @@ def _no_match(dm: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
     Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(0, 1)`.
-            - Long torch.tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
+            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(0, 2)`.
 
     """
     dists = torch.empty(0, 1, device=dm.device, dtype=dm.dtype)
@@ -93,7 +93,7 @@ def match_nn(
 
     Returns:
         - Descriptor distance of matching descriptors, shape of :math:`(B1, 1)`.
-        - Long torch.tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B1, 2)`.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B1, 2)`.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -122,8 +122,8 @@ def match_mnn(
 
     Return:
         - Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)`.
-        - Long torch.tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B3, 2)`,
-          torch.where 0 <= B3 <= min(B1, B2)
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2, shape of :math:`(B3, 2)`,
+          where 0 <= B3 <= min(B1, B2)
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -165,8 +165,8 @@ def match_snn(
 
     Return:
         - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
-        - Long torch.tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
-          torch.where 0 <= B3 <= B1.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
+          where 0 <= B3 <= B1.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -205,8 +205,8 @@ def match_smnn(
 
     Return:
         - Descriptor distance of matching descriptors, shape of. :math:`(B3, 1)`.
-        - Long torch.tensor indexes of matching descriptors in desc1 and desc2,
-          shape of :math:`(B3, 2)` torch.where 0 <= B3 <= B1.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
+          shape of :math:`(B3, 2)` where 0 <= B3 <= B1.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -267,17 +267,16 @@ def match_fginn(
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
         lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
         lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
-
         th: distance ratio threshold.
         spatial_th: minimal distance in pixels to 2nd nearest neighbor.
-        mutual: also perform mutual nearest neighbor check
+        mutual: also perform mutual nearest neighbor check.
         dm: torch.Tensor containing the distances from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
 
     Return:
         - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
-        - Long torch.tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
-          torch.where 0 <= B3 <= B1.
+        - Long torch.Tensor indexes of matching descriptors in desc1 and desc2. Shape: :math:`(B3, 2)`,
+          where 0 <= B3 <= B1.
 
     """
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
@@ -323,7 +322,10 @@ def match_fginn(
 
 
 class DescriptorMatcher(nn.Module):
-    """nn.Module version of matching functions.
+    """nn.Module version of descriptor-only matching functions.
+
+    This matcher only requires descriptors (no LAFs). For geometry-aware matching that uses LAFs,
+    see :class:`~kornia.feature.GeometryAwareDescriptorMatcher`.
 
     See :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_snn`,
         :func:`~kornia.feature.match_mnn` or :func:`~kornia.feature.match_smnn` for more details.
@@ -352,8 +354,8 @@ class DescriptorMatcher(nn.Module):
 
         Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
-            - Long torch.tensor indexes of matching descriptors in desc1 and desc2,
-                shape of :math:`(B3, 2)` torch.where :math:`0 <= B3 <= B1`.
+            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
+                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
 
         """
         if self.match_mode == "nn":
@@ -378,7 +380,7 @@ class DescriptorMatcherWithSteerer(nn.Module):
         steer_mode: can be `global`, `local`.
             `global` means that the we output matches from the global rotation with most matches.
             `local` means that we output matches from a distance matrix
-            torch.where the distance between each descriptor pair is the minimal over rotations.
+            where the distance between each descriptor pair is the minimal over rotations.
         match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`.
             WARNING: using steer_mode `global` with match_mode `nn` will lead to bad results
             since `nn` doesn't generate different amount of matches depending on goodness of fit.
@@ -387,7 +389,7 @@ class DescriptorMatcherWithSteerer(nn.Module):
     Example:
         >>> import kornia as K
         >>> import kornia.feature as KF
-        >>> device = K.utils.get_cuda_or_mps_device_if_available()
+        >>> device = K.core.utils.get_cuda_or_mps_device_if_available()
         >>> img1 = torch.randn([1, 3, 768, 768], device=device)
         >>> img2 = torch.randn([1, 3, 768, 768], device=device)
         >>> dedode = KF.DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-SO2").to(device)
@@ -468,8 +470,8 @@ class DescriptorMatcherWithSteerer(nn.Module):
 
         Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
-            - Long torch.tensor indexes of matching descriptors in desc1 and desc2,
-                shape of :math:`(B3, 2)` torch.where :math:`0 <= B3 <= B1`.
+            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
+                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
             - Number of global rotations from desc1 to desc2, in terms of `self.steerer_order`
                 (will be `None` if `self.steer_mode` is `local`).
 
@@ -517,14 +519,14 @@ class DescriptorMatcherWithSteerer(nn.Module):
 
 
 class GeometryAwareDescriptorMatcher(nn.Module):
-    """nn.Module version of matching functions.
+    """nn.Module version of geometry-aware matching functions that use LAFs (Local Affine Frames).
 
-    See :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_snn`,
-        :func:`~kornia.feature.match_mnn` or :func:`~kornia.feature.match_smnn` for more details.
+    Unlike :class:`~kornia.feature.DescriptorMatcher`, this matcher requires both descriptors and LAFs.
+    See :func:`~kornia.feature.match_fginn` or :func:`~kornia.feature.match_adalam` for more details.
 
     Args:
-        match_mode: type of matching, can be `fginn`.
-        th: threshold on distance ratio, or other quality measure.
+        match_mode: type of matching, can be `fginn` or `adalam`.
+        params: dictionary of parameters for the matching function.
 
     """
 
@@ -551,8 +553,8 @@ class GeometryAwareDescriptorMatcher(nn.Module):
 
         Returns:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
-            - Long torch.tensor indexes of matching descriptors in desc1 and desc2,
-                shape of :math:`(B3, 2)` torch.where :math:`0 <= B3 <= B1`.
+            - Long torch.Tensor indexes of matching descriptors in desc1 and desc2,
+                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
 
         """
         if self.match_mode == "fginn":

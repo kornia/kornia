@@ -24,7 +24,7 @@ from kornia.enhance import normalize_min_max
 
 
 class RandomAutoContrast(IntensityAugmentationBase2D):
-    r"""Apply a random auto-contrast of a torch.tensor image.
+    r"""Apply a random auto-contrast of a torch.Tensor image.
 
     Args:
         p: probability of applying the transformation.

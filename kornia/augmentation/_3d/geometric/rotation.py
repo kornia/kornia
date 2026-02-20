@@ -28,9 +28,9 @@ from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compu
 
 
 class RandomRotation3D(GeometricAugmentationBase3D):
-    r"""Apply random rotations to 3D volumes (5D torch.tensor).
+    r"""Apply random rotations to 3D volumes (5D torch.Tensor).
 
-    Input should be a torch.tensor of shape (C, D, H, W) or a batch of tensors :math:`(B, C, D, H, W)`.
+    Input should be a torch.Tensor of shape (C, D, H, W) or a batch of tensors :math:`(B, C, D, H, W)`.
     If Input is a tuple it is assumed that the first element contains the aforementioned tensors and the second,
     the corresponding transformation matrix that has been applied to them. In this case the module
     will rotate the tensors and torch.cat the corresponding transformation matrix to the
@@ -56,9 +56,9 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
-        Input torch.tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation torch.tensor and returned.
+        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 4, 4)`), then the
+        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
     Examples:
         >>> import torch
@@ -118,7 +118,7 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         rotation_mat: torch.Tensor = _compute_rotation_matrix3d(yaw, pitch, roll, center.expand(yaw.shape[0], -1))
 
         # rotation_mat is B x 3 x 4 and we need a B x 4 x 4 matrix
-        trans_mat: torch.Tensor = kornia.eye_like(4, input)
+        trans_mat: torch.Tensor = kornia.core.ops.eye_like(4, input)
         trans_mat[:, 0] = rotation_mat[:, 0]
         trans_mat[:, 1] = rotation_mat[:, 1]
         trans_mat[:, 2] = rotation_mat[:, 2]

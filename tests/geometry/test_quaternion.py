@@ -23,25 +23,13 @@ from torch.nn import Parameter
 
 from kornia.geometry.quaternion import Quaternion, average_quaternions
 
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestQuaternion:
+class TestQuaternion(BaseTester):
     def _make_rand_data(self, device, dtype, batch_size):
         shape = [] if batch_size is None else [batch_size]
         return torch.rand([*shape, 4], device=device, dtype=dtype)
-
-    def assert_close(self, actual, expected, rtol=None, atol=None):
-        if isinstance(actual, Quaternion):
-            actual = actual.data.data
-        elif isinstance(actual, torch.nn.Parameter):
-            actual = actual.data
-        if isinstance(expected, Quaternion):
-            expected = expected.data.data
-        elif isinstance(expected, torch.nn.Parameter):
-            expected = expected.data
-
-        assert_close(actual, expected, rtol=rtol, atol=atol)
 
     def test_smoke(self, device, dtype):
         q = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)
@@ -350,7 +338,7 @@ def _align_sign(q: torch.Tensor, ref: torch.Tensor) -> torch.Tensor:
     return q
 
 
-class TestQuaternionAverage:
+class TestQuaternionAverage(BaseTester):
     @pytest.mark.parametrize("M", [1, 2, 5, 10])
     def test_average_identity(self, device, dtype, M):
         """All identity quaternions → should return identity"""
@@ -361,7 +349,7 @@ class TestQuaternionAverage:
         expected = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         q = _align_sign(q, expected)
 
-        torch.testing.assert_close(q, expected, rtol=1e-6, atol=1e-6)
+        self.assert_close(q, expected, rtol=1e-6, atol=1e-6)
 
     def test_output_is_normalized(self, device, dtype):
         """Averaged quaternion should always have unit norm"""
@@ -369,7 +357,7 @@ class TestQuaternionAverage:
         out = average_quaternions(Q)
         q = _to_tensor(out)
 
-        torch.testing.assert_close(q.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
+        self.assert_close(q.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
 
     def test_weighted_bias(self, device, dtype):
         """Heavier weights should bias the average toward the corresponding quaternion"""
@@ -393,7 +381,7 @@ class TestQuaternionAverage:
         q_t = _to_tensor(q)
 
         out_t = _align_sign(out_t, q_t)
-        torch.testing.assert_close(out_t, q_t, rtol=1e-6, atol=1e-6)
+        self.assert_close(out_t, q_t, rtol=1e-6, atol=1e-6)
 
     def test_opposite_quaternions(self, device, dtype):
         """Opposite quaternions should average to something consistent (sign ambiguity)"""
@@ -405,7 +393,7 @@ class TestQuaternionAverage:
         q = _to_tensor(out)
 
         # Should still be a valid unit quaternion
-        torch.testing.assert_close(q.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
+        self.assert_close(q.norm(), torch.tensor(1.0, device=device, dtype=dtype), rtol=1e-6, atol=1e-6)
 
     def test_invalid_weights_raise(self, device, dtype):
         """Mismatched number of weights should raise"""

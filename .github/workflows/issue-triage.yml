@@ -1,0 +1,41 @@
+name: Issue Triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  triage:
+    name: Triage New Issue
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add triage label
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['triage']
+            });
+
+      - name: Post welcome message
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const welcomeMessage = '## ⚠️ Before Submitting a PR\n\n' +
+              'Please wait for a maintainer to approve and assign this issue to you or someone else before submitting a PR. ' +
+              'PRs submitted without prior approval and assignment may be closed. ' +
+              'See our [Contributing Guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md) for details.';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: welcomeMessage
+            });

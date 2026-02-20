@@ -26,7 +26,7 @@ from kornia.augmentation.container.base import ImageSequentialBase, TransformMat
 from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
 from kornia.augmentation.utils import _transform_input, override_parameters
-from kornia.utils import eye_like
+from kornia.core.ops import eye_like
 
 
 class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
@@ -71,7 +71,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         """Compute the transformation matrix according to the provided parameters.
 
         Args:
-            input: the input torch.tensor.
+            input: the input torch.Tensor.
             params: params for the sequence.
             recompute: if to recompute the transformation matrix according to the params.
                 default: False.

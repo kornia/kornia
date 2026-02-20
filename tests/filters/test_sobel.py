@@ -18,8 +18,8 @@
 import pytest
 import torch
 
+from kornia.core._compat import torch_version
 from kornia.filters import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
-from kornia.utils._compat import torch_version
 
 from testing.base import BaseTester
 

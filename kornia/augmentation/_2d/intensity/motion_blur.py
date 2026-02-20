@@ -26,7 +26,7 @@ from kornia.filters import motion_blur
 
 
 class RandomMotionBlur(IntensityAugmentationBase2D):
-    r"""Perform motion blur on 2D images (4D torch.tensor).
+    r"""Perform motion blur on 2D images (4D torch.Tensor).
 
     .. image:: _static/img/RandomMotionBlur.png
 
@@ -54,9 +54,9 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     Note:
-        Input torch.tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation torch.tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation torch.tensor and returned.
+        Input torch.Tensor must be float and normalized into [0, 1] for the best differentiability support.
+        Additionally, this function accepts another transformation torch.Tensor (:math:`(B, 3, 3)`), then the
+        applied transformation will be merged int to the input transformation torch.Tensor and returned.
 
         Please set ``resample`` to ``'bilinear'`` if more meaningful gradients wanted.
 
@@ -116,7 +116,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         # selected random index --- `params["idx"][0]` --- to determine the applied kernel size.
         # 2. The `VideoSequential` flattens the first two dimensions, effectively creating a larger batch.
         # Its method `VideoSequential.__repeat_param_across_channels__` repeats the previously selected index,
-        # creating a torch.tensor with equal values. Hence, taking the first one (`params["idx"][0]`) is legit.
+        # creating a torch.Tensor with equal values. Hence, taking the first one (`params["idx"][0]`) is legit.
         idx: int = cast(int, params["idx"][0])
         return motion_blur(
             input,

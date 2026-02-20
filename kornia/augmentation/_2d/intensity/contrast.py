@@ -26,7 +26,7 @@ from kornia.enhance.adjust import adjust_contrast
 
 
 class RandomContrast(IntensityAugmentationBase2D):
-    r"""Apply a random transformation to the contrast of a torch.tensor image.
+    r"""Apply a random transformation to the contrast of a torch.Tensor image.
 
     This implementation aligns PIL. Hence, the output is close to TorchVision.
 
