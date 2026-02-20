@@ -50,9 +50,9 @@ class TestMutualInformationLoss(BaseTester):
 
         for radius in [1 / 2, 1, 2, 3]:
             # relative MI, expect 1
-            assert torch.allclose(
-                self.relative_mi(img_1, img_2, window_radius=radius), torch.ones(1).to(dtype)
-            ), "Wrong MI behaviour, correlated case."
+            assert torch.allclose(self.relative_mi(img_1, img_2, window_radius=radius), torch.ones(1).to(dtype)), (
+                "Wrong MI behaviour, correlated case."
+            )
             # relative MI, expect 0
             # NOTE: mutual_information_loss is a finite-sample, histogram-based estimator applied to random data.
             # For independent variables the theoretical value is 0, but sampling noise and binning effects across
@@ -174,19 +174,19 @@ class TestMutualInformationLoss(BaseTester):
             normalized_loss_iterative = torch.stack(normalized_losses)
 
             # Compare
-            assert (
-                loss_batch.shape == dims[:-1]
-            ), f"The shape of the batched losses for mi is wrong: {loss_batch.shape} vs {dims[:-1]}."
-            assert (
-                normalized_loss_batch.shape == dims[:-1]
-            ), f"The shape of the batched losses for nmi is wrong: {normalized_loss_batch.shape} vs {dims[:-1]}."
+            assert loss_batch.shape == dims[:-1], (
+                f"The shape of the batched losses for mi is wrong: {loss_batch.shape} vs {dims[:-1]}."
+            )
+            assert normalized_loss_batch.shape == dims[:-1], (
+                f"The shape of the batched losses for nmi is wrong: {normalized_loss_batch.shape} vs {dims[:-1]}."
+            )
 
-            assert torch.allclose(
-                loss_batch.flatten(), loss_iterative, atol=1e-4
-            ), f"Batch mismatch for mi! Batch: {loss_batch}, Iterative: {loss_iterative}"
-            assert torch.allclose(
-                normalized_loss_batch.flatten(), normalized_loss_iterative, atol=1e-4
-            ), f"Batch mismatch for nmi! Batch: {normalized_loss_batch}, Iterative: {normalized_loss_iterative}"
+            assert torch.allclose(loss_batch.flatten(), loss_iterative, atol=1e-4), (
+                f"Batch mismatch for mi! Batch: {loss_batch}, Iterative: {loss_iterative}"
+            )
+            assert torch.allclose(normalized_loss_batch.flatten(), normalized_loss_iterative, atol=1e-4), (
+                f"Batch mismatch for nmi! Batch: {normalized_loss_batch}, Iterative: {normalized_loss_iterative}"
+            )
 
     def test_module(self, device, dtype):
         pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)

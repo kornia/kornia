@@ -87,11 +87,13 @@ class MIKernel(Enum):
     rectangular = member(rectangular_kernel)
     truncated_gaussian = member(truncated_gaussian_kernel)
 
-def _flatten_mask(mask:torch.Tensor | None) ->torch.Tensor:
+
+def _flatten_mask(mask: torch.Tensor | None) -> torch.Tensor:
     if mask is None:
         return torch.tensor([True])
     else:
         return mask.view(-1)
+
 
 def _normalize_signal(data: torch.Tensor, num_bins: int, eps: float = 1e-8) -> torch.Tensor:
     min_val, _ = data.min(dim=-1)
@@ -158,7 +160,7 @@ class EntropyBasedLossBase(torch.nn.Module):
         super().__init__()
         mask = self.fix_mask(mask, reference_signal)
         self.eps = torch.finfo(reference_signal.dtype).eps
-        self.initial_shape= reference_signal.shape
+        self.initial_shape = reference_signal.shape
         signal = reference_signal[..., mask]
         self.register_buffer("signal", _normalize_signal(signal, num_bins, self.eps))
         self.register_buffer("mask", mask)
