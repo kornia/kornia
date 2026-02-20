@@ -141,19 +141,3 @@ class TestIoImage:
         write_image(file_path, img_th)
 
         assert file_path.is_file()
-
-    def test_load_image_falls_back_to_pillow_on_decoder_failure(self, monkeypatch, tmp_path):
-        from PIL import Image
-
-        data = np.array([[0, 64], [128, 255]], dtype=np.uint8)
-        file_path = tmp_path / "image.png"
-        Image.fromarray(data).save(file_path)
-
-        def _raise_decoder_error(_path: str) -> np.ndarray:
-            raise FileExistsError("Data length (10) does not match the image size (5)")
-
-        monkeypatch.setattr(kornia_rs, "read_image_any", _raise_decoder_error)
-
-        img = load_image(file_path, ImageLoadType.GRAY32)
-        expected = torch.tensor(data, dtype=torch.float32).unsqueeze(0) / 255.0
-        assert torch.allclose(img, expected)

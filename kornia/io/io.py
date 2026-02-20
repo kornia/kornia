@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import Any, Union
 
 import kornia_rs
-import numpy as np
 import torch
 
 import kornia
@@ -55,21 +54,10 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
 
     """
     # read image and return as `np.ndarray` with shape HxWxC
-    try:
-        if path_file.suffix.lower() in [".jpg", ".jpeg"]:
-            img = kornia_rs.read_image_jpegturbo(str(path_file))
-        else:
-            img = kornia_rs.read_image_any(str(path_file))
-    except (FileExistsError, RuntimeError, ValueError) as rust_error:
-        # Some malformed-yet-loadable images can fail with the Rust decoder.
-        # Fall back to Pillow to keep load_image behavior robust.
-        try:
-            from PIL import Image
-
-            with Image.open(path_file) as image:
-                img = np.array(image)
-        except (FileNotFoundError, OSError, ValueError) as fallback_error:
-            raise rust_error from fallback_error
+    if path_file.suffix.lower() in [".jpg", ".jpeg"]:
+        img = kornia_rs.read_image_jpegturbo(str(path_file))
+    else:
+        img = kornia_rs.read_image_any(str(path_file))
 
     # convert the image to torch.Tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)
