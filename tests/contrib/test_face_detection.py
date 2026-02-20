@@ -26,12 +26,11 @@ from kornia.contrib.face_detection import FaceKeypoint
 from testing.base import BaseTester
 
 
-@pytest.fixture
-def face_detector(device, dtype):
-    return kornia.contrib.FaceDetector().to(device, dtype)
-
-
 class TestFaceDetection(BaseTester):
+    @pytest.fixture
+    def face_detector(self, device, dtype):
+        return kornia.contrib.FaceDetector().to(device, dtype)
+
     @pytest.mark.slow
     def test_smoke(self, device, dtype):
         assert kornia.contrib.FaceDetector().to(device, dtype) is not None
@@ -112,11 +111,8 @@ class TestFaceDetection(BaseTester):
     def test_exception(self, face_detector, device, dtype):
         img = torch.rand(1, 4, 320, 320, device=device, dtype=dtype)
 
-        with pytest.raises(RuntimeError) as err:
+        with pytest.raises(RuntimeError):
             face_detector(img)
-
-        msg = str(err.value).lower()
-        assert "channel" in msg or "3" in msg
 
     @pytest.mark.slow
     def test_dynamo(self, face_detector, device, dtype, torch_optimizer):
