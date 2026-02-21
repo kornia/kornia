@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
-from torch import Tensor
-from torch.fft import irfftn, rfftn
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters.kernels import normalize_kernel2d
@@ -355,7 +353,6 @@ def fft_conv(
           and cropping, avoiding circular convolution artifacts.
         - No stride or dilation is supported.
     """
-
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
@@ -381,13 +378,9 @@ def fft_conv(
     kh, kw = kernel.shape[-2:]
 
     if str(behaviour).lower() == "conv":
-        tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(
-            device=input.device, dtype=input.dtype
-        )
+        tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
     else:
-        tmp_kernel = kernel[:, None, ...].to(
-            device=input.device, dtype=input.dtype
-        )
+        tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
 
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
@@ -409,17 +402,13 @@ def fft_conv(
 
     # FFT
     input_fr = torch.fft.rfftn(input_padded, dim=(-2, -1))
-    kernel_fr = torch.fft.rfftn(
-        tmp_kernel, s=(padded_h, padded_w), dim=(-2, -1)
-    )
+    kernel_fr = torch.fft.rfftn(tmp_kernel, s=(padded_h, padded_w), dim=(-2, -1))
 
     # Correlation via conjugation
     output_fr = input_fr * torch.conj(kernel_fr)
 
     # Inverse FFT
-    output = torch.fft.irfftn(
-        output_fr, s=(padded_h, padded_w), dim=(-2, -1)
-    )
+    output = torch.fft.irfftn(output_fr, s=(padded_h, padded_w), dim=(-2, -1))
 
     # Crop to valid region
     crop_h = padded_h - kh + 1
