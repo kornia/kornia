@@ -374,7 +374,7 @@ def fft_conv(
         f"Invalid behaviour mode, {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
 
-    b, c, h, w = input.shape
+    _, c, _, _ = input.shape
     kh, kw = kernel.shape[-2:]
 
     if str(behaviour).lower() == "conv":
