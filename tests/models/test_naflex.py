@@ -72,8 +72,7 @@ class TestNaFlex(BaseTester):
         assert out.shape == (1, 196, 768)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
-    def test_smoke_batch_sizes(self, model: NaFlex, device: torch.device, dtype: torch.dtype,
-                               batch_size: int) -> None:
+    def test_smoke_batch_sizes(self, model: NaFlex, device: torch.device, dtype: torch.dtype, batch_size: int) -> None:
         """Test forward pass across different batch sizes."""
         model = model.to(device, dtype)
         x = torch.randn(batch_size, 3, 224, 224, device=device, dtype=dtype)
@@ -140,9 +139,9 @@ class TestNaFlex(BaseTester):
             ((128, 256), 128),
         ],
     )
-    def test_cardinality_various_resolutions(self, device: torch.device, dtype: torch.dtype,
-                                             input_size: tuple[int, int],
-                                             expected_patches: int) -> None:
+    def test_cardinality_various_resolutions(
+        self, device: torch.device, dtype: torch.dtype, input_size: tuple[int, int], expected_patches: int
+    ) -> None:
         """Test output shapes for several input resolutions requiring interpolation."""
         patch_fn = _make_mock_patch_fn(embed_dim=768, patch_size=16, output_4d=True)
         pos_embed = torch.randn(196, 768)
@@ -153,8 +152,7 @@ class TestNaFlex(BaseTester):
         assert out.shape == (1, expected_patches, 768)
 
     @pytest.mark.parametrize("embed_dim", [256, 512, 768])
-    def test_cardinality_embed_dims(self, device: torch.device, dtype: torch.dtype,
-                                    embed_dim: int) -> None:
+    def test_cardinality_embed_dims(self, device: torch.device, dtype: torch.dtype, embed_dim: int) -> None:
         """Test that the embedding dimension is preserved in the output."""
         patch_fn = _make_mock_patch_fn(embed_dim=embed_dim, patch_size=16, output_4d=True)
         pos_embed = torch.randn(196, embed_dim)
@@ -251,8 +249,7 @@ class TestNaFlex(BaseTester):
     # ------------------------------------------------------------------
 
     @pytest.mark.parametrize("grid_size", [7, 14, 16])
-    def test_different_position_grid_sizes(self, device: torch.device, dtype: torch.dtype,
-                                           grid_size: int) -> None:
+    def test_different_position_grid_sizes(self, device: torch.device, dtype: torch.dtype, grid_size: int) -> None:
         """Test NaFlex with position embeddings of various square grid sizes."""
         num_pos = grid_size * grid_size
         embed_dim = 256
@@ -316,8 +313,7 @@ class TestNaFlex(BaseTester):
         actual = op_optimized(x)
         self.assert_close(actual, expected)
 
-    def test_dynamo_with_interpolation(self, device: torch.device, dtype: torch.dtype,
-                                       torch_optimizer) -> None:
+    def test_dynamo_with_interpolation(self, device: torch.device, dtype: torch.dtype, torch_optimizer) -> None:
         """Test torch.compile compatibility when interpolation is required."""
         embed_dim = 64
         patch_size = 16
