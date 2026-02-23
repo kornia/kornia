@@ -684,6 +684,28 @@ class LightGlue(nn.Module):
                 prune1[:, ind1] += 1
 
         desc0, desc1 = desc0[..., :m, :], desc1[..., :n, :]
+
+        # If adaptive width pruning removed all keypoints from either side,
+        # return empty matches instead of crashing in filter_matches (see #3564).
+        if desc0.shape[-2] == 0 or desc1.shape[-2] == 0:
+            matches = [torch.zeros((0, 2), dtype=torch.long, device=device) for _ in range(b)]
+            mscores = [torch.zeros(0, device=device) for _ in range(b)]
+            m0_ = torch.full((b, m), -1, device=device, dtype=torch.long)
+            m1_ = torch.full((b, n), -1, device=device, dtype=torch.long)
+            mscores0_ = torch.zeros((b, m), device=device)
+            mscores1_ = torch.zeros((b, n), device=device)
+            return {
+                "matches": matches,
+                "scores": mscores,
+                "matching_scores0": mscores0_,
+                "matching_scores1": mscores1_,
+                "matches0": m0_,
+                "matches1": m1_,
+                "stop": i + 1,
+                "prune0": prune0 if do_point_pruning else torch.ones_like(torch.arange(m, device=device)[None]),
+                "prune1": prune1 if do_point_pruning else torch.ones_like(torch.arange(n, device=device)[None]),
+            }
+
         scores, _ = self.log_assignment[i](desc0, desc1)
         m0, m1, mscores0, mscores1 = filter_matches(scores, self.conf.filter_threshold)
         matches, mscores = [], []
