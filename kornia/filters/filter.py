@@ -21,8 +21,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-
-from .kernels import normalize_kernel2d
+from kornia.filters.kernels import normalize_kernel2d
 
 _VALID_BORDERS = {"constant", "reflect", "replicate", "circular"}
 _VALID_PADDING = {"valid", "same"}
@@ -109,15 +108,15 @@ def filter2d(
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
-        f"Invalid border, gotcha {border_type}. Expected one of {_VALID_BORDERS}",
+        f"Invalid border, {border_type}. Expected one of {_VALID_BORDERS}",
     )
     KORNIA_CHECK(
         str(padding).lower() in _VALID_PADDING,
-        f"Invalid padding mode, gotcha {padding}. Expected one of {_VALID_PADDING}",
+        f"Invalid padding mode, {padding}. Expected one of {_VALID_PADDING}",
     )
     KORNIA_CHECK(
         str(behaviour).lower() in _VALID_BEHAVIOUR,
-        f"Invalid padding mode, gotcha {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
+        f"Invalid padding mode, {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
     # prepare kernel
     b, c, h, w = input.shape
@@ -125,7 +124,6 @@ def filter2d(
         tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
     else:
         tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
-        #  str(behaviour).lower() == 'conv':
 
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
@@ -305,3 +303,116 @@ def filter3d(
     output = F.conv3d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
 
     return output.view(b, c, d, h, w)
+
+
+def fft_conv(
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    border_type: str = "reflect",
+    normalized: bool = False,
+    padding: str = "same",
+    behaviour: str = "corr",
+) -> torch.Tensor:
+    r"""Apply a 2D convolution (or correlation) using an FFT-based backend.
+
+    This function applies a spatial kernel to a batched tensor using the
+    convolution theorem, i.e., convolution in the spatial domain is performed
+    as element-wise multiplication in the frequency domain.
+
+    The kernel is applied independently to each channel of the input tensor.
+    Depending on the selected padding mode, the output can either preserve
+    the input spatial resolution (`'same'`) or return only the valid region
+    (`'valid'`). Boundary handling is performed in the spatial domain prior
+    to the FFT.
+
+    Args:
+        input: Input tensor of shape :math:`(B, C, H, W)`.
+        kernel: Convolution kernel of shape :math:`(B, kH, kW)`. Each batch
+            element provides one kernel, which is shared across all channels
+            of the corresponding input batch.
+        border_type: Padding mode applied to the input before convolution.
+            Supported values are ``'constant'``, ``'reflect'``,
+            ``'replicate'``, and ``'circular'``.
+        normalized: If ``True``, the kernel is L1-normalized before applying
+            the convolution.
+        padding: Padding strategy to use. Supported values are:
+            ``'same'`` (output has the same spatial size as the input) or
+            ``'valid'`` (no implicit padding).
+        behaviour: Convolution mode. If ``'corr'`` (default), performs
+            cross-correlation. If ``'conv'``, performs true convolution
+            by flipping the kernel spatially.
+
+    Returns:
+        Tensor: The filtered tensor. If ``padding='same'``, the output shape
+        is :math:`(B, C, H, W)`. If ``padding='valid'``, the output shape is
+        :math:`(B, C, H - kH + 1, W - kW + 1)`.
+
+    Note:
+        - Internally uses real-valued FFTs (`rfftn` / `irfftn`).
+        - Linear convolution is achieved by appropriate spatial padding
+          and cropping, avoiding circular convolution artifacts.
+        - No stride or dilation is supported.
+    """
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+
+    KORNIA_CHECK_IS_TENSOR(kernel)
+    KORNIA_CHECK_SHAPE(kernel, ["B", "H", "W"])
+
+    KORNIA_CHECK(
+        str(border_type).lower() in _VALID_BORDERS,
+        f"Invalid border, {border_type}. Expected one of {_VALID_BORDERS}",
+    )
+
+    KORNIA_CHECK(
+        str(padding).lower() in _VALID_PADDING,
+        f"Invalid padding mode, {padding}. Expected one of {_VALID_PADDING}",
+    )
+
+    KORNIA_CHECK(
+        str(behaviour).lower() in _VALID_BEHAVIOUR,
+        f"Invalid behaviour mode, {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
+    )
+
+    _, c, _, _ = input.shape
+    kh, kw = kernel.shape[-2:]
+
+    if str(behaviour).lower() == "conv":
+        tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
+    else:
+        tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
+
+    if normalized:
+        tmp_kernel = normalize_kernel2d(tmp_kernel)
+
+    # Expand kernel across channels
+    tmp_kernel = tmp_kernel.expand(-1, c, -1, -1)
+
+    # Padding (spatial domain)
+    if padding == "same":
+        padding_shape = _compute_padding([kh, kw])
+        input_padded = F.pad(input, padding_shape, mode=border_type)
+    else:
+        input_padded = input
+
+    padded_h, padded_w = input_padded.shape[-2:]
+
+    input_padded = input_padded.contiguous()
+    tmp_kernel = tmp_kernel.contiguous()
+
+    # FFT
+    input_fr = torch.fft.rfftn(input_padded, dim=(-2, -1))
+    kernel_fr = torch.fft.rfftn(tmp_kernel, s=(padded_h, padded_w), dim=(-2, -1))
+
+    # Correlation via conjugation
+    output_fr = input_fr * torch.conj(kernel_fr)
+
+    # Inverse FFT
+    output = torch.fft.irfftn(output_fr, s=(padded_h, padded_w), dim=(-2, -1))
+
+    # Crop to valid region
+    crop_h = padded_h - kh + 1
+    crop_w = padded_w - kw + 1
+    output = output[..., :crop_h, :crop_w].contiguous()
+
+    return output
