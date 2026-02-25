@@ -325,6 +325,13 @@ def fft_conv(
     (`'valid'`). Boundary handling is performed in the spatial domain prior
     to the FFT.
 
+    This function is recommended when the kernel size is larger than
+    approximately (20 x 20). For large kernels, FFT-based convolution is
+    computationally more efficient than direct spatial convolution,
+    reducing complexity from O(H * W * kH * kW) to approximately
+    O(H * W log(H * W)). For small kernels, however, direct convolution
+    is usually faster due to lower constant overhead.
+
     Args:
         input: Input tensor of shape :math:`(B, C, H, W)`.
         kernel: Convolution kernel of shape :math:`(B, kH, kW)`. Each batch
@@ -348,10 +355,28 @@ def fft_conv(
         :math:`(B, C, H - kH + 1, W - kW + 1)`.
 
     Note:
-        - Internally uses real-valued FFTs (`rfftn` / `irfftn`).
-        - Linear convolution is achieved by appropriate spatial padding
-          and cropping, avoiding circular convolution artifacts.
+        - Internally, the function performs zero-padding of the kernel to
+          match the input size and uses real-valued FFTs (`rfftn` / `irfftn`).
+        - This implementation computes linear convolution via FFT by
+          appropriate spatial padding and cropping, avoiding circular
+          convolution artifacts.
         - No stride or dilation is supported.
+
+    Example:
+        >>> input = torch.tensor([[[[
+        ...     0., 0., 0., 0., 0.],
+        ...     [0., 0., 0., 0., 0.],
+        ...     [0., 0., 5., 0., 0.],
+        ...     [0., 0., 0., 0., 0.],
+        ...     [0., 0., 0., 0., 0.],
+        ... ]]])
+        >>> kernel = torch.ones(1, 3, 3)
+        >>> fft_conv(input, kernel, padding="same")
+        tensor([[[[0., 0., 0., 0., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 0., 0., 0., 0.]]]])
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
