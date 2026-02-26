@@ -57,6 +57,12 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
+    # NOTE: torch.nn.functional.conv2d does not accept a zero batch size.
+    # Keep behavior consistent with other Kornia filters by returning an empty,
+    # contiguous tensor with the same shape/dtype/device.
+    if input.shape[0] == 0:
+        return input.contiguous()
+
     padding = _compute_zero_padding(kernel_size)
 
     # prepare kernel

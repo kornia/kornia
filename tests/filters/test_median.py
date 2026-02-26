@@ -29,12 +29,14 @@ class TestMedianBlur(BaseTester):
         actual = median_blur(inp, 3)
         assert isinstance(actual, torch.Tensor)
 
-    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("batch_size", [0, 1, 2])
     @pytest.mark.parametrize("kernel_size", [3, (5, 7)])
     def test_cardinality(self, batch_size, kernel_size, device, dtype):
         inp = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
         actual = median_blur(inp, kernel_size)
         assert actual.shape == (batch_size, 3, 4, 4)
+        if batch_size == 0:
+            assert actual.is_contiguous()
 
     def test_exception(self, device, dtype):
         from kornia.core.exceptions import ShapeError, TypeCheckError
