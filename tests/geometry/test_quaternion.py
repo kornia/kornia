@@ -59,12 +59,13 @@ class TestQuaternion(BaseTester):
 
         with pytest.raises(Exception):
             _ = Quaternion(1, [0, 0, 0])
+
         @pytest.mark.parametrize(
             "shape",
             [
-                (5,),        # wrong 1D shape
-                (3, 3),      # wrong 2D shape
-                (2, 2, 2),   # wrong 3D shape
+                (5,),  # wrong 1D shape
+                (3, 3),  # wrong 2D shape
+                (2, 2, 2),  # wrong 3D shape
             ],
         )
         def test_invalid_shape_last_dim_not_4(self, device, dtype, shape):
@@ -87,7 +88,7 @@ class TestQuaternion(BaseTester):
             # (B, 4)
             Quaternion(torch.empty(2, 4, device=device, dtype=dtype))
 
-             # (..., 4)
+            # (..., 4)
             Quaternion(torch.empty(3, 2, 4, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
