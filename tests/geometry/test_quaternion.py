@@ -59,6 +59,36 @@ class TestQuaternion(BaseTester):
 
         with pytest.raises(Exception):
             _ = Quaternion(1, [0, 0, 0])
+        @pytest.mark.parametrize(
+            "shape",
+            [
+                (5,),        # wrong 1D shape
+                (3, 3),      # wrong 2D shape
+                (2, 2, 2),   # wrong 3D shape
+            ],
+        )
+        def test_invalid_shape_last_dim_not_4(self, device, dtype, shape):
+            """Quaternion should reject tensors whose last dimension is not 4."""
+            data = torch.empty(*shape, device=device, dtype=dtype)
+            with pytest.raises(ValueError):
+                Quaternion(data)
+
+        def test_invalid_scalar_tensor(self, device, dtype):
+            """Quaternion should reject scalar tensors."""
+            data = torch.tensor(1.0, device=device, dtype=dtype)
+            with pytest.raises(ValueError):
+                Quaternion(data)
+
+        def test_valid_shapes_pass(self, device, dtype):
+            """Quaternion should accept shapes (..., 4)."""
+            # (4,)
+            Quaternion(torch.empty(4, device=device, dtype=dtype))
+
+            # (B, 4)
+            Quaternion(torch.empty(2, 4, device=device, dtype=dtype))
+
+             # (..., 4)
+            Quaternion(torch.empty(3, 2, 4, device=device, dtype=dtype))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_random(self, device, dtype, batch_size):
