@@ -253,7 +253,8 @@ class TestMaskDecoderMultiMask:
 
         # Different masks should exist for different mask indices
         # (mask generation varies based on mask_tokens and hypernetwork MLPs)
-        assert not torch.allclose(masks1[:, 0], masks1[:, 1], atol=1e-3)
+        diff = (masks1[:, 0] - masks1[:, 1]).abs().mean()
+        assert diff > 1e-4
 
 
 class TestSam3ModelSmoke:

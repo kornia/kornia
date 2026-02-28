@@ -256,7 +256,9 @@ class PromptEncoder(nn.Module):
         mask_features = self.mask_downscaling(masks)  # (B, mask_in_chans, H//4, W//4)
         mask_features = self.mask_proj(mask_features)  # (B, embed_dim, H//4, W//4)
 
-        # Global average pooling to produce a single semantic embedding per sample
+        # Global average pooling to produce a single semantic embedding per sample.
+        # Sparse mask embedding uses global average pooling for semantic summarization;
+        # spatial information is preserved via dense_prompt_embeddings in the forward() method.
         mask_semantic = torch.nn.functional.adaptive_avg_pool2d(mask_features, 1)  # (B, embed_dim, 1, 1)
         mask_semantic = mask_semantic.squeeze(-1).squeeze(-1)  # (B, embed_dim)
 

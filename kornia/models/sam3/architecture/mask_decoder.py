@@ -119,9 +119,11 @@ class MaskDecoder(nn.Module):
         self.transformer = CrossAttentionTransformer(embed_dim)
 
         # Mask tokens (Phase 3: added for multi-mask generation)
-        self.mask_tokens = nn.ParameterList(
-            [nn.Parameter(torch.randn(1, 1, embed_dim)) for _ in range(num_multimask_outputs)]
-        )
+        self.mask_tokens = nn.ParameterList()
+        for _ in range(num_multimask_outputs):
+            param = nn.Parameter(torch.empty(1, 1, embed_dim))
+            nn.init.normal_(param, std=0.02)
+            self.mask_tokens.append(param)
 
         # Hypernetwork MLPs for mask generation (Phase 3: added for multi-mask support)
         self.mask_mlps = nn.ModuleList([MLPBlock(embed_dim, embed_dim * 4) for _ in range(num_multimask_outputs)])
@@ -241,12 +243,10 @@ class MaskDecoder(nn.Module):
             # Different mask tokens → genuinely different per-channel modulation
             mask_channel_scale = self.mask_feature_modulators[mask_idx](combined.squeeze(1))  # (B, D/8)
 
-            # Apply mask prediction head
-            mask_logits = self.mask_prediction_heads[mask_idx](upscaled_features)  # (B, 1, H_out, W_out)
-
-            # Apply per-channel modulation to mask logits
+            # Apply per-channel modulation to upscaled features before mask prediction
             # Reshape for broadcasting: (B, D/8) -> (B, D/8, 1, 1)
-            mask_channel_scale = torch.nn.functional.relu(mask_channel_scale)
+            # sigmoid used for stable gating (output in range 0-1)
+            mask_channel_scale = torch.nn.functional.sigmoid(mask_channel_scale)
             mask_channel_scale = mask_channel_scale.view(B, -1, 1, 1)
 
             # Modulate the upscaled features before final mask prediction
