@@ -41,7 +41,6 @@ class TestHyNet(BaseTester):
         hynet = HyNet().to(patches.device, patches.dtype)
         self.gradcheck(hynet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)

@@ -88,13 +88,11 @@ class TestRgbToBgr(BaseTester):
         f = kornia.color.rgb_to_bgr
         self.assert_close(f(data), expected)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_bgr, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -236,13 +234,11 @@ class TestRgbToRgba(BaseTester):
         aval = torch.full_like(data[:, :1], aval)  # Bx1xHxW
         self.assert_close(kornia.color.rgb_to_rgba(data, aval), expected)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_rgba, (img, 1.0), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.grad()
     def test_gradcheck_th(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
@@ -250,7 +246,6 @@ class TestRgbToRgba(BaseTester):
         assert gradcheck(kornia.color.rgb_to_rgba, (img, aval), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="unsupported Union type")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -379,14 +374,12 @@ class TestLinearRgb(BaseTester):
         f = kornia.color.linear_rgb_to_rgb
         self.assert_close(f(data), expected)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_linear_rgb, (img,), raise_exception=True, fast_mode=True)
         assert gradcheck(kornia.color.linear_rgb_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -394,7 +387,6 @@ class TestLinearRgb(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(img), op_jit(img))
 
-    @pytest.mark.jit()
     def test_jit_linear(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -448,7 +440,6 @@ class TestRgb255Normals(BaseTester):
         normals_restored = kornia.color.rgb255_to_normals(rgb255_normals)
         torch.testing.assert_close(data_normals, normals_restored, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.full((B, C, H, W), 0.5, device=device, dtype=torch.float64, requires_grad=True)
@@ -457,7 +448,6 @@ class TestRgb255Normals(BaseTester):
         assert gradcheck(kornia.color.normals_to_rgb255, (img,), raise_exception=True, fast_mode=True)
         assert gradcheck(kornia.color.rgb255_to_normals, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
