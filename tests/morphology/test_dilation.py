@@ -137,7 +137,6 @@ class TestDilate(BaseTester):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert dilation(tensor, test)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = dilation
         op_script = torch.jit.script(op)

@@ -492,7 +492,6 @@ class TestAugmentationSequential:
         if random_apply is False:
             reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
 
-    @pytest.mark.jit()
     @pytest.mark.skip(reason="turn off due to Union Type")
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4

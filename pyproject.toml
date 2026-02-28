@@ -241,9 +241,6 @@ max-statements = 64  # Recommended: 50
 addopts = "--color=yes -v"
 testpaths = ["tests"]
 markers = [
-  "grad: mark a test as gradcheck test",
-  "jit: mark a test as torchscript test",
-  "nn: mark a test as module test",
   "slow: mark test as slow to run",
   "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul precision; xfail by default, run with --tf32 to activate",
 ]

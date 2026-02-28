@@ -113,7 +113,6 @@ class TestTopHat(BaseTester):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert top_hat(sample, test)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = top_hat
         op_script = torch.jit.script(op)
