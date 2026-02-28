@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import pytest
 import torch
 
 from kornia.feature import HyNet
