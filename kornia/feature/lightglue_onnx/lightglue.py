@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import ClassVar, Union
 
 import torch
-import torch.utils.dlpack as dlpack
+from torch.utils import dlpack
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 
