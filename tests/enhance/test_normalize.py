@@ -324,7 +324,6 @@ class TestNormalizeMinMax(BaseTester):
         op_jit = torch.jit.script(op)
         self.assert_close(op(x), op_jit(x))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.enhance.normalize_min_max, (x,))

@@ -141,7 +141,6 @@ class TestVideoSequential:
             output_2 = output_2.transpose(1, 2)
         assert_close(output_1, output_2)
 
-    @pytest.mark.jit()
     @pytest.mark.skip(reason="turn off due to Union Type")
     def test_jit(self, device, dtype):
         B, C, D, H, W = 2, 3, 5, 4, 4
