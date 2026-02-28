@@ -262,7 +262,7 @@ class Se2(nn.Module):
     def identity(
         cls,
         batch_size: Optional[int] = None,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> Se2:
         """Create a Se2 group representing an identity rotation and zero translation.
@@ -352,7 +352,7 @@ class Se2(nn.Module):
     def random(
         cls,
         batch_size: Optional[int] = None,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> Se2:
         """Create a Se2 group representing a random transformation.
