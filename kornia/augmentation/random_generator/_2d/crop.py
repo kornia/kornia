@@ -308,7 +308,7 @@ def center_crop_generator(
     if device is None:
         device = torch.device("cpu")
     _common_param_check(batch_size)
-    if not isinstance(size, (tuple, list)) and len(size) == 2:
+    if not isinstance(size, (tuple, list)) or len(size) != 2:
         raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
     if not (isinstance(height, int) and height > 0 and isinstance(width, int) and width > 0):
         raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")

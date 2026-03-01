@@ -93,6 +93,33 @@ class TestBasicAugmentationBase(BaseTester):
             assert output.shape == expected_output.shape
             self.assert_close(output, expected_output)
 
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_deterministic_p_skips_bernoulli(self, p):
+        """When p is 0 or 1 the outcome is deterministic — no Bernoulli sampler should be created."""
+        base = _BasicAugmentationBase(p=p, p_batch=0.5)
+        assert not isinstance(getattr(base, "_p_gen", None), torch.distributions.Bernoulli)
+
+    @pytest.mark.parametrize("p_batch", [0.0, 1.0])
+    def test_deterministic_p_batch_skips_bernoulli(self, p_batch):
+        """When p_batch is 0 or 1 the outcome is deterministic — no Bernoulli sampler should be created."""
+        base = _BasicAugmentationBase(p=0.5, p_batch=p_batch)
+        assert not isinstance(getattr(base, "_p_batch_gen", None), torch.distributions.Bernoulli)
+
+    def test_batch_prob_is_float_tensor(self, device, dtype):
+        """batch_prob injected in forward() must be a float tensor, not bool."""
+        augmentation = _BasicAugmentationBase(p=1.0, p_batch=1.0)
+        with (
+            patch.object(augmentation, "apply_transform", autospec=True) as apply_transform,
+            patch.object(augmentation, "transform_tensor", autospec=True) as transform_tensor,
+        ):
+            transform_tensor.side_effect = lambda x, **kw: x
+            apply_transform.side_effect = lambda inp, params, flags: inp
+            input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
+            # Pass params without batch_prob to trigger the fallback path
+            augmentation(input, params={"forward_input_shape": torch.tensor([2, 3, 4, 5])})
+            call_params = apply_transform.call_args[0][1]
+            assert call_params["batch_prob"].is_floating_point()
+
 
 class TestAugmentationBase2D(BaseTester):
     def test_forward(self, device, dtype):

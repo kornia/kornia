@@ -89,7 +89,7 @@ def crop_and_resize(
     if not isinstance(boxes, torch.Tensor):
         raise TypeError(f"Input boxes type is not a torch.Tensor. Got {type(boxes)}")
 
-    if not isinstance(size, (tuple, list)) and len(size) == 2:
+    if not isinstance(size, (tuple, list)) or len(size) != 2:
         raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
 
     if len(input_tensor.shape) != 4:
@@ -150,7 +150,7 @@ def center_crop(
     if not isinstance(input_tensor, torch.Tensor):
         raise TypeError(f"Input torch.tensor type is not a torch.Tensor. Got {type(input_tensor)}")
 
-    if not isinstance(size, (tuple, list)) and len(size) == 2:
+    if not isinstance(size, (tuple, list)) or len(size) != 2:
         raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
 
     if len(input_tensor.shape) != 4:
