@@ -189,7 +189,7 @@ class EntropyBasedLossBase(torch.nn.Module):
         if mask.ndim > 1:
             raise ValueError("the mask has to be a common mask for all elements of the batch, not a batch of masks")
         mask = mask.broadcast_to(masked_guy.shape[-1])
-        return mask
+        return mask.to(masked_guy.device)
 
     # TODO: optimize method below, maybe with ihdex coordinates conversion
     def trace_in_ref_mask(self, other_signal, other_mask):
