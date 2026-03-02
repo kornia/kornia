@@ -482,7 +482,7 @@ class Quaternion(nn.Module):
     def identity(
         cls,
         batch_size: Optional[int] = None,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> "Quaternion":
         """Create a quaternion representing an identity rotation.
@@ -527,7 +527,7 @@ class Quaternion(nn.Module):
     def random(
         cls,
         batch_size: Optional[int] = None,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> "Quaternion":
         """Create a random unit quaternion of shape :math:`(B, 4)`.
