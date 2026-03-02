@@ -208,7 +208,7 @@ class TestMutualInformationLoss(BaseTester):
         """test masking works on a 2d signal."""
         pred = torch.rand(2, 3, 200, 200, device=device, dtype=dtype)
         target = torch.rand(2, 3, 200, 200, device=device, dtype=dtype)
-        target_mask = torch.zeros(pred.shape[-2:], dtype=torch.bool)
+        target_mask = torch.zeros(pred.shape[-2:], dtype=torch.bool,device=device)
         pred_mask = target_mask.clone()
         target_mask[:100] = True
         pred_mask[:, :100] = True
