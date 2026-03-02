@@ -146,7 +146,8 @@ class EntropyBasedLossBase(torch.nn.Module):
             reference_signal (torch.Tensor): reference signal to which
                 other signals will be compared by the forward method
             mask (torch.Tensor | None): mask of roi in reference_signal, by default None
-                singleton shape, equal to reference_signal.shape[:-1]. It is a common mask for all the samples in reference_signal.
+                singleton shape, equal to reference_signal.shape[:-1]. It is a common mask for all the samples
+                in reference_signal.
             kernel_function (MIKernel): Used kernel function for kernel
                 density estimate, by default MIKernel.xu
             num_bins (int): number of signal value bins in kernel
@@ -217,7 +218,8 @@ class EntropyBasedLossBase(torch.nn.Module):
 
         Returns:
             torch.Tensor: Joint histogram tensor with shape [..., num_bins, num_bins]
-                representing the estimated joint probability distribution of the passed signals in the intersection of rois.
+                representing the estimated joint probability distribution of the passed signals in the intersection
+                of rois.
 
         Raises:
             ValueError: If other_signal has incompatible shape with reference signal.
