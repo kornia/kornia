@@ -725,6 +725,7 @@ def normalized_mutual_information_loss(
     module = NMILossFromRef(
         reference_signal=target,
         kernel_function=kernel_function,
+        mask=target_mask,
         num_bins=num_bins,
         window_radius=window_radius,
     )
