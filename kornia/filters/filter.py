@@ -305,3 +305,149 @@ def filter3d(
     output = F.conv3d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
 
     return output.view(b, c, d, h, w)
+
+
+def correlate2d(
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    border_type: str = "reflect",
+    normalized: bool = False,
+    padding: str = "same",
+) -> torch.Tensor:
+    r"""Correlate a tensor with a 2d kernel.
+
+    Convenience alias for :func:`filter2d` with ``behaviour='corr'`` (cross-correlation).
+    See :func:`filter2d` for full documentation.
+
+    .. seealso:: :func:`convolve2d`, :func:`filter2d`
+
+    Args:
+        input: the input tensor with shape of :math:`(B, C, H, W)`.
+        kernel: the kernel to be correlated with the input tensor.
+            The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
+        border_type: the padding mode to be applied before convolving.
+            The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+        normalized: If True, kernel will be L1 normalized.
+        padding: This defines the type of padding. 2 modes available ``'same'`` or ``'valid'``.
+
+    Return:
+        Tensor: the correlated tensor of same size and numbers of channels as the input
+        with shape :math:`(B, C, H, W)`.
+
+    Example:
+        >>> input = torch.tensor([[[
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 5., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],]]])
+        >>> kernel = torch.ones(1, 3, 3)
+        >>> correlate2d(input, kernel, padding='same')
+        tensor([[[[0., 0., 0., 0., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 0., 0., 0., 0.]]]])
+    """
+    return filter2d(input, kernel, border_type=border_type, normalized=normalized, padding=padding, behaviour="corr")
+
+
+def convolve2d(
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    border_type: str = "reflect",
+    normalized: bool = False,
+    padding: str = "same",
+) -> torch.Tensor:
+    r"""Convolve a tensor with a 2d kernel using true convolution.
+
+    Convenience alias for :func:`filter2d` with ``behaviour='conv'`` (true convolution,
+    where the kernel is flipped before applying).
+    See :func:`filter2d` for full documentation.
+
+    .. seealso:: :func:`correlate2d`, :func:`filter2d`
+
+    Args:
+        input: the input tensor with shape of :math:`(B, C, H, W)`.
+        kernel: the kernel to be convolved with the input tensor.
+            The kernel shape must be :math:`(1, kH, kW)` or :math:`(B, kH, kW)`.
+        border_type: the padding mode to be applied before convolving.
+            The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+        normalized: If True, kernel will be L1 normalized.
+        padding: This defines the type of padding. 2 modes available ``'same'`` or ``'valid'``.
+
+    Return:
+        Tensor: the convolved tensor of same size and numbers of channels as the input
+        with shape :math:`(B, C, H, W)`.
+
+    Example:
+        >>> input = torch.tensor([[[
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 5., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],
+        ...    [0., 0., 0., 0., 0.],]]])
+        >>> kernel = torch.ones(1, 3, 3)
+        >>> convolve2d(input, kernel, padding='same')
+        tensor([[[[0., 0., 0., 0., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 5., 5., 5., 0.],
+                  [0., 0., 0., 0., 0.]]]])
+    """
+    return filter2d(input, kernel, border_type=border_type, normalized=normalized, padding=padding, behaviour="conv")
+
+
+def correlate3d(
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    border_type: str = "replicate",
+    normalized: bool = False,
+) -> torch.Tensor:
+    r"""Correlate a tensor with a 3d kernel.
+
+    Convenience alias for :func:`filter3d` with ``behaviour='corr'`` (cross-correlation).
+    See :func:`filter3d` for full documentation.
+
+    .. seealso:: :func:`convolve3d`, :func:`filter3d`
+
+    Args:
+        input: the input tensor with shape of :math:`(B, C, D, H, W)`.
+        kernel: the kernel to be correlated with the input tensor.
+            The kernel shape must be :math:`(1, kD, kH, kW)` or :math:`(B, kD, kH, kW)`.
+        border_type: the padding mode to be applied before convolving.
+            The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+        normalized: If True, kernel will be L1 normalized.
+
+    Return:
+        Tensor: the correlated tensor of same size and numbers of channels as the input.
+    """
+    return filter3d(input, kernel, border_type=border_type, normalized=normalized, behaviour="corr")
+
+
+def convolve3d(
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    border_type: str = "replicate",
+    normalized: bool = False,
+) -> torch.Tensor:
+    r"""Convolve a tensor with a 3d kernel using true convolution.
+
+    Convenience alias for :func:`filter3d` with ``behaviour='conv'`` (true convolution,
+    where the kernel is flipped before applying).
+    See :func:`filter3d` for full documentation.
+
+    .. seealso:: :func:`correlate3d`, :func:`filter3d`
+
+    Args:
+        input: the input tensor with shape of :math:`(B, C, D, H, W)`.
+        kernel: the kernel to be convolved with the input tensor.
+            The kernel shape must be :math:`(1, kD, kH, kW)` or :math:`(B, kD, kH, kW)`.
+        border_type: the padding mode to be applied before convolving.
+            The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+        normalized: If True, kernel will be L1 normalized.
+
+    Return:
+        Tensor: the convolved tensor of same size and numbers of channels as the input.
+    """
+    return filter3d(input, kernel, border_type=border_type, normalized=normalized, behaviour="conv")
