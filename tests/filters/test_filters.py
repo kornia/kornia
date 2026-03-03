@@ -750,7 +750,7 @@ class TestFilter3D(BaseTester):
 
 # -- correlate / convolve aliases -------------------------------------------
 
-from kornia.filters import correlate2d, convolve2d, correlate3d, convolve3d
+from kornia.filters import convolve2d, convolve3d, correlate2d, correlate3d
 
 
 class TestCorrelate2d:
