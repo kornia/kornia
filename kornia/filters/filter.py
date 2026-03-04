@@ -210,7 +210,11 @@ def filter2d_separable(
 
 
 def filter3d(
-    input: torch.Tensor, kernel: torch.Tensor, border_type: str = "replicate", normalized: bool = False
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    border_type: str = "replicate",
+    normalized: bool = False,
+    behaviour: str = "corr",
 ) -> torch.Tensor:
     r"""Convolve a tensor with a 3d kernel.
 
@@ -228,6 +232,8 @@ def filter3d(
           The expected modes are: ``'constant'``,
           ``'replicate'`` or ``'circular'``.
         normalized: If True, kernel will be L1 normalized.
+        behaviour: defines the convolution mode -- correlation (default), using pytorch conv3d,
+            or true convolution (kernel is flipped). The expected values are: ``'corr'``, ``'conv'``.
 
     Return:
         the convolved tensor of same size and numbers of channels
@@ -282,9 +288,17 @@ def filter3d(
         f"Invalid border, gotcha {border_type}. Expected one of {_VALID_BORDERS}",
     )
 
+    KORNIA_CHECK(
+        str(behaviour).lower() in _VALID_BEHAVIOUR,
+        f"Invalid behaviour mode, gotcha {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
+    )
+
     # prepare kernel
     b, c, d, h, w = input.shape
-    tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
+    if str(behaviour).lower() == "conv":
+        tmp_kernel = kernel.flip((-3, -2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
+    else:
+        tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
 
     if normalized:
         bk, dk, hk, wk = kernel.shape
