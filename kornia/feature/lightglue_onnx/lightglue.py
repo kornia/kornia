@@ -178,8 +178,9 @@ class OnnxLightGlue:
 
         matches, mscores = binding.get_outputs()
 
-        # use DLPack for zero-copy ORT to torch conversion
+        # use DLPack for zero-copy ORT to torch conversion directly
         outputs = {
             "matches": dlpack.from_dlpack(matches.to_dlpack()),
             "scores": dlpack.from_dlpack(mscores.to_dlpack()),
+
         }
