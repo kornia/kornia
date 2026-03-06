@@ -183,5 +183,4 @@ class OnnxLightGlue:
             "matches": dlpack.from_dlpack(matches.to_dlpack()),
             "scores": dlpack.from_dlpack(mscores.to_dlpack()),
         }
-
         return outputs
