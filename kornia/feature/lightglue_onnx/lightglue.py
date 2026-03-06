@@ -184,7 +184,7 @@ class OnnxLightGlue:
                 "matches": dlpack.from_dlpack(matches.to_dlpack()),
                 "scores": dlpack.from_dlpack(mscores.to_dlpack()),
             }
-        else:  #fallback
+        else:  # fallback
             outputs = {
                 "matches": torch.from_numpy(matches.numpy()).to(self.device),
                 "scores": torch.from_numpy(mscores.numpy()).to(self.device),
