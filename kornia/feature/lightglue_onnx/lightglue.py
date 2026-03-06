@@ -179,8 +179,13 @@ class OnnxLightGlue:
         matches, mscores = binding.get_outputs()
 
         # use DLPack for zero-copy ORT to torch conversion
-        outputs = {
-            "matches": dlpack.from_dlpack(matches.to_dlpack()),
-            "scores": dlpack.from_dlpack(mscores.to_dlpack()),
-        }
-        return outputs
+        if hasattr(matches, "to_dlpack"):
+            outputs = {
+                "matches": dlpack.from_dlpack(matches.to_dlpack()),
+                "scores": dlpack.from_dlpack(mscores.to_dlpack()),
+            }
+        else:  #fallback
+            outputs = {
+                "matches": torch.from_numpy(matches.numpy()).to(self.device),
+                "scores": torch.from_numpy(mscores.numpy()).to(self.device),
+            }
