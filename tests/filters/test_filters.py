@@ -746,3 +746,60 @@ class TestFilter3D(BaseTester):
         actual = op_optimized(data, kernel, normalized=normalized)
 
         self.assert_close(actual, expected)
+
+
+# -- correlate / convolve aliases -------------------------------------------
+
+from kornia.filters import convolve2d, convolve3d, correlate2d, correlate3d
+
+
+class TestCorrelate2d:
+    def test_equivalent_to_filter2d_corr(self, device, dtype):
+        inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
+        kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        expected = filter2d(inp, kernel, behaviour="corr")
+        result = correlate2d(inp, kernel)
+        assert torch.allclose(result, expected)
+
+    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    def test_smoke(self, border_type, padding, device, dtype):
+        inp = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
+        kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        out = correlate2d(inp, kernel, border_type=border_type, padding=padding)
+        assert isinstance(out, torch.Tensor)
+
+
+class TestConvolve2d:
+    def test_equivalent_to_filter2d_conv(self, device, dtype):
+        inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
+        kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        expected = filter2d(inp, kernel, behaviour="conv")
+        result = convolve2d(inp, kernel)
+        assert torch.allclose(result, expected)
+
+    def test_differs_from_correlate_asymmetric_kernel(self, device, dtype):
+        inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
+        # Asymmetric kernel so corr != conv
+        kernel = torch.tensor([[[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]], device=device, dtype=dtype)
+        corr = correlate2d(inp, kernel)
+        conv = convolve2d(inp, kernel)
+        assert not torch.allclose(corr, conv)
+
+
+class TestCorrelate3d:
+    def test_equivalent_to_filter3d_corr(self, device, dtype):
+        inp = torch.rand(1, 1, 5, 7, 8, device=device, dtype=dtype)
+        kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
+        expected = filter3d(inp, kernel, behaviour="corr")
+        result = correlate3d(inp, kernel)
+        assert torch.allclose(result, expected)
+
+
+class TestConvolve3d:
+    def test_equivalent_to_filter3d_conv(self, device, dtype):
+        inp = torch.rand(1, 1, 5, 7, 8, device=device, dtype=dtype)
+        kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
+        expected = filter3d(inp, kernel, behaviour="conv")
+        result = convolve3d(inp, kernel)
+        assert torch.allclose(result, expected)
