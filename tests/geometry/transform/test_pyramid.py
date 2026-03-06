@@ -213,7 +213,6 @@ class TestUpscaleDouble(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         x = self.prepare_data((1, 2, 5, 5), device)
         self.gradcheck(kornia.geometry.transform.upscale_double, (x,), rtol=5e-2)
