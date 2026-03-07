@@ -71,9 +71,7 @@ class TestMaskDecoderBehavior:
             masks_with_dense, _ = decoder(image_embeddings, sparse_prompts, dense_nonzero)
 
         diff = (masks_no_dense - masks_with_dense).abs().mean().item()
-        assert diff > 1e-4, (
-            f"Dense prompt should influence mask output, but mean absolute difference={diff:.6f}"
-        )
+        assert diff > 1e-4, f"Dense prompt should influence mask output, but mean absolute difference={diff:.6f}"
 
     # ------------------------------------------------------------------
     # Multi-mask diversity
@@ -101,9 +99,7 @@ class TestMaskDecoderBehavior:
         with torch.no_grad():
             masks, _ = decoder(image_embeddings, sparse_prompts, dense_prompts, multimask_output=True)
 
-        assert masks.shape == (batch_size, num_multimask_outputs, 32, 32), (
-            f"Unexpected shape: {masks.shape}"
-        )
+        assert masks.shape == (batch_size, num_multimask_outputs, 32, 32), f"Unexpected shape: {masks.shape}"
 
         for i in range(num_multimask_outputs):
             for j in range(i + 1, num_multimask_outputs):
@@ -153,9 +149,7 @@ class TestMaskDecoderBehavior:
         assert diff_sparse > 1e-4, (
             f"Sparse prompts should influence output, but diff with/without sparse={diff_sparse:.6f}"
         )
-        assert diff_dense > 1e-4, (
-            f"Dense prompts should influence output, but diff with/without dense={diff_dense:.6f}"
-        )
+        assert diff_dense > 1e-4, f"Dense prompts should influence output, but diff with/without dense={diff_dense:.6f}"
 
     # ------------------------------------------------------------------
     # Gradient flow through dense prompt path
@@ -190,9 +184,7 @@ class TestMaskDecoderBehavior:
 
         conv = decoder.dense_to_feature_modulation
         assert conv.weight.grad is not None, "dense_to_feature_modulation.weight should receive gradients"
-        assert conv.weight.grad.abs().sum().item() > 0, (
-            "dense_to_feature_modulation.weight gradients should be nonzero"
-        )
+        assert conv.weight.grad.abs().sum().item() > 0, "dense_to_feature_modulation.weight gradients should be nonzero"
 
     # ------------------------------------------------------------------
     # Mask token embedding type and structure
@@ -209,8 +201,7 @@ class TestMaskDecoderBehavior:
             f"mask_tokens should be nn.Embedding, got {type(decoder.mask_tokens)}"
         )
         assert decoder.mask_tokens.weight.shape == (num_multimask_outputs, embed_dim), (
-            f"Expected shape ({num_multimask_outputs}, {embed_dim}), "
-            f"got {decoder.mask_tokens.weight.shape}"
+            f"Expected shape ({num_multimask_outputs}, {embed_dim}), got {decoder.mask_tokens.weight.shape}"
         )
         assert decoder.mask_tokens.weight.requires_grad, "mask_tokens.weight should be a learnable parameter"
 
@@ -234,9 +225,7 @@ class TestMaskDecoderBehavior:
         loss.backward()
 
         assert decoder.mask_tokens.weight.grad is not None, "mask_tokens.weight should receive gradients"
-        assert decoder.mask_tokens.weight.grad.abs().sum().item() > 0, (
-            "mask_tokens.weight gradients should be nonzero"
-        )
+        assert decoder.mask_tokens.weight.grad.abs().sum().item() > 0, "mask_tokens.weight gradients should be nonzero"
 
     # ------------------------------------------------------------------
     # Output shape consistency
@@ -258,12 +247,8 @@ class TestMaskDecoderBehavior:
         dense_prompts = torch.randn(batch_size, embed_dim, 8, 8)
 
         with torch.no_grad():
-            masks_multi, iou_multi = decoder(
-                image_embeddings, sparse_prompts, dense_prompts, multimask_output=True
-            )
-            masks_single, iou_single = decoder(
-                image_embeddings, sparse_prompts, dense_prompts, multimask_output=False
-            )
+            masks_multi, iou_multi = decoder(image_embeddings, sparse_prompts, dense_prompts, multimask_output=True)
+            masks_single, iou_single = decoder(image_embeddings, sparse_prompts, dense_prompts, multimask_output=False)
 
         assert masks_multi.shape == (batch_size, num_multimask_outputs, 32, 32), (
             f"Multi-mask shape mismatch: {masks_multi.shape}"
@@ -271,12 +256,8 @@ class TestMaskDecoderBehavior:
         assert iou_multi.shape == (batch_size, num_multimask_outputs), (
             f"Multi-mask IoU shape mismatch: {iou_multi.shape}"
         )
-        assert masks_single.shape == (batch_size, 1, 32, 32), (
-            f"Single mask shape mismatch: {masks_single.shape}"
-        )
-        assert iou_single.shape == (batch_size, 1), (
-            f"Single mask IoU shape mismatch: {iou_single.shape}"
-        )
+        assert masks_single.shape == (batch_size, 1, 32, 32), f"Single mask shape mismatch: {masks_single.shape}"
+        assert iou_single.shape == (batch_size, 1), f"Single mask IoU shape mismatch: {iou_single.shape}"
 
 
 class TestPromptEncoderBehavior:
@@ -303,9 +284,7 @@ class TestPromptEncoderBehavior:
             _, dense_no_mask = encoder()
 
         diff = (dense_with_mask - dense_no_mask).abs().mean().item()
-        assert diff > 1e-4, (
-            f"Mask prompt should change dense embedding, but mean abs diff={diff:.6f}"
-        )
+        assert diff > 1e-4, f"Mask prompt should change dense embedding, but mean abs diff={diff:.6f}"
 
     def test_box_and_mask_prompt_sparse_shape(self) -> None:
         """Combined box + mask prompt must produce the expected sparse token count."""
