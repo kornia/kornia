@@ -118,14 +118,14 @@ class MaskDecoder(nn.Module):
         # Transformer for processing prompts
         self.transformer = CrossAttentionTransformer(embed_dim)
 
-        # Mask tokens (Phase 3: added for multi-mask generation)
-        self.mask_tokens = nn.ParameterList()
-        for _ in range(num_multimask_outputs):
-            param = nn.Parameter(torch.empty(1, 1, embed_dim))
-            nn.init.normal_(param, std=0.02)
-            self.mask_tokens.append(param)
+        # Mask tokens stored as nn.Embedding: shape (num_multimask_outputs, embed_dim).
+        # Each row is a learnable token for one mask output, indexed by mask_idx in the
+        # forward loop. Equivalent to the ParameterList approach but uses standard
+        # nn.Embedding conventions (same as SAM/SAM2).
+        self.mask_tokens = nn.Embedding(num_multimask_outputs, embed_dim)
+        nn.init.normal_(self.mask_tokens.weight, std=0.02)
 
-        # Hypernetwork MLPs for mask generation (Phase 3: added for multi-mask support)
+        # Hypernetwork MLPs for mask generation
         self.mask_mlps = nn.ModuleList([MLPBlock(embed_dim, embed_dim * 4) for _ in range(num_multimask_outputs)])
 
         # Per-mask dynamic projection/linear layers for per-channel modulation
@@ -230,8 +230,9 @@ class MaskDecoder(nn.Module):
 
         masks_list = []
         for mask_idx in range(num_masks_to_generate):
-            # Get mask token for this output
-            mask_token = self.mask_tokens[mask_idx]  # (1, 1, D)
+            # Get mask token for this output: weight row [mask_idx] has shape (D,),
+            # unsqueeze to (1, 1, D) to broadcast with (B, 1, D) prompt modulation.
+            mask_token = self.mask_tokens.weight[mask_idx].unsqueeze(0).unsqueeze(0)  # (1, 1, D)
 
             # Apply hypernetwork MLP to modulate the prompt representation
             prompt_modulation = self.mask_mlps[mask_idx](iou_input)  # (B, D)

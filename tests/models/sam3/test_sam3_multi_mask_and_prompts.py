@@ -208,17 +208,20 @@ class TestMaskDecoderMultiMask:
             assert iou_pred.shape[1] == num_outputs
 
     def test_mask_tokens_are_learned(self) -> None:
-        """Test that mask tokens are learnable parameters."""
+        """Test that mask tokens are stored as a learnable nn.Embedding."""
         embed_dim = 256
         num_multimask_outputs = 3
 
         decoder = MaskDecoder(embed_dim=embed_dim, num_multimask_outputs=num_multimask_outputs)
 
-        # Check mask tokens exist and are parameters
-        assert len(decoder.mask_tokens) == num_multimask_outputs
-        for mask_token in decoder.mask_tokens:
-            assert isinstance(mask_token, torch.nn.Parameter)
-            assert mask_token.shape == (1, 1, embed_dim)
+        # After refactor: mask_tokens is nn.Embedding(num_multimask_outputs, embed_dim)
+        assert isinstance(decoder.mask_tokens, torch.nn.Embedding), (
+            f"mask_tokens should be nn.Embedding, got {type(decoder.mask_tokens)}"
+        )
+        assert decoder.mask_tokens.weight.shape == (num_multimask_outputs, embed_dim), (
+            f"Expected ({num_multimask_outputs}, {embed_dim}), got {decoder.mask_tokens.weight.shape}"
+        )
+        assert decoder.mask_tokens.weight.requires_grad, "mask_tokens.weight should require grad"
 
     def test_hypernetwork_mlps_affect_output(self) -> None:
         """Test that hypernetwork MLPs modulate mask generation."""
