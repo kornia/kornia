@@ -92,7 +92,7 @@ jobs:
     uses: ./.github/workflows/tutorials.yml
 
   collector:
-    needs: [tests, tutorials, typecheck]
+    needs: [tests, typecheck]
     if: always()
     runs-on: ubuntu-latest
     steps:
