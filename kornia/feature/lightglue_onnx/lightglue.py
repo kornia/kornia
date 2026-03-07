@@ -180,8 +180,8 @@ class OnnxLightGlue:
         try: 
             # use DLPack for zero-copy ORT to torch conversion directly
             outputs = {
-                "matches": dlpack.from_dlpack(matches.to_dlpack()),
-                "scores": dlpack.from_dlpack(mscores.to_dlpack()),
+                "matches": dlpack.from_dlpack(matches.to_dlpack()).to(self.device),
+                "scores": dlpack.from_dlpack(mscores.to_dlpack()).to(self.device),
             }
         except AttributeError: # Fallback for older ORT versions
             outputs = {
