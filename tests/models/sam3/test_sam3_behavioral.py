@@ -39,7 +39,7 @@ class TestMaskDecoderBehavior:
     def _make_decoder(self, embed_dim: int = 64, num_multimask_outputs: int = 3) -> MaskDecoder:
         """Return a small MaskDecoder for fast tests.
 
-        Uses embed_dim=64 so num_patches=64 forms an 8×8 grid.
+        Uses embed_dim=64 so num_patches=64 forms an 8x8 grid.
         """
         return MaskDecoder(embed_dim=embed_dim, num_multimask_outputs=num_multimask_outputs)
 
@@ -56,7 +56,7 @@ class TestMaskDecoderBehavior:
         torch.manual_seed(0)
         embed_dim = 64
         batch_size = 1
-        num_patches = 64  # 8×8 grid
+        num_patches = 64  # 8x8 grid
 
         decoder = self._make_decoder(embed_dim=embed_dim)
         decoder.eval()
