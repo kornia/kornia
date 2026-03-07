@@ -177,10 +177,15 @@ class OnnxLightGlue:
         self.session.run_with_iobinding(binding)
 
         matches, mscores = binding.get_outputs()
-
-        # use DLPack for zero-copy ORT to torch conversion directly
-        outputs = {
-            "matches": dlpack.from_dlpack(matches.to_dlpack()),
-            "scores": dlpack.from_dlpack(mscores.to_dlpack()),
-        }
+        try: 
+            # use DLPack for zero-copy ORT to torch conversion directly
+            outputs = {
+                "matches": dlpack.from_dlpack(matches.to_dlpack()),
+                "scores": dlpack.from_dlpack(mscores.to_dlpack()),
+            }
+        except AttributeError: # Fallback for older ORT versions
+            outputs = {
+                "matches": torch.from_dlpack(matches.numpy()).to(self.device),
+                "scores": torch.from_dlpack(mscores.numpy()).to(self.device),
+            }
         return outputs
