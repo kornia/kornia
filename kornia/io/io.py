@@ -69,7 +69,7 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
                 # Convert RGBA to RGB if needed
                 if pil_img.mode == "RGBA":
                     pil_img = pil_img.convert("RGB")
-                elif pil_img.mode != "RGB" and pil_img.mode != "L":
+                elif pil_img.mode not in {"RGB", "L"}:
                     pil_img = pil_img.convert("RGB")
                 img = np.array(pil_img)
             else:
@@ -96,6 +96,61 @@ def _to_uint8(image: torch.Tensor) -> torch.Tensor:
     return image.mul(255.0).byte()
 
 
+def _convert_image(image: torch.Tensor, desired_type: ImageLoadType) -> torch.Tensor:
+    """Convert image to desired type."""
+    channels, dtype = image.shape[0], image.dtype
+
+    # Handle unchanged type
+    if desired_type == ImageLoadType.UNCHANGED:
+        return image
+
+    # Handle 8-bit types
+    if desired_type == ImageLoadType.GRAY8:
+        if channels == 1 and dtype == torch.uint8:
+            return image
+        if channels == 3 and dtype == torch.uint8:
+            return kornia.color.rgb_to_grayscale(image)
+        if channels == 4 and dtype == torch.uint8:
+            gray32 = kornia.color.rgb_to_grayscale(kornia.color.rgba_to_rgb(_to_float32(image)))
+            return _to_uint8(gray32)
+
+    if desired_type == ImageLoadType.RGB8:
+        if channels == 3 and dtype == torch.uint8:
+            return image
+        if channels == 1 and dtype == torch.uint8:
+            return kornia.color.grayscale_to_rgb(image)
+        if channels == 4 and dtype == torch.uint8:
+            rgb8 = kornia.color.rgba_to_rgb(_to_float32(image))
+            return _to_uint8(rgb8)
+
+    if desired_type == ImageLoadType.RGBA8:
+        if channels == 4 and dtype == torch.uint8:
+            return image
+        if channels == 3 and dtype == torch.uint8:
+            rgba32 = kornia.color.rgb_to_rgba(_to_float32(image), 0.0)
+            return _to_uint8(rgba32)
+
+    # Handle 32-bit types
+    if desired_type == ImageLoadType.GRAY32:
+        if channels == 1 and dtype == torch.uint8:
+            return _to_float32(image)
+        if channels == 3 and dtype == torch.uint8:
+            return kornia.color.rgb_to_grayscale(_to_float32(image))
+        if channels == 4 and dtype == torch.uint8:
+            gray32 = kornia.color.rgb_to_grayscale(kornia.color.rgba_to_rgb(_to_float32(image)))
+            return gray32
+
+    if desired_type == ImageLoadType.RGB32:
+        if channels == 3 and dtype == torch.uint8:
+            return _to_float32(image)
+        if channels == 1 and dtype == torch.uint8:
+            return kornia.color.grayscale_to_rgb(_to_float32(image))
+        if channels == 4 and dtype == torch.uint8:
+            return kornia.color.rgba_to_rgb(_to_float32(image))
+
+    raise NotImplementedError(f"Unknown type: {desired_type}")
+
+
 def load_image(
     path_file: str | Path,
     desired_type: ImageLoadType = ImageLoadType.RGB32,
@@ -117,57 +172,7 @@ def load_image(
 
     # read the image using the kornia_rs package
     image: torch.Tensor = _load_image_to_tensor(path_file, device)  # CxHxW
-
-    if desired_type == ImageLoadType.UNCHANGED:
-        return image
-    elif desired_type == ImageLoadType.GRAY8:
-        if image.shape[0] == 1 and image.dtype == torch.uint8:
-            return image
-        elif image.shape[0] == 3 and image.dtype == torch.uint8:
-            gray8 = kornia.color.rgb_to_grayscale(image)
-            return gray8
-        elif image.shape[0] == 4 and image.dtype == torch.uint8:
-            gray32 = kornia.color.rgb_to_grayscale(kornia.color.rgba_to_rgb(_to_float32(image)))
-            return _to_uint8(gray32)
-
-    elif desired_type == ImageLoadType.RGB8:
-        if image.shape[0] == 3 and image.dtype == torch.uint8:
-            return image
-        elif image.shape[0] == 1 and image.dtype == torch.uint8:
-            rgb8 = kornia.color.grayscale_to_rgb(image)
-            return rgb8
-        elif image.shape[0] == 4 and image.dtype == torch.uint8:
-            rgb8 = kornia.color.rgba_to_rgb(_to_float32(image))
-            return _to_uint8(rgb8)
-
-    elif desired_type == ImageLoadType.RGBA8:
-        if image.shape[0] == 4 and image.dtype == torch.uint8:
-            return image
-        elif image.shape[0] == 3 and image.dtype == torch.uint8:
-            rgba32 = kornia.color.rgb_to_rgba(_to_float32(image), 0.0)
-            return _to_uint8(rgba32)
-
-    elif desired_type == ImageLoadType.GRAY32:
-        if image.shape[0] == 1 and image.dtype == torch.uint8:
-            return _to_float32(image)
-        elif image.shape[0] == 3 and image.dtype == torch.uint8:
-            gray32 = kornia.color.rgb_to_grayscale(_to_float32(image))
-            return gray32
-        elif image.shape[0] == 4 and image.dtype == torch.uint8:
-            gray32 = kornia.color.rgb_to_grayscale(kornia.color.rgba_to_rgb(_to_float32(image)))
-            return gray32
-
-    elif desired_type == ImageLoadType.RGB32:
-        if image.shape[0] == 3 and image.dtype == torch.uint8:
-            return _to_float32(image)
-        elif image.shape[0] == 1 and image.dtype == torch.uint8:
-            rgb32 = kornia.color.grayscale_to_rgb(_to_float32(image))
-            return rgb32
-        elif image.shape[0] == 4 and image.dtype == torch.uint8:
-            rgb32 = kornia.color.rgba_to_rgb(_to_float32(image))
-            return rgb32
-
-    raise NotImplementedError(f"Unknown type: {desired_type}")
+    return _convert_image(image, desired_type)
 
 
 def _write_uint8_image(path_file: Path, img_np: Any, quality: int) -> None:
