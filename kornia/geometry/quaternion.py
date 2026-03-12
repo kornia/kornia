@@ -77,6 +77,10 @@ class Quaternion(nn.Module):
     _data: Union[torch.Tensor, nn.Parameter]
 
     def __init__(self, data: Union[torch.Tensor, nn.Parameter]) -> None:
+        super().__init__()
+
+        """Construct a quaternion..."""
+
         """Construct a quaternion from torch.Tensor or parameter data.
 
         Args:
@@ -91,10 +95,13 @@ class Quaternion(nn.Module):
             >>> q2 = Quaternion(param_data)
 
         """
-        super().__init__()
+
         if not isinstance(data, (torch.Tensor, nn.Parameter)):
             raise TypeError(f"Expected torch.Tensor or nn.Parameter, got {type(data)}")
-        # KORNIA_CHECK_SHAPE(data, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
+        # KORNIA_CHECK_SHAPE(data, ["B", "4"])   # FIXME: resolve shape bugs. @edgarriba
+
+        if data.ndim == 0 or data.shape[-1] != 4:
+            raise ValueError(f"Quaternion input must have last dimension == 4. Got shape {tuple(data.shape)}")
         self._data = data
 
     def to(self, *args: Any, **kwargs: Any) -> "Quaternion":
