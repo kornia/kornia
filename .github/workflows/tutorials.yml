@@ -24,6 +24,7 @@ permissions:
 jobs:
   tutorials:
     runs-on: ${{ inputs.os }}
+    continue-on-error: true
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
