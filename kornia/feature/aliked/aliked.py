@@ -355,7 +355,7 @@ class DKD(nn.Module):
                     align_corners=True,
                 )[0, 0, 0, :]
                 keypoints.append(keypoints_xy)
-                scoredispersitys.append(kptscore)
+                scoredispersitys.append(torch.zeros_like(kptscore))
                 kptscores.append(kptscore)
                 if return_affine:
                     # No soft-argmax weights available; fall back to identity.
@@ -423,11 +423,14 @@ class DeformableConv2d(nn.Module):
         kernel_size: int = 3,
         stride: int = 1,
         padding: int = 1,
+        dilation: int = 1,
         bias: bool = False,
         mask: bool = False,
     ) -> None:
         super().__init__()
+        self.stride = stride
         self.padding = padding
+        self.dilation = dilation
         self.mask = mask
         self.channel_num = 3 * kernel_size * kernel_size if mask else 2 * kernel_size * kernel_size
         self.offset_conv = nn.Conv2d(
@@ -436,6 +439,7 @@ class DeformableConv2d(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             padding=self.padding,
+            dilation=dilation,
             bias=True,
         )
         self.regular_conv = nn.Conv2d(
@@ -444,6 +448,7 @@ class DeformableConv2d(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             padding=self.padding,
+            dilation=dilation,
             bias=bias,
         )
 
@@ -464,7 +469,9 @@ class DeformableConv2d(nn.Module):
             offset=offset,
             weight=self.regular_conv.weight,
             bias=self.regular_conv.bias,
+            stride=self.stride,
             padding=self.padding,
+            dilation=self.dilation,
             mask=mask_w,
         )
 
@@ -677,7 +684,7 @@ class SDDH(nn.Module):
                 descs = torch.einsum("ncp,pcd->nd", features, self.agg_weights)
             else:
                 features = features.reshape(N_kpts, -1)[:, :, None, None]
-                descs = self.convM(features).squeeze()
+                descs = self.convM(features).squeeze(-1).squeeze(-1)
 
             descs = F.normalize(descs, p=2.0, dim=1)
             descriptors.append(descs)
@@ -800,7 +807,8 @@ class ALIKED(nn.Module):
         """Run the backbone and return ``(feature_map, score_map)``.
 
         Args:
-            image: ``(B, 3, H, W)`` float image. H and W must be divisible by 32.
+            image: ``(B, 3, H, W)`` float image. Inputs are internally padded to
+                a multiple of 32 and the padding is removed before returning.
 
         Returns:
             ``feature_map``: ``(B, dim, H, W)`` L2-normalised dense features.

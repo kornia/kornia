@@ -200,6 +200,7 @@ class TestALIKED(BaseTester):
         feat_dev = feat.to(device)
         assert feat_dev.keypoints.device.type == device.type
         assert feat_dev.descriptors.device.type == device.type
+        assert feat_dev.keypoint_scores.device.type == device.type
 
     @pytest.mark.slow
     @pytest.mark.parametrize("model_name", ["aliked-n16"])
@@ -213,15 +214,21 @@ class TestALIKED(BaseTester):
         assert output[0].n > 0
 
     def test_gradcheck(self, device):
-        """Gradients should flow through ALIKED."""
-        aliked = ALIKED(model_name="aliked-t16").to(device, torch.float64)
-        # 64x64 minimum: pool2 -> 32, pool4 -> 8, pool4 -> 2 (BatchNorm needs > 1)
-        inp = torch.rand(1, 3, 64, 64, device=device, dtype=torch.float64, requires_grad=True)
-        output = aliked(inp)
-        if output[0].n > 0:
-            loss = output[0].keypoints.sum() + output[0].descriptors.sum()
-            loss.backward()
-            assert inp.grad is not None
+        """gradcheck on the fully-differentiable extract_dense_map sub-graph.
+
+        The full pipeline includes discrete NMS/argmax steps that are not
+        differentiable, so gradcheck is run on extract_dense_map which covers
+        the backbone, feature pyramid, and score head.  The model is placed
+        in eval mode so BatchNorm uses fixed running statistics.
+        """
+        aliked = ALIKED(model_name="aliked-t16").to(device, torch.float64).eval()
+        inp = torch.rand(1, 3, 32, 32, device=device, dtype=torch.float64, requires_grad=True)
+
+        def fn(x: torch.Tensor) -> torch.Tensor:
+            fm, sm = aliked.extract_dense_map(x)
+            return fm, sm
+
+        assert torch.autograd.gradcheck(fn, [inp], eps=1e-4, atol=1e-3, rtol=1e-3, fast_mode=True)
 
 
 # ---------------------------------------------------------------------------

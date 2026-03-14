@@ -24,7 +24,7 @@ Implements both DCNv1 (mask=None) and DCNv2 (mask provided) as described in:
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 from torch import Tensor
@@ -35,9 +35,9 @@ def deform_conv2d(
     offset: Tensor,
     weight: Tensor,
     bias: Optional[Tensor] = None,
-    stride: Tuple[int, int] = (1, 1),
-    padding: Tuple[int, int] = (0, 0),
-    dilation: Tuple[int, int] = (1, 1),
+    stride: Union[int, Tuple[int, int]] = (1, 1),
+    padding: Union[int, Tuple[int, int]] = (0, 0),
+    dilation: Union[int, Tuple[int, int]] = (1, 1),
     mask: Optional[Tensor] = None,
 ) -> Tensor:
     """Deformable 2D convolution (DCNv1/v2) without torchvision dependency.
