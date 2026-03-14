@@ -133,6 +133,7 @@ select = [
   # "ARG",  # flake8-unused-arguments
   # "COM",  # flake8-commas
   "D",  # pydocstyle
+  "D400", #missing-trailing-period
   # "DJ",   # flake8-django
   # "EM",   # flake8-errmsg
   # "ERA",  # eradicate
