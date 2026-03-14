@@ -23,7 +23,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core._compat import torch_version_ge
 from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
@@ -668,15 +667,18 @@ def iterative_quad_interp3d(
     #   k = (dd+1)*9 + (dh+1)*3 + (dw+1), center k=13.
     _dd = torch.tensor(
         [-1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        device=device, dtype=torch.long,
+        device=device,
+        dtype=torch.long,
     )
     _dh = torch.tensor(
         [-1, -1, -1, 0, 0, 0, 1, 1, 1, -1, -1, -1, 0, 0, 0, 1, 1, 1, -1, -1, -1, 0, 0, 0, 1, 1, 1],
-        device=device, dtype=torch.long,
+        device=device,
+        dtype=torch.long,
     )
     _dw = torch.tensor(
         [-1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1],
-        device=device, dtype=torch.long,
+        device=device,
+        dtype=torch.long,
     )
     patch_offsets = _dd * HW + _dh * W + _dw  # (27,)
 
@@ -695,7 +697,7 @@ def iterative_quad_interp3d(
     grad_dot_shift = torch.zeros(N, device=device, dtype=dtype)
 
     inp_flat = inp.reshape(-1)  # flat view for gather indexing
-    bc_base = bc_idx * DHW      # per-keypoint base offset (constant across iterations)
+    bc_base = bc_idx * DHW  # per-keypoint base offset (constant across iterations)
 
     for _ in range(n_iters):
         # Clamp so we can always safely access ±1 neighbours.
@@ -712,9 +714,9 @@ def iterative_quad_interp3d(
         c000 = p[:, 13]
 
         # First-order finite differences (0.5 * (next - prev)), matches C++ convention.
-        gx = 0.5 * (p[:, 14] - p[:, 12])   # x/width:  dw=+1 vs dw=-1, center slice
-        gy = 0.5 * (p[:, 16] - p[:, 10])   # y/height: dh=+1 vs dh=-1, center slice
-        gs = 0.5 * (p[:, 22] - p[:, 4])    # scale:    dd=+1 vs dd=-1, center patch
+        gx = 0.5 * (p[:, 14] - p[:, 12])  # x/width:  dw=+1 vs dw=-1, center slice
+        gy = 0.5 * (p[:, 16] - p[:, 10])  # y/height: dh=+1 vs dh=-1, center slice
+        gs = 0.5 * (p[:, 22] - p[:, 4])  # scale:    dd=+1 vs dd=-1, center patch
 
         # Second-order finite differences.
         dxx = p[:, 14] - 2.0 * c000 + p[:, 12]
@@ -881,9 +883,15 @@ def conv_quad_interp3d(
     nms_flat = nms_mask.view(-1)
     b_nms = b[nms_flat, :, 0]  # (N_nms, 3)
     sx, sy, ss, solved_correctly = _solve_cramer_sym3x3(
-        dxx[nms_flat], dyy[nms_flat], dss[nms_flat],
-        dxy[nms_flat], dxs[nms_flat], dys[nms_flat],
-        b_nms[:, 0], b_nms[:, 1], b_nms[:, 2],
+        dxx[nms_flat],
+        dyy[nms_flat],
+        dss[nms_flat],
+        dxy[nms_flat],
+        dxs[nms_flat],
+        dys[nms_flat],
+        b_nms[:, 0],
+        b_nms[:, 1],
+        b_nms[:, 2],
     )
     x_solved_masked = torch.stack([sx, sy, ss], dim=-1).unsqueeze(-1)  # (N_nms, 3, 1)
 

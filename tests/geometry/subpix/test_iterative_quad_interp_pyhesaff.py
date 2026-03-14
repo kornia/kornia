@@ -224,12 +224,8 @@ class TestIterativeQuadInterp3dVsPyhesaff:
         assert result is not None, "pyhesaff found no keypoints"
         ph_x, ph_y = result
 
-        assert abs(ours_x - ph_x) < self._TOL, (
-            f"x mismatch: ours={ours_x:.4f} pyhesaff={ph_x:.4f} true={cx}"
-        )
-        assert abs(ours_y - ph_y) < self._TOL, (
-            f"y mismatch: ours={ours_y:.4f} pyhesaff={ph_y:.4f} true={cy}"
-        )
+        assert abs(ours_x - ph_x) < self._TOL, f"x mismatch: ours={ours_x:.4f} pyhesaff={ph_x:.4f} true={cx}"
+        assert abs(ours_y - ph_y) < self._TOL, f"y mismatch: ours={ours_y:.4f} pyhesaff={ph_y:.4f} true={cy}"
 
     @pytest.mark.parametrize("cx,cy", [(64.4, 63.7), (32.3, 31.8), (64.0, 64.0)])
     def test_blob_position_float32(self, cx: float, cy: float) -> None:
@@ -305,8 +301,8 @@ class TestIterativeQuadInterp3dVsPyhesaff:
             result = _pyhesaff_detect_closest(img_u8, cx, cy)
             assert result is not None, f"pyhesaff found no kpts for blob at ({cx},{cy})"
             ph_x, ph_y = result
-            assert abs(ph_x - cx) < 0.05, f"pyhesaff x error {abs(ph_x-cx):.4f} for blob at x={cx}"
-            assert abs(ph_y - cy) < 0.05, f"pyhesaff y error {abs(ph_y-cy):.4f} for blob at y={cy}"
+            assert abs(ph_x - cx) < 0.05, f"pyhesaff x error {abs(ph_x - cx):.4f} for blob at x={cx}"
+            assert abs(ph_y - cy) < 0.05, f"pyhesaff y error {abs(ph_y - cy):.4f} for blob at y={cy}"
 
     def test_our_accuracy_vs_true(self) -> None:
         """Verify that our function accurately recovers the true blob position.
@@ -323,5 +319,5 @@ class TestIterativeQuadInterp3dVsPyhesaff:
             h_peak, w_peak = np.unravel_index(cur_np.argmax(), cur_np.shape)
             ours_x = coords[0, 0, 1, d_peak, h_peak, w_peak].item()
             ours_y = coords[0, 0, 2, d_peak, h_peak, w_peak].item()
-            assert abs(ours_x - cx) < 0.05, f"our x error {abs(ours_x-cx):.4f} for blob at x={cx}"
-            assert abs(ours_y - cy) < 0.05, f"our y error {abs(ours_y-cy):.4f} for blob at y={cy}"
+            assert abs(ours_x - cx) < 0.05, f"our x error {abs(ours_x - cx):.4f} for blob at x={cx}"
+            assert abs(ours_y - cy) < 0.05, f"our y error {abs(ours_y - cy):.4f} for blob at y={cy}"
