@@ -26,7 +26,7 @@ from torch import nn
 from typing_extensions import TypedDict
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.geometry.subpix import IterativeQuadInterp3d, NonMaximaSuppression2d
+from kornia.geometry.subpix import IterativeQuadInterp3d, NonMaximaSuppression2d, nms3d
 from kornia.geometry.transform import ScalePyramid, pyrdown, resize
 
 from .laf import laf_from_center_scale_ori, laf_is_inside_image
@@ -183,14 +183,17 @@ class ScaleSpaceDetector(nn.Module):
             if mask is not None:
                 oct_resp = _create_octave_mask(mask, list(oct_resp.shape)) * oct_resp
 
-            # --- NMS + subpixel refinement ---
-            coord_max, response_max = self.nms(oct_resp)
+            # For symmetric responses (e.g. DoG, Hessian) detect both maxima and minima
+            # in a single pass by operating on the absolute response.
+            nms_input = oct_resp.abs() if self.minima_are_also_good else oct_resp
 
-            if self.minima_are_also_good:
-                coord_min, response_min = self.nms(-oct_resp)
-                take_min = response_min > response_max
-                response_max = torch.where(take_min, response_min, response_max)
-                coord_max = torch.where(take_min.unsqueeze(2), coord_min, coord_max)
+            # --- subpixel refinement (NMS is handled internally by the module) ---
+            coord_max, _ = self.nms(nms_input)
+
+            # Explicit hard 3D-NMS mask so top-k selects only true local extrema
+            # ranked by their original response magnitude.
+            nms_mask = nms3d(nms_input, (3, 3, 3), mask_only=True)
+            response_max = nms_input * nms_mask.to(dtype)
 
             # --- flatten + top-k per octave ---
             # coord_max: (B, CH, 3, D, H, W)  — ordering: [scale_idx, x, y]
