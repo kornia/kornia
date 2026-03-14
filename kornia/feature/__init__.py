@@ -97,11 +97,11 @@ from .tfeat import TFeat
 
 __all__ = [
     "ALIKED",
-    "ALIKEDFeatures",
     "DISK",
     "KORNIA_CHECK_LAF",
     "SOLD2",
     "TLU",
+    "ALIKEDFeatures",
     "BlobDoG",
     "BlobDoGSingle",
     "BlobHessian",
