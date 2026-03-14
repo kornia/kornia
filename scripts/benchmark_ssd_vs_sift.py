@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Benchmark and quality comparison: kornia ScaleSpaceDetector (BlobHessian) vs pyhesaff.
 
 Metrics:
@@ -22,10 +39,11 @@ import time
 from pathlib import Path
 
 import cv2
-import kornia
 import numpy as np
 import pyhesaff
 import torch
+
+import kornia
 from kornia.feature import ScaleSpaceDetector, get_laf_scale
 from kornia.geometry.subpix import IterativeQuadInterp3d
 
@@ -37,14 +55,15 @@ REF_DIR = EVD_ROOT / "1"
 QRY_DIR = EVD_ROOT / "2"
 HOM_DIR = EVD_ROOT / "h"
 
-PIXEL_THRESHOLD = 3.0       # pixels: max reprojection error for "repeatable"
-N_FEATS = 2048              # max keypoints to request
-HESAFF_MRSIZE = 5.19615     # pyhesaff default mrSize = 3*sqrt(3)
+PIXEL_THRESHOLD = 3.0  # pixels: max reprojection error for "repeatable"
+N_FEATS = 2048  # max keypoints to request
+HESAFF_MRSIZE = 5.19615  # pyhesaff default mrSize = 3*sqrt(3)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def load_gray_u8(path: Path) -> np.ndarray:
     img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
@@ -72,14 +91,15 @@ def project_points(pts: np.ndarray, H: np.ndarray) -> np.ndarray:
 
 
 def repeatability(
-    kpts1: np.ndarray,    # (N1,2) [x,y]
-    kpts2: np.ndarray,    # (N2,2)
-    H12: np.ndarray,      # maps img1 → img2
+    kpts1: np.ndarray,  # (N1,2) [x,y]
+    kpts2: np.ndarray,  # (N2,2)
+    H12: np.ndarray,  # maps img1 → img2
     img2_hw: tuple[int, int],
     threshold: float = PIXEL_THRESHOLD,
 ) -> float:
     """Position-only repeatability: fraction of kpts1 that project within
-    `threshold` pixels of a kpts2 detection."""
+    `threshold` pixels of a kpts2 detection.
+    """
     if len(kpts1) == 0 or len(kpts2) == 0:
         return 0.0
 
@@ -92,8 +112,8 @@ def repeatability(
     if len(proj1_in) == 0:
         return 0.0
 
-    diff = proj1_in[:, None, :] - kpts2[None, :, :]     # (M, N2, 2)
-    min_dists = np.linalg.norm(diff, axis=2).min(axis=1) # (M,)
+    diff = proj1_in[:, None, :] - kpts2[None, :, :]  # (M, N2, 2)
+    min_dists = np.linalg.norm(diff, axis=2).min(axis=1)  # (M,)
     n_rep = int((min_dists < threshold).sum())
     return n_rep / max(min(len(kpts1), len(kpts2)), 1)
 
@@ -102,22 +122,27 @@ def repeatability(
 # Detectors
 # ---------------------------------------------------------------------------
 
+
 def make_kornia_hessian(device: torch.device) -> ScaleSpaceDetector:
-    return ScaleSpaceDetector(
-        N_FEATS,
-        resp_module=kornia.feature.BlobHessian(),
-        nms_module=IterativeQuadInterp3d(strict_maxima_bonus=0.0),
-        scale_pyr_module=kornia.geometry.ScalePyramid(3, 1.6, 32, double_image=True),
-        mr_size=HESAFF_MRSIZE,
-        minima_are_also_good=True,
-    ).to(device).eval()
+    return (
+        ScaleSpaceDetector(
+            N_FEATS,
+            resp_module=kornia.feature.BlobHessian(),
+            nms_module=IterativeQuadInterp3d(strict_maxima_bonus=0.0),
+            scale_pyr_module=kornia.geometry.ScalePyramid(3, 1.6, 32, double_image=True),
+            mr_size=HESAFF_MRSIZE,
+            minima_are_also_good=True,
+        )
+        .to(device)
+        .eval()
+    )
 
 
 def detect_kornia(det: ScaleSpaceDetector, img_t: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
     """Return (N,2) [x,y] and (N,) scale_px arrays."""
     with torch.no_grad():
         lafs, _ = det(img_t)
-    pts = lafs[0, :, :, 2].cpu().numpy()        # (N,2) centers [x,y]
+    pts = lafs[0, :, :, 2].cpu().numpy()  # (N,2) centers [x,y]
     scales = get_laf_scale(lafs)[0, :, 0, 0].cpu().numpy()  # (N,) mr_size*sigma
     return pts, scales
 
@@ -127,7 +152,7 @@ def detect_pyhesaff(img_path: Path) -> tuple[np.ndarray, np.ndarray]:
     kpts, _ = pyhesaff.detect_feats(str(img_path))
     if len(kpts) == 0:
         return np.zeros((0, 2)), np.zeros(0)
-    pts = kpts[:, :2]                                           # (N,2) [x,y]
+    pts = kpts[:, :2]  # (N,2) [x,y]
     a11, a22 = kpts[:, 2], kpts[:, 4]
     scale_px = HESAFF_MRSIZE * (np.maximum(a11 * a22, 1e-9) ** 0.25)
     return pts, scale_px
@@ -137,11 +162,12 @@ def detect_pyhesaff(img_path: Path) -> tuple[np.ndarray, np.ndarray]:
 # Evaluation on EVD
 # ---------------------------------------------------------------------------
 
+
 def evaluate(device: torch.device) -> None:
     det = make_kornia_hessian(device)
     image_names = sorted(p.stem for p in REF_DIR.glob("*.png"))
 
-    print(f"\nEVD repeatability — kornia BlobHessian vs pyhesaff")
+    print("\nEVD repeatability — kornia BlobHessian vs pyhesaff")
     print(f"Device: {device}  |  threshold: {PIXEL_THRESHOLD}px  |  N_FEATS: {N_FEATS}")
     print()
     hdr = f"{'Image':<12}  {'Rep(Kor)':>9}  {'Rep(Pyhes)':>10}  "
@@ -195,13 +221,14 @@ def evaluate(device: torch.device) -> None:
     q_kor = np.percentile(all_scales_kor, [10, 25, 50, 75, 90])
     q_pyh = np.percentile(all_scales_pyh, [10, 25, 50, 75, 90])
     print("Scale percentiles (px)   [p10  p25  p50  p75  p90]")
-    print(f"  Kornia BlobHessian:  {np.round(q_kor,1)}")
-    print(f"  Pyhesaff:            {np.round(q_pyh,1)}")
+    print(f"  Kornia BlobHessian:  {np.round(q_kor, 1)}")
+    print(f"  Pyhesaff:            {np.round(q_pyh, 1)}")
 
 
 # ---------------------------------------------------------------------------
 # Speed benchmark
 # ---------------------------------------------------------------------------
+
 
 def benchmark_speed() -> None:
     print("\n" + "=" * 70)
@@ -253,7 +280,7 @@ def benchmark_speed() -> None:
         t8 = (time.perf_counter() - t0) / n_runs * 1000
 
         print(f"\n  kornia BlobHessian [{dev}]")
-        print(f"    batch=1: {t1:7.1f} ms    batch=8: {t8:7.1f} ms  ({t8/8:.1f} ms/img)")
+        print(f"    batch=1: {t1:7.1f} ms    batch=8: {t8:7.1f} ms  ({t8 / 8:.1f} ms/img)")
 
     # pyhesaff (CPU only, single image)
     for _ in range(n_warmup):
@@ -263,7 +290,7 @@ def benchmark_speed() -> None:
     for _ in range(n_runs):
         pyhesaff.detect_feats(str(img_path))
     t_pyh = (time.perf_counter() - t0) / n_runs * 1000
-    print(f"\n  pyhesaff [cpu] (single image, no batching)")
+    print("\n  pyhesaff [cpu] (single image, no batching)")
     print(f"    batch=1: {t_pyh:7.1f} ms")
 
 
