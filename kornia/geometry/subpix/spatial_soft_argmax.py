@@ -30,7 +30,7 @@ from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 from .dsnt import spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
 
-# Flat offsets for gathering the full 3×3×3 neighbourhood of a voxel.
+# Flat offsets for gathering the full 3x3x3 neighbourhood of a voxel.
 # Layout: patch[k] = inp[bc, d+dd, h+dh, w+dw]  where
 #   k = (dd+1)*9 + (dh+1)*3 + (dw+1),  center k=13.
 # Defined once at module level to avoid per-call allocation.
@@ -588,6 +588,15 @@ def _solve_cramer_sym3x3(
     All inputs are batched 1-D tensors of length N.
 
     Args:
+        dxx: diagonal Hessian element (d²/dx²).
+        dyy: diagonal Hessian element (d²/dy²).
+        dss: diagonal Hessian element (d²/ds²).
+        dxy: off-diagonal Hessian element (d²/dxdy).
+        dxs: off-diagonal Hessian element (d²/dxds).
+        dys: off-diagonal Hessian element (d²/dyds).
+        r0: right-hand side component along x.
+        r1: right-hand side component along y.
+        r2: right-hand side component along s.
         eps: determinant magnitude below which the system is treated as singular.
             Near-singular systems can produce numerically unstable (huge) shifts.
 
@@ -685,7 +694,7 @@ def iterative_quad_interp3d(
     if N == 0:
         return coords_max, y_max
 
-    # Pre-compute flat offsets for gathering a full 3×3×3 neighborhood in one shot.
+    # Pre-compute flat offsets for gathering a full 3x3x3 neighborhood in one shot.
     # Uses module-level _PATCH_DD/_PATCH_DH/_PATCH_DW constants (avoids per-call allocation).
     patch_offsets = _PATCH_DD.to(device) * HW + _PATCH_DH.to(device) * W + _PATCH_DW.to(device)  # (27,)
 
@@ -712,7 +721,7 @@ def iterative_quad_interp3d(
         h_s = h_cur.clamp(1, H - 2)
         w_s = w_cur.clamp(1, W - 2)
 
-        # Gather full 3×3×3 patch in a single vectorized op: (N, 27)
+        # Gather full 3x3x3 patch in a single vectorized op: (N, 27)
         patch = inp_flat[(bc_base + d_s * HW + h_s * W + w_s).unsqueeze(1) + patch_offsets.unsqueeze(0)]
 
         # Unpack patch neighbors by name.  Flat index: k = (dd+1)*9 + (dh+1)*3 + (dw+1)

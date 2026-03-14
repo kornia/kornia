@@ -111,7 +111,7 @@ class TestIterativeQuadInterp3dVsRefFormula:
         # Reference: apply the C++ formula to the numpy arrays
         resp_np = resp_t.cpu().float().numpy()[0, 0]  # (3, H, W)
         low_np, cur_np, high_np = resp_np[0], resp_np[1], resp_np[2]
-        h_peak, w_peak = int(round(cy)), int(round(cx))
+        h_peak, w_peak = round(cy), round(cx)
         ref_sx, ref_sy, ref_ss, valid = _localizeKeypoint_ref(low_np, cur_np, high_np, h_peak, w_peak)
         assert valid, "reference formula failed to solve"
 
@@ -145,7 +145,7 @@ class TestIterativeQuadInterp3dAccuracy:
 
         coords, _ = iterative_quad_interp3d(resp_t, strict_maxima_bonus=0)
         d_peak = 1
-        h_peak, w_peak = int(round(cy)), int(round(cx))
+        h_peak, w_peak = round(cy), round(cx)
         ours_x = coords[0, 0, 1, d_peak, h_peak, w_peak].item()
         ours_y = coords[0, 0, 2, d_peak, h_peak, w_peak].item()
 
@@ -167,7 +167,7 @@ class TestIterativeQuadInterp3dAccuracy:
         resp_t = _make_3d_gauss_response(19, 19, cx, cy, cs)
         coords, _ = iterative_quad_interp3d(resp_t, strict_maxima_bonus=0)
         d_peak = 1
-        h_peak, w_peak = int(round(cy)), int(round(cx))
+        h_peak, w_peak = round(cy), round(cx)
         ours_x = coords[0, 0, 1, d_peak, h_peak, w_peak].item()
         ours_y = coords[0, 0, 2, d_peak, h_peak, w_peak].item()
         assert abs(ours_x - cx) < 1e-3
@@ -189,7 +189,7 @@ class TestIterativeQuadInterp3dAccuracy:
         coords, _ = iterative_quad_interp3d(resp_t, strict_maxima_bonus=0)
         d_peak = 1
         for bx, by, _ in blobs:
-            h_int, w_int = int(round(by)), int(round(bx))
+            h_int, w_int = round(by), round(bx)
             ours_x = coords[0, 0, 1, d_peak, h_int, w_int].item()
             ours_y = coords[0, 0, 2, d_peak, h_int, w_int].item()
             assert abs(ours_x - bx) < 0.1, f"blob ({bx},{by}): x ours={ours_x:.3f}"
