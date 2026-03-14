@@ -30,6 +30,23 @@ from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 from .dsnt import spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
 
+# Flat offsets for gathering the full 3×3×3 neighbourhood of a voxel.
+# Layout: patch[k] = inp[bc, d+dd, h+dh, w+dw]  where
+#   k = (dd+1)*9 + (dh+1)*3 + (dw+1),  center k=13.
+# Defined once at module level to avoid per-call allocation.
+_PATCH_DD = torch.tensor(
+    [-1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    dtype=torch.long,
+)
+_PATCH_DH = torch.tensor(
+    [-1, -1, -1, 0, 0, 0, 1, 1, 1, -1, -1, -1, 0, 0, 0, 1, 1, 1, -1, -1, -1, 0, 0, 0, 1, 1, 1],
+    dtype=torch.long,
+)
+_PATCH_DW = torch.tensor(
+    [-1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1],
+    dtype=torch.long,
+)
+
 
 def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> torch.Tensor:
     r"""Generate a kernel to with window coordinates, residual to window center.
@@ -563,22 +580,28 @@ def _solve_cramer_sym3x3(
     r0: torch.Tensor,
     r1: torch.Tensor,
     r2: torch.Tensor,
+    eps: float = 1e-7,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Solve H * [sx, sy, ss]^T = [r0, r1, r2]^T via Cramer's rule.
 
     H is symmetric: H = [[dxx, dxy, dxs], [dxy, dyy, dys], [dxs, dys, dss]].
     All inputs are batched 1-D tensors of length N.
 
+    Args:
+        eps: determinant magnitude below which the system is treated as singular.
+            Near-singular systems can produce numerically unstable (huge) shifts.
+
     Returns:
-        (sx, sy, ss, solved) where ``solved`` is a bool mask for non-singular systems.
-        Entries where ``solved`` is False are set to zero.
+        (sx, sy, ss, solved) where ``solved`` is a bool mask for well-conditioned
+        systems (``|det| > eps``).  Outputs for unsolved entries are numerically
+        meaningless and should be discarded by the caller.
     """
     cf00 = dyy * dss - dys * dys  # cofactor M00
     cf01 = dxy * dss - dys * dxs  # cofactor M01
     cf02 = dxy * dys - dyy * dxs  # cofactor M02
     det = dxx * cf00 - dxy * cf01 + dxs * cf02
-    solved = det.abs() > 0.0
-    # Avoid division by zero for singular cases; results are discarded via the solved mask.
+    solved = det.abs() > eps
+    # Avoid division by zero for singular/near-singular cases; outputs are discarded via solved.
     safe_det = torch.where(solved, det, torch.ones_like(det))
     sx = (r0 * cf00 - dxy * (r1 * dss - dys * r2) + dxs * (r1 * dys - dyy * r2)) / safe_det
     sy = (dxx * (r1 * dss - dys * r2) - r0 * cf01 + dxs * (dxy * r2 - r1 * dxs)) / safe_det
@@ -650,7 +673,7 @@ def iterative_quad_interp3d(
         return coords_max, y_max
 
     # Flatten B and C into a single leading dimension for indexing convenience.
-    inp = input.view(B * C, D, H, W)
+    inp = input.reshape(B * C, D, H, W)
     DHW = D * H * W
     HW = H * W
 
@@ -663,24 +686,8 @@ def iterative_quad_interp3d(
         return coords_max, y_max
 
     # Pre-compute flat offsets for gathering a full 3×3×3 neighborhood in one shot.
-    # Layout: patch[k] = inp[bc, d+dd, h+dh, w+dw] where
-    #   k = (dd+1)*9 + (dh+1)*3 + (dw+1), center k=13.
-    _dd = torch.tensor(
-        [-1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-        device=device,
-        dtype=torch.long,
-    )
-    _dh = torch.tensor(
-        [-1, -1, -1, 0, 0, 0, 1, 1, 1, -1, -1, -1, 0, 0, 0, 1, 1, 1, -1, -1, -1, 0, 0, 0, 1, 1, 1],
-        device=device,
-        dtype=torch.long,
-    )
-    _dw = torch.tensor(
-        [-1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1],
-        device=device,
-        dtype=torch.long,
-    )
-    patch_offsets = _dd * HW + _dh * W + _dw  # (27,)
+    # Uses module-level _PATCH_DD/_PATCH_DH/_PATCH_DW constants (avoids per-call allocation).
+    patch_offsets = _PATCH_DD.to(device) * HW + _PATCH_DH.to(device) * W + _PATCH_DW.to(device)  # (27,)
 
     # Integer center positions — updated across iterations.
     d_cur = d_idx.clone()
@@ -912,6 +919,7 @@ def conv_quad_interp3d(
         b_nms[:, 0],
         b_nms[:, 1],
         b_nms[:, 2],
+        eps=eps,
     )
     x_solved_masked = torch.stack([sx, sy, ss], dim=-1).unsqueeze(-1)  # (N_nms, 3, 1)
 
