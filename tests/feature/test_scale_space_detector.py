@@ -46,8 +46,8 @@ class TestScaleSpaceDetector(BaseTester):
         n_feats = 1
         det = ScaleSpaceDetector(n_feats, resp_module=kornia.feature.BlobHessian(), mr_size=3.0).to(device, dtype)
         lafs, resps = det(inp)
-        expected_laf = torch.tensor([[[[9.5823, 0.0000, 16.0], [0.0, 9.5823, 16.0]]]], device=device, dtype=dtype)
-        expected_resp = torch.tensor([[0.0857]], device=device, dtype=dtype)
+        expected_laf = torch.tensor([[[[8.4819, 0.0000, 16.0], [0.0, 8.4819, 16.0]]]], device=device, dtype=dtype)
+        expected_resp = torch.tensor([[10.1159]], device=device, dtype=dtype)
         self.assert_close(lafs, expected_laf, rtol=0.001, atol=1e-03)
         self.assert_close(resps, expected_resp, rtol=0.001, atol=1e-03)
 
@@ -61,8 +61,8 @@ class TestScaleSpaceDetector(BaseTester):
         n_feats = 1
         det = ScaleSpaceDetector(n_feats, resp_module=kornia.feature.BlobHessian(), mr_size=3.0).to(device, dtype)
         lafs, resps = det(inp, mask)
-        expected_laf = torch.tensor([[[[9.5823, 0.0000, 16.0], [0.0, 9.5823, 16.0]]]], device=device, dtype=dtype)
-        expected_resp = torch.tensor([[0.0857]], device=device, dtype=dtype)
+        expected_laf = torch.tensor([[[[8.4819, 0.0000, 16.0], [0.0, 8.4819, 16.0]]]], device=device, dtype=dtype)
+        expected_resp = torch.tensor([[10.1159]], device=device, dtype=dtype)
         self.assert_close(lafs, expected_laf, rtol=0.001, atol=1e-03)
         self.assert_close(resps, expected_resp, rtol=0.001, atol=1e-03)
 
