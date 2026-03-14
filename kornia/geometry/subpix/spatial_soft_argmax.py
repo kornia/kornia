@@ -708,23 +708,43 @@ def iterative_quad_interp3d(
         # Gather full 3×3×3 patch in a single vectorized op: (N, 27)
         patch = inp_flat[(bc_base + d_s * HW + h_s * W + w_s).unsqueeze(1) + patch_offsets.unsqueeze(0)]
 
-        # Extract named neighbors (patch layout: k = (dd+1)*9 + (dh+1)*3 + (dw+1))
-        # center = k13, neighbors for finite differences:
-        p = patch  # alias for brevity
-        c000 = p[:, 13]
+        # Unpack patch neighbors by name.  Flat index: k = (dd+1)*9 + (dh+1)*3 + (dw+1)
+        # where dd/dh/dw are the offsets in scale/height/width, each in {-1, 0, +1}.
+        # Naming convention: xm/xp = width-1/+1, ym/yp = height-1/+1, sm/sp = scale-1/+1.
+        c000 = patch[:, 13]  # center (dd=0, dh=0, dw=0)
+        # axis neighbors
+        p_xm  = patch[:, 12]  # (dd= 0, dh= 0, dw=-1)
+        p_xp  = patch[:, 14]  # (dd= 0, dh= 0, dw=+1)
+        p_ym  = patch[:, 10]  # (dd= 0, dh=-1, dw= 0)
+        p_yp  = patch[:, 16]  # (dd= 0, dh=+1, dw= 0)
+        p_sm  = patch[:,  4]  # (dd=-1, dh= 0, dw= 0)
+        p_sp  = patch[:, 22]  # (dd=+1, dh= 0, dw= 0)
+        # diagonal neighbors used for mixed partials
+        p_xm_ym = patch[:,  9]  # (dd= 0, dh=-1, dw=-1)
+        p_xp_ym = patch[:, 11]  # (dd= 0, dh=-1, dw=+1)
+        p_xm_yp = patch[:, 15]  # (dd= 0, dh=+1, dw=-1)
+        p_xp_yp = patch[:, 17]  # (dd= 0, dh=+1, dw=+1)
+        p_xm_sm = patch[:,  3]  # (dd=-1, dh= 0, dw=-1)
+        p_xp_sm = patch[:,  5]  # (dd=-1, dh= 0, dw=+1)
+        p_xm_sp = patch[:, 21]  # (dd=+1, dh= 0, dw=-1)
+        p_xp_sp = patch[:, 23]  # (dd=+1, dh= 0, dw=+1)
+        p_ym_sm = patch[:,  1]  # (dd=-1, dh=-1, dw= 0)
+        p_yp_sm = patch[:,  7]  # (dd=-1, dh=+1, dw= 0)
+        p_ym_sp = patch[:, 19]  # (dd=+1, dh=-1, dw= 0)
+        p_yp_sp = patch[:, 25]  # (dd=+1, dh=+1, dw= 0)
 
         # First-order finite differences (0.5 * (next - prev)), matches C++ convention.
-        gx = 0.5 * (p[:, 14] - p[:, 12])  # x/width:  dw=+1 vs dw=-1, center slice
-        gy = 0.5 * (p[:, 16] - p[:, 10])  # y/height: dh=+1 vs dh=-1, center slice
-        gs = 0.5 * (p[:, 22] - p[:, 4])  # scale:    dd=+1 vs dd=-1, center patch
+        gx = 0.5 * (p_xp - p_xm)  # x/width direction
+        gy = 0.5 * (p_yp - p_ym)  # y/height direction
+        gs = 0.5 * (p_sp - p_sm)  # scale direction
 
         # Second-order finite differences.
-        dxx = p[:, 14] - 2.0 * c000 + p[:, 12]
-        dyy = p[:, 16] - 2.0 * c000 + p[:, 10]
-        dss = p[:, 22] - 2.0 * c000 + p[:, 4]
-        dxy = 0.25 * (p[:, 17] - p[:, 15] - p[:, 11] + p[:, 9])
-        dxs = 0.25 * (p[:, 23] - p[:, 21] - p[:, 5] + p[:, 3])
-        dys = 0.25 * (p[:, 25] - p[:, 19] - p[:, 7] + p[:, 1])
+        dxx = p_xp - 2.0 * c000 + p_xm
+        dyy = p_yp - 2.0 * c000 + p_ym
+        dss = p_sp - 2.0 * c000 + p_sm
+        dxy = 0.25 * (p_xp_yp - p_xm_yp - p_xp_ym + p_xm_ym)
+        dxs = 0.25 * (p_xp_sp - p_xm_sp - p_xp_sm + p_xm_sm)
+        dys = 0.25 * (p_yp_sp - p_ym_sp - p_yp_sm + p_ym_sm)
 
         sx, sy, ss, solved = _solve_cramer_sym3x3(dxx, dyy, dss, dxy, dxs, dys, -gx, -gy, -gs)
         # Use non-inplace ops so that tensors saved by torch.where for autograd are not mutated.
