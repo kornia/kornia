@@ -35,7 +35,6 @@ import torch
 from kornia.geometry.subpix.nms import nms3d
 from kornia.geometry.subpix.spatial_soft_argmax import iterative_quad_interp3d
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -54,9 +53,7 @@ def _make_3d_gauss_response(
     xx, yy = np.meshgrid(xs, ys)
     resp = np.zeros((3, H, W), dtype=np.float32)
     for d in range(3):
-        resp[d] = np.exp(
-            -((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma_xy**2) - (d - cs) ** 2 / (2 * sigma_s**2)
-        )
+        resp[d] = np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma_xy**2) - (d - cs) ** 2 / (2 * sigma_s**2))
     return torch.from_numpy(resp).unsqueeze(0).unsqueeze(0)
 
 
@@ -186,9 +183,7 @@ class TestIterativeQuadInterp3dAccuracy:
         xx, yy = np.meshgrid(xs, ys)
         for bx, by, bs in blobs:
             for d in range(3):
-                resp_np[d] += np.exp(
-                    -((xx - bx) ** 2 + (yy - by) ** 2) / (2 * 1.5**2) - (d - bs) ** 2 / (2 * 1.0**2)
-                )
+                resp_np[d] += np.exp(-((xx - bx) ** 2 + (yy - by) ** 2) / (2 * 1.5**2) - (d - bs) ** 2 / (2 * 1.0**2))
         resp_t = torch.from_numpy(resp_np).unsqueeze(0).unsqueeze(0)
 
         coords, _ = iterative_quad_interp3d(resp_t, strict_maxima_bonus=0)
