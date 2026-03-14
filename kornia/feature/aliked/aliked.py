@@ -56,7 +56,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -156,6 +156,49 @@ def simple_nms(scores: torch.Tensor, nms_radius: int) -> torch.Tensor:
 
 
 # ---------------------------------------------------------------------------
+# LAF helpers
+# ---------------------------------------------------------------------------
+
+
+def _affine_from_cov(cov: torch.Tensor) -> torch.Tensor:
+    """Build a 2x2 affine matrix from a batch of 2x2 covariance matrices.
+
+    The affine is ``U @ diag(sqrt(eigenvalues))``, where ``U`` contains the
+    orthonormal eigenvectors of ``cov`` as *columns*.  This gives an ellipse
+    whose axes align with the principal directions of the covariance.
+
+    Args:
+        cov: symmetric positive-semi-definite matrices ``(N, 2, 2)``.
+
+    Returns:
+        Affine matrices ``(N, 2, 2)``.
+    """
+    # eigh returns eigenvalues sorted ascending; columns of eigenvectors are evecs.
+    eigenvalues, eigenvectors = torch.linalg.eigh(cov)
+    scales = eigenvalues.clamp(min=1e-8).sqrt()  # (N, 2)
+    # Each column of eigenvectors multiplied by the corresponding scale.
+    return eigenvectors * scales[:, None, :]  # (N, 2, 2)
+
+
+def _laf_from_kpts_and_affine(
+    keypoints_px: torch.Tensor,
+    affine: torch.Tensor,
+) -> torch.Tensor:
+    """Assemble a ``(N, 2, 3)`` LAF from pixel keypoints and 2x2 affine matrices.
+
+    Args:
+        keypoints_px: ``(N, 2)`` pixel coordinates ``[x, y]``.
+        affine: ``(N, 2, 2)`` affine (rotation+scale) part of the LAF.
+
+    Returns:
+        LAF tensor ``(N, 2, 3)`` following the kornia convention
+        ``[[a, b, cx], [c, d, cy]]``.
+    """
+    centers = keypoints_px.unsqueeze(-1)  # (N, 2, 1)
+    return torch.cat([affine, centers], dim=-1)  # (N, 2, 3)
+
+
+# ---------------------------------------------------------------------------
 # Differentiable Keypoint Detection (DKD)
 # ---------------------------------------------------------------------------
 
@@ -197,7 +240,8 @@ class DKD(nn.Module):
         scores_map: torch.Tensor,
         sub_pixel: bool = True,
         image_size: Optional[torch.Tensor] = None,
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
+        return_affine: bool = False,
+    ) -> tuple[list[torch.Tensor], ...]:
         """Detect keypoints from a score map.
 
         Args:
@@ -205,10 +249,15 @@ class DKD(nn.Module):
             sub_pixel: whether to apply soft-argmax sub-pixel refinement.
             image_size: optional ``(B, 2)`` tensor of valid image sizes ``(W, H)``
                 for border masking.
+            return_affine: if ``True``, also return per-keypoint 2x2 local affine
+                matrices estimated from the soft-argmax weight covariance.
 
         Returns:
-            A 3-tuple of lists of length B: ``(keypoints, keypoint_scores, score_dispersities)``.
+            A 3-tuple ``(keypoints, keypoint_scores, score_dispersities)`` — or a
+            4-tuple ``(..., local_affines)`` when ``return_affine=True``.
             Each ``keypoints[i]`` is ``(N_i, 2)`` normalised to ``[-1, 1]``.
+            Each ``local_affines[i]`` is ``(N_i, 2, 2)`` (only when ``sub_pixel=True``
+            and ``return_affine=True``; otherwise identity matrices are returned).
         """
         b, _c, h, w = scores_map.shape
         scores_nograd = scores_map.detach()
@@ -255,6 +304,7 @@ class DKD(nn.Module):
         keypoints = []
         scoredispersitys = []
         kptscores = []
+        local_affines: list[torch.Tensor] = []
         if sub_pixel:
             patches = self.unfold(scores_map)  # B x (kernel**2) x (H*W)
             for b_idx in range(b):
@@ -268,8 +318,9 @@ class DKD(nn.Module):
 
                 max_v = patch_scores.max(dim=1).values.detach()[:, None]
                 x_exp = ((patch_scores - max_v) / self.temperature).exp()
+                x_sum = x_exp.sum(dim=1, keepdim=True)
 
-                xy_residual = x_exp @ self.hw_grid / x_exp.sum(dim=1)[:, None]  # type: ignore[operator]
+                xy_residual = x_exp @ self.hw_grid / x_sum  # type: ignore[operator]
 
                 hw_grid_dist2 = (
                     torch.norm(
@@ -293,6 +344,15 @@ class DKD(nn.Module):
                 keypoints.append(keypoints_xy)
                 scoredispersitys.append(scoredispersity)
                 kptscores.append(kptscore)
+
+                if return_affine:
+                    # Weighted covariance of hw_grid positions under soft-argmax weights.
+                    # w_i = x_exp_i / sum(x_exp), mu = xy_residual (already computed).
+                    # cov = sum_i w_i (g_i - mu)(g_i - mu)^T  ->  (N, 2, 2)
+                    W = x_exp / x_sum  # (N, K²) normalised weights
+                    delta = self.hw_grid[None] - xy_residual[:, None]  # type: ignore[index]  # (N, K², 2)
+                    cov = torch.einsum("ni,nij,nik->njk", W, delta, delta)  # (N, 2, 2)
+                    local_affines.append(_affine_from_cov(cov))
         else:
             for b_idx in range(b):
                 indices_kpt = indices_keypoints[b_idx]
@@ -310,7 +370,15 @@ class DKD(nn.Module):
                 keypoints.append(keypoints_xy)
                 scoredispersitys.append(kptscore)
                 kptscores.append(kptscore)
+                if return_affine:
+                    # No soft-argmax weights available; fall back to identity.
+                    N_i = keypoints_xy.shape[0]
+                    local_affines.append(
+                        torch.eye(2, device=scores_map.device, dtype=scores_map.dtype).unsqueeze(0).expand(N_i, -1, -1)
+                    )
 
+        if return_affine:
+            return keypoints, kptscores, scoredispersitys, local_affines
         return keypoints, kptscores, scoredispersitys
 
 
@@ -812,6 +880,73 @@ class ALIKED(nn.Module):
             kps_px = wh * (keypoints[i] + 1) / 2.0
             results.append(ALIKEDFeatures(kps_px, descriptors[i], kptscores[i]))
         return results
+
+    def forward_laf(
+        self,
+        img: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Detect and describe local features, returning results in kornia LAF format.
+
+        Local Affine Frames are estimated from the soft-argmax weight covariance
+        computed inside :class:`DKD`: the 2x2 affine matrix captures the dominant
+        orientation and scale of each detected keypoint without any additional
+        network parameters.
+
+        All per-image tensors are zero-padded along the keypoint dimension so
+        that the outputs are proper batched tensors.
+
+        Args:
+            img: image to extract features with shape :math:`(B,C,H,W)`.
+            mask: optional spatial mask ``(B, 1, H, W)`` with values in
+                ``[0, 1]``; the score map is multiplied by this mask before
+                keypoint detection so that features are suppressed in masked
+                regions.
+
+        Returns:
+            - Detected local affine frames with shape :math:`(B,N,2,3)`.
+            - Response function values for corresponding LAFs with shape :math:`(B,N,1)`.
+            - Local descriptors of shape :math:`(B,N,D)`.
+
+        """
+        if img.shape[1] == 1:
+            img = grayscale_to_rgb(img)
+
+        feature_map, score_map = self.extract_dense_map(img)
+
+        if mask is not None:
+            # Resize mask to score map resolution and apply.
+            mask_rs = F.interpolate(mask.float(), size=score_map.shape[-2:], mode="bilinear", align_corners=True)
+            score_map = score_map * mask_rs
+
+        dkd_out = self.dkd(score_map, return_affine=True)
+        keypoints, kptscores, _scoredispersitys, local_affines = dkd_out  # type: ignore[misc]
+        descriptors, _offsets = self.desc_head(feature_map, keypoints)
+
+        B, _, H, W = img.shape
+        wh = torch.tensor([W - 1, H - 1], device=img.device, dtype=img.dtype)
+
+        lafs_list: list[torch.Tensor] = []
+        for i in range(B):
+            kps_px = wh * (keypoints[i] + 1) / 2.0  # (N, 2)
+            laf_i = _laf_from_kpts_and_affine(kps_px, local_affines[i])  # (N, 2, 3)
+            lafs_list.append(laf_i)
+
+        # Pad to the maximum number of keypoints in the batch.
+        n_max = max(laf.shape[0] for laf in lafs_list) if lafs_list else 0
+
+        def _pad(t: torch.Tensor, n: int, fill: float = 0.0) -> torch.Tensor:
+            pad_n = n - t.shape[0]
+            if pad_n == 0:
+                return t
+            pad_shape = (pad_n,) + t.shape[1:]
+            return torch.cat([t, t.new_full(pad_shape, fill)], dim=0)
+
+        lafs = torch.stack([_pad(laf, n_max) for laf in lafs_list])  # (B, N, 2, 3)
+        responses = torch.stack([_pad(s, n_max).unsqueeze(-1) for s in kptscores])  # (B, N, 1)
+        descs = torch.stack([_pad(d, n_max) for d in descriptors])  # (B, N, D)
+
+        return lafs, responses, descs
 
     @classmethod
     def from_pretrained(

@@ -111,7 +111,7 @@ class TestDeformConv2d:
 
         x = torch.randn(B, C_in, H, W, device=device, requires_grad=True)
         weight = torch.randn(C_out, C_in, kH, kW, device=device, requires_grad=True)
-        offset = torch.randn(B, 2 * K, H, W, device=device, requires_grad=True) * 0.1
+        offset = (torch.randn(B, 2 * K, H, W, device=device) * 0.1).requires_grad_(True)
 
         out = deform_conv2d(x, offset, weight, padding=1)
         out.sum().backward()
@@ -215,9 +215,91 @@ class TestALIKED(BaseTester):
     def test_gradcheck(self, device):
         """Gradients should flow through ALIKED."""
         aliked = ALIKED(model_name="aliked-t16").to(device, torch.float64)
-        inp = torch.rand(1, 3, 32, 32, device=device, dtype=torch.float64, requires_grad=True)
+        # 64x64 minimum: pool2 -> 32, pool4 -> 8, pool4 -> 2 (BatchNorm needs > 1)
+        inp = torch.rand(1, 3, 64, 64, device=device, dtype=torch.float64, requires_grad=True)
         output = aliked(inp)
         if output[0].n > 0:
             loss = output[0].keypoints.sum() + output[0].descriptors.sum()
             loss.backward()
             assert inp.grad is not None
+
+
+# ---------------------------------------------------------------------------
+# forward_laf tests
+# ---------------------------------------------------------------------------
+
+
+class TestALIKEDForwardLAF(BaseTester):
+    """Tests for ALIKED.forward_laf returning kornia LAF-format outputs."""
+
+    def test_smoke(self, device, dtype):
+        """forward_laf should return the three expected tensors."""
+        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=32).to(device, dtype)
+        inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        lafs, responses, descs = aliked.forward_laf(inp)
+        assert lafs.ndim == 4  # (B, N, 2, 3)
+        assert responses.ndim == 3  # (B, N, 1)
+        assert descs.ndim == 3  # (B, N, D)
+
+    def test_output_shapes(self, device, dtype):
+        """Shapes should be (B, N, 2, 3), (B, N, 1), (B, N, D)."""
+        B, H, W = 2, 64, 64
+        top_k = 20
+        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=top_k).to(device, dtype)
+        inp = torch.rand(B, 3, H, W, device=device, dtype=dtype)
+        lafs, responses, descs = aliked.forward_laf(inp)
+        N = lafs.shape[1]
+        assert lafs.shape == (B, N, 2, 3)
+        assert responses.shape == (B, N, 1)
+        assert descs.shape[0] == B
+        assert descs.shape[1] == N
+
+    def test_laf_center_in_image(self, device, dtype):
+        """LAF centres (col 2) should lie within image bounds."""
+        H, W = 64, 64
+        top_k = 30
+        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=top_k).to(device, dtype)
+        inp = torch.rand(1, 3, H, W, device=device, dtype=dtype)
+        lafs, responses, _ = aliked.forward_laf(inp)
+        # Only check keypoints with positive response (non-padding).
+        valid = responses[0, :, 0] > 0
+        if valid.any():
+            centers = lafs[0, valid, :, 2]  # (N_valid, 2) — [x, y]
+            assert (centers[:, 0] >= 0).all()
+            assert (centers[:, 0] <= W - 1).all()
+            assert (centers[:, 1] >= 0).all()
+            assert (centers[:, 1] <= H - 1).all()
+
+    def test_batch_padding(self, device, dtype):
+        """All images in the batch should share the same N (padded to max)."""
+        B = 3
+        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=25).to(device, dtype)
+        inp = torch.rand(B, 3, 64, 64, device=device, dtype=dtype)
+        lafs, responses, descs = aliked.forward_laf(inp)
+        assert lafs.shape[0] == B
+        assert responses.shape[0] == B
+        assert descs.shape[0] == B
+
+    def test_laf_with_mask(self, device, dtype):
+        """Providing a mask should suppress keypoints in the masked region."""
+        H, W = 64, 64
+        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=40).to(device, dtype)
+        inp = torch.rand(1, 3, H, W, device=device, dtype=dtype)
+        # Suppress the entire image except the bottom-right quarter.
+        mask = torch.zeros(1, 1, H, W, device=device, dtype=dtype)
+        mask[:, :, H // 2 :, W // 2 :] = 1.0
+        lafs_masked, _, _ = aliked.forward_laf(inp, mask=mask)
+        assert lafs_masked.shape[0] == 1
+
+    def test_laf_affine_shape(self, device, dtype):
+        """The 2x2 affine part of each LAF should be non-degenerate for valid kpts."""
+        top_k = 20
+        aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=top_k).to(device, dtype)
+        inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        lafs, responses, _ = aliked.forward_laf(inp)
+        valid = responses[0, :, 0] > 0
+        if valid.any():
+            A = lafs[0, valid, :, :2]  # (N_valid, 2, 2)
+            # det(A) should be non-zero (non-degenerate)
+            dets = torch.det(A)
+            assert (dets.abs() > 1e-6).all()
