@@ -77,10 +77,6 @@ class Quaternion(nn.Module):
     _data: Union[torch.Tensor, nn.Parameter]
 
     def __init__(self, data: Union[torch.Tensor, nn.Parameter]) -> None:
-        super().__init__()
-
-        """Construct a quaternion..."""
-
         """Construct a quaternion from torch.Tensor or parameter data.
 
         Args:
@@ -95,6 +91,7 @@ class Quaternion(nn.Module):
             >>> q2 = Quaternion(param_data)
 
         """
+        super().__init__()
 
         if not isinstance(data, (torch.Tensor, nn.Parameter)):
             raise TypeError(f"Expected torch.Tensor or nn.Parameter, got {type(data)}")
