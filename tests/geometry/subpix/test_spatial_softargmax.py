@@ -665,7 +665,7 @@ class TestIterativeQuadInterp3d(BaseTester):
         # A clear peak at scale=1, h=2, w=2 should return coords close to (1, 2, 2).
         sample = torch.zeros(1, 1, 3, 5, 5, device=device, dtype=dtype)
         sample[0, 0, 1, 2, 2] = 10.0
-        coord, val = iterative_quad_interp3d(sample, strict_maxima_bonus=0)
+        coord, _val = iterative_quad_interp3d(sample, strict_maxima_bonus=0)
         # coords_max layout: dim2 = [scale, x(width), y(height)]
         assert coord[0, 0, 0, 1, 2, 2].item() == pytest.approx(1.0, abs=1e-3)  # scale
         assert coord[0, 0, 1, 1, 2, 2].item() == pytest.approx(2.0, abs=1e-3)  # x
