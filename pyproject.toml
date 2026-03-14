@@ -90,7 +90,7 @@ exclude = ["**/*.md"]  # Exclude markdown files from wheel
 include = ["kornia/", "LICENSE", "README.md"]
 
 [tool.codespell]
-ignore-words-list = "ans,hist,laf,cofusion,nd"
+ignore-words-list = "ans,hist,laf,cofusion"
 skip = "*.bib,*.ipynb"
 
 [tool.ruff]

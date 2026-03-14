@@ -681,7 +681,7 @@ class SDDH(nn.Module):
             features = torch.selu_(self.sf_conv(features)).squeeze(-1)  # [N_kpts, C, n_pos]
 
             if not self.conv2d:
-                descs = torch.einsum("ncp,pcd->nd", features, self.agg_weights)
+                descs = torch.einsum("ncp,pcd->nd", features, self.agg_weights)  # codespell:ignore
             else:
                 features = features.reshape(N_kpts, -1)[:, :, None, None]
                 descs = self.convM(features).squeeze(-1).squeeze(-1)
