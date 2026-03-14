@@ -23,14 +23,29 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core._compat import torch_version_ge
-from kornia.core.utils import safe_solve_with_mask
 from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
 from .dsnt import spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
+
+# Flat offsets for gathering the full 3x3x3 neighbourhood of a voxel.
+# Layout: patch[k] = inp[bc, d+dd, h+dh, w+dw]  where
+#   k = (dd+1)*9 + (dh+1)*3 + (dw+1),  center k=13.
+# Defined once at module level to avoid per-call allocation.
+_PATCH_DD = torch.tensor(
+    [-1, -1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    dtype=torch.long,
+)
+_PATCH_DH = torch.tensor(
+    [-1, -1, -1, 0, 0, 0, 1, 1, 1, -1, -1, -1, 0, 0, 0, 1, 1, 1, -1, -1, -1, 0, 0, 0, 1, 1, 1],
+    dtype=torch.long,
+)
+_PATCH_DW = torch.tensor(
+    [-1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1, -1, 0, 1],
+    dtype=torch.long,
+)
 
 
 def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> torch.Tensor:
@@ -555,6 +570,291 @@ class SpatialSoftArgmax2d(nn.Module):
         return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates)
 
 
+def _solve_cramer_sym3x3(
+    dxx: torch.Tensor,
+    dyy: torch.Tensor,
+    dss: torch.Tensor,
+    dxy: torch.Tensor,
+    dxs: torch.Tensor,
+    dys: torch.Tensor,
+    r0: torch.Tensor,
+    r1: torch.Tensor,
+    r2: torch.Tensor,
+    eps: float = 1e-7,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Solve H * [sx, sy, ss]^T = [r0, r1, r2]^T via Cramer's rule.
+
+    H is symmetric: H = [[dxx, dxy, dxs], [dxy, dyy, dys], [dxs, dys, dss]].
+    All inputs are batched 1-D tensors of length N.
+
+    Args:
+        dxx: diagonal Hessian element (d²/dx²).
+        dyy: diagonal Hessian element (d²/dy²).
+        dss: diagonal Hessian element (d²/ds²).
+        dxy: off-diagonal Hessian element (d²/dxdy).
+        dxs: off-diagonal Hessian element (d²/dxds).
+        dys: off-diagonal Hessian element (d²/dyds).
+        r0: right-hand side component along x.
+        r1: right-hand side component along y.
+        r2: right-hand side component along s.
+        eps: determinant magnitude below which the system is treated as singular.
+            Near-singular systems can produce numerically unstable (huge) shifts.
+
+    Returns:
+        (sx, sy, ss, solved) where ``solved`` is a bool mask for well-conditioned
+        systems (``|det| > eps``).  Outputs for unsolved entries are numerically
+        meaningless and should be discarded by the caller.
+    """
+    cf00 = dyy * dss - dys * dys  # cofactor M00
+    cf01 = dxy * dss - dys * dxs  # cofactor M01
+    cf02 = dxy * dys - dyy * dxs  # cofactor M02
+    det = dxx * cf00 - dxy * cf01 + dxs * cf02
+    solved = det.abs() > eps
+    # Avoid division by zero for singular/near-singular cases; outputs are discarded via solved.
+    safe_det = torch.where(solved, det, torch.ones_like(det))
+    sx = (r0 * cf00 - dxy * (r1 * dss - dys * r2) + dxs * (r1 * dys - dyy * r2)) / safe_det
+    sy = (dxx * (r1 * dss - dys * r2) - r0 * cf01 + dxs * (dxy * r2 - r1 * dxs)) / safe_det
+    ss = (dxx * (dyy * r2 - r1 * dys) - dxy * (dxy * r2 - r1 * dxs) + r0 * cf02) / safe_det
+    return sx, sy, ss, solved
+
+
+def iterative_quad_interp3d(
+    input: torch.Tensor,
+    n_iters: int = 5,
+    strict_maxima_bonus: float = 10.0,
+    max_subpixel_shift: float = 0.6,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    r"""Iterative subpixel localization of 3D extrema via quadratic interpolation.
+
+    Unlike :func:`conv_quad_interp3d`, which performs a single-pass sliding-window
+    solve using spatial gradient convolutions, this function explicitly extracts the
+    :math:`3 \times 3 \times 3` patch at each NMS maximum and iterates up to
+    ``n_iters`` times. When the estimated subpixel shift along any spatial or scale
+    axis exceeds ``max_subpixel_shift`` the integer center is moved one step in that
+    direction and the solve is repeated—matching the localization loop from the
+    HessAff / SIFT family of detectors.
+
+    Args:
+        input: response pyramid with shape :math:`(B, C, D, H, W)`.
+        n_iters: maximum number of localization iterations per keypoint.
+        strict_maxima_bonus: value added to ``y_max`` at NMS-maximum positions so
+            that strict maxima are preferred when selecting the top-K keypoints.
+        max_subpixel_shift: if the estimated shift along any axis is larger than this
+            threshold the integer center is displaced and another iteration is run.
+
+    Returns:
+        A tuple ``(coords_max, y_max)`` where
+
+        * ``coords_max`` has shape :math:`(B, C, 3, D, H, W)` and stores the refined
+          coordinates ``[scale, x, y]`` for every position in the input.
+          Non-NMS positions keep their original grid coordinates.
+        * ``y_max`` has shape :math:`(B, C, D, H, W)` and stores the quadratically
+          corrected response values (with the optional strict-maxima bonus added).
+
+    Example:
+        >>> input = torch.randn(2, 3, 3, 8, 8)
+        >>> coords, vals = iterative_quad_interp3d(input, n_iters=5)
+        >>> coords.shape
+        torch.Size([2, 3, 3, 3, 8, 8])
+        >>> vals.shape
+        torch.Size([2, 3, 3, 8, 8])
+
+    """
+    if not torch.is_tensor(input):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if input.ndim != 5:
+        raise ValueError(f"Invalid input shape, expected BxCxDxHxW. Got: {input.shape}")
+
+    B, C, D, H, W = input.shape
+    device = input.device
+    dtype = input.dtype
+
+    # Build coords_max with the same coordinate ordering as conv_quad_interp3d:
+    # dim-2: [scale(z), x(width), y(height)].
+    # Use empty + broadcast-fill: 23x faster than expand(...).clone() on large tensors.
+    coords_max = torch.empty(B, C, 3, D, H, W, device=device, dtype=dtype)
+    coords_max[:, :, 0] = torch.arange(D, device=device, dtype=dtype).view(D, 1, 1)
+    coords_max[:, :, 1] = torch.arange(W, device=device, dtype=dtype).view(1, 1, W)
+    coords_max[:, :, 2] = torch.arange(H, device=device, dtype=dtype).view(1, H, 1)
+    y_max = input.clone()
+
+    if D < 3 or H < 3 or W < 3:
+        return coords_max, y_max
+
+    # Flatten B and C into a single leading dimension for indexing convenience.
+    inp = input.reshape(B * C, D, H, W)
+    DHW = D * H * W
+    HW = H * W
+
+    nms_mask = nms3d(input, (3, 3, 3), True)  # (B, C, D, H, W) bool
+    nms_flat = nms_mask.view(B * C, D, H, W)
+
+    bc_idx, d_idx, h_idx, w_idx = torch.where(nms_flat)
+    N = bc_idx.shape[0]
+    if N == 0:
+        return coords_max, y_max
+
+    # Pre-compute flat offsets for gathering a full 3x3x3 neighborhood in one shot.
+    # Uses module-level _PATCH_DD/_PATCH_DH/_PATCH_DW constants (avoids per-call allocation).
+    patch_offsets = _PATCH_DD.to(device) * HW + _PATCH_DH.to(device) * W + _PATCH_DW.to(device)  # (27,)
+
+    # Integer center positions — updated across iterations.
+    d_cur = d_idx.clone()
+    h_cur = h_idx.clone()
+    w_cur = w_idx.clone()
+
+    # Track which keypoints remain valid (in bounds, system solvable).
+    valid = torch.ones(N, dtype=torch.bool, device=device)
+
+    # Final subpixel offsets relative to the (possibly moved) integer center.
+    shift_x = torch.zeros(N, device=device, dtype=dtype)
+    shift_y = torch.zeros(N, device=device, dtype=dtype)
+    shift_s = torch.zeros(N, device=device, dtype=dtype)
+    grad_dot_shift = torch.zeros(N, device=device, dtype=dtype)
+
+    inp_flat = inp.reshape(-1)  # flat view for gather indexing
+    bc_base = bc_idx * DHW  # per-keypoint base offset (constant across iterations)
+
+    for _ in range(n_iters):
+        # Clamp so we can always safely access ±1 neighbours.
+        d_s = d_cur.clamp(1, D - 2)
+        h_s = h_cur.clamp(1, H - 2)
+        w_s = w_cur.clamp(1, W - 2)
+
+        # Gather full 3x3x3 patch in a single vectorized op: (N, 27)
+        patch = inp_flat[(bc_base + d_s * HW + h_s * W + w_s).unsqueeze(1) + patch_offsets.unsqueeze(0)]
+
+        # Unpack patch neighbors by name.  Flat index: k = (dd+1)*9 + (dh+1)*3 + (dw+1)
+        # where dd/dh/dw are the offsets in scale/height/width, each in {-1, 0, +1}.
+        # Naming convention: xm/xp = width-1/+1, ym/yp = height-1/+1, sm/sp = scale-1/+1.
+        c000 = patch[:, 13]  # center (dd=0, dh=0, dw=0)
+        # axis neighbors
+        p_xm = patch[:, 12]  # (dd= 0, dh= 0, dw=-1)
+        p_xp = patch[:, 14]  # (dd= 0, dh= 0, dw=+1)
+        p_ym = patch[:, 10]  # (dd= 0, dh=-1, dw= 0)
+        p_yp = patch[:, 16]  # (dd= 0, dh=+1, dw= 0)
+        p_sm = patch[:, 4]  # (dd=-1, dh= 0, dw= 0)
+        p_sp = patch[:, 22]  # (dd=+1, dh= 0, dw= 0)
+        # diagonal neighbors used for mixed partials
+        p_xm_ym = patch[:, 9]  # (dd= 0, dh=-1, dw=-1)
+        p_xp_ym = patch[:, 11]  # (dd= 0, dh=-1, dw=+1)
+        p_xm_yp = patch[:, 15]  # (dd= 0, dh=+1, dw=-1)
+        p_xp_yp = patch[:, 17]  # (dd= 0, dh=+1, dw=+1)
+        p_xm_sm = patch[:, 3]  # (dd=-1, dh= 0, dw=-1)
+        p_xp_sm = patch[:, 5]  # (dd=-1, dh= 0, dw=+1)
+        p_xm_sp = patch[:, 21]  # (dd=+1, dh= 0, dw=-1)
+        p_xp_sp = patch[:, 23]  # (dd=+1, dh= 0, dw=+1)
+        p_ym_sm = patch[:, 1]  # (dd=-1, dh=-1, dw= 0)
+        p_yp_sm = patch[:, 7]  # (dd=-1, dh=+1, dw= 0)
+        p_ym_sp = patch[:, 19]  # (dd=+1, dh=-1, dw= 0)
+        p_yp_sp = patch[:, 25]  # (dd=+1, dh=+1, dw= 0)
+
+        # First-order finite differences (0.5 * (next - prev)), matches C++ convention.
+        gx = 0.5 * (p_xp - p_xm)  # x/width direction
+        gy = 0.5 * (p_yp - p_ym)  # y/height direction
+        gs = 0.5 * (p_sp - p_sm)  # scale direction
+
+        # Second-order finite differences.
+        dxx = p_xp - 2.0 * c000 + p_xm
+        dyy = p_yp - 2.0 * c000 + p_ym
+        dss = p_sp - 2.0 * c000 + p_sm
+        dxy = 0.25 * (p_xp_yp - p_xm_yp - p_xp_ym + p_xm_ym)
+        dxs = 0.25 * (p_xp_sp - p_xm_sp - p_xp_sm + p_xm_sm)
+        dys = 0.25 * (p_yp_sp - p_ym_sp - p_yp_sm + p_ym_sm)
+
+        sx, sy, ss, solved = _solve_cramer_sym3x3(dxx, dyy, dss, dxy, dxs, dys, -gx, -gy, -gs)
+        # Use non-inplace ops so that tensors saved by torch.where for autograd are not mutated.
+        valid = valid & solved
+
+        # Zero out invalid solutions to avoid NaN propagation.
+        valid_f = valid.to(dtype)
+        sx = sx * valid_f
+        sy = sy * valid_f
+        ss = ss * valid_f
+
+        # Save best estimates for valid keypoints.
+        shift_x = torch.where(valid, sx, shift_x)
+        shift_y = torch.where(valid, sy, shift_y)
+        shift_s = torch.where(valid, ss, shift_s)
+        grad_dot_shift = torch.where(valid, gx * sx + gy * sy + gs * ss, grad_dot_shift)
+
+        # Determine which axes need an integer step and move the center.
+        move_pos_x = valid & (sx > max_subpixel_shift)
+        move_neg_x = valid & (sx < -max_subpixel_shift)
+        new_w = w_cur + move_pos_x.long() - move_neg_x.long()
+        valid = valid & (new_w >= 1) & (new_w <= W - 2)
+        w_cur = new_w.clamp(0, W - 1)
+
+        move_pos_y = valid & (sy > max_subpixel_shift)
+        move_neg_y = valid & (sy < -max_subpixel_shift)
+        new_h = h_cur + move_pos_y.long() - move_neg_y.long()
+        valid = valid & (new_h >= 1) & (new_h <= H - 2)
+        h_cur = new_h.clamp(0, H - 1)
+
+        move_pos_s = valid & (ss > max_subpixel_shift)
+        move_neg_s = valid & (ss < -max_subpixel_shift)
+        new_d = d_cur + move_pos_s.long() - move_neg_s.long()
+        valid = valid & (new_d >= 1) & (new_d <= D - 2)
+        d_cur = new_d.clamp(0, D - 1)
+
+    # Invalidate keypoints whose final shift is still too large (C++ finalThreshold check).
+    valid = valid & (shift_x.abs() <= 1.5) & (shift_y.abs() <= 1.5) & (shift_s.abs() <= 1.5)
+
+    # --- Write refined coordinates into the dense output map ----------------
+    # coords_max layout: dim-2 = [scale, x(width), y(height)] — same as conv_quad_interp3d.
+    b_idx = bc_idx // C
+    c_idx = bc_idx % C
+
+    # For valid keypoints: integer center + subpixel offset.
+    # For invalid keypoints: fall back to original NMS position.
+    final_s = torch.where(valid, d_cur.to(dtype) + shift_s, d_idx.to(dtype))
+    final_x = torch.where(valid, w_cur.to(dtype) + shift_x, w_idx.to(dtype))
+    final_y = torch.where(valid, h_cur.to(dtype) + shift_y, h_idx.to(dtype))
+
+    coords_max[b_idx, c_idx, 0, d_idx, h_idx, w_idx] = final_s
+    coords_max[b_idx, c_idx, 1, d_idx, h_idx, w_idx] = final_x
+    coords_max[b_idx, c_idx, 2, d_idx, h_idx, w_idx] = final_y
+
+    # Quadratically corrected response value: val = center + 0.5 * grad^T * shift.
+    val_correction = 0.5 * torch.where(valid, grad_dot_shift, torch.zeros_like(grad_dot_shift))
+    val_center = inp[bc_idx, d_idx, h_idx, w_idx]
+    y_max[b_idx, c_idx, d_idx, h_idx, w_idx] = val_center + val_correction
+
+    if strict_maxima_bonus > 0:
+        y_max[b_idx, c_idx, d_idx, h_idx, w_idx] += strict_maxima_bonus * valid.to(dtype)
+
+    return coords_max, y_max
+
+
+class IterativeQuadInterp3d(nn.Module):
+    r"""Iterative subpixel localization of 3D extrema via quadratic interpolation.
+
+    See :func:`~kornia.geometry.subpix.iterative_quad_interp3d` for details.
+    """
+
+    def __init__(
+        self,
+        n_iters: int = 5,
+        strict_maxima_bonus: float = 10.0,
+        max_subpixel_shift: float = 0.6,
+    ) -> None:
+        super().__init__()
+        self.n_iters = n_iters
+        self.strict_maxima_bonus = strict_maxima_bonus
+        self.max_subpixel_shift = max_subpixel_shift
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"n_iters={self.n_iters}, "
+            f"strict_maxima_bonus={self.strict_maxima_bonus}, "
+            f"max_subpixel_shift={self.max_subpixel_shift})"
+        )
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        return iterative_quad_interp3d(x, self.n_iters, self.strict_maxima_bonus, self.max_subpixel_shift)
+
+
 def conv_quad_interp3d(
     input: torch.Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -612,14 +912,25 @@ def conv_quad_interp3d(
     dys = 0.25 * A[..., 4]  # normalization to match OpenCV implementation
     dxs = 0.25 * A[..., 5]  # normalization to match OpenCV implementation
 
-    Hes = torch.stack([dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss], -1).view(-1, 3, 3)
-    if not torch_version_ge(1, 10):
-        # The following is needed to avoid singular cases
-        Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
-
     nms_mask: torch.Tensor = nms3d(input, (3, 3, 3), True)
     x_solved: torch.Tensor = torch.zeros_like(b)
-    x_solved_masked, _, solved_correctly = safe_solve_with_mask(b[nms_mask.view(-1)], Hes[nms_mask.view(-1)])
+
+    # Solve H * x = b for NMS points via Cramer's rule (avoids LU factorization + matrix construction).
+    nms_flat = nms_mask.view(-1)
+    b_nms = b[nms_flat, :, 0]  # (N_nms, 3)
+    sx, sy, ss, solved_correctly = _solve_cramer_sym3x3(
+        dxx[nms_flat],
+        dyy[nms_flat],
+        dss[nms_flat],
+        dxy[nms_flat],
+        dxs[nms_flat],
+        dys[nms_flat],
+        b_nms[:, 0],
+        b_nms[:, 1],
+        b_nms[:, 2],
+        eps=eps,
+    )
+    x_solved_masked = torch.stack([sx, sy, ss], dim=-1).unsqueeze(-1)  # (N_nms, 3, 1)
 
     #  Kill those points, where we cannot solve
     new_nms_mask = nms_mask.masked_scatter(nms_mask, solved_correctly)
