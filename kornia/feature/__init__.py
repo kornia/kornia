@@ -21,6 +21,7 @@ This subpackage provides modules for keypoint detection, descriptors, and featur
 """
 
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
+from .aliked import ALIKED, ALIKEDFeatures
 from .dedode import DeDoDe
 from .defmo import DeFMO
 from .disk import DISK, DISKFeatures
@@ -95,6 +96,8 @@ from .sosnet import SOSNet
 from .tfeat import TFeat
 
 __all__ = [
+    "ALIKED",
+    "ALIKEDFeatures",
     "DISK",
     "KORNIA_CHECK_LAF",
     "SOLD2",
