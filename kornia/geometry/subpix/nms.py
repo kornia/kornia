@@ -72,15 +72,69 @@ class NonMaximaSuppression2d(nn.Module):
         if len(x.shape) != 4:
             raise AssertionError(x.shape)
         B, CH, H, W = x.size()
-        # find local maximum values
-        x_padded = F.pad(x, list(self.padding)[::-1], mode="replicate")
-        B, CH, HP, WP = x_padded.size()
 
-        neighborhood = F.conv2d(x_padded.view(B * CH, 1, HP, WP), self.kernel.to(x.device, x.dtype), stride=1).view(
-            B, CH, -1, H, W
-        )
-        max_non_center = neighborhood.max(dim=2)[0]
-        mask = x > max_non_center
+        if self.kernel_size == (3, 3):
+            # 8-comparison explicit path: no extra memory for conv kernel.
+            left = slice(0, -2)
+            center = slice(1, -1)
+            right = slice(2, None)
+            mask = torch.zeros(B, CH, H, W, device=x.device, dtype=torch.bool)
+            ct = x[..., center, center]
+            mask[..., 1:-1, 1:-1] = (
+                (ct > x[..., left, left])
+                & (ct > x[..., left, center])
+                & (ct > x[..., left, right])
+                & (ct > x[..., center, left])
+                & (ct > x[..., center, right])
+                & (ct > x[..., right, left])
+                & (ct > x[..., right, center])
+                & (ct > x[..., right, right])
+            )
+        elif self.kernel_size == (5, 5):
+            # 24-comparison explicit path for 5x5 neighbourhood.
+            c2 = slice(0, -4)
+            c1 = slice(1, -3)
+            c0 = slice(2, -2)
+            p1 = slice(3, -1)
+            p2 = slice(4, None)
+            mask = torch.zeros(B, CH, H, W, device=x.device, dtype=torch.bool)
+            ct = x[..., c0, c0]
+            mask[..., 2:-2, 2:-2] = (
+                (ct > x[..., c2, c2])
+                & (ct > x[..., c2, c1])
+                & (ct > x[..., c2, c0])
+                & (ct > x[..., c2, p1])
+                & (ct > x[..., c2, p2])
+                & (ct > x[..., c1, c2])
+                & (ct > x[..., c1, c1])
+                & (ct > x[..., c1, c0])
+                & (ct > x[..., c1, p1])
+                & (ct > x[..., c1, p2])
+                & (ct > x[..., c0, c2])
+                & (ct > x[..., c0, c1])
+                & (ct > x[..., c0, p1])
+                & (ct > x[..., c0, p2])
+                & (ct > x[..., p1, c2])
+                & (ct > x[..., p1, c1])
+                & (ct > x[..., p1, c0])
+                & (ct > x[..., p1, p1])
+                & (ct > x[..., p1, p2])
+                & (ct > x[..., p2, c2])
+                & (ct > x[..., p2, c1])
+                & (ct > x[..., p2, c0])
+                & (ct > x[..., p2, p1])
+                & (ct > x[..., p2, p2])
+            )
+        else:
+            # General path: conv2d maps every neighbour into its own channel.
+            x_padded = F.pad(x, list(self.padding)[::-1], mode="replicate")
+            B, CH, HP, WP = x_padded.size()
+            neighborhood = F.conv2d(x_padded.view(B * CH, 1, HP, WP), self.kernel.to(x.device, x.dtype), stride=1).view(
+                B, CH, -1, H, W
+            )
+            max_non_center = neighborhood.max(dim=2)[0]
+            mask = x > max_non_center
+
         if mask_only:
             return mask
         return x * (mask.to(x.dtype))

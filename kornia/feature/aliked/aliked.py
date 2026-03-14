@@ -64,6 +64,7 @@ from torch import nn
 from torch.nn.modules.utils import _pair
 
 from kornia.color import grayscale_to_rgb
+from kornia.geometry.subpix import nms2d
 
 from .deform_conv2d import deform_conv2d
 
@@ -139,20 +140,6 @@ def get_patches(tensor: torch.Tensor, required_corners: torch.Tensor, ps: int) -
     sampled = tensor.permute(1, 2, 0)[tuple(pts.T)[::-1]]
     sampled = sampled.reshape(ps, ps, -1, c)
     return sampled.permute(2, 3, 0, 1)
-
-
-def simple_nms(scores: torch.Tensor, nms_radius: int) -> torch.Tensor:
-    """Fast non-maximum suppression to remove nearby keypoints."""
-    zeros = torch.zeros_like(scores)
-    max_mask = scores == F.max_pool2d(scores, kernel_size=nms_radius * 2 + 1, stride=1, padding=nms_radius)
-    for _ in range(2):
-        supp_mask = F.max_pool2d(max_mask.float(), kernel_size=nms_radius * 2 + 1, stride=1, padding=nms_radius) > 0
-        supp_scores = torch.where(supp_mask, zeros, scores)
-        new_max_mask = supp_scores == F.max_pool2d(
-            supp_scores, kernel_size=nms_radius * 2 + 1, stride=1, padding=nms_radius
-        )
-        max_mask = max_mask | (new_max_mask & (~supp_mask))
-    return torch.where(max_mask, scores, zeros)
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +248,7 @@ class DKD(nn.Module):
         """
         b, _c, h, w = scores_map.shape
         scores_nograd = scores_map.detach()
-        nms_scores = simple_nms(scores_nograd, self.radius)
+        nms_scores = nms2d(scores_nograd, (self.kernel_size, self.kernel_size))
 
         # remove border
         nms_scores[:, :, : self.radius, :] = 0
