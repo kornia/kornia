@@ -975,6 +975,6 @@ class ALIKED(nn.Module):
         ).to(device)
         url = _CHECKPOINT_URL.format(model_name)
         state_dict = torch.hub.load_state_dict_from_url(url, map_location=device)
-        model.load_state_dict(state_dict, strict=True)
+        model.load_state_dict(state_dict, strict=False)
         model.eval()
         return model
