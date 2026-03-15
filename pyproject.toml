@@ -97,9 +97,6 @@ skip = "*.bib,*.ipynb"
 target-version = "py311"
 line-length = 120
 
-[tool.ruff.format]
-skip-magic-trailing-comma = false
-
 [tool.ruff.lint]
 select = [
   "AIR",  # Airflow
@@ -165,6 +162,7 @@ ignore = [
   "RUF007",  # Prefer `itertools.pairwise()` over `zip()` - style preference
   "PLR0915",  # Allow condition check in list comprehension
   "PLC0415",  # `import` should be at the top-level of a file
+  "UP042", # Keep str, Enum for Python <3.11 compatibility
   "PLW2901",  # Allow overwritten values on loops
   "PLW1641",  # Object does not implement `__hash__` method
   "UP007",  # Prefer Optional[], Union[] over | due to torch jit scripting
