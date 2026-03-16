@@ -719,19 +719,20 @@ class TestAdaptiveQuadInterp3d(BaseTester):
         torch.manual_seed(7)
         x = torch.randn(1, 1, 5, 16, 16, device=device, dtype=dtype)
         coords_p, vals_p = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch", strict_maxima_bonus=0)(x)
-        coords_c, vals_c = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="conv",  strict_maxima_bonus=0)(x)
+        coords_c, vals_c = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="conv", strict_maxima_bonus=0)(x)
         from kornia.geometry.subpix import nms3d
+
         mask = nms3d(x, (3, 3, 3), True)
         b, c, d, h, w = torch.where(mask)
         self.assert_close(coords_p[b, c, :, d, h, w], coords_c[b, c, :, d, h, w], atol=1e-5, rtol=1e-5)
-        self.assert_close(vals_p[b, c, d, h, w],      vals_c[b, c, d, h, w],      atol=1e-5, rtol=1e-5)
+        self.assert_close(vals_p[b, c, d, h, w], vals_c[b, c, d, h, w], atol=1e-5, rtol=1e-5)
 
     def test_auto_dispatches(self, device, dtype):
         """auto mode must use conv on CUDA, patch on CPU (verified via result equality)."""
         x = torch.randn(1, 1, 3, 8, 8, device=device, dtype=dtype)
-        auto  = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="auto",  strict_maxima_bonus=0)
+        auto = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="auto", strict_maxima_bonus=0)
         expected_mode = "conv" if x.is_cuda else "patch"
-        ref   = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode=expected_mode, strict_maxima_bonus=0)
+        ref = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode=expected_mode, strict_maxima_bonus=0)
         self.assert_close(auto(x)[0], ref(x)[0], atol=1e-5, rtol=1e-5)
         self.assert_close(auto(x)[1], ref(x)[1], atol=1e-5, rtol=1e-5)
 
@@ -739,8 +740,10 @@ class TestAdaptiveQuadInterp3d(BaseTester):
         x = torch.zeros(1, 1, 3, 5, 5, device=device, dtype=torch.float64)
         x[0, 0, 1, 2, 2] = 5.0
         self.gradcheck(
-            kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch", strict_maxima_bonus=0), (x,),
-            atol=1e-3, rtol=1e-3,
+            kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch", strict_maxima_bonus=0),
+            (x,),
+            atol=1e-3,
+            rtol=1e-3,
         )
 
     def test_dynamo(self, device, dtype, torch_optimizer):

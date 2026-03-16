@@ -16,7 +16,7 @@
 #
 
 import math
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -24,7 +24,7 @@ from torch import nn
 from typing_extensions import TypedDict
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.geometry.subpix import AdaptiveQuadInterp3d, ConvQuadInterp3d, NonMaximaSuppression2d, nms3d, nms3d_minmax
+from kornia.geometry.subpix import AdaptiveQuadInterp3d, ConvQuadInterp3d, NonMaximaSuppression2d, nms3d_minmax
 from kornia.geometry.transform import ScalePyramid, pyrdown, resize
 
 from .laf import laf_from_center_scale_ori, laf_is_inside_image
@@ -166,9 +166,9 @@ class ScaleSpaceDetector(nn.Module):
         if self.scale_space_response:
             oct_resp = self.resp(octave, sigmas_oct.view(-1))
         else:
-            oct_resp = self.resp(
-                octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.view(-1)
-            ).view(B, L, CH, H, W)
+            oct_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.view(-1)).view(
+                B, L, CH, H, W
+            )
             # Reorder to (B, CH, L, H, W) for scale-space NMS
             oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
             # 3rd extra level is required for DoG only

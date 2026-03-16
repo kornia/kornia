@@ -23,7 +23,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.geometry.grid import create_meshgrid, create_meshgrid3d
 
@@ -728,11 +727,7 @@ def conv_quad_interp3d(
     bc_dil = bc_idx.unsqueeze(1).expand(-1, K).reshape(-1)
 
     # Keep only interior positions (Hessian needs ±1 neighbours in all dims).
-    keep = (
-        (d_dil >= 1) & (d_dil <= D - 2)
-        & (h_dil >= 1) & (h_dil <= H - 2)
-        & (w_dil >= 1) & (w_dil <= W - 2)
-    )
+    keep = (d_dil >= 1) & (d_dil <= D - 2) & (h_dil >= 1) & (h_dil <= H - 2) & (w_dil >= 1) & (w_dil <= W - 2)
     d_dil = d_dil[keep]
     h_dil = h_dil[keep]
     w_dil = w_dil[keep]
@@ -754,16 +749,25 @@ def conv_quad_interp3d(
     patch = inp_flat[center_flat.unsqueeze(1) + patch_offsets.unsqueeze(0)]  # (NU, 27)
 
     # Named patch elements.  Flat index: k = (dd+1)*9 + (dh+1)*3 + (dw+1), center k=13.
-    c000     = patch[:, 13]
-    p_xm     = patch[:, 12];  p_xp     = patch[:, 14]
-    p_ym     = patch[:, 10];  p_yp     = patch[:, 16]
-    p_sm     = patch[:,  4];  p_sp     = patch[:, 22]
-    p_xm_ym  = patch[:,  9];  p_xp_ym  = patch[:, 11]
-    p_xm_yp  = patch[:, 15];  p_xp_yp  = patch[:, 17]
-    p_xm_sm  = patch[:,  3];  p_xp_sm  = patch[:,  5]
-    p_xm_sp  = patch[:, 21];  p_xp_sp  = patch[:, 23]
-    p_ym_sm  = patch[:,  1];  p_yp_sm  = patch[:,  7]
-    p_ym_sp  = patch[:, 19];  p_yp_sp  = patch[:, 25]
+    c000 = patch[:, 13]
+    p_xm = patch[:, 12]
+    p_xp = patch[:, 14]
+    p_ym = patch[:, 10]
+    p_yp = patch[:, 16]
+    p_sm = patch[:, 4]
+    p_sp = patch[:, 22]
+    p_xm_ym = patch[:, 9]
+    p_xp_ym = patch[:, 11]
+    p_xm_yp = patch[:, 15]
+    p_xp_yp = patch[:, 17]
+    p_xm_sm = patch[:, 3]
+    p_xp_sm = patch[:, 5]
+    p_xm_sp = patch[:, 21]
+    p_xp_sp = patch[:, 23]
+    p_ym_sm = patch[:, 1]
+    p_yp_sm = patch[:, 7]
+    p_ym_sp = patch[:, 19]
+    p_yp_sp = patch[:, 25]
 
     # ── Step 4: compute gradients + Hessian + solve (all unique positions) ───
     gx = 0.5 * (p_xp - p_xm)
@@ -779,9 +783,15 @@ def conv_quad_interp3d(
     # Normalise by |centre| for scale-invariant determinant test.
     c000_safe = c000.abs().clamp(min=1e-12)
     sx_u, sy_u, ss_u, sol_u = _solve_cramer_sym3x3(
-        dxx / c000_safe, dyy / c000_safe, dss / c000_safe,
-        dxy / c000_safe, dxs / c000_safe, dys / c000_safe,
-        -gx / c000_safe, -gy / c000_safe, -gs / c000_safe,
+        dxx / c000_safe,
+        dyy / c000_safe,
+        dss / c000_safe,
+        dxy / c000_safe,
+        dxs / c000_safe,
+        dys / c000_safe,
+        -gx / c000_safe,
+        -gy / c000_safe,
+        -gs / c000_safe,
     )
     # Precompute gradient·shift for the response correction (avoids storing gx/gy/gs tables).
     gds_u = gx * sx_u + gy * sy_u + gs * ss_u
@@ -789,14 +799,14 @@ def conv_quad_interp3d(
     # ── Step 5: scatter solutions to dense lookup tables ─────────────────────
     # Tables are (BC, D, H, W): only the ~N_dilated positions are filled;
     # all others stay at zero / False and will mark migrated keypoints as invalid.
-    sx_f  = torch.zeros(BC, D, H, W, device=device, dtype=dtype)
-    sy_f  = torch.zeros_like(sx_f)
-    ss_f  = torch.zeros_like(sx_f)
+    sx_f = torch.zeros(BC, D, H, W, device=device, dtype=dtype)
+    sy_f = torch.zeros_like(sx_f)
+    ss_f = torch.zeros_like(sx_f)
     gds_f = torch.zeros_like(sx_f)
     sol_f = torch.zeros(BC, D, H, W, device=device, dtype=torch.bool)
-    sx_f [bc_u, d_u, h_u, w_u] = sx_u
-    sy_f [bc_u, d_u, h_u, w_u] = sy_u
-    ss_f [bc_u, d_u, h_u, w_u] = ss_u
+    sx_f[bc_u, d_u, h_u, w_u] = sx_u
+    sy_f[bc_u, d_u, h_u, w_u] = sy_u
+    ss_f[bc_u, d_u, h_u, w_u] = ss_u
     gds_f[bc_u, d_u, h_u, w_u] = gds_u
     sol_f[bc_u, d_u, h_u, w_u] = sol_u
 
@@ -815,9 +825,9 @@ def conv_quad_interp3d(
         hi = h_cur.clamp(1, H - 2)
         wi = w_cur.clamp(1, W - 2)
 
-        sx  = sx_f [bc_idx, di, hi, wi]
-        sy  = sy_f [bc_idx, di, hi, wi]
-        ss  = ss_f [bc_idx, di, hi, wi]
+        sx = sx_f[bc_idx, di, hi, wi]
+        sy = sy_f[bc_idx, di, hi, wi]
+        ss = ss_f[bc_idx, di, hi, wi]
         sol = sol_f[bc_idx, di, hi, wi]
         gds = gds_f[bc_idx, di, hi, wi]
 
@@ -827,9 +837,9 @@ def conv_quad_interp3d(
         sy = sy * vf
         ss = ss * vf
 
-        shift_x        = torch.where(valid, sx,  shift_x)
-        shift_y        = torch.where(valid, sy,  shift_y)
-        shift_s        = torch.where(valid, ss,  shift_s)
+        shift_x = torch.where(valid, sx, shift_x)
+        shift_y = torch.where(valid, sy, shift_y)
+        shift_s = torch.where(valid, ss, shift_s)
         grad_dot_shift = torch.where(valid, gds, grad_dot_shift)
 
         move_px = valid & (sx > max_subpixel_shift)
@@ -856,15 +866,9 @@ def conv_quad_interp3d(
     b_idx = bc_idx // C
     c_idx = bc_idx % C
 
-    coords_max[b_idx, c_idx, 0, d_idx, h_idx, w_idx] = torch.where(
-        valid, d_cur.to(dtype) + shift_s, d_idx.to(dtype)
-    )
-    coords_max[b_idx, c_idx, 1, d_idx, h_idx, w_idx] = torch.where(
-        valid, w_cur.to(dtype) + shift_x, w_idx.to(dtype)
-    )
-    coords_max[b_idx, c_idx, 2, d_idx, h_idx, w_idx] = torch.where(
-        valid, h_cur.to(dtype) + shift_y, h_idx.to(dtype)
-    )
+    coords_max[b_idx, c_idx, 0, d_idx, h_idx, w_idx] = torch.where(valid, d_cur.to(dtype) + shift_s, d_idx.to(dtype))
+    coords_max[b_idx, c_idx, 1, d_idx, h_idx, w_idx] = torch.where(valid, w_cur.to(dtype) + shift_x, w_idx.to(dtype))
+    coords_max[b_idx, c_idx, 2, d_idx, h_idx, w_idx] = torch.where(valid, h_cur.to(dtype) + shift_y, h_idx.to(dtype))
 
     val_correction = 0.5 * torch.where(valid, grad_dot_shift, torch.zeros_like(grad_dot_shift))
     val_center = input.view(BC, D, H, W)[bc_idx, d_idx, h_idx, w_idx]
@@ -873,7 +877,6 @@ def conv_quad_interp3d(
         y_max[b_idx, c_idx, d_idx, h_idx, w_idx] += strict_maxima_bonus * valid.to(dtype)
 
     return coords_max, y_max
-
 
 
 class ConvQuadInterp3d(nn.Module):
@@ -913,8 +916,17 @@ class ConvQuadInterp3d(nn.Module):
             f"dilation_radius={self.dilation_radius})"
         )
 
-    def forward(self, x: torch.Tensor, precomputed_nms_mask: Optional[torch.Tensor] = None) -> tuple[torch.Tensor, torch.Tensor]:
-        return conv_quad_interp3d(x, self.n_iters, self.strict_maxima_bonus, self.max_subpixel_shift, precomputed_nms_mask, self.dilation_radius)
+    def forward(
+        self, x: torch.Tensor, precomputed_nms_mask: Optional[torch.Tensor] = None
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        return conv_quad_interp3d(
+            x,
+            self.n_iters,
+            self.strict_maxima_bonus,
+            self.max_subpixel_shift,
+            precomputed_nms_mask,
+            self.dilation_radius,
+        )
 
 
 def iterative_quad_interp3d(
@@ -1202,7 +1214,11 @@ class AdaptiveQuadInterp3d(nn.Module):
         use_conv = self.mode == "conv" or (self.mode == "auto" and x.is_cuda)
         if use_conv:
             return conv_quad_interp3d(
-                x, self.n_iters, self.strict_maxima_bonus, self.max_subpixel_shift,
-                precomputed_nms_mask, self.dilation_radius,
+                x,
+                self.n_iters,
+                self.strict_maxima_bonus,
+                self.max_subpixel_shift,
+                precomputed_nms_mask,
+                self.dilation_radius,
             )
         return iterative_quad_interp3d(x, self.n_iters, self.strict_maxima_bonus, self.max_subpixel_shift)

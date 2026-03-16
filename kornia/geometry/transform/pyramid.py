@@ -223,8 +223,8 @@ class ScalePyramid(nn.Module):
         for k in self._cumul_kernels:
             pad = (kmax - k.shape[0]) // 2
             padded.append(F.pad(k, (pad, pad)))
-        stacked = torch.stack(padded)                  # (n, kmax)
-        self._K_cumul_h: torch.Tensor = stacked.unsqueeze(1).unsqueeze(1)   # (n, 1, 1, kmax)
+        stacked = torch.stack(padded)  # (n, kmax)
+        self._K_cumul_h: torch.Tensor = stacked.unsqueeze(1).unsqueeze(1)  # (n, 1, 1, kmax)
         self._K_cumul_v: torch.Tensor = stacked.unsqueeze(1).unsqueeze(-1)  # (n, 1, kmax, 1)
 
     def get_kernel_size(self, sigma: float) -> int:
@@ -299,7 +299,9 @@ class ScalePyramid(nn.Module):
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
         sigmas = [torch.full((bs, self.n_levels + self.extra_levels), cur_sigma, device=x.device, dtype=x.dtype)]
-        pixel_dists = [torch.full((bs, self.n_levels + self.extra_levels), pixel_distance, device=x.device, dtype=x.dtype)]
+        pixel_dists = [
+            torch.full((bs, self.n_levels + self.extra_levels), pixel_distance, device=x.device, dtype=x.dtype)
+        ]
         pyr = [[cur_level]]
         oct_idx = 0
         while True:
@@ -349,8 +351,12 @@ class ScalePyramid(nn.Module):
             if min(nextOctaveFirstLevel.size(2), nextOctaveFirstLevel.size(3)) <= self.min_size:
                 break
             pyr.append([nextOctaveFirstLevel])
-            sigmas.append(torch.full((bs, self.n_levels + self.extra_levels), cur_sigma, device=x.device, dtype=x.dtype))
-            pixel_dists.append(torch.full((bs, self.n_levels + self.extra_levels), pixel_distance, device=x.device, dtype=x.dtype))
+            sigmas.append(
+                torch.full((bs, self.n_levels + self.extra_levels), cur_sigma, device=x.device, dtype=x.dtype)
+            )
+            pixel_dists.append(
+                torch.full((bs, self.n_levels + self.extra_levels), pixel_distance, device=x.device, dtype=x.dtype)
+            )
             oct_idx += 1
 
         output_pyr = [torch.stack(i, 2) for i in pyr]
