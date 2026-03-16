@@ -354,9 +354,10 @@ def parse_args() -> argparse.Namespace:
     g = p.add_argument_group("Sequences")
     g.add_argument("--seq", metavar="DIR", action="append", default=[])
     g.add_argument(
-        "--root", metavar="DIR", default=None,
-        help="Base folder. Alone: enumerates all subdirs with img1.png. "
-             "With --seq name: resolves to root/name.",
+        "--root",
+        metavar="DIR",
+        default=None,
+        help="Base folder. Alone: enumerates all subdirs with img1.png. With --seq name: resolves to root/name.",
     )
 
     g = p.add_argument_group("Method")
