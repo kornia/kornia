@@ -229,7 +229,7 @@ class SIFTFeatureScaleSpace(LocalFeature):
         detector = ScaleSpaceDetector(
             num_features,
             resp_module=BlobDoG(),
-            nms_module=ConvQuadInterp3d(10),
+            subpix_module=ConvQuadInterp3d(strict_maxima_bonus=0.0),
             scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
             ori_module=PassLAF() if upright else LAFOrienter(19),
             scale_space_response=True,

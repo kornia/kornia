@@ -150,3 +150,33 @@ class TestNMS3d(BaseTester):
         batch_size, channels, depth, height, width = 1, 1, 4, 5, 4
         img = torch.rand(batch_size, channels, depth, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.subpix.nms3d, (img, (3, 3, 3)), nondet_tol=1e-4)
+
+
+class TestNMS3dMinMax(BaseTester):
+    def test_shapes(self, device):
+        inp = torch.randn(1, 1, 5, 10, 10, device=device)
+        max_mask, min_mask = kornia.geometry.subpix.nms3d_minmax(inp)
+        assert max_mask.shape == inp.shape
+        assert min_mask.shape == inp.shape
+        assert max_mask.dtype == torch.bool
+        assert min_mask.dtype == torch.bool
+
+    def test_consistent_with_nms3d(self, device):
+        """nms3d_minmax must match nms3d(x) and nms3d(-x) exactly."""
+        inp = torch.randn(2, 3, 7, 12, 12, device=device)
+        max_mask, min_mask = kornia.geometry.subpix.nms3d_minmax(inp)
+        max_ref = kornia.geometry.subpix.nms3d(inp, (3, 3, 3), mask_only=True)
+        min_ref = kornia.geometry.subpix.nms3d(-inp, (3, 3, 3), mask_only=True)
+        assert max_mask.equal(max_ref), "max mask mismatch"
+        assert min_mask.equal(min_ref), "min mask mismatch"
+
+    def test_no_overlap(self, device):
+        """A voxel cannot be both a strict local maximum and minimum."""
+        inp = torch.randn(1, 1, 5, 10, 10, device=device)
+        max_mask, min_mask = kornia.geometry.subpix.nms3d_minmax(inp)
+        assert not (max_mask & min_mask).any()
+
+    def test_gradcheck(self, device):
+        # nms3d_minmax is not differentiable (bool masks), so we just check it runs.
+        inp = torch.randn(1, 1, 5, 7, 7, device=device)
+        kornia.geometry.subpix.nms3d_minmax(inp)

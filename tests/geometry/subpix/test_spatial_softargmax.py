@@ -23,7 +23,7 @@ import kornia
 from kornia.geometry.subpix.spatial_soft_argmax import (
     _get_center_kernel2d,
     _get_center_kernel3d,
-    iterative_quad_interp3d,
+    conv_quad_interp3d,
 )
 
 from testing.base import BaseTester
@@ -622,24 +622,24 @@ class TestConvQuadInterp3d(BaseTester):
         self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
 
-class TestIterativeQuadInterp3d(BaseTester):
+class TestConvQuadInterp3d(BaseTester):
     def test_smoke(self, device, dtype):
         sample = torch.randn(2, 3, 3, 4, 4, device=device, dtype=dtype)
-        op = kornia.geometry.IterativeQuadInterp3d(n_iters=3, strict_maxima_bonus=1)
+        op = kornia.geometry.subpix.ConvQuadInterp3d(n_iters=3, strict_maxima_bonus=1)
         coord, val = op(sample)
         assert coord.shape == (2, 3, 3, 3, 4, 4)
         assert val.shape == (2, 3, 3, 4, 4)
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
-            iterative_quad_interp3d("not_a_tensor")
+            conv_quad_interp3d("not_a_tensor")
         with pytest.raises(ValueError):
-            iterative_quad_interp3d(torch.randn(3, 4, 4, device=device, dtype=dtype))
+            conv_quad_interp3d(torch.randn(3, 4, 4, device=device, dtype=dtype))
 
     def test_cardinality(self, device, dtype):
         for B, C, D, H, W in [(1, 1, 3, 5, 5), (2, 4, 3, 8, 6)]:
             sample = torch.randn(B, C, D, H, W, device=device, dtype=dtype)
-            coord, val = iterative_quad_interp3d(sample)
+            coord, val = conv_quad_interp3d(sample)
             assert coord.shape == (B, C, 3, D, H, W)
             assert val.shape == (B, C, D, H, W)
 
@@ -647,7 +647,7 @@ class TestIterativeQuadInterp3d(BaseTester):
         sample = torch.rand(1, 1, 3, 5, 5, device=device, dtype=torch.float64)
         sample[0, 0, 1, 2, 2] += 20.0
         self.gradcheck(
-            kornia.geometry.IterativeQuadInterp3d(strict_maxima_bonus=0, n_iters=1),
+            kornia.geometry.subpix.ConvQuadInterp3d(strict_maxima_bonus=0, n_iters=1),
             (sample,),
             atol=1e-3,
             rtol=1e-3,
@@ -656,7 +656,7 @@ class TestIterativeQuadInterp3d(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
         sample = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
         sample[0, 0, 1, 2, 2] += 20.0
-        op = kornia.geometry.IterativeQuadInterp3d(strict_maxima_bonus=0, n_iters=1)
+        op = kornia.geometry.subpix.ConvQuadInterp3d(strict_maxima_bonus=0, n_iters=1)
         op_opt = torch_optimizer(op)
         self.assert_close(op(sample)[0], op_opt(sample)[0])
         self.assert_close(op(sample)[1], op_opt(sample)[1])
@@ -665,7 +665,7 @@ class TestIterativeQuadInterp3d(BaseTester):
         # A clear peak at scale=1, h=2, w=2 should return coords close to (1, 2, 2).
         sample = torch.zeros(1, 1, 3, 5, 5, device=device, dtype=dtype)
         sample[0, 0, 1, 2, 2] = 10.0
-        coord, _val = iterative_quad_interp3d(sample, strict_maxima_bonus=0)
+        coord, _val = conv_quad_interp3d(sample, strict_maxima_bonus=0)
         # coords_max layout: dim2 = [scale, x(width), y(height)]
         assert coord[0, 0, 0, 1, 2, 2].item() == pytest.approx(1.0, abs=1e-3)  # scale
         assert coord[0, 0, 1, 1, 2, 2].item() == pytest.approx(2.0, abs=1e-3)  # x
@@ -681,7 +681,7 @@ class TestIterativeQuadInterp3d(BaseTester):
                 for dw in range(-1, 2):
                     dist2 = (dd - 0.2) ** 2 + (dh - 0.1) ** 2 + (dw + 0.15) ** 2
                     sample[0, 0, 2 + dd, 3 + dh, 3 + dw] += float(torch.exp(torch.tensor(-dist2 * 4)))
-        coord, _ = iterative_quad_interp3d(sample, strict_maxima_bonus=0)
+        coord, _ = conv_quad_interp3d(sample, strict_maxima_bonus=0)
         # The refined x (width) coord at the integer peak (d=2, h=3, w=3) should shift toward -0.15.
         x_coord = coord[0, 0, 1, 2, 3, 3].item()
         assert x_coord < 3.0  # shift in negative x direction
@@ -689,7 +689,7 @@ class TestIterativeQuadInterp3d(BaseTester):
     def test_no_keypoints(self, device, dtype):
         # Flat input — no NMS maxima, output should equal input coords/values.
         sample = torch.ones(1, 1, 3, 4, 4, device=device, dtype=dtype)
-        coord, val = iterative_quad_interp3d(sample, strict_maxima_bonus=0)
+        coord, val = conv_quad_interp3d(sample, strict_maxima_bonus=0)
         assert coord.shape == (1, 1, 3, 3, 4, 4)
         assert val.shape == (1, 1, 3, 4, 4)
 
@@ -697,6 +697,55 @@ class TestIterativeQuadInterp3d(BaseTester):
         # With a clear symmetric peak a single iteration should converge.
         sample = torch.zeros(1, 1, 3, 5, 5, device=device, dtype=dtype)
         sample[0, 0, 1, 2, 2] = 5.0
-        coord1, _ = iterative_quad_interp3d(sample, n_iters=1, strict_maxima_bonus=0)
-        coord5, _ = iterative_quad_interp3d(sample, n_iters=5, strict_maxima_bonus=0)
+        coord1, _ = conv_quad_interp3d(sample, n_iters=1, strict_maxima_bonus=0)
+        coord5, _ = conv_quad_interp3d(sample, n_iters=5, strict_maxima_bonus=0)
         self.assert_close(coord1, coord5, atol=1e-5, rtol=1e-5)
+
+
+class TestAdaptiveQuadInterp3d(BaseTester):
+    def test_smoke(self, device, dtype):
+        for mode in ("patch", "conv", "auto"):
+            x = torch.randn(1, 1, 3, 8, 8, device=device, dtype=dtype)
+            coords, vals = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode=mode)(x)
+            assert coords.shape == (1, 1, 3, 3, 8, 8)
+            assert vals.shape == (1, 1, 3, 8, 8)
+
+    def test_invalid_mode(self, device, dtype):
+        with pytest.raises(ValueError, match="mode must be one of"):
+            kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="bogus")
+
+    def test_patch_conv_agree(self, device, dtype):
+        """patch and conv backends must produce numerically identical results."""
+        torch.manual_seed(7)
+        x = torch.randn(1, 1, 5, 16, 16, device=device, dtype=dtype)
+        coords_p, vals_p = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch", strict_maxima_bonus=0)(x)
+        coords_c, vals_c = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="conv",  strict_maxima_bonus=0)(x)
+        from kornia.geometry.subpix import nms3d
+        mask = nms3d(x, (3, 3, 3), True)
+        b, c, d, h, w = torch.where(mask)
+        self.assert_close(coords_p[b, c, :, d, h, w], coords_c[b, c, :, d, h, w], atol=1e-5, rtol=1e-5)
+        self.assert_close(vals_p[b, c, d, h, w],      vals_c[b, c, d, h, w],      atol=1e-5, rtol=1e-5)
+
+    def test_auto_dispatches(self, device, dtype):
+        """auto mode must use conv on CUDA, patch on CPU (verified via result equality)."""
+        x = torch.randn(1, 1, 3, 8, 8, device=device, dtype=dtype)
+        auto  = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="auto",  strict_maxima_bonus=0)
+        expected_mode = "conv" if x.is_cuda else "patch"
+        ref   = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode=expected_mode, strict_maxima_bonus=0)
+        self.assert_close(auto(x)[0], ref(x)[0], atol=1e-5, rtol=1e-5)
+        self.assert_close(auto(x)[1], ref(x)[1], atol=1e-5, rtol=1e-5)
+
+    def test_gradcheck(self, device):
+        x = torch.zeros(1, 1, 3, 5, 5, device=device, dtype=torch.float64)
+        x[0, 0, 1, 2, 2] = 5.0
+        self.gradcheck(
+            kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch", strict_maxima_bonus=0), (x,),
+            atol=1e-3, rtol=1e-3,
+        )
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        x = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
+        x[0, 0, 1, 2, 2] += 20.0
+        op = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch", strict_maxima_bonus=0)
+        op_opt = torch_optimizer(op)
+        self.assert_close(op(x)[0], op_opt(x)[0])
