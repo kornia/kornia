@@ -46,7 +46,10 @@ Usage examples::
     # end-to-end ALIKED (ignores --resp/--subpix/--desc/--ori/--aff)
     python benchmarks/feature/scale_space_detector.py --seq /data/graf --method aliked
 
-    # multiple sequences from a root folder
+    # one named sequence inside a root folder
+    python benchmarks/feature/scale_space_detector.py --root /data/oxford-affine --seq graf
+
+    # all sequences inside a root folder
     python benchmarks/feature/scale_space_detector.py --root /data/oxford-affine --device cuda
 """
 
@@ -350,7 +353,11 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     g = p.add_argument_group("Sequences")
     g.add_argument("--seq", metavar="DIR", action="append", default=[])
-    g.add_argument("--root", metavar="DIR", default=None, help="Root folder; every subdirectory with img1.png is used.")
+    g.add_argument(
+        "--root", metavar="DIR", default=None,
+        help="Base folder. Alone: enumerates all subdirs with img1.png. "
+             "With --seq name: resolves to root/name.",
+    )
 
     g = p.add_argument_group("Method")
     g.add_argument("--method", default="scalespace", choices=["scalespace", "aliked", "disk", "dedode"])
@@ -400,11 +407,22 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
-    seqs = [Path(s) for s in args.seq]
-    if args.root:
-        seqs += sorted(d for d in Path(args.root).iterdir() if d.is_dir() and (d / "img1.png").exists())
+    root = Path(args.root) if args.root else None
+    if args.seq:
+        # Resolve each --seq name: use as-is if it exists, else try root/name
+        seqs = []
+        for s in args.seq:
+            p = Path(s)
+            if not p.exists() and root is not None:
+                p = root / s
+            seqs.append(p)
+    elif root is not None:
+        # --root only: enumerate all subdirectories that look like sequences
+        seqs = sorted(d for d in root.iterdir() if d.is_dir() and (d / "img1.png").exists())
+    else:
+        seqs = []
     if not seqs:
-        raise SystemExit("No sequences.  Use --seq DIR or --root DIR.")
+        raise SystemExit("No sequences.  Use --seq DIR  or  --root DIR  or  --root DIR --seq name.")
 
     label = make_label(args.method, args.resp, args.subpix, args.desc, args.ori, args.aff)
     print(f"device: {device}  nf: {args.nf}  sequences: {len(seqs)}")
