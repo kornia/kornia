@@ -62,9 +62,9 @@ def _read_png_color_type(path_file: Path) -> int | None:
 # Note: color type 4 (Grayscale+Alpha) is intentionally omitted — kornia_rs
 # does not support it, so it falls through to read_image_any as RGB.
 _PNG_COLOR_TYPE_TO_MODE: dict[int, str] = {
-    0: "mono",   # Grayscale
-    3: "mono",   # Indexed (palette) — decoded as single channel by kornia_rs
-    6: "rgba",   # RGBA
+    0: "mono",  # Grayscale
+    3: "mono",  # Indexed (palette) — decoded as single channel by kornia_rs
+    6: "rgba",  # RGBA
 }
 
 
