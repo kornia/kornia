@@ -14,47 +14,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Benchmark two fully-configurable feature pipelines on Oxford-Affine-style sequences.
+"""Benchmark a fully-configurable feature pipeline on Oxford-Affine-style sequences.
 
 An Oxford-Affine sequence directory contains::
 
     img1.png  img2.png  ...  imgN.png
     H1to2p    H1to3p    ...  H1toNp   (3x3 homography ground truth, whitespace-separated)
 
-Two independent pipelines (A and B) are compared side-by-side.  Each can be either a
-``ScaleSpaceDetector``-based pipeline (freely composable response function, subpix module,
-descriptor, orientation estimator and affine-shape estimator) or one of the end-to-end
-learned detectors (ALIKED, DISK, DeDoDe) which replace the entire pipeline.
+The pipeline can be either a ``ScaleSpaceDetector``-based combination (freely composable
+response function, subpix module, descriptor, orientation estimator and affine-shape
+estimator) or one of the end-to-end learned detectors (ALIKED, DISK, DeDoDe).
 
-Metrics per image pair (img1 vs imgK):
+Output columns per image pair (img1 vs imgK):
 
-* MAE   -- mean corner reprojection error vs ground-truth homography (px, lower is better).
-* inl   -- number of RANSAC inliers (higher is better).
-* ms    -- wall-clock time for detect + describe + match (ms, lower is better).
-
-Default A = ``scalespace`` with ``subpix=soft`` (ConvSoftArgmax3d — the legacy default).
-Default B = ``scalespace`` with ``subpix=adaptive`` (AdaptiveQuadInterp3d — the new default).
-All other components default to ``dog`` / ``sift`` / ``none`` / ``none`` on both sides.
+* ``error [px]``   -- mean corner reprojection error vs ground-truth homography (lower is better).
+* ``inliers [#]``  -- RANSAC inlier count (higher is better).
+* ``time [ms]``    -- detect + describe + match wall-clock time (lower is better).
 
 Usage examples::
 
-    # default comparison (ConvSoftArgmax3d vs AdaptiveQuadInterp3d, DoG + SIFT)
+    # default  (AdaptiveQuadInterp3d + DoG + SIFT)
     python benchmarks/feature/scale_space_detector.py --seq /data/graf
 
-    # compare two descriptors (both sides share detector)
-    python benchmarks/feature/scale_space_detector.py --seq /data/graf \\
-        --a-subpix adaptive --a-desc sift \\
-        --b-subpix adaptive --b-desc hardnet
+    # swap descriptor
+    python benchmarks/feature/scale_space_detector.py --seq /data/graf --desc hardnet
 
-    # Hessian + AffNet + OriNet vs DoG + SIFT (both adaptive subpix)
+    # Hessian + AffNet + OriNet
     python benchmarks/feature/scale_space_detector.py --seq /data/graf \\
-        --a-resp dog   --a-subpix adaptive --a-desc sift \\
-        --b-resp hessian --b-subpix adaptive --b-desc hardnet \\
-        --b-aff affnet --b-ori orinet
+        --resp hessian --aff affnet --ori orinet
 
-    # compare ALIKED vs DISK
-    python benchmarks/feature/scale_space_detector.py --seq /data/graf \\
-        --a-method aliked --b-method disk
+    # end-to-end ALIKED (ignores --resp/--subpix/--desc/--ori/--aff)
+    python benchmarks/feature/scale_space_detector.py --seq /data/graf --method aliked
 
     # multiple sequences from a root folder
     python benchmarks/feature/scale_space_detector.py --root /data/oxford-affine --device cuda
@@ -70,7 +60,7 @@ from typing import Callable
 import cv2
 import numpy as np
 import torch
-from torch import nn
+import torch.nn as nn
 
 import kornia.feature as KF
 from kornia.feature.responses import BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT, CornerHarris
@@ -82,6 +72,7 @@ from kornia.geometry.subpix import (
     IterativeQuadInterp3d,
 )
 from kornia.geometry.transform import ScalePyramid
+
 
 # ---------------------------------------------------------------------------
 # Metric
@@ -302,7 +293,7 @@ def match_pair(img1, img2, extractor, ransac):
 # ---------------------------------------------------------------------------
 
 
-def eval_sequence(seq: Path, ext_a, ext_b, ransac, device) -> dict:
+def eval_sequence(seq: Path, extractor, ransac, device) -> dict:
     img1 = load_gray(str(seq / "img1.png"), device)
     h, w = img1.shape[2], img1.shape[3]
     pairs = find_pairs(seq)
@@ -312,11 +303,9 @@ def eval_sequence(seq: Path, ext_a, ext_b, ransac, device) -> dict:
     for k, img_path, h_path in pairs:
         img2 = load_gray(str(img_path), device)
         H_gt = np.loadtxt(str(h_path))
-        H_a, ms_a, ni_a = match_pair(img1, img2, ext_a, ransac)
-        H_b, ms_b, ni_b = match_pair(img1, img2, ext_b, ransac)
-        mae_a = get_MAE_imgcorners(h, w, H_gt, H_a) if H_a is not None else float("nan")
-        mae_b = get_MAE_imgcorners(h, w, H_gt, H_b) if H_b is not None else float("nan")
-        rows.append({"k": k, "mae_a": mae_a, "mae_b": mae_b, "ni_a": ni_a, "ni_b": ni_b, "ms_a": ms_a, "ms_b": ms_b})
+        H, ms, ni = match_pair(img1, img2, extractor, ransac)
+        mae = get_MAE_imgcorners(h, w, H_gt, H) if H is not None else float("nan")
+        rows.append({"k": k, "mae": mae, "ni": ni, "ms": ms})
     return {"seq": seq.name, "h": h, "w": w, "rows": rows}
 
 
@@ -324,98 +313,38 @@ def _col(rows, key):
     return [r[key] for r in rows]
 
 
-def print_sequence_table(stats: dict, label_a: str, label_b: str) -> None:
+def print_sequence_table(stats: dict, label: str) -> None:
     rows = stats["rows"]
     print(f"\n-- {stats['seq']}  ({stats['h']}x{stats['w']}) --")
-    print(f"  A : {label_a}")
-    print(f"  B : {label_b}")
-    print(f"\n{'pair':<6} {'MAE_A':>10} {'MAE_B':>10} {'B-A':>8} {'inl_A':>7} {'inl_B':>7} {'ms_A':>8} {'ms_B':>8}")
-    print("-" * 70)
+    print(f"  method : {label}")
+    print(f"\n{'pair':<6} {'error [px]':>12} {'inliers [#]':>12} {'time [ms]':>10}")
+    print("-" * 44)
     for r in rows:
-        delta = r["mae_b"] - r["mae_a"]
-        print(
-            f"1<>{r['k']:<3}  {r['mae_a']:>10.2f} {r['mae_b']:>10.2f} {delta:>+8.2f} "
-            f"{r['ni_a']:>7} {r['ni_b']:>7} {r['ms_a']:>8.1f} {r['ms_b']:>8.1f}"
-        )
-    print("-" * 70)
-    mae_a = np.nanmean(_col(rows, "mae_a"))
-    mae_b = np.nanmean(_col(rows, "mae_b"))
+        print(f"1<>{r['k']:<3}  {r['mae']:>12.1f} {r['ni']:>12} {r['ms']:>10.1f}")
+    print("-" * 44)
     print(
-        f"{'mean':<6}  {mae_a:>10.2f} {mae_b:>10.2f} {mae_b - mae_a:>+8.2f} "
-        f"{np.mean(_col(rows, 'ni_a')):>7.1f} {np.mean(_col(rows, 'ni_b')):>7.1f} "
-        f"{np.mean(_col(rows, 'ms_a')):>8.1f} {np.mean(_col(rows, 'ms_b')):>8.1f}"
+        f"{'mean':<6}  {np.nanmean(_col(rows, 'mae')):>12.1f}"
+        f" {np.mean(_col(rows, 'ni')):>12.1f}"
+        f" {np.mean(_col(rows, 'ms')):>10.1f}"
     )
 
 
-def print_summary(all_stats, label_a: str, label_b: str) -> None:
-    print("\n" + "=" * 70)
-    print(f"OVERALL  A={label_a}  B={label_b}")
-    print("=" * 70)
-    agg = lambda key: np.nanmean([np.nanmean([r[key] for r in s["rows"]]) for s in all_stats])
-    mae_a, mae_b = agg("mae_a"), agg("mae_b")
-    ni_a, ni_b = agg("ni_a"), agg("ni_b")
-    ms_a, ms_b = agg("ms_a"), agg("ms_b")
-    print(
-        f"  MAE     A / B : {mae_a:.2f} / {mae_b:.2f} px  -> {mae_a / max(mae_b, 1e-9):.2f}x  (>1 = B has lower error)"
-    )
-    print(f"  inliers B / A : {ni_b:.1f} / {ni_a:.1f}  -> {ni_b / max(ni_a, 1e-9):.2f}x  (>1 = B finds more inliers)")
-    print(f"  time    A / B : {ms_a:.1f} / {ms_b:.1f} ms  -> {ms_a / max(ms_b, 1e-9):.2f}x  (>1 = B is faster)")
+def print_summary(all_stats, label: str) -> None:
+    print("\n" + "=" * 44)
+    print(f"OVERALL  method={label}")
+    print("=" * 44)
+
+    def agg(key):
+        return np.nanmean([np.nanmean([r[key] for r in s["rows"]]) for s in all_stats])
+
+    print(f"  error [px]  : {agg('mae'):.1f}")
+    print(f"  inliers [#] : {agg('ni'):.1f}")
+    print(f"  time [ms]   : {agg('ms'):.1f}")
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-
-
-def _add_side(p: argparse.ArgumentParser, side: str, default_method: str, default_subpix: str) -> None:
-    s = side.upper()
-    g = p.add_argument_group(f"Method {s}")
-    g.add_argument(
-        f"--{side}-method",
-        dest=f"{side}_method",
-        default=default_method,
-        choices=["scalespace", "aliked", "disk", "dedode"],
-    )
-    g.add_argument(
-        f"--{side}-resp",
-        dest=f"{side}_resp",
-        default="dog",
-        choices=list(RESP_REGISTRY),
-        metavar="RESP",
-        help=f"[scalespace only] choices: {list(RESP_REGISTRY)}",
-    )
-    g.add_argument(
-        f"--{side}-subpix",
-        dest=f"{side}_subpix",
-        default=default_subpix,
-        choices=list(SUBPIX_REGISTRY),
-        metavar="SUBPIX",
-        help=f"[scalespace only] choices: {list(SUBPIX_REGISTRY)}",
-    )
-    g.add_argument(
-        f"--{side}-desc",
-        dest=f"{side}_desc",
-        default="sift",
-        choices=list(DESC_REGISTRY),
-        metavar="DESC",
-        help=f"[scalespace only] choices: {list(DESC_REGISTRY)}",
-    )
-    g.add_argument(
-        f"--{side}-ori",
-        dest=f"{side}_ori",
-        default="none",
-        choices=list(ORI_REGISTRY),
-        metavar="ORI",
-        help=f"[scalespace only] none=upright; choices: {list(ORI_REGISTRY)}",
-    )
-    g.add_argument(
-        f"--{side}-aff",
-        dest=f"{side}_aff",
-        default="none",
-        choices=list(AFF_REGISTRY),
-        metavar="AFF",
-        help=f"[scalespace only] none=circular; choices: {list(AFF_REGISTRY)}",
-    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -424,9 +353,43 @@ def parse_args() -> argparse.Namespace:
     g.add_argument("--seq", metavar="DIR", action="append", default=[])
     g.add_argument("--root", metavar="DIR", default=None, help="Root folder; every subdirectory with img1.png is used.")
 
-    # A defaults = legacy (ConvSoftArgmax3d), B defaults = new (AdaptiveQuadInterp3d)
-    _add_side(p, "a", default_method="scalespace", default_subpix="soft")
-    _add_side(p, "b", default_method="scalespace", default_subpix="adaptive")
+    g = p.add_argument_group("Method")
+    g.add_argument("--method", default="scalespace", choices=["scalespace", "aliked", "disk", "dedode"])
+    g.add_argument(
+        "--resp",
+        default="dog",
+        choices=list(RESP_REGISTRY),
+        metavar="RESP",
+        help=f"[scalespace only] choices: {list(RESP_REGISTRY)}",
+    )
+    g.add_argument(
+        "--subpix",
+        default="adaptive",
+        choices=list(SUBPIX_REGISTRY),
+        metavar="SUBPIX",
+        help=f"[scalespace only] choices: {list(SUBPIX_REGISTRY)}",
+    )
+    g.add_argument(
+        "--desc",
+        default="sift",
+        choices=list(DESC_REGISTRY),
+        metavar="DESC",
+        help=f"[scalespace only] choices: {list(DESC_REGISTRY)}",
+    )
+    g.add_argument(
+        "--ori",
+        default="none",
+        choices=list(ORI_REGISTRY),
+        metavar="ORI",
+        help=f"[scalespace only] none=upright; choices: {list(ORI_REGISTRY)}",
+    )
+    g.add_argument(
+        "--aff",
+        default="none",
+        choices=list(AFF_REGISTRY),
+        metavar="AFF",
+        help=f"[scalespace only] none=circular; choices: {list(AFF_REGISTRY)}",
+    )
 
     g = p.add_argument_group("Shared")
     g.add_argument("--nf", metavar="N", type=int, default=2000)
@@ -444,19 +407,11 @@ def main() -> None:
     if not seqs:
         raise SystemExit("No sequences.  Use --seq DIR or --root DIR.")
 
-    label_a = make_label(args.a_method, args.a_resp, args.a_subpix, args.a_desc, args.a_ori, args.a_aff)
-    label_b = make_label(args.b_method, args.b_resp, args.b_subpix, args.b_desc, args.b_ori, args.b_aff)
-
+    label = make_label(args.method, args.resp, args.subpix, args.desc, args.ori, args.aff)
     print(f"device: {device}  nf: {args.nf}  sequences: {len(seqs)}")
-    print(f"  A : {label_a}")
-    print(f"  B : {label_b}")
+    print(f"  method : {label}")
 
-    ext_a = build_extractor(
-        args.a_method, args.a_resp, args.a_subpix, args.a_desc, args.a_ori, args.a_aff, device, args.nf
-    )
-    ext_b = build_extractor(
-        args.b_method, args.b_resp, args.b_subpix, args.b_desc, args.b_ori, args.b_aff, device, args.nf
-    )
+    extractor = build_extractor(args.method, args.resp, args.subpix, args.desc, args.ori, args.aff, device, args.nf)
     ransac = RANSAC("homography", inl_th=2.0, max_iter=20, confidence=0.9999)
 
     first_img1 = load_gray(str(seqs[0] / "img1.png"), device)
@@ -464,17 +419,16 @@ def main() -> None:
     if first_pairs:
         first_img2 = load_gray(str(first_pairs[0][1]), device)
         for _ in range(args.warmup):
-            match_pair(first_img1, first_img2, ext_a, ransac)
-            match_pair(first_img1, first_img2, ext_b, ransac)
+            match_pair(first_img1, first_img2, extractor, ransac)
 
     all_stats = []
     for seq in seqs:
-        stats = eval_sequence(seq, ext_a, ext_b, ransac, device)
+        stats = eval_sequence(seq, extractor, ransac, device)
         all_stats.append(stats)
-        print_sequence_table(stats, label_a, label_b)
+        print_sequence_table(stats, label)
 
     if len(all_stats) > 1:
-        print_summary(all_stats, label_a, label_b)
+        print_summary(all_stats, label)
 
 
 if __name__ == "__main__":
