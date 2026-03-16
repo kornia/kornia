@@ -60,7 +60,7 @@ from typing import Callable
 import cv2
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 
 import kornia.feature as KF
 from kornia.feature.responses import BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT, CornerHarris
@@ -72,7 +72,6 @@ from kornia.geometry.subpix import (
     IterativeQuadInterp3d,
 )
 from kornia.geometry.transform import ScalePyramid
-
 
 # ---------------------------------------------------------------------------
 # Metric
