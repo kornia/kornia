@@ -752,3 +752,37 @@ class TestAdaptiveQuadInterp3d(BaseTester):
         op = kornia.geometry.subpix.AdaptiveQuadInterp3d(mode="patch", strict_maxima_bonus=0)
         op_opt = torch_optimizer(op)
         self.assert_close(op(x)[0], op_opt(x)[0])
+
+    def test_conv_matches_iterative(self, device, dtype):
+        """conv_quad_interp3d and iterative_quad_interp3d must give identical results at NMS maxima.
+
+        Regression test for the c000_safe normalisation bug: dividing the Hessian by |centre|
+        before the det-threshold check made conv accept poorly-conditioned positions that
+        iterative correctly rejected, causing up to ~1 px coordinate divergence.
+        """
+        from kornia.geometry.subpix.spatial_soft_argmax import conv_quad_interp3d, iterative_quad_interp3d
+        from kornia.geometry.subpix.nms import nms3d_minmax
+
+        torch.manual_seed(7)
+        B, C, D, H, W = 1, 1, 5, 32, 32
+        # Synthetic DoG-like response: mix of positive and negative small-amplitude blobs
+        x = torch.zeros(B, C, D, H, W, device=device, dtype=dtype)
+        for d0, h0, w0, sign, amp in [(2, 8, 10, 1, 0.008), (2, 22, 16, -1, 0.005), (3, 14, 24, 1, 0.012)]:
+            dd = torch.arange(D, device=device, dtype=dtype) - d0
+            dh = torch.arange(H, device=device, dtype=dtype) - h0
+            dw = torch.arange(W, device=device, dtype=dtype) - w0
+            x[0, 0] += sign * amp * (
+                torch.exp(-0.5 * dd**2).view(D, 1, 1)
+                * torch.exp(-0.5 * (dh / 2.5) ** 2).view(1, H, 1)
+                * torch.exp(-0.5 * (dw / 2.5) ** 2).view(1, 1, W)
+            )
+
+        max_mask, _ = nms3d_minmax(x)
+        coord_conv, _ = conv_quad_interp3d(x, n_iters=5, strict_maxima_bonus=0.0,
+                                            precomputed_nms_mask=max_mask, dilation_radius=3)
+        coord_iter, _ = iterative_quad_interp3d(x, n_iters=5, strict_maxima_bonus=0.0)
+
+        d_idx, h_idx, w_idx = torch.where(max_mask.view(D, H, W))
+        assert len(d_idx) > 0, "No NMS maxima found — check the synthetic input"
+        diff = (coord_conv[0, 0, :, d_idx, h_idx, w_idx] - coord_iter[0, 0, :, d_idx, h_idx, w_idx]).abs().max()
+        self.assert_close(diff, torch.zeros_like(diff), atol=1e-5, rtol=0)

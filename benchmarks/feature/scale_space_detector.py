@@ -281,7 +281,7 @@ def match_pair(img1, img2, extractor, ransac):
     t0 = time.perf_counter()
     kp1, desc1 = extractor(img1)
     kp2, desc2 = extractor(img2)
-    _, idxs = KF.match_snn(desc1, desc2, 0.9)
+    _, idxs = KF.match_snn(desc1, desc2, 0.85)
     ms = (time.perf_counter() - t0) * 1000
     if idxs.shape[0] < 4:
         return None, ms, 0
@@ -398,7 +398,7 @@ def parse_args() -> argparse.Namespace:
     )
 
     g = p.add_argument_group("Shared")
-    g.add_argument("--nf", metavar="N", type=int, default=2000)
+    g.add_argument("--nf", metavar="N", type=int, default=4096)
     g.add_argument("--device", metavar="DEV", default=None)
     g.add_argument("--warmup", metavar="N", type=int, default=1)
     return p.parse_args()
@@ -429,7 +429,7 @@ def main() -> None:
     print(f"  method : {label}")
 
     extractor = build_extractor(args.method, args.resp, args.subpix, args.desc, args.ori, args.aff, device, args.nf)
-    ransac = RANSAC("homography", inl_th=2.0, max_iter=20, confidence=0.9999)
+    ransac = RANSAC("homography", inl_th=2.0, max_iter=10, batch_size=8196, confidence=0.9999)
 
     first_img1 = load_gray(str(seqs[0] / "img1.png"), device)
     first_pairs = find_pairs(seqs[0])

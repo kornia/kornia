@@ -780,19 +780,7 @@ def conv_quad_interp3d(
     dxs = 0.25 * (p_xp_sp - p_xm_sp - p_xp_sm + p_xm_sm)
     dys = 0.25 * (p_yp_sp - p_ym_sp - p_yp_sm + p_ym_sm)
 
-    # Normalise by |centre| for scale-invariant determinant test.
-    c000_safe = c000.abs().clamp(min=1e-12)
-    sx_u, sy_u, ss_u, sol_u = _solve_cramer_sym3x3(
-        dxx / c000_safe,
-        dyy / c000_safe,
-        dss / c000_safe,
-        dxy / c000_safe,
-        dxs / c000_safe,
-        dys / c000_safe,
-        -gx / c000_safe,
-        -gy / c000_safe,
-        -gs / c000_safe,
-    )
+    sx_u, sy_u, ss_u, sol_u = _solve_cramer_sym3x3(dxx, dyy, dss, dxy, dxs, dys, -gx, -gy, -gs)
     # Precompute gradient·shift for the response correction (avoids storing gx/gy/gs tables).
     gds_u = gx * sx_u + gy * sy_u + gs * ss_u
 
@@ -1147,7 +1135,7 @@ class AdaptiveQuadInterp3d(nn.Module):
 
     Benchmarks show:
 
-    * **GPU** — :func:`conv_quad_interp3d` is 1.5–2× faster due to better
+    * **GPU** — :func:`conv_quad_interp3d` is 1.5-2x faster due to better
       parallelism on the batched gather+solve.
     * **CPU** — :func:`iterative_quad_interp3d` is faster for large images because
       it processes only the NMS maxima directly without any dilation/dedup overhead.
@@ -1185,7 +1173,7 @@ class AdaptiveQuadInterp3d(nn.Module):
         n_iters: int = 5,
         strict_maxima_bonus: float = 10.0,
         max_subpixel_shift: float = 0.6,
-        dilation_radius: int = 1,
+        dilation_radius: int = 3,
     ) -> None:
         super().__init__()
         if mode not in self.MODES:
