@@ -429,7 +429,7 @@ def main() -> None:
     print(f"  method : {label}")
 
     extractor = build_extractor(args.method, args.resp, args.subpix, args.desc, args.ori, args.aff, device, args.nf)
-    ransac = RANSAC("homography", inl_th=2.0, max_iter=10, batch_size=8196, confidence=0.9999)
+    ransac = RANSAC("homography", inl_th=2.0, max_iter=10, batch_size=8196, confidence=0.9999, seed=3407)
 
     first_img1 = load_gray(str(seqs[0] / "img1.png"), device)
     first_pairs = find_pairs(seqs[0])

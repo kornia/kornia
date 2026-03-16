@@ -1173,7 +1173,7 @@ class AdaptiveQuadInterp3d(nn.Module):
         n_iters: int = 5,
         strict_maxima_bonus: float = 10.0,
         max_subpixel_shift: float = 0.6,
-        dilation_radius: int = 3,
+        dilation_radius: int = 1,
     ) -> None:
         super().__init__()
         if mode not in self.MODES:
