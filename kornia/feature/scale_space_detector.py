@@ -27,7 +27,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.subpix import AdaptiveQuadInterp3d, ConvQuadInterp3d, NonMaximaSuppression2d, nms3d_minmax
 from kornia.geometry.transform import ScalePyramid, pyrdown, resize
 
-from .laf import laf_from_center_scale_ori, laf_is_inside_image
+from .laf import laf_from_center_scale_ori, laf_is_inside_image, scale_laf
 from .orientation import PassLAF
 from .responses import BlobHessian
 
@@ -40,25 +40,17 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
 
     Args:
         max_coords: torch.Tensor [BxNx3].
-        sigmas: torch.Tensor [BxNxD], D >= 1
+        sigmas: torch.Tensor [BxD], D >= 1
         num_levels: number of levels in the scale index.
 
     Returns:
         torch.Tensor [BxNx3].
 
     """
-    # depth (scale) in coord_max is represented as (float) index, not the scale yet.
-    # we will interpolate the scale using pytorch.grid_sample function
-    # Because grid_sample is for 4d input only, we will create fake 2nd dimension
-    # ToDo: replace with 3d input, when grid_sample will start to support it
-
-    # Reshape for grid shape
     B, N, _ = max_coords.shape
-    scale_coords = max_coords[:, :, 0].contiguous().view(-1, 1, 1, 1)
-    # Replace the scale_x_y
-    out = torch.cat(
-        [sigmas[0, 0] * torch.pow(2.0, scale_coords / float(num_levels)).view(B, N, 1), max_coords[:, :, 1:]], 2
-    )
+    base_sigma = sigmas[:, 0].view(B, 1, 1)  # (B, 1, 1) — per-batch base sigma
+    scales = base_sigma * torch.pow(2.0, max_coords[:, :, 0:1] / float(num_levels))  # (B, N, 1)
+    out = torch.cat([scales, max_coords[:, :, 1:]], 2)
     return out
 
 
@@ -115,13 +107,14 @@ class ScaleSpaceDetector(nn.Module):
         self.mr_size = mr_size
         self.num_features = num_features
         if scale_pyr_module is None:
-            scale_pyr_module = ScalePyramid(3, 1.6, 15)
+            extra_levels = 3 if scale_space_response else 2
+            scale_pyr_module = ScalePyramid(4, 1.6, 16, extra_levels=extra_levels)
         self.scale_pyr = scale_pyr_module
         if resp_module is None:
             resp_module = BlobHessian()
         self.resp = resp_module
         if subpix_module is None:
-            subpix_module = AdaptiveQuadInterp3d(strict_maxima_bonus=0.0)
+            subpix_module = AdaptiveQuadInterp3d(strict_maxima_bonus=0.0, allow_scale_steps=True)
         self.subpix = subpix_module
         if ori_module is None:
             ori_module = PassLAF()
@@ -164,16 +157,14 @@ class ScaleSpaceDetector(nn.Module):
 
         # Run response function
         if self.scale_space_response:
-            oct_resp = self.resp(octave, sigmas_oct.view(-1))
+            oct_resp = self.resp(octave, sigmas_oct.view(-1))  # (B, C, Ldog, H, W)
         else:
             oct_resp = self.resp(octave.permute(0, 2, 1, 3, 4).reshape(B * L, CH, H, W), sigmas_oct.view(-1)).view(
                 B, L, CH, H, W
             )
             # Reorder to (B, CH, L, H, W) for scale-space NMS
             oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
-            # 3rd extra level is required for DoG only
-            if isinstance(self.scale_pyr.extra_levels, torch.Tensor) and self.scale_pyr.extra_levels % 2 != 0:
-                oct_resp = oct_resp[:, :, :-1]
+        scale_sigmas = sigmas_oct[:, : oct_resp.shape[2]]
 
         if mask is not None:
             oct_mask: torch.Tensor = _create_octave_mask(mask, oct_resp.shape)
@@ -193,6 +184,13 @@ class ScaleSpaceDetector(nn.Module):
                 coord_min, response_min = self.subpix(-oct_resp)
         else:
             coord_max, response_max = self.subpix(oct_resp)
+
+        # Zero responses at scale border levels after subpix so they never reach top-K.
+        response_max[:, :, 0] = 0.0
+        response_max[:, :, -1] = 0.0
+        if self.minima_are_also_good:
+            response_min[:, :, 0] = 0.0
+            response_min[:, :, -1] = 0.0
         if self.minima_are_also_good:
             take_min_mask = (response_min > response_max) * min_nms_mask.to(response_max.dtype)
             response_max = response_min * take_min_mask + (1 - take_min_mask) * response_max
@@ -209,7 +207,7 @@ class ScaleSpaceDetector(nn.Module):
             max_coords_best = max_coords_flatten
         B, N = resp_flat_best.size()
 
-        max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct, num_levels)
+        max_coords_best = _scale_index_to_scale(max_coords_best, scale_sigmas, num_levels)
 
         current_lafs = torch.cat(
             [
@@ -219,7 +217,7 @@ class ScaleSpaceDetector(nn.Module):
             3,
         )
 
-        good_mask = laf_is_inside_image(current_lafs, octave[:, 0])
+        good_mask = laf_is_inside_image(scale_laf(current_lafs, 0.5), octave[:, 0], 5)
         resp_flat_best = resp_flat_best * good_mask.to(dev, dtype)
         current_lafs = current_lafs * px_size
 

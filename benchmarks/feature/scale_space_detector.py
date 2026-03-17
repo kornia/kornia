@@ -131,14 +131,14 @@ def find_pairs(seq: Path):
 
 RESP_REGISTRY: dict[str, tuple] = {
     "dog": (BlobDoG, True, True),
-    "dog_single": (lambda: BlobDoGSingle(1.0, 1.6), True, True),
+    "dog_single": (lambda: BlobDoGSingle(1.0, 1.6), False, True),
     "hessian": (BlobHessian, False, True),
     "harris": (lambda: CornerHarris(k=0.04), False, False),
     "gftt": (CornerGFTT, False, False),
 }
 
 SUBPIX_REGISTRY: dict[str, Callable] = {
-    "adaptive": lambda: AdaptiveQuadInterp3d(strict_maxima_bonus=0.0),
+    "adaptive": lambda: AdaptiveQuadInterp3d(strict_maxima_bonus=0.0, allow_scale_steps=True),
     "conv": lambda: ConvQuadInterp3d(strict_maxima_bonus=0.0),
     "iterative": lambda: IterativeQuadInterp3d(strict_maxima_bonus=0.0),
     "soft": lambda: ConvSoftArgmax3d((3, 3, 3), (1, 1, 1), (1, 1, 1), normalized_coordinates=False, output_value=True),
@@ -222,6 +222,23 @@ class DeDoDEExtractor(nn.Module):
         kp, _, desc = self.model(gray_to_rgb(img), n=self.n)
         return kp[0], desc[0]
 
+class DoGHardNet(nn.Module):
+    def __init__(self, nf: int):
+        super().__init__()
+        from kornia_moons.feature import OpenCVDetectorWithAffNetKornia
+        kornia_cv2dogaffnet = OpenCVDetectorWithAffNetKornia(cv2.SIFT_create(nf, edgeThreshold=-1, contrastThreshold=-1), make_upright=True)
+        self.det = kornia_cv2dogaffnet
+        self.desc = KF.HardNet(pretrained=True)
+        self.ori = KF.LAFOrienter(32, angle_detector=KF.OriNet(pretrained=True))
+
+    @torch.no_grad()
+    def forward(self, img: torch.Tensor):
+        lafs, resp = self.det(img)
+        lafs = self.ori(lafs, img)
+        patches = KF.extract_patches_from_pyramid(img, lafs, 32)
+        B, N, C, H, W = patches.shape
+        desc = self.desc(patches.view(B * N, C, H, W)).view(B, N, -1)
+        return KF.get_laf_center(lafs)[0], desc[0]
 
 # ---------------------------------------------------------------------------
 # Factory
@@ -233,10 +250,11 @@ def build_extractor(
 ) -> nn.Module:
     if method == "scalespace":
         resp_factory, ssr, minima = RESP_REGISTRY[resp]
+        subpix_mod = SUBPIX_REGISTRY[subpix]()
         detector = KF.ScaleSpaceDetector(
             num_features=nf,
             resp_module=resp_factory(),
-            subpix_module=SUBPIX_REGISTRY[subpix](),
+            subpix_module=subpix_mod,
             scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
             scale_space_response=ssr,
             minima_are_also_good=minima,
@@ -253,6 +271,8 @@ def build_extractor(
         return ALIKEDExtractor(KF.ALIKED.from_pretrained("aliked-n16rot", max_num_keypoints=nf).to(device))
     if method == "disk":
         return DISKExtractor(KF.DISK.from_pretrained("depth", device=device), n=nf)
+    if method == "opencv_sift_affnet":
+        return DoGHardNet(nf).to(device)
     if method == "dedode":
         return DeDoDEExtractor(
             KF.DeDoDe.from_pretrained(detector_weights="L-upright", descriptor_weights="B-upright").to(device), n=nf
@@ -360,7 +380,7 @@ def parse_args() -> argparse.Namespace:
     )
 
     g = p.add_argument_group("Method")
-    g.add_argument("--method", default="scalespace", choices=["scalespace", "aliked", "disk", "dedode"])
+    g.add_argument("--method", default="scalespace", choices=["scalespace", "aliked", "disk", "dedode", "opencv_sift_affnet"])
     g.add_argument(
         "--resp",
         default="dog",

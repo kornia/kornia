@@ -624,6 +624,7 @@ def conv_quad_interp3d(
     max_subpixel_shift: float = 0.6,
     precomputed_nms_mask: Optional[torch.Tensor] = None,
     dilation_radius: int = 1,
+    allow_scale_steps: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Subpixel localization of 3D scale-space extrema via quadratic interpolation.
 
@@ -842,11 +843,12 @@ def conv_quad_interp3d(
         valid = valid & (new_h >= 1) & (new_h <= H - 2)
         h_cur = new_h.clamp(0, H - 1)
 
-        move_ps = valid & (ss > max_subpixel_shift)
-        move_ns = valid & (ss < -max_subpixel_shift)
-        new_d = d_cur + move_ps.long() - move_ns.long()
-        valid = valid & (new_d >= 1) & (new_d <= D - 2)
-        d_cur = new_d.clamp(0, D - 1)
+        if allow_scale_steps:
+            move_ps = valid & (ss > max_subpixel_shift)
+            move_ns = valid & (ss < -max_subpixel_shift)
+            new_d = d_cur + move_ps.long() - move_ns.long()
+            valid = valid & (new_d >= 1) & (new_d <= D - 2)
+            d_cur = new_d.clamp(0, D - 1)
 
     valid = valid & (shift_x.abs() <= 1.5) & (shift_y.abs() <= 1.5) & (shift_s.abs() <= 1.5)
 
@@ -859,7 +861,8 @@ def conv_quad_interp3d(
     coords_max[b_idx, c_idx, 2, d_idx, h_idx, w_idx] = torch.where(valid, h_cur.to(dtype) + shift_y, h_idx.to(dtype))
 
     val_correction = 0.5 * torch.where(valid, grad_dot_shift, torch.zeros_like(grad_dot_shift))
-    val_center = input.view(BC, D, H, W)[bc_idx, d_idx, h_idx, w_idx]
+    # Use the final recentered position for val_center (h_cur/w_cur may have moved during iteration)
+    val_center = input.view(BC, D, H, W)[bc_idx, d_cur, h_cur, w_cur]
     y_max[b_idx, c_idx, d_idx, h_idx, w_idx] = val_center + val_correction
     if strict_maxima_bonus > 0:
         y_max[b_idx, c_idx, d_idx, h_idx, w_idx] += strict_maxima_bonus * valid.to(dtype)
@@ -888,12 +891,14 @@ class ConvQuadInterp3d(nn.Module):
         strict_maxima_bonus: float = 10.0,
         max_subpixel_shift: float = 0.6,
         dilation_radius: int = 1,
+        allow_scale_steps: bool = True,
     ) -> None:
         super().__init__()
         self.n_iters = n_iters
         self.strict_maxima_bonus = strict_maxima_bonus
         self.max_subpixel_shift = max_subpixel_shift
         self.dilation_radius = dilation_radius
+        self.allow_scale_steps = allow_scale_steps
 
     def __repr__(self) -> str:
         return (
@@ -901,7 +906,8 @@ class ConvQuadInterp3d(nn.Module):
             f"n_iters={self.n_iters}, "
             f"strict_maxima_bonus={self.strict_maxima_bonus}, "
             f"max_subpixel_shift={self.max_subpixel_shift}, "
-            f"dilation_radius={self.dilation_radius})"
+            f"dilation_radius={self.dilation_radius}, "
+            f"allow_scale_steps={self.allow_scale_steps})"
         )
 
     def forward(
@@ -914,6 +920,7 @@ class ConvQuadInterp3d(nn.Module):
             self.max_subpixel_shift,
             precomputed_nms_mask,
             self.dilation_radius,
+            self.allow_scale_steps,
         )
 
 
@@ -922,6 +929,7 @@ def iterative_quad_interp3d(
     n_iters: int = 5,
     strict_maxima_bonus: float = 10.0,
     max_subpixel_shift: float = 0.6,
+    allow_scale_steps: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Iterative subpixel localization of 3D extrema via quadratic interpolation.
 
@@ -1068,11 +1076,12 @@ def iterative_quad_interp3d(
         valid = valid & (new_h >= 1) & (new_h <= H - 2)
         h_cur = new_h.clamp(0, H - 1)
 
-        move_pos_s = valid & (ss > max_subpixel_shift)
-        move_neg_s = valid & (ss < -max_subpixel_shift)
-        new_d = d_cur + move_pos_s.long() - move_neg_s.long()
-        valid = valid & (new_d >= 1) & (new_d <= D - 2)
-        d_cur = new_d.clamp(0, D - 1)
+        if allow_scale_steps:
+            move_pos_s = valid & (ss > max_subpixel_shift)
+            move_neg_s = valid & (ss < -max_subpixel_shift)
+            new_d = d_cur + move_pos_s.long() - move_neg_s.long()
+            valid = valid & (new_d >= 1) & (new_d <= D - 2)
+            d_cur = new_d.clamp(0, D - 1)
 
     valid = valid & (shift_x.abs() <= 1.5) & (shift_y.abs() <= 1.5) & (shift_s.abs() <= 1.5)
 
@@ -1088,7 +1097,8 @@ def iterative_quad_interp3d(
     coords_max[b_idx, c_idx, 2, d_idx, h_idx, w_idx] = final_y
 
     val_correction = 0.5 * torch.where(valid, grad_dot_shift, torch.zeros_like(grad_dot_shift))
-    val_center = inp[bc_idx, d_idx, h_idx, w_idx]
+    # Use the final recentered position for val_center (h_cur/w_cur may have moved during iteration)
+    val_center = inp[bc_idx, d_cur, h_cur, w_cur]
     y_max[b_idx, c_idx, d_idx, h_idx, w_idx] = val_center + val_correction
 
     if strict_maxima_bonus > 0:
@@ -1108,22 +1118,27 @@ class IterativeQuadInterp3d(nn.Module):
         n_iters: int = 5,
         strict_maxima_bonus: float = 10.0,
         max_subpixel_shift: float = 0.6,
+        allow_scale_steps: bool = True,
     ) -> None:
         super().__init__()
         self.n_iters = n_iters
         self.strict_maxima_bonus = strict_maxima_bonus
         self.max_subpixel_shift = max_subpixel_shift
+        self.allow_scale_steps = allow_scale_steps
 
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
             f"n_iters={self.n_iters}, "
             f"strict_maxima_bonus={self.strict_maxima_bonus}, "
-            f"max_subpixel_shift={self.max_subpixel_shift})"
+            f"max_subpixel_shift={self.max_subpixel_shift}, "
+            f"allow_scale_steps={self.allow_scale_steps})"
         )
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        return iterative_quad_interp3d(x, self.n_iters, self.strict_maxima_bonus, self.max_subpixel_shift)
+        return iterative_quad_interp3d(
+            x, self.n_iters, self.strict_maxima_bonus, self.max_subpixel_shift, self.allow_scale_steps
+        )
 
 
 class AdaptiveQuadInterp3d(nn.Module):
@@ -1174,6 +1189,7 @@ class AdaptiveQuadInterp3d(nn.Module):
         strict_maxima_bonus: float = 10.0,
         max_subpixel_shift: float = 0.6,
         dilation_radius: int = 1,
+        allow_scale_steps: bool = True,
     ) -> None:
         super().__init__()
         if mode not in self.MODES:
@@ -1183,6 +1199,7 @@ class AdaptiveQuadInterp3d(nn.Module):
         self.strict_maxima_bonus = strict_maxima_bonus
         self.max_subpixel_shift = max_subpixel_shift
         self.dilation_radius = dilation_radius
+        self.allow_scale_steps = allow_scale_steps
 
     def __repr__(self) -> str:
         return (
@@ -1191,7 +1208,8 @@ class AdaptiveQuadInterp3d(nn.Module):
             f"n_iters={self.n_iters}, "
             f"strict_maxima_bonus={self.strict_maxima_bonus}, "
             f"max_subpixel_shift={self.max_subpixel_shift}, "
-            f"dilation_radius={self.dilation_radius})"
+            f"dilation_radius={self.dilation_radius}, "
+            f"allow_scale_steps={self.allow_scale_steps})"
         )
 
     def forward(
@@ -1208,5 +1226,8 @@ class AdaptiveQuadInterp3d(nn.Module):
                 self.max_subpixel_shift,
                 precomputed_nms_mask,
                 self.dilation_radius,
+                self.allow_scale_steps,
             )
-        return iterative_quad_interp3d(x, self.n_iters, self.strict_maxima_bonus, self.max_subpixel_shift)
+        return iterative_quad_interp3d(
+            x, self.n_iters, self.strict_maxima_bonus, self.max_subpixel_shift, self.allow_scale_steps
+        )
