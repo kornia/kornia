@@ -760,8 +760,8 @@ class TestAdaptiveQuadInterp3d(BaseTester):
         before the det-threshold check made conv accept poorly-conditioned positions that
         iterative correctly rejected, causing up to ~1 px coordinate divergence.
         """
-        from kornia.geometry.subpix.spatial_soft_argmax import conv_quad_interp3d, iterative_quad_interp3d
         from kornia.geometry.subpix.nms import nms3d_minmax
+        from kornia.geometry.subpix.spatial_soft_argmax import conv_quad_interp3d, iterative_quad_interp3d
 
         torch.manual_seed(7)
         B, C, D, H, W = 1, 1, 5, 32, 32
@@ -771,15 +771,20 @@ class TestAdaptiveQuadInterp3d(BaseTester):
             dd = torch.arange(D, device=device, dtype=dtype) - d0
             dh = torch.arange(H, device=device, dtype=dtype) - h0
             dw = torch.arange(W, device=device, dtype=dtype) - w0
-            x[0, 0] += sign * amp * (
-                torch.exp(-0.5 * dd**2).view(D, 1, 1)
-                * torch.exp(-0.5 * (dh / 2.5) ** 2).view(1, H, 1)
-                * torch.exp(-0.5 * (dw / 2.5) ** 2).view(1, 1, W)
+            x[0, 0] += (
+                sign
+                * amp
+                * (
+                    torch.exp(-0.5 * dd**2).view(D, 1, 1)
+                    * torch.exp(-0.5 * (dh / 2.5) ** 2).view(1, H, 1)
+                    * torch.exp(-0.5 * (dw / 2.5) ** 2).view(1, 1, W)
+                )
             )
 
         max_mask, _ = nms3d_minmax(x)
-        coord_conv, _ = conv_quad_interp3d(x, n_iters=5, strict_maxima_bonus=0.0,
-                                            precomputed_nms_mask=max_mask, dilation_radius=3)
+        coord_conv, _ = conv_quad_interp3d(
+            x, n_iters=5, strict_maxima_bonus=0.0, precomputed_nms_mask=max_mask, dilation_radius=3
+        )
         coord_iter, _ = iterative_quad_interp3d(x, n_iters=5, strict_maxima_bonus=0.0)
 
         d_idx, h_idx, w_idx = torch.where(max_mask.view(D, H, W))

@@ -222,11 +222,15 @@ class DeDoDEExtractor(nn.Module):
         kp, _, desc = self.model(gray_to_rgb(img), n=self.n)
         return kp[0], desc[0]
 
+
 class DoGHardNet(nn.Module):
     def __init__(self, nf: int):
         super().__init__()
         from kornia_moons.feature import OpenCVDetectorWithAffNetKornia
-        kornia_cv2dogaffnet = OpenCVDetectorWithAffNetKornia(cv2.SIFT_create(nf, edgeThreshold=-1, contrastThreshold=-1), make_upright=True)
+
+        kornia_cv2dogaffnet = OpenCVDetectorWithAffNetKornia(
+            cv2.SIFT_create(nf, edgeThreshold=-1, contrastThreshold=-1), make_upright=True
+        )
         self.det = kornia_cv2dogaffnet
         self.desc = KF.HardNet(pretrained=True)
         self.ori = KF.LAFOrienter(32, angle_detector=KF.OriNet(pretrained=True))
@@ -239,6 +243,7 @@ class DoGHardNet(nn.Module):
         B, N, C, H, W = patches.shape
         desc = self.desc(patches.view(B * N, C, H, W)).view(B, N, -1)
         return KF.get_laf_center(lafs)[0], desc[0]
+
 
 # ---------------------------------------------------------------------------
 # Factory
@@ -381,7 +386,9 @@ def parse_args() -> argparse.Namespace:
     )
 
     g = p.add_argument_group("Method")
-    g.add_argument("--method", default="scalespace", choices=["scalespace", "aliked", "disk", "dedode", "opencv_sift_affnet"])
+    g.add_argument(
+        "--method", default="scalespace", choices=["scalespace", "aliked", "disk", "dedode", "opencv_sift_affnet"]
+    )
     g.add_argument(
         "--resp",
         default="dog",
