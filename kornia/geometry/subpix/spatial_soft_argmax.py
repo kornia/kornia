@@ -785,19 +785,17 @@ def conv_quad_interp3d(
     # Precompute gradient·shift for the response correction (avoids storing gx/gy/gs tables).
     gds_u = gx * sx_u + gy * sy_u + gs * ss_u
 
-    # ── Step 5: scatter solutions to dense lookup tables ─────────────────────
-    # Tables are (BC, D, H, W): only the ~N_dilated positions are filled;
-    # all others stay at zero / False and will mark migrated keypoints as invalid.
-    sx_f = torch.zeros(BC, D, H, W, device=device, dtype=dtype)
-    sy_f = torch.zeros_like(sx_f)
-    ss_f = torch.zeros_like(sx_f)
-    gds_f = torch.zeros_like(sx_f)
-    sol_f = torch.zeros(BC, D, H, W, device=device, dtype=torch.bool)
-    sx_f[bc_u, d_u, h_u, w_u] = sx_u
-    sy_f[bc_u, d_u, h_u, w_u] = sy_u
-    ss_f[bc_u, d_u, h_u, w_u] = ss_u
-    gds_f[bc_u, d_u, h_u, w_u] = gds_u
-    sol_f[bc_u, d_u, h_u, w_u] = sol_u
+    # ── Step 5: build a compact int32 lookup table ───────────────────────────
+    # Maps flat(bc, d, h, w) → index into the NU-sized solution arrays
+    # (sx_u, sy_u, ss_u, gds_u, sol_u).  -1 means "not precomputed here" —
+    # the keypoint has moved out of the dilated neighbourhood and is invalid.
+    #
+    # Memory: 1 × BC×D×H×W × int32  (4 bytes/elem)
+    #     vs  5 × BC×D×H×W × float32 + 1 × bool  (21 bytes/elem previously)
+    #     → ~5× reduction.  For a 640×800×6 octave: 12 MB vs 62 MB.
+    NU = flat_u.shape[0]
+    lut = torch.full((BC * DHW,), -1, dtype=torch.int32, device=device)
+    lut[bc_u * DHW + d_u * HW + h_u * W + w_u] = torch.arange(NU, dtype=torch.int32, device=device)
 
     # ── Step 6: iterative lookup — no .any().item() sync ─────────────────────
     d_cur = d_idx.clone()
@@ -814,11 +812,16 @@ def conv_quad_interp3d(
         hi = h_cur.clamp(1, H - 2)
         wi = w_cur.clamp(1, W - 2)
 
-        sx = sx_f[bc_idx, di, hi, wi]
-        sy = sy_f[bc_idx, di, hi, wi]
-        ss = ss_f[bc_idx, di, hi, wi]
-        sol = sol_f[bc_idx, di, hi, wi]
-        gds = gds_f[bc_idx, di, hi, wi]
+        flat_q = bc_idx * DHW + di * HW + hi * W + wi  # (N,)
+        lut_idx = lut[flat_q].long()                    # (N,) int64; -1 = not in precomputed range
+        in_lut = lut_idx >= 0
+        idx_safe = lut_idx.clamp(min=0)                 # safe index (clamp -1 → 0 before gather)
+
+        sx = sx_u[idx_safe]
+        sy = sy_u[idx_safe]
+        ss = ss_u[idx_safe]
+        gds = gds_u[idx_safe]
+        sol = sol_u[idx_safe] & in_lut
 
         valid = valid & sol
         vf = valid.to(dtype)
@@ -930,6 +933,8 @@ def iterative_quad_interp3d(
     strict_maxima_bonus: float = 10.0,
     max_subpixel_shift: float = 0.6,
     allow_scale_steps: bool = True,
+    precomputed_nms_mask: Optional[torch.Tensor] = None,
+    max_candidates: Optional[int] = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Iterative subpixel localization of 3D extrema via quadratic interpolation.
 
@@ -948,6 +953,14 @@ def iterative_quad_interp3d(
             that strict maxima are preferred when selecting the top-K keypoints.
         max_subpixel_shift: if the estimated shift along any axis is larger than this
             threshold the integer center is displaced and another iteration is run.
+        max_candidates: if given, only the top-``max_candidates`` NMS maxima (ranked by
+            pre-refinement response) are processed.  The rest keep their grid-coordinate
+            values.  This is a **CPU speed-up knob**: for large images the number of 3-D
+            NMS maxima can be 10×–100× larger than the desired number of keypoints,
+            making the per-candidate gather+solve loop the dominant CPU cost.  Setting
+            ``max_candidates = num_features * 5`` (say) dramatically reduces that work
+            at the cost of occasionally missing a feature whose response rank would have
+            improved after refinement.
 
     Returns:
         A tuple ``(coords_max, y_max)`` where
@@ -989,13 +1002,26 @@ def iterative_quad_interp3d(
     DHW = D * H * W
     HW = H * W
 
-    nms_mask = nms3d(input, (3, 3, 3), True)
-    nms_flat = nms_mask.view(B * C, D, H, W)
+    nms_flat = (precomputed_nms_mask if precomputed_nms_mask is not None else nms3d(input, (3, 3, 3), True)).view(B * C, D, H, W)
 
     bc_idx, d_idx, h_idx, w_idx = torch.where(nms_flat)
     N = bc_idx.shape[0]
     if N == 0:
         return coords_max, y_max
+
+    # ── CPU speed-up: pre-filter to top-max_candidates by pre-refinement response ──
+    # For large images the NMS can yield tens of thousands of candidates while only a
+    # few hundred features are ultimately needed.  The per-candidate patch gather
+    # (random memory access into a multi-MB volume) is cache-miss dominated on CPU;
+    # reducing N here gives a proportional speedup of the iteration loop below.
+    if max_candidates is not None and N > max_candidates:
+        cand_vals = inp[bc_idx, d_idx, h_idx, w_idx]  # (N,) pre-refinement responses
+        _, keep = torch.topk(cand_vals, k=max_candidates)
+        bc_idx = bc_idx[keep]
+        d_idx = d_idx[keep]
+        h_idx = h_idx[keep]
+        w_idx = w_idx[keep]
+        N = max_candidates
 
     patch_offsets = _PATCH_DD.to(device) * HW + _PATCH_DH.to(device) * W + _PATCH_DW.to(device)
 
@@ -1119,12 +1145,14 @@ class IterativeQuadInterp3d(nn.Module):
         strict_maxima_bonus: float = 10.0,
         max_subpixel_shift: float = 0.6,
         allow_scale_steps: bool = True,
+        max_candidates: Optional[int] = None,
     ) -> None:
         super().__init__()
         self.n_iters = n_iters
         self.strict_maxima_bonus = strict_maxima_bonus
         self.max_subpixel_shift = max_subpixel_shift
         self.allow_scale_steps = allow_scale_steps
+        self.max_candidates = max_candidates
 
     def __repr__(self) -> str:
         return (
@@ -1132,12 +1160,23 @@ class IterativeQuadInterp3d(nn.Module):
             f"n_iters={self.n_iters}, "
             f"strict_maxima_bonus={self.strict_maxima_bonus}, "
             f"max_subpixel_shift={self.max_subpixel_shift}, "
-            f"allow_scale_steps={self.allow_scale_steps})"
+            f"allow_scale_steps={self.allow_scale_steps}, "
+            f"max_candidates={self.max_candidates})"
         )
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        x: torch.Tensor,
+        precomputed_nms_mask: Optional[torch.Tensor] = None,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         return iterative_quad_interp3d(
-            x, self.n_iters, self.strict_maxima_bonus, self.max_subpixel_shift, self.allow_scale_steps
+            x,
+            self.n_iters,
+            self.strict_maxima_bonus,
+            self.max_subpixel_shift,
+            self.allow_scale_steps,
+            precomputed_nms_mask=precomputed_nms_mask,
+            max_candidates=self.max_candidates,
         )
 
 
@@ -1168,6 +1207,10 @@ class AdaptiveQuadInterp3d(nn.Module):
         max_subpixel_shift: integer-centre move threshold.
         dilation_radius: L\ :math:`\infty` precompute radius for ``"conv"`` mode
             (ignored in ``"patch"`` mode).
+        max_candidates: if set, only the top-``max_candidates`` NMS maxima by
+            pre-refinement response are processed in ``"patch"`` mode.  Has no effect
+            in ``"conv"`` mode.  Useful on CPU when the number of 3-D NMS maxima greatly
+            exceeds the desired number of keypoints (see :func:`iterative_quad_interp3d`).
 
     Example:
         >>> inp = torch.randn(1, 1, 3, 64, 64)
@@ -1190,6 +1233,7 @@ class AdaptiveQuadInterp3d(nn.Module):
         max_subpixel_shift: float = 0.6,
         dilation_radius: int = 1,
         allow_scale_steps: bool = True,
+        max_candidates: Optional[int] = None,
     ) -> None:
         super().__init__()
         if mode not in self.MODES:
@@ -1200,6 +1244,7 @@ class AdaptiveQuadInterp3d(nn.Module):
         self.max_subpixel_shift = max_subpixel_shift
         self.dilation_radius = dilation_radius
         self.allow_scale_steps = allow_scale_steps
+        self.max_candidates = max_candidates
 
     def __repr__(self) -> str:
         return (
@@ -1209,7 +1254,8 @@ class AdaptiveQuadInterp3d(nn.Module):
             f"strict_maxima_bonus={self.strict_maxima_bonus}, "
             f"max_subpixel_shift={self.max_subpixel_shift}, "
             f"dilation_radius={self.dilation_radius}, "
-            f"allow_scale_steps={self.allow_scale_steps})"
+            f"allow_scale_steps={self.allow_scale_steps}, "
+            f"max_candidates={self.max_candidates})"
         )
 
     def forward(
@@ -1229,5 +1275,11 @@ class AdaptiveQuadInterp3d(nn.Module):
                 self.allow_scale_steps,
             )
         return iterative_quad_interp3d(
-            x, self.n_iters, self.strict_maxima_bonus, self.max_subpixel_shift, self.allow_scale_steps
+            x,
+            self.n_iters,
+            self.strict_maxima_bonus,
+            self.max_subpixel_shift,
+            self.allow_scale_steps,
+            precomputed_nms_mask=precomputed_nms_mask,
+            max_candidates=self.max_candidates,
         )
