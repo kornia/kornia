@@ -813,9 +813,9 @@ def conv_quad_interp3d(
         wi = w_cur.clamp(1, W - 2)
 
         flat_q = bc_idx * DHW + di * HW + hi * W + wi  # (N,)
-        lut_idx = lut[flat_q].long()                    # (N,) int64; -1 = not in precomputed range
+        lut_idx = lut[flat_q].long()  # (N,) int64; -1 = not in precomputed range
         in_lut = lut_idx >= 0
-        idx_safe = lut_idx.clamp(min=0)                 # safe index (clamp -1 → 0 before gather)
+        idx_safe = lut_idx.clamp(min=0)  # safe index (clamp -1 → 0 before gather)
 
         sx = sx_u[idx_safe]
         sy = sy_u[idx_safe]
@@ -1002,7 +1002,9 @@ def iterative_quad_interp3d(
     DHW = D * H * W
     HW = H * W
 
-    nms_flat = (precomputed_nms_mask if precomputed_nms_mask is not None else nms3d(input, (3, 3, 3), True)).view(B * C, D, H, W)
+    nms_flat = (precomputed_nms_mask if precomputed_nms_mask is not None else nms3d(input, (3, 3, 3), True)).view(
+        B * C, D, H, W
+    )
 
     bc_idx, d_idx, h_idx, w_idx = torch.where(nms_flat)
     N = bc_idx.shape[0]

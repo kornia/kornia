@@ -250,8 +250,17 @@ class DoGHardNet(nn.Module):
 # ---------------------------------------------------------------------------
 from typing import List, Union
 
+
 def build_extractor(
-    method: str, resp: str, subpix: str, desc: str, ori: str, aff: str, device: torch.device, nf: int, compile_modules: Union[bool, List[str]] = False
+    method: str,
+    resp: str,
+    subpix: str,
+    desc: str,
+    ori: str,
+    aff: str,
+    device: torch.device,
+    nf: int,
+    compile_modules: Union[bool, List[str]] = False,
 ) -> nn.Module:
     if method == "scalespace":
         resp_factory, ssr, minima = RESP_REGISTRY[resp]
@@ -428,7 +437,11 @@ def parse_args() -> argparse.Namespace:
 
     g = p.add_argument_group("Shared")
     g.add_argument("--nf", metavar="N", type=int, default=4096)
-    g.add_argument("--compile", action="store_true", help="torch.compile the extractor (if supported by the method and PyTorch version)")
+    g.add_argument(
+        "--compile",
+        action="store_true",
+        help="torch.compile the extractor (if supported by the method and PyTorch version)",
+    )
     g.add_argument("--device", metavar="DEV", default=None)
     g.add_argument("--warmup", metavar="N", type=int, default=1)
     return p.parse_args()
@@ -458,7 +471,17 @@ def main() -> None:
     print(f"device: {device}  nf: {args.nf}  sequences: {len(seqs)}")
     print(f"  method : {label}")
 
-    extractor = build_extractor(args.method, args.resp, args.subpix, args.desc, args.ori, args.aff, device, args.nf, compile_modules=args.compile)
+    extractor = build_extractor(
+        args.method,
+        args.resp,
+        args.subpix,
+        args.desc,
+        args.ori,
+        args.aff,
+        device,
+        args.nf,
+        compile_modules=args.compile,
+    )
     ransac = RANSAC("homography", inl_th=2.0, max_iter=10, batch_size=8196, confidence=0.9999, seed=3407)
 
     first_img1 = load_gray(str(seqs[0] / "img1.png"), device)
