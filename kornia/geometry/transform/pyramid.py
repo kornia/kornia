@@ -175,7 +175,8 @@ class ScalePyramid(nn.Module):
             f"extra_levels={self.extra_levels}, "
             f"border={self.border}, "
             f"sigma_step={self.sigma_step}, "
-            f"double_image={self.double_image})")
+            f"double_image={self.double_image})"
+        )
 
     @staticmethod
     def _make_gaussian_kernel1d(sigma: float, ksize: int) -> torch.Tensor:
@@ -289,7 +290,7 @@ class ScalePyramid(nn.Module):
             # Bilinear resampling is more accurate than integer-stride decimation.
             _pyr = pyr[-1][-self.extra_levels]
             H, W = _pyr.shape[2], _pyr.shape[3]
-            if min(H//2, W//2) <= self.min_size:
+            if min(H // 2, W // 2) <= self.min_size:
                 break
             H_new, W_new = H // 2, W // 2
             nextOctaveFirstLevel = F.interpolate(_pyr, size=(H_new, W_new), mode="bilinear", align_corners=True)
