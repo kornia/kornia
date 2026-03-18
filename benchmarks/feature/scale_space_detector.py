@@ -75,7 +75,7 @@ from kornia.geometry.subpix import (
     IterativeQuadInterp3d,
 )
 from kornia.geometry.transform import ScalePyramid
-
+from kornia.feature.integrated import KeyNetHardNet, KeyNetAffNetHardNet
 # ---------------------------------------------------------------------------
 # Metric
 # ---------------------------------------------------------------------------
@@ -249,6 +249,28 @@ class DoGHardNet(nn.Module):
         return KF.get_laf_center(lafs)[0], desc[0], None
 
 
+
+class KeyNetExtractor(nn.Module):
+    def __init__(self, n: int, ori: str, aff: str, device: torch.device, compile_model: bool = False):
+        super().__init__()
+        if aff != "none":
+            self.feat = KeyNetAffNetHardNet(num_features=n, upright=(ori=="none")).to(device)
+        else:
+            self.feat = KeyNetHardNet(num_features=n, upright=(ori=="none")).to(device)
+        if compile_model:
+            det = self.feat.detector
+            # model and nms run at 6 different image sizes → dynamic=True avoids recompilation
+            det.model = torch.compile(det.model, dynamic=True)
+            det.nms = torch.compile(det.nms, dynamic=True)
+            # aff/ori/descriptor NOT compiled: extract_patches_from_pyramid (laf.py) contains
+            # an .item() call inside a while-loop that creates graph breaks, causing extra
+            # sub-graphs that need additional warmup and show as a spike on the first eval pair.
+
+    @torch.no_grad()
+    def forward(self, img: torch.Tensor):
+        lafs, _, desc = self.feat(img)
+        return KF.get_laf_center(lafs)[0], desc[0], None
+
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
@@ -290,6 +312,8 @@ def build_extractor(
         return ALIKEDExtractor(KF.ALIKED.from_pretrained("aliked-n16rot", max_num_keypoints=nf).to(device))
     if method == "disk":
         return DISKExtractor(KF.DISK.from_pretrained("depth", device=device), n=nf)
+    if method == "keynet":
+        return KeyNetExtractor(n=nf, ori=ori, aff=aff, device=device, compile_model=bool(compile_modules))
     if method == "opencv_sift_affnet":
         return DoGHardNet(nf).to(device)
     if method == "dedode":
@@ -419,7 +443,7 @@ def parse_args() -> argparse.Namespace:
 
     g = p.add_argument_group("Method")
     g.add_argument(
-        "--method", default="scalespace", choices=["scalespace", "aliked", "disk", "dedode", "opencv_sift_affnet"]
+        "--method", default="scalespace", choices=["scalespace", "aliked", "disk", "dedode", "keynet", "opencv_sift_affnet"]
     )
     g.add_argument(
         "--resp",

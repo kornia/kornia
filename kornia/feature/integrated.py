@@ -189,6 +189,7 @@ class SIFTFeature(LocalFeature):
         rootsift: bool = True,
         device: Union[None, str, torch.device] = None,
         config: Optional[Detector_config] = None,
+        compile_model: bool = False,
     ) -> None:
         patch_size: int = 41
         if device is None:
@@ -201,6 +202,7 @@ class SIFTFeature(LocalFeature):
             config,
             ori_module=PassLAF() if upright else LAFOrienter(19),
             aff_module=PassLAF(),
+            compile_model=compile_model,
         ).to(device)
         descriptor = LAFDescriptor(
             SIFTDescriptor(patch_size=patch_size, rootsift=rootsift), patch_size=patch_size, grayscale_descriptor=True
@@ -222,6 +224,7 @@ class SIFTFeatureScaleSpace(LocalFeature):
         upright: bool = False,
         rootsift: bool = True,
         device: Union[None, str, torch.device] = None,
+        compile_modules: Union[bool, List[str]] = False,
     ) -> None:
         if device is None:
             device = torch.device("cpu")
@@ -235,6 +238,7 @@ class SIFTFeatureScaleSpace(LocalFeature):
             scale_space_response=True,
             minima_are_also_good=True,
             mr_size=6.0,
+            compile_modules=compile_modules,
         ).to(device)
         descriptor = LAFDescriptor(
             SIFTDescriptor(patch_size=patch_size, rootsift=rootsift), patch_size=patch_size, grayscale_descriptor=True
@@ -250,43 +254,47 @@ class GFTTAffNetHardNet(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         device: Union[None, str, torch.device] = None,
-        config: Optional[Detector_config] = None,
+        compile_modules: Union[bool, List[str]] = False,
     ) -> None:
         if device is None:
             device = torch.device("cpu")
-        if config is None:
-            config = get_default_detector_config()
-        detector = MultiResolutionDetector(
-            CornerGFTT(),
+        detector = ScaleSpaceDetector(
             num_features,
-            config,
+            resp_module=CornerGFTT(),
+            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
             ori_module=PassLAF() if upright else LAFOrienter(19),
             aff_module=LAFAffNetShapeEstimator(True, preserve_orientation=False).eval(),
+            scale_space_response=False,
+            minima_are_also_good=False,
+            mr_size=6.0,
+            compile_modules=compile_modules,
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)
 
 
 class HesAffNetHardNet(LocalFeature):
-    """Convenience module, which implements GFTT detector + AffNet-HardNet descriptor."""
+    """Convenience module, which implements Hessian detector + AffNet-HardNet descriptor."""
 
     def __init__(
         self,
         num_features: int = 2048,
         upright: bool = False,
         device: Union[None, str, torch.device] = None,
-        config: Optional[Detector_config] = None,
+        compile_modules: Union[bool, List[str]] = False,
     ) -> None:
         if device is None:
             device = torch.device("cpu")
-        if config is None:
-            config = get_default_detector_config()
-        detector = MultiResolutionDetector(
-            BlobHessian(),
+        detector = ScaleSpaceDetector(
             num_features,
-            config,
+            resp_module=BlobHessian(),
+            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
             ori_module=PassLAF() if upright else LAFOrienter(19),
             aff_module=LAFAffNetShapeEstimator(True, preserve_orientation=False).eval(),
+            scale_space_response=False,
+            minima_are_also_good=False,
+            mr_size=6.0,
+            compile_modules=compile_modules,
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)
@@ -301,11 +309,12 @@ class KeyNetHardNet(LocalFeature):
         upright: bool = False,
         device: Union[None, str, torch.device] = None,
         scale_laf: float = 1.0,
+        compile_model: bool = False,
     ) -> None:
         if device is None:
             device = torch.device("cpu")
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
-        detector = KeyNetDetector(True, num_features=num_features, ori_module=ori_module).to(device)
+        detector = KeyNetDetector(True, num_features=num_features, ori_module=ori_module, compile_model=compile_model).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor, scale_laf)
 
@@ -322,6 +331,7 @@ class KeyNetAffNetHardNet(LocalFeature):
         upright: bool = False,
         device: Union[None, str, torch.device] = None,
         scale_laf: float = 1.0,
+        compile_model: bool = False,
     ) -> None:
         if device is None:
             device = torch.device("cpu")
@@ -331,6 +341,7 @@ class KeyNetAffNetHardNet(LocalFeature):
             num_features=num_features,
             ori_module=ori_module,
             aff_module=LAFAffNetShapeEstimator(True, preserve_orientation=False).eval(),
+            compile_model=compile_model,
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor, scale_laf)

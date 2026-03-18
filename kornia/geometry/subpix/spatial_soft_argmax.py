@@ -343,7 +343,7 @@ def conv_soft_argmax2d(
     # applies exponential normalization trick
     # https://timvieira.github.io/blog/post/2014/02/11/exp-F.normalize-trick/
     # https://github.com/pytorch/pytorch/blob/bcb0bb7e0e03b386ad837015faba6b4b16e3bfb9/aten/src/ATen/native/SoftMax.cpp#L44
-    x_max = F.adaptive_max_pool2d(input, (1, 1))
+    x_max = input.amax(dim=(-2, -1), keepdim=True)  # faster than F.adaptive_max_pool2d(input, (1,1))
 
     # max is detached to prevent undesired backprop loops in the graph
     x_exp = ((input - x_max.detach()) / temperature).exp()
@@ -957,7 +957,7 @@ def iterative_quad_interp3d(
         max_candidates: if given, only the top-``max_candidates`` NMS maxima (ranked by
             pre-refinement response) are processed.  The rest keep their grid-coordinate
             values.  This is a **CPU speed-up knob**: for large images the number of 3-D
-            NMS maxima can be 10×–100× larger than the desired number of keypoints,
+            NMS maxima can be 10x-100x larger than the desired number of keypoints,
             making the per-candidate gather+solve loop the dominant CPU cost.  Setting
             ``max_candidates = num_features * 5`` (say) dramatically reduces that work
             at the cost of occasionally missing a feature whose response rank would have

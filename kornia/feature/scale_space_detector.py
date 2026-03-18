@@ -427,9 +427,9 @@ class MultiResolutionDetector(nn.Module):
         config: Optional[Detector_config] = None,
         ori_module: Optional[nn.Module] = None,
         aff_module: Optional[nn.Module] = None,
+        compile_model: bool = False,
     ) -> None:
         super().__init__()
-        self.model = model
         if config is None:
             config = get_default_detector_config()
         # Load extraction configuration
@@ -438,8 +438,15 @@ class MultiResolutionDetector(nn.Module):
         self.scale_factor_levels = config["scale_factor_levels"]
         self.mr_size = config["s_mult"]
         self.nms_size = config["nms_size"]
-        self.nms = NonMaximaSuppression2d((self.nms_size, self.nms_size))
+        nms = NonMaximaSuppression2d((self.nms_size, self.nms_size))
         self.num_features = num_features
+
+        if compile_model:
+            self.model = torch.compile(model, dynamic=True)
+            self.nms = torch.compile(nms, dynamic=True)
+        else:
+            self.model = model
+            self.nms = nms
 
         if ori_module is None:
             self.ori: nn.Module = PassLAF()
@@ -463,21 +470,24 @@ class MultiResolutionDetector(nn.Module):
         det_map = self.nms(self.remove_borders(self.model(level_img)))
         device = level_img.device
         dtype = level_img.dtype
-        yx = det_map.nonzero()[:, 2:].t()
-        scores = det_map[0, 0, yx[0], yx[1]]  # keynet supports only non-batched images
+        yx = det_map.nonzero()[:, 2:].t()  # (2, M) — only NMS survivors
+        scores = det_map[0, 0, yx[0], yx[1]]
 
-        scores_sorted, indices = torch.sort(scores, descending=True)
+        # topk is O(M) vs sort O(M log M); also avoids the > 0 filter since
+        # nonzero() already excludes zeros and NMS keeps only positive maxima.
+        k = min(num_kp, scores.shape[0])
+        top_scores, top_idx = torch.topk(scores, k=k)
+        yx = yx[:, top_idx].t()  # (k, 2)
 
-        indices = indices[torch.where(scores_sorted > 0.0)]
-        yx = yx[:, indices[:num_kp]].t()
-        current_kp_num = len(yx)
-        xy_projected = yx.view(1, current_kp_num, 2).flip(2) * torch.tensor(factor, device=device, dtype=dtype)
-        scale_factor = 0.5 * (factor[0] + factor[1])
-        scale = scale_factor * self.mr_size * torch.ones(1, current_kp_num, 1, 1, device=device, dtype=dtype)
+        current_kp_num = yx.shape[0]
+        fx = level_img.new_tensor([factor[0], factor[1]])
+        xy_projected = yx.view(1, current_kp_num, 2).flip(2) * fx
+        scale_val = 0.5 * (factor[0] + factor[1]) * self.mr_size
+        scale = level_img.new_full((1, current_kp_num, 1, 1), scale_val)
         lafs = laf_from_center_scale_ori(
-            xy_projected, scale, torch.zeros(1, current_kp_num, 1, device=device, dtype=dtype)
+            xy_projected, scale, level_img.new_zeros(1, current_kp_num, 1)
         )
-        return scores_sorted[:num_kp], lafs
+        return top_scores, lafs
 
     def detect(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         # Compute points per level
@@ -523,9 +533,7 @@ class MultiResolutionDetector(nn.Module):
 
             num_points_level = int(num_features_per_level[idx_level])
             if idx_level > 0 or (self.num_upscale_levels > 0):
-                nf2 = [num_features_per_level[a] for a in range(0, idx_level + 1 + self.num_upscale_levels)]
-                res_points = torch.tensor(nf2).sum().item()
-                num_points_level = int(res_points)
+                num_points_level = sum(num_features_per_level[: idx_level + 1 + self.num_upscale_levels])
 
             cur_scores, cur_lafs = self.detect_features_on_single_level(cur_img, num_points_level, factor)
             all_responses.append(cur_scores.view(1, -1))
