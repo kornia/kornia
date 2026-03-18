@@ -484,9 +484,7 @@ class MultiResolutionDetector(nn.Module):
         xy_projected = yx.view(1, current_kp_num, 2).flip(2) * fx
         scale_val = 0.5 * (factor[0] + factor[1]) * self.mr_size
         scale = level_img.new_full((1, current_kp_num, 1, 1), scale_val)
-        lafs = laf_from_center_scale_ori(
-            xy_projected, scale, level_img.new_zeros(1, current_kp_num, 1)
-        )
+        lafs = laf_from_center_scale_ori(xy_projected, scale, level_img.new_zeros(1, current_kp_num, 1))
         return top_scores, lafs
 
     def detect(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:

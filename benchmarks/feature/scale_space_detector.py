@@ -66,6 +66,7 @@ import torch
 from torch import nn
 
 import kornia.feature as KF
+from kornia.feature.integrated import KeyNetAffNetHardNet, KeyNetHardNet
 from kornia.feature.responses import BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT, CornerHarris
 from kornia.geometry import RANSAC
 from kornia.geometry.subpix import (
@@ -75,7 +76,7 @@ from kornia.geometry.subpix import (
     IterativeQuadInterp3d,
 )
 from kornia.geometry.transform import ScalePyramid
-from kornia.feature.integrated import KeyNetHardNet, KeyNetAffNetHardNet
+
 # ---------------------------------------------------------------------------
 # Metric
 # ---------------------------------------------------------------------------
@@ -249,14 +250,13 @@ class DoGHardNet(nn.Module):
         return KF.get_laf_center(lafs)[0], desc[0], None
 
 
-
 class KeyNetExtractor(nn.Module):
     def __init__(self, n: int, ori: str, aff: str, device: torch.device, compile_model: bool = False):
         super().__init__()
         if aff != "none":
-            self.feat = KeyNetAffNetHardNet(num_features=n, upright=(ori=="none")).to(device)
+            self.feat = KeyNetAffNetHardNet(num_features=n, upright=(ori == "none")).to(device)
         else:
-            self.feat = KeyNetHardNet(num_features=n, upright=(ori=="none")).to(device)
+            self.feat = KeyNetHardNet(num_features=n, upright=(ori == "none")).to(device)
         if compile_model:
             det = self.feat.detector
             # model and nms run at 6 different image sizes → dynamic=True avoids recompilation
@@ -270,6 +270,7 @@ class KeyNetExtractor(nn.Module):
     def forward(self, img: torch.Tensor):
         lafs, _, desc = self.feat(img)
         return KF.get_laf_center(lafs)[0], desc[0], None
+
 
 # ---------------------------------------------------------------------------
 # Factory
@@ -443,7 +444,9 @@ def parse_args() -> argparse.Namespace:
 
     g = p.add_argument_group("Method")
     g.add_argument(
-        "--method", default="scalespace", choices=["scalespace", "aliked", "disk", "dedode", "keynet", "opencv_sift_affnet"]
+        "--method",
+        default="scalespace",
+        choices=["scalespace", "aliked", "disk", "dedode", "keynet", "opencv_sift_affnet"],
     )
     g.add_argument(
         "--resp",
