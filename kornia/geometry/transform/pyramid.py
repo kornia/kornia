@@ -23,18 +23,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d, gaussian_blur2d
 
-__all__ = [
-    "PyrDown",
-    "PyrUp",
-    "ScalePyramid",
-    "build_laplacian_pyramid",
-    "build_pyramid",
-    "pyrdown",
-    "pyrup"
-]
+__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "build_laplacian_pyramid", "build_pyramid", "pyrdown", "pyrup"]
 
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
@@ -182,7 +174,7 @@ class ScalePyramid(nn.Module):
     def _make_gaussian_kernel1d(sigma: float, ksize: int) -> torch.Tensor:
         """Normalized 1D Gaussian kernel as a float32 tensor."""
         x = torch.arange(ksize, dtype=torch.float64) - ksize // 2
-        kernel = torch.exp(-0.5 * x ** 2 / sigma ** 2)
+        kernel = torch.exp(-0.5 * x**2 / sigma**2)
         return (kernel / kernel.sum()).float()
 
     def _precompute_gauss_kernels(
@@ -192,7 +184,7 @@ class ScalePyramid(nn.Module):
         # Initial blur: from camera sigma (0.5 / 1.0) up to init_sigma
         cur_sigma_init = 1.0 if double_image else 0.5
         if init_sigma > cur_sigma_init:
-            sigma = max(math.sqrt(init_sigma ** 2 - cur_sigma_init ** 2), 0.01)
+            sigma = max(math.sqrt(init_sigma**2 - cur_sigma_init**2), 0.01)
             ksize = self.get_kernel_size(sigma)
             self.register_buffer("_gk_init", self._make_gaussian_kernel1d(sigma, ksize))
         else:
@@ -203,7 +195,7 @@ class ScalePyramid(nn.Module):
         # these delta_sigma values are the SAME for every octave — precompute once.
         cur_s = init_sigma
         for lvl in range(n_levels + extra_levels - 1):
-            delta = cur_s * math.sqrt(self.sigma_step ** 2 - 1.0)
+            delta = cur_s * math.sqrt(self.sigma_step**2 - 1.0)
             ksize = self.get_kernel_size(delta)
             self.register_buffer(f"_gk_{lvl}", self._make_gaussian_kernel1d(delta, ksize))
             cur_s *= self.sigma_step

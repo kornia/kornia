@@ -24,7 +24,13 @@ from torch import nn
 from typing_extensions import TypedDict
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.geometry.subpix import AdaptiveQuadInterp3d, ConvQuadInterp3d, IterativeQuadInterp3d, NonMaximaSuppression2d, nms3d_minmax
+from kornia.geometry.subpix import (
+    AdaptiveQuadInterp3d,
+    ConvQuadInterp3d,
+    IterativeQuadInterp3d,
+    NonMaximaSuppression2d,
+    nms3d_minmax,
+)
 from kornia.geometry.transform import ScalePyramid, pyrdown, resize
 
 from .laf import laf_from_center_scale_ori
@@ -224,11 +230,10 @@ class ScaleSpaceDetector(nn.Module):
             else:
                 coord_max, response_max = self.subpix(oct_resp)
                 coord_min, response_min = self.subpix(-oct_resp)
+        elif is_iterative_subpix:
+            coord_max, response_max = self.subpix(oct_resp, precomputed_nms_mask=max_nms_mask)
         else:
-            if is_iterative_subpix:
-                coord_max, response_max = self.subpix(oct_resp, precomputed_nms_mask=max_nms_mask)
-            else:
-                coord_max, response_max = self.subpix(oct_resp)
+            coord_max, response_max = self.subpix(oct_resp)
 
         # Zero responses at scale border levels so they never reach top-K.
         # (nms3d_minmax already sets the masks False at these positions.)
@@ -249,19 +254,19 @@ class ScaleSpaceDetector(nn.Module):
         # Sparse top-K: gather the small set of NMS candidates first, then run top-K
         # on that (~few-thousand) set instead of the full CHxLxHxW volume (~millions).
         # nms3d_minmax guarantees cand_mask is False at scale border levels already.
-        mask_flat = cand_mask.view(B, -1)          # (B, L*H*W)
-        resp_flat = response_max.view(B, -1)        # (B, L*H*W)
+        mask_flat = cand_mask.view(B, -1)  # (B, L*H*W)
+        resp_flat = response_max.view(B, -1)  # (B, L*H*W)
         coord_flat = coord_max.view(B, 3, -1).permute(0, 2, 1)  # (B, L*H*W, 3)
 
         if B == 1:
             nms_idx = mask_flat[0].nonzero(as_tuple=True)[0]  # (M,)
-            resp_cands = resp_flat[0][nms_idx]       # (M,)
-            coord_cands = coord_flat[0][nms_idx]     # (M, 3)
+            resp_cands = resp_flat[0][nms_idx]  # (M,)
+            coord_cands = coord_flat[0][nms_idx]  # (M, 3)
             k_eff = min(num_feats, nms_idx.shape[0])
             if k_eff > 0:
                 resp_flat_best, local_idx = torch.topk(resp_cands, k=k_eff)
                 max_coords_best = coord_cands[local_idx].unsqueeze(0)  # (1, k_eff, 3)
-                resp_flat_best = resp_flat_best.unsqueeze(0)            # (1, k_eff)
+                resp_flat_best = resp_flat_best.unsqueeze(0)  # (1, k_eff)
             else:
                 resp_flat_best = resp_flat.new_zeros(1, 0)
                 max_coords_best = coord_flat.new_zeros(1, 0, 3)
@@ -325,7 +330,6 @@ class ScaleSpaceDetector(nn.Module):
         is_iterative_subpix = self._is_iterative_subpix
         px_size0 = 0.5 if self.scale_pyr.double_image else 1.0
         px_sizes = [px_size0 * (2.0**i) for i in range(len(sp))]
-
 
         # ── Process octaves sequentially ────────────────────────────────────
         # All octaves are independent once the scale pyramid is built, but CUDA
