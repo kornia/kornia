@@ -706,8 +706,7 @@ def conv_quad_interp3d(
     nms_mask = precomputed_nms_mask if precomputed_nms_mask is not None else nms3d(input, (3, 3, 3), True)
     bc_idx, d_idx, h_idx, w_idx = torch.where(nms_mask.view(BC, D, H, W))
     N = bc_idx.shape[0]
-    if N == 0:
-        return coords_max, y_max
+    # Note: no early-return for N==0 — empty tensors flow through all ops as no-ops.
 
     # ── Step 2: dilate NMS positions — L∞ ball of radius dilation_radius ────────
     # Generates all voxels a keypoint could visit across n_iters shift steps.
@@ -729,21 +728,21 @@ def conv_quad_interp3d(
 
     # Keep only interior positions (Hessian needs ±1 neighbours in all dims).
     keep = (d_dil >= 1) & (d_dil <= D - 2) & (h_dil >= 1) & (h_dil <= H - 2) & (w_dil >= 1) & (w_dil <= W - 2)
-    d_dil = d_dil[keep]
-    h_dil = h_dil[keep]
-    w_dil = w_dil[keep]
-    bc_dil = bc_dil[keep]
+    bc_u = bc_dil[keep]
+    d_u = d_dil[keep]
+    h_u = h_dil[keep]
+    w_u = w_dil[keep]
+    # Note: bc_u/d_u/h_u/w_u may contain duplicate positions (multiple NMS maxima sharing
+    # a dilated neighbour).  We intentionally skip torch.unique here because:
+    # (a) torch.unique output size depends on VALUES not shapes → causes torch.compile
+    #     to recompile whenever the unique-element count changes across images, producing
+    #     multi-second spikes (e.g. 4–7 s) for images with different NMS density.
+    # (b) The keep-filter boolean-index above already forces a graph break at this point,
+    #     so the code below runs in eager mode regardless — deduplication buys nothing.
+    # (c) Duplicate positions receive the same solve result (same 3×3×3 patch, deterministic
+    #     quadratic system), so last-write-wins in the LUT is correct.
 
-    # Deduplicate: multiple maxima may share dilated positions.
-    flat_u = torch.unique(bc_dil * DHW + d_dil * HW + h_dil * W + w_dil, sorted=False)
-    bc_u = flat_u // DHW
-    rem = flat_u % DHW
-    d_u = rem // HW
-    rem = rem % HW
-    h_u = rem // W
-    w_u = rem % W
-
-    # ── Step 3: gather 3×3×3 neighbourhood for all unique dilated positions ──
+    # ── Step 3: gather 3×3×3 neighbourhood for all kept dilated positions ────
     inp_flat = input.view(-1)
     patch_offsets = _PATCH_DD.to(device) * HW + _PATCH_DH.to(device) * W + _PATCH_DW.to(device)  # (27,)
     center_flat = bc_u * DHW + d_u * HW + h_u * W + w_u
@@ -786,16 +785,18 @@ def conv_quad_interp3d(
     gds_u = gx * sx_u + gy * sy_u + gs * ss_u
 
     # ── Step 5: build a compact int32 lookup table ───────────────────────────
-    # Maps flat(bc, d, h, w) → index into the NU-sized solution arrays
+    # Maps flat(bc, d, h, w) → index into the NK-sized solution arrays
     # (sx_u, sy_u, ss_u, gds_u, sol_u).  -1 means "not precomputed here" —
     # the keypoint has moved out of the dilated neighbourhood and is invalid.
+    # Duplicate positions use last-write-wins, which is correct since the same
+    # position always yields the same quadratic solution.
     #
     # Memory: 1 × BC×D×H×W × int32  (4 bytes/elem)
     #     vs  5 × BC×D×H×W × float32 + 1 × bool  (21 bytes/elem previously)
     #     → ~5× reduction.  For a 640×800×6 octave: 12 MB vs 62 MB.
-    NU = flat_u.shape[0]
+    NK = bc_u.shape[0]
     lut = torch.full((BC * DHW,), -1, dtype=torch.int32, device=device)
-    lut[bc_u * DHW + d_u * HW + h_u * W + w_u] = torch.arange(NU, dtype=torch.int32, device=device)
+    lut[bc_u * DHW + d_u * HW + h_u * W + w_u] = torch.arange(NK, dtype=torch.int32, device=device)
 
     # ── Step 6: iterative lookup — no .any().item() sync ─────────────────────
     d_cur = d_idx.clone()
@@ -1006,8 +1007,9 @@ def iterative_quad_interp3d(
 
     bc_idx, d_idx, h_idx, w_idx = torch.where(nms_flat)
     N = bc_idx.shape[0]
-    if N == 0:
-        return coords_max, y_max
+    # Note: no early-return for N==0 — empty tensors flow through all ops as no-ops,
+    # avoiding a Python branch that would cause torch.compile to specialise and recompile
+    # when blurry octaves first yield zero NMS maxima.
 
     # ── CPU speed-up: pre-filter to top-max_candidates by pre-refinement response ──
     # For large images the NMS can yield tens of thousands of candidates while only a

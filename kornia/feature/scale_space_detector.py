@@ -131,8 +131,15 @@ class ScaleSpaceDetector(nn.Module):
             if unknown:
                 raise ValueError(f"Unknown module names in compile_modules: {unknown}. Valid: {_all_names}")
 
+        if _compile_set:
+            # Allow torch.compile to keep data-dependent shape ops (torch.where / nonzero)
+            # inside the compiled graph as unbacked symbols, avoiding graph breaks and the
+            # 0/1-specialization recompilations that would otherwise fire whenever an octave
+            # first encounters zero NMS maxima (blurry/extreme-viewpoint images).
+            torch._dynamo.config.capture_dynamic_output_shape_ops = True
+
         def _maybe_compile(mod: nn.Module, name: str) -> nn.Module:
-            return torch.compile(mod) if name in _compile_set else mod
+            return torch.compile(mod, dynamic=True) if name in _compile_set else mod
 
         if scale_pyr_module is None:
             extra_levels = 3 if scale_space_response else 2

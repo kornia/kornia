@@ -181,13 +181,17 @@ class ScaleSpaceExtractor(nn.Module):
 
     @torch.no_grad()
     def forward(self, img: torch.Tensor):
+        t_det0 = time.perf_counter()
         lafs, _ = self.detector(img)
+        if img.device.type == "cuda":
+            torch.cuda.synchronize()
+        det_ms = (time.perf_counter() - t_det0) * 1000
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)
         patches = KF.extract_patches_from_pyramid(img, lafs, self.patch_size)
         B, N, C, H, W = patches.shape
         desc = self.desc(patches.view(B * N, C, H, W)).view(B, N, -1)
-        return KF.get_laf_center(lafs)[0], desc[0]
+        return KF.get_laf_center(lafs)[0], desc[0], det_ms
 
 
 class ALIKEDExtractor(nn.Module):
@@ -198,7 +202,7 @@ class ALIKEDExtractor(nn.Module):
     @torch.no_grad()
     def forward(self, img: torch.Tensor):
         f = self.model(gray_to_rgb(img))[0]
-        return f.keypoints, f.descriptors
+        return f.keypoints, f.descriptors, None
 
 
 class DISKExtractor(nn.Module):
@@ -209,7 +213,7 @@ class DISKExtractor(nn.Module):
     @torch.no_grad()
     def forward(self, img: torch.Tensor):
         f = self.model(gray_to_rgb(img), n=self.n, pad_if_not_divisible=True)[0]
-        return f.keypoints, f.descriptors
+        return f.keypoints, f.descriptors, None
 
 
 class DeDoDEExtractor(nn.Module):
@@ -220,7 +224,7 @@ class DeDoDEExtractor(nn.Module):
     @torch.no_grad()
     def forward(self, img: torch.Tensor):
         kp, _, desc = self.model(gray_to_rgb(img), n=self.n)
-        return kp[0], desc[0]
+        return kp[0], desc[0], None
 
 
 class DoGHardNet(nn.Module):
@@ -242,7 +246,7 @@ class DoGHardNet(nn.Module):
         patches = KF.extract_patches_from_pyramid(img, lafs, 32)
         B, N, C, H, W = patches.shape
         desc = self.desc(patches.view(B * N, C, H, W)).view(B, N, -1)
-        return KF.get_laf_center(lafs)[0], desc[0]
+        return KF.get_laf_center(lafs)[0], desc[0], None
 
 
 # ---------------------------------------------------------------------------
@@ -305,15 +309,16 @@ def make_label(method: str, resp: str, subpix: str, desc: str, ori: str, aff: st
 @torch.no_grad()
 def match_pair(img1, img2, extractor, ransac):
     t0 = time.perf_counter()
-    kp1, desc1 = extractor(img1)
-    kp2, desc2 = extractor(img2)
+    kp1, desc1, det_ms1 = extractor(img1)
+    kp2, desc2, det_ms2 = extractor(img2)
     _, idxs = KF.match_snn(desc1, desc2, 0.85)
     ms = (time.perf_counter() - t0) * 1000
+    det_ms = (det_ms1 + det_ms2) if (det_ms1 is not None and det_ms2 is not None) else None
     if idxs.shape[0] < 4:
-        return None, ms, 0
+        return None, ms, det_ms, 0
     H_est, mask = ransac(kp1[idxs[:, 0]], kp2[idxs[:, 1]])
     n_inliers = int(mask.sum().item()) if mask is not None else 0
-    return H_est.cpu().numpy(), ms, n_inliers
+    return H_est.cpu().numpy(), ms, det_ms, n_inliers
 
 
 # ---------------------------------------------------------------------------
@@ -331,9 +336,9 @@ def eval_sequence(seq: Path, extractor, ransac, device) -> dict:
     for k, img_path, h_path in pairs:
         img2 = load_gray(str(img_path), device)
         H_gt = np.loadtxt(str(h_path))
-        H, ms, ni = match_pair(img1, img2, extractor, ransac)
+        H, ms, det_ms, ni = match_pair(img1, img2, extractor, ransac)
         mae = get_MAE_imgcorners(h, w, H_gt, H) if H is not None else float("nan")
-        rows.append({"k": k, "mae": mae, "ni": ni, "ms": ms})
+        rows.append({"k": k, "mae": mae, "ni": ni, "ms": ms, "det_ms": det_ms})
     return {"seq": seq.name, "h": h, "w": w, "rows": rows}
 
 
@@ -343,18 +348,32 @@ def _col(rows, key):
 
 def print_sequence_table(stats: dict, label: str) -> None:
     rows = stats["rows"]
+    has_det = rows[0]["det_ms"] is not None
     print(f"\n-- {stats['seq']}  ({stats['h']}x{stats['w']}) --")
     print(f"  method : {label}")
-    print(f"\n{'pair':<6} {'error [px]':>12} {'inliers [#]':>12} {'time [ms]':>10}")
-    print("-" * 44)
-    for r in rows:
-        print(f"1<>{r['k']:<3}  {r['mae']:>12.1f} {r['ni']:>12} {r['ms']:>10.1f}")
-    print("-" * 44)
-    print(
-        f"{'mean':<6}  {np.nanmean(_col(rows, 'mae')):>12.1f}"
-        f" {np.mean(_col(rows, 'ni')):>12.1f}"
-        f" {np.mean(_col(rows, 'ms')):>10.1f}"
-    )
+    if has_det:
+        print(f"\n{'pair':<6} {'error [px]':>12} {'inliers [#]':>12} {'det [ms]':>10} {'time [ms]':>10}")
+        print("-" * 56)
+        for r in rows:
+            print(f"1<>{r['k']:<3}  {r['mae']:>12.1f} {r['ni']:>12} {r['det_ms']:>10.1f} {r['ms']:>10.1f}")
+        print("-" * 56)
+        print(
+            f"{'mean':<6}  {np.nanmean(_col(rows, 'mae')):>12.1f}"
+            f" {np.mean(_col(rows, 'ni')):>12.1f}"
+            f" {np.nanmean(_col(rows, 'det_ms')):>10.1f}"
+            f" {np.mean(_col(rows, 'ms')):>10.1f}"
+        )
+    else:
+        print(f"\n{'pair':<6} {'error [px]':>12} {'inliers [#]':>12} {'time [ms]':>10}")
+        print("-" * 44)
+        for r in rows:
+            print(f"1<>{r['k']:<3}  {r['mae']:>12.1f} {r['ni']:>12} {r['ms']:>10.1f}")
+        print("-" * 44)
+        print(
+            f"{'mean':<6}  {np.nanmean(_col(rows, 'mae')):>12.1f}"
+            f" {np.mean(_col(rows, 'ni')):>12.1f}"
+            f" {np.mean(_col(rows, 'ms')):>10.1f}"
+        )
 
 
 def print_summary(all_stats, label: str) -> None:
@@ -367,6 +386,9 @@ def print_summary(all_stats, label: str) -> None:
 
     print(f"  error [px]  : {agg('mae'):.1f}")
     print(f"  inliers [#] : {agg('ni'):.1f}")
+    has_det = all_stats[0]["rows"][0]["det_ms"] is not None
+    if has_det:
+        print(f"  det [ms]    : {agg('det_ms'):.1f}")
     print(f"  time [ms]   : {agg('ms'):.1f}")
 
 
