@@ -428,6 +428,7 @@ class MultiResolutionDetector(nn.Module):
         ori_module: Optional[nn.Module] = None,
         aff_module: Optional[nn.Module] = None,
         compile_model: bool = False,
+        score_threshold: float = 0.0,
     ) -> None:
         super().__init__()
         if config is None:
@@ -438,6 +439,7 @@ class MultiResolutionDetector(nn.Module):
         self.scale_factor_levels = config["scale_factor_levels"]
         self.mr_size = config["s_mult"]
         self.nms_size = config["nms_size"]
+        self.score_threshold = score_threshold
         nms = NonMaximaSuppression2d((self.nms_size, self.nms_size))
         self.num_features = num_features
 
@@ -468,23 +470,25 @@ class MultiResolutionDetector(nn.Module):
         self, level_img: torch.Tensor, num_kp: int, factor: Tuple[float, float]
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         det_map = self.nms(self.remove_borders(self.model(level_img)))
-        device = level_img.device
-        dtype = level_img.dtype
-        yx = det_map.nonzero()[:, 2:].t()  # (2, M) — only NMS survivors
-        scores = det_map[0, 0, yx[0], yx[1]]
+        _, _, h, w = det_map.shape
+        det_flat = det_map.view(-1)  # (H*W,) — B=1, C=1 guaranteed by MultiResolutionDetector
 
-        # topk is O(M) vs sort O(M log M); also avoids the > 0 filter since
-        # nonzero() already excludes zeros and NMS keeps only positive maxima.
-        k = min(num_kp, scores.shape[0])
-        top_scores, top_idx = torch.topk(scores, k=k)
-        yx = yx[:, top_idx].t()  # (k, 2)
+        # Mask out non-maxima (zeroed by NMS) and below-threshold scores, then topk.
+        # Using masked_fill + topk instead of nonzero: avoids data-dependent output shapes,
+        # supports score_threshold, and is compatible with torch.compile.
+        fill = torch.finfo(det_flat.dtype).min / 2
+        det_masked = det_flat.masked_fill(det_flat <= self.score_threshold, fill)
+        k = min(num_kp, det_flat.numel())
+        top_scores, top_flat_idx = torch.topk(det_masked, k=k)
 
-        current_kp_num = yx.shape[0]
+        # Convert flat indices to (y, x) pixel coordinates.
+        yx = torch.stack([top_flat_idx // w, top_flat_idx % w], dim=1)  # (k, 2)
+
         fx = level_img.new_tensor([factor[0], factor[1]])
-        xy_projected = yx.view(1, current_kp_num, 2).flip(2) * fx
+        xy_projected = yx.view(1, k, 2).flip(2).float() * fx
         scale_val = 0.5 * (factor[0] + factor[1]) * self.mr_size
-        scale = level_img.new_full((1, current_kp_num, 1, 1), scale_val)
-        lafs = laf_from_center_scale_ori(xy_projected, scale, level_img.new_zeros(1, current_kp_num, 1))
+        scale = level_img.new_full((1, k, 1, 1), scale_val)
+        lafs = laf_from_center_scale_ori(xy_projected, scale, level_img.new_zeros(1, k, 1))
         return top_scores, lafs
 
     def detect(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:

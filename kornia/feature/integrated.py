@@ -190,6 +190,7 @@ class SIFTFeature(LocalFeature):
         device: Union[None, str, torch.device] = None,
         config: Optional[Detector_config] = None,
         compile_model: bool = False,
+        score_threshold: float = 0.0,
     ) -> None:
         patch_size: int = 41
         if device is None:
@@ -203,6 +204,7 @@ class SIFTFeature(LocalFeature):
             ori_module=PassLAF() if upright else LAFOrienter(19),
             aff_module=PassLAF(),
             compile_model=compile_model,
+            score_threshold=score_threshold,
         ).to(device)
         descriptor = LAFDescriptor(
             SIFTDescriptor(patch_size=patch_size, rootsift=rootsift), patch_size=patch_size, grayscale_descriptor=True
@@ -310,12 +312,14 @@ class KeyNetHardNet(LocalFeature):
         device: Union[None, str, torch.device] = None,
         scale_laf: float = 1.0,
         compile_model: bool = False,
+        score_threshold: float = 0.0,
     ) -> None:
         if device is None:
             device = torch.device("cpu")
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
         detector = KeyNetDetector(
-            True, num_features=num_features, ori_module=ori_module, compile_model=compile_model
+            True, num_features=num_features, ori_module=ori_module,
+            compile_model=compile_model, score_threshold=score_threshold,
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor, scale_laf)
@@ -334,6 +338,7 @@ class KeyNetAffNetHardNet(LocalFeature):
         device: Union[None, str, torch.device] = None,
         scale_laf: float = 1.0,
         compile_model: bool = False,
+        score_threshold: float = 0.0,
     ) -> None:
         if device is None:
             device = torch.device("cpu")
@@ -344,6 +349,7 @@ class KeyNetAffNetHardNet(LocalFeature):
             ori_module=ori_module,
             aff_module=LAFAffNetShapeEstimator(True, preserve_orientation=False).eval(),
             compile_model=compile_model,
+            score_threshold=score_threshold,
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor, scale_laf)

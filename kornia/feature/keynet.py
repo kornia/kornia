@@ -217,8 +217,11 @@ class KeyNetDetector(MultiResolutionDetector):
         ori_module: Optional[nn.Module] = None,
         aff_module: Optional[nn.Module] = None,
         compile_model: bool = False,
+        score_threshold: float = 0.0,
     ) -> None:
         if keynet_conf is None:
             keynet_conf = keynet_default_config
         model = KeyNet(pretrained, keynet_conf)
-        super().__init__(model, num_features, keynet_conf["Detector_conf"], ori_module, aff_module, compile_model)
+        super().__init__(
+            model, num_features, keynet_conf["Detector_conf"], ori_module, aff_module, compile_model, score_threshold
+        )

@@ -58,7 +58,7 @@ from __future__ import annotations
 import argparse
 import time
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -275,7 +275,6 @@ class KeyNetExtractor(nn.Module):
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
-from typing import List, Union
 
 
 def build_extractor(
@@ -427,6 +426,90 @@ def print_summary(all_stats, label: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Detection-only batch speed benchmark
+# ---------------------------------------------------------------------------
+
+
+def _get_bench_module(extractor: nn.Module) -> Tuple[nn.Module, str]:
+    """Return (module_to_time, label) for the speed benchmark.
+
+    For pipeline extractors, isolates the detector so aff/ori/desc are excluded.
+    For end-to-end models (ALIKED, DISK, DeDoDe) the full forward is timed.
+    """
+    if isinstance(extractor, ScaleSpaceExtractor):
+        return extractor.detector, "detection only"
+    if isinstance(extractor, KeyNetExtractor):
+        return extractor.feat.detector, "detection only"
+    return extractor, "full forward"
+
+
+def _time_fn(fn: Callable, n_iter: int, dev: torch.device) -> float:
+    """Return mean wall-clock time in ms over n_iter calls."""
+    if dev.type == "cuda":
+        torch.cuda.synchronize()
+    t0 = time.perf_counter()
+    for _ in range(n_iter):
+        fn()
+    if dev.type == "cuda":
+        torch.cuda.synchronize()
+    return (time.perf_counter() - t0) / n_iter * 1000
+
+
+def run_speed_benchmark(
+    extractor: nn.Module,
+    img: torch.Tensor,
+    batch_sizes: Tuple[int, ...] = (1, 4, 8),
+    n_iter_gpu: int = 20,
+    n_iter_cpu: int = 5,
+    warmup: int = 3,
+) -> None:
+    """Print a batch-size x device timing table.
+
+    Args:
+        extractor: the extractor built by :func:`build_extractor`.
+        img: single-image tensor ``(1, C, H, W)`` on any device (moved internally).
+        batch_sizes: batch sizes to benchmark.
+        n_iter_gpu: number of timed iterations on GPU.
+        n_iter_cpu: number of timed iterations on CPU.
+        warmup: warm-up iterations (not timed).
+    """
+    mod, what = _get_bench_module(extractor)
+
+    try:
+        orig_dev = next(mod.parameters()).device
+    except StopIteration:
+        orig_dev = img.device
+
+    dev_map: Dict[str, torch.device] = {"cpu": torch.device("cpu")}
+    if torch.cuda.is_available():
+        dev_map["gpu"] = torch.device("cuda")
+
+    col_w = 14
+    print(f"\n-- Speed benchmark ({what}, ms / call) --")
+    print(f"{'bs':<6}" + "".join(f"{k:>{col_w}}" for k in dev_map))
+    print("-" * (6 + col_w * len(dev_map)))
+
+    for bs in batch_sizes:
+        row = f"{bs:<6}"
+        for dev_name, dev in dev_map.items():
+            n_iter = n_iter_gpu if dev.type == "cuda" else n_iter_cpu
+            mod.to(dev)
+            img_b = img[0:1].expand(bs, -1, -1, -1).contiguous().to(dev)
+            try:
+                with torch.no_grad():
+                    for _ in range(warmup):
+                        mod(img_b)
+                    ms = _time_fn(lambda: mod(img_b), n_iter, dev)  # noqa: B023
+                row += f"{ms:>{col_w - 3}.1f} ms"
+            except Exception:
+                row += f"{'N/A':>{col_w}}"
+        print(row)
+
+    mod.to(orig_dev)
+    print()
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -493,6 +576,11 @@ def parse_args() -> argparse.Namespace:
     )
     g.add_argument("--device", metavar="DEV", default=None)
     g.add_argument("--warmup", metavar="N", type=int, default=1)
+    g.add_argument(
+        "--speed-bench",
+        action="store_true",
+        help="Run detection-only speed benchmark (bs=1,4,8 on cpu+gpu) after the matching eval.",
+    )
     return p.parse_args()
 
 
@@ -548,6 +636,10 @@ def main() -> None:
 
     if len(all_stats) > 1:
         print_summary(all_stats, label)
+
+    if args.speed_bench:
+        bench_img = load_gray(str(seqs[0] / "img1.png"), torch.device("cpu"))
+        run_speed_benchmark(extractor, bench_img)
 
 
 if __name__ == "__main__":
