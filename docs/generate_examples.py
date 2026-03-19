@@ -221,9 +221,9 @@ def main():
         "RandomThinPlateSpline": ((), 1, 2020),
         "RandomJigsaw": ((), 2, 2020),
     }
-
-    # ITERATE OVER THE TRANSFORMS
+    
     for aug_name, (args, num_samples, seed) in augmentations_list.items():
+
         # prepare input
         img_in = img1.repeat(num_samples, 1, 1, 1)
         img_in = handle_special_cases(aug_name, img_in)
@@ -243,7 +243,7 @@ def main():
         # save image
         save_output_image(out, OUTPUT_PATH, aug_name)
 
-        # logging (same as original)
+        # logging
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}: {sig}")
 
