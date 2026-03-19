@@ -23,8 +23,9 @@ This subpackage provides subpixel localization and softmax utilities for geometr
 from __future__ import annotations
 
 from .dsnt import render_gaussian2d, spatial_expectation2d, spatial_softmax2d
-from .nms import NonMaximaSuppression2d, NonMaximaSuppression3d, nms2d, nms3d
+from .nms import NonMaximaSuppression2d, NonMaximaSuppression3d, nms2d, nms3d, nms3d_minmax
 from .spatial_soft_argmax import (
+    AdaptiveQuadInterp3d,
     ConvQuadInterp3d,
     ConvSoftArgmax2d,
     ConvSoftArgmax3d,
@@ -38,6 +39,7 @@ from .spatial_soft_argmax import (
 )
 
 __all__ = [
+    "AdaptiveQuadInterp3d",
     "ConvQuadInterp3d",
     "ConvSoftArgmax2d",
     "ConvSoftArgmax3d",
@@ -51,6 +53,7 @@ __all__ = [
     "iterative_quad_interp3d",
     "nms2d",
     "nms3d",
+    "nms3d_minmax",
     "render_gaussian2d",
     "spatial_expectation2d",
     "spatial_soft_argmax2d",

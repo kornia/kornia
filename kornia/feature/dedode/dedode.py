@@ -106,13 +106,12 @@ class DeDoDe(nn.Module):
         if apply_imagenet_normalization:
             images = self.normalizer(images)
         _B, _C, H, W = images.shape
-        h, w = images.shape[2:]
         if pad_if_not_divisible:
-            pd_h = 14 - h % 14 if h % 14 > 0 else 0
-            pd_w = 14 - w % 14 if w % 14 > 0 else 0
+            pd_h = 14 - H % 14 if H % 14 > 0 else 0
+            pd_w = 14 - W % 14 if W % 14 > 0 else 0
             images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
-        keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
-        descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
+        keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=H, crop_w=W)
+        descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False, crop_h=H, crop_w=W)
         return dedode_denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
 
     @torch.inference_mode()
@@ -126,6 +125,11 @@ class DeDoDe(nn.Module):
         crop_w: Optional[int] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Detect keypoints in the input images.
+
+        .. note::
+            This method unconditionally sets the model to eval mode via ``self.train(False)``
+            so that BatchNorm and Dropout behave deterministically. This is intentional: the
+            detector is only used at inference time and its statistics must be frozen.
 
         Args:
             images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the input images.
@@ -167,15 +171,23 @@ class DeDoDe(nn.Module):
         images: torch.Tensor,
         keypoints: Optional[torch.Tensor] = None,
         apply_imagenet_normalization: bool = True,
+        pad_if_not_divisible: bool = True,
         crop_h: Optional[int] = None,
         crop_w: Optional[int] = None,
     ) -> torch.Tensor:
         """Describe keypoints in the input images. If keypoints are not provided, returns the dense descriptors.
 
+        .. note::
+            This method unconditionally sets the model to eval mode via ``self.train(False)``
+            so that BatchNorm and Dropout behave deterministically. This is intentional: the
+            descriptor is only used at inference time and its statistics must be frozen.
+
         Args:
             images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the input images.
             keypoints: An optional torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
+            pad_if_not_divisible: Zero-pad the image so H and W are divisible by 14. Required when
+                using the ``G`` descriptor backed by DINOv2 (patch size 14). Ignored for ``B``.
             crop_h: The height of the crop to be used for description. If None, the full image is used.
             crop_w: The width of the crop to be used for description. If None, the full image is used.
 
@@ -191,6 +203,10 @@ class DeDoDe(nn.Module):
             KORNIA_CHECK_SHAPE(keypoints, ["B", "N", "2"])
         if apply_imagenet_normalization:
             images = self.normalizer(images)
+        if pad_if_not_divisible:
+            pd_h = 14 - H % 14 if H % 14 > 0 else 0
+            pd_w = 14 - W % 14 if W % 14 > 0 else 0
+            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
         self.train(False)
         descriptions = self.descriptor.forward(images)
         if crop_h is not None and crop_w is not None:
@@ -217,8 +233,8 @@ class DeDoDe(nn.Module):
             detector_weights: The weights to load for the detector.
                 One of 'L-upright' (original paper, https://arxiv.org/abs/2308.08479),
                 'L-C4', 'L-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152),
-                'L-C4-v2' (from dedode v2, better at rotations, less clustering, https://arxiv.org/abs/2404.08928)
-                Default is 'L-C4-v2', but perhaps it should be 'L-C4-v2'?
+                'L-C4-v2' (from dedode v2, better at rotations, less clustering, https://arxiv.org/abs/2404.08928).
+                Default is 'L-C4-v2'.
             descriptor_weights: The weights to load for the descriptor.
                 One of 'B-upright','G-upright' (original paper, https://arxiv.org/abs/2308.08479),
                 'B-C4', 'B-SO2', 'G-C4', 'G-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152).
@@ -230,6 +246,9 @@ class DeDoDe(nn.Module):
             The pretrained model.
 
         """
+        # The model architecture kind is encoded as the first character of the weight name,
+        # e.g. "L-C4-v2" -> "L", "G-upright" -> "G". All current checkpoints follow this
+        # convention intentionally so that new variants only need a new URL entry.
         model: DeDoDe = cls(
             detector_model=detector_weights[0],  # type: ignore[arg-type]
             descriptor_model=descriptor_weights[0],  # type: ignore[arg-type]

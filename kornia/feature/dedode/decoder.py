@@ -92,7 +92,6 @@ class ConvRefiner(nn.Module):
                 for hb in range(hidden_blocks)
             ]
         )
-        self.hidden_blocks = self.hidden_blocks
         self.out_conv = nn.Conv2d(hidden_dim, out_dim, 1, 1, 0)
         self.amp = amp
         self.amp_dtype = amp_dtype
@@ -127,6 +126,9 @@ class ConvRefiner(nn.Module):
 
     def forward(self, feats: torch.Tensor) -> torch.Tensor:
         _b, _c, _hs, _ws = feats.shape
+        # AMP is intentionally scoped to "cuda" only: float16 autocast on CPU is not
+        # supported by PyTorch and a no-op on MPS. Use amp_dtype=torch.float32 on
+        # non-CUDA devices to disable AMP entirely.
         with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
             x0 = self.block1(feats)
             x = self.hidden_blocks(x0)
