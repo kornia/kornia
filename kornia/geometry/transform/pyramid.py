@@ -204,7 +204,7 @@ class ScalePyramid(nn.Module):
         """Separable Gaussian blur with a precomputed 1D kernel — no validation overhead."""
         ksize = kernel.shape[0]
         pad = ksize // 2
-        B, C, H, W = x.shape
+        _B, C, _H, _W = x.shape
         k = kernel.to(dtype=x.dtype)
         # Depthwise separable: same kernel applied independently to every channel.
         k_h = k.view(1, 1, 1, ksize).expand(C, 1, 1, ksize).contiguous()
@@ -278,7 +278,7 @@ class ScalePyramid(nn.Module):
                 sigmas[-1][:, level_idx] = cur_sigma_oct
                 pixel_dists[-1][:, level_idx] = pixel_distance
 
-            # Seed next octave: bilinear 2× downscale of the (-extra_levels) level.
+            # Seed next octave: bilinear 2x downscale of the (-extra_levels) level.
             # Bilinear resampling is more accurate than integer-stride decimation.
             _pyr = pyr[-1][-self.extra_levels]
             H, W = _pyr.shape[2], _pyr.shape[3]

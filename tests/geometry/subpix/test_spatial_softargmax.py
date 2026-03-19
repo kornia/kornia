@@ -462,7 +462,7 @@ class TestConvSoftArgmax3d(BaseTester):
         self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
 
-class TestConvQuadInterp3d(BaseTester):
+class TestConvQuadInterp3dModule(BaseTester):
     def test_smoke(self, device, dtype):
         sample = torch.randn(2, 3, 3, 4, 4, device=device, dtype=dtype)
         nms = kornia.geometry.ConvQuadInterp3d(1)

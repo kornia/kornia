@@ -103,7 +103,7 @@ class ScaleSpaceDetector(nn.Module):
         compile_modules: selects which sub-modules to wrap with :func:`torch.compile`.
             Pass ``True`` to compile every sub-module, ``False`` (default) for none, or a list
             containing any subset of ``["scale_pyr", "resp", "subpix", "ori", "aff"]``.
-            Compiling ``subpix`` gives ~5× GPU speedup for the default
+            Compiling ``subpix`` gives ~5x GPU speedup for the default
             :class:`~kornia.geometry.subpix.ConvQuadInterp3d` backend by fusing its iteration loop.
             The first call incurs a one-time compilation cost; subsequent calls are fast.
 
@@ -470,7 +470,7 @@ class MultiResolutionDetector(nn.Module):
         self, level_img: torch.Tensor, num_kp: int, factor: Tuple[float, float]
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         det_map = self.nms(self.remove_borders(self.model(level_img)))
-        _, _, h, w = det_map.shape
+        _, _, _h, w = det_map.shape
         det_flat = det_map.view(-1)  # (H*W,) — B=1, C=1 guaranteed by MultiResolutionDetector
 
         # Mask out non-maxima (zeroed by NMS) and below-threshold scores, then topk.

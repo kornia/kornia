@@ -662,6 +662,9 @@ def conv_quad_interp3d(
         dilation_radius: L\ :math:`\infty` radius (in voxels) of the neighbourhood
             around each NMS maximum where the Hessian solve is precomputed.
             Keypoints that attempt to move farther than this are marked invalid.
+        allow_scale_steps: if ``True`` (default), the iterative shift is also
+            applied along the scale (depth) axis; set to ``False`` to keep the
+            keypoint on its original scale level.
 
     Returns:
         Tuple ``(coords_max, y_max)``:
@@ -736,13 +739,13 @@ def conv_quad_interp3d(
     # a dilated neighbour).  We intentionally skip torch.unique here because:
     # (a) torch.unique output size depends on VALUES not shapes → causes torch.compile
     #     to recompile whenever the unique-element count changes across images, producing
-    #     multi-second spikes (e.g. 4–7 s) for images with different NMS density.
+    #     multi-second spikes (e.g. 4-7 s) for images with different NMS density.
     # (b) The keep-filter boolean-index above already forces a graph break at this point,
     #     so the code below runs in eager mode regardless — deduplication buys nothing.
-    # (c) Duplicate positions receive the same solve result (same 3×3×3 patch, deterministic
+    # (c) Duplicate positions receive the same solve result (same 3x3x3 patch, deterministic
     #     quadratic system), so last-write-wins in the LUT is correct.
 
-    # ── Step 3: gather 3×3×3 neighbourhood for all kept dilated positions ────
+    # ── Step 3: gather 3x3x3 neighbourhood for all kept dilated positions ────
     inp_flat = input.view(-1)
     patch_offsets = _PATCH_DD.to(device) * HW + _PATCH_DH.to(device) * W + _PATCH_DW.to(device)  # (27,)
     center_flat = bc_u * DHW + d_u * HW + h_u * W + w_u
@@ -791,9 +794,9 @@ def conv_quad_interp3d(
     # Duplicate positions use last-write-wins, which is correct since the same
     # position always yields the same quadratic solution.
     #
-    # Memory: 1 × BC×D×H×W × int32  (4 bytes/elem)
-    #     vs  5 × BC×D×H×W × float32 + 1 × bool  (21 bytes/elem previously)
-    #     → ~5× reduction.  For a 640×800×6 octave: 12 MB vs 62 MB.
+    # Memory: 1 x BC*D*H*W x int32  (4 bytes/elem)
+    #     vs  5 x BC*D*H*W x float32 + 1 x bool  (21 bytes/elem previously)
+    #     → ~5x reduction.  For a 640x800x6 octave: 12 MB vs 62 MB.
     NK = bc_u.shape[0]
     lut = torch.full((BC * DHW,), -1, dtype=torch.int32, device=device)
     lut[bc_u * DHW + d_u * HW + h_u * W + w_u] = torch.arange(NK, dtype=torch.int32, device=device)
@@ -954,6 +957,12 @@ def iterative_quad_interp3d(
             that strict maxima are preferred when selecting the top-K keypoints.
         max_subpixel_shift: if the estimated shift along any axis is larger than this
             threshold the integer center is displaced and another iteration is run.
+        allow_scale_steps: if ``True`` (default), the iterative shift is also
+            applied along the scale (depth) axis; set to ``False`` to keep the
+            keypoint on its original scale level.
+        precomputed_nms_mask: optional bool tensor of shape
+            :math:`(B, C, D, H, W)` — pass the result of
+            :func:`~kornia.geometry.subpix.nms3d` to skip the internal NMS call.
         max_candidates: if given, only the top-``max_candidates`` NMS maxima (ranked by
             pre-refinement response) are processed.  The rest keep their grid-coordinate
             values.  This is a **CPU speed-up knob**: for large images the number of 3-D
