@@ -36,6 +36,36 @@ import kornia as K
 
 mpl.use("Agg")
 
+def handle_special_cases(aug_name, img_in):
+    if aug_name == "RandomJigsaw":
+        img_in = K.geometry.resize(img_in, (1020, 500))
+    elif aug_name == "RandomJPEG":
+        img_in = img_in[..., :176, :]
+    return img_in
+
+def apply_augmentation(mod, aug_name, args, seed, img_in):
+    cls = getattr(mod, aug_name)
+
+    try:
+        aug = cls(*args, p=1.0)
+    except TypeError:
+        aug = cls(*args)
+
+    torch.manual_seed(seed)
+    return aug(img_in)
+
+def postprocess_output(aug_name, ori, out, img1, img_in):
+    if aug_name == "CenterCrop":
+        out = transparent_pad(out, tuple(img1[-2:].shape))
+        ori = K.color.rgb_to_rgba(ori, 1.0)
+    elif aug_name == "PadTo":
+        ori = transparent_pad(img_in[0], tuple(out.shape[-2:]))
+        out = K.color.rgb_to_rgba(out, 1.0)
+    return ori, out
+
+def save_output_image(out, output_path, aug_name):
+    out_np = K.image.tensor_to_image((out * 255.0).byte())
+    cv2.imwrite(str(output_path / f"{aug_name}.png"), out_np)
 
 def download_tutorials_examples(download_infos: dict[str, str], directory: Path):
     URL_BASE = "https://raw.githubusercontent.com/kornia/tutorials/master/"
@@ -189,40 +219,29 @@ def main():
 
     # ITERATE OVER THE TRANSFORMS
     for aug_name, (args, num_samples, seed) in augmentations_list.items():
-        img_in = img1.repeat(num_samples, 1, 1, 1)
-        # dynamically create the class instance
-        cls = getattr(mod, aug_name)
-        try:
-            aug = cls(*args, p=1.0)
-        except TypeError:
-            aug = cls(*args)
 
-        # set seed
-        torch.manual_seed(seed)
-        if aug_name == "RandomJigsaw":  # make sure the image is dividable
-            img_in = K.geometry.resize(img_in, (1020, 500))
-        elif aug_name == "RandomJPEG":
-            img_in = img_in[..., :176, :]
-        # apply the augmentation to the image and concat
-        out = aug(img_in)
+       # prepare input
+       img_in = img1.repeat(num_samples, 1, 1, 1)
+       img_in = handle_special_cases(aug_name, img_in)
 
-        # save ori image to concatenate into the out image
-        ori = img_in[0]
-        if aug_name == "CenterCrop":
-            # Convert to RGBA, and center the output image with transparent pad
-            out = transparent_pad(out, tuple(img1[-2:].shape))
-            ori = K.color.rgb_to_rgba(ori, 1.0)  # To match the dims
-        elif aug_name == "PadTo":
-            # Convert to RGBA, and center the original image with transparent pad
-            ori = transparent_pad(img_in[0], tuple(out.shape[-2:]))
-            out = K.color.rgb_to_rgba(out, 1.0)  # To match the dims
+       # apply augmentation
+       augmented = apply_augmentation(mod, aug_name, args, seed, img_in)
 
-        out = torch.cat([ori, *(out[i] for i in range(out.size(0)))], dim=-1)
-        # save the output image
-        out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
-        sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
-        print(f"Generated image example for {aug_name}. {sig}")
+       # original image
+       ori = img_in[0]
+
+       # postprocess
+       ori, augmented = postprocess_output(aug_name, ori, augmented, img1, img_in)
+
+       # concatenate outputs
+       out = torch.cat([ori, *list(augmented)], dim=-1)
+
+       # save image
+       save_output_image(out, OUTPUT_PATH, aug_name)
+
+       # logging (same as original)
+       sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
+       print(f"Generated image example for {aug_name}: {sig}")
 
     mix_augmentations_list = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019)}
     # ITERATE OVER THE TRANSFORMS
