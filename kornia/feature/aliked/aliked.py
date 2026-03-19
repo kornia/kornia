@@ -725,9 +725,9 @@ class ALIKED(nn.Module):
         nms_radius: NMS radius (kernel size ``= 2 * nms_radius + 1``).
 
     Example:
-        >>> aliked = ALIKED.from_pretrained('aliked-n16')
-        >>> images = torch.rand(1, 3, 256, 256)
-        >>> features = aliked(images)
+        >>> aliked = ALIKED.from_pretrained('aliked-n16')  # doctest: +SKIP
+        >>> images = torch.rand(1, 3, 256, 256)  # doctest: +SKIP
+        >>> features = aliked(images)  # doctest: +SKIP
     """
 
     n_limit_max: int = 20000
