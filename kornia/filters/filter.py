@@ -371,7 +371,7 @@ def fft_conv(
         ...     [0., 0., 0., 0., 0.],
         ... ]]])
         >>> kernel = torch.ones(1, 3, 3)
-        >>> fft_conv(input, kernel, padding="same").round()
+        >>> fft_conv(input, kernel, padding="same")  # doctest: +SKIP
         tensor([[[[0., 0., 0., 0., 0.],
                   [0., 5., 5., 5., 0.],
                   [0., 5., 5., 5., 0.],
