@@ -249,6 +249,16 @@ class DoGHardNet(nn.Module):
         desc = self.desc(patches.view(B * N, C, H, W)).view(B, N, -1)
         return KF.get_laf_center(lafs)[0], desc[0], None
 
+class CV2SIFT(nn.Module):
+    def __init__(self, nf: int):
+        super().__init__()
+        self.det = cv2.SIFT_create(nf, edgeThreshold=-1, contrastThreshold=-1)
+
+    @torch.no_grad()
+    def forward(self, img: torch.Tensor):
+        kpts, desc = self.det.detectAndCompute((255 * img.cpu().numpy().squeeze()).astype(np.uint8), None)
+        return torch.from_numpy(np.array([(x.pt[0], x.pt[1]) for x in kpts])), torch.from_numpy(desc), None
+
 
 class KeyNetExtractor(nn.Module):
     def __init__(self, n: int, ori: str, aff: str, device: torch.device, compile_model: bool = False):
@@ -316,6 +326,8 @@ def build_extractor(
         return KeyNetExtractor(n=nf, ori=ori, aff=aff, device=device, compile_model=bool(compile_modules))
     if method == "opencv_sift_affnet":
         return DoGHardNet(nf).to(device)
+    if method == "opencv_sift":
+        return CV2SIFT(nf).to(device)
     if method == "dedode":
         return DeDoDEExtractor(
             KF.DeDoDe.from_pretrained(detector_weights="L-upright", descriptor_weights="B-upright").to(device), n=nf
@@ -529,7 +541,7 @@ def parse_args() -> argparse.Namespace:
     g.add_argument(
         "--method",
         default="scalespace",
-        choices=["scalespace", "aliked", "disk", "dedode", "keynet", "opencv_sift_affnet"],
+        choices=["scalespace", "aliked", "disk", "dedode", "keynet", "opencv_sift_affnet", "opencv_sift"],
     )
     g.add_argument(
         "--resp",
