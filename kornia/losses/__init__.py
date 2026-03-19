@@ -34,6 +34,7 @@ from .hausdorff import HausdorffERLoss, HausdorffERLoss3D
 from .lovasz_hinge import LovaszHingeLoss, lovasz_hinge_loss
 from .lovasz_softmax import LovaszSoftmaxLoss, lovasz_softmax_loss
 from .ms_ssim import MS_SSIMLoss
+from .one_hot import one_hot
 from .mutual_information import (
     MIKernel,
     MILossFromRef,
@@ -99,6 +100,7 @@ __all__ = [
     "normalized_mutual_information_loss",
     "normalized_mutual_information_loss_2d",
     "normalized_mutual_information_loss_3d",
+    "one_hot",
     "psnr_loss",
     "ssim3d_loss",
     "ssim_loss",
