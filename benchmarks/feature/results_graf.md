@@ -41,6 +41,10 @@ nan pairs are excluded from the error mean (RANSAC found no valid homography).
 | `DeDoDe` | 126867† | 187.7† | 3 | 125 | — | 79 |
 | `ALIKED` | N/A | 4.3 | N/A | 245 | — | 30 |
 | `KeyNet+AffNet+HardNet` | 2.6 | 2.5 | 426 | 360 | — | 158 |
+| `OpenCV-SIFT+OriNet+HardNet`§ | — | 2.1 | — | 547 | — | 199 |
+
+§ OpenCV-SIFT detector via `kornia_moons.OpenCVDetectorWithAffNetKornia` (upright), then
+OriNet orientation + HardNet descriptor — new branch only, no v0.8.2 baseline needed.
 
 † DeDoDe uses `L-upright` + `B-upright` weights; strong viewpoint change (pairs 5–6) causes
 large errors even in the new branch. In v0.8.2 the descriptor had dtype/sampling bugs causing
