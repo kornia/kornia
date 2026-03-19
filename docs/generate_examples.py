@@ -221,9 +221,8 @@ def main():
         "RandomThinPlateSpline": ((), 1, 2020),
         "RandomJigsaw": ((), 2, 2020),
     }
-    
-    for aug_name, (args, num_samples, seed) in augmentations_list.items():
 
+    for aug_name, (args, num_samples, seed) in augmentations_list.items():
         # prepare input
         img_in = img1.repeat(num_samples, 1, 1, 1)
         img_in = handle_special_cases(aug_name, img_in)
