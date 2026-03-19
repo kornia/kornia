@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # LICENSE HEADER MANAGED BY add-license-header
 #
 # Copyright 2018 Kornia Team
@@ -19,6 +20,14 @@ import torch
 
 import kornia as K
 from docs.generate_examples import apply_augmentation, handle_special_cases
+=======
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[1] / "docs"))
+
+from generate_examples import handle_special_cases, apply_augmentation
+>>>>>>> e60527ff (Remove __main__ block from text file)
 
 
 def test_handle_special_cases_jigsaw():
@@ -38,9 +47,12 @@ def test_apply_augmentation_runs():
     out = apply_augmentation(K.augmentation, "RandomHorizontalFlip", (), 42, img)
     assert out.shape == img.shape
 
+<<<<<<< HEAD
 
 if __name__ == "__main__":
     test_handle_special_cases_jigsaw()
     test_handle_special_cases_jpeg()
     test_apply_augmentation_runs()
     print("All tests passed!")
+=======
+>>>>>>> e60527ff (Remove __main__ block from text file)
