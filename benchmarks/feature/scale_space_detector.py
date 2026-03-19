@@ -242,7 +242,7 @@ class DoGHardNet(nn.Module):
 
     @torch.no_grad()
     def forward(self, img: torch.Tensor):
-        lafs, resp = self.det(img)
+        lafs, _ = self.det(img)
         lafs = self.ori(lafs, img)
         patches = KF.extract_patches_from_pyramid(img, lafs, 32)
         B, N, C, H, W = patches.shape
@@ -504,7 +504,7 @@ def run_speed_benchmark(
 
     for bs in batch_sizes:
         row = f"{bs:<6}"
-        for dev_name, dev in dev_map.items():
+        for _, dev in dev_map.items():
             n_iter = n_iter_gpu if dev.type == "cuda" else n_iter_cpu
             mod.to(dev)
             img_b = img[0:1].expand(bs, -1, -1, -1).contiguous().to(dev)
