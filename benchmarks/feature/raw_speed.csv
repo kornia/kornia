@@ -1,7 +1,50 @@
 version,config,timing_scope,device,batch_size,ms_per_call
-# Speed benchmark: new branch only (v0.8.2 had no --speed-bench flag)
-# scalespace: detection only (ScaleSpaceDetector.forward); learned: full forward (detect+describe)
-# CUDA speedup for soft/conv measured vs v0.8.2 on same machine (~4x for soft, ~1.3x for conv)
+# Speed benchmark: detection-only for scalespace (ScaleSpaceDetector.forward),
+# full forward (detect+describe) for DISK, DeDoDe, ALIKED, KeyNet.
+# Both versions run with warmup=3, n_iter_gpu=20, n_iter_cpu=5.
+# v0.8.2 script: bench082_full.py. New branch script: scale_space_detector.py --speed-bench.
+# KeyNet v0.8.2 N/A at bs>1 (detector does not support batching in that version).
+# ALIKED not available in v0.8.2.
+#
+v0.8.2,dog+soft,detection_only,cpu,1,2597.2
+v0.8.2,dog+soft,detection_only,cpu,4,4173.7
+v0.8.2,dog+soft,detection_only,cpu,8,6258.1
+v0.8.2,dog+soft,detection_only,gpu,1,811.1
+v0.8.2,dog+soft,detection_only,gpu,4,1058.1
+v0.8.2,dog+soft,detection_only,gpu,8,1162.7
+v0.8.2,dog+conv,detection_only,cpu,1,1701.9
+v0.8.2,dog+conv,detection_only,cpu,4,6407.1
+v0.8.2,dog+conv,detection_only,cpu,8,12487.4
+v0.8.2,dog+conv,detection_only,gpu,1,131.2
+v0.8.2,dog+conv,detection_only,gpu,4,337.4
+v0.8.2,dog+conv,detection_only,gpu,8,603.5
+v0.8.2,hessian+soft,detection_only,cpu,1,440.8
+v0.8.2,hessian+soft,detection_only,cpu,4,914.3
+v0.8.2,hessian+soft,detection_only,cpu,8,1368.6
+v0.8.2,hessian+soft,detection_only,gpu,1,122.3
+v0.8.2,hessian+soft,detection_only,gpu,4,178.0
+v0.8.2,hessian+soft,detection_only,gpu,8,203.0
+v0.8.2,hessian+conv,detection_only,cpu,1,290.4
+v0.8.2,hessian+conv,detection_only,cpu,4,1246.4
+v0.8.2,hessian+conv,detection_only,cpu,8,2209.8
+v0.8.2,hessian+conv,detection_only,gpu,1,66.0
+v0.8.2,hessian+conv,detection_only,gpu,4,88.1
+v0.8.2,hessian+conv,detection_only,gpu,8,128.7
+v0.8.2,DISK,full_forward,cpu,1,574.7
+v0.8.2,DISK,full_forward,cpu,4,1932.8
+v0.8.2,DISK,full_forward,cpu,8,4105.1
+v0.8.2,DISK,full_forward,gpu,1,12.7
+v0.8.2,DISK,full_forward,gpu,4,48.0
+v0.8.2,DISK,full_forward,gpu,8,290.3
+v0.8.2,DeDoDe,full_forward,cpu,1,4822.8
+v0.8.2,DeDoDe,full_forward,cpu,4,17852.5
+v0.8.2,DeDoDe,full_forward,cpu,8,33496.3
+v0.8.2,DeDoDe,full_forward,gpu,1,69.0
+v0.8.2,DeDoDe,full_forward,gpu,4,607.9
+v0.8.2,DeDoDe,full_forward,gpu,8,8793.5
+v0.8.2,KeyNet+AffNet+HardNet,detection_only,cpu,1,2083.4
+v0.8.2,KeyNet+AffNet+HardNet,detection_only,gpu,1,101.7
+#
 new,dog+soft,detection_only,cpu,1,2441.8
 new,dog+soft,detection_only,cpu,4,4346.1
 new,dog+soft,detection_only,cpu,8,6830.5
