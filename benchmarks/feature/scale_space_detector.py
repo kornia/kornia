@@ -58,7 +58,7 @@ from __future__ import annotations
 import argparse
 import time
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Tuple, Union
 
 import cv2
 import numpy as np
