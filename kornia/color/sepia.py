@@ -14,22 +14,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+"""Sepia color filter for RGB image tensors."""
 
 import torch
 from torch import nn
 
 
 def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6) -> torch.Tensor:
-    r"""Apply to a torch.Tensor the sepia filter.
+    r"""Apply the sepia filter to an RGB tensor.
 
     Args:
-        input: the input torch.Tensor with shape of :math:`(*, C, H, W)`.
-        rescale: If True, the output torch.Tensor will be rescaled (max values be 1. or 255).
-        eps: scalar to enforce numerical stability.
+        input: the input tensor with shape :math:`(*, C, H, W)`.
+        rescale: if True, rescale the output so the max channel value is 1.
+        eps: small constant added to the denominator for numerical stability.
 
     Returns:
-        torch.Tensor: The sepia torch.tensor of same size and numbers of channels
-        as the input with shape :math:`(*, C, H, W)`.
+        torch.Tensor: sepia-filtered tensor with shape :math:`(*, C, H, W)`.
 
     Example:
         >>> input = torch.ones(3, 1, 1)
@@ -39,7 +39,6 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
                 [[1.2030]],
         <BLANKLINE>
                 [[0.9370]]])
-
     """
     if len(input.shape) < 3 or input.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {input.shape}")
@@ -62,19 +61,16 @@ def sepia_from_rgb(input: torch.Tensor, rescale: bool = True, eps: float = 1e-6)
 
 
 class Sepia(nn.Module):
-    r"""nn.Module that apply the sepia filter to tensors.
+    r"""Apply the sepia filter to image tensors.
 
     Args:
-        input: the input torch.Tensor with shape of :math:`(*, C, H, W)`.
-        rescale: If True, the output torch.Tensor will be rescaled (max values be 1. or 255).
-        eps: scalar to enforce numerical stability.
+        rescale: if True, rescale the output so the max channel value is 1.
+        eps: small constant added to the denominator for numerical stability.
 
     Returns:
-        torch.Tensor: The sepia torch.tensor of same size and numbers of channels
-        as the input with shape :math:`(*, C, H, W)`.
+        torch.Tensor: sepia-filtered tensor with shape :math:`(*, C, H, W)`.
 
     Example:
-        >>>
         >>> input = torch.ones(3, 1, 1)
         >>> Sepia(rescale=False)(input)
         tensor([[[1.3510]],
@@ -82,16 +78,30 @@ class Sepia(nn.Module):
                 [[1.2030]],
         <BLANKLINE>
                 [[0.9370]]])
-
     """
 
     def __init__(self, rescale: bool = True, eps: float = 1e-6) -> None:
+        """Initialize Sepia.
+
+        Args:
+            rescale: if True, rescale the output so the max channel value is 1.
+            eps: small constant added to the denominator for numerical stability.
+        """
         self.rescale = rescale
         self.eps = eps
         super().__init__()
 
     def __repr__(self) -> str:
+        """Return a string representation of this module."""
         return self.__class__.__name__ + f"(rescale={self.rescale}, eps={self.eps})"
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Apply the sepia filter.
+
+        Args:
+            input: RGB image tensor with shape :math:`(*, 3, H, W)`.
+
+        Returns:
+            Sepia-filtered tensor with shape :math:`(*, 3, H, W)`.
+        """
         return sepia_from_rgb(input, rescale=self.rescale, eps=self.eps)
