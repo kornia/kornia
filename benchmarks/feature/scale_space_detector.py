@@ -249,6 +249,7 @@ class DoGHardNet(nn.Module):
         desc = self.desc(patches.view(B * N, C, H, W)).view(B, N, -1)
         return KF.get_laf_center(lafs)[0], desc[0], None
 
+
 class CV2SIFT(nn.Module):
     def __init__(self, nf: int):
         super().__init__()

@@ -183,4 +183,3 @@ class TestBuildLaplacianPyramid(BaseTester):
         batch_size, channels, height, width = 1, 2, 7, 9
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.build_laplacian_pyramid, (img, max_level), nondet_tol=1e-8)
-
