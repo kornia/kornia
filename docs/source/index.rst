@@ -80,7 +80,7 @@ Join the community
 ------------------
 
 - Join our social network communities with 1.8k+ members:
-   - `Twitter <https://twitter.com/kornia_foss>`_: we share the recent research and news for out mainstream community.
+   - `Twitter <https://twitter.com/kornia_foss>`_: we share recent research and news with our community.
    - `Slack <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA>`_: come to us and chat with our engineers and mentors to get support and resolve your questions.
 - Subscribe to our `YouTube channel <https://www.youtube.com/channel/UCI1SE1Ij2Fast5BSKxoa7Ag>`_ to get the latest video demos.
 
