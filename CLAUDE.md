@@ -86,6 +86,7 @@ class TestMyFunction(BaseTester):
     def test_smoke(self, device, dtype): ...          # Basic run with all arg combinations
     def test_exception(self, device, dtype): ...      # Exception cases
     def test_cardinality(self, device, dtype): ...    # Output shapes
+    def test_feature(self, device, dtype): ...        # Correctness / numerical accuracy
     def test_gradcheck(self, device): ...             # Gradient checking via self.gradcheck()
     def test_dynamo(self, device, dtype, torch_optimizer): ...  # torch.compile compat
 ```
@@ -105,3 +106,14 @@ The `device` and `dtype` fixtures are injected automatically. Use `self.assert_c
 ## Pre-commit Hooks
 
 Install hooks with `pre-commit install`. CI enforces ruff formatting, linting, and docformatter.
+
+## PR Requirements
+
+All PRs must:
+- Be linked to a previously discussed GitHub issue or Discord discussion (`Fixes #123`)
+- Include pasted local test log output as proof of execution (`pixi run test ...`)
+- Reference an algorithm source (PyTorch, OpenCV, scikit-image, paper, etc.) for any new implementation
+
+**Comments**: No redundant or ghost comments (e.g., "this returns the input tensor", or comments explaining deleted code). Violation triggers mandatory manual rewrite request.
+
+See `AI_POLICY.md` for the full contribution policy, including AI usage disclosure requirements.

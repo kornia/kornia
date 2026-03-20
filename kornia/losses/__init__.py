@@ -49,6 +49,7 @@ from .mutual_information import (
     normalized_mutual_information_loss_2d,
     normalized_mutual_information_loss_3d,
 )
+from .one_hot import one_hot
 from .psnr import PSNRLoss, psnr_loss
 from .ssim import SSIMLoss, ssim_loss
 from .ssim3d import SSIM3DLoss, ssim3d_loss
@@ -99,6 +100,7 @@ __all__ = [
     "normalized_mutual_information_loss",
     "normalized_mutual_information_loss_2d",
     "normalized_mutual_information_loss_3d",
+    "one_hot",
     "psnr_loss",
     "ssim3d_loss",
     "ssim_loss",
