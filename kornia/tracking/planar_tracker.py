@@ -69,14 +69,18 @@ class HomographyTracker(nn.Module):
 
     @property
     def device(self) -> torch.device:
+        """Return the device of the target tensor."""
         return self.target.device
 
     @property
     def dtype(self) -> torch.dtype:
+        """Return the data type of the target tensor."""
         return self.target.dtype
+
 
     @torch.no_grad()
     def set_target(self, target: torch.Tensor) -> None:
+        """Set the target tensor and extract its initial and fast representations."""
         self.target = target
         self.target_initial_representation = {}
         self.target_fast_representation = {}
@@ -87,10 +91,14 @@ class HomographyTracker(nn.Module):
         if hasattr(self.fast_matcher, "extract_features") and isinstance(self.fast_matcher.extract_features, nn.Module):
             self.target_fast_representation = self.fast_matcher.extract_features(target)
 
+    
+
     def reset_tracking(self) -> None:
+        """Reset the tracking state by clearing the previous homography."""
         self.previous_homography = None
 
     def no_match(self) -> Tuple[torch.Tensor, bool]:
+        """Handle the case where no match is found and return an empty homography."""
         self.inliers_num = 0
         self.keypoints0_num = 0
         self.keypoints1_num = 0
@@ -162,6 +170,7 @@ class HomographyTracker(nn.Module):
         return H, True
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
+        """Track the target in the given frame either by initial matching or tracking from previous."""
         if self.previous_homography is not None:
             return self.track_next_frame(x)
         return self.match_initial(x)
