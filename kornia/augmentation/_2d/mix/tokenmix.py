@@ -1,9 +1,9 @@
 import torch
-from .base import MixBase
+from .base import MixAugmentationBaseV2
 
-class TokenMix(MixBase):
+class TokenMix(MixAugmentationBaseV2):
     def __init__(self, alpha=1.0, num_tokens=8, p=1.0, same_on_batch=False, keepdim=False):
-        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.alpha = alpha
         self.num_tokens = num_tokens
 
