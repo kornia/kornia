@@ -280,13 +280,16 @@ def pytest_sessionstart(session):
     if session.config.getoption("--tf32"):
         torch.set_float32_matmul_precision("high")
 
-    try:
-        _setup_torch_compile()
-    except RuntimeError as ex:
-        if "not yet supported for torch.compile" not in str(
-            ex
-        ) and "Dynamo is not supported on Python 3.12+" not in str(ex):
-            raise ex
+    # Skip torch.compile warmup in subprocess mode — it adds startup overhead and
+    # pollutes the captured output used for failure reporting in pytest_runtest_protocol.
+    if not os.environ.get("KORNIA_TEST_IN_SUBPROCESS"):
+        try:
+            _setup_torch_compile()
+        except RuntimeError as ex:
+            if "not yet supported for torch.compile" not in str(
+                ex
+            ) and "Dynamo is not supported on Python 3.12+" not in str(ex):
+                raise ex
 
     os.makedirs(WEIGHTS_CACHE_DIR, exist_ok=True)
     torch.hub.set_dir(WEIGHTS_CACHE_DIR)
@@ -383,6 +386,16 @@ model weights cached: {cached_weights}
 """
 
 
+def _extract_failure_output(output: str) -> str:
+    """Return just the FAILURES/ERRORS section from pytest stdout, or full output as fallback."""
+    import re
+
+    m = re.search(r"^=+ (FAILURES|ERRORS) =+", output, re.MULTILINE)
+    if m:
+        return output[m.start() :].strip()
+    return output.strip()
+
+
 def _is_subprocess_isolated_test(item) -> bool:
     """Return True if this test should be run in a fresh subprocess.
 
@@ -454,7 +467,7 @@ def pytest_runtest_protocol(item, nextitem):
             longrepr = None
     else:
         outcome = "failed"
-        longrepr = output
+        longrepr = _extract_failure_output(output)
 
     def _report(when: str, out: str, rep_longrepr, dur: float = 0.0) -> TestReport:
         return TestReport(
