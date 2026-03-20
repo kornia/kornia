@@ -5309,11 +5309,15 @@ class TestRandomThinPlateSpline(CommonTests):
         # which makes the standard gradcheck non-deterministic (numerical Jacobian sees a
         # different warp each perturbation step).  Fix the params from a single forward pass
         # so that gradcheck only tests gradient flow through the deterministic warp path.
+        # fork_rng saves/restores CPU RNG state so this seed doesn't affect other tests.
+        # (generate_parameters uses rsample on CPU then .to(device), so CPU RNG governs both
+        # input_tensor and the TPS control-point sampling.)
         aug = self._create_augmentation_from_params(**params, p=1.0)
-        input_tensor = torch.rand((1, 3, 5, 5), device=self.device, dtype=self.dtype)
-        torch.manual_seed(0)
-        _ = aug(input_tensor)
-        fixed_params = aug._params
+        with torch.random.fork_rng():
+            torch.manual_seed(0)
+            input_tensor = torch.rand((1, 3, 5, 5), device=self.device, dtype=self.dtype)
+            _ = aug(input_tensor)
+            fixed_params = aug._params
 
         def forward_with_fixed_params(x: torch.Tensor) -> torch.Tensor:
             return aug(x, params=fixed_params)
