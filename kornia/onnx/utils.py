@@ -189,7 +189,6 @@ def io_name_conversion(
         if out_name in io_name_mapping:
             onnx_model.graph.output[i].name = io_name_mapping[out_name]
 
-
     # Convert intermediate nodes
     for i in range(len(onnx_model.graph.node)):
         for j in range(len(onnx_model.graph.node[i].input)):
@@ -203,7 +202,6 @@ def io_name_conversion(
                 onnx_model.graph.node[i].output[j] = io_name_mapping[node_out_name]
 
     return onnx_model
-
 
 
 def add_metadata(
