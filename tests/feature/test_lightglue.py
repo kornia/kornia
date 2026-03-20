@@ -35,6 +35,60 @@ from testing.base import BaseTester
 # ---------------------------------------------------------------------------
 
 
+def test_lightglue_empty_after_pruning():
+    model = LightGlue(features="superpoint", width_confidence=0.99)
+    model.eval()
+
+    data = {
+        "image0": {
+            "keypoints": torch.empty(1, 0, 2),
+            "descriptors": torch.empty(1, 0, 256),
+            "image_size": torch.tensor([[640, 480]]),
+        },
+        "image1": {
+            "keypoints": torch.empty(1, 0, 2),
+            "descriptors": torch.empty(1, 0, 256),
+            "image_size": torch.tensor([[640, 480]]),
+        },
+    }
+
+    with torch.no_grad():
+        out = model(data)
+
+    assert out["matches0"].shape == (1, 0)
+    assert out["matches1"].shape == (1, 0)
+    assert out["matching_scores0"].shape == (1, 0)
+    assert out["matching_scores1"].shape == (1, 0)
+
+
+def test_lightglue_pruning_removes_all():
+    model = LightGlue(features="superpoint", width_confidence=0.0)
+    model.eval()
+
+    B, M, D = 1, 8, 256
+
+    data = {
+        "image0": {
+            "keypoints": torch.rand(B, M, 2),
+            "descriptors": torch.rand(B, M, D),
+            "image_size": torch.tensor([[640, 480]]),
+        },
+        "image1": {
+            "keypoints": torch.rand(B, M, 2),
+            "descriptors": torch.rand(B, M, D),
+            "image_size": torch.tensor([[640, 480]]),
+        },
+    }
+
+    with torch.no_grad():
+        out = model(data)
+
+    assert "matches0" in out
+    assert "matches1" in out
+    assert out["matches0"].shape == (B, M)
+    assert out["matches1"].shape == (B, M)
+
+
 def test_normalize_keypoints_smoke():
     kpts = torch.zeros(1, 5, 2)
     size = torch.tensor([[100, 200]])
