@@ -922,7 +922,9 @@ class ALIKED(nn.Module):
 
         if mask is not None:
             # Resize mask to score map resolution and apply.
-            mask_rs = F.interpolate(mask.float(), size=score_map.shape[-2:], mode="bilinear", align_corners=True)
+            mask_rs = F.interpolate(
+                mask.to(score_map.dtype), size=score_map.shape[-2:], mode="bilinear", align_corners=True
+            )
             score_map = score_map * mask_rs
 
         dkd_out = self.dkd(score_map, return_affine=compute_affine)
