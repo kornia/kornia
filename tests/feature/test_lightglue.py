@@ -179,7 +179,7 @@ class TestTokenConfidence(BaseTester):
         tc = TokenConfidence(32).to(device, dtype)
         d0 = torch.rand(1, 5, 32, device=device, dtype=dtype)
         d1 = torch.rand(1, 5, 32, device=device, dtype=dtype)
-        s0, _s1 = tc(d0, d1)
+        s0, _ = tc(d0, d1)
         assert s0.shape == (1, 5)
 
 
