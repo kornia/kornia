@@ -98,4 +98,4 @@ class Keypoints:
         desc = descriptors[:, y, x].T
         desc = F.normalize(desc, dim=-1)
 
-        return DISKFeatures(self.xys.to(dtype), desc, self.detection_logp)
+        return DISKFeatures(self.xys.to(dtype), desc, self.detection_logp.to(dtype))

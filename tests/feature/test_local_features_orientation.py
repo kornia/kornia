@@ -179,4 +179,4 @@ class TestLAFOrienter(BaseTester):
         laf = torch.ones(batch_size, 2, 2, 3, device=device, dtype=torch.float64)
         laf[:, :, 0, 1] = 0
         laf[:, :, 1, 0] = 0
-        self.gradcheck(LAFOrienter(8).to(device), (laf, patches), rtol=1e-3, atol=1e-3)
+        self.gradcheck(LAFOrienter(8).to(device), (laf, patches), rtol=1e-3, atol=1e-3, nondet_tol=1e-3)

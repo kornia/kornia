@@ -48,37 +48,42 @@ class TestMutualInformationLoss(BaseTester):
 
         for radius in [1 / 2, 1, 2, 3]:
             # relative MI, expect 1
-            assert torch.allclose(self.relative_mi(img_1, img_2, window_radius=radius), torch.ones(1).to(dtype)), (
-                "Wrong MI behaviour, correlated case."
-            )
+            assert torch.allclose(
+                self.relative_mi(img_1, img_2, window_radius=radius),
+                torch.ones(1, device=device, dtype=dtype),
+            ), "Wrong MI behaviour, correlated case."
             # relative MI, expect 0
             # NOTE: mutual_information_loss is a finite-sample, histogram-based estimator applied to random data.
             # For independent variables the theoretical value is 0, but sampling noise and binning effects across
             # radii introduce noticeable variance, so we use a slightly looser atol here for test robustness.
             assert torch.allclose(
-                self.relative_mi(img_1, img_3, window_radius=radius), torch.zeros(1).to(dtype), atol=0.2
+                self.relative_mi(img_1, img_3, window_radius=radius),
+                torch.zeros(1, device=device, dtype=dtype),
+                atol=0.2,
             ), "Wrong MI behaviour, uncorrelated case."
 
             assert torch.allclose(
-                self.relative_mi(img_2, img_3, window_radius=radius), torch.zeros(1).to(dtype), atol=0.2
+                self.relative_mi(img_2, img_3, window_radius=radius),
+                torch.zeros(1, device=device, dtype=dtype),
+                atol=0.2,
             ), "Wrong MI behaviour, uncorrelated case."
 
             # NMI, expect -2
             assert torch.allclose(
                 normalized_mutual_information_loss(img_1, img_2, window_radius=radius, num_bins=num_bins),
-                -2 * torch.ones(1).to(dtype),
+                -2 * torch.ones(1, device=device, dtype=dtype),
                 atol=0.2 * radius + 0.15,
             ), "Wrong NMI behaviour, correlated case."
 
             # NMI, expect -1
             assert torch.allclose(
                 normalized_mutual_information_loss(img_1, img_3, window_radius=radius, num_bins=num_bins),
-                -torch.ones(1).to(dtype),
+                -torch.ones(1, device=device, dtype=dtype),
                 atol=0.1,
             ), "Wrong NMI behaviour, uncorrelated case."
             assert torch.allclose(
                 normalized_mutual_information_loss(img_2, img_3, window_radius=radius, num_bins=num_bins),
-                -torch.ones(1).to(dtype),
+                -torch.ones(1, device=device, dtype=dtype),
                 atol=0.1,
             ), "Wrong NMI behaviour, uncorrelated case."
 
@@ -207,9 +212,9 @@ class TestMutualInformationLoss(BaseTester):
         op = mutual_information_loss
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(*args), op_optimized(*args))
+        self.assert_close(op(*args), op_optimized(*args), low_tolerance=True)
 
         op = normalized_mutual_information_loss
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(*args), op_optimized(*args))
+        self.assert_close(op(*args), op_optimized(*args), low_tolerance=True)

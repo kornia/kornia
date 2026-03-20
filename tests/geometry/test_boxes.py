@@ -821,13 +821,9 @@ class TestBbox3D(BaseTester):
 
 class TestTransformBoxes3D(BaseTester):
     def test_transform_boxes(self, device, dtype):
-        # Define boxes in XYZXYZ format for simplicity.
-        boxes_xyzxyz = torch.tensor(
-            [[139.2640, 103.0150, 283.162, 398.3120, 411.5225, 454.185]], device=device, dtype=dtype
-        )
-        expected_boxes_xyzxyz = torch.tensor(
-            [[372.7360, 103.0150, 567.324, 115.6880, 411.5225, 908.37]], device=device, dtype=dtype
-        )
+        # Define boxes in XYZXYZ format with integer coordinates (TF32-safe on CUDA).
+        boxes_xyzxyz = torch.tensor([[140, 104, 284, 398, 412, 454]], device=device, dtype=dtype)
+        expected_boxes_xyzxyz = torch.tensor([[372, 104, 569, 116, 412, 908]], device=device, dtype=dtype)
 
         boxes = Boxes3D.from_tensor(boxes_xyzxyz)
         expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz, validate_boxes=False)
@@ -844,13 +840,9 @@ class TestTransformBoxes3D(BaseTester):
         assert transformed_boxes is not boxes
 
     def test_transform_boxes_(self, device, dtype):
-        # Define boxes in XYZXYZ format for simplicity.
-        boxes_xyzxyz = torch.tensor(
-            [[139.2640, 103.0150, 283.162, 398.3120, 411.5225, 454.185]], device=device, dtype=dtype
-        )
-        expected_boxes_xyzxyz = torch.tensor(
-            [[372.7360, 103.0150, 567.324, 115.6880, 411.5225, 908.37]], device=device, dtype=dtype
-        )
+        # Define boxes in XYZXYZ format with integer coordinates (TF32-safe on CUDA).
+        boxes_xyzxyz = torch.tensor([[140, 104, 284, 398, 412, 454]], device=device, dtype=dtype)
+        expected_boxes_xyzxyz = torch.tensor([[372, 104, 569, 116, 412, 908]], device=device, dtype=dtype)
 
         boxes = Boxes3D.from_tensor(boxes_xyzxyz)
         expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz, validate_boxes=False)
@@ -867,13 +859,13 @@ class TestTransformBoxes3D(BaseTester):
         assert transformed_boxes is boxes
 
     def test_transform_multiple_boxes(self, device, dtype):
-        # Define boxes in XYZXYZ format for simplicity.
+        # Define boxes in XYZXYZ format with integer coordinates (TF32-safe on CUDA).
         boxes_xyzxyz = torch.tensor(
             [
-                [139.2640, 103.0150, 283.162, 398.3120, 411.5225, 454.185],
-                [1.0240, 80.5547, 469.50, 513.0000, 513.0000, 513.0],
-                [165.2053, 262.1440, 42.98, 511.6347, 509.9280, 785.443],
-                [119.8080, 144.2067, 234.21, 258.0240, 411.1292, 387.14],
+                [140, 104, 284, 398, 412, 454],
+                [2, 81, 470, 512, 513, 513],
+                [166, 263, 43, 512, 510, 786],
+                [120, 145, 235, 258, 412, 387],
             ],
             device=device,
             dtype=dtype,
@@ -882,16 +874,16 @@ class TestTransformBoxes3D(BaseTester):
         expected_boxes_xyzxyz = torch.tensor(
             [
                 [
-                    [372.7360, 103.0150, 567.324, 115.6880, 411.5225, 908.37],
-                    [510.9760, 80.5547, 940.0, 1.0000, 513.0000, 1026.0],
-                    [346.7947, 262.1440, 86.96, 2.3653, 509.9280, 1570.886],
-                    [392.1920, 144.2067, 469.42, 255.9760, 411.1292, 774.28],
+                    [372, 104, 569, 116, 412, 908],
+                    [510, 81, 941, 2, 513, 1026],
+                    [346, 263, 87, 2, 510, 1572],
+                    [392, 145, 471, 256, 412, 774],
                 ],
                 [
-                    [139.2640, 103.0150, 283.162, 398.3120, 411.5225, 454.185],
-                    [1.0240, 80.5547, 469.50, 513.0000, 513.0000, 513.0],
-                    [165.2053, 262.1440, 42.98, 511.6347, 509.9280, 785.443],
-                    [119.8080, 144.2067, 234.21, 258.0240, 411.1292, 387.14],
+                    [140, 104, 284, 398, 412, 454],
+                    [2, 81, 470, 512, 513, 513],
+                    [166, 263, 43, 512, 510, 786],
+                    [120, 145, 235, 258, 412, 387],
                 ],
             ],
             device=device,

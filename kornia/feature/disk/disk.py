@@ -17,8 +17,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -88,7 +86,7 @@ class DISK(nn.Module):
     def forward(
         self,
         images: torch.Tensor,
-        n: Optional[int] = None,
+        n: int | None = None,
         window_size: int = 5,
         score_threshold: float = 0.0,
         pad_if_not_divisible: bool = False,
@@ -128,7 +126,7 @@ class DISK(nn.Module):
         return features
 
     @classmethod
-    def from_pretrained(cls, checkpoint: str = "depth", device: Optional[torch.device] = None) -> DISK:
+    def from_pretrained(cls, checkpoint: str = "depth", device: torch.device | None = None) -> DISK:
         r"""Load a pretrained model.
 
         Depth model was trained using depth map supervision and is slightly more precise but biased to detect keypoints

@@ -67,6 +67,15 @@ def png_image(tmp_path_factory):
 
 
 @pytest.fixture(scope="session")
+def rgba_png_image(tmp_path_factory):
+    """Create an RGBA PNG image for testing."""
+    filename = tmp_path_factory.mktemp("data") / "rgba_image.png"
+    img_rgba = np.random.randint(0, 255, (32, 32, 4), dtype=np.uint8)  # noqa: NPY002
+    kornia_rs.write_image_png_u8(str(filename), img_rgba, mode="rgba")
+    return filename
+
+
+@pytest.fixture(scope="session")
 def jpg_image(tmp_path_factory):
     url = "https://github.com/kornia/data/raw/main/crowd.jpg"
     filename = tmp_path_factory.mktemp("data") / "image.jpg"
@@ -128,6 +137,22 @@ class TestIoImage:
         assert file_path.is_file()
 
         img = load_image(file_path, load_type)
+        assert img.shape[0] == expected_channels
+        assert img.dtype == expected_type
+
+    @pytest.mark.parametrize(
+        "load_type,expected_type,expected_channels",
+        [
+            (ImageLoadType.UNCHANGED, torch.uint8, 4),
+            (ImageLoadType.GRAY8, torch.uint8, 1),
+            (ImageLoadType.GRAY32, torch.float32, 1),
+            (ImageLoadType.RGB8, torch.uint8, 3),
+            (ImageLoadType.RGBA8, torch.uint8, 4),
+            (ImageLoadType.RGB32, torch.float32, 3),
+        ],
+    )
+    def test_load_rgba_png(self, rgba_png_image, load_type, expected_type, expected_channels):
+        img = load_image(rgba_png_image, load_type)
         assert img.shape[0] == expected_channels
         assert img.dtype == expected_type
 

@@ -23,19 +23,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d, gaussian_blur2d
 
-__all__ = [
-    "PyrDown",
-    "PyrUp",
-    "ScalePyramid",
-    "build_laplacian_pyramid",
-    "build_pyramid",
-    "pyrdown",
-    "pyrup",
-    "upscale_double",
-]
+__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "build_laplacian_pyramid", "build_pyramid", "pyrdown", "pyrup"]
 
 
 def _get_pyramid_gaussian_kernel() -> torch.Tensor:
@@ -149,17 +140,23 @@ class ScalePyramid(nn.Module):
     """
 
     def __init__(
-        self, n_levels: int = 3, init_sigma: float = 1.6, min_size: int = 15, double_image: bool = False
+        self,
+        n_levels: int = 3,
+        init_sigma: float = 1.6,
+        min_size: int = 15,
+        double_image: bool = False,
+        extra_levels: int = 3,
     ) -> None:
         super().__init__()
         # 3 extra levels are needed for DoG nms.
         self.n_levels = n_levels
-        self.extra_levels: int = 3
+        self.extra_levels = extra_levels
         self.init_sigma = init_sigma
         self.min_size = min_size
         self.border = min_size // 2 - 1
         self.sigma_step = 2 ** (1.0 / float(self.n_levels))
         self.double_image = double_image
+        self._precompute_gauss_kernels(n_levels, extra_levels, init_sigma, double_image)
 
     def __repr__(self) -> str:
         return (
@@ -172,6 +169,48 @@ class ScalePyramid(nn.Module):
             f"sigma_step={self.sigma_step}, "
             f"double_image={self.double_image})"
         )
+
+    @staticmethod
+    def _make_gaussian_kernel1d(sigma: float, ksize: int) -> torch.Tensor:
+        """Normalized 1D Gaussian kernel as a float32 tensor."""
+        x = torch.arange(ksize, dtype=torch.float64) - ksize // 2
+        kernel = torch.exp(-0.5 * x**2 / sigma**2)
+        return (kernel / kernel.sum()).float()
+
+    def _precompute_gauss_kernels(
+        self, n_levels: int, extra_levels: int, init_sigma: float, double_image: bool
+    ) -> None:
+        """Register precomputed 1D Gaussian kernels as buffers so they move with .to()."""
+        # Initial blur: from camera sigma (0.5 / 1.0) up to init_sigma
+        cur_sigma_init = 1.0 if double_image else 0.5
+        if init_sigma > cur_sigma_init:
+            sigma = max(math.sqrt(init_sigma**2 - cur_sigma_init**2), 0.01)
+            ksize = self.get_kernel_size(sigma)
+            self.register_buffer("_gk_init", self._make_gaussian_kernel1d(sigma, ksize))
+        else:
+            self.register_buffer("_gk_init", None)
+
+        # Level-to-level kernels inside an octave.
+        # cur_sigma_oct resets to init_sigma at the start of every octave, so
+        # these delta_sigma values are the SAME for every octave — precompute once.
+        cur_s = init_sigma
+        for lvl in range(n_levels + extra_levels - 1):
+            delta = cur_s * math.sqrt(self.sigma_step**2 - 1.0)
+            ksize = self.get_kernel_size(delta)
+            self.register_buffer(f"_gk_{lvl}", self._make_gaussian_kernel1d(delta, ksize))
+            cur_s *= self.sigma_step
+
+    def _blur_fast(self, x: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+        """Separable Gaussian blur with a precomputed 1D kernel — no validation overhead."""
+        ksize = kernel.shape[0]
+        pad = ksize // 2
+        _B, C, _H, _W = x.shape
+        k = kernel.to(device=x.device, dtype=x.dtype)
+        # Depthwise separable: same kernel applied independently to every channel.
+        k_h = k.view(1, 1, 1, ksize).expand(C, 1, 1, ksize).contiguous()
+        tmp = F.conv2d(F.pad(x, (pad, pad, 0, 0), mode="reflect"), k_h, groups=C)
+        k_v = k.view(1, 1, ksize, 1).expand(C, 1, ksize, 1).contiguous()
+        return F.conv2d(F.pad(tmp, (0, 0, pad, pad), mode="reflect"), k_v, groups=C)
 
     def get_kernel_size(self, sigma: float) -> int:
         ksize = int(2.0 * 4.0 * sigma + 1.0)
@@ -189,7 +228,7 @@ class ScalePyramid(nn.Module):
         cur_sigma = 0.5
         # Same as in OpenCV up to interpolation difference
         if self.double_image:
-            x = upscale_double(input)
+            x = F.interpolate(input, scale_factor=2.0, mode="bilinear", align_corners=True)
             pixel_distance = 0.5
             cur_sigma *= 2.0
         else:
@@ -198,7 +237,12 @@ class ScalePyramid(nn.Module):
         if self.init_sigma > cur_sigma:
             sigma = max(math.sqrt(self.init_sigma**2 - cur_sigma**2), 0.01)
             ksize = self.get_kernel_size(sigma)
-            cur_level = gaussian_blur2d(x, (ksize, ksize), (sigma, sigma))
+            min_dim = min(x.size(2), x.size(3))
+            if self._gk_init is not None and ksize <= min_dim:
+                cur_level = self._blur_fast(x, self._gk_init)
+            else:
+                ksize = min(ksize, min_dim if min_dim % 2 == 1 else min_dim - 1)
+                cur_level = gaussian_blur2d(x, (ksize, ksize), (sigma, sigma))
             cur_sigma = self.init_sigma
         else:
             cur_level = x
@@ -208,42 +252,50 @@ class ScalePyramid(nn.Module):
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
-        sigmas = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
-        pixel_dists = [pixel_distance * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
+        sigmas = [torch.full((bs, self.n_levels + self.extra_levels), cur_sigma, device=x.device, dtype=x.dtype)]
+        pixel_dists = [
+            torch.full((bs, self.n_levels + self.extra_levels), pixel_distance, device=x.device, dtype=x.dtype)
+        ]
         pyr = [[cur_level]]
-        oct_idx = 0
+
         while True:
-            cur_level = pyr[-1][0]
+            # Build octave levels incrementally: each level is a Gaussian blur of
+            # the previous one.  This matches VLFeat's level-to-level construction
+            # and avoids discrete truncation artefacts in DoG differences.
+            cur_sigma_oct = self.init_sigma  # sigma of pyr[-1][0] in current octave pixels
             for level_idx in range(1, self.n_levels + self.extra_levels):
-                sigma = cur_sigma * math.sqrt(self.sigma_step**2 - 1.0)
-                ksize = self.get_kernel_size(sigma)
-
-                # Hack, because PyTorch does not allow to F.pad more than original size.
-                # But for the huge sigmas, one needs huge kernel and padding...
-
-                ksize = min(ksize, cur_level.size(2), cur_level.size(3))
-                if ksize % 2 == 0:
-                    ksize += 1
-
-                cur_level = gaussian_blur2d(cur_level, (ksize, ksize), (sigma, sigma))
-                cur_sigma *= self.sigma_step
-                pyr[-1].append(cur_level)
-                sigmas[-1][:, level_idx] = cur_sigma
+                kernel = getattr(self, f"_gk_{level_idx - 1}")
+                min_dim = min(pyr[-1][-1].size(2), pyr[-1][-1].size(3))
+                if kernel.shape[0] <= min_dim:
+                    new_level = self._blur_fast(pyr[-1][-1], kernel)
+                else:
+                    # Tiny image: clamp kernel size and fall back to the validated path.
+                    delta_sigma = cur_sigma_oct * math.sqrt(self.sigma_step**2 - 1.0)
+                    ksize = min_dim if min_dim % 2 == 1 else min_dim - 1
+                    new_level = gaussian_blur2d(pyr[-1][-1], (ksize, ksize), (delta_sigma, delta_sigma))
+                cur_sigma_oct *= self.sigma_step
+                pyr[-1].append(new_level)
+                sigmas[-1][:, level_idx] = cur_sigma_oct
                 pixel_dists[-1][:, level_idx] = pixel_distance
-            _pyr = pyr[-1][-self.extra_levels]
-            nextOctaveFirstLevel = _pyr[:, :, ::2, ::2]
 
-            pixel_distance *= 2.0
-            cur_sigma = self.init_sigma
-            if min(nextOctaveFirstLevel.size(2), nextOctaveFirstLevel.size(3)) <= self.min_size:
+            # Seed next octave: bilinear 2x downscale of the (-extra_levels) level.
+            # Bilinear resampling is more accurate than integer-stride decimation.
+            _pyr = pyr[-1][-self.extra_levels]
+            H, W = _pyr.shape[2], _pyr.shape[3]
+            if min(H // 2, W // 2) <= self.min_size:
                 break
+            H_new, W_new = H // 2, W // 2
+            nextOctaveFirstLevel = F.interpolate(_pyr, size=(H_new, W_new), mode="bilinear", align_corners=True)
+            pixel_distance *= 2.0
             pyr.append([nextOctaveFirstLevel])
-            sigmas.append(cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device))
-            pixel_dists.append(pixel_distance * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device))
-            oct_idx += 1
+            sigmas.append(
+                torch.full((bs, self.n_levels + self.extra_levels), self.init_sigma, device=x.device, dtype=x.dtype)
+            )
+            pixel_dists.append(
+                torch.full((bs, self.n_levels + self.extra_levels), pixel_distance, device=x.device, dtype=x.dtype)
+            )
 
         output_pyr = [torch.stack(i, 2) for i in pyr]
-
         return output_pyr, sigmas, pixel_dists
 
 
@@ -432,28 +484,3 @@ def build_laplacian_pyramid(
         laplacian_pyramid.append(laplacian)
     laplacian_pyramid.append(gaussian_pyramid[-1])
     return laplacian_pyramid
-
-
-def upscale_double(x: torch.Tensor) -> torch.Tensor:
-    r"""Upscale image by the factor of 2, even indices maps to original indices.
-
-    Odd indices are linearly interpolated from the even torch.ones.
-
-    Args:
-        x: input image.
-
-    Shape:
-        - Input: :math:`(*, H, W)`
-        - Output :math:`(*, H, W)`
-
-    """
-    KORNIA_CHECK_IS_TENSOR(x)
-    KORNIA_CHECK_SHAPE(x, ["*", "H", "W"])
-    double_shape = x.shape[:-2] + (x.shape[-2] * 2, x.shape[-1] * 2)
-    upscaled = torch.zeros(double_shape, device=x.device, dtype=x.dtype)
-    upscaled[..., ::2, ::2] = x
-    upscaled[..., ::2, 1::2][..., :-1] = (upscaled[..., ::2, ::2][..., :-1] + upscaled[..., ::2, 2::2]) / 2
-    upscaled[..., ::2, -1] = upscaled[..., ::2, -2]
-    upscaled[..., 1::2, :][..., :-1, :] = (upscaled[..., ::2, :][..., :-1, :] + upscaled[..., 2::2, :]) / 2
-    upscaled[..., -1, :] = upscaled[..., -2, :]
-    return upscaled

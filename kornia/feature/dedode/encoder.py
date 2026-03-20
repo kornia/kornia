@@ -39,6 +39,9 @@ class VGG19(nn.Module):
         self.amp_dtype = amp_dtype
 
     def forward(self, x: torch.Tensor, **kwargs):  # type: ignore[no-untyped-def]
+        # AMP is intentionally scoped to "cuda" only: float16 autocast on CPU is not
+        # supported by PyTorch and a no-op on MPS. Use amp_dtype=torch.float32 on
+        # non-CUDA devices to disable AMP entirely.
         with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
             feats = []
             sizes = []
