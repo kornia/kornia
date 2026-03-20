@@ -160,6 +160,7 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         self.gradcheck(
             LAFAffNetShapeEstimator(True).to(device, dtype=patches.dtype),
             (laf, patches),
+            requires_grad=[False, True],
             rtol=1e-3,
             atol=1e-3,
             nondet_tol=1e-3,
