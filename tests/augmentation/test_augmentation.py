@@ -5302,3 +5302,20 @@ class TestRandomThinPlateSpline(CommonTests):
         diffs = [(params["dst"][0] - params["dst"][j]).abs().sum().item() for j in range(1, 4)]
 
         assert any(d > 0 for d in diffs)
+
+    @pytest.mark.slow
+    def _test_gradcheck_implementation(self, params):
+        # RandomThinPlateSpline generates fresh random control points on every forward call,
+        # which makes the standard gradcheck non-deterministic (numerical Jacobian sees a
+        # different warp each perturbation step).  Fix the params from a single forward pass
+        # so that gradcheck only tests gradient flow through the deterministic warp path.
+        aug = self._create_augmentation_from_params(**params, p=1.0)
+        input_tensor = torch.rand((1, 3, 5, 5), device=self.device, dtype=self.dtype)
+        torch.manual_seed(0)
+        _ = aug(input_tensor)
+        fixed_params = aug._params
+
+        def forward_with_fixed_params(x: torch.Tensor) -> torch.Tensor:
+            return aug(x, params=fixed_params)
+
+        self.gradcheck(forward_with_fixed_params, (input_tensor,))
