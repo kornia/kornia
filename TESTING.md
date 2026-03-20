@@ -187,6 +187,33 @@ If you write a new function that calls SVD, use `_torch_svd_cast` rather than ca
 
 ---
 
+### 7. Half-Precision dtypes (float16 / bfloat16)
+
+**What it is.** float16 and bfloat16 have limited support across PyTorch and kornia:
+
+- **bfloat16**: Many kornia functions explicitly reject it (`rgb_to_grayscale`, `bgr_to_grayscale`, `StereoCamera`, all `AugmentationBase2D` subclasses).  In addition, many CUDA kernels lack bfloat16 implementations (`svd_cuda`, `linalg_eigh_cuda`, `cdist_cuda`, `lu_factor_cublas`, `geqrf_cuda`, etc.).
+- **float16**: PyTorch's `linalg` routines (`linalg.inv`, `linalg.eigh`, `linalg.svd`, …) do not accept float16 on CPU (`RuntimeError: Low precision dtypes not supported`). On CUDA, many kernels trigger device-side asserts for float16 inputs.
+
+**In Kornia's test suite.** Both dtypes are marked **`xfail(strict=False)`** globally via an autouse fixture in the root `conftest.py`.  This means:
+
+| Outcome | Symbol | Meaning |
+|---------|--------|---------|
+| Test fails as expected | `x` (XFAIL) | Known failure; suite stays green |
+| Test unexpectedly passes | `X` (XPASS) | Allowed — the op actually works in half-precision |
+| Test passes normally (float32/float64) | `.` (PASSED) | Normal |
+
+Running with `--dtype=all` or `--dtype=float16` / `--dtype=bfloat16` will therefore produce many XFAIL/XPASS results but **no failures**, unless a previously-known-passing half-precision path breaks.
+
+**Writing half-precision–aware tests.** Do not guard individual tests with `if dtype in (torch.float16, torch.bfloat16): pytest.skip(...)`.  The global fixture handles the marking.  If a specific function genuinely supports a half-precision dtype, no action is needed — it will show as XPASS, which is fine.  If you want to *assert* that a function supports float16 (i.e., promote a test from XPASS to a real pass), you need to:
+
+1. Fix the underlying implementation so it never raises for float16.
+2. Add the dtype to the accepted set in any explicit validation guard.
+3. Add the test class or test node ID to an exclusion list in the relevant `conftest.py` (or the root one) to suppress the xfail for that scope.
+
+**See also.** `docs/source/get-started/precision.rst` for the per-module half-precision support table.
+
+---
+
 ## Writing Robust Tests
 
 - **Seed the RNG** when the test compares against reference values: `torch.manual_seed(seed)`.

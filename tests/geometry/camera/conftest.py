@@ -1,0 +1,33 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+import pytest
+import torch
+
+# Test classes whose functions only accept float16/float32/float64 but not bfloat16.
+_BFLOAT16_UNSUPPORTED = {"TestStereoCamera"}
+
+
+@pytest.fixture(autouse=True)
+def xfail_bfloat16_unsupported(request):
+    """Mark tests as xfail when bfloat16 is used with functions that do not support it."""
+    if "dtype" not in request.fixturenames:
+        return
+    dtype = request.getfixturevalue("dtype")
+    cls = getattr(request.node, "cls", None)
+    if cls is not None and cls.__name__ in _BFLOAT16_UNSUPPORTED and dtype == torch.bfloat16:
+        request.applymarker(pytest.mark.xfail(reason="bfloat16 is not supported by StereoCamera", strict=False))

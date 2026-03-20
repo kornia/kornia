@@ -93,6 +93,7 @@ Join the community
    get-started/introduction
    get-started/highlights
    get-started/installation
+   get-started/precision
    get-started/about
    Tutorials <https://kornia.github.io/tutorials/>
    get-started/multi-framework-support
