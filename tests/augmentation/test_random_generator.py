@@ -1400,6 +1400,8 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
             )
 
     def test_random_gen(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random number sequences differ between CPU and non-CPU devices; expected values computed on CPU")
         torch.manual_seed(42)
         batch_size = 8
         res = MixupGenerator(p=0.5, lambda_val=torch.tensor([0.0, 1.0], device=device, dtype=dtype))(
@@ -1418,6 +1420,8 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
         assert_close(res["mixup_lambdas"], expected["mixup_lambdas"], rtol=1e-4, atol=1e-4)
 
     def test_same_on_batch(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random number sequences differ between CPU and non-CPU devices; expected values computed on CPU")
         torch.manual_seed(9)
         batch_size = 8
         res = MixupGenerator(p=0.999999, lambda_val=torch.tensor([0.0, 1.0], device=device, dtype=dtype))(

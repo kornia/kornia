@@ -4896,6 +4896,8 @@ class TestRandomRGBShift(BaseTester):
         assert out.shape == (2, 3, 4, 5)
 
     def test_random_rgb_shift(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         input = torch.tensor(
             [
@@ -4918,6 +4920,8 @@ class TestRandomRGBShift(BaseTester):
         self.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)
 
     def test_random_rgb_shift_same_batch(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         input = torch.tensor(
             [
