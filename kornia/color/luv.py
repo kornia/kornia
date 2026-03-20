@@ -170,7 +170,7 @@ class RgbToLuv(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        """Convert a RGB image to Luv.
+        """Convert an RGB image to Luv.
 
         Args:
             image: RGB Image to be converted to Luv with shape :math:`(*, 3, H, W)`.
