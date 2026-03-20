@@ -29,6 +29,4 @@ def xfail_bfloat16_augmentation(request):
         return
     dtype = request.getfixturevalue("dtype")
     if dtype == torch.bfloat16:
-        request.applymarker(
-            pytest.mark.xfail(reason="AugmentationBase2D does not support bfloat16", strict=False)
-        )
+        request.applymarker(pytest.mark.xfail(reason="AugmentationBase2D does not support bfloat16", strict=False))
