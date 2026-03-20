@@ -77,7 +77,6 @@ class HomographyTracker(nn.Module):
         """Return the data type of the target tensor."""
         return self.target.dtype
 
-
     @torch.no_grad()
     def set_target(self, target: torch.Tensor) -> None:
         """Set the target tensor and extract its initial and fast representations."""
@@ -90,8 +89,6 @@ class HomographyTracker(nn.Module):
             self.target_initial_representation = self.initial_matcher.extract_features(target)
         if hasattr(self.fast_matcher, "extract_features") and isinstance(self.fast_matcher.extract_features, nn.Module):
             self.target_fast_representation = self.fast_matcher.extract_features(target)
-
-    
 
     def reset_tracking(self) -> None:
         """Reset the tracking state by clearing the previous homography."""
