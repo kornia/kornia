@@ -325,7 +325,9 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
             output: torch.Tensor
             if dcate == DataKey.INPUT:
-                _validate_input_dtype(_input, accepted_dtypes=[torch.bfloat16, torch.float16, torch.float32, torch.float64])
+                _validate_input_dtype(
+                    _input, accepted_dtypes=[torch.bfloat16, torch.float16, torch.float32, torch.float64]
+                )
 
                 applied = self.transform_input(acceptor, donor, self._params["selection"])
                 output = self.apply_non_transform(_input, self._params, self.flags)
