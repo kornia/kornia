@@ -133,6 +133,7 @@ select = [
   # "ARG",  # flake8-unused-arguments
   # "COM",  # flake8-commas
   "D",  # pydocstyle
+  "D400",  # missing-trailing-period
   # "DJ",   # flake8-django
   # "EM",   # flake8-errmsg
   # "ERA",  # eradicate
@@ -244,6 +245,7 @@ markers = [
   "jit: mark a test as torchscript test",
   "nn: mark a test as module test",
   "slow: mark test as slow to run",
+  "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul precision; xfail by default, run with --tf32 to activate",
 ]
 filterwarnings = [
   "ignore::DeprecationWarning:onnxscript.converter",

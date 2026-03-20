@@ -463,30 +463,28 @@ def extract_patches_from_pyramid(
     B, N, _, _ = laf.size()
     _, ch, h, w = img.size()
     scale = 2.0 * get_laf_scale(denormalize_laf(nlaf, img)) / float(PS)
-    max_level = min(img.size(2), img.size(3)) // PS
-    pyr_idx = scale.log2().clamp(min=0.0, max=max(0, max_level - 1)).long()
+    # max_level is a compile-time constant for static image shapes.
+    max_level = min(h, w) // PS
+    pyr_idx = scale.log2().clamp(min=0.0, max=max(0, max_level - 1)).long()  # (B, N, 1, 1)
+    out = torch.zeros(B, N, ch, PS, PS, dtype=nlaf.dtype, device=nlaf.device)
     cur_img = img
-    cur_pyr_level = 0
-    out = torch.zeros(B, N, ch, PS, PS).to(nlaf.dtype).to(nlaf.device)
-    we_are_in_business = True
-    while we_are_in_business:
-        _, ch, h, w = cur_img.size()
-        # for loop temporarily, to be refactored
+    # Always run at least level 0; max_level is a compile-time constant for static shapes.
+    num_levels = max(1, max_level)
+    for cur_pyr_level in range(num_levels):
+        _, ch_l, h_l, w_l = cur_img.size()
         for i in range(B):
-            scale_mask = (pyr_idx[i] == cur_pyr_level).squeeze()
-            if (scale_mask.float().sum().item()) == 0:
-                continue
-            scale_mask = (scale_mask > 0).view(-1)
-            grid = generate_patch_grid_from_normalized_LAF(cur_img[i : i + 1], nlaf[i : i + 1, scale_mask, :, :], PS)
+            # torch.where avoids nonzero/data-dependent shapes → fully compilable.
+            level_mask = (pyr_idx[i] == cur_pyr_level).view(N, 1, 1, 1)
+            grid = generate_patch_grid_from_normalized_LAF(cur_img[i : i + 1], nlaf[i : i + 1], PS)
             patches = F.grid_sample(
-                cur_img[i : i + 1].expand(grid.shape[0], ch, h, w), grid, padding_mode="border", align_corners=False
+                cur_img[i : i + 1].expand(N, ch_l, h_l, w_l), grid, padding_mode="border", align_corners=False
             )
-            out[i].masked_scatter_(scale_mask.view(-1, 1, 1, 1), patches.to(nlaf.dtype))
-        we_are_in_business = min(cur_img.size(2), cur_img.size(3)) >= PS
-        if not we_are_in_business:
-            break
-        cur_img = pyrdown(cur_img)
-        cur_pyr_level += 1
+            out[i] = torch.where(level_mask, patches.to(nlaf.dtype), out[i])
+        if cur_pyr_level < num_levels - 1:
+            cur_img = pyrdown(cur_img)
+            # Stop early if the pyramided image is too small for further levels.
+            if min(cur_img.size(2), cur_img.size(3)) < PS:
+                break
     return out
 
 

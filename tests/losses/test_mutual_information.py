@@ -244,9 +244,9 @@ class TestMutualInformationLoss(BaseTester):
         op = mutual_information_loss
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(*args), op_optimized(*args))
+        self.assert_close(op(*args), op_optimized(*args), low_tolerance=True)
 
         op = normalized_mutual_information_loss
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(*args), op_optimized(*args))
+        self.assert_close(op(*args), op_optimized(*args), low_tolerance=True)

@@ -15,11 +15,9 @@
 # limitations under the License.
 #
 
-import warnings
 
 import pytest
 import torch
-from packaging import version
 from torch.autograd import gradcheck
 
 import kornia
@@ -146,14 +144,6 @@ class TestRawToRgb(BaseTester):
 
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
-        if version.parse(torch.__version__) < version.parse("1.7.0"):
-            warnings.warn(
-                "This test is not compatible with pytorch < 1.7.0. This message will be removed as soon as we do not "
-                "support pytorch 1.6.0. `rgb_to_hls()` method for pytorch < 1.7.0 version cannot be compiled with JIT.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            return
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.raw_to_rgb
@@ -197,14 +187,6 @@ class TestRgbToRaw(BaseTester):
 
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
-        if version.parse(torch.__version__) < version.parse("1.7.0"):
-            warnings.warn(
-                "This test is not compatible with pytorch < 1.7.0. This message will be removed as soon as we do not "
-                "support pytorch 1.6.0. `rgb_to_hls()` method for pytorch < 1.7.0 version cannot be compiled with JIT.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            return
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_raw
