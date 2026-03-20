@@ -5324,8 +5324,10 @@ class TestRandomThinPlateSpline(CommonTests):
 
         self.gradcheck(forward_with_fixed_params, (input_tensor,))
 
+
 def test_colorjitter_same_on_batch_consistency():
     import torch
+
     from kornia.augmentation import ColorJitter
 
     torch.manual_seed(0)
