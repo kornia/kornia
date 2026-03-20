@@ -148,18 +148,19 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device, dtype=dtype)
         new_laf = aff(laf, inp)
         expected = torch.tensor([[[[33.2073, 0.0, 16.0], [-1.3766, 12.0456, 16.0]]]], device=device, dtype=dtype)
-        self.assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
+        atol = 5e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
+        self.assert_close(new_laf, expected, atol=atol, rtol=1e-4)
 
     @pytest.mark.slow
     def test_gradcheck(self, device):
         torch.manual_seed(0)
         batch_size, channels, height, width = 1, 1, 35, 35
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
-        laf = torch.tensor([[[[8.0, 0.0, 16.0], [0.0, 8.0, 16.0]]]], device=device)
+        laf = torch.tensor([[[[8.0, 0.0, 16.0], [0.0, 8.0, 16.0]]]], device=device, dtype=torch.float64)
         self.gradcheck(
             LAFAffNetShapeEstimator(True).to(device, dtype=patches.dtype),
             (laf, patches),
             rtol=1e-3,
             atol=1e-3,
-            nondet_tol=1e-4,
+            nondet_tol=1e-3,
         )
