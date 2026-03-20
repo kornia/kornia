@@ -148,7 +148,11 @@ class BaseTester:
         dtypes = dtypes if len(dtypes) > 0 else [torch.float64] * len(inputs)
 
         # MPS does not support float64; gradcheck requires float64, so skip on MPS
-        _all_inputs = [inputs] if isinstance(inputs, torch.Tensor) else list(inputs.values() if isinstance(inputs, dict) else inputs)
+        _all_inputs = (
+            [inputs]
+            if isinstance(inputs, torch.Tensor)
+            else list(inputs.values() if isinstance(inputs, dict) else inputs)
+        )
         if any(isinstance(t, torch.Tensor) and t.device.type == "mps" for t in _all_inputs):
             pytest.skip("gradcheck requires float64 which is not supported on MPS")
 
