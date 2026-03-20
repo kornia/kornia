@@ -1,8 +1,25 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 import torch
 
+
 def analyze_model_behavior(model, image, augmentation, layers=("layer1",)):
-    """
-    Analyze how model internal representations change under augmentations.
+    """Analyze how model internal representations change under augmentations.
 
     This utility applies an augmentation to an input image and compares
     intermediate feature maps across specified layers.
@@ -21,6 +38,7 @@ def analyze_model_behavior(model, image, augmentation, layers=("layer1",)):
     def hook_fn(name):
         def hook(module, input, output):
             features[name] = output
+
         return hook
 
     handles = []
@@ -48,7 +66,7 @@ def analyze_model_behavior(model, image, augmentation, layers=("layer1",)):
 
     # Compute differences
     diffs = {}
-    for k in orig_feats:
-        diffs[k] = (orig_feats[k] - aug_feats[k]).abs().mean().item()
+    for k, v in orig_feats.items():
+        diffs[k] = (v - aug_feats[k]).abs().mean().item()
 
     return diffs
