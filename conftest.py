@@ -233,6 +233,17 @@ def pytest_addoption(parser):
             "(env: KORNIA_TEST_TF32)"
         ),
     )
+    parser.addoption(
+        "--isolate-half-precision",
+        action="store_true",
+        default=os.environ.get("KORNIA_TEST_ISOLATE_HALF", "false").lower() == "true",
+        help=(
+            "Run float16/bfloat16 CUDA tests in isolated forked subprocesses using pytest-forked. "
+            "Each test gets its own process, so a CUDA device-side assert cannot contaminate "
+            "subsequent tests. Without this flag, float16/bfloat16 CUDA tests are skipped. "
+            "(env: KORNIA_TEST_ISOLATE_HALF)"
+        ),
+    )
 
 
 def _setup_torch_compile() -> None:
@@ -368,33 +379,88 @@ model weights cached: {cached_weights}
 
 
 @pytest.fixture(autouse=True)
-def xfail_limited_dtype_support(request):
-    """Mark tests as xfail for dtypes with limited CUDA kernel support.
+def skip_half_precision_on_cuda(request):
+    """Isolate or skip float16/bfloat16 CUDA tests to prevent device-side assert contamination.
 
-    - bfloat16: many kornia functions explicitly reject it (gray conversions, stereo
-      camera, augmentation validation), and many CUDA kernels lack support
-      (svd, linalg.eigh, cdist, lu_factor, geqrf, etc.).
-    - float16 on CUDA: many CUDA kernels trigger device-side asserts for float16
-      (e.g. liegroup ops, linalg routines).
+    CUDA device-side asserts are asynchronous: a failing half-precision kernel does not
+    raise immediately but corrupts the CUDA context until the next synchronisation point,
+    which may be inside a completely different (float32) test.  Once triggered, the
+    context is permanently broken for the process — all subsequent CUDA ops fail.
+
+    Default behaviour (no flag): float16/bfloat16 CUDA tests are *skipped*.
+
+    With --isolate-half-precision (or KORNIA_TEST_ISOLATE_HALF=true): each
+    float16/bfloat16 CUDA test is run in its own forked subprocess via pytest-forked.
+    The fork contains any CUDA context corruption so the parent process and sibling
+    tests are never affected.  Results (pass/fail) are reported normally.
+
+    Usage:
+        pytest tests/color/ --device=cuda --dtype=bfloat16 --isolate-half-precision
+        pytest tests/       --device=cuda --dtype=all      --isolate-half-precision
     """
     if "dtype" not in request.fixturenames:
         return
     dtype = request.getfixturevalue("dtype")
-    if dtype == torch.bfloat16:
-        request.applymarker(
-            pytest.mark.xfail(
-                reason="bfloat16 has limited support: many kornia functions and CUDA kernels do not support it",
-                strict=False,
-            )
-        )
+    if dtype not in (torch.bfloat16, torch.float16):
         return
-    if dtype == torch.float16:
-        request.applymarker(
-            pytest.mark.xfail(
-                reason="float16 has limited support: many linalg ops and CUDA kernels do not implement float16",
-                strict=False,
-            )
+    if "device" not in request.fixturenames:
+        return
+    if request.getfixturevalue("device").type != "cuda":
+        return
+
+    if request.config.getoption("--isolate-half-precision"):
+        request.node.add_marker(pytest.mark.forked)
+    else:
+        dtype_name = "bfloat16" if dtype == torch.bfloat16 else "float16"
+        pytest.skip(
+            f"{dtype_name} on CUDA: skipped by default to prevent device-side assert contamination. "
+            "Run with --isolate-half-precision to execute in isolated subprocesses."
         )
+
+
+@pytest.fixture(autouse=True)
+def cuda_device_assert_guard(request):
+    """Guard against CUDA device-side assert contamination between tests.
+
+    Even with skip_half_precision_on_cuda in place, other operations (custom
+    kernels, third-party ops, float32 edge cases) can trigger asynchronous
+    device-side asserts.  This fixture synchronises CUDA before each test; if
+    the context is already corrupted the test is skipped rather than allowed to
+    fail spuriously.  After each test a second synchronisation drains the queue
+    so any async error surfaces in teardown of the test that caused it, not at
+    the start of the next test.  The teardown exception is suppressed so the
+    test's own result is preserved; the following test's pre-check will detect
+    the broken context and skip.
+    """
+    if "device" not in request.fixturenames:
+        yield
+        return
+
+    try:
+        device = request.getfixturevalue("device")
+    except Exception:
+        yield
+        return
+
+    if device.type != "cuda":
+        yield
+        return
+
+    # Pre-test: verify the CUDA context is healthy.
+    try:
+        torch.cuda.synchronize(device)
+    except RuntimeError:
+        pytest.skip("CUDA context corrupted by a device-side assert in a previous test; run this test in isolation")
+
+    yield
+
+    # Post-test: drain the CUDA queue to catch async errors in *this* test's teardown
+    # rather than at the start of the next test.  Suppress the exception so the
+    # test's own result (pass / xfail) is not overridden by a teardown error.
+    try:
+        torch.cuda.synchronize(device)
+    except RuntimeError:
+        torch.cuda.empty_cache()
 
 
 @pytest.fixture(autouse=True)

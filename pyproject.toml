@@ -53,6 +53,7 @@ dev = [
   "pre-commit",
   "pytest",
   "pytest-cov",
+  "pytest-forked",
   "pytest-timeout",
   "requests",
   "ruff",

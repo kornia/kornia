@@ -69,6 +69,8 @@ install-docs = { cmd = "uv sync --extra dev --extra docs --extra x && uv pip ins
 test-cuda = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda" }, description = "Run tests on CUDA" }
 test-cuda-f32 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda", KORNIA_TEST_DTYPE = "float32" } }
 test-cuda-f64 = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda", KORNIA_TEST_DTYPE = "float64" } }
+test-half = { cmd = "uv run pytest -v tests/ --isolate-half-precision", env = { KORNIA_TEST_DTYPE = "float16,bfloat16" }, description = "Run half-precision tests with per-test subprocess isolation" }
+test-cuda-half = { cmd = "uv run pytest -v tests/ --isolate-half-precision", env = { KORNIA_TEST_DEVICE = "cuda", KORNIA_TEST_DTYPE = "float16,bfloat16" }, description = "Run half-precision CUDA tests with per-test subprocess isolation" }
 
 # ------------------------------------------------------------------------------
 # Python version features (for CI matrix)

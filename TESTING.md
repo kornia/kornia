@@ -35,6 +35,7 @@ pixi run test-quick
 | `--runslow` | `KORNIA_TEST_RUNSLOW` | off | Include `@pytest.mark.slow` tests |
 | `--tf32` | `KORNIA_TEST_TF32` | off | Enable TF32 mode (see below) |
 | `--optimizer` | `KORNIA_TEST_OPTIMIZER` | `inductor` | `torch.compile` backend for dynamo tests |
+| `--isolate-half-precision` | `KORNIA_TEST_ISOLATE_HALF` | off | Run float16/bfloat16 CUDA tests in forked subprocesses (requires `pytest-forked`) |
 
 ## Test Structure
 
@@ -192,23 +193,42 @@ If you write a new function that calls SVD, use `_torch_svd_cast` rather than ca
 **What it is.** float16 and bfloat16 have limited support across PyTorch and kornia:
 
 - **bfloat16**: Many kornia functions explicitly reject it (`rgb_to_grayscale`, `bgr_to_grayscale`, `StereoCamera`, all `AugmentationBase2D` subclasses).  In addition, many CUDA kernels lack bfloat16 implementations (`svd_cuda`, `linalg_eigh_cuda`, `cdist_cuda`, `lu_factor_cublas`, `geqrf_cuda`, etc.).
-- **float16**: PyTorch's `linalg` routines (`linalg.inv`, `linalg.eigh`, `linalg.svd`, …) do not accept float16 on CPU (`RuntimeError: Low precision dtypes not supported`). On CUDA, many kernels trigger device-side asserts for float16 inputs.
+- **float16**: PyTorch's `linalg` routines (`linalg.inv`, `linalg.eigh`, `linalg.svd`, …) do not accept float16 on CPU (`RuntimeError: Low precision dtypes not supported`).  On CUDA, many kernels trigger device-side asserts for float16 inputs.
 
-**In Kornia's test suite.** Both dtypes are marked **`xfail(strict=False)`** globally via an autouse fixture in the root `conftest.py`.  This means:
+**Testing strategy: isolated runs.** Half-precision tests live alongside their float32/float64 counterparts in the same directories and files.  They are **not** run in combined (`--dtype=all`) invocations on CUDA; instead, half-precision and standard-precision suites are run as separate, isolated pytest invocations:
 
-| Outcome | Symbol | Meaning |
-|---------|--------|---------|
-| Test fails as expected | `x` (XFAIL) | Known failure; suite stays green |
-| Test unexpectedly passes | `X` (XPASS) | Allowed — the op actually works in half-precision |
-| Test passes normally (float32/float64) | `.` (PASSED) | Normal |
+```bash
+# Standard CI — all devices, float32 and float64 only
+pixi run test tests/ --dtype=float32,float64
 
-Running with `--dtype=all` or `--dtype=float16` / `--dtype=bfloat16` will therefore produce many XFAIL/XPASS results but **no failures**, unless a previously-known-passing half-precision path breaks.
+# Half-precision — run separately, per directory or file
+pytest tests/color/           --dtype=float16,bfloat16
+pytest tests/geometry/        --dtype=float16,bfloat16 --device=cuda
+```
 
-**Writing half-precision–aware tests.** Do not guard individual tests with `if dtype in (torch.float16, torch.bfloat16): pytest.skip(...)`.  The global fixture handles the marking.  If a specific function genuinely supports a half-precision dtype, no action is needed — it will show as XPASS, which is fine.  If you want to *assert* that a function supports float16 (i.e., promote a test from XPASS to a real pass), you need to:
+Keeping the runs separate means a half-precision failure or CUDA context corruption cannot affect the float32/float64 results.
 
-1. Fix the underlying implementation so it never raises for float16.
-2. Add the dtype to the accepted set in any explicit validation guard.
-3. Add the test class or test node ID to an exclusion list in the relevant `conftest.py` (or the root one) to suppress the xfail for that scope.
+**CUDA device-side asserts and test contamination.** CUDA kernel errors are *asynchronous*: a failing kernel logs the error but continues execution until the next host–device synchronisation point.  If that sync happens inside a *different* (passing) test, that test fails spuriously.  Once a device-side assert fires, the CUDA context is permanently broken for the process lifetime.
+
+The root `conftest.py` contains two autouse fixtures to handle this:
+
+- **`skip_half_precision_on_cuda`** — *skips* float16 and bfloat16 tests on CUDA when tests are run in combined mode.  Skipping means no CUDA kernel is launched, so no assert can be triggered.  On CPU/MPS/TPU, tests run as normal (they may fail).
+
+- **`cuda_device_assert_guard`** — synchronises the CUDA device *before* each CUDA test.  If the context is already corrupted by a previous test, the current test is *skipped* rather than allowed to fail spuriously.  After each CUDA test, a second synchronisation drains the queue so that any async error surfaces in teardown of the test that caused it, not at the start of the next one.
+
+**Running half-precision tests across a whole directory.**  Use `--isolate-half-precision` (requires `pytest-forked`).  Each float16/bfloat16 CUDA test runs in its own forked subprocess, so a device-side assert in one test cannot corrupt the CUDA context for the next:
+
+```bash
+# Whole directory, fully isolated — results reported normally (pass/fail per test)
+pytest tests/color/     --device=cuda --dtype=bfloat16 --isolate-half-precision
+pytest tests/geometry/  --device=cuda --dtype=all      --isolate-half-precision
+
+# Via pixi tasks
+pixi run test-half        # float16 + bfloat16, CPU
+pixi run test-cuda-half   # float16 + bfloat16, CUDA, with isolation
+```
+
+Without `--isolate-half-precision`, float16/bfloat16 CUDA tests are **skipped** (safe default for combined runs).
 
 **See also.** `docs/source/get-started/precision.rst` for the per-module half-precision support table.
 

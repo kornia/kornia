@@ -119,23 +119,95 @@ Legend
 - ⚠️ **Partial** — Some operations work; others fail at runtime or produce inaccurate results due to limited numerical range/precision.
 - ❌ **No** — Not supported; raises a ``RuntimeError`` or ``TypeError`` at runtime.
 
+Test Results
+------------
+
+Measured on commit ``dee4388`` (2026-03-20), full test suite with ``--runslow``.
+Pass% = passed ÷ (passed + failed + errors); skipped tests are excluded.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 32 10 10 10 10 10
+
+   * - Run
+     - Passed
+     - Failed
+     - Errors
+     - Skipped
+     - Pass%
+   * - CPU float32 *(baseline)*
+     - 7647
+     - 3
+     - 4
+     - 3269
+     - **99.9%**
+   * - CUDA float32 *(baseline)*
+     - 7634
+     - 3
+     - 4
+     - 3280
+     - **99.9%**
+   * - CPU float16
+     - 6866
+     - 747
+     - 4
+     - 3306
+     - **90.1%**
+   * - CPU bfloat16
+     - 6838
+     - 812
+     - 4
+     - 3269
+     - **89.3%**
+   * - CUDA float16 *(--isolate-half-precision)*
+     - 485 †
+     - 22
+     - 26
+     - 10412 †
+     - *(see note)*
+   * - CUDA bfloat16 *(--isolate-half-precision)*
+     - 6840
+     - 797
+     - 4
+     - 3280
+     - **89.5%**
+
+† **CUDA float16 caveat:** ``fork()`` (used by ``pytest-forked``) copies the
+parent's CUDA context handle into the child.  When a float16 kernel triggers a
+device-side assert in the child process, the underlying GPU state is corrupted
+and the parent's handle sees the same error.  The ``cuda_device_assert_guard``
+fixture detects this and skips subsequent tests, producing 10 412 skips instead
+of the expected 3 280.  Only 533 of ~7 641 tests actually ran; the 91 % pass
+rate applies only to that subset.  True isolation for CUDA float16 requires
+spawning a fresh Python process (``subprocess.run``), not ``fork()``.
+
 Test Suite Behaviour
 --------------------
 
-Because half-precision support is incomplete, all tests parameterised with
-``float16`` or ``bfloat16`` are automatically marked ``xfail(strict=False)``
-by a global autouse fixture in ``conftest.py``.
-
-- **XFAIL** (``x``) — test fails as expected; no action needed.
-- **XPASS** (``X``) — test unexpectedly passes; the operation actually works in half-precision.
-
-Run the full half-precision sweep with:
+Half-precision tests live in the same directories and files as their
+float32/float64 counterparts.  They are run as **separate, isolated pytest
+invocations** rather than being mixed into a combined ``--dtype=all`` run.
+This prevents a CUDA device-side assert in a half-precision test from
+corrupting the CUDA context and causing unrelated float32 tests to fail.
 
 .. code-block:: bash
 
-   pixi run test tests/ --dtype=float16
-   pixi run test tests/ --dtype=bfloat16
+   # Standard precision — default CI
+   pixi run test tests/ --dtype=float32,float64
 
-See :doc:`/get-started/installation` for environment setup and
-``TESTING.md`` in the repository root for a full description of the xfail
-mechanism and guidance on fixing half-precision failures.
+   # Half-precision — run in isolation, per directory
+   pytest tests/color/     --dtype=float16,bfloat16
+   pytest tests/geometry/  --dtype=float16,bfloat16 --device=cuda
+
+Two autouse fixtures in the root ``conftest.py`` enforce safe behaviour:
+
+- **``skip_half_precision_on_cuda``** — skips float16/bfloat16 tests on CUDA
+  in combined runs so no half-precision kernel is ever launched (and therefore
+  no device-side assert can fire).
+- **``cuda_device_assert_guard``** — synchronises CUDA before and after each
+  CUDA test to catch async device-side assert errors in the test that caused
+  them, not in the next one.  If the context is already corrupted, the test
+  is skipped rather than allowed to fail spuriously.
+
+See ``TESTING.md`` in the repository root for a full description of the
+contamination mechanism and fixture implementation.
