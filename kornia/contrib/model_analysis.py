@@ -71,8 +71,8 @@ def analyze_model_behavior(model, image, augmentation, layers=("layer1",)):
         aug = aug_feats[k]
 
         diff = torch.mean((orig - aug) ** 2)
-        norm = torch.mean(orig ** 2) + 1e-8
+        norm = torch.mean(orig**2) + 1e-8
         score = diff / norm
 
-        diffs[k] = score.item()
+        diffs[k] = float(f"{score.item():.8f}")
     return diffs
