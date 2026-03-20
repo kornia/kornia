@@ -39,10 +39,9 @@ from .histogram_matching import histogram_matching, interp
 from .image_stitching import ImageStitcher
 from .kmeans import KMeans
 from .lambda_module import Lambda
+from .model_analysis import analyze_model_behavior
 from .object_detection import ObjectDetector, RTDETRDetectorBuilder
 from .super_resolution import RRDBNetBuilder, SmallSRBuilder, SuperResolution
-from .model_analysis import analyze_model_behavior
-
 
 __all__ = [
     "BoxMotTracker",
