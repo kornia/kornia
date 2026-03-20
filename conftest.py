@@ -436,7 +436,17 @@ def pytest_runtest_protocol(item, nextitem):
 
     item.ihook.pytest_runtest_logstart(nodeid=item.nodeid, location=item.location)
 
-    cmd = [sys.executable, "-m", "pytest", item.nodeid, "--no-header", "--tb=short", "-q", "--color=no"]
+    # Forward device/dtype so pytest_generate_tests in the subprocess produces the
+    # same parametrisation as the parent — without these the [cuda-float16] nodeid
+    # can't be found because the subprocess defaults to [cpu-float32].
+    params = item.callspec.params
+    device_name = params.get("device_name", "cpu")
+    dtype_name = params.get("dtype_name", "float32")
+    cmd = [
+        sys.executable, "-m", "pytest", item.nodeid,
+        "--no-header", "--tb=short", "-q", "--color=no",
+        f"--device={device_name}", f"--dtype={dtype_name}",
+    ]
     if item.config.getoption("--runslow"):
         cmd.append("--runslow")
     if item.config.getoption("--tf32"):
