@@ -34,6 +34,7 @@ from testing.base import BaseTester
 # Pure function tests
 # ---------------------------------------------------------------------------
 
+
 def test_lightglue_empty_after_pruning():
     model = LightGlue(features="superpoint", width_confidence=0.99)
     model.eval()
@@ -86,6 +87,7 @@ def test_lightglue_pruning_removes_all():
     assert "matches1" in out
     assert out["matches0"].shape == (B, M)
     assert out["matches1"].shape == (B, M)
+
 
 def test_normalize_keypoints_smoke():
     kpts = torch.zeros(1, 5, 2)
