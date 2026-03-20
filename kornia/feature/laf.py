@@ -430,11 +430,21 @@ def extract_patches_simple(
     # for loop temporarily, to be refactored
     for i in range(B):
         grid = generate_patch_grid_from_normalized_LAF(img[i : i + 1], nlaf[i : i + 1], PS).to(img.device)
-        out.append(
-            F.grid_sample(
-                img[i : i + 1].expand(grid.size(0), ch, h, w), grid, padding_mode="border", align_corners=False
+        if img.device.type == "mps":
+            out.append(
+                F.grid_sample(
+                    img[i : i + 1].expand(grid.size(0), ch, h, w),
+                    grid.clamp(-1, 1),
+                    padding_mode="zeros",
+                    align_corners=False,
+                )
             )
-        )
+        else:
+            out.append(
+                F.grid_sample(
+                    img[i : i + 1].expand(grid.size(0), ch, h, w), grid, padding_mode="border", align_corners=False
+                )
+            )
     return torch.cat(out, dim=0).view(B, N, ch, PS, PS)
 
 
@@ -476,9 +486,17 @@ def extract_patches_from_pyramid(
             # torch.where avoids nonzero/data-dependent shapes → fully compilable.
             level_mask = (pyr_idx[i] == cur_pyr_level).view(N, 1, 1, 1)
             grid = generate_patch_grid_from_normalized_LAF(cur_img[i : i + 1], nlaf[i : i + 1], PS)
-            patches = F.grid_sample(
-                cur_img[i : i + 1].expand(N, ch_l, h_l, w_l), grid, padding_mode="border", align_corners=False
-            )
+            if cur_img.device.type == "mps":
+                patches = F.grid_sample(
+                    cur_img[i : i + 1].expand(N, ch_l, h_l, w_l),
+                    grid.clamp(-1, 1),
+                    padding_mode="zeros",
+                    align_corners=False,
+                )
+            else:
+                patches = F.grid_sample(
+                    cur_img[i : i + 1].expand(N, ch_l, h_l, w_l), grid, padding_mode="border", align_corners=False
+                )
             out[i] = torch.where(level_mask, patches.to(nlaf.dtype), out[i])
         if cur_pyr_level < num_levels - 1:
             cur_img = pyrdown(cur_img)

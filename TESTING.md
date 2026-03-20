@@ -187,6 +187,42 @@ If you write a new function that calls SVD, use `_torch_svd_cast` rather than ca
 
 ---
 
+### 7. MPS (Apple Silicon) Limitations
+
+**What MPS is.** The `mps` device uses Apple's Metal Performance Shaders backend. Run tests against it with `--device=mps`.
+
+**Known unsupported operations.** Several operations are not implemented in the MPS backend and raise a `RuntimeError` at runtime:
+
+| Operation | Error |
+|---|---|
+| `float64` (double precision) | `TypeError: Cannot convert a MPS Tensor to float64 dtype` |
+| `complex128` (cdouble) | `NotImplementedError: … not implemented for 'ComplexDouble'` |
+| `F.grid_sample` with `padding_mode="border"` on 2D | `RuntimeError: MPS: Unsupported Border padding mode` |
+| `F.grid_sample` with `mode="nearest"` on 5-D (3D volumes) | `RuntimeError: grid_sampler_3d: Unsupported Nearest interpolation` |
+| `torch.autocast("mps")` | Converts output to float16 instead of preserving original dtype |
+
+**How Kornia handles these automatically.** The test infrastructure in `conftest.py` and `testing/base.py` skips known-unsupported test classes at collection time so you don't need per-test guards for the common cases:
+
+- `test_gradcheck[mps*]` — skipped automatically (`gradcheck` requires float64)
+- `*[mps*cdtype1*]` — skipped automatically (parametrized `torch.cdouble` tests)
+- `test_autocast[mps*]` — skipped automatically (MPS autocast changes dtype)
+
+The `padding_mode="border"` issue in `F.grid_sample` (2D) is worked around in the implementation (`kornia/feature/laf.py`) by clamping the sampling grid to `[-1, 1]` and using `padding_mode="zeros"`, which is mathematically equivalent.
+
+**Writing new tests that work on MPS.** Follow these rules:
+
+1. **Never create `float64` tensors on the device in non-gradcheck tests.** Use the `dtype` fixture, or if the algorithm requires double precision, skip explicitly:
+   ```python
+   if device.type == "mps":
+       pytest.skip("MPS does not support float64")
+   ```
+2. **`self.gradcheck()` is safe.** `BaseTester.gradcheck()` automatically skips on MPS devices.
+3. **Avoid `padding_mode="border"` in 2D `grid_sample` on MPS.** Use the clamped-zeros workaround or check `device.type == "mps"`.
+4. **3D `grid_sample` with `mode="nearest"` is unsupported on MPS.** Do not silently fall back to bilinear (it would corrupt segmentation masks); instead raise or skip the test.
+5. **Device comparison.** `tensor.device` on MPS returns `device(type='mps', index=0)`, not `device(type='mps')`. The test fixture provides `torch.device("mps:0")` so `tensor.device == device` comparisons work correctly.
+
+---
+
 ## Writing Robust Tests
 
 - **Seed the RNG** when the test compares against reference values: `torch.manual_seed(seed)`.
