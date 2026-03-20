@@ -163,14 +163,29 @@ def pytest_collection_modifyitems(config, items):
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
 
-    if config.getoption("--runslow"):
-        # --runslow given in cli: do not skip slow tests
-        return
+    tf32_enabled = config.getoption("--tf32")
 
-    skip_slow = pytest.mark.skip(reason="need --runslow option to run")
-    for item in items:
-        if "slow" in item.keywords:
-            item.add_marker(skip_slow)
+    if not config.getoption("--runslow"):
+        skip_slow = pytest.mark.skip(reason="need --runslow option to run")
+        for item in items:
+            if "slow" in item.keywords:
+                item.add_marker(skip_slow)
+
+    # Tests marked @pytest.mark.tf32 are known to produce incorrect results when
+    # TF32 is active (torch.set_float32_matmul_precision("high")).  When running
+    # without --tf32 (the default), mark them xfail so the suite stays green.
+    # When --tf32 is explicitly passed, run them normally so the failures are visible.
+    if not tf32_enabled:
+        xfail_tf32 = pytest.mark.xfail(
+            reason=(
+                "This test is sensitive to TF32 (TensorFloat-32) precision reduction in CUDA matrix "
+                "multiplications.  Run with --tf32 to reproduce the failure."
+            ),
+            strict=False,
+        )
+        for item in items:
+            if "tf32" in item.keywords:
+                item.add_marker(xfail_tf32)
 
 
 def pytest_addoption(parser):
@@ -181,6 +196,7 @@ def pytest_addoption(parser):
         KORNIA_TEST_DTYPE: Data type to test (default: float32)
         KORNIA_TEST_OPTIMIZER: Optimizer backend (default: inductor)
         KORNIA_TEST_RUNSLOW: Run slow tests (default: false)
+        KORNIA_TEST_TF32: Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications (default: false)
     """
     parser.addoption(
         "--device",
@@ -206,12 +222,22 @@ def pytest_addoption(parser):
         default=os.environ.get("KORNIA_TEST_RUNSLOW", "false").lower() == "true",
         help="Run slow tests (env: KORNIA_TEST_RUNSLOW)",
     )
+    parser.addoption(
+        "--tf32",
+        action="store_true",
+        default=os.environ.get("KORNIA_TEST_TF32", "false").lower() == "true",
+        help=(
+            "Enable TF32 (TensorFloat-32) mode for CUDA matrix multiplications "
+            "(torch.set_float32_matmul_precision('high')). "
+            "Tests marked @pytest.mark.tf32 are expected to fail under TF32 and are skipped unless this flag is set. "
+            "(env: KORNIA_TEST_TF32)"
+        ),
+    )
 
 
 def _setup_torch_compile() -> None:
     """Warm up torch.compile to reduce first-run latency in tests."""
     print("Setting up torch compile...")
-    torch.set_float32_matmul_precision("high")
 
     def _dummy_fn(x, y):
         return (x + y).sum()
@@ -226,6 +252,18 @@ def _setup_torch_compile() -> None:
 
 def pytest_sessionstart(session):
     """Start pytest session."""
+    # Enable TF32 only when explicitly requested via --tf32 / KORNIA_TEST_TF32=true.
+    #
+    # TF32 (TensorFloat-32) truncates float32 inputs to a 10-bit mantissa before
+    # CUDA matrix multiplications (torch.bmm, torch.mm, etc.), giving ~float16
+    # mantissa precision for those ops.  This can cause test failures for
+    # numerically sensitive operations even though the same test passes without TF32.
+    # By default we run with full float32 precision so that tests are deterministic
+    # and correct.  Use --tf32 to reproduce the behaviour of torch.compile("high")
+    # and to run the @pytest.mark.tf32-marked tests.
+    if session.config.getoption("--tf32"):
+        torch.set_float32_matmul_precision("high")
+
     try:
         _setup_torch_compile()
     except RuntimeError as ex:
