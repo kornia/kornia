@@ -192,7 +192,7 @@ If you write a new function that calls SVD, use `_torch_svd_cast` rather than ca
 
 **What it is.** float16 and bfloat16 have limited support across PyTorch and kornia:
 
-- **bfloat16**: Many kornia functions explicitly reject it (`rgb_to_grayscale`, `bgr_to_grayscale`, `StereoCamera`, all `AugmentationBase2D` subclasses).  In addition, many CUDA kernels lack bfloat16 implementations (`svd_cuda`, `linalg_eigh_cuda`, `cdist_cuda`, `lu_factor_cublas`, `geqrf_cuda`, etc.).
+- **bfloat16**: Many kornia functions explicitly reject it.  In addition, many CUDA kernels lack bfloat16 implementations (`svd_cuda`, `linalg_eigh_cuda`, `cdist_cuda`, `lu_factor_cublas`, `geqrf_cuda`, etc.).
 - **float16**: PyTorch's `linalg` routines (`linalg.inv`, `linalg.eigh`, `linalg.svd`, …) do not accept float16 on CPU (`RuntimeError: Low precision dtypes not supported`).  On CUDA, many kernels trigger device-side asserts for float16 inputs.
 
 **Testing strategy: isolated runs.** Half-precision tests live alongside their float32/float64 counterparts in the same directories and files.  They are **not** run in combined (`--dtype=all`) invocations on CUDA; instead, half-precision and standard-precision suites are run as separate, isolated pytest invocations:
