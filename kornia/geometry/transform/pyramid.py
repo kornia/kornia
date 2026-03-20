@@ -205,7 +205,7 @@ class ScalePyramid(nn.Module):
         ksize = kernel.shape[0]
         pad = ksize // 2
         _B, C, _H, _W = x.shape
-        k = kernel.to(dtype=x.dtype)
+        k = kernel.to(device=x.device, dtype=x.dtype)
         # Depthwise separable: same kernel applied independently to every channel.
         k_h = k.view(1, 1, 1, ksize).expand(C, 1, 1, ksize).contiguous()
         tmp = F.conv2d(F.pad(x, (pad, pad, 0, 0), mode="reflect"), k_h, groups=C)

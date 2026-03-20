@@ -161,8 +161,15 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     input data type to fp32, apply torch.svd, and cast back to the input dtype.
 
     NOTE: in torch 1.8.1 this function is recommended to use as torch.linalg.svd
+
+    For numerical stability, fp32 inputs are promoted to fp64 (except on MPS where fp64 is unsupported).
     """
-    dtype = _normalize_to_float32_or_float64(input.dtype)
+    if is_mps_tensor_safe(input):
+        dtype = torch.float32
+    elif input.dtype == torch.float32:
+        dtype = torch.float64
+    else:
+        dtype = _normalize_to_float32_or_float64(input.dtype)
 
     out1, out2, out3H = torch.linalg.svd(input.to(dtype))
     # Since kornia requires torch>=2.0.0, we can always use .mH

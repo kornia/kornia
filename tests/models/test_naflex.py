@@ -50,6 +50,7 @@ class TestNaFlex(BaseTester):
 
     def test_smoke(self, model: NaFlex, device: torch.device, dtype: torch.dtype) -> None:
         """Test basic forward pass with standard input."""
+        model = model.to(device)
         input_data = torch.randn(1, 3, 224, 224, device=device, dtype=dtype)
         out = model(input_data)
         assert isinstance(out, Tensor)
@@ -60,6 +61,7 @@ class TestNaFlex(BaseTester):
 
         For 224x320 input with 16x16 patches, expect 14x20=280 patches.
         """
+        model = model.to(device)
         input_data = torch.randn(1, 3, 224, 320, device=device, dtype=dtype)
         out = model(input_data)
         assert out.shape[0] == 1
@@ -90,7 +92,7 @@ class TestNaFlex(BaseTester):
             return torch.randn(B, 768, h_out, w_out, dtype=x.dtype, device=x.device)
 
         position_embedding = torch.randn(196, 768)
-        model = NaFlex(mock_patch_embedding_dynamic, position_embedding)
+        model = NaFlex(mock_patch_embedding_dynamic, position_embedding).to(device)
         input_448 = torch.randn(1, 3, 448, 448, device=device, dtype=dtype)
         out = model(input_448)
         assert out.shape == (1, 784, 768)

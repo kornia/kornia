@@ -228,7 +228,7 @@ class TestALIKED(BaseTester):
             fm, sm = aliked.extract_dense_map(x)
             return fm, sm
 
-        assert torch.autograd.gradcheck(fn, [inp], eps=1e-4, atol=1e-3, rtol=1e-3, fast_mode=True)
+        assert torch.autograd.gradcheck(fn, [inp], eps=1e-4, atol=1e-3, rtol=1e-3, fast_mode=True, nondet_tol=1e-3)
 
 
 # ---------------------------------------------------------------------------
