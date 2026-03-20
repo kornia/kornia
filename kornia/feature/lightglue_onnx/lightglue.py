@@ -177,7 +177,7 @@ class OnnxLightGlue:
         self.session.run_with_iobinding(binding)
 
         matches, mscores = binding.get_outputs()
-       # Prefer DLPack-based conversion when available for zero-copy transfer between them
+        # Prefer DLPack-based conversion when available for zero-copy transfer between them
         # The fallback path uses NumPy, which incurs a device-to-host copy and is slower.
         if hasattr(matches, "to_dlpack"):
             outputs = {
