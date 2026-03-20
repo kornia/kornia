@@ -150,6 +150,10 @@ class ColorJitter(IntensityAugmentationBase2D):
                 k: (v[0:1] if isinstance(v, torch.Tensor) else v)
                 for k, v in params.items()
             }
+             
+            order = single_params["order"]
+            if isinstance(order, torch.Tensor):
+                order = order.flatten().tolist()
 
             jittered = input[0:1]
 
