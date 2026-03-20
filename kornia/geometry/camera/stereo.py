@@ -305,7 +305,8 @@ def _check_Q_matrix(Q_matrix: torch.Tensor) -> None:
 
     if Q_matrix.dtype not in (torch.bfloat16, torch.float16, torch.float32, torch.float64):
         raise StereoException(
-            f"Expected 'Q_matrix' to be of type torch.bfloat16, torch.float16, torch.float32 or torch.float64. Got {Q_matrix.dtype}"
+                "Expected 'Q_matrix' to be of type torch.bfloat16, torch.float16, torch.float32 or torch.float64. "
+            f"Got {Q_matrix.dtype}"
         )
 
 

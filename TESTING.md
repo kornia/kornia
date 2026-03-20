@@ -35,7 +35,7 @@ pixi run test-quick
 | `--runslow` | `KORNIA_TEST_RUNSLOW` | off | Include `@pytest.mark.slow` tests |
 | `--tf32` | `KORNIA_TEST_TF32` | off | Enable TF32 mode (see below) |
 | `--optimizer` | `KORNIA_TEST_OPTIMIZER` | `inductor` | `torch.compile` backend for dynamo tests |
-| `--isolate-half-precision` | `KORNIA_TEST_ISOLATE_HALF` | off | Run float16/bfloat16 CUDA tests in forked subprocesses (requires `pytest-forked`) |
+| `--isolate-half-precision` | `KORNIA_TEST_ISOLATE_HALF` | off | Run float16/bfloat16 CUDA tests each in a fresh `subprocess.run` process (no shared CUDA state) |
 
 ## Test Structure
 
@@ -216,7 +216,7 @@ The root `conftest.py` contains two autouse fixtures to handle this:
 
 - **`cuda_device_assert_guard`** — synchronises the CUDA device *before* each CUDA test.  If the context is already corrupted by a previous test, the current test is *skipped* rather than allowed to fail spuriously.  After each CUDA test, a second synchronisation drains the queue so that any async error surfaces in teardown of the test that caused it, not at the start of the next one.
 
-**Running half-precision tests across a whole directory.**  Use `--isolate-half-precision` (requires `pytest-forked`).  Each float16/bfloat16 CUDA test runs in its own forked subprocess, so a device-side assert in one test cannot corrupt the CUDA context for the next:
+**Running half-precision tests across a whole directory.**  Use `--isolate-half-precision`.  Each float16/bfloat16 CUDA test is run in a completely fresh Python process via `subprocess.run`, so a device-side assert in one test cannot affect any other test — there is no shared CUDA state at all:
 
 ```bash
 # Whole directory, fully isolated — results reported normally (pass/fail per test)

@@ -16,12 +16,16 @@
 #
 
 import os
+import subprocess
+import sys
+import time
 from functools import partial
 from itertools import product
 
 import numpy as np
 import pytest
 import torch
+from _pytest.reports import TestReport
 
 import kornia
 
@@ -238,9 +242,10 @@ def pytest_addoption(parser):
         action="store_true",
         default=os.environ.get("KORNIA_TEST_ISOLATE_HALF", "false").lower() == "true",
         help=(
-            "Run float16/bfloat16 CUDA tests in isolated forked subprocesses using pytest-forked. "
-            "Each test gets its own process, so a CUDA device-side assert cannot contaminate "
-            "subsequent tests. Without this flag, float16/bfloat16 CUDA tests are skipped. "
+            "Run float16/bfloat16 CUDA tests in fresh subprocesses via subprocess.run. "
+            "Each test gets its own Python process with no shared CUDA state, so a "
+            "device-side assert cannot contaminate subsequent tests. "
+            "Without this flag, float16/bfloat16 CUDA tests are skipped. "
             "(env: KORNIA_TEST_ISOLATE_HALF)"
         ),
     )
@@ -378,9 +383,104 @@ model weights cached: {cached_weights}
 """
 
 
+def _is_subprocess_isolated_test(item) -> bool:
+    """Return True if this test should be run in a fresh subprocess.
+
+    Checks that:
+    - ``--isolate-half-precision`` is set
+    - we are NOT already inside a subprocess (``KORNIA_TEST_IN_SUBPROCESS`` env var)
+    - the test is parametrised with a half-precision dtype on CUDA
+    """
+    if os.environ.get("KORNIA_TEST_IN_SUBPROCESS"):
+        return False
+    if not item.config.getoption("--isolate-half-precision", default=False):
+        return False
+    callspec = getattr(item, "callspec", None)
+    if callspec is None:
+        return False
+    params = callspec.params
+    if params.get("dtype_name") not in ("float16", "bfloat16"):
+        return False
+    if params.get("device_name") != "cuda":
+        return False
+    return True
+
+
+def pytest_runtest_protocol(item, nextitem):
+    """Run float16/bfloat16 CUDA tests in a fresh subprocess for true isolation.
+
+    ``pytest-forked`` uses ``fork()``, which copies the parent's CUDA context handle
+    into the child.  A device-side assert in the child corrupts the *same* underlying
+    GPU state the parent holds — so the isolation is illusory for CUDA float16.
+
+    This hook uses ``subprocess.run`` instead, which spawns a completely independent
+    Python interpreter with no shared CUDA state.  The child's result (pass / fail /
+    skip) is parsed and reported back into the parent's session as a synthetic
+    ``TestReport``.
+    """
+    if not _is_subprocess_isolated_test(item):
+        return None  # use the default protocol
+
+    item.ihook.pytest_runtest_logstart(nodeid=item.nodeid, location=item.location)
+
+    cmd = [sys.executable, "-m", "pytest", item.nodeid, "--no-header", "--tb=short", "-q", "--color=no"]
+    if item.config.getoption("--runslow"):
+        cmd.append("--runslow")
+    if item.config.getoption("--tf32"):
+        cmd.append("--tf32")
+
+    env = {**os.environ, "KORNIA_TEST_IN_SUBPROCESS": "1"}
+    t0 = time.monotonic()
+    proc = subprocess.run(  # noqa: S603
+        cmd, capture_output=True, text=True, cwd=str(item.config.rootdir), env=env, check=False
+    )
+    duration = time.monotonic() - t0
+    output = (proc.stdout + proc.stderr).strip()
+
+    # exit code 5 → no tests collected (test was deselected or already parametrised away)
+    if proc.returncode == 5:
+        outcome: str = "skipped"
+        longrepr = ("", 0, "subprocess: no tests collected")
+    elif proc.returncode == 0:
+        # Distinguish a genuine pass from a skipped test
+        if "passed" not in output and "skipped" in output:
+            skip_line = next(
+                (ln.strip() for ln in output.splitlines() if "SKIP" in ln.upper()), "skipped in subprocess"
+            )
+            outcome = "skipped"
+            longrepr = ("", 0, skip_line)
+        else:
+            outcome = "passed"
+            longrepr = None
+    else:
+        outcome = "failed"
+        longrepr = output
+
+    def _report(when: str, out: str, rep_longrepr, dur: float = 0.0) -> TestReport:
+        return TestReport(
+            nodeid=item.nodeid,
+            location=item.location,
+            keywords=dict(item.keywords),
+            outcome=out,
+            longrepr=rep_longrepr,
+            when=when,
+            duration=dur,
+        )
+
+    for rep in [
+        _report("setup", "passed", None),
+        _report("call", outcome, longrepr, duration),
+        _report("teardown", "passed", None),
+    ]:
+        item.ihook.pytest_runtest_logreport(report=rep)
+
+    item.ihook.pytest_runtest_logfinish(nodeid=item.nodeid, location=item.location)
+    return True
+
+
 @pytest.fixture(autouse=True)
 def skip_half_precision_on_cuda(request):
-    """Isolate or skip float16/bfloat16 CUDA tests to prevent device-side assert contamination.
+    """Skip float16/bfloat16 CUDA tests unless running inside a subprocess.
 
     CUDA device-side asserts are asynchronous: a failing half-precision kernel does not
     raise immediately but corrupts the CUDA context until the next synchronisation point,
@@ -389,15 +489,21 @@ def skip_half_precision_on_cuda(request):
 
     Default behaviour (no flag): float16/bfloat16 CUDA tests are *skipped*.
 
-    With --isolate-half-precision (or KORNIA_TEST_ISOLATE_HALF=true): each
-    float16/bfloat16 CUDA test is run in its own forked subprocess via pytest-forked.
-    The fork contains any CUDA context corruption so the parent process and sibling
-    tests are never affected.  Results (pass/fail) are reported normally.
+    With ``--isolate-half-precision`` (or ``KORNIA_TEST_ISOLATE_HALF=true``): each
+    float16/bfloat16 CUDA test is intercepted by ``pytest_runtest_protocol`` *before*
+    any fixture runs and executed in a fresh ``subprocess.run`` process.  This fixture
+    only runs inside those subprocesses (where ``KORNIA_TEST_IN_SUBPROCESS=1`` is set)
+    and exits immediately so the test proceeds normally.
 
-    Usage:
+    Usage::
+
         pytest tests/color/ --device=cuda --dtype=bfloat16 --isolate-half-precision
         pytest tests/       --device=cuda --dtype=all      --isolate-half-precision
     """
+    # Inside a subprocess spawned by pytest_runtest_protocol — run the test normally.
+    if os.environ.get("KORNIA_TEST_IN_SUBPROCESS"):
+        return
+
     if "dtype" not in request.fixturenames:
         return
     dtype = request.getfixturevalue("dtype")
@@ -405,12 +511,16 @@ def skip_half_precision_on_cuda(request):
         return
     if "device" not in request.fixturenames:
         return
-    if request.getfixturevalue("device").type != "cuda":
+
+    try:
+        device = request.getfixturevalue("device")
+    except pytest.FixtureLookupError:
         return
 
-    if request.config.getoption("--isolate-half-precision"):
-        request.node.add_marker(pytest.mark.forked)
-    else:
+    if device.type != "cuda":
+        return
+
+    if not request.config.getoption("--isolate-half-precision"):
         dtype_name = "bfloat16" if dtype == torch.bfloat16 else "float16"
         pytest.skip(
             f"{dtype_name} on CUDA: skipped by default to prevent device-side assert contamination. "
@@ -438,7 +548,7 @@ def cuda_device_assert_guard(request):
 
     try:
         device = request.getfixturevalue("device")
-    except Exception:
+    except pytest.FixtureLookupError:
         yield
         return
 

@@ -107,10 +107,10 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 | CUDA float32 *(baseline)* | 7634 | 3 | 4 | 3280 | **99.9%** |
 | CPU float16 | 6866 | 747 | 4 | 3306 | **90.1%** |
 | CPU bfloat16 | 6838 | 812 | 4 | 3269 | **89.3%** |
-| CUDA float16 *(--isolate-half-precision)* | 485 † | 22 | 26 | 10412 † | *(see note)* |
+| CUDA float16 *(--isolate-half-precision)* | — | — | — | — | *(re-run pending)* |
 | CUDA bfloat16 *(--isolate-half-precision)* | 6840 | 797 | 4 | 3280 | **89.5%** |
 
-† CUDA float16: `fork()` (used by `pytest-forked`) copies the parent's CUDA context handle into the child, so a device-side assert in a float16 kernel corrupts the GPU state for the whole process — only 533 of ~7641 tests actually ran. True isolation requires a fresh subprocess, not `fork()`.
+CUDA float16 results measured with the old `fork()`-based implementation were unreliable (~533 of ~7641 tests actually ran). Isolation now uses `subprocess.run` (no shared CUDA state); a re-run will be added once completed.
 
 See the [full precision guide](https://kornia.readthedocs.io/en/stable/get-started/precision.html) for details.
 

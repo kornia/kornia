@@ -160,11 +160,11 @@ Pass% = passed ÷ (passed + failed + errors); skipped tests are excluded.
      - 3269
      - **89.3%**
    * - CUDA float16 *(--isolate-half-precision)*
-     - 485 †
-     - 22
-     - 26
-     - 10412 †
-     - *(see note)*
+     - —
+     - —
+     - —
+     - —
+     - *(re-run pending)*
    * - CUDA bfloat16 *(--isolate-half-precision)*
      - 6840
      - 797
@@ -172,14 +172,13 @@ Pass% = passed ÷ (passed + failed + errors); skipped tests are excluded.
      - 3280
      - **89.5%**
 
-† **CUDA float16 caveat:** ``fork()`` (used by ``pytest-forked``) copies the
-parent's CUDA context handle into the child.  When a float16 kernel triggers a
-device-side assert in the child process, the underlying GPU state is corrupted
-and the parent's handle sees the same error.  The ``cuda_device_assert_guard``
-fixture detects this and skips subsequent tests, producing 10 412 skips instead
-of the expected 3 280.  Only 533 of ~7 641 tests actually ran; the 91 % pass
-rate applies only to that subset.  True isolation for CUDA float16 requires
-spawning a fresh Python process (``subprocess.run``), not ``fork()``.
+.. note::
+
+   CUDA float16 results measured with the previous ``pytest-forked``
+   implementation (which uses ``fork()`` and shares the CUDA context) were
+   unreliable — only ~533 of ~7 641 tests actually ran.  The current
+   implementation uses ``subprocess.run`` for true process isolation; a fresh
+   re-run will be added here once completed.
 
 Test Suite Behaviour
 --------------------
@@ -208,6 +207,12 @@ Two autouse fixtures in the root ``conftest.py`` enforce safe behaviour:
   CUDA test to catch async device-side assert errors in the test that caused
   them, not in the next one.  If the context is already corrupted, the test
   is skipped rather than allowed to fail spuriously.
+
+With ``--isolate-half-precision``, each float16/bfloat16 CUDA test is
+intercepted by a custom ``pytest_runtest_protocol`` hook and executed in a
+completely fresh Python process via ``subprocess.run``.  There is no shared
+CUDA context between tests, so a device-side assert in one test cannot affect
+any other.
 
 See ``TESTING.md`` in the repository root for a full description of the
 contamination mechanism and fixture implementation.
