@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+
 def test_randomjpeg_same_on_batch_true():
     import torch
 
