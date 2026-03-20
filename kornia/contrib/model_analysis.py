@@ -31,7 +31,7 @@ def analyze_model_behavior(model, image, augmentation, layers=("layer1",)):
         layers: Tuple of layer names to analyze
 
     Returns:
-        dict: Mapping layer name → mean absolute difference
+       dict: Mapping layer name → normalized difference score (scale-invariant)
     """
     features = {}
 
@@ -64,9 +64,15 @@ def analyze_model_behavior(model, image, augmentation, layers=("layer1",)):
     for h in handles:
         h.remove()
 
-    # Compute differences
+    # # Compute normalized difference (scale-invariant across models)
     diffs = {}
     for k, v in orig_feats.items():
-        diffs[k] = (v - aug_feats[k]).abs().mean().item()
+        orig = v
+        aug = aug_feats[k]
 
+        diff = torch.mean((orig - aug) ** 2)
+        norm = torch.mean(orig ** 2) + 1e-8
+        score = diff / norm
+
+        diffs[k] = score.item()
     return diffs
