@@ -71,7 +71,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
 
     def _auto_version_conversion(
         self,
-        *args: list[onnx.ModelProto],  # type:ignore
+        *args: onnx.ModelProto,  # type:ignore
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
     ) -> list[onnx.ModelProto]:  # type:ignore
