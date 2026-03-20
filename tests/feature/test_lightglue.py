@@ -19,17 +19,16 @@ import pytest
 import torch
 
 from kornia.feature.lightglue import (
-    LightGlue,
     LearnableFourierPositionalEncoding,
+    LightGlue,
     TokenConfidence,
+    apply_cached_rotary_emb,
     normalize_keypoints,
     pad_to_length,
     rotate_half,
-    apply_cached_rotary_emb,
 )
 
 from testing.base import BaseTester
-
 
 # ---------------------------------------------------------------------------
 # Pure function tests
@@ -187,30 +186,37 @@ class TestTokenConfidence(BaseTester):
 # LightGlue (no pretrained weights) tests
 # ---------------------------------------------------------------------------
 
+
 def _make_lightglue(device, dtype, input_dim=64, n_layers=2):
     """Instantiate a small LightGlue with random weights (features=None)."""
-    return LightGlue(
-        features=None,
-        input_dim=input_dim,
-        descriptor_dim=64,
-        n_layers=n_layers,
-        num_heads=4,
-        depth_confidence=-1,
-        width_confidence=-1,
-        flash=False,
-    ).to(device, dtype).eval()
+    return (
+        LightGlue(
+            features=None,
+            input_dim=input_dim,
+            descriptor_dim=64,
+            n_layers=n_layers,
+            num_heads=4,
+            depth_confidence=-1,
+            width_confidence=-1,
+            flash=False,
+        )
+        .to(device, dtype)
+        .eval()
+    )
 
 
 def _make_data(device, dtype, B=1, M=20, N=15, H=64, W=64, D=64):
     """Build a minimal data dict for LightGlue forward."""
     return {
         "image0": {
-            "keypoints": torch.rand(B, M, 2, device=device, dtype=dtype) * torch.tensor([W, H], device=device, dtype=dtype),
+            "keypoints": torch.rand(B, M, 2, device=device, dtype=dtype)
+            * torch.tensor([W, H], device=device, dtype=dtype),
             "descriptors": torch.rand(B, M, D, device=device, dtype=dtype),
             "image_size": torch.tensor([[W, H]], device=device, dtype=dtype).expand(B, -1),
         },
         "image1": {
-            "keypoints": torch.rand(B, N, 2, device=device, dtype=dtype) * torch.tensor([W, H], device=device, dtype=dtype),
+            "keypoints": torch.rand(B, N, 2, device=device, dtype=dtype)
+            * torch.tensor([W, H], device=device, dtype=dtype),
             "descriptors": torch.rand(B, N, D, device=device, dtype=dtype),
             "image_size": torch.tensor([[W, H]], device=device, dtype=dtype).expand(B, -1),
         },

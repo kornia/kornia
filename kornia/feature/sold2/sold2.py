@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import warnings
 from typing import Any, Dict, Optional, Tuple, cast
 
 import torch
