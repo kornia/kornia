@@ -64,6 +64,9 @@ jobs:
           PIP_EXTRA_INDEX_URL: "https://pypi.org/simple"
         run: make setup
 
+      - name: Install local kornia
+        run: pip install -e . --no-deps
+
       - name: Check deps
         working-directory: ./tutorials-repo/
         run: make check-deps
