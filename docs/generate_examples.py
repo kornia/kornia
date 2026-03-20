@@ -38,6 +38,7 @@ import numpy as np
 import requests
 import torch
 import torch.nn.functional as F
+
 try:
     from kornia_moons.feature import visualize_LAF
 except ImportError:
