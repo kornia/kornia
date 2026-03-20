@@ -89,9 +89,9 @@ class _BasicAugmentationBase(nn.Module):
         self._params: Dict[str, torch.Tensor] = {}
         self._p_gen: Distribution
         self._p_batch_gen: Distribution
-        if p != 0.0 or p != 1.0:
+        if p not in {0.0, 1.0}:
             self._p_gen = Bernoulli(self.p)
-        if p_batch != 0.0 or p_batch != 1.0:
+        if p_batch not in {0.0, 1.0}:
             self._p_batch_gen = Bernoulli(self.p_batch)
         self._param_generator: Optional[RandomGeneratorBase] = None
         self.flags: Dict[str, Any] = {}

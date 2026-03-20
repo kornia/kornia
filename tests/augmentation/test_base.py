@@ -93,6 +93,18 @@ class TestBasicAugmentationBase(BaseTester):
             assert output.shape == expected_output.shape
             self.assert_close(output, expected_output)
 
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_deterministic_p_skips_bernoulli(self, p):
+        """When p is 0 or 1 the outcome is deterministic — no Bernoulli sampler should be created."""
+        base = _BasicAugmentationBase(p=p, p_batch=0.5)
+        assert not isinstance(getattr(base, "_p_gen", None), torch.distributions.Bernoulli)
+
+    @pytest.mark.parametrize("p_batch", [0.0, 1.0])
+    def test_deterministic_p_batch_skips_bernoulli(self, p_batch):
+        """When p_batch is 0 or 1 the outcome is deterministic — no Bernoulli sampler should be created."""
+        base = _BasicAugmentationBase(p=0.5, p_batch=p_batch)
+        assert not isinstance(getattr(base, "_p_batch_gen", None), torch.distributions.Bernoulli)
+
 
 class TestAugmentationBase2D(BaseTester):
     def test_forward(self, device, dtype):
