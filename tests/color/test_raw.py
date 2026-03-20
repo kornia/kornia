@@ -15,11 +15,9 @@
 # limitations under the License.
 #
 
-import warnings
 
 import pytest
 import torch
-from packaging import version
 from torch.autograd import gradcheck
 
 import kornia

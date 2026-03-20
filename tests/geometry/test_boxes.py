@@ -822,12 +822,8 @@ class TestBbox3D(BaseTester):
 class TestTransformBoxes3D(BaseTester):
     def test_transform_boxes(self, device, dtype):
         # Define boxes in XYZXYZ format with integer coordinates (TF32-safe on CUDA).
-        boxes_xyzxyz = torch.tensor(
-            [[140, 104, 284, 398, 412, 454]], device=device, dtype=dtype
-        )
-        expected_boxes_xyzxyz = torch.tensor(
-            [[372, 104, 569, 116, 412, 908]], device=device, dtype=dtype
-        )
+        boxes_xyzxyz = torch.tensor([[140, 104, 284, 398, 412, 454]], device=device, dtype=dtype)
+        expected_boxes_xyzxyz = torch.tensor([[372, 104, 569, 116, 412, 908]], device=device, dtype=dtype)
 
         boxes = Boxes3D.from_tensor(boxes_xyzxyz)
         expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz, validate_boxes=False)
@@ -845,12 +841,8 @@ class TestTransformBoxes3D(BaseTester):
 
     def test_transform_boxes_(self, device, dtype):
         # Define boxes in XYZXYZ format with integer coordinates (TF32-safe on CUDA).
-        boxes_xyzxyz = torch.tensor(
-            [[140, 104, 284, 398, 412, 454]], device=device, dtype=dtype
-        )
-        expected_boxes_xyzxyz = torch.tensor(
-            [[372, 104, 569, 116, 412, 908]], device=device, dtype=dtype
-        )
+        boxes_xyzxyz = torch.tensor([[140, 104, 284, 398, 412, 454]], device=device, dtype=dtype)
+        expected_boxes_xyzxyz = torch.tensor([[372, 104, 569, 116, 412, 908]], device=device, dtype=dtype)
 
         boxes = Boxes3D.from_tensor(boxes_xyzxyz)
         expected_boxes = Boxes3D.from_tensor(expected_boxes_xyzxyz, validate_boxes=False)

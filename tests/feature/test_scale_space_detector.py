@@ -92,9 +92,9 @@ class TestScaleSpaceDetector(BaseTester):
         # BlobDoG operates on the 5D scale-space tensor directly.
         inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
         n_feats = 5
-        det = ScaleSpaceDetector(
-            n_feats, resp_module=kornia.feature.BlobDoG(), scale_space_response=True
-        ).to(device, dtype)
+        det = ScaleSpaceDetector(n_feats, resp_module=kornia.feature.BlobDoG(), scale_space_response=True).to(
+            device, dtype
+        )
         lafs, resps = det(inp)
         assert lafs.shape == torch.Size([1, n_feats, 2, 3])
         assert resps.shape == torch.Size([1, n_feats])
