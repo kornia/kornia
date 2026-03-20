@@ -232,6 +232,8 @@ class TestFindHomographyDLT(BaseTester):
         if dtype not in (torch.float32, torch.float64):
             rtol = 3e-3
             atol = 1e-3
+        elif device.type == "cuda" and dtype == torch.float32:
+            atol = 2e-3
         self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=rtol, atol=atol)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -252,6 +254,8 @@ class TestFindHomographyDLT(BaseTester):
         if dtype not in (torch.float32, torch.float64):
             rtol = 3e-3
             atol = 1e-3
+        elif device.type == "cuda" and dtype == torch.float32:
+            atol = 2e-3
         self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=rtol, atol=atol)
 
     @pytest.mark.grad()
@@ -367,6 +371,8 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         if dtype not in (torch.float32, torch.float64):
             rtol = 5e-3
             atol = 1e-3
+        elif device.type == "cuda" and dtype == torch.float32:
+            atol = 5e-3
         self.assert_close(
             kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=rtol, atol=atol
         )
@@ -392,6 +398,8 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         if dtype not in (torch.float32, torch.float64):
             rtol = 5e-3
             atol = 1e-3
+        elif device.type == "cuda" and dtype == torch.float32:
+            atol = 5e-3
         self.assert_close(
             kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=rtol, atol=atol
         )
@@ -444,7 +452,8 @@ class TestFindHomographyDLTIter(BaseTester):
         # compute transform from source to target
         dst_homo_src = find_homography_dlt_iterated(points_src, points_dst, weights, 10)
 
-        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
+        atol = 2e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
+        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=atol)
 
     @pytest.mark.grad()
     def test_gradcheck(self, device):

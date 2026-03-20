@@ -16,7 +16,6 @@
 #
 
 import math
-import warnings
 from typing import Dict, Optional
 
 import torch
@@ -121,14 +120,6 @@ class LAFAffineShapeEstimator(nn.Module):
         self.patch_size = patch_size
         self.affine_shape_detector = affine_shape_detector or PatchAffineShapeEstimator(self.patch_size)
         self.preserve_orientation = preserve_orientation
-        if preserve_orientation:
-            warnings.warn(
-                "`LAFAffineShapeEstimator` default behaviour is changed "
-                "and now it does preserve original LAF orientation. "
-                "Make sure your code accounts for this.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
 
     def __repr__(self) -> str:
         return (
@@ -214,14 +205,6 @@ class LAFAffNetShapeEstimator(nn.Module):
             pretrained_dict = torch.hub.load_state_dict_from_url(urls["affnet"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=False)
         self.preserve_orientation = preserve_orientation
-        if preserve_orientation:
-            warnings.warn(
-                "`LAFAffNetShapeEstimator` default behaviour is changed "
-                "and now it does preserve original LAF orientation. "
-                "Make sure your code accounts for this.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         self.eval()
 
     @staticmethod
