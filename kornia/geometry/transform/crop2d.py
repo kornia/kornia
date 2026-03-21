@@ -26,7 +26,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import infer_bbox_shape, validate_bbox
 
 from .affwarp import resize
-from .imgwarp import get_perspective_transform, warp_affine, warp_perspective
+from .imgwarp import get_perspective_transform, warp_perspective
 
 __all__ = [
     "CenterCrop2D",
