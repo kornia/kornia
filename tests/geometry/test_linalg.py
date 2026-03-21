@@ -305,6 +305,8 @@ class TestPointsLinesDistances(BaseTester):
         assert distances.shape == (B, T, N)
 
     def test_functional(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         pts = torch.tensor([1.0, 0], device=device, dtype=torch.float64).view(1, 1, 2).tile(1, 6, 1)
         lines = torch.tensor(
             [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]],

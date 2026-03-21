@@ -184,7 +184,7 @@ def center_crop_generator3d(
     """
     if device is None:
         device = torch.device("cpu")
-    if not isinstance(size, (tuple, list)) and len(size) == 3:
+    if not isinstance(size, (tuple, list)) or len(size) != 3:
         raise ValueError(f"Input size must be a tuple/list of length 3. Got {size}")
     if not (
         isinstance(depth, int)

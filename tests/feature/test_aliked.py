@@ -44,6 +44,8 @@ class TestDeformConv2d:
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
     def test_zero_offset_matches_regular_conv(self, device, dtype):
         """With all-zero offsets, deform_conv2d should equal regular conv2d."""
+        if device.type == "mps" and dtype == torch.float64:
+            pytest.skip("MPS does not support float64")
         B, C_in, H, W = 1, 4, 8, 8
         C_out, kH, kW = 8, 3, 3
         K = kH * kW

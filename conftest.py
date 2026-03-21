@@ -59,7 +59,7 @@ def get_test_devices() -> dict[str, torch.device]:
         devices["tpu"] = xm.xla_device()
 
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        devices["mps"] = torch.device("mps")
+        devices["mps"] = torch.device("mps:0")
 
     return devices
 
@@ -166,6 +166,24 @@ def pytest_collection_modifyitems(config, items):
     if not optimizer_env:
         # Filter out tests with "dynamo" or "compile" in their name
         items[:] = [item for item in items if "dynamo" not in item.name.lower() and "compile" not in item.name.lower()]
+
+    # MPS does not support float64; gradcheck requires float64 — skip all gradcheck tests on MPS
+    skip_mps_gradcheck = pytest.mark.skip(reason="gradcheck requires float64 which is not supported on MPS")
+    for item in items:
+        if "gradcheck" in item.name.lower() and "[mps" in item.nodeid:
+            item.add_marker(skip_mps_gradcheck)
+
+    # MPS does not support complex128 (cdouble); skip tests parametrized with it
+    skip_mps_cdouble = pytest.mark.skip(reason="MPS does not support complex128 (cdouble)")
+    for item in items:
+        if "[mps" in item.nodeid and "cdtype1" in item.nodeid:
+            item.add_marker(skip_mps_cdouble)
+
+    # MPS autocast uses float16 and does not preserve original dtype — skip autocast tests on MPS
+    skip_mps_autocast = pytest.mark.skip(reason="MPS autocast changes dtype to float16, not supported the same way")
+    for item in items:
+        if "autocast" in item.name.lower() and "[mps" in item.nodeid:
+            item.add_marker(skip_mps_autocast)
 
     tf32_enabled = config.getoption("--tf32")
 
