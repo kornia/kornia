@@ -26,7 +26,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import infer_bbox_shape, validate_bbox
 
 from .affwarp import resize
-from .imgwarp import get_perspective_transform, warp_affine
+from .imgwarp import get_perspective_transform, warp_affine, warp_perspective
 
 __all__ = [
     "CenterCrop2D",
@@ -304,9 +304,9 @@ def crop_by_transform_mat(
         transform.expand(input_tensor.shape[0], -1, -1), device=input_tensor.device, dtype=input_tensor.dtype
     )
 
-    patches: torch.Tensor = warp_affine(
+    patches: torch.Tensor = warp_perspective(
         input_tensor,
-        dst_trans_src[:, :2, :],
+        dst_trans_src,
         out_size,
         mode=mode,
         padding_mode=padding_mode,
