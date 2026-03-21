@@ -605,13 +605,14 @@ def cuda_device_assert_guard(request):
 
     yield
 
-    # Post-test: drain the CUDA queue to catch async errors in *this* test's teardown
-    # rather than at the start of the next test.  Suppress the exception so the
-    # test's own result (pass / xfail) is not overridden by a teardown error.
+    # Post-test: drain the CUDA queue so any async device-side assert surfaces here,
+    # in the test that caused it, rather than at the start of the next test.
+    # Fail the test if a device-side assert is detected so it is not silently passed.
     try:
         torch.cuda.synchronize(device)
-    except RuntimeError:
+    except RuntimeError as exc:
         torch.cuda.empty_cache()
+        pytest.fail(f"CUDA device-side assert triggered during this test: {exc}")
 
 
 @pytest.fixture(autouse=True)
