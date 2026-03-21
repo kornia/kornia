@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import ClassVar, Union
 
 import torch
+from torch.utils import dlpack
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 
@@ -176,12 +177,16 @@ class OnnxLightGlue:
         self.session.run_with_iobinding(binding)
 
         matches, mscores = binding.get_outputs()
-
-        # TODO: The following is an unnecessary copy. Replace with a better solution when torch supports
-        # constructing a torch.Tensor from a data pointer, or when ORT supports converting to torch torch.Tensor.
-        # https://github.com/microsoft/onnxruntime/issues/15963
-        outputs = {
-            "matches": torch.from_dlpack(matches.numpy()).to(self.device),
-            "scores": torch.from_dlpack(mscores.numpy()).to(self.device),
-        }
+        # Prefer DLPack-based conversion when available for zero-copy transfer between them
+        # The fallback path uses NumPy, which incurs a device-to-host copy and is slower.
+        if hasattr(matches, "to_dlpack"):
+            outputs = {
+                "matches": dlpack.from_dlpack(matches.to_dlpack()).to(self.device),
+                "scores": dlpack.from_dlpack(mscores.to_dlpack()).to(self.device),
+            }
+        else:
+            outputs = {
+                "matches": torch.from_numpy(matches.numpy()).to(self.device),
+                "scores": torch.from_numpy(mscores.numpy()).to(self.device),
+            }
         return outputs
