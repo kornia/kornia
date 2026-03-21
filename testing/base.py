@@ -29,7 +29,7 @@ Tensor = torch.Tensor
 
 # {dtype: (rtol, atol)}
 _DTYPE_PRECISIONS = {
-    torch.bfloat16: (1e-3, 1e-3),
+    torch.bfloat16: (7.8e-3, 7.8e-3),
     torch.float16: (1e-3, 1e-3),
     torch.float32: (1e-4, 1e-5),  # TODO: Update to ~1.2e-7
     # TODO: Update to ~2.3e-16 for fp64
