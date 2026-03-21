@@ -79,23 +79,23 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 
 | Module | float16 | bfloat16 | Notes |
 |--------|:-------:|:--------:|-------|
-| `kornia.color` | ⚠️ | ❌ | Most conversions work; `rgb_to_grayscale` / `bgr_to_grayscale` reject bfloat16 |
-| `kornia.filters` | ⚠️ | ❌ | Basic filters work; FFT-based ops may fail on CUDA |
-| `kornia.enhance` | ⚠️ | ❌ | Histogram eq / gamma work; ZCA whitening uses linalg and fails |
+| `kornia.color` | ⚠️ | ⚠️ | Most conversions work for both; FFT-based ops may fail |
+| `kornia.filters` | ⚠️ | ⚠️ | Basic filters work; FFT-based ops may fail on CUDA |
+| `kornia.enhance` | ⚠️ | ⚠️ | Histogram eq / gamma / ZCA work (linalg ops use cast helpers) |
 | `kornia.morphology` | ✅ | ✅ | Pure conv/pool ops; no dtype restrictions |
-| `kornia.augmentation` | ✅ | ❌ | All augmentation ops accept float16; bfloat16 explicitly rejected |
-| `kornia.geometry.transform` | ⚠️ | ❌ | Affine/warp/resize work via cast helpers; thin-plate spline may fail |
-| `kornia.geometry.camera` | ⚠️ | ❌ | Pinhole model works; `StereoCamera` rejects bfloat16 |
-| `kornia.geometry.calibration` | ❌ | ❌ | Explicitly accepts float32/float64 only (PnP solver rejects float16) |
-| `kornia.geometry.epipolar` | ⚠️ | ❌ | SVD/solve use cast helpers (float16 works); some unprotected linalg calls remain |
-| `kornia.geometry.homography` | ⚠️ | ❌ | Uses `_torch_svd_cast` — float16 works via casting |
-| `kornia.geometry.liegroup` | ⚠️ | ❌ | Most ops work via cast helpers; some linalg paths may fail for float16 |
-| `kornia.geometry.solvers` | ⚠️ | ❌ | Uses `_torch_solve_cast` — float16 works via casting |
-| `kornia.geometry.subpix` | ⚠️ | ❌ | Soft-argmax works; precision-sensitive ops may be inaccurate |
-| `kornia.losses` | ⚠️ | ❌ | Photometric losses work; linalg-based losses do not |
-| `kornia.feature` | ⚠️ | ❌ | Detectors/descriptors may work; `torch.cdist` matching fails on CUDA |
-| `kornia.metrics` | ⚠️ | ❌ | Pixel-level metrics work; linalg-based metrics do not |
-| `kornia.models` | ⚠️ | ❌ | Conv-based models may work; attention-based models may have dtype mismatches |
+| `kornia.augmentation` | ⚠️ | ⚠️ | Most ops work; precision-sensitive transforms may be inaccurate |
+| `kornia.geometry.transform` | ⚠️ | ⚠️ | Affine/warp/resize work via cast helpers; thin-plate spline may fail |
+| `kornia.geometry.camera` | ⚠️ | ⚠️ | Pinhole model and most camera ops work; `StereoCamera` accepts both |
+| `kornia.geometry.calibration` | ❌ | ❌ | Explicitly accepts float32/float64 only (PnP solver) |
+| `kornia.geometry.epipolar` | ⚠️ | ⚠️ | SVD/inverse use cast helpers; both dtypes work |
+| `kornia.geometry.homography` | ⚠️ | ⚠️ | Uses `_torch_svd_cast` — both dtypes work via casting |
+| `kornia.geometry.liegroup` | ⚠️ | ⚠️ | Most ops work via cast helpers; some linalg paths may fail |
+| `kornia.geometry.solvers` | ⚠️ | ⚠️ | Uses `_torch_solve_cast` — both dtypes work via casting |
+| `kornia.geometry.subpix` | ⚠️ | ⚠️ | Soft-argmax works; precision-sensitive ops may be inaccurate |
+| `kornia.losses` | ⚠️ | ⚠️ | Photometric losses work; linalg-based losses may not |
+| `kornia.feature` | ⚠️ | ⚠️ | Detectors/descriptors work; matching uses manual cdist fallback |
+| `kornia.metrics` | ⚠️ | ⚠️ | Pixel-level metrics work; linalg-based metrics may not |
+| `kornia.models` | ⚠️ | ⚠️ | Conv-based models work; attention-based models may have dtype mismatches |
 
 ✅ Supported &nbsp; ⚠️ Partial &nbsp; ❌ Not supported
 
