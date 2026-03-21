@@ -14,110 +14,99 @@ This page documents which kornia modules support half-precision floating-point d
      - Notes
    * - ``kornia.color``
      - ⚠️ Partial
-     - ❌ No
-     - Most color space conversions work. ``rgb_to_grayscale`` and
-       ``bgr_to_grayscale`` explicitly reject bfloat16.
+     - ⚠️ Partial
+     - Most color space conversions work for both half-precision dtypes.
+       FFT-based operations may fail on CUDA.
    * - ``kornia.filters``
      - ⚠️ Partial
-     - ❌ No
-     - Basic convolution-based filters (Gaussian, Sobel, Median, Box) generally
-       work with float16. FFT-based operations (``fft_conv``) may fail on CUDA.
-       All filters reject bfloat16.
+     - ⚠️ Partial
+     - Basic convolution-based filters (Gaussian, Sobel, Median, Box) work
+       for both dtypes. FFT-based operations (``fft_conv``) may fail on CUDA.
    * - ``kornia.enhance``
      - ⚠️ Partial
-     - ❌ No
-     - Histogram equalization, CLAHE, and gamma correction work with float16.
-       ZCA whitening uses ``torch.linalg.eigh`` / ``linalg.inv`` and does not
-       support either half-precision dtype.
+     - ⚠️ Partial
+     - Histogram equalization, CLAHE, gamma correction, and ZCA whitening work
+       for both dtypes. ZCA linalg ops go through ``_torch_svd_cast`` /
+       ``_torch_inverse_cast`` which promote to float32 before computing.
    * - ``kornia.morphology``
      - ✅ Yes
      - ✅ Yes
-     - Uses only convolution and pooling; no dtype restrictions anywhere in
-       the module. Both float16 and bfloat16 work correctly.
+     - Uses only convolution and pooling; no dtype restrictions.
    * - ``kornia.augmentation``
-     - ✅ Yes
-     - ❌ No
-     - All augmentation ops are validated to accept float16.
-       ``AugmentationBase2D.validate_tensor`` explicitly rejects bfloat16.
+     - ⚠️ Partial
+     - ⚠️ Partial
+     - Both dtypes are accepted by ``validate_tensor``. Most ops work;
+       precision-sensitive transforms (e.g. affine with large rotations) may
+       produce inaccurate results at half precision.
    * - ``kornia.geometry.transform``
      - ⚠️ Partial
-     - ❌ No
+     - ⚠️ Partial
      - Affine, homography, resize, and warp operations use ``_torch_inverse_cast``
-       which promotes to float32/float64 before computing and casts back, so
-       float16 works. Thin-plate spline uses the same pattern via
-       ``_torch_solve_cast``.
+       / ``_torch_solve_cast`` which promote to float32 and cast back;
+       both dtypes work.
    * - ``kornia.geometry.camera``
      - ⚠️ Partial
-     - ❌ No
-     - Pinhole camera model and projection ops work with float16.
-       ``StereoCamera.reproject_disparity_to_3D`` explicitly rejects bfloat16.
+     - ⚠️ Partial
+     - Pinhole camera model and most projection ops work for both dtypes.
+       ``StereoCamera`` accepts both float16 and bfloat16.
    * - ``kornia.geometry.calibration``
      - ❌ No
      - ❌ No
      - ``solve_pnp_dlt()`` explicitly checks that inputs are ``float32`` or
-       ``float64`` and raises otherwise. float16 is rejected at validation time,
-       before any linalg call is made.
+       ``float64`` and raises otherwise.
    * - ``kornia.geometry.epipolar``
      - ⚠️ Partial
-     - ❌ No
+     - ⚠️ Partial
      - SVD and solve operations use ``_torch_svd_cast`` / ``_torch_solve_cast``
-       which promote to float32/float64, so float16 generally works.
-       A few internal helpers (e.g. ``matrix_cofactor_tensor``) call
-       ``torch.linalg.inv`` directly without the cast guard and may fail for
-       float16 inputs.
+       / ``_torch_inverse_cast``; both dtypes work via casting to float32.
    * - ``kornia.geometry.homography``
      - ⚠️ Partial
-     - ❌ No
-     - Homography estimation uses ``_torch_svd_cast``; float16 inputs are
-       promoted to float32 before SVD and the result is cast back.
+     - ⚠️ Partial
+     - Uses ``_torch_svd_cast``; both dtypes are promoted to float32 before SVD
+       and the result is cast back.
    * - ``kornia.geometry.liegroup``
      - ⚠️ Partial
-     - ❌ No
-     - Most rotation/translation operations (SO2, SO3, SE2, SE3) work with
-       float16. Operations that go through ``kornia.core.utils`` cast helpers
-       are protected. A few code paths may still call linalg routines without
-       casting and fail for float16.
+     - ⚠️ Partial
+     - Most rotation/translation operations (SO2, SO3, SE2, SE3) work for both
+       dtypes via cast helpers. A few code paths may still fail.
    * - ``kornia.geometry.solvers``
      - ⚠️ Partial
-     - ❌ No
-     - RANSAC-based solvers use ``_torch_solve_cast``; float16 inputs are
-       promoted before the solve and the result is cast back.
+     - ⚠️ Partial
+     - RANSAC-based solvers use ``_torch_solve_cast``; both dtypes are promoted
+       before the solve and the result is cast back.
    * - ``kornia.geometry.subpix``
      - ⚠️ Partial
-     - ❌ No
-     - Soft-argmax and weighted softmax work with float16.
-       Spatial-softmax operations requiring high numerical precision may produce
-       inaccurate results.
+     - ⚠️ Partial
+     - Soft-argmax and weighted softmax work for both dtypes.
+       Precision-sensitive ops may produce inaccurate results.
    * - ``kornia.losses``
      - ⚠️ Partial
-     - ❌ No
-     - Photometric losses (SSIM, PSNR, MS-SSIM) work with float16.
-       Losses based on linalg operations (Hausdorff, etc.) do not.
+     - ⚠️ Partial
+     - Photometric losses (SSIM, PSNR, MS-SSIM) work for both dtypes.
+       Losses based on linalg operations (Hausdorff, etc.) may not.
    * - ``kornia.feature``
      - ⚠️ Partial
-     - ❌ No
+     - ⚠️ Partial
      - Local feature detectors and descriptors (SIFT, HardNet, DISK, DeDoDe)
-       may work with float16 for inference. Feature *matching* uses
-       ``torch.cdist``, which is not implemented for float16 on CUDA. ALIKED
-       uses ``torch.linalg.svd``.
+       work for inference. Feature *matching* uses a manual ``cdist`` fallback
+       for both half-precision dtypes on CUDA.
    * - ``kornia.metrics``
      - ⚠️ Partial
-     - ❌ No
-     - Simple pixel-level metrics work with float16. Metrics involving linalg
-       operations do not.
+     - ⚠️ Partial
+     - Simple pixel-level metrics work for both dtypes. Metrics involving linalg
+       operations may not.
    * - ``kornia.models``
      - ⚠️ Partial
-     - ❌ No
-     - Model-dependent. Models that are entirely convolution-based may work with
-       float16. Attention-based models (e.g. VLMs, ViTs) may have internal
-       dtype mismatches when inputs are cast to float16.
+     - ⚠️ Partial
+     - Conv-based models work for both dtypes. Attention-based models (e.g.
+       VLMs, ViTs) may have internal dtype mismatches.
 
 Legend
 ------
 
 - ✅ **Yes** — Works correctly; results are accurate at the given precision.
 - ⚠️ **Partial** — Some operations work; others fail at runtime or produce inaccurate results due to limited numerical range/precision.
-- ❌ **No** — Not supported; raises a ``RuntimeError`` or ``TypeError`` at runtime.
+- ❌ **No** — Not supported; raises a ``RuntimeError`` or ``TypeError`` at runtime (explicit dtype check in the implementation).
 
 Test Results
 ------------
