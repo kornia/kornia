@@ -30,8 +30,13 @@ from .adalam import get_adalam_default_config, match_adalam
 
 
 def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
-    r"""Manual `torch.cdist` for M1."""
-    if (not is_mps_tensor_safe(d1)) and (not is_mps_tensor_safe(d2)):
+    r"""Compute pairwise L2 distances between rows of d1 and d2.
+
+    Uses ``torch.cdist`` when available (fp32/fp64 on CPU/CUDA, all dtypes on CUDA).
+    Falls back to a manual expand-and-norm implementation for MPS and for half-precision
+    dtypes on CPU where ``torch.cdist`` is not implemented.
+    """
+    if (not is_mps_tensor_safe(d1)) and d1.dtype not in (torch.float16, torch.bfloat16):
         return torch.cdist(d1, d2)
     d1_sq = (d1**2).sum(dim=1, keepdim=True)
     d2_sq = (d2**2).sum(dim=1, keepdim=True)

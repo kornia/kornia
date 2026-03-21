@@ -669,7 +669,12 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
         w = w / w.sum()
         A = data.T @ torch.diag(w) @ data
 
+    orig_dtype = A.dtype
+    if A.dtype in (torch.float16, torch.bfloat16):
+        A = A.float()
     eigenvalues, eigenvectors = torch.linalg.eigh(A)
+    eigenvectors = eigenvectors.to(orig_dtype)
+    eigenvalues = eigenvalues.to(orig_dtype)
     q_avg = eigenvectors[:, torch.argmax(eigenvalues)]
     q_avg = q_avg / q_avg.norm()
 
