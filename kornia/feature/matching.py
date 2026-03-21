@@ -38,12 +38,7 @@ def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
     on CUDA and may be unavailable for these dtypes elsewhere.
     """
     half = (torch.float16, torch.bfloat16)
-    if (
-        (not is_mps_tensor_safe(d1))
-        and (not is_mps_tensor_safe(d2))
-        and d1.dtype not in half
-        and d2.dtype not in half
-    ):
+    if (not is_mps_tensor_safe(d1)) and (not is_mps_tensor_safe(d2)) and d1.dtype not in half and d2.dtype not in half:
         return torch.cdist(d1, d2)
     d1_sq = (d1**2).sum(dim=1, keepdim=True)
     d2_sq = (d2**2).sum(dim=1, keepdim=True)

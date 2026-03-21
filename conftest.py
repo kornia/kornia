@@ -461,9 +461,16 @@ def pytest_runtest_protocol(item, nextitem):
     device_name = params.get("device_name", "cpu")
     dtype_name = params.get("dtype_name", "float32")
     cmd = [
-        sys.executable, "-m", "pytest", item.nodeid,
-        "--no-header", "--tb=short", "-q", "--color=no",
-        f"--device={device_name}", f"--dtype={dtype_name}",
+        sys.executable,
+        "-m",
+        "pytest",
+        item.nodeid,
+        "--no-header",
+        "--tb=short",
+        "-q",
+        "--color=no",
+        f"--device={device_name}",
+        f"--dtype={dtype_name}",
     ]
     if item.config.getoption("--runslow"):
         cmd.append("--runslow")
