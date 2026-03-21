@@ -107,8 +107,8 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 | CUDA float32 *(baseline)* | 7634 | 3 | 3280 | **99.9%** |
 | CPU float16 | 6866 | 747 | 3306 | **90.1%** |
 | CPU bfloat16 | 6838 | 812 | 3269 | **89.3%** |
-| CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6725 | 645 | 3556 | **91.2%** |
-| CUDA bfloat16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6693 | 715 | 3518 | **90.4%** |
+| CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6727 | 643 | 3556 | **91.3%** |
+| CUDA bfloat16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6695 | 713 | 3518 | **90.4%** |
 
 See the [full precision guide](https://kornia.readthedocs.io/en/stable/get-started/precision.html) for details.
 

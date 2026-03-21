@@ -155,13 +155,13 @@ Pass% = passed ÷ (passed + failed); skipped and xfailed tests are excluded.
      - 3269
      - **89.3%**
    * - CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)*
-     - 6725
-     - 645
+     - 6727
+     - 643
      - 3556
-     - **91.2%**
+     - **91.3%**
    * - CUDA bfloat16 *(KORNIA_TEST_IN_SUBPROCESS=1)*
-     - 6693
-     - 715
+     - 6695
+     - 713
      - 3518
      - **90.4%**
 
