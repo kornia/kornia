@@ -88,7 +88,6 @@ class TestPatchDominantGradientOrientation(BaseTester):
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(ori, (patches,))
 
-    @pytest.mark.jit()
     @pytest.mark.skip(" Compiled functions can't take variable number")
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 13, 13
@@ -136,7 +135,6 @@ class TestOriNet(BaseTester):
         ori = OriNet().to(device=device, dtype=patches.dtype)
         self.gradcheck(ori, (patches,), fast_mode=False)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)

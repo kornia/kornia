@@ -258,7 +258,6 @@ class TestFindHomographyDLT(BaseTester):
             atol = 2e-3
         self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=rtol, atol=atol)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         points_src = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
         points_dst = torch.rand_like(points_src)
@@ -266,7 +265,6 @@ class TestFindHomographyDLT(BaseTester):
 
         self.gradcheck(find_homography_dlt, (points_src, points_dst, weights), rtol=1e-6, atol=1e-6)
 
-    @pytest.mark.grad()
     def test_gradcheck_lu(self, device):
         points_src = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
 
@@ -404,7 +402,6 @@ class TestFindHomographyFromLinesDLT(BaseTester):
             kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=rtol, atol=atol
         )
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         points_src_st = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
         points_src_end = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -455,7 +452,6 @@ class TestFindHomographyDLTIter(BaseTester):
         atol = 2e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
         self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=atol)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         torch.manual_seed(0)
         points_src = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -463,7 +459,6 @@ class TestFindHomographyDLTIter(BaseTester):
         weights = torch.ones_like(points_src)[..., 0]
         self.gradcheck(find_homography_dlt_iterated, (points_src, points_dst, weights), rtol=1e-6, atol=1e-6)
 
-    @pytest.mark.grad()
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dirty_points_and_gradcheck(self, batch_size, device, dtype):
         # generate input data
