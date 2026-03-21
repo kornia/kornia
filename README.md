@@ -99,18 +99,16 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 
 ✅ Supported &nbsp; ⚠️ Partial &nbsp; ❌ Not supported
 
-**Test results** (commit `dee4388`, 2026-03-20, full suite with `--runslow`):
+**Test results** (commit `6131e98`, 2026-03-21):
 
-| Run | Passed | Failed | Errors | Skipped | Pass% |
-|-----|-------:|-------:|-------:|--------:|------:|
-| CPU float32 *(baseline)* | 7647 | 3 | 4 | 3269 | **99.9%** |
-| CUDA float32 *(baseline)* | 7634 | 3 | 4 | 3280 | **99.9%** |
-| CPU float16 | 6866 | 747 | 4 | 3306 | **90.1%** |
-| CPU bfloat16 | 6838 | 812 | 4 | 3269 | **89.3%** |
-| CUDA float16 *(--isolate-half-precision)* | — | — | — | — | *(re-run pending)* |
-| CUDA bfloat16 *(--isolate-half-precision)* | 6840 | 797 | 4 | 3280 | **89.5%** |
-
-CUDA float16 results measured with the old `fork()`-based implementation were unreliable (~533 of ~7641 tests actually ran). Isolation now uses `subprocess.run` (no shared CUDA state); a re-run will be added once completed.
+| Run | Passed | Failed | Skipped | Pass% |
+|-----|-------:|-------:|--------:|------:|
+| CPU float32 *(baseline)* | 7647 | 3 | 3269 | **99.9%** |
+| CUDA float32 *(baseline)* | 7634 | 3 | 3280 | **99.9%** |
+| CPU float16 | 6866 | 747 | 3306 | **90.1%** |
+| CPU bfloat16 | 6838 | 812 | 3269 | **89.3%** |
+| CUDA float16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6725 | 645 | 3556 | **91.2%** |
+| CUDA bfloat16 *(KORNIA_TEST_IN_SUBPROCESS=1)* | 6693 | 715 | 3518 | **90.4%** |
 
 See the [full precision guide](https://kornia.readthedocs.io/en/stable/get-started/precision.html) for details.
 
