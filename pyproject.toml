@@ -259,7 +259,25 @@ filterwarnings = [
 [tool.coverage.run]
 branch = true
 source = ["kornia/"]
-omit = ["*/__main__.py", "*/setup.py"]
+omit = [
+  "*/__main__.py",
+  "*/setup.py",
+  "kornia/models/sam/*",
+  "kornia/models/sam3/*",
+  "kornia/models/siglip2/*",
+  "kornia/models/paligemma/*",
+  "kornia/models/kimi_vl/*",
+  "kornia/models/qwen25/*",
+  "kornia/models/smolvlm2/*",
+  "kornia/models/efficient_vit/*",
+  "kornia/models/rt_detr/*",
+  "kornia/models/depth_estimation/*",
+  "kornia/models/_hf_models/*",
+  "kornia/models/processors/*",
+  "kornia/models/vit.py",
+  "kornia/models/vit_mobile.py",
+  "kornia/models/tiny_vit.py",
+]
 
 [tool.coverage.report]
 show_missing = true

@@ -33,6 +33,9 @@ from kornia.core.check import (
     KORNIA_CHECK_SAME_SHAPE,
     KORNIA_CHECK_SHAPE,
     KORNIA_CHECK_TYPE,
+    are_checks_enabled,
+    disable_checks,
+    enable_checks,
 )
 from kornia.core.exceptions import (
     BaseError,
@@ -325,3 +328,74 @@ class TestCheckIsImage:
         # When raises=False, shape check is actually enforced
         bad = torch.rand(1, 4, 4, 4)
         assert KORNIA_CHECK_IS_IMAGE(bad, raises=False) is False
+
+
+class TestChecksEnableDisable:
+    """Tests for the runtime enable/disable check control API."""
+
+    def setup_method(self):
+        # Always restore checks after each test to avoid side effects
+        enable_checks()
+
+    def teardown_method(self):
+        enable_checks()
+
+    def test_are_checks_enabled_default(self):
+        enable_checks()
+        assert are_checks_enabled() is True
+
+    def test_disable_checks(self):
+        disable_checks()
+        assert are_checks_enabled() is False
+
+    def test_enable_checks(self):
+        disable_checks()
+        enable_checks()
+        assert are_checks_enabled() is True
+
+    def test_disabled_checks_bypass_kornia_check(self):
+        disable_checks()
+        # With checks disabled, KORNIA_CHECK should return True even for False condition
+        result = KORNIA_CHECK(False, "should be bypassed")
+        assert result is True
+
+    def test_disabled_checks_bypass_shape_check(self):
+        disable_checks()
+        # With checks disabled, wrong shape should not raise
+        result = KORNIA_CHECK_SHAPE(torch.rand(2, 3), ["1", "H", "W"])
+        assert result is True
+
+    def test_enabled_checks_enforce_shape_check(self):
+        enable_checks()
+        with pytest.raises(ShapeError):
+            KORNIA_CHECK_SHAPE(torch.rand(2, 3), ["1", "H", "W"])
+
+    def test_env_var_disables_checks(self, monkeypatch):
+        import importlib
+
+        import kornia.core.check as check_module
+
+        monkeypatch.setenv("KORNIA_CHECKS", "0")
+        # _should_enable_checks reads the env var
+        from kornia.core.check import _should_enable_checks
+
+        assert _should_enable_checks() is False
+
+    def test_env_var_enables_checks(self, monkeypatch):
+        from kornia.core.check import _should_enable_checks
+
+        monkeypatch.setenv("KORNIA_CHECKS", "1")
+        assert _should_enable_checks() is True
+
+    def test_env_var_true_string_variants(self, monkeypatch):
+        from kornia.core.check import _should_enable_checks
+
+        for val in ("true", "yes", "on", "1"):
+            monkeypatch.setenv("KORNIA_CHECKS", val)
+            assert _should_enable_checks() is True
+
+    def test_env_var_false_string(self, monkeypatch):
+        from kornia.core.check import _should_enable_checks
+
+        monkeypatch.setenv("KORNIA_CHECKS", "false")
+        assert _should_enable_checks() is False

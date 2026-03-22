@@ -137,6 +137,22 @@ class TestDilate(BaseTester):
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert dilation(tensor, test)
 
+        with pytest.raises(NotImplementedError, match="unknown"):
+            dilation(tensor, kernel, engine="invalid_engine")
+
+    def test_custom_origin(self, device, dtype):
+        # Custom origin shifts the structuring element anchor point
+        tensor = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
+        tensor[0, 0, 2, 2] = 1.0  # single hot pixel in center
+        kernel = torch.ones(3, 3, device=device, dtype=dtype)
+
+        # Default origin (center): dilation spreads symmetrically
+        out_default = dilation(tensor, kernel)
+        # Custom origin (top-left corner): effect shifts
+        out_custom = dilation(tensor, kernel, origin=[0, 0])
+        # Results should differ when the anchor point changes
+        assert not torch.equal(out_default, out_custom)
+
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = dilation
