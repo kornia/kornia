@@ -16,10 +16,10 @@
 #
 
 from math import pi
+from unittest.mock import patch
 
 import pytest
 import torch
-from unittest.mock import patch
 
 from kornia.feature.mkd import (
     COEFFS,
@@ -65,6 +65,7 @@ def mock_torch_hub_load_state_dict_from_url():
 
         mock_load.side_effect = side_effect
         yield mock_load
+
 
 from testing.base import BaseTester
 
