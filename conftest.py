@@ -25,7 +25,10 @@ from itertools import product
 import numpy as np
 import pytest
 import torch
-from _pytest.reports import TestReport
+try:
+    from pytest import TestReport  # public since pytest 7.x
+except ImportError:  # pragma: no cover
+    from _pytest.reports import TestReport  # type: ignore[no-redef]
 
 import kornia
 
@@ -583,16 +586,23 @@ def skip_half_precision_on_cuda(request):
 def cuda_device_assert_guard(request):
     """Guard against CUDA device-side assert contamination between tests.
 
-    Even with skip_half_precision_on_cuda in place, other operations (custom
-    kernels, third-party ops, float32 edge cases) can trigger asynchronous
-    device-side asserts.  This fixture synchronises CUDA before each test; if
-    the context is already corrupted the test is skipped rather than allowed to
-    fail spuriously.  After each test a second synchronisation drains the queue
-    so any async error surfaces in teardown of the test that caused it, not at
-    the start of the next test.  The teardown exception is suppressed so the
-    test's own result is preserved; the following test's pre-check will detect
-    the broken context and skip.
+    Active only when running inside a subprocess (``KORNIA_TEST_IN_SUBPROCESS=1``)
+    or with ``--isolate-half-precision``, so regular float32 CI is not slowed
+    down by the extra host-device synchronisations.
+
+    This fixture synchronises CUDA before each test; if the context is already
+    corrupted the test is skipped rather than allowed to fail spuriously.
+    After each test a second synchronisation drains the queue so any async
+    device-side assert surfaces in the test that caused it, not the next one.
+    If a device-side assert is detected in the post-test sync the test is
+    failed (not silently passed) so asynchronous errors are always visible.
     """
+    in_subprocess = os.environ.get("KORNIA_TEST_IN_SUBPROCESS")
+    isolate = request.config.getoption("--isolate-half-precision", default=False)
+    if not (in_subprocess or isolate):
+        yield
+        return
+
     if "device" not in request.fixturenames:
         yield
         return
