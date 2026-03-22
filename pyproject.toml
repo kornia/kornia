@@ -292,6 +292,9 @@ omit = [
   "kornia/feature/aliked/deform_conv2d.py",
   "kornia/feature/disk/_unets/*",
   "kornia/feature/defmo.py",
+  # DexiNed vendored architecture (building blocks only; high-level API in kornia/contrib/edge_detection.py is kept)
+  "kornia/filters/dexined.py",
+  "kornia/models/dexined.py",
 ]
 
 [tool.coverage.report]
