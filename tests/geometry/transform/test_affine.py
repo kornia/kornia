@@ -785,3 +785,19 @@ class TestGetShearMatrix(BaseTester):
         )
 
         self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+
+    def test_get_shear_matrix2d_default_params_device_dtype(self, device, dtype):
+        # When sx and sy are None, the defaults should inherit device and dtype from center.
+        center = torch.tensor([[128.0, 128.0]], device=device, dtype=dtype)
+        out = kornia.geometry.transform.get_shear_matrix2d(center, sx=None, sy=None)
+        assert out.device.type == center.device.type, "Output device must match center device"
+        assert out.dtype == center.dtype, "Output dtype must match center dtype"
+
+    def test_get_shear_matrix3d_default_params_device_dtype(self, device, dtype):
+        # When shear params are None, the defaults should inherit device and dtype from center.
+        center = torch.tensor([[64.0, 64.0, 32.0]], device=device, dtype=dtype)
+        out = kornia.geometry.transform.get_shear_matrix3d(
+            center, sxy=None, sxz=None, syx=None, syz=None, szx=None, szy=None
+        )
+        assert out.device.type == center.device.type, "Output device must match center device"
+        assert out.dtype == center.dtype, "Output dtype must match center dtype"
