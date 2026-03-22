@@ -61,7 +61,7 @@ class TestModelBaseMixinTensorToType:
     def test_unsupported_output_type_raises(self):
         mixin = DummyMixin()
         t = torch.rand(1, 3, 8, 8)
-        with pytest.raises(RuntimeError, match="Output type.*is not supported"):
+        with pytest.raises(RuntimeError, match=r"Output type.*is not supported"):
             mixin._tensor_to_type(t, "numpy")
 
 
