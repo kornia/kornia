@@ -19,6 +19,7 @@ from math import pi
 
 import pytest
 import torch
+from unittest.mock import patch
 
 from kornia.feature.mkd import (
     COEFFS,
@@ -33,6 +34,37 @@ from kornia.feature.mkd import (
     get_kron_order,
     spatial_kernel_embedding,
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_torch_hub_load_state_dict_from_url():
+    with patch("torch.hub.load_state_dict_from_url") as mock_load:
+
+        def side_effect(url, **kwargs):
+            # Create a dummy model structure depending on the kernel type in the URL
+            if "cart" in url:
+                in_dims = 63
+            elif "polar" in url:
+                in_dims = 175
+            elif "concat" in url:
+                in_dims = 238
+            else:
+                in_dims = 256
+
+            dummy_algo = {
+                "mean": torch.zeros(in_dims),
+                "eigvecs": torch.eye(in_dims),
+                "eigvals": torch.ones(in_dims),
+            }
+            dummy_training_set = {"lw": dummy_algo, "pca": dummy_algo}
+            return {
+                "liberty": dummy_training_set,
+                "notredame": dummy_training_set,
+                "yosemite": dummy_training_set,
+            }
+
+        mock_load.side_effect = side_effect
+        yield mock_load
 
 from testing.base import BaseTester
 
