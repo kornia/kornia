@@ -57,7 +57,7 @@ def matrix_cofactor_tensor(matrix: torch.Tensor) -> torch.Tensor:
     singular_mask = det != 0
     if singular_mask.sum() != 0:
         # B, 3, 3
-        cofactor = _torch_inverse_cast(matrix[singular_mask]).transpose(-2, -1) * det[:, None, None]
+        cofactor = _torch_inverse_cast(matrix[singular_mask]).transpose(-2, -1) * det[singular_mask][:, None, None]
         # return cofactor matrix of the given matrix
         returned_cofactor = torch.zeros_like(matrix)
         returned_cofactor[singular_mask] = cofactor

@@ -476,6 +476,9 @@ def pytest_runtest_protocol(item, nextitem):
         cmd.append("--runslow")
     if item.config.getoption("--tf32"):
         cmd.append("--tf32")
+    optimizer_backend = params.get("optimizer_backend")
+    if optimizer_backend:
+        cmd.append(f"--optimizer={optimizer_backend}")
 
     env = {**os.environ, "KORNIA_TEST_IN_SUBPROCESS": "1"}
     t0 = time.monotonic()
