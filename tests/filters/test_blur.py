@@ -40,6 +40,14 @@ class TestBoxBlur(BaseTester):
         out2 = box_blur(data, kernel_size, separable=True)
         self.assert_close(out1, out2)
 
+    @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
+    def test_separable_module(self, kernel_size, device, dtype):
+        # BoxBlur with separable=True exercises the register_buffer(kernel_y/kernel_x) branch
+        data = torch.rand(1, 3, 8, 8, device=device, dtype=dtype)
+        blur_sep = BoxBlur(kernel_size, "reflect", separable=True)
+        blur_ref = BoxBlur(kernel_size, "reflect", separable=False)
+        self.assert_close(blur_sep(data), blur_ref(data))
+
     def test_exception(self):
         data = torch.rand(1, 1, 3, 3)
 

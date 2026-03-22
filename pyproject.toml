@@ -295,6 +295,8 @@ omit = [
   # DexiNed vendored architecture (building blocks only; high-level API in kornia/contrib/edge_detection.py is kept)
   "kornia/filters/dexined.py",
   "kornia/models/dexined.py",
+  # HuggingFace diffusers wrapper — requires diffusers as optional dep, not unit-testable as a filter
+  "kornia/filters/dissolving.py",
 ]
 
 [tool.coverage.report]
