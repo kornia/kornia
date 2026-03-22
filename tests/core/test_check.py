@@ -371,9 +371,6 @@ class TestChecksEnableDisable:
             KORNIA_CHECK_SHAPE(torch.rand(2, 3), ["1", "H", "W"])
 
     def test_env_var_disables_checks(self, monkeypatch):
-        import importlib
-
-        import kornia.core.check as check_module
 
         monkeypatch.setenv("KORNIA_CHECKS", "0")
         # _should_enable_checks reads the env var

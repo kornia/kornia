@@ -122,6 +122,7 @@ class TestImageModuleMixIn:
 
     def test_convert_input_output_invalid_type_raises(self, img_module, sample_tensor):
         with pytest.raises(ValueError, match="Invalid output_type"):
+
             @img_module.convert_input_output(output_type="invalid")
             def dummy_func(tensor):
                 return tensor

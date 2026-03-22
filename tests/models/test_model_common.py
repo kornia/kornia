@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import torch
 
-from kornia.models.common import ConvNormAct, DropPath, LayerNorm2d, MLP, window_partition, window_unpartition
+from kornia.models.common import MLP, ConvNormAct, DropPath, LayerNorm2d, window_partition, window_unpartition
 
 
 class TestConvNormAct:

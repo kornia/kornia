@@ -58,9 +58,7 @@ class TestSegmentationResults:
     def test_original_res_logits_with_encoder_resize(self):
         r = self._make_results(B=1, C=1, H=8, W=8)
         # With encoder resize: first resize to (16, 16), then crop, then resize to (32, 32)
-        result = r.original_res_logits(
-            input_size=(16, 16), original_size=(32, 32), image_size_encoder=(16, 16)
-        )
+        result = r.original_res_logits(input_size=(16, 16), original_size=(32, 32), image_size_encoder=(16, 16))
         assert result.shape == (1, 1, 32, 32)
 
     def test_original_res_logits_crops_padding(self):
