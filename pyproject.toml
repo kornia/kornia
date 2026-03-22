@@ -277,26 +277,6 @@ omit = [
   "kornia/models/vit.py",
   "kornia/models/vit_mobile.py",
   "kornia/models/tiny_vit.py",
-  # Feature model building blocks (vendored architectures)
-  "kornia/feature/adalam/*",
-  "kornia/feature/dedode/transformer/*",
-  "kornia/feature/dedode/dedode_models.py",
-  "kornia/feature/dedode/vgg.py",
-  "kornia/feature/loftr/loftr_module/*",
-  "kornia/feature/loftr/backbone/*",
-  "kornia/feature/loftr/utils/*",
-  "kornia/feature/sold2/backbones.py",
-  "kornia/feature/sold2/sold2_detector.py",
-  "kornia/feature/lightglue.py",
-  "kornia/feature/lightglue_onnx/*",
-  "kornia/feature/aliked/deform_conv2d.py",
-  "kornia/feature/disk/_unets/*",
-  "kornia/feature/defmo.py",
-  # DexiNed vendored architecture (building blocks only; high-level API in kornia/contrib/edge_detection.py is kept)
-  "kornia/filters/dexined.py",
-  "kornia/models/dexined.py",
-  # HuggingFace diffusers wrapper — requires diffusers as optional dep, not unit-testable as a filter
-  "kornia/filters/dissolving.py",
 ]
 
 [tool.coverage.report]
