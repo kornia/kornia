@@ -62,11 +62,11 @@ class TestConvNormAct:
 class TestMLP:
     def test_forward_without_sigmoid(self):
         mlp = MLP(input_dim=16, hidden_dim=32, output_dim=8, num_layers=3)
-        x = torch.rand(2, 16)
+        x = torch.randn(2, 16)
         out = mlp(x)
         assert out.shape == (2, 8)
-        # Output can be negative when no sigmoid
-        assert out.min() < 1.0
+        # Output is not constrained to [0, 1] when no sigmoid is applied
+        assert ((out < 0.0) | (out > 1.0)).any().item()
 
     def test_forward_with_sigmoid_output(self):
         mlp = MLP(input_dim=16, hidden_dim=32, output_dim=8, num_layers=3, sigmoid_output=True)

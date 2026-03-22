@@ -20,6 +20,7 @@ from __future__ import annotations
 import pytest
 import torch
 
+from kornia.core.exceptions import BaseError
 from kornia.models.structures import Prompts, SegmentationResults
 
 
@@ -134,7 +135,7 @@ class TestPrompts:
         coords = torch.rand(2, 5, 2)
         labels = torch.rand(2, 5)
         boxes = torch.rand(3, 4)  # different batch size
-        with pytest.raises(Exception):
+        with pytest.raises(BaseError, match="same batch size"):
             Prompts(points=(coords, labels), boxes=boxes)
 
     def test_masks_only(self):
