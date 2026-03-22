@@ -138,3 +138,36 @@ class TestONNXLoader:
         assert (
             os.path.join("operators", "some_model.onnx").replace("\\", "\\\\") in captured.out
         )  # .replace() for Windows
+
+
+def test_io_name_conversion():
+    from onnx import TensorProto, helper
+
+    from kornia.onnx.utils import io_name_conversion
+
+    # Create a simple ONNX model
+    # input1 -> Node1 -> interp -> Node2 -> output1
+
+    in_info = helper.make_tensor_value_info("input1", TensorProto.FLOAT, [1, 3, 224, 224])
+    out_info = helper.make_tensor_value_info("output1", TensorProto.FLOAT, [1, 3, 224, 224])
+
+    node1 = helper.make_node("Relu", ["input1"], ["interp"])
+    node2 = helper.make_node("Relu", ["interp"], ["output1"])
+
+    graph = helper.make_graph([node1, node2], "test_graph", [in_info], [out_info])
+    model = helper.make_model(graph)
+
+    mapping = {"input1": "new_input", "output1": "new_output", "interp": "new_interp"}
+
+    converted_model = io_name_conversion(model, mapping)
+
+    # Check graph inputs
+    assert converted_model.graph.input[0].name == "new_input"
+    # Check graph outputs
+    assert converted_model.graph.output[0].name == "new_output"
+
+    # Check nodes
+    assert converted_model.graph.node[0].input[0] == "new_input"
+    assert converted_model.graph.node[0].output[0] == "new_interp"
+    assert converted_model.graph.node[1].input[0] == "new_interp"
+    assert converted_model.graph.node[1].output[0] == "new_output"
