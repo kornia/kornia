@@ -53,13 +53,4 @@ class TestDexiNed(BaseTester):
         self.assert_close(out, expect, atol=1e-3, rtol=1e-2)
 
     @pytest.mark.skip(reason="DexiNed do not compile with dynamo.")
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        # TODO: update the dexined to be possible to use with dynamo
-        data = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
-        op = DexiNed(pretrained=True).to(device, dtype)
-        op_optimized = torch_optimizer(op)
-
-        expected = op(data)
-        actual = op_optimized(data)
-
-        self.assert_close(actual, expected)
+    def test_dynamo(self, device, dtype, torch_optimizer): ...

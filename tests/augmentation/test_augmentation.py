@@ -132,21 +132,20 @@ class CommonTests(BaseTester):
     def test_random_p_0(self):
         self._test_random_p_0_implementation(params=self._default_param_set)
 
-    def test_random_p_1(self):
-        raise NotImplementedError("Implement a stupid routine.")
+    @pytest.mark.skip(reason="Not implemented in base class")
+    def test_random_p_1(self): ...
 
     def test_inverse_coordinate_check(self):
         self._test_inverse_coordinate_check_implementation(params=self._default_param_set)
 
-    def test_exception(self):
-        raise NotImplementedError("Implement a stupid routine.")
+    @pytest.mark.skip(reason="Not implemented in base class")
+    def test_exception(self): ...
 
-    def test_batch(self):
-        raise NotImplementedError("Implement a stupid routine.")
+    @pytest.mark.skip(reason="Not implemented in base class")
+    def test_batch(self): ...
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
-        raise NotImplementedError("Implement a stupid routine.")
+    def test_jit(self): ...
 
     def test_module(self):
         self._test_module_implementation(params=self._default_param_set)
