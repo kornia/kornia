@@ -33,9 +33,9 @@ def _make_tracker(minimum_inliers_num: int = 5) -> HomographyTracker:
     initial_matcher = MagicMock()
     fast_matcher = MagicMock()
     ransac = MagicMock()
-    # Remove extract_features so set_target skips feature pre-extraction
-    del initial_matcher.extract_features
-    del fast_matcher.extract_features
+    # Set extract_features to None so isinstance(..., nn.Module) guard skips feature pre-extraction
+    initial_matcher.extract_features = None
+    fast_matcher.extract_features = None
     return HomographyTracker(
         initial_matcher=initial_matcher,
         fast_matcher=fast_matcher,

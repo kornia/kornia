@@ -37,7 +37,7 @@ class TestAccuracy:
         assert result[0].item() == 0.0
 
     def test_topk(self):
-        # 3 classes; top-1 wrong but top-2 right
+        # 3 classes; true class is index 2 (lowest logit) — wrong for both top-1 and top-2
         logits = torch.tensor([[0.3, 0.5, 0.2]])
         target = torch.tensor([[2]])  # true class is index 2 (third highest)
         top1, top2 = accuracy(logits, target, topk=(1, 2))

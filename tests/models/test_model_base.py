@@ -72,8 +72,8 @@ class TestModelBaseMixinSave:
         with patch("kornia.models.base.write_image") as mock_write:
             mixin.save(t, str(tmp_path))
             assert mock_write.call_count == 1
-            # path is the second positional arg (tensor is first due to swapped call)
-            saved_path = mock_write.call_args[0][1]
+            # path is the first positional arg (matches write_image(path_file, image, ...))
+            saved_path = mock_write.call_args[0][0]
             assert os.path.normcase(str(tmp_path)) in os.path.normcase(saved_path)
 
     def test_save_list_of_tensors_calls_write_image_per_item(self, tmp_path):
@@ -100,8 +100,8 @@ class TestModelBaseMixinSaveOutputs:
         with patch("kornia.models.base.write_image") as mock_write:
             mixin._save_outputs(t, directory=str(tmp_path), suffix="_test")
             assert mock_write.call_count == 1
-            # path is the second positional arg; verify suffix appears in filename
-            saved_path = mock_write.call_args[0][1]
+            # path is the first positional arg; verify suffix appears in filename
+            saved_path = mock_write.call_args[0][0]
             assert "_test_" in saved_path
 
     def test_save_outputs_with_explicit_dir_list(self, tmp_path):

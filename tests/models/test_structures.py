@@ -28,10 +28,7 @@ class TestSegmentationResults:
     def _make_results(self, B=2, C=3, H=16, W=16, threshold=0.0):
         logits = torch.randn(B, C, H, W)
         scores = torch.rand(B, C)
-        r = SegmentationResults(logits=logits, scores=scores, mask_threshold=threshold)
-        # Initialize _original_res_logits to None (not set by dataclass)
-        r._original_res_logits = None
-        return r
+        return SegmentationResults(logits=logits, scores=scores, mask_threshold=threshold)
 
     def test_binary_masks_uses_logits_when_no_original(self):
         r = self._make_results()
@@ -71,7 +68,6 @@ class TestSegmentationResults:
 
     def test_squeeze_without_original_res_logits(self):
         r = self._make_results(B=1, C=3, H=8, W=8)
-        r._original_res_logits = None
         squeezed = r.squeeze(dim=0)
         assert squeezed.logits.shape == (3, 8, 8)
         assert squeezed.scores.shape == (3,)
@@ -88,7 +84,6 @@ class TestSegmentationResults:
         logits = torch.tensor([[[[0.5, -0.5], [0.3, 0.1]]]])
         scores = torch.ones(1, 1)
         r = SegmentationResults(logits=logits, scores=scores, mask_threshold=0.2)
-        r._original_res_logits = None
         masks = r.binary_masks
         # 0.5 > 0.2 -> True, -0.5 > 0.2 -> False, 0.3 > 0.2 -> True, 0.1 > 0.2 -> False
         expected = torch.tensor([[[[True, False], [True, False]]]])
