@@ -219,7 +219,16 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
     KORNIA_CHECK(
         isinstance(input_tensor, torch.Tensor), f"`input_tensor` must be a torch.Tensor. Got: {type(input_tensor)}"
     )
-    valid_types = [torch.half, torch.float, torch.double, torch.uint8, torch.int, torch.long, torch.short]
+    valid_types = [
+        torch.bfloat16,
+        torch.half,
+        torch.float,
+        torch.double,
+        torch.uint8,
+        torch.int,
+        torch.long,
+        torch.short,
+    ]
     KORNIA_CHECK(
         input_tensor.dtype in valid_types, f"`input_tensor` must be a {valid_types}. Got: {input_tensor.dtype}"
     )

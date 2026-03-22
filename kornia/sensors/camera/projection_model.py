@@ -48,7 +48,7 @@ class Z1Projection:
         xy = points.data[..., :2]
         z = points.z
         if len(z.shape):
-            uv = (xy.mT @ torch.diag(z).inverse()).mT
+            uv = xy / z.unsqueeze(-1)
         else:
             # For scalar z, xy is 1-D, so no transpose needed
             uv = xy * 1 / z

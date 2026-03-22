@@ -245,7 +245,7 @@ class TestALIKEDForwardLAF(BaseTester):
         """forward_laf should return the three expected tensors."""
         aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=32).to(device, dtype)
         inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        lafs, responses, descs = aliked.forward_laf(inp)
+        lafs, responses, descs = aliked.forward_laf(inp, compute_affine=False)
         assert lafs.ndim == 4  # (B, N, 2, 3)
         assert responses.ndim == 3  # (B, N, 1)
         assert descs.ndim == 3  # (B, N, D)
@@ -256,7 +256,7 @@ class TestALIKEDForwardLAF(BaseTester):
         top_k = 20
         aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=top_k).to(device, dtype)
         inp = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-        lafs, responses, descs = aliked.forward_laf(inp)
+        lafs, responses, descs = aliked.forward_laf(inp, compute_affine=False)
         N = lafs.shape[1]
         assert lafs.shape == (B, N, 2, 3)
         assert responses.shape == (B, N, 1)
@@ -269,7 +269,7 @@ class TestALIKEDForwardLAF(BaseTester):
         top_k = 30
         aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=top_k).to(device, dtype)
         inp = torch.rand(1, 3, H, W, device=device, dtype=dtype)
-        lafs, responses, _ = aliked.forward_laf(inp)
+        lafs, responses, _ = aliked.forward_laf(inp, compute_affine=False)
         # Only check keypoints with positive response (non-padding).
         valid = responses[0, :, 0] > 0
         if valid.any():
@@ -284,7 +284,7 @@ class TestALIKEDForwardLAF(BaseTester):
         B = 3
         aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=25).to(device, dtype)
         inp = torch.rand(B, 3, 64, 64, device=device, dtype=dtype)
-        lafs, responses, descs = aliked.forward_laf(inp)
+        lafs, responses, descs = aliked.forward_laf(inp, compute_affine=False)
         assert lafs.shape[0] == B
         assert responses.shape[0] == B
         assert descs.shape[0] == B
@@ -297,15 +297,20 @@ class TestALIKEDForwardLAF(BaseTester):
         # Suppress the entire image except the bottom-right quarter.
         mask = torch.zeros(1, 1, H, W, device=device, dtype=dtype)
         mask[:, :, H // 2 :, W // 2 :] = 1.0
-        lafs_masked, _, _ = aliked.forward_laf(inp, mask=mask)
+        lafs_masked, _, _ = aliked.forward_laf(inp, mask=mask, compute_affine=False)
         assert lafs_masked.shape[0] == 1
 
+    @pytest.mark.slow
     def test_laf_affine_shape(self, device, dtype):
-        """The 2x2 affine part of each LAF should be non-degenerate for valid kpts."""
+        """The 2x2 affine part of each LAF should be non-degenerate for valid kpts.
+
+        Requires ``--runslow``: uses ``torch.linalg.eigh`` (cast to float32 for
+        half-precision dtypes) which is slower than the identity-affine path.
+        """
         top_k = 20
         aliked = ALIKED(model_name="aliked-t16", max_num_keypoints=top_k).to(device, dtype)
         inp = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        lafs, responses, _ = aliked.forward_laf(inp)
+        lafs, responses, _ = aliked.forward_laf(inp, compute_affine=True)
         valid = responses[0, :, 0] > 0
         if valid.any():
             A = lafs[0, valid, :, :2]  # (N_valid, 2, 2)
