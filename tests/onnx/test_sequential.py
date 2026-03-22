@@ -35,7 +35,7 @@ class TestONNXSequential:
         graph = make_graph([node], "test_graph", [input_info], [output_info])
         op = onnx.OperatorSetIdProto()
         op.version = 17
-        model = make_model(graph, opset_imports=[op])
+        model = make_model(graph, opset_imports=[op], ir_version=9)
         return model
 
     @pytest.fixture
