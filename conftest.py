@@ -25,6 +25,7 @@ from itertools import product
 import numpy as np
 import pytest
 import torch
+
 try:
     from pytest import TestReport  # public since pytest 7.x
 except ImportError:  # pragma: no cover
