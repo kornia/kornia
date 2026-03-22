@@ -35,6 +35,8 @@ from kornia.feature.mkd import (
     spatial_kernel_embedding,
 )
 
+from testing.base import BaseTester
+
 
 @pytest.fixture(autouse=True)
 def mock_torch_hub_load_state_dict_from_url():
@@ -65,9 +67,6 @@ def mock_torch_hub_load_state_dict_from_url():
 
         mock_load.side_effect = side_effect
         yield mock_load
-
-
-from testing.base import BaseTester
 
 
 @pytest.mark.parametrize("ps", [5, 13, 25])
