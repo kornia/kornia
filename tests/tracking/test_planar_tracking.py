@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from unittest.mock import MagicMock
+
 import pytest
 import torch
 
@@ -24,6 +26,164 @@ from kornia.geometry import rescale, transform_points
 from kornia.tracking import HomographyTracker
 
 from testing.base import BaseTester
+
+
+def _make_tracker(minimum_inliers_num: int = 5) -> HomographyTracker:
+    """Return a HomographyTracker whose heavy sub-modules are replaced with lightweight mocks."""
+    initial_matcher = MagicMock()
+    fast_matcher = MagicMock()
+    ransac = MagicMock()
+    # Remove extract_features so set_target skips feature pre-extraction
+    del initial_matcher.extract_features
+    del fast_matcher.extract_features
+    return HomographyTracker(
+        initial_matcher=initial_matcher,
+        fast_matcher=fast_matcher,
+        ransac=ransac,
+        minimum_inliers_num=minimum_inliers_num,
+    )
+
+
+def _match_dict(n_keypoints: int, device: torch.device, dtype: torch.dtype) -> dict:
+    """Produce a fake match dict with n_keypoints matches for batch 0."""
+    return {
+        "keypoints0": torch.rand(n_keypoints, 2, device=device, dtype=dtype),
+        "keypoints1": torch.rand(n_keypoints, 2, device=device, dtype=dtype),
+        "batch_indexes": torch.zeros(n_keypoints, dtype=torch.long, device=device),
+    }
+
+
+class TestHomographyTrackerUnit:
+    """Fast unit tests for HomographyTracker using mocked sub-modules."""
+
+    def test_reset_tracking_clears_homography(self):
+        tracker = _make_tracker()
+        image = torch.rand(1, 1, 8, 8)
+        tracker.set_target(image)
+        tracker.previous_homography = torch.eye(3)
+        tracker.reset_tracking()
+        assert tracker.previous_homography is None
+
+    def test_set_target_without_extract_features(self):
+        tracker = _make_tracker()
+        image = torch.rand(1, 1, 8, 8)
+        tracker.set_target(image)
+        assert torch.equal(tracker.target, image)
+        # Representations stay empty when extract_features not present
+        assert tracker.target_initial_representation == {}
+        assert tracker.target_fast_representation == {}
+
+    def test_set_target_with_extract_features(self):
+        from torch import nn
+
+        fake_feats = {"desc": torch.rand(1, 4)}
+
+        class _FakeExtract(nn.Module):
+            def forward(self, x):
+                return fake_feats
+
+        initial_matcher = MagicMock()
+        fast_matcher = MagicMock()
+        initial_matcher.extract_features = _FakeExtract()
+        fast_matcher.extract_features = _FakeExtract()
+        tracker = HomographyTracker(
+            initial_matcher=initial_matcher,
+            fast_matcher=fast_matcher,
+            ransac=MagicMock(),
+        )
+        image = torch.rand(1, 1, 8, 8)
+        tracker.set_target(image)
+        assert tracker.target_initial_representation == fake_feats
+        assert tracker.target_fast_representation == fake_feats
+
+    def test_no_match_returns_empty_tensor_and_false(self):
+        tracker = _make_tracker()
+        image = torch.rand(1, 1, 8, 8)
+        tracker.set_target(image)
+        H, success = tracker.no_match()
+        assert not success
+        assert H.shape == (3, 3)
+        assert tracker.inliers_num == 0
+
+    def test_match_initial_too_few_keypoints(self):
+        # Fewer than minimum_inliers_num keypoints → no_match
+        tracker = _make_tracker(minimum_inliers_num=10)
+        image = torch.rand(1, 1, 8, 8)
+        tracker.set_target(image)
+        tracker.initial_matcher.return_value = _match_dict(3, torch.device("cpu"), torch.float32)
+        _, success = tracker.match_initial(torch.rand(1, 1, 8, 8))
+        assert not success
+
+    def test_match_initial_too_few_inliers(self):
+        # Enough keypoints but RANSAC reports few inliers → no_match
+        tracker = _make_tracker(minimum_inliers_num=5)
+        image = torch.rand(1, 1, 8, 8)
+        tracker.set_target(image)
+        tracker.initial_matcher.return_value = _match_dict(20, torch.device("cpu"), torch.float32)
+        # RANSAC returns homography + inlier mask with only 2 inliers
+        inliers = torch.zeros(20, dtype=torch.bool)
+        inliers[:2] = True
+        tracker.ransac.return_value = (torch.eye(3), inliers)
+        _, success = tracker.match_initial(torch.rand(1, 1, 8, 8))
+        assert not success
+
+    def test_match_initial_success(self):
+        tracker = _make_tracker(minimum_inliers_num=5)
+        image = torch.rand(1, 1, 8, 8)
+        tracker.set_target(image)
+        tracker.initial_matcher.return_value = _match_dict(20, torch.device("cpu"), torch.float32)
+        inliers = torch.ones(20, dtype=torch.bool)
+        H_expected = torch.eye(3) * 2
+        tracker.ransac.return_value = (H_expected, inliers)
+        H, success = tracker.match_initial(torch.rand(1, 1, 8, 8))
+        assert success
+        assert tracker.previous_homography is not None
+        assert torch.allclose(H, H_expected)
+
+    def test_forward_routes_to_match_initial_when_no_previous(self):
+        tracker = _make_tracker(minimum_inliers_num=5)
+        image = torch.rand(1, 1, 8, 8)
+        tracker.set_target(image)
+        tracker.initial_matcher.return_value = _match_dict(20, torch.device("cpu"), torch.float32)
+        inliers = torch.ones(20, dtype=torch.bool)
+        tracker.ransac.return_value = (torch.eye(3), inliers)
+        assert tracker.previous_homography is None
+        _, success = tracker(torch.rand(1, 1, 8, 8))
+        assert success
+
+    def test_forward_routes_to_track_next_frame_when_previous_set(self):
+        tracker = _make_tracker(minimum_inliers_num=5)
+        image = torch.rand(1, 1, 8, 8)
+        tracker.set_target(image)
+        tracker.previous_homography = torch.eye(3)
+        tracker.fast_matcher.return_value = _match_dict(20, torch.device("cpu"), torch.float32)
+        inliers = torch.ones(20, dtype=torch.bool)
+        tracker.ransac.return_value = (torch.eye(3), inliers)
+        _, success = tracker(torch.rand(1, 1, 8, 8))
+        assert success
+
+    def test_track_next_frame_too_few_keypoints_resets(self):
+        tracker = _make_tracker(minimum_inliers_num=10)
+        image = torch.rand(1, 1, 8, 8)
+        tracker.set_target(image)
+        tracker.previous_homography = torch.eye(3)
+        tracker.fast_matcher.return_value = _match_dict(3, torch.device("cpu"), torch.float32)
+        _, success = tracker.track_next_frame(torch.rand(1, 1, 8, 8))
+        assert not success
+        assert tracker.previous_homography is None  # reset_tracking was called
+
+    def test_track_next_frame_too_few_inliers_resets(self):
+        tracker = _make_tracker(minimum_inliers_num=5)
+        image = torch.rand(1, 1, 8, 8)
+        tracker.set_target(image)
+        tracker.previous_homography = torch.eye(3)
+        tracker.fast_matcher.return_value = _match_dict(20, torch.device("cpu"), torch.float32)
+        inliers = torch.zeros(20, dtype=torch.bool)
+        inliers[:2] = True
+        tracker.ransac.return_value = (torch.eye(3), inliers)
+        _, success = tracker.track_next_frame(torch.rand(1, 1, 8, 8))
+        assert not success
+        assert tracker.previous_homography is None  # reset_tracking was called
 
 
 @pytest.fixture()
