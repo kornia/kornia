@@ -405,9 +405,7 @@ def test_lighterglue_reference_matches(device, data):
     ref_kpts0 = data["xfeat_kpts0"].to(device)
     ref_kpts1 = data["xfeat_kpts1"].to(device)
     valid_ref = ref_m0 > -1
-    ref_pairs = torch.cat(
-        [ref_kpts0[valid_ref], ref_kpts1[ref_m0[valid_ref]]], dim=-1
-    )  # (K_ref, 4)
+    ref_pairs = torch.cat([ref_kpts0[valid_ref], ref_kpts1[ref_m0[valid_ref]]], dim=-1)  # (K_ref, 4)
 
     # Number of matches should be in the same ballpark (within 2x)
     n_comp = valid_comp.sum().item()

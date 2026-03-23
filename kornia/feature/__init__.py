@@ -63,7 +63,6 @@ from .laf import (
     set_laf_orientation,
 )
 from .lightglue import LightGlue
-from .xfeat import InterpolateSparse2d, XFeat, XFeatModel
 from .lightglue_onnx import OnnxLightGlue
 from .loftr import LoFTR
 from .matching import (
@@ -95,6 +94,7 @@ from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
+from .xfeat import InterpolateSparse2d, XFeat, XFeatModel
 
 __all__ = [
     "ALIKED",
@@ -122,6 +122,7 @@ __all__ = [
     "HardNet8",
     "HesAffNetHardNet",
     "HyNet",
+    "InterpolateSparse2d",
     "KeyNet",
     "KeyNet",
     "KeyNetAffNetHardNet",
@@ -132,11 +133,8 @@ __all__ = [
     "LAFDescriptor",
     "LAFDescriptor",
     "LAFOrienter",
-    "InterpolateSparse2d",
     "LightGlue",
     "LightGlueMatcher",
-    "XFeat",
-    "XFeatModel",
     "LoFTR",
     "LocalFeature",
     "LocalFeature",
@@ -157,6 +155,8 @@ __all__ = [
     "SOSNet",
     "ScaleSpaceDetector",
     "TFeat",
+    "XFeat",
+    "XFeatModel",
     "denormalize_laf",
     "dog_response",
     "dog_response_single",
