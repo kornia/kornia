@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import platform
+import shutil
 import subprocess
 import time
 
@@ -60,9 +61,10 @@ def bench(fn, *args, warmup: int = 10, reps: int = 50, device: str = "cpu", labe
 
 
 def _print_env() -> None:
-    date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    date = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    git = shutil.which("git") or "git"
     try:
-        commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+        commit = subprocess.check_output([git, "rev-parse", "--short", "HEAD"], text=True).strip()
     except Exception:
         commit = "unknown"
     cpu = platform.processor() or platform.machine()
@@ -95,13 +97,13 @@ def bench_project_unproject(device: str) -> None:
         K_b = K_base.unsqueeze(0).expand(B, -1, -1)
         pts3 = torch.rand(B, N, 3, device=device).add_(0.5)
         pts2 = torch.rand(B, N, 2, device=device).mul_(640.0)
-        pts2_norm = torch.rand(B, N, 2, device=device)
+        pts2_norm = normalize_points_with_intrinsics(pts2, K_b)
         depth = torch.ones(B, N, 1, device=device)
 
         print(f"\n  {label}")
         bench(project_points, pts3, K_b, device=device, label="project_points")
         bench(unproject_points, pts2, depth, K_b, device=device, label="unproject_points")
-        bench(normalize_points_with_intrinsics, pts2_norm, K_b, device=device, label="normalize_points_with_intrinsics")
+        bench(normalize_points_with_intrinsics, pts2, K_b, device=device, label="normalize_points_with_intrinsics")
         bench(
             denormalize_points_with_intrinsics,
             pts2_norm,

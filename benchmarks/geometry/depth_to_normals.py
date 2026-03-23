@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import platform
+import shutil
 import subprocess
 import time
 
@@ -57,9 +58,10 @@ def bench(fn, *args, warmup: int = 5, reps: int = 20, device: str = "cpu", label
 
 
 def _print_env() -> None:
-    date = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    date = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    git = shutil.which("git") or "git"
     try:
-        commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
+        commit = subprocess.check_output([git, "rev-parse", "--short", "HEAD"], text=True).strip()
     except Exception:
         commit = "unknown"
     cpu = platform.processor() or platform.machine()
