@@ -102,6 +102,5 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
                 )
 
     raise RuntimeError(
-        f"Failed to load weights from all {len(urls)} source(s). "
-        f"Last URL tried: {urls[-1]!r}"
+        f"Failed to load weights from all {len(urls)} source(s). Last URL tried: {urls[-1]!r}"
     ) from last_exc

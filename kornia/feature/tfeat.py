@@ -24,9 +24,18 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
 
 urls: Dict[str, str] = {}
-urls["liberty"] = [hf_url("tfeat", "tfeat-liberty.params"), "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"]  # pylint: disable
-urls["notredame"] = [hf_url("tfeat", "tfeat-notredame.params"), "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params"]  # pylint: disable
-urls["yosemite"] = [hf_url("tfeat", "tfeat-yosemite.params"), "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params"]  # pylint: disable
+urls["liberty"] = [
+    hf_url("tfeat", "tfeat-liberty.params"),
+    "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params",
+]  # pylint: disable
+urls["notredame"] = [
+    hf_url("tfeat", "tfeat-notredame.params"),
+    "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params",
+]  # pylint: disable
+urls["yosemite"] = [
+    hf_url("tfeat", "tfeat-yosemite.params"),
+    "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params",
+]  # pylint: disable
 
 
 class TFeat(nn.Module):

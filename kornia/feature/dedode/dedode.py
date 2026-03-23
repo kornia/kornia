@@ -30,18 +30,48 @@ from .utils import dedode_denormalize_pixel_coordinates, sample_keypoints
 
 urls: Dict[str, Dict[str, str]] = {
     "detector": {
-        "L-upright": [hf_url("dedode", "dedode_detector_L.pth"), "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_detector_L.pth"],
-        "L-C4": [hf_url("dedode", "dedode_detector_C4.pth"), "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_C4.pth"],
-        "L-SO2": [hf_url("dedode", "dedode_detector_SO2.pth"), "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_SO2.pth"],
-        "L-C4-v2": [hf_url("dedode", "dedode_detector_L_v2.pth"), "https://github.com/Parskatt/DeDoDe/releases/download/v2/dedode_detector_L_v2.pth"],
+        "L-upright": [
+            hf_url("dedode", "dedode_detector_L.pth"),
+            "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_detector_L.pth",
+        ],
+        "L-C4": [
+            hf_url("dedode", "dedode_detector_C4.pth"),
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_C4.pth",
+        ],
+        "L-SO2": [
+            hf_url("dedode", "dedode_detector_SO2.pth"),
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_SO2.pth",
+        ],
+        "L-C4-v2": [
+            hf_url("dedode", "dedode_detector_L_v2.pth"),
+            "https://github.com/Parskatt/DeDoDe/releases/download/v2/dedode_detector_L_v2.pth",
+        ],
     },
     "descriptor": {
-        "B-upright": [hf_url("dedode", "dedode_descriptor_B.pth"), "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_B.pth"],
-        "B-C4": [hf_url("dedode", "B_C4_Perm_descriptor_setting_C.pth"), "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_C4_Perm_descriptor_setting_C.pth"],
-        "B-SO2": [hf_url("dedode", "B_SO2_Spread_descriptor_setting_C.pth"), "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_SO2_Spread_descriptor_setting_C.pth"],
-        "G-upright": [hf_url("dedode", "dedode_descriptor_G.pth"), "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_G.pth"],
-        "G-C4": [hf_url("dedode", "G_C4_Perm_descriptor_setting_C.pth"), "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_C4_Perm_descriptor_setting_C.pth"],
-        "G-SO2": [hf_url("dedode", "G_SO2_Spread_descriptor_setting_C.pth"), "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_SO2_Spread_descriptor_setting_C.pth"],
+        "B-upright": [
+            hf_url("dedode", "dedode_descriptor_B.pth"),
+            "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_B.pth",
+        ],
+        "B-C4": [
+            hf_url("dedode", "B_C4_Perm_descriptor_setting_C.pth"),
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_C4_Perm_descriptor_setting_C.pth",
+        ],
+        "B-SO2": [
+            hf_url("dedode", "B_SO2_Spread_descriptor_setting_C.pth"),
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_SO2_Spread_descriptor_setting_C.pth",
+        ],
+        "G-upright": [
+            hf_url("dedode", "dedode_descriptor_G.pth"),
+            "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_G.pth",
+        ],
+        "G-C4": [
+            hf_url("dedode", "G_C4_Perm_descriptor_setting_C.pth"),
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_C4_Perm_descriptor_setting_C.pth",
+        ],
+        "G-SO2": [
+            hf_url("dedode", "G_SO2_Spread_descriptor_setting_C.pth"),
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_SO2_Spread_descriptor_setting_C.pth",
+        ],
     },
 }
 

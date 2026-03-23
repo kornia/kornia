@@ -29,7 +29,10 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.download import hf_url, load_state_dict_from_url
 
-url: str | list[str] = [hf_url("dexined", "DexiNed_BIPED_10.pth"), "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"]
+url: str | list[str] = [
+    hf_url("dexined", "DexiNed_BIPED_10.pth"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
+]
 
 
 def weight_init(m: nn.Module) -> None:

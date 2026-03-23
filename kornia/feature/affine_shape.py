@@ -37,7 +37,10 @@ from .laf import (
 )
 
 urls: Dict[str, str] = {}
-urls["affnet"] = [hf_url("affnet", "AffNet.pth"), "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth"]
+urls["affnet"] = [
+    hf_url("affnet", "AffNet.pth"),
+    "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth",
+]
 
 
 class PatchAffineShapeEstimator(nn.Module):

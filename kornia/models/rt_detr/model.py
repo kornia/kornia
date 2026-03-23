@@ -34,11 +34,26 @@ from kornia.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 
 URLs = {
-    "rtdetr_r18vd": [hf_url("rt_detr", "rtdetr_r18vd_dec3_6x_coco_from_paddle.pth"), "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth"],
-    "rtdetr_r34vd": [hf_url("rt_detr", "rtdetr_r34vd_dec4_6x_coco_from_paddle.pth"), "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r34vd_dec4_6x_coco_from_paddle.pth"],
-    "rtdetr_r50vd_m": [hf_url("rt_detr", "rtdetr_r50vd_m_6x_coco_from_paddle.pth"), "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_m_6x_coco_from_paddle.pth"],
-    "rtdetr_r50vd": [hf_url("rt_detr", "rtdetr_r50vd_6x_coco_from_paddle.pth"), "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_6x_coco_from_paddle.pth"],
-    "rtdetr_r101vd": [hf_url("rt_detr", "rtdetr_r101vd_6x_coco_from_paddle.pth"), "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r101vd_6x_coco_from_paddle.pth"],
+    "rtdetr_r18vd": [
+        hf_url("rt_detr", "rtdetr_r18vd_dec3_6x_coco_from_paddle.pth"),
+        "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
+    ],
+    "rtdetr_r34vd": [
+        hf_url("rt_detr", "rtdetr_r34vd_dec4_6x_coco_from_paddle.pth"),
+        "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r34vd_dec4_6x_coco_from_paddle.pth",
+    ],
+    "rtdetr_r50vd_m": [
+        hf_url("rt_detr", "rtdetr_r50vd_m_6x_coco_from_paddle.pth"),
+        "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_m_6x_coco_from_paddle.pth",
+    ],
+    "rtdetr_r50vd": [
+        hf_url("rt_detr", "rtdetr_r50vd_6x_coco_from_paddle.pth"),
+        "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_6x_coco_from_paddle.pth",
+    ],
+    "rtdetr_r101vd": [
+        hf_url("rt_detr", "rtdetr_r101vd_6x_coco_from_paddle.pth"),
+        "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r101vd_6x_coco_from_paddle.pth",
+    ],
 }
 
 

@@ -30,7 +30,10 @@ from kornia.geometry import rad2deg
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
 
 urls: Dict[str, str] = {}
-urls["orinet"] = [hf_url("orinet", "OriNet.pth"), "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"]
+urls["orinet"] = [
+    hf_url("orinet", "OriNet.pth"),
+    "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth",
+]
 
 
 class PassLAF(nn.Module):

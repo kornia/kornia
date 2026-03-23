@@ -26,7 +26,10 @@ from kornia.core.download import hf_url, load_state_dict_from_url
 
 __all__ = ["YuNet"]
 
-url: Union[str, List[str]] = [hf_url("yunet", "yunet_final.pth"), "https://github.com/kornia/data/raw/main/yunet_final.pth"]
+url: Union[str, List[str]] = [
+    hf_url("yunet", "yunet_final.pth"),
+    "https://github.com/kornia/data/raw/main/yunet_final.pth",
+]
 
 
 class ConvDPUnit(nn.Sequential):

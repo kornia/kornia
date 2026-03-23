@@ -23,9 +23,18 @@ from torch import nn
 from kornia.core.download import hf_url, load_state_dict_from_url
 
 urls: Dict[str, str] = {}
-urls["liberty"] = [hf_url("hynet", "HyNet_LIB.pth"), "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth"]  # pylint: disable
-urls["notredame"] = [hf_url("hynet", "HyNet_ND.pth"), "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_ND.pth"]  # pylint: disable
-urls["yosemite"] = [hf_url("hynet", "HyNet_YOS.pth"), "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_YOS.pth"]  # pylint: disable
+urls["liberty"] = [
+    hf_url("hynet", "HyNet_LIB.pth"),
+    "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth",
+]  # pylint: disable
+urls["notredame"] = [
+    hf_url("hynet", "HyNet_ND.pth"),
+    "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_ND.pth",
+]  # pylint: disable
+urls["yosemite"] = [
+    hf_url("hynet", "HyNet_YOS.pth"),
+    "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_YOS.pth",
+]  # pylint: disable
 
 
 class FilterResponseNorm2d(nn.Module):

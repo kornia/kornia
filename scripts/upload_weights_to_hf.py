@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Upload kornia pretrained model weights as individual repos under the kornia HF org.
 
 Creates one repo per model (e.g. kornia/xfeat, kornia/lightglue, …) and uploads
@@ -55,7 +72,10 @@ WEIGHTS: dict[str, list[tuple[str, str]]] = {
         ("keynet_affnet_hardnet_lightglue.pth", f"{MISHK}/keynet_affnet_hardnet_lightlue.pth"),
         ("dedodeb_lightglue.pth", f"{MISHK}/dedodeb_lightglue.pth"),
         ("dedodeg_lightglue.pth", f"{MISHK}/dedodeg_lightglue.pth"),
-        ("xfeat-lighterglue.pt", "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat-lighterglue.pt"),
+        (
+            "xfeat-lighterglue.pt",
+            "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat-lighterglue.pt",
+        ),
     ],
     # ------------------------------------------------------------------
     "aliked": [
@@ -80,16 +100,46 @@ WEIGHTS: dict[str, list[tuple[str, str]]] = {
     ],
     # ------------------------------------------------------------------
     "dedode": [
-        ("dedode_detector_L.pth", "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_detector_L.pth"),
-        ("dedode_detector_C4.pth", "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_C4.pth"),
-        ("dedode_detector_SO2.pth", "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_SO2.pth"),
-        ("dedode_detector_L_v2.pth", "https://github.com/Parskatt/DeDoDe/releases/download/v2/dedode_detector_L_v2.pth"),
-        ("dedode_descriptor_B.pth", "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_B.pth"),
-        ("dedode_descriptor_G.pth", "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_G.pth"),
-        ("B_C4_Perm_descriptor_setting_C.pth", "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_C4_Perm_descriptor_setting_C.pth"),
-        ("B_SO2_Spread_descriptor_setting_C.pth", "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_SO2_Spread_descriptor_setting_C.pth"),
-        ("G_C4_Perm_descriptor_setting_C.pth", "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_C4_Perm_descriptor_setting_C.pth"),
-        ("G_SO2_Spread_descriptor_setting_C.pth", "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_SO2_Spread_descriptor_setting_C.pth"),
+        (
+            "dedode_detector_L.pth",
+            "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_detector_L.pth",
+        ),
+        (
+            "dedode_detector_C4.pth",
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_C4.pth",
+        ),
+        (
+            "dedode_detector_SO2.pth",
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_SO2.pth",
+        ),
+        (
+            "dedode_detector_L_v2.pth",
+            "https://github.com/Parskatt/DeDoDe/releases/download/v2/dedode_detector_L_v2.pth",
+        ),
+        (
+            "dedode_descriptor_B.pth",
+            "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_B.pth",
+        ),
+        (
+            "dedode_descriptor_G.pth",
+            "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_G.pth",
+        ),
+        (
+            "B_C4_Perm_descriptor_setting_C.pth",
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_C4_Perm_descriptor_setting_C.pth",
+        ),
+        (
+            "B_SO2_Spread_descriptor_setting_C.pth",
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_SO2_Spread_descriptor_setting_C.pth",
+        ),
+        (
+            "G_C4_Perm_descriptor_setting_C.pth",
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_C4_Perm_descriptor_setting_C.pth",
+        ),
+        (
+            "G_SO2_Spread_descriptor_setting_C.pth",
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_SO2_Spread_descriptor_setting_C.pth",
+        ),
     ],
     # ------------------------------------------------------------------
     "loftr": [
@@ -99,8 +149,14 @@ WEIGHTS: dict[str, list[tuple[str, str]]] = {
     ],
     # ------------------------------------------------------------------
     "hardnet": [
-        ("HardNetPP.pth", "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet%2B%2B.pth"),
-        ("checkpoint_liberty_with_aug.pth", "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth"),
+        (
+            "HardNetPP.pth",
+            "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet%2B%2B.pth",
+        ),
+        (
+            "checkpoint_liberty_with_aug.pth",
+            "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth",
+        ),
         ("hardnet8v2.pt", f"{MISHK}/hardnet8v2.pt"),
     ],
     # ------------------------------------------------------------------
@@ -111,7 +167,10 @@ WEIGHTS: dict[str, list[tuple[str, str]]] = {
     ],
     # ------------------------------------------------------------------
     "keynet": [
-        ("keynet_pytorch.pth", "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"),
+        (
+            "keynet_pytorch.pth",
+            "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth",
+        ),
     ],
     # ------------------------------------------------------------------
     "affnet": [
@@ -123,13 +182,22 @@ WEIGHTS: dict[str, list[tuple[str, str]]] = {
     ],
     # ------------------------------------------------------------------
     "sosnet": [
-        ("sosnet_32x32_liberty.pth", "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_liberty.pth"),
-        ("sosnet_32x32_hpatches_a.pth", "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_hpatches_a.pth"),
+        (
+            "sosnet_32x32_liberty.pth",
+            "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_liberty.pth",
+        ),
+        (
+            "sosnet_32x32_hpatches_a.pth",
+            "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_hpatches_a.pth",
+        ),
     ],
     # ------------------------------------------------------------------
     "tfeat": [
         ("tfeat-liberty.params", "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"),
-        ("tfeat-notredame.params", "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params"),
+        (
+            "tfeat-notredame.params",
+            "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params",
+        ),
         ("tfeat-yosemite.params", "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params"),
     ],
     # ------------------------------------------------------------------
@@ -142,26 +210,68 @@ WEIGHTS: dict[str, list[tuple[str, str]]] = {
     ],
     # ------------------------------------------------------------------
     "mobile_sam": [
-        ("mobile_sam.pt", "https://github.com/ChaoningZhang/MobileSAM/raw/a509aac54fdd7af59f843135f2f7cee307283c88/weights/mobile_sam.pt"),
+        (
+            "mobile_sam.pt",
+            "https://github.com/ChaoningZhang/MobileSAM/raw/a509aac54fdd7af59f843135f2f7cee307283c88/weights/mobile_sam.pt",
+        ),
     ],
     # ------------------------------------------------------------------
     "rt_detr": [
-        ("rtdetr_r18vd_dec3_6x_coco_from_paddle.pth", "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth"),
-        ("rtdetr_r34vd_dec4_6x_coco_from_paddle.pth", "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r34vd_dec4_6x_coco_from_paddle.pth"),
-        ("rtdetr_r50vd_m_6x_coco_from_paddle.pth", "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_m_6x_coco_from_paddle.pth"),
-        ("rtdetr_r50vd_6x_coco_from_paddle.pth", "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_6x_coco_from_paddle.pth"),
-        ("rtdetr_r101vd_6x_coco_from_paddle.pth", "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r101vd_6x_coco_from_paddle.pth"),
+        (
+            "rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
+            "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
+        ),
+        (
+            "rtdetr_r34vd_dec4_6x_coco_from_paddle.pth",
+            "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r34vd_dec4_6x_coco_from_paddle.pth",
+        ),
+        (
+            "rtdetr_r50vd_m_6x_coco_from_paddle.pth",
+            "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_m_6x_coco_from_paddle.pth",
+        ),
+        (
+            "rtdetr_r50vd_6x_coco_from_paddle.pth",
+            "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_6x_coco_from_paddle.pth",
+        ),
+        (
+            "rtdetr_r101vd_6x_coco_from_paddle.pth",
+            "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r101vd_6x_coco_from_paddle.pth",
+        ),
     ],
     # ------------------------------------------------------------------
     "tiny_vit": [
-        ("tiny_vit_5m_22k_distill.pth", "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22k_distill.pth"),
-        ("tiny_vit_5m_22kto1k_distill.pth", "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22kto1k_distill.pth"),
-        ("tiny_vit_11m_22k_distill.pth", "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22k_distill.pth"),
-        ("tiny_vit_11m_22kto1k_distill.pth", "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22kto1k_distill.pth"),
-        ("tiny_vit_21m_22k_distill.pth", "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22k_distill.pth"),
-        ("tiny_vit_21m_22kto1k_distill.pth", "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_distill.pth"),
-        ("tiny_vit_21m_22kto1k_384_distill.pth", "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_384_distill.pth"),
-        ("tiny_vit_21m_22kto1k_512_distill.pth", "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_512_distill.pth"),
+        (
+            "tiny_vit_5m_22k_distill.pth",
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22k_distill.pth",
+        ),
+        (
+            "tiny_vit_5m_22kto1k_distill.pth",
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22kto1k_distill.pth",
+        ),
+        (
+            "tiny_vit_11m_22k_distill.pth",
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22k_distill.pth",
+        ),
+        (
+            "tiny_vit_11m_22kto1k_distill.pth",
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22kto1k_distill.pth",
+        ),
+        (
+            "tiny_vit_21m_22k_distill.pth",
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22k_distill.pth",
+        ),
+        (
+            "tiny_vit_21m_22kto1k_distill.pth",
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_distill.pth",
+        ),
+        (
+            "tiny_vit_21m_22kto1k_384_distill.pth",
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_384_distill.pth",
+        ),
+        (
+            "tiny_vit_21m_22kto1k_512_distill.pth",
+            "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_512_distill.pth",
+        ),
     ],
 }
 
@@ -209,7 +319,6 @@ forward pass with a fully-convolutional architecture. CVPR 2024.
 }
 ```
 """,
-
     "lightglue": """\
 ---
 license: apache-2.0
@@ -255,7 +364,6 @@ fraction of the latency. ICCV 2023.
 }
 ```
 """,
-
     "aliked": """\
 ---
 license: other
@@ -301,7 +409,6 @@ IEEE Transactions on Instrumentation and Measurement, 2023.
 }
 ```
 """,
-
     "disk": """\
 ---
 license: mit
@@ -342,7 +449,6 @@ probability and per-pixel 128-dim descriptors via a U-Net backbone. NeurIPS 2020
 }
 ```
 """,
-
     "sold2": """\
 ---
 license: mit
@@ -381,7 +487,6 @@ shared encoder. Trained on wireframe and outdoor datasets. CVPR 2021.
 }
 ```
 """,
-
     "defmo": """\
 ---
 license: mit
@@ -422,7 +527,6 @@ Weights redistributed with permission from Denys Rozumnyi.
 }
 ```
 """,
-
     "dedode": """\
 ---
 license: mit
@@ -473,7 +577,6 @@ Supports upright and rotation-equivariant (C4 / SO2) variants. 3DV 2024.
 }
 ```
 """,
-
     "loftr": """\
 ---
 license: mit
@@ -513,7 +616,6 @@ and indoor (ScanNet) datasets. CVPR 2021.
 }
 ```
 """,
-
     "hardnet": """\
 ---
 license: mit
@@ -561,7 +663,6 @@ hard-negative mining triplet loss. NeurIPS 2017.
 }
 ```
 """,
-
     "hynet": """\
 ---
 license: mit
@@ -603,7 +704,6 @@ L2 distance and cosine similarity under a triplet margin loss. NeurIPS 2020.
 }
 ```
 """,
-
     "keynet": """\
 ---
 license: mit
@@ -641,7 +741,6 @@ under homographic transformations. ICCV 2019.
 }
 ```
 """,
-
     "affnet": """\
 ---
 license: mit
@@ -680,7 +779,6 @@ HardNet to maximise discriminability of affine-normalised patches. ECCV 2018.
 }
 ```
 """,
-
     "orinet": """\
 ---
 license: mit
@@ -719,7 +817,6 @@ Companion to AffNet. ECCV 2018.
 }
 ```
 """,
-
     "sosnet": """\
 ---
 license: mit
@@ -760,7 +857,6 @@ space reflects patch similarity at multiple scales. CVPR 2019.
 }
 ```
 """,
-
     "tfeat": """\
 ---
 license: other
@@ -803,7 +899,6 @@ standard patch benchmarks. BMVC 2016.
 }
 ```
 """,
-
     "yunet": """\
 ---
 license: mit
@@ -841,7 +936,6 @@ and a multi-scale FPN head. Runs in real time on CPU. IEEE TBIOM 2021.
 }
 ```
 """,
-
     "dexined": """\
 ---
 license: mit
@@ -879,7 +973,6 @@ WACV 2020.
 }
 ```
 """,
-
     "mobile_sam": """\
 ---
 license: apache-2.0
@@ -919,7 +1012,6 @@ arXiv 2023.
 }
 ```
 """,
-
     "rt_detr": """\
 ---
 license: apache-2.0
@@ -962,7 +1054,6 @@ intra-scale interaction module. Weights converted from PaddleDetection. CVPR 202
 }
 ```
 """,
-
     "tiny_vit": """\
 ---
 license: mit
@@ -1023,14 +1114,17 @@ def _download(url: str, dest: Path, chunk_size: int = 1 << 20) -> None:
     resp = requests.get(url, stream=True, timeout=120)
     resp.raise_for_status()
     total = int(resp.headers.get("content-length", 0)) or None
-    with dest.open("wb") as fh, tqdm(
-        total=total,
-        unit="B",
-        unit_scale=True,
-        unit_divisor=1024,
-        desc=dest.name,
-        leave=False,
-    ) as bar:
+    with (
+        dest.open("wb") as fh,
+        tqdm(
+            total=total,
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+            desc=dest.name,
+            leave=False,
+        ) as bar,
+    ):
         for chunk in resp.iter_content(chunk_size=chunk_size):
             fh.write(chunk)
             bar.update(len(chunk))
@@ -1057,9 +1151,9 @@ def upload_weights(
         files = WEIGHTS[model]
         card = MODEL_CARDS.get(model, "")
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Repo: {repo_id}  ({len(files)} file(s))")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         if not dry_run:
             api.create_repo(repo_id, repo_type=REPO_TYPE, exist_ok=True, private=False)

@@ -145,8 +145,14 @@ class DISK(nn.Module):
 
         """
         urls = {
-            "depth": [hf_url("disk", "depth-save.pth"), "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth"],
-            "epipolar": [hf_url("disk", "epipolar-save.pth"), "https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth"],
+            "depth": [
+                hf_url("disk", "depth-save.pth"),
+                "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",
+            ],
+            "epipolar": [
+                hf_url("disk", "epipolar-save.pth"),
+                "https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth",
+            ],
         }
 
         if checkpoint not in urls:

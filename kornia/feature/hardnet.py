@@ -26,8 +26,14 @@ from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import is_mps_tensor_safe
 
 urls: Dict[str, str] = {}
-urls["hardnet++"] = [hf_url("hardnet", "HardNetPP.pth"), "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth"]
-urls["liberty_aug"] = [hf_url("hardnet", "checkpoint_liberty_with_aug.pth"), "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth"]
+urls["hardnet++"] = [
+    hf_url("hardnet", "HardNetPP.pth"),
+    "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth",
+]
+urls["liberty_aug"] = [
+    hf_url("hardnet", "checkpoint_liberty_with_aug.pth"),
+    "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth",
+]
 urls["hardnet8v2"] = [hf_url("hardnet", "hardnet8v2.pt"), "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt"]
 
 

@@ -624,8 +624,14 @@ def _tiny_vit_5m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
             pretrained = "in1k"
 
         url = {
-            "in22k": [hf_url("tiny_vit", "tiny_vit_5m_22k_distill.pth"), "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22k_distill.pth"],
-            "in1k": [hf_url("tiny_vit", "tiny_vit_5m_22kto1k_distill.pth"), "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22kto1k_distill.pth"],
+            "in22k": [
+                hf_url("tiny_vit", "tiny_vit_5m_22k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22k_distill.pth",
+            ],
+            "in1k": [
+                hf_url("tiny_vit", "tiny_vit_5m_22kto1k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22kto1k_distill.pth",
+            ],
         }[pretrained]
         model = _load_pretrained(model, url)
 
@@ -647,8 +653,14 @@ def _tiny_vit_11m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
             pretrained = "in1k"
 
         url = {
-            "in22k": [hf_url("tiny_vit", "tiny_vit_11m_22k_distill.pth"), "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22k_distill.pth"],
-            "in1k": [hf_url("tiny_vit", "tiny_vit_11m_22kto1k_distill.pth"), "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22kto1k_distill.pth"],
+            "in22k": [
+                hf_url("tiny_vit", "tiny_vit_11m_22k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22k_distill.pth",
+            ],
+            "in1k": [
+                hf_url("tiny_vit", "tiny_vit_11m_22kto1k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22kto1k_distill.pth",
+            ],
         }[pretrained]
         model = _load_pretrained(model, url)
 
@@ -675,10 +687,22 @@ def _tiny_vit_21m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
                 pretrained = "in1k_512"
 
         url = {
-            "in22k": [hf_url("tiny_vit", "tiny_vit_21m_22k_distill.pth"), "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22k_distill.pth"],
-            "in1k": [hf_url("tiny_vit", "tiny_vit_21m_22kto1k_distill.pth"), "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_distill.pth"],
-            "in1k_384": [hf_url("tiny_vit", "tiny_vit_21m_22kto1k_384_distill.pth"), "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_384_distill.pth"],
-            "in1k_512": [hf_url("tiny_vit", "tiny_vit_21m_22kto1k_512_distill.pth"), "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_512_distill.pth"],
+            "in22k": [
+                hf_url("tiny_vit", "tiny_vit_21m_22k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22k_distill.pth",
+            ],
+            "in1k": [
+                hf_url("tiny_vit", "tiny_vit_21m_22kto1k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_distill.pth",
+            ],
+            "in1k_384": [
+                hf_url("tiny_vit", "tiny_vit_21m_22kto1k_384_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_384_distill.pth",
+            ],
+            "in1k_512": [
+                hf_url("tiny_vit", "tiny_vit_21m_22kto1k_512_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_512_distill.pth",
+            ],
         }[pretrained]
         model = _load_pretrained(model, url)
 

@@ -52,7 +52,10 @@ keynet_default_config: KeyNet_conf = {
     "Detector_conf": get_default_detector_config(),
 }
 
-KeyNet_URL = [hf_url("keynet", "keynet_pytorch.pth"), "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"]
+KeyNet_URL = [
+    hf_url("keynet", "keynet_pytorch.pth"),
+    "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth",
+]
 
 
 class _FeatureExtractor(nn.Module):

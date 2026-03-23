@@ -33,8 +33,6 @@ from .tensor_wrapper import TensorWrapper
 
 __all__ = [
     "ImageModule",
-    "hf_url",
-    "load_state_dict_from_url",
     "ImageModuleMixIn",
     "ImageSequential",
     "ONNXExportMixin",
@@ -43,5 +41,7 @@ __all__ = [
     "TensorWrapper",
     "external",
     "eye_like",
+    "hf_url",
+    "load_state_dict_from_url",
     "vec_like",
 ]

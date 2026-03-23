@@ -31,7 +31,10 @@ from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
 
 urls: Dict[str, str] = {}
-urls["wireframe"] = [hf_url("sold2", "sold2_wireframe.pth"), "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"]
+urls["wireframe"] = [
+    hf_url("sold2", "sold2_wireframe.pth"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
+]
 
 
 class SOLD2(nn.Module):
