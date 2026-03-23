@@ -103,9 +103,30 @@ The `device` and `dtype` fixtures are injected automatically. Use `self.assert_c
 - **Docstrings**: Follow existing codebase style; all public APIs need docstrings
 - Every source file must start with the Apache 2.0 license header (managed by `add-license-header`)
 
+## Benchmarks
+
+Scripts under `benchmarks/` measure the speed and/or quality of existing kornia functions, modules, or models. Each benchmark must:
+
+- Report **CPU and CUDA timings** in a table.
+- Include **quality metrics** where applicable (see `benchmarks/feature/` for an example with local-feature matching scores).
+- Record the **date, hardware description, and git commit hash** being evaluated at the top of the output or in a results file.
+- Benchmark **only the public kornia API** — no custom reimplementations or alternative snippets inside the script.
+
+### Workflow for performance PRs
+
+1. Check out `main` (or the relevant release tag) and run the benchmark to establish a baseline.
+2. Apply your changes on a new branch and run the same benchmark again.
+3. Include both result tables in the PR description so reviewers can compare before and after.
+
 ## Pre-commit Hooks
 
 Install hooks with `pre-commit install`. CI enforces ruff formatting, linting, and docformatter.
+
+## Documentation and Visualizations
+
+When adding a new feature detector or descriptor to `kornia/feature/`:
+- Add an entry to the `responses` list in `docs/generate_examples.py` with a corresponding `elif` block that produces a heatmap/score visualization (`(B, 3, H, W)` BGR image in `img_in`, `(B, 3, H, W)` response map in `out`).
+- See existing entries (`DISK`, `ALIKED`, `XFeat`) for the expected pattern.
 
 ## PR Requirements
 

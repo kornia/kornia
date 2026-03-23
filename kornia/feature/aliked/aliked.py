@@ -725,6 +725,8 @@ class ALIKED(nn.Module):
 
     See :cite:`zhao2023aliked` for details.
 
+    .. image:: _static/img/ALIKED.png
+
     Args:
         model_name: backbone configuration, one of
             ``'aliked-t16'``, ``'aliked-n16'``, ``'aliked-n16rot'``, ``'aliked-n32'``.
