@@ -17,6 +17,12 @@
 
 """XFeat: Accelerated Features for Lightweight Image Matching.
 
+This module is adapted from the original XFeat implementation:
+    https://github.com/verlab/accelerated_features
+
+Original work copyright (c) 2024 Verlab / UFMG, licensed under the Apache License 2.0.
+Modifications copyright (c) 2024 Kornia Team, licensed under the Apache License 2.0.
+
 Reference:
     Guilherme Potje, Felipe Cadar, Andre Araujo, Renato Martins, Erickson R. Nascimento.
     "XFeat: Accelerated Features for Lightweight Image Matching", CVPR 2024.
