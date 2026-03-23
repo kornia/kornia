@@ -22,6 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 from typing_extensions import TypedDict
 
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.filters import SpatialGradient
 from kornia.geometry.transform import pyrdown
 
@@ -51,7 +52,7 @@ keynet_default_config: KeyNet_conf = {
     "Detector_conf": get_default_detector_config(),
 }
 
-KeyNet_URL = "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"
+KeyNet_URL = [hf_url("keynet", "keynet_pytorch.pth"), "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"]
 
 
 class _FeatureExtractor(nn.Module):
@@ -172,7 +173,7 @@ class KeyNet(nn.Module):
         )
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(KeyNet_URL, map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(KeyNet_URL, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
         self.eval()
 

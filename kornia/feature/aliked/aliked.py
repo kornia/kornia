@@ -64,6 +64,7 @@ from torch import nn
 from torch.nn.modules.utils import _pair
 
 from kornia.color import grayscale_to_rgb
+from kornia.core.download import load_state_dict_from_url
 from kornia.geometry.subpix import nms2d
 
 from .deform_conv2d import deform_conv2d
@@ -709,7 +710,10 @@ _ALIKED_CFGS: dict[str, tuple[int, int, int, int, int, int, int]] = {
     "aliked-n32": (16, 32, 64, 128, 128, 3, 32),
 }
 
-_CHECKPOINT_URL = "https://github.com/Shiaoming/ALIKED/raw/main/models/{}.pth"
+_CHECKPOINT_URLS = [
+    "https://huggingface.co/kornia/aliked/resolve/main/{}.pth",
+    "https://github.com/Shiaoming/ALIKED/raw/main/models/{}.pth",
+]
 
 
 class ALIKED(nn.Module):
@@ -996,8 +1000,8 @@ class ALIKED(nn.Module):
             detection_threshold=detection_threshold,
             nms_radius=nms_radius,
         ).to(device)
-        url = _CHECKPOINT_URL.format(model_name)
-        state_dict = torch.hub.load_state_dict_from_url(url, map_location=device)
+        urls = [t.format(model_name) for t in _CHECKPOINT_URLS]
+        state_dict = load_state_dict_from_url(urls, map_location=device)
         model.load_state_dict(state_dict, strict=False)
         model.eval()
         return model

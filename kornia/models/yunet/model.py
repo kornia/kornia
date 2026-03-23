@@ -16,15 +16,17 @@
 #
 
 # based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
-from typing import Dict
+from typing import Dict, List, Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.download import hf_url, load_state_dict_from_url
+
 __all__ = ["YuNet"]
 
-url: str = "https://github.com/kornia/data/raw/main/yunet_final.pth"
+url: Union[str, List[str]] = [hf_url("yunet", "yunet_final.pth"), "https://github.com/kornia/data/raw/main/yunet_final.pth"]
 
 
 class ConvDPUnit(nn.Sequential):
@@ -104,7 +106,7 @@ class YuNet(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(url, map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(url, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

@@ -23,13 +23,14 @@ from torch import nn
 
 from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
 
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
 
 urls: Dict[str, str] = {}
-urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"
+urls["orinet"] = [hf_url("orinet", "OriNet.pth"), "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"]
 
 
 class PassLAF(nn.Module):
@@ -184,7 +185,7 @@ class OriNet(nn.Module):
         self.eps = eps
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["orinet"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["orinet"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=False)
         self.eval()
 

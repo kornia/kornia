@@ -21,10 +21,11 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url, load_state_dict_from_url
 
 urls: Dict[str, str] = {}
-urls["lib"] = "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_liberty.pth"
-urls["hp_a"] = "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_hpatches_a.pth"
+urls["lib"] = [hf_url("sosnet", "sosnet_32x32_liberty.pth"), "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_liberty.pth"]
+urls["hp_a"] = [hf_url("sosnet", "sosnet_32x32_hpatches_a.pth"), "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_hpatches_a.pth"]
 
 
 class SOSNet(nn.Module):
@@ -78,7 +79,7 @@ class SOSNet(nn.Module):
         self.desc_norm = nn.Sequential(nn.LocalResponseNorm(256, alpha=256.0, beta=0.5, k=0.0))
         # load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["lib"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["lib"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

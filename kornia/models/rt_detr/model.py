@@ -26,6 +26,7 @@ from typing import Optional
 
 import torch
 
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.models.base import ModelBase
 from kornia.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
@@ -33,11 +34,11 @@ from kornia.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 
 URLs = {
-    "rtdetr_r18vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
-    "rtdetr_r34vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r34vd_dec4_6x_coco_from_paddle.pth",
-    "rtdetr_r50vd_m": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_m_6x_coco_from_paddle.pth",
-    "rtdetr_r50vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_6x_coco_from_paddle.pth",
-    "rtdetr_r101vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r101vd_6x_coco_from_paddle.pth",
+    "rtdetr_r18vd": [hf_url("rt_detr", "rtdetr_r18vd_dec3_6x_coco_from_paddle.pth"), "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth"],
+    "rtdetr_r34vd": [hf_url("rt_detr", "rtdetr_r34vd_dec4_6x_coco_from_paddle.pth"), "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r34vd_dec4_6x_coco_from_paddle.pth"],
+    "rtdetr_r50vd_m": [hf_url("rt_detr", "rtdetr_r50vd_m_6x_coco_from_paddle.pth"), "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_m_6x_coco_from_paddle.pth"],
+    "rtdetr_r50vd": [hf_url("rt_detr", "rtdetr_r50vd_6x_coco_from_paddle.pth"), "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_6x_coco_from_paddle.pth"],
+    "rtdetr_r101vd": [hf_url("rt_detr", "rtdetr_r101vd_6x_coco_from_paddle.pth"), "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r101vd_6x_coco_from_paddle.pth"],
 }
 
 
@@ -230,7 +231,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
         if model_name not in URLs:
             raise ValueError(f"No pretrained model for '{model_name}'. Please select from {list(URLs.keys())}.")
 
-        state_dict = torch.hub.load_state_dict_from_url(
+        state_dict = load_state_dict_from_url(
             URLs[model_name], map_location="cuda:0" if torch.cuda.is_available() else "cpu"
         )
 
