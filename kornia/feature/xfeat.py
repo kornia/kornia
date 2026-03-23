@@ -267,6 +267,8 @@ class XFeat(nn.Module):
         "XFeat: Accelerated Features for Lightweight Image Matching", CVPR 2024.
         https://www.verlab.dcc.ufmg.br/descriptors/xfeat_cvpr24/
 
+    .. image:: _static/img/XFeat.png
+
     Args:
         top_k: maximum number of keypoints to keep per image. Default: ``4096``.
         detection_threshold: minimum keypoint score. Default: ``0.05``.
