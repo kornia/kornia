@@ -93,7 +93,7 @@ def load_state_dict_from_url(url: str | list[str], **kwargs: Any) -> dict[str, A
     for i, u in enumerate(urls):
         try:
             return torch.hub.load_state_dict_from_url(u, **kwargs)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             last_exc = e
             if i < len(urls) - 1:
                 warnings.warn(

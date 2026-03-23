@@ -36,7 +36,7 @@ from .laf import (
     set_laf_orientation,
 )
 
-urls: Dict[str, str] = {}
+urls: Dict[str, str | list[str]] = {}
 urls["affnet"] = [
     hf_url("affnet", "AffNet.pth"),
     "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth",

@@ -22,7 +22,7 @@ from torch import nn
 
 from kornia.core.download import hf_url, load_state_dict_from_url
 
-urls: Dict[str, str] = {}
+urls: Dict[str, str | list[str]] = {}
 urls["defmo_encoder"] = [
     hf_url("defmo", "encoder_best.pt"),
     "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt",

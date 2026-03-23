@@ -25,7 +25,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import is_mps_tensor_safe
 
-urls: Dict[str, str] = {}
+urls: Dict[str, str | list[str]] = {}
 urls["hardnet++"] = [
     hf_url("hardnet", "HardNetPP.pth"),
     "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth",

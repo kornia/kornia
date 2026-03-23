@@ -30,7 +30,7 @@ from kornia.geometry.conversions import normalize_pixel_coordinates
 from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
 
-urls: Dict[str, str] = {}
+urls: Dict[str, str | list[str]] = {}
 urls["wireframe"] = [
     hf_url("sold2", "sold2_wireframe.pth"),
     "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",

@@ -23,7 +23,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
 
-urls: Dict[str, str] = {}
+urls: Dict[str, str | list[str]] = {}
 urls["lib"] = [
     hf_url("sosnet", "sosnet_32x32_liberty.pth"),
     "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_liberty.pth",

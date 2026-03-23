@@ -31,7 +31,7 @@ from .utils.coarse_matching import CoarseMatching
 from .utils.fine_matching import FineMatching
 from .utils.position_encoding import PositionEncodingSine
 
-urls: dict[str, str] = {}
+urls: dict[str, str | list[str]] = {}
 urls["outdoor"] = [hf_url("loftr", "loftr_outdoor.ckpt"), "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt"]
 urls["indoor_new"] = [
     hf_url("loftr", "loftr_indoor_ds_new.ckpt"),

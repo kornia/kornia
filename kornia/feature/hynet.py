@@ -22,7 +22,7 @@ from torch import nn
 
 from kornia.core.download import hf_url, load_state_dict_from_url
 
-urls: Dict[str, str] = {}
+urls: Dict[str, str | list[str]] = {}
 urls["liberty"] = [
     hf_url("hynet", "HyNet_LIB.pth"),
     "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth",

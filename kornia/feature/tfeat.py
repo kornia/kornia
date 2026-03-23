@@ -23,7 +23,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.download import hf_url, load_state_dict_from_url
 
-urls: Dict[str, str] = {}
+urls: Dict[str, str | list[str]] = {}
 urls["liberty"] = [
     hf_url("tfeat", "tfeat-liberty.params"),
     "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params",
