@@ -230,10 +230,16 @@ class InterpolateSparse2d(nn.Module):
     def normgrid(self, x: torch.Tensor, H: int, W: int) -> torch.Tensor:
         """Normalise pixel coordinates to the ``[-1, 1]`` range expected by ``grid_sample``.
 
-        Uses the ``align_corners=False`` convention: pixel ``i`` maps to
-        ``-1 + (2*i + 1) / size``.
+        Matches ``self.align_corners``:
+
+        - ``False`` (default): pixel ``i`` maps to ``-1 + (2*i + 1) / size``.
+        - ``True``: pixel ``i`` maps to ``-1 + 2*i / (size - 1)``.
         """
-        return 2.0 * (x + 0.5) / torch.tensor([W, H], device=x.device, dtype=x.dtype) - 1.0
+        if self.align_corners:
+            size = torch.tensor([max(W - 1, 1), max(H - 1, 1)], device=x.device, dtype=x.dtype)
+            return 2.0 * x / size - 1.0
+        size = torch.tensor([W, H], device=x.device, dtype=x.dtype)
+        return 2.0 * (x + 0.5) / size - 1.0
 
     def forward(self, x: torch.Tensor, pos: torch.Tensor, H: int, W: int) -> torch.Tensor:
         """Sample ``x`` at positions ``pos``.
@@ -307,7 +313,7 @@ class XFeat(nn.Module):
     # ------------------------------------------------------------------
 
     def _preprocess_tensor(self, x: torch.Tensor) -> Tuple[torch.Tensor, float, float]:
-        """Resize image to the nearest multiple of 32 and return height/width scale ratios."""
+        """Resize to the largest multiple of 32 not exceeding the input size (min 32); return image and scale ratios."""
         KORNIA_CHECK(x.dim() == 4, "Input must be a 4-D tensor (B, C, H, W)")
         H, W = x.shape[-2:]
         _H, _W = max(32, (H // 32) * 32), max(32, (W // 32) * 32)
@@ -408,7 +414,7 @@ class XFeat(nn.Module):
         M1 = M1.permute(0, 2, 3, 1).reshape(B, -1, C)
         H1 = H1.permute(0, 2, 3, 1).reshape(B, -1)
         _, top_k_idx = torch.topk(H1, k=min(H1.shape[1], top_k), dim=-1)
-        feats = torch.gather(M1, 1, top_k_idx[..., None].expand(-1, -1, 64))
+        feats = torch.gather(M1, 1, top_k_idx[..., None].expand(-1, -1, C))
         mkpts = torch.gather(xy1, 1, top_k_idx[..., None].expand(-1, -1, 2))
         mkpts = mkpts * torch.tensor([rw1, rh1], device=mkpts.device).view(1, -1)
         return mkpts, feats
@@ -489,11 +495,11 @@ class XFeat(nn.Module):
         scores = (self._nearest(K1h, mkpts, _H1, _W1) * self._bilinear(H1, mkpts, _H1, _W1)).squeeze(-1)
         scores[torch.all(mkpts == -1, dim=-1)] = -1
 
-        idxs = torch.argsort(-scores)
-        mkpts_x = torch.gather(mkpts[..., 0], -1, idxs)[:, :top_k]
-        mkpts_y = torch.gather(mkpts[..., 1], -1, idxs)[:, :top_k]
+        k = min(top_k, scores.shape[-1])
+        scores, idxs = torch.topk(scores, k=k, dim=-1, largest=True, sorted=True)
+        mkpts_x = torch.gather(mkpts[..., 0], -1, idxs)
+        mkpts_y = torch.gather(mkpts[..., 1], -1, idxs)
         mkpts = torch.cat([mkpts_x[..., None], mkpts_y[..., None]], dim=-1)
-        scores = torch.gather(scores, -1, idxs)[:, :top_k]
 
         feats = self.interpolator(M1, mkpts, H=_H1, W=_W1)
         feats = F.normalize(feats, dim=-1)

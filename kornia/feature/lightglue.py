@@ -573,12 +573,6 @@ class LightGlue(nn.Module):
                 stacklevel=2,
             )
 
-        if (
-            hasattr(torch, "_inductor")
-            and hasattr(torch._inductor, "cudagraph_mark_step_begin")
-            and torch.cuda.is_available()
-        ):
-            torch._inductor.cudagraph_mark_step_begin()
         for i in range(self.conf.n_layers):
             self.transformers[i].masked_forward = torch.compile(  # type: ignore[assignment]
                 self.transformers[i].masked_forward, mode=mode, fullgraph=True
@@ -606,6 +600,13 @@ class LightGlue(nn.Module):
             matching_scores1: [B x N]
             matches: List[[Si x 2]], scores: List[[Si]]
         """
+        if (
+            self.static_lengths is not None
+            and hasattr(torch, "_inductor")
+            and hasattr(torch._inductor, "cudagraph_mark_step_begin")
+            and torch.cuda.is_available()
+        ):
+            torch._inductor.cudagraph_mark_step_begin()
         with torch.autocast(enabled=self.conf.mp, device_type="cuda"):
             return self._forward(data)
 
