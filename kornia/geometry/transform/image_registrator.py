@@ -252,7 +252,10 @@ class ImageRegistrator(nn.Module):
         self.reset_model()
         if src_img.shape != dst_img.shape:
             if not self.allow_shape_mismatch:
-                raise ValueError(f"Cannot register images of different shapes {src_img.shape} {dst_img.shape}")
+                raise ValueError(
+                    f"Cannot register images of different shapes {src_img.shape} {dst_img.shape}. "
+                    "Consider setting `allow_shape_mismatch = True`"
+                )
             src_img = F.interpolate(
                 src_img,
                 size=dst_img.shape[-2:],
