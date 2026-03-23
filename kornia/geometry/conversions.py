@@ -1300,7 +1300,7 @@ def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matri
     # v = fy * Y + cy
 
     fxfy = camera_matrix[..., :2, :2].diagonal(dim1=-2, dim2=-1)  # (*, 2)
-    cxcy = camera_matrix[..., :2, 2]                               # (*, 2)
+    cxcy = camera_matrix[..., :2, 2]  # (*, 2)
     if len(cxcy.shape) < len(point_2d_norm.shape):
         fxfy, cxcy = fxfy.unsqueeze(-2), cxcy.unsqueeze(-2)
     return point_2d_norm * fxfy + cxcy

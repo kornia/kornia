@@ -20,6 +20,7 @@ Usage:
     python benchmarks/geometry/depth_to_normals.py
     python benchmarks/geometry/depth_to_normals.py --cuda
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,10 +33,10 @@ import torch
 
 from kornia.geometry.depth import depth_to_normals
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _sync(device: str) -> None:
     if device == "cuda":
@@ -73,24 +74,25 @@ def _print_env() -> None:
 # Benchmark
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def run(device: str) -> None:
-    print(f"\n{'='*72}")
+    print(f"\n{'=' * 72}")
     print(f"  DEVICE : {device.upper()}")
-    print(f"{'='*72}")
+    print(f"{'=' * 72}")
 
     K_base = torch.eye(3, device=device, dtype=torch.float32)
     K_base[0, 0] = K_base[1, 1] = 500.0
     K_base[0, 2] = K_base[1, 2] = 320.0
 
     configs = [
-        ("B=1 H=64   W=64  ",  1,  64,  64),
-        ("B=1 H=256  W=256 ",  1, 256, 256),
-        ("B=4 H=480  W=640 ",  4, 480, 640),
-        ("B=1 H=720  W=1280",  1, 720, 1280),
+        ("B=1 H=64   W=64  ", 1, 64, 64),
+        ("B=1 H=256  W=256 ", 1, 256, 256),
+        ("B=4 H=480  W=640 ", 4, 480, 640),
+        ("B=1 H=720  W=1280", 1, 720, 1280),
     ]
 
     print(f"\n  {'config':<20s}  {'depth_to_normals':>20s}")
-    print(f"  {'-'*20}  {'-'*20}")
+    print(f"  {'-' * 20}  {'-' * 20}")
     for label, B, H, W in configs:
         K = K_base.unsqueeze(0).expand(B, -1, -1).contiguous()
         depth = torch.rand(B, 1, H, W, device=device, dtype=torch.float32).add_(0.1)

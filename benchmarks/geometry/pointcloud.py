@@ -30,6 +30,7 @@ Usage:
     python benchmarks/geometry/pointcloud.py --compile  # include torch.compile variants
     python benchmarks/geometry/pointcloud.py --cuda --compile
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,10 +47,10 @@ from kornia.geometry.conversions import convert_points_from_homogeneous, convert
 from kornia.geometry.depth import depth_to_3d, depth_to_3d_v2, depth_to_normals, unproject_meshgrid, warp_frame_depth
 from kornia.geometry.linalg import transform_points
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _sync(device: str) -> None:
     if device == "cuda":
@@ -88,6 +89,7 @@ def _print_env() -> None:
 # transform_points
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def bench_transform_points(device: str, dtype: torch.dtype = torch.float32, compile_: bool = False) -> None:
     print(f"\n--- transform_points  device={device} dtype={dtype} ---")
 
@@ -95,12 +97,12 @@ def bench_transform_points(device: str, dtype: torch.dtype = torch.float32, comp
     fn_c = torch.compile(fn) if compile_ else None
 
     configs = [
-        ("B=1   N=1K   single transform",   1,   1_000,  True),
-        ("B=8   N=10K  single transform",   8,  10_000,  True),
-        ("B=32  N=100K single transform",  32, 100_000,  True),
-        ("B=1   N=1K   per-sample transform",  1,   1_000,  False),
-        ("B=8   N=10K  per-sample transform",  8,  10_000,  False),
-        ("B=32  N=100K per-sample transform", 32, 100_000,  False),
+        ("B=1   N=1K   single transform", 1, 1_000, True),
+        ("B=8   N=10K  single transform", 8, 10_000, True),
+        ("B=32  N=100K single transform", 32, 100_000, True),
+        ("B=1   N=1K   per-sample transform", 1, 1_000, False),
+        ("B=8   N=10K  per-sample transform", 8, 10_000, False),
+        ("B=32  N=100K per-sample transform", 32, 100_000, False),
     ]
 
     for label, B, N, single_T in configs:
@@ -118,6 +120,7 @@ def bench_transform_points(device: str, dtype: torch.dtype = torch.float32, comp
 # project / unproject
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def bench_project_unproject(device: str, dtype: torch.dtype = torch.float32, compile_: bool = False) -> None:
     print(f"\n--- project_points / unproject_points  device={device} dtype={dtype} ---")
 
@@ -132,8 +135,8 @@ def bench_project_unproject(device: str, dtype: torch.dtype = torch.float32, com
         unproj_fn = torch.compile(unproj_fn)
 
     configs = [
-        ("B=1   N=1K  ", 1,   1_000),
-        ("B=8   N=10K ", 8,  10_000),
+        ("B=1   N=1K  ", 1, 1_000),
+        ("B=8   N=10K ", 8, 10_000),
         ("B=32  N=100K", 32, 100_000),
     ]
 
@@ -151,14 +154,15 @@ def bench_project_unproject(device: str, dtype: torch.dtype = torch.float32, com
 # homogeneous conversions
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def bench_homogeneous_conversions(device: str, dtype: torch.dtype = torch.float32) -> None:
     print(f"\n--- homogeneous conversions  device={device} dtype={dtype} ---")
 
     for label, shape, fn in [
-        ("N=1M  3-D → homogeneous",         (1_000_000, 3),    convert_points_to_homogeneous),
-        ("N=1M  4-D → euclidean",            (1_000_000, 4),    convert_points_from_homogeneous),
-        ("B=32  N=100K  3-D → homogeneous",  (32, 100_000, 3),  convert_points_to_homogeneous),
-        ("B=32  N=100K  4-D → euclidean",    (32, 100_000, 4),  convert_points_from_homogeneous),
+        ("N=1M  3-D → homogeneous", (1_000_000, 3), convert_points_to_homogeneous),
+        ("N=1M  4-D → euclidean", (1_000_000, 4), convert_points_from_homogeneous),
+        ("B=32  N=100K  3-D → homogeneous", (32, 100_000, 3), convert_points_to_homogeneous),
+        ("B=32  N=100K  4-D → euclidean", (32, 100_000, 4), convert_points_from_homogeneous),
     ]:
         x = torch.randn(*shape, device=device, dtype=dtype)
         bench(fn, x, device=device, label=label)
@@ -168,6 +172,7 @@ def bench_homogeneous_conversions(device: str, dtype: torch.dtype = torch.float3
 # depth_to_3d / depth_to_3d_v2 / depth_to_normals
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def bench_depth_functions(device: str, dtype: torch.dtype = torch.float32, compile_: bool = False) -> None:
     print(f"\n--- depth_to_3d / depth_to_3d_v2 / depth_to_normals  device={device} dtype={dtype} ---")
 
@@ -176,10 +181,10 @@ def bench_depth_functions(device: str, dtype: torch.dtype = torch.float32, compi
     K_base[0, 2] = K_base[1, 2] = 320.0
 
     configs = [
-        ("B=1 H=64   W=64  ",  1,  64,  64),
-        ("B=1 H=256  W=256 ",  1, 256, 256),
-        ("B=4 H=480  W=640 ",  4, 480, 640),
-        ("B=1 H=720  W=1280",  1, 720, 1280),
+        ("B=1 H=64   W=64  ", 1, 64, 64),
+        ("B=1 H=256  W=256 ", 1, 256, 256),
+        ("B=4 H=480  W=640 ", 4, 480, 640),
+        ("B=1 H=720  W=1280", 1, 720, 1280),
     ]
 
     for label, B, H, W in configs:
@@ -193,8 +198,10 @@ def bench_depth_functions(device: str, dtype: torch.dtype = torch.float32, compi
         grid = unproject_meshgrid(H, W, K_b, device=device, dtype=dtype)
         bench(
             functools.partial(depth_to_3d_v2, xyz_grid=grid),
-            depth3, K_b,
-            device=device, label=f"{label} depth_to_3d_v2 (cached grid)",
+            depth3,
+            K_b,
+            device=device,
+            label=f"{label} depth_to_3d_v2 (cached grid)",
         )
 
         bench(depth_to_normals, depth4, K_b, device=device, label=f"{label} depth_to_normals")
@@ -203,14 +210,17 @@ def bench_depth_functions(device: str, dtype: torch.dtype = torch.float32, compi
             fn_c = torch.compile(depth_to_3d_v2)
             bench(
                 functools.partial(fn_c, xyz_grid=grid),
-                depth3, K_b,
-                device=device, label=f"{label} depth_to_3d_v2 (cached + compiled)",
+                depth3,
+                K_b,
+                device=device,
+                label=f"{label} depth_to_3d_v2 (cached + compiled)",
             )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # warp_frame_depth
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def bench_warp_frame_depth(device: str, dtype: torch.dtype = torch.float32) -> None:
     print(f"\n--- warp_frame_depth  device={device} dtype={dtype} ---")
@@ -220,9 +230,9 @@ def bench_warp_frame_depth(device: str, dtype: torch.dtype = torch.float32) -> N
     K_base[0, 2] = K_base[1, 2] = 320.0
 
     configs = [
-        ("B=1 C=3 H=256  W=256 ",  1, 3, 256, 256),
-        ("B=4 C=3 H=480  W=640 ",  4, 3, 480, 640),
-        ("B=1 C=3 H=720  W=1280",  1, 3, 720, 1280),
+        ("B=1 C=3 H=256  W=256 ", 1, 3, 256, 256),
+        ("B=4 C=3 H=480  W=640 ", 4, 3, 480, 640),
+        ("B=1 C=3 H=720  W=1280", 1, 3, 720, 1280),
     ]
 
     for label, B, C, H, W in configs:
@@ -237,6 +247,7 @@ def bench_warp_frame_depth(device: str, dtype: torch.dtype = torch.float32) -> N
 # ─────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def run_all(device: str, compile_: bool = False) -> None:
     sep = "=" * 72
@@ -257,8 +268,7 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--cuda", action="store_true", help="also run on CUDA")
-    parser.add_argument("--compile", action="store_true", dest="compile_",
-                        help="include torch.compile variants")
+    parser.add_argument("--compile", action="store_true", dest="compile_", help="include torch.compile variants")
     args = parser.parse_args()
 
     _print_env()
