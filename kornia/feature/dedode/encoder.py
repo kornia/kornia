@@ -20,6 +20,8 @@ from typing import Any, Optional, Tuple
 import torch
 from torch import nn
 
+from kornia.core.download import load_state_dict_from_url
+
 from .vgg import vgg19_bn
 
 
@@ -59,7 +61,7 @@ class FrozenDINOv2(nn.Module):
     def __init__(self, amp: bool = True, amp_dtype: torch.dtype = torch.float16, dinov2_weights: Optional[Any] = None):
         super().__init__()
         if dinov2_weights is None:
-            dinov2_weights = torch.hub.load_state_dict_from_url(
+            dinov2_weights = load_state_dict_from_url(
                 "https://dl.fbaipublicfiles.com/dinov2/dinov2_vitl14/dinov2_vitl14_pretrain.pth", map_location="cpu"
             )
         from .transformer import vit_large

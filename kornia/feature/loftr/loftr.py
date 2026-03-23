@@ -32,12 +32,18 @@ from .utils.fine_matching import FineMatching
 from .utils.position_encoding import PositionEncodingSine
 
 urls: dict[str, str | list[str]] = {}
-urls["outdoor"] = [hf_url("loftr", "loftr_outdoor.ckpt"), "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt"]
+urls["outdoor"] = [
+    hf_url("loftr", "loftr_outdoor.ckpt"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt",
+]
 urls["indoor_new"] = [
     hf_url("loftr", "loftr_indoor_ds_new.ckpt"),
     "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor_ds_new.ckpt",
 ]
-urls["indoor"] = [hf_url("loftr", "loftr_indoor.ckpt"), "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt"]
+urls["indoor"] = [
+    hf_url("loftr", "loftr_indoor.ckpt"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt",
+]
 
 # Comments: the config below is the one corresponding to the pretrained models
 # Some do not change there anything, unless you want to retrain it.

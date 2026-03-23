@@ -34,7 +34,10 @@ urls["liberty_aug"] = [
     hf_url("hardnet", "checkpoint_liberty_with_aug.pth"),
     "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth",
 ]
-urls["hardnet8v2"] = [hf_url("hardnet", "hardnet8v2.pt"), "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt"]
+urls["hardnet8v2"] = [
+    hf_url("hardnet", "hardnet8v2.pt"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt",
+]
 
 
 class HardNet(nn.Module):

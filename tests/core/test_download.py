@@ -27,7 +27,9 @@ from kornia.core.download import hf_url, load_state_dict_from_url
 
 class TestHfUrl:
     def test_format(self) -> None:
-        assert hf_url("hardnet", "HardNetPP.pth") == "https://huggingface.co/kornia/hardnet/resolve/main/HardNetPP.pth"
+        assert hf_url("hardnet", "HardNetPP.pth") == (
+            "https://huggingface.co/kornia/hardnet/resolve/main/HardNetPP.pth"
+        )
 
     def test_subdirectory(self) -> None:
         url = hf_url("loftr", "loftr_outdoor.ckpt")

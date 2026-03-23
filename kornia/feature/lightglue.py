@@ -511,7 +511,7 @@ class LightGlue(nn.Module):
             if features == "dog_affnet_hardnet":
                 features = "doghardnet"  # new dog model is better for affnet as well
             if features in ["keynet_affnet_hardnet"]:
-                fname = "keynet_affnet_hardnet_lightlue.pth"
+                fname = "keynet_affnet_hardnet_lightglue.pth"
                 url = [
                     hf_url("lightglue", "keynet_affnet_hardnet_lightglue.pth"),
                     "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth",
