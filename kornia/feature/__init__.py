@@ -63,6 +63,7 @@ from .laf import (
     set_laf_orientation,
 )
 from .lightglue import LightGlue
+from .xfeat import InterpolateSparse2d, XFeat, XFeatModel
 from .lightglue_onnx import OnnxLightGlue
 from .loftr import LoFTR
 from .matching import (
@@ -131,8 +132,11 @@ __all__ = [
     "LAFDescriptor",
     "LAFDescriptor",
     "LAFOrienter",
+    "InterpolateSparse2d",
     "LightGlue",
     "LightGlueMatcher",
+    "XFeat",
+    "XFeatModel",
     "LoFTR",
     "LocalFeature",
     "LocalFeature",

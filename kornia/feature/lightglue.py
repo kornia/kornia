@@ -44,7 +44,14 @@ def math_clamp(x, min_, max_):  # type: ignore
     return min(max(x, min_), max_)
 
 
-@torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
+AMP_CUSTOM_FWD_F32 = (
+    torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
+    if hasattr(torch, "amp") and hasattr(torch.amp, "custom_fwd")
+    else torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
+)
+
+
+@AMP_CUSTOM_FWD_F32
 def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
     """Normalize torch.Tensor of keypoints."""
     if isinstance(size, torch.Size):
@@ -445,6 +452,20 @@ class LightGlue(nn.Module):
             "weights": "aliked_lightglue",
             "input_dim": 128,
         },
+        "raco-aliked": {
+            "weights": "raco_aliked_lightglue",
+            "input_dim": 128,
+        },
+        "xfeat": {
+            "weights": "xfeat_lighterglue",
+            "input_dim": 64,
+            "descriptor_dim": 96,
+            "n_layers": 6,
+            "num_heads": 1,
+            "depth_confidence": -1,
+            "width_confidence": 0.95,
+            "filter_threshold": 0.1,
+        },
         "sift": {
             "weights": "sift_lightglue",
             "input_dim": 128,
@@ -518,14 +539,19 @@ class LightGlue(nn.Module):
             elif features in ["dedodeg"]:
                 fname = "dedodeg_lightglue.pth"
                 url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth"
+            elif features == "xfeat":
+                fname = "xfeat-lighterglue.pt"
+                url = "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat-lighterglue.pt"
             else:
-                url = self.url.format(self.version, features)
+                url = self.url.format(self.version, features.replace("-", "_"))
             state_dict = torch.hub.load_state_dict_from_url(url, file_name=fname)
         elif conf.weights is not None:
             path = Path(__file__).parent
             path = path / f"weights/{self.conf.weights}.pth"
             state_dict = torch.load(str(path), map_location="cpu")
         if state_dict:
+            # xfeat-lighterglue weights are nested under a 'matcher.' prefix
+            state_dict = {k.replace("matcher.", ""): v for k, v in state_dict.items()}
             # rename old state dict entries
             for i in range(self.conf.n_layers):
                 pattern = f"self_attn.{i}", f"transformers.{i}.self_attn"
@@ -546,6 +572,7 @@ class LightGlue(nn.Module):
                 stacklevel=2,
             )
 
+        torch._inductor.cudagraph_mark_step_begin()
         for i in range(self.conf.n_layers):
             self.transformers[i].masked_forward = torch.compile(  # type: ignore[assignment]
                 self.transformers[i].masked_forward, mode=mode, fullgraph=True
