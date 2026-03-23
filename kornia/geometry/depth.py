@@ -134,8 +134,10 @@ def depth_to_3d_v2(
 
     # create base grid if not provided
     height, width = depth.shape[-2:]
-    points_xyz: torch.Tensor = xyz_grid or unproject_meshgrid(
-        height, width, camera_matrix, normalize_points, depth.device, depth.dtype
+    points_xyz: torch.Tensor = (
+        xyz_grid
+        if xyz_grid is not None
+        else unproject_meshgrid(height, width, camera_matrix, normalize_points, depth.device, depth.dtype)
     )
 
     KORNIA_CHECK_SHAPE(points_xyz, ["*", "H", "W", "3"])
@@ -214,17 +216,20 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     KORNIA_CHECK_SHAPE(depth, ["B", "1", "H", "W"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
-    # compute the 3d points from depth
-    xyz: torch.Tensor = depth_to_3d(depth, camera_matrix, normalize_points)  # Bx3xHxW
+    # compute the 3d points from depth; permute to channel-first for spatial_gradient
+    xyz: torch.Tensor = depth_to_3d_v2(depth.squeeze(1), camera_matrix, normalize_points).permute(0, 3, 1, 2)  # Bx3xHxW
 
     # compute the pointcloud spatial gradients
     gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
 
-    # compute normals
-    a, b = gradients[:, :, 0], gradients[:, :, 1]  # Bx3xHxW
+    # Rearrange to (B, H, W, 3) before cross product so the 3 XYZ components are
+    # contiguous in memory.  Cross product along dim=1 on a (B,3,H,W) tensor strides
+    # H*W elements between components, causing severe cache thrashing on CPU.
+    a: torch.Tensor = gradients[:, :, 0].permute(0, 2, 3, 1).contiguous()  # BxHxWx3
+    b: torch.Tensor = gradients[:, :, 1].permute(0, 2, 3, 1).contiguous()  # BxHxWx3
 
-    normals: torch.Tensor = torch.linalg.cross(a, b, dim=1)
-    return F.normalize(normals, dim=1, p=2)
+    normals: torch.Tensor = torch.linalg.cross(a, b, dim=-1)  # BxHxWx3
+    return F.normalize(normals, dim=-1, p=2).permute(0, 3, 1, 2)  # Bx3xHxW
 
 
 def depth_from_plane_equation(
@@ -300,11 +305,8 @@ def warp_frame_depth(
     KORNIA_CHECK_SHAPE(src_trans_dst, ["B", "4", "4"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
-    # unproject source points to camera frame
-    points_3d_dst: torch.Tensor = depth_to_3d(depth_dst, camera_matrix, normalize_points)  # Bx3xHxW
-
-    # transform points from source to destination
-    points_3d_dst = points_3d_dst.permute(0, 2, 3, 1)  # BxHxWx3
+    # unproject source points to camera frame as (B, H, W, 3) directly — avoids two permutes
+    points_3d_dst: torch.Tensor = depth_to_3d_v2(depth_dst.squeeze(1), camera_matrix, normalize_points)  # BxHxWx3
 
     # apply transformation to the 3d points
     points_3d_src = transform_points(src_trans_dst[:, None], points_3d_dst)  # BxHxWx3

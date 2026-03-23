@@ -206,8 +206,9 @@ max-statements = 64  # Recommended: 50
   "RUF012",
   "S101",
   "S311",
+  "S603",
   "D",
-]  # allow assert, random, ignore BLE, mutable class attr
+]  # allow assert, random, subprocess calls, ignore BLE, mutable class attr
 "docs/*" = [
   "PLR0912",
   "PLR0915",
