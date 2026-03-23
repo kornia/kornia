@@ -29,6 +29,11 @@ class TestMedianBlur(BaseTester):
         actual = median_blur(inp, 3)
         assert isinstance(actual, torch.Tensor)
 
+    def test_empty_batch(self, device, dtype):
+        inp = torch.zeros(0, 3, 4, 4, device=device, dtype=dtype)
+        actual = median_blur(inp, (3, 5))
+        assert actual.shape == (0, 3, 4, 4)
+
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.parametrize("kernel_size", [3, (5, 7)])
     def test_cardinality(self, batch_size, kernel_size, device, dtype):
