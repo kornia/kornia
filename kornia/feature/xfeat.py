@@ -230,16 +230,12 @@ class InterpolateSparse2d(nn.Module):
     def normgrid(self, x: torch.Tensor, H: int, W: int) -> torch.Tensor:
         """Normalise pixel coordinates to the ``[-1, 1]`` range expected by ``grid_sample``.
 
-        Matches ``self.align_corners``:
-
-        - ``False`` (default): pixel ``i`` maps to ``-1 + (2*i + 1) / size``.
-        - ``True``: pixel ``i`` maps to ``-1 + 2*i / (size - 1)``.
+        Uses the formula from the original XFeat implementation:
+        ``2 * x / [W-1, H-1] - 1``.  Note that ``grid_sample`` is always
+        called with ``align_corners=False``; this asymmetry matches the
+        convention the pretrained weights were trained with.
         """
-        if self.align_corners:
-            size = torch.tensor([max(W - 1, 1), max(H - 1, 1)], device=x.device, dtype=x.dtype)
-            return 2.0 * x / size - 1.0
-        size = torch.tensor([W, H], device=x.device, dtype=x.dtype)
-        return 2.0 * (x + 0.5) / size - 1.0
+        return 2.0 * (x / torch.tensor([W - 1, H - 1], device=x.device, dtype=x.dtype)) - 1.0
 
     def forward(self, x: torch.Tensor, pos: torch.Tensor, H: int, W: int) -> torch.Tensor:
         """Sample ``x`` at positions ``pos``.
@@ -254,7 +250,10 @@ class InterpolateSparse2d(nn.Module):
             Sampled features :math:`(B, N, C)`.
         """
         grid = self.normgrid(pos, H, W).unsqueeze(-2).to(x.dtype)
-        x = F.grid_sample(x, grid, mode=self.mode, align_corners=self.align_corners)
+        # align_corners=False is intentional: the pretrained XFeat weights were trained
+        # with normgrid using the (W-1) denominator but grid_sample using align_corners=False.
+        # Changing either side would break compatibility with the pretrained weights.
+        x = F.grid_sample(x, grid, mode=self.mode, align_corners=False)
         return x.permute(0, 2, 3, 1).squeeze(-2)
 
 
