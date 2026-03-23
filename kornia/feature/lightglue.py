@@ -551,7 +551,8 @@ class LightGlue(nn.Module):
             state_dict = torch.load(str(path), map_location="cpu")
         if state_dict:
             # xfeat-lighterglue weights are nested under a 'matcher.' prefix
-            state_dict = {k.replace("matcher.", ""): v for k, v in state_dict.items()}
+            prefix = "matcher."
+            state_dict = {k[len(prefix):] if k.startswith(prefix) else k: v for k, v in state_dict.items()}
             # rename old state dict entries
             for i in range(self.conf.n_layers):
                 pattern = f"self_attn.{i}", f"transformers.{i}.self_attn"
@@ -572,7 +573,12 @@ class LightGlue(nn.Module):
                 stacklevel=2,
             )
 
-        torch._inductor.cudagraph_mark_step_begin()
+        if (
+            hasattr(torch, "_inductor")
+            and hasattr(torch._inductor, "cudagraph_mark_step_begin")
+            and torch.cuda.is_available()
+        ):
+            torch._inductor.cudagraph_mark_step_begin()
         for i in range(self.conf.n_layers):
             self.transformers[i].masked_forward = torch.compile(  # type: ignore[assignment]
                 self.transformers[i].masked_forward, mode=mode, fullgraph=True

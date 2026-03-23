@@ -199,8 +199,8 @@ class XFeatModel(nn.Module):
         x4 = self.block4(x3)
         x5 = self.block5(x4)
 
-        x4 = F.interpolate(x4, (x3.shape[-2], x3.shape[-1]), mode="bilinear")
-        x5 = F.interpolate(x5, (x3.shape[-2], x3.shape[-1]), mode="bilinear")
+        x4 = F.interpolate(x4, (x3.shape[-2], x3.shape[-1]), mode="bilinear", align_corners=False)
+        x5 = F.interpolate(x5, (x3.shape[-2], x3.shape[-1]), mode="bilinear", align_corners=False)
         feats = self.block_fusion(x3 + x4 + x5)
 
         heatmap = self.heatmap_head(feats)
@@ -228,8 +228,12 @@ class InterpolateSparse2d(nn.Module):
         self.align_corners = align_corners
 
     def normgrid(self, x: torch.Tensor, H: int, W: int) -> torch.Tensor:
-        """Normalise pixel coordinates to the ``[-1, 1]`` range expected by ``grid_sample``."""
-        return 2.0 * (x / torch.tensor([W - 1, H - 1], device=x.device, dtype=x.dtype)) - 1.0
+        """Normalise pixel coordinates to the ``[-1, 1]`` range expected by ``grid_sample``.
+
+        Uses the ``align_corners=False`` convention: pixel ``i`` maps to
+        ``-1 + (2*i + 1) / size``.
+        """
+        return 2.0 * (x + 0.5) / torch.tensor([W, H], device=x.device, dtype=x.dtype) - 1.0
 
     def forward(self, x: torch.Tensor, pos: torch.Tensor, H: int, W: int) -> torch.Tensor:
         """Sample ``x`` at positions ``pos``.
@@ -244,7 +248,7 @@ class InterpolateSparse2d(nn.Module):
             Sampled features :math:`(B, N, C)`.
         """
         grid = self.normgrid(pos, H, W).unsqueeze(-2).to(x.dtype)
-        x = F.grid_sample(x, grid, mode=self.mode, align_corners=False)
+        x = F.grid_sample(x, grid, mode=self.mode, align_corners=self.align_corners)
         return x.permute(0, 2, 3, 1).squeeze(-2)
 
 
@@ -278,6 +282,8 @@ class XFeat(nn.Module):
         self.detection_threshold = detection_threshold
         self.net = XFeatModel()
         self.interpolator = InterpolateSparse2d("bicubic")
+        self._nearest = InterpolateSparse2d("nearest")
+        self._bilinear = InterpolateSparse2d("bilinear")
 
     @classmethod
     def from_pretrained(cls, top_k: int = 4096, detection_threshold: float = 0.05) -> XFeat:
@@ -304,7 +310,7 @@ class XFeat(nn.Module):
         """Resize image to the nearest multiple of 32 and return height/width scale ratios."""
         KORNIA_CHECK(x.dim() == 4, "Input must be a 4-D tensor (B, C, H, W)")
         H, W = x.shape[-2:]
-        _H, _W = (H // 32) * 32, (W // 32) * 32
+        _H, _W = max(32, (H // 32) * 32), max(32, (W // 32) * 32)
         rh, rw = H / _H, W / _W
         x = F.interpolate(x.float(), (_H, _W), mode="bilinear", align_corners=False)
         return x, rh, rw
@@ -324,7 +330,7 @@ class XFeat(nn.Module):
         pos = nms2d(x, (kernel_size, kernel_size), mask_only=True) & (x > threshold)
         pos_batched = [k.nonzero()[..., 1:].flip(-1) for k in pos]
         pad_val = max(len(p) for p in pos_batched)
-        pos_out = torch.zeros((B, pad_val, 2), dtype=torch.long, device=x.device)
+        pos_out = torch.full((B, pad_val, 2), -1, dtype=torch.long, device=x.device)
         for b in range(B):
             pos_out[b, : len(pos_batched[b])] = pos_batched[b]
         return pos_out
@@ -480,10 +486,8 @@ class XFeat(nn.Module):
         K1h = self._get_kpts_heatmap(K1)
         mkpts = self._nms(K1h, threshold=detection_threshold, kernel_size=5)
 
-        _nearest = InterpolateSparse2d("nearest")
-        _bilinear = InterpolateSparse2d("bilinear")
-        scores = (_nearest(K1h, mkpts, _H1, _W1) * _bilinear(H1, mkpts, _H1, _W1)).squeeze(-1)
-        scores[torch.all(mkpts == 0, dim=-1)] = -1
+        scores = (self._nearest(K1h, mkpts, _H1, _W1) * self._bilinear(H1, mkpts, _H1, _W1)).squeeze(-1)
+        scores[torch.all(mkpts == -1, dim=-1)] = -1
 
         idxs = torch.argsort(-scores)
         mkpts_x = torch.gather(mkpts[..., 0], -1, idxs)[:, :top_k]

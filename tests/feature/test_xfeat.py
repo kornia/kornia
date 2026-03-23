@@ -355,7 +355,7 @@ def test_xfeat_reference_keypoints(device, data):
     ref_kpts0 = data["xfeat_kpts0"].to(device)
     ref_kpts1 = data["xfeat_kpts1"].to(device)
 
-    # At least 90 % of computed keypoints must lie within 3 px of a reference keypoint
+    # At least 99 % of computed keypoints must lie within 3 px of a reference keypoint
     assert _nn_match_fraction(out1["keypoints"], ref_kpts0, max_dist=3.0) > 0.99
     assert _nn_match_fraction(out2["keypoints"], ref_kpts1, max_dist=3.0) > 0.99
     # Symmetric: reference keypoints are also covered by computed set
@@ -366,7 +366,7 @@ def test_xfeat_reference_keypoints(device, data):
 @pytest.mark.slow
 @pytest.mark.parametrize("data", ["xfeat_outdoor"], indirect=True)
 def test_lighterglue_reference_matches(device, data):
-    """LighterGlue matched pixel-coordinate pairs overlap ≥80 % with reference (order-independent)."""
+    """LighterGlue matched pixel-coordinate pairs overlap ≥95 % with reference (order-independent)."""
     xfeat = XFeat.from_pretrained(top_k=1024).to(device)
     img1 = data["img1"].to(device)
     img2 = data["img2"].to(device)
@@ -413,6 +413,6 @@ def test_lighterglue_reference_matches(device, data):
     assert n_comp > n_ref / 2, f"Too few matches: {n_comp} vs reference {n_ref}"
     assert n_comp < n_ref * 2, f"Too many matches: {n_comp} vs reference {n_ref}"
 
-    # NN matching in joint (x0,y0,x1,y1) space with 6-px tolerance per coordinate pair
+    # NN matching in joint (x0,y0,x1,y1) space with max L2 distance 2.0
     frac = _nn_match_fraction(ref_pairs, comp_pairs, max_dist=2.0)
-    assert frac > 0.95, f"Only {frac:.1%} of reference matches reproduced within 6 px"
+    assert frac > 0.95, f"Only {frac:.1%} of reference matches reproduced within joint distance 2.0 px"
