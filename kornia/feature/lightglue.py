@@ -552,7 +552,7 @@ class LightGlue(nn.Module):
         if state_dict:
             # xfeat-lighterglue weights are nested under a 'matcher.' prefix
             prefix = "matcher."
-            state_dict = {k[len(prefix):] if k.startswith(prefix) else k: v for k, v in state_dict.items()}
+            state_dict = {k[len(prefix) :] if k.startswith(prefix) else k: v for k, v in state_dict.items()}
             # rename old state dict entries
             for i in range(self.conf.n_layers):
                 pattern = f"self_attn.{i}", f"transformers.{i}.self_attn"
