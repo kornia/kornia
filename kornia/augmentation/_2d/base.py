@@ -48,7 +48,7 @@ class AugmentationBase2D(_AugmentationBase):
 
     def validate_tensor(self, input: torch.Tensor) -> None:
         """Check if the input torch.Tensor is formatted as expected."""
-        _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
+        _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
         if len(input.shape) != 4:
             raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")
 
@@ -56,7 +56,7 @@ class AugmentationBase2D(_AugmentationBase):
         self, input: torch.Tensor, *, shape: Optional[torch.Tensor] = None, match_channel: bool = True
     ) -> torch.Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
-        _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
+        _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
 
         if shape is None:
             return _transform_input(input)

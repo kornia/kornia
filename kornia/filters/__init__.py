@@ -34,7 +34,7 @@ from .blur_pool import (
 )
 from .canny import Canny, canny
 from .dissolving import StableDiffusionDissolving
-from .filter import filter2d, filter2d_separable, filter3d
+from .filter import fft_conv, filter2d, filter2d_separable, filter3d
 from .gaussian import GaussianBlur2d, gaussian_blur2d, gaussian_blur2d_t
 from .guided import GuidedBlur, guided_blur
 from .in_range import InRange, in_range
@@ -95,6 +95,7 @@ __all__ = [
     "box_blur",
     "canny",
     "edge_aware_blur_pool2d",
+    "fft_conv",
     "filter2d",
     "filter2d_separable",
     "filter3d",

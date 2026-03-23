@@ -88,7 +88,7 @@ def rgb_to_grayscale(image: torch.Tensor, rgb_weights: Optional[torch.Tensor] = 
         if image.dtype == torch.uint8:
             rgb_weights = torch.tensor([76, 150, 29], device=image.device, dtype=torch.uint8)
         # floating point images
-        elif image.dtype in (torch.float16, torch.float32, torch.float64):
+        elif image.dtype in (torch.bfloat16, torch.float16, torch.float32, torch.float64):
             rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
         else:
             raise TypeError(f"Unknown data type: {image.dtype}")

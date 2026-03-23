@@ -17,8 +17,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -53,7 +51,7 @@ class Conv(nn.Sequential):
 
 
 class ThinUnetDownBlock(nn.Sequential):
-    def __init__(self, in_: int, out_: int, size: int = 5, is_first: bool = False, setup: Any = None) -> None:
+    def __init__(self, in_: int, out_: int, size: int = 5, is_first: bool = False) -> None:
         self.in_ = in_
         self.out_ = out_
 
@@ -69,7 +67,7 @@ class ThinUnetDownBlock(nn.Sequential):
 
 
 class ThinUnetUpBlock(nn.Module):
-    def __init__(self, bottom_: int, horizontal_: int, out_: int, size: int = 5, setup: Any = None) -> None:
+    def __init__(self, bottom_: int, horizontal_: int, out_: int, size: int = 5) -> None:
         super().__init__()
 
         self.bottom_ = bottom_

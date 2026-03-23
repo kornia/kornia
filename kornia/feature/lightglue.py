@@ -624,6 +624,26 @@ class LightGlue(nn.Module):
         desc0 = data0["descriptors"].detach().contiguous()
         desc1 = data1["descriptors"].detach().contiguous()
 
+        # Guard against empty-descriptors after pruning
+        if desc0.shape[1] == 0 or desc1.shape[1] == 0:
+            empty_m0 = torch.full((b, m), -1, device=device, dtype=torch.long)
+            empty_m1 = torch.full((b, n), -1, device=device, dtype=torch.long)
+            empty_s0 = torch.zeros((b, m), device=device)
+            empty_s1 = torch.zeros((b, n), device=device)
+
+            return {
+                "log_assignment": torch.empty((b, 1, 1), device=device),
+                "matches0": empty_m0,
+                "matches1": empty_m1,
+                "matching_scores0": empty_s0,
+                "matching_scores1": empty_s1,
+                "stop": 0,
+                "matches": [torch.empty((0, 2), device=device, dtype=torch.long) for _ in range(b)],
+                "scores": [torch.empty((0,), device=device) for _ in range(b)],
+                "prune0": torch.ones_like(empty_s0) * self.conf.n_layers,
+                "prune1": torch.ones_like(empty_s1) * self.conf.n_layers,
+            }
+
         KORNIA_CHECK(desc0.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
         KORNIA_CHECK(desc1.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
 
@@ -708,6 +728,7 @@ class LightGlue(nn.Module):
 
         scores, _ = self.log_assignment[i](desc0, desc1)
         m0, m1, mscores0, mscores1 = filter_matches(scores, self.conf.filter_threshold)
+
         matches, mscores = [], []
         for k in range(b):
             valid = m0[k] > -1

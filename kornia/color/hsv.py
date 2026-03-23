@@ -107,7 +107,7 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     q: torch.Tensor = v * (1.0 - f * s)
     t: torch.Tensor = v * (1.0 - (1.0 - f) * s)
 
-    hi = hi.long()
+    hi = hi.long().clamp_(0, 5)
     indices: torch.Tensor = torch.stack([hi, hi + 6, hi + 12], dim=-3)
     out = torch.stack((v, q, p, p, t, v, t, v, v, q, p, p, p, p, t, v, v, q), dim=-3)
     out = torch.gather(out, -3, indices)
