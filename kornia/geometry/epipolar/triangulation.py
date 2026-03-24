@@ -152,7 +152,8 @@ def triangulate_points(
         else:
             compute_dtype = _normalize_to_float32_or_float64(X.dtype)
         batch_shape = X.shape[:-2]  # (*, N)
-        XTX = X.to(compute_dtype).mT @ X.to(compute_dtype)  # (*, N, 4, 4) symmetric PSD
+        X_cast = X.to(compute_dtype)
+        XTX = X_cast.mT @ X_cast  # (*, N, 4, 4) symmetric PSD
         flat = XTX.flatten(0, -3)  # (M, 4, 4)
         v_flat = _eigh_smallest_vec(flat).to(X.dtype)  # (M, 4)
         points3d_h = v_flat.reshape(*batch_shape, 4)  # (*, N, 4)
@@ -174,7 +175,15 @@ def triangulate_points(
         h_013 = null_vector_3x4(A_013).to(row0.dtype)  # (*, N, 4)
         n012 = h_012.norm(dim=-1, keepdim=True).clamp(min=1e-8)
         n013 = h_013.norm(dim=-1, keepdim=True).clamp(min=1e-8)
-        points3d_h = h_012 / n012 + h_013 / n013  # (*, N, 4)
+        v012 = h_012 / n012
+        v013 = h_013 / n013
+        # Null vectors are defined up to a global sign; align signs before averaging
+        # to prevent cancellation when the two sub-system solutions point in opposite
+        # directions (which would yield a near-zero homogeneous vector and NaN after
+        # conversion from homogeneous coordinates).
+        dot = (v012 * v013).sum(dim=-1, keepdim=True)
+        v013 = torch.where(dot < 0, -v013, v013)
+        points3d_h = v012 + v013  # (*, N, 4)
 
     else:
         raise NotImplementedError(f"Unknown solver '{solver}'. Choose from: 'svd', 'eigh', 'cofactor'.")

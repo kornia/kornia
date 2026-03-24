@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import torch
 
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
 def _det3(
@@ -100,8 +100,8 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
         Null vector of shape :math:`(*, 4)`.
 
     Raises:
-        TypeError: if ``A`` is not a tensor.
-        ValueError: if the last two dimensions of ``A`` are not ``(3, 4)``.
+        TypeCheckError: if ``A`` is not a :class:`torch.Tensor`.
+        ShapeError: if the last two dimensions of ``A`` are not ``(3, 4)``.
 
     Example:
         >>> A = torch.tensor([[[1., 0., 0., 0.],
@@ -112,6 +112,7 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
         tensor([[0., 0., 0.]])
 
     """
+    KORNIA_CHECK_IS_TENSOR(A)
     KORNIA_CHECK_SHAPE(A, ["*", "3", "4"])
 
     a = A[..., 0, :]  # (*, 4)
