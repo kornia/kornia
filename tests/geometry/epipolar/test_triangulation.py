@@ -188,12 +188,10 @@ class TestTriangulation(BaseTester):
         # Output must be finite — NaN would indicate the pre-fix cancellation bug.
         assert torch.isfinite(X_cofactor).all(), "cofactor solver produced non-finite values"
 
-        # Direction must agree with SVD (noise-free scene → exact nullspace).
+        # Numerical closeness to SVD (noise-free → both solvers recover the same 3-D point).
+        # This also catches incorrect scale/depth, unlike a direction-only check.
         atol = 1e-3 if dtype == torch.float32 else 1e-6
-        cos = (X_cofactor * X_svd).sum(-1) / (
-            X_cofactor.norm(dim=-1).clamp(min=1e-8) * X_svd.norm(dim=-1).clamp(min=1e-8)
-        )
-        self.assert_close(cos.abs(), torch.ones_like(cos), atol=atol, rtol=0.0)
+        self.assert_close(X_cofactor, X_svd, atol=atol, rtol=0.0)
 
     # ------------------------------------------------------------------
     # Gradcheck — default solver
