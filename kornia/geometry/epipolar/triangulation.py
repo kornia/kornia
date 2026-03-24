@@ -116,10 +116,12 @@ def triangulate_points(
 
     # Build the four DLT constraint rows (each (*, N, 4)) via vectorized broadcasting.
     # P[..., r:r+1, :] broadcasts with points[..., c:c+1] → (*, N, 4).
-    row0 = points1[..., 0:1] * P1[..., 2:3, :] - P1[..., 0:1, :]  # (*, N, 4)
-    row1 = points1[..., 1:2] * P1[..., 2:3, :] - P1[..., 1:2, :]  # (*, N, 4)
-    row2 = points2[..., 0:1] * P2[..., 2:3, :] - P2[..., 0:1, :]  # (*, N, 4)
-    row3 = points2[..., 1:2] * P2[..., 2:3, :] - P2[..., 1:2, :]  # (*, N, 4)
+    row0 = points1[..., 0:1] * P1[..., 2:3, :] - P1[..., 0:1, :]  # (*, N1, 4)
+    row1 = points1[..., 1:2] * P1[..., 2:3, :] - P1[..., 1:2, :]  # (*, N1, 4)
+    row2 = points2[..., 0:1] * P2[..., 2:3, :] - P2[..., 0:1, :]  # (*, N2, 4)
+    row3 = points2[..., 1:2] * P2[..., 2:3, :] - P2[..., 1:2, :]  # (*, N2, 4)
+    # Unify N1 and N2: one may be 1 when points1/points2 are broadcast-compatible.
+    row0, row1, row2, row3 = torch.broadcast_tensors(row0, row1, row2, row3)
 
     if solver == "svd":
         X = torch.stack([row0, row1, row2, row3], dim=-2)  # (*, N, 4, 4)
