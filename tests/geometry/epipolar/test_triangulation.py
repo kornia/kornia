@@ -40,6 +40,14 @@ def _make_scene(device, dtype, num_views: int = 2, num_points: int = 10):
     return {k: v.to(device=device, dtype=dtype) for k, v in scene.items()}
 
 
+def _project(P: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
+    """Project (B, N, 3) points through a (B, 3, 4) camera matrix → (B, N, 2)."""
+    B, N = X.shape[:2]
+    Xh = torch.cat([X, torch.ones(B, N, 1, device=X.device, dtype=X.dtype)], dim=-1)
+    px = (P @ Xh.mT).mT
+    return px[..., :2] / px[..., 2:3]
+
+
 class TestTriangulation(BaseTester):
     # ------------------------------------------------------------------
     # Smoke — verify all three solvers produce the right output shape
@@ -126,13 +134,8 @@ class TestTriangulation(BaseTester):
             [0.0, 0.0, 3.0], device=device, dtype=dtype
         )
 
-        def project(P, X):
-            Xh = torch.cat([X, torch.ones(B, N, 1, device=device, dtype=dtype)], dim=-1)
-            px = (P @ Xh.mT).mT
-            return px[..., :2] / px[..., 2:3]
-
-        pts1 = project(P1, X_true)
-        pts2 = project(P2, X_true)
+        pts1 = _project(P1, X_true)
+        pts2 = _project(P2, X_true)
 
         results = {s: epi.triangulate_points(P1, P2, pts1, pts2, solver=s) for s in SOLVERS}
 
@@ -148,13 +151,14 @@ class TestTriangulation(BaseTester):
     # ------------------------------------------------------------------
 
     def test_cofactor_sign_alignment(self, device, dtype):
-        """Cofactor solver must not produce NaN/Inf when the two 3x4 sub-systems
-        yield opposite-signed null vectors (pre-fix: their sum cancelled to ~0
-        which caused NaN after dehomogenisation).
+        """Cofactor solver must not produce NaN/Inf due to sign cancellation.
 
-        The test constructs a noise-free scene, flips the sign of one DLT row so
-        the two sub-systems are guaranteed to disagree in sign, and checks that
-        the output is finite and consistent with the SVD solver.
+        Before the sign-alignment fix, the two 3x4 sub-systems could yield
+        opposite-signed null vectors whose sum cancelled to ~0, producing NaN
+        after dehomogenisation.  This test constructs a noise-free two-view
+        scene with a modest baseline, triangulates with both the cofactor and
+        SVD solvers, and checks that the cofactor output is finite and
+        directionally consistent with the SVD result.
         """
         if dtype in (torch.float16, torch.bfloat16):
             pytest.skip("cofactor sign test only runs for float32/float64")
@@ -175,13 +179,8 @@ class TestTriangulation(BaseTester):
             [0.0, 0.0, 3.0], device=device, dtype=dtype
         )
 
-        def project(P, X):
-            Xh = torch.cat([X, torch.ones(B, N, 1, device=device, dtype=dtype)], dim=-1)
-            px = (P @ Xh.mT).mT
-            return px[..., :2] / px[..., 2:3]
-
-        pts1 = project(P1, X_true)
-        pts2 = project(P2, X_true)
+        pts1 = _project(P1, X_true)
+        pts2 = _project(P2, X_true)
 
         X_cofactor = epi.triangulate_points(P1, P2, pts1, pts2, solver="cofactor")
         X_svd = epi.triangulate_points(P1, P2, pts1, pts2, solver="svd")
