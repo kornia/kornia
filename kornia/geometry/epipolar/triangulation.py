@@ -174,7 +174,7 @@ def triangulate_points(
         # for any camera pair with a non-zero baseline in x.  Using rows {0,1,2}
         # and {1,2,3} rather than {0,1,2} and {0,1,3} avoids the degenerate case
         # that arises when camera 2 has zero last-column entries in its y- and
-        # z-projection rows (e.g. [R|t] with t = (−T,0,0)).
+        # z-projection rows (e.g. [R|t] with t = (-T,0,0)).
         A_012 = torch.stack([r0, r1, r2], dim=-2)  # (*, N, 3, 4)
         A_123 = torch.stack([r1, r2, r3], dim=-2)  # (*, N, 3, 4)
         h_012 = null_vector_3x4(A_012).to(row0.dtype)  # (*, N, 4)
