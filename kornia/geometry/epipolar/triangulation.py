@@ -153,9 +153,9 @@ def triangulate_points(
             compute_dtype = _normalize_to_float32_or_float64(X.dtype)
         batch_shape = X.shape[:-2]  # (*, N)
         XTX = X.to(compute_dtype).mT @ X.to(compute_dtype)  # (*, N, 4, 4) symmetric PSD
-        flat = XTX.flatten(0, -3)                            # (M, 4, 4)
-        v_flat = _eigh_smallest_vec(flat).to(X.dtype)        # (M, 4)
-        points3d_h = v_flat.reshape(*batch_shape, 4)         # (*, N, 4)
+        flat = XTX.flatten(0, -3)  # (M, 4, 4)
+        v_flat = _eigh_smallest_vec(flat).to(X.dtype)  # (M, 4)
+        points3d_h = v_flat.reshape(*batch_shape, 4)  # (*, N, 4)
 
     elif solver == "cofactor":
         # Solve two 3x4 sub-systems analytically via cofactor expansion and
