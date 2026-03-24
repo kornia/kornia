@@ -14,27 +14,86 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
 from __future__ import annotations
 
+import argparse
 import importlib
 import math
 import os
 from pathlib import Path
 from typing import Optional
 
-import cv2
-import matplotlib as mpl
-import matplotlib.pyplot as plt
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
+try:
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+except ImportError:
+    mpl = None
+    plt = None
 import numpy as np
 import requests
 import torch
 import torch.nn.functional as F
-from kornia_moons.feature import visualize_LAF
+
+try:
+    from kornia_moons.feature import visualize_LAF
+except ImportError:
+    visualize_LAF = None
 
 import kornia as K
 
-mpl.use("Agg")
+if mpl is not None:
+    mpl.use("Agg")
+
+
+def handle_special_cases(aug_name, img_in):
+    if aug_name == "RandomJigsaw":
+        img_in = K.geometry.resize(img_in, (1020, 500))
+    elif aug_name == "RandomJPEG":
+        img_in = img_in[..., :176, :]
+    return img_in
+
+
+def apply_augmentation(mod, aug_name, args, seed, img_in):
+    cls = getattr(mod, aug_name, None)
+    if cls is None:
+        raise ValueError(f"Unknown augmentation: {aug_name}")
+
+    if not isinstance(args, tuple):
+        raise TypeError(f"args must be tuple, got {type(args)}")
+
+    if not isinstance(seed, int):
+        raise TypeError("seed must be an integer")
+
+    try:
+        aug = cls(*args, p=1.0)
+    except TypeError:
+        aug = cls(*args)
+
+    torch.manual_seed(seed)
+    return aug(img_in)
+
+
+def postprocess_output(aug_name, ori, out, img1, img_in):
+    if aug_name == "CenterCrop":
+        out = transparent_pad(out, tuple(img1[-2:].shape))
+        ori = K.color.rgb_to_rgba(ori, 1.0)
+    elif aug_name == "PadTo":
+        ori = transparent_pad(img_in[0], tuple(out.shape[-2:]))
+        out = K.color.rgb_to_rgba(out, 1.0)
+    return ori, out
+
+
+def save_output_image(out, output_path, aug_name):
+    import cv2
+
+    out_np = K.image.tensor_to_image((out * 255.0).byte())
+    if cv2 is not None:
+        cv2.imwrite(str(output_path / f"{aug_name}.png"), out_np)
 
 
 def download_tutorials_examples(download_infos: dict[str, str], directory: Path):
@@ -54,6 +113,9 @@ def read_img_from_url(url: str, resize_to: Optional[tuple[int, int]] = None, **r
     response = requests.get(url, timeout=60).content
     # convert to array of ints
     nparr = np.frombuffer(response, np.uint8)
+
+    if cv2 is None:
+        raise ImportError("cv2 is required for image decoding")
     # convert to image array and resize
     img: np.ndarray = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)[..., :3]
     # convert the image to a tensor
@@ -94,10 +156,16 @@ def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Te
     return imgs_draw
 
 
-def main():
+def main(args=None):
     # Download the tutorial examples for the main docs
     # Note: Training API examples (image_classifier, object_detection, semantic_segmentation) removed
     # as they depend on kornia.x which has been removed
+    parser = argparse.ArgumentParser(description="Generate augmentation examples")
+
+    parser.add_argument("--output", type=str, default=None, help="Output directory")
+    parser.add_argument("--num-samples", type=int, default=None, help="Override number of samples")
+
+    args = parser.parse_args(args)
     URLS_TUTORIALS_EXAMPLES = {}
 
     OUTPUT_PATH_SCRIPTS = Path(__file__).absolute().parent / "source/_static/scripts/"
@@ -120,7 +188,7 @@ def main():
     )
     MASK_IMAGE_URL2: str = "https://raw.githubusercontent.com/kornia/data/main/simba_mask.png"
 
-    OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
+    OUTPUT_PATH = Path(args.output) if args.output else Path(__file__).absolute().parent / "source/_static/img"
 
     os.makedirs(OUTPUT_PATH, exist_ok=True)
     print(f"Pointing images to path {OUTPUT_PATH}.")
@@ -187,42 +255,32 @@ def main():
         "RandomJigsaw": ((), 2, 2020),
     }
 
-    # ITERATE OVER THE TRANSFORMS
-    for aug_name, (args, num_samples, seed) in augmentations_list.items():
+    for aug_name, (aug_args, num_samples, seed) in augmentations_list.items():
+        if args.num_samples is not None:
+            num_samples = args.num_samples
+
+        # prepare input
         img_in = img1.repeat(num_samples, 1, 1, 1)
-        # dynamically create the class instance
-        cls = getattr(mod, aug_name)
-        try:
-            aug = cls(*args, p=1.0)
-        except TypeError:
-            aug = cls(*args)
+        img_in = handle_special_cases(aug_name, img_in)
 
-        # set seed
-        torch.manual_seed(seed)
-        if aug_name == "RandomJigsaw":  # make sure the image is dividable
-            img_in = K.geometry.resize(img_in, (1020, 500))
-        elif aug_name == "RandomJPEG":
-            img_in = img_in[..., :176, :]
-        # apply the augmentation to the image and concat
-        out = aug(img_in)
+        # apply augmentation
+        augmented = apply_augmentation(mod, aug_name, aug_args, seed, img_in)
 
-        # save ori image to concatenate into the out image
+        # original image
         ori = img_in[0]
-        if aug_name == "CenterCrop":
-            # Convert to RGBA, and center the output image with transparent pad
-            out = transparent_pad(out, tuple(img1[-2:].shape))
-            ori = K.color.rgb_to_rgba(ori, 1.0)  # To match the dims
-        elif aug_name == "PadTo":
-            # Convert to RGBA, and center the original image with transparent pad
-            ori = transparent_pad(img_in[0], tuple(out.shape[-2:]))
-            out = K.color.rgb_to_rgba(out, 1.0)  # To match the dims
 
-        out = torch.cat([ori, *(out[i] for i in range(out.size(0)))], dim=-1)
-        # save the output image
-        out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
-        sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
-        print(f"Generated image example for {aug_name}. {sig}")
+        # postprocess
+        ori, augmented = postprocess_output(aug_name, ori, augmented, img1, img_in)
+
+        # concatenate outputs
+        out = torch.cat([ori, *list(augmented)], dim=-1)
+
+        # save image
+        save_output_image(out, OUTPUT_PATH, aug_name)
+
+        # logging
+        sig = f"{aug_name}({', '.join([str(a) for a in aug_args])}, p=1.0)"
+        print(f"Generated image example for {aug_name}: {sig}")
 
     mix_augmentations_list = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019)}
     # ITERATE OVER THE TRANSFORMS
@@ -260,7 +318,8 @@ def main():
         output = torch.cat([img_in[0], img_in[1], img_aug[0]], dim=-1)
         # save the output image
         out_np = K.utils.tensor_to_image((output * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
+        if cv2 is not None:
+            cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
@@ -320,7 +379,8 @@ def main():
 
         # save the output image
         out_np = K.utils.tensor_to_image((output * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
+        if cv2 is not None:
+            cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
@@ -374,7 +434,8 @@ def main():
         else:
             out = torch.cat([img2[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        if cv2 is not None:
+            cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
@@ -390,7 +451,8 @@ def main():
         out = torch.cat([bar_img, out], dim=-1)
 
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{colormap_name}.png"), out_np)
+        if cv2 is not None:
+            cv2.imwrite(str(OUTPUT_PATH / f"{colormap_name}.png"), out_np)
         sig = f"{colormap_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {colormap_name}. {sig}")
 
@@ -410,18 +472,19 @@ def main():
     num_rows = (num_colormaps + num_columns - 1) // num_columns
 
     # Create figure and axis objects
-    fig, axes = plt.subplots(num_rows, num_columns, figsize=(12, 8))
-    for i, ax in enumerate(axes.flat):
-        if i < num_colormaps:
-            cmap = K.color.ColorMap(base=colormap_list[i], num_colors=num_colors)
-            res = K.color.ApplyColorMap(colormap=cmap)(input_tensor)[0]
-            ax.imshow(res.permute(1, 2, 0).numpy())
-            ax.set_title(colormap_list[i], fontsize=12)
-            ax.axis("off")
-        else:
-            fig.delaxes(ax)
-    fig.tight_layout()
-    fig.savefig(os.path.join(OUTPUT_PATH, "ColorMapType.png"), dpi=300)
+    if plt is not None:
+        fig, axes = plt.subplots(num_rows, num_columns, figsize=(12, 8))
+        for i, ax in enumerate(axes.flat):
+            if i < num_colormaps:
+                cmap = K.color.ColorMap(base=colormap_list[i], num_colors=num_colors)
+                res = K.color.ApplyColorMap(colormap=cmap)(input_tensor)[0]
+                ax.imshow(res.permute(1, 2, 0).numpy())
+                ax.set_title(colormap_list[i], fontsize=12)
+                ax.axis("off")
+            else:
+                fig.delaxes(ax)
+        fig.tight_layout()
+        fig.savefig(os.path.join(OUTPUT_PATH, "ColorMapType.png"), dpi=300)
 
     # korna.enhance module
     mod = importlib.import_module("kornia.enhance")
@@ -455,7 +518,8 @@ def main():
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        if cv2 is not None:
+            cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
@@ -482,7 +546,8 @@ def main():
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        if cv2 is not None:
+            cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
@@ -533,7 +598,8 @@ def main():
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        if cv2 is not None:
+            cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
@@ -556,7 +622,8 @@ def main():
         # save the output image
         out = torch.cat([img1[0], mask[0], filtered[0]], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        if cv2 is not None:
+            cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
@@ -643,7 +710,8 @@ def main():
         else:
             out = torch.cat([*(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        if cv2 is not None:
+            cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
@@ -656,33 +724,39 @@ def main():
         disk_feat = disk(img_outdoor)[0]
         xy = disk_feat.keypoints.detach().cpu().numpy()
         cur_fname = str(OUTPUT_PATH / "disk_outdoor_depth.jpg")
-        plt.figure()
-        plt.imshow(K.tensor_to_image(img_outdoor))
-        plt.scatter(xy[:, 0], xy[:, 1], 3, color="lime")
-        plt.title('DISK("depth") keypoints')
-        plt.savefig(cur_fname)
-        plt.close()
+        if plt is not None:
+            plt.figure()
+            plt.imshow(K.tensor_to_image(img_outdoor))
+            plt.scatter(xy[:, 0], xy[:, 1], 3, color="lime")
+            plt.title('DISK("depth") keypoints')
+            plt.savefig(cur_fname)
+            plt.close()
 
     kah = K.feature.KeyNetAffNetHardNet(512).eval()
     with torch.no_grad():
         lafs, _resps, _descs = kah(K.color.rgb_to_grayscale(img_outdoor))
-        fig1, ax = visualize_LAF(img_outdoor, lafs, color="lime", return_fig_ax=True, draw_ori=False)
-        ax.set_title("KeyNetAffNet 512 LAFs")
-        cur_fname = str(OUTPUT_PATH / "keynet_affnet.jpg")
-        fig1.savefig(cur_fname)
-        plt.close()
+        if visualize_LAF is not None:
+            fig1, ax = visualize_LAF(img_outdoor, lafs, color="lime", return_fig_ax=True, draw_ori=False)
+            ax.set_title("KeyNetAffNet 512 LAFs")
+
+            cur_fname = str(OUTPUT_PATH / "keynet_affnet.jpg")
+            fig1.savefig(cur_fname)
+
+        if plt is not None:
+            plt.close()
 
     keynet = K.feature.KeyNetDetector(True, 512).eval()
     with torch.no_grad():
         lafs, _resps = keynet(K.color.rgb_to_grayscale(img_outdoor))
         xy = K.feature.get_laf_center(lafs).detach().cpu().numpy().reshape(-1, 2)
         cur_fname = str(OUTPUT_PATH / "keynet.jpg")
-        plt.figure()
-        plt.imshow(K.tensor_to_image(img_outdoor))
-        plt.scatter(xy[:, 0], xy[:, 1], 3, color="lime")
-        plt.title("KeyNet 512 keypoints")
-        plt.savefig(cur_fname)
-        plt.close()
+        if plt is not None:
+            plt.figure()
+            plt.imshow(K.tensor_to_image(img_outdoor))
+            plt.scatter(xy[:, 0], xy[:, 1], 3, color="lime")
+            plt.title("KeyNet 512 keypoints")
+            plt.savefig(cur_fname)
+            plt.close()
 
     # korna.feature module
     mod = importlib.import_module("kornia.feature")
@@ -738,7 +812,8 @@ def main():
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.image.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        if cv2 is not None:
+            cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for response function {fn_name}")
 

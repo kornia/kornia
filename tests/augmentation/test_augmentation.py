@@ -5326,3 +5326,26 @@ class TestRandomThinPlateSpline(CommonTests):
             return aug(x, params=fixed_params)
 
         self.gradcheck(forward_with_fixed_params, (input_tensor,))
+
+
+def test_colorjitter_same_on_batch_consistency():
+    import torch
+
+    from kornia.augmentation import ColorJitter
+
+    torch.manual_seed(0)
+
+    aug = ColorJitter(
+        brightness=0.5,
+        contrast=0.5,
+        saturation=0.5,
+        hue=0.1,
+        same_on_batch=True,
+        p=1.0,
+    )
+
+    x = torch.rand(4, 3, 64, 64)
+    y = aug(x)
+
+    assert torch.allclose(y[0], y[1])
+    assert torch.allclose(y[1], y[2])

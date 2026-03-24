@@ -76,5 +76,8 @@ class RandomJPEG(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        jpeg_output: torch.Tensor = jpeg_codec_differentiable(input, params["jpeg_quality"])
-        return jpeg_output
+        if self.same_on_batch:
+            out = jpeg_codec_differentiable(input[0:1], params["jpeg_quality"][0:1])
+            return out.repeat(input.shape[0], 1, 1, 1)
+        # Default behavior
+        return jpeg_codec_differentiable(input, params["jpeg_quality"])

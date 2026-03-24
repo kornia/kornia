@@ -68,7 +68,7 @@ generate_examples = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(generate_examples)
 
 # Pre-generate the example images
-generate_examples.main()
+generate_examples.main([])
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
