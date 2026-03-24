@@ -662,6 +662,11 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
     axis_angle[..., 0] += q1 * k
     axis_angle[..., 1] += q2 * k
     axis_angle[..., 2] += q3 * k
+    # When sin_squared_theta == 0 (xyz all zero), the small-angle branch uses
+    # k_neg = 2.0 and multiplies by q1/q2/q3 = 0, so the result is 0.0 even
+    # if w is NaN.  A NaN in w means the rotation is undefined; propagate it.
+    # Using cos_theta * 0.0 exploits IEEE 754: finite * 0 = 0, NaN * 0 = NaN.
+    axis_angle = axis_angle + (cos_theta * 0.0)[..., None]
     return axis_angle
 
 
