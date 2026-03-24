@@ -122,6 +122,8 @@ Scripts under `benchmarks/` measure the speed and/or quality of existing kornia 
 
 Install hooks with `pre-commit install`. CI enforces ruff formatting, linting, and docformatter.
 
+**Always run `pixi run lint` before pushing** to catch ruff errors (formatting, style, ambiguous Unicode characters, etc.) that will cause CI to fail. Fix any reported issues before committing.
+
 ## Documentation and Visualizations
 
 **Every public class or function added to a `kornia/` submodule must also be listed in the corresponding `docs/source/*.rst` file** — otherwise it will not appear in the rendered docs.  Check the relevant `.rst` after adding any public API symbol and add an `.. autoclass::` or `.. autofunction::` directive if it is missing.

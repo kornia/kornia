@@ -152,29 +152,44 @@ def triangulate_points(
         else:
             compute_dtype = _normalize_to_float32_or_float64(X.dtype)
         batch_shape = X.shape[:-2]  # (*, N)
-        XTX = X.to(compute_dtype).mT @ X.to(compute_dtype)  # (*, N, 4, 4) symmetric PSD
+        X_cast = X.to(compute_dtype)
+        XTX = X_cast.mT @ X_cast  # (*, N, 4, 4) symmetric PSD
         flat = XTX.flatten(0, -3)  # (M, 4, 4)
         v_flat = _eigh_smallest_vec(flat).to(X.dtype)  # (M, 4)
         points3d_h = v_flat.reshape(*batch_shape, 4)  # (*, N, 4)
 
     elif solver == "cofactor":
         # Solve two 3x4 sub-systems analytically via cofactor expansion and
-        # average the normalised results.  This matches the full DLT solution
-        # when the constraint system is exactly consistent (noise-free), but is
-        # only an approximation in the noisy inconsistent case.
+        # average the sign-aligned normalised results.  This matches the full
+        # DLT solution when the constraint system is exactly consistent
+        # (noise-free), but is only an approximation in the noisy case.
         # null_vector_3x4 uses only arithmetic ops, so promote fp16/bf16 → fp32.
         compute_dtype = _normalize_to_float32_or_float64(row0.dtype)
         r0 = row0.to(compute_dtype)
         r1 = row1.to(compute_dtype)
         r2 = row2.to(compute_dtype)
         r3 = row3.to(compute_dtype)
+        # Both sub-systems include row2 (from camera 2's x-projection equation),
+        # which carries the camera-2 translation and is therefore well-conditioned
+        # for any camera pair with a non-zero baseline in x.  Using rows {0,1,2}
+        # and {1,2,3} rather than {0,1,2} and {0,1,3} avoids the degenerate case
+        # that arises when camera 2 has zero last-column entries in its y- and
+        # z-projection rows (e.g. [R|t] with t = (-T,0,0)).
         A_012 = torch.stack([r0, r1, r2], dim=-2)  # (*, N, 3, 4)
-        A_013 = torch.stack([r0, r1, r3], dim=-2)  # (*, N, 3, 4)
+        A_123 = torch.stack([r1, r2, r3], dim=-2)  # (*, N, 3, 4)
         h_012 = null_vector_3x4(A_012).to(row0.dtype)  # (*, N, 4)
-        h_013 = null_vector_3x4(A_013).to(row0.dtype)  # (*, N, 4)
+        h_123 = null_vector_3x4(A_123).to(row0.dtype)  # (*, N, 4)
         n012 = h_012.norm(dim=-1, keepdim=True).clamp(min=1e-8)
-        n013 = h_013.norm(dim=-1, keepdim=True).clamp(min=1e-8)
-        points3d_h = h_012 / n012 + h_013 / n013  # (*, N, 4)
+        n123 = h_123.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+        v012 = h_012 / n012
+        v123 = h_123 / n123
+        # Null vectors are defined up to a global sign; align signs before
+        # averaging in homogeneous space to prevent cancellation when the two
+        # sub-system solutions point in opposite directions (which would yield a
+        # near-zero homogeneous vector and NaN after dehomogenisation).
+        dot = (v012 * v123).sum(dim=-1, keepdim=True)
+        v123 = torch.where(dot < 0, -v123, v123)
+        points3d_h = v012 + v123  # (*, N, 4)
 
     else:
         raise NotImplementedError(f"Unknown solver '{solver}'. Choose from: 'svd', 'eigh', 'cofactor'.")

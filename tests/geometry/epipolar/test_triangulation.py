@@ -40,6 +40,14 @@ def _make_scene(device, dtype, num_views: int = 2, num_points: int = 10):
     return {k: v.to(device=device, dtype=dtype) for k, v in scene.items()}
 
 
+def _project(P: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
+    """Project (B, N, 3) points through a (B, 3, 4) camera matrix → (B, N, 2)."""
+    B, N = X.shape[:2]
+    Xh = torch.cat([X, torch.ones(B, N, 1, device=X.device, dtype=X.dtype)], dim=-1)
+    px = (P @ Xh.mT).mT
+    return px[..., :2] / px[..., 2:3]
+
+
 class TestTriangulation(BaseTester):
     # ------------------------------------------------------------------
     # Smoke — verify all three solvers produce the right output shape
@@ -126,13 +134,8 @@ class TestTriangulation(BaseTester):
             [0.0, 0.0, 3.0], device=device, dtype=dtype
         )
 
-        def project(P, X):
-            Xh = torch.cat([X, torch.ones(B, N, 1, device=device, dtype=dtype)], dim=-1)
-            px = (P @ Xh.mT).mT
-            return px[..., :2] / px[..., 2:3]
-
-        pts1 = project(P1, X_true)
-        pts2 = project(P2, X_true)
+        pts1 = _project(P1, X_true)
+        pts2 = _project(P2, X_true)
 
         results = {s: epi.triangulate_points(P1, P2, pts1, pts2, solver=s) for s in SOLVERS}
 
@@ -142,6 +145,53 @@ class TestTriangulation(BaseTester):
             cos = (pts * ref).sum(-1) / (pts.norm(dim=-1).clamp(min=1e-8) * ref.norm(dim=-1).clamp(min=1e-8))
             atol = {torch.float16: 1e-2, torch.bfloat16: 1e-2, torch.float32: 1e-3}.get(dtype, 1e-6)
             self.assert_close(cos.abs(), torch.ones_like(cos), atol=atol, rtol=0.0)
+
+    # ------------------------------------------------------------------
+    # Cofactor sign-alignment regression
+    # ------------------------------------------------------------------
+
+    def test_cofactor_sign_alignment(self, device, dtype):
+        """Cofactor solver must not produce NaN/Inf due to sign cancellation.
+
+        Before the sign-alignment fix, the two 3x4 sub-systems could yield
+        opposite-signed null vectors whose sum cancelled to ~0, producing NaN
+        after dehomogenisation.  This test constructs a noise-free two-view
+        scene with a modest baseline, triangulates with both the cofactor and
+        SVD solvers, and checks that the cofactor output is finite and
+        directionally consistent with the SVD result.
+        """
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("cofactor sign test only runs for float32/float64")
+
+        torch.manual_seed(3)
+        B, N = 1, 8
+
+        P1 = torch.eye(3, 4, device=device, dtype=dtype).unsqueeze(0).expand(B, -1, -1)
+        R2 = torch.tensor(
+            [[0.9998, -0.0175, 0.0], [0.0175, 0.9998, 0.0], [0.0, 0.0, 1.0]],
+            device=device,
+            dtype=dtype,
+        )
+        t2 = torch.tensor([[-1.0], [0.0], [0.0]], device=device, dtype=dtype)
+        P2 = torch.cat([R2, t2], dim=-1).unsqueeze(0).expand(B, -1, -1)
+
+        X_true = torch.rand(B, N, 3, device=device, dtype=dtype) + torch.tensor(
+            [0.0, 0.0, 3.0], device=device, dtype=dtype
+        )
+
+        pts1 = _project(P1, X_true)
+        pts2 = _project(P2, X_true)
+
+        X_cofactor = epi.triangulate_points(P1, P2, pts1, pts2, solver="cofactor")
+        X_svd = epi.triangulate_points(P1, P2, pts1, pts2, solver="svd")
+
+        # Output must be finite — NaN would indicate the pre-fix cancellation bug.
+        assert torch.isfinite(X_cofactor).all(), "cofactor solver produced non-finite values"
+
+        # Numerical closeness to SVD (noise-free → both solvers recover the same 3-D point).
+        # This also catches incorrect scale/depth, unlike a direction-only check.
+        atol = 1e-3 if dtype == torch.float32 else 1e-6
+        self.assert_close(X_cofactor, X_svd, atol=atol, rtol=0.0)
 
     # ------------------------------------------------------------------
     # Gradcheck — default solver
