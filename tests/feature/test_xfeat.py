@@ -58,9 +58,14 @@ class TestXFeatModel(BaseTester):
         op = torch_optimizer(model)
         feats_c, kpts_c, hm_c = op(x)
         feats, kpts, hm = model(x)
-        self.assert_close(feats_c, feats, rtol=1e-3, atol=1e-4)
-        self.assert_close(kpts_c, kpts, rtol=1e-3, atol=1e-4)
-        self.assert_close(hm_c, hm, rtol=1e-3, atol=1e-4)
+        if dtype in (torch.float32, torch.float64):
+            self.assert_close(feats_c, feats, rtol=1e-3, atol=1e-4)
+            self.assert_close(kpts_c, kpts, rtol=1e-3, atol=1e-4)
+            self.assert_close(hm_c, hm, rtol=1e-3, atol=1e-4)
+        else:
+            self.assert_close(feats_c, feats)
+            self.assert_close(kpts_c, kpts)
+            self.assert_close(hm_c, hm)
 
     def test_heatmap_in_zero_one(self, device, dtype):
         model = XFeatModel().to(device, dtype)
