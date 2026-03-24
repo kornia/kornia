@@ -3,18 +3,22 @@ from .base import MixAugmentationBaseV2
 
 class TokenMix(MixAugmentationBaseV2):
     def __init__(self, alpha=1.0, num_tokens=8, p=1.0, same_on_batch=False, keepdim=False):
-        super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.alpha = alpha
         self.num_tokens = num_tokens
 
     def generate_parameters(self, batch_shape):
         lam = torch.distributions.Beta(self.alpha, self.alpha).sample((batch_shape[0],))
+        try:
+            lam = lam.to(self.device).to(self.dtype)
+        except Exception:
+            lam = lam
         return {"lam": lam}
 
     def apply_transform(self, input, params, extra_args):
         B, C, H, W = input.shape
         lam = params["lam"].to(input.device)
-        idx = torch.randperm(B)
+        idx = torch.randperm(B, device=input.device)
         out = input.clone()
         token_h = H // self.num_tokens
         token_w = W // self.num_tokens
