@@ -118,29 +118,23 @@ class TestNullVector3x4(BaseTester):
         [
             # Standard basis: last column is free → null vector is e4 = [0,0,0,1].
             (
-                [[1.0, 0.0, 0.0, 0.0],
-                 [0.0, 1.0, 0.0, 0.0],
-                 [0.0, 0.0, 1.0, 0.0]],
+                [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]],
                 [0.0, 0.0, 0.0, -1.0],  # sign comes from cofactor; direction only
             ),
             # A = [[1,0,0,1],[0,1,0,1],[0,0,1,1]] → null = [1,1,1,-1].
             (
-                [[1.0, 0.0, 0.0, 1.0],
-                 [0.0, 1.0, 0.0, 1.0],
-                 [0.0, 0.0, 1.0, 1.0]],
+                [[1.0, 0.0, 0.0, 1.0], [0.0, 1.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]],
                 [1.0, 1.0, 1.0, -1.0],
             ),
             # A = [[2,0,0,0],[0,3,0,0],[0,0,5,0]] → null = [0,0,0,1] (up to sign/scale).
             (
-                [[2.0, 0.0, 0.0, 0.0],
-                 [0.0, 3.0, 0.0, 0.0],
-                 [0.0, 0.0, 5.0, 0.0]],
+                [[2.0, 0.0, 0.0, 0.0], [0.0, 3.0, 0.0, 0.0], [0.0, 0.0, 5.0, 0.0]],
                 [0.0, 0.0, 0.0, -30.0],
             ),
         ],
     )
     def test_known_null_vectors(self, A_data, expected_null, device, dtype):
-        A = torch.tensor([A_data], device=device, dtype=dtype)          # (1, 3, 4)
+        A = torch.tensor([A_data], device=device, dtype=dtype)  # (1, 3, 4)
         expected = torch.tensor([expected_null], device=device, dtype=dtype)  # (1, 4)
         v = solvers.null_vector_3x4(A)
         # Compare direction (ratio of corresponding components, ignoring global sign).
@@ -168,8 +162,8 @@ class TestNullVector3x4(BaseTester):
         """A @ null_vector_3x4(A) must be (close to) zero for any rank-3 A."""
         nv = torch.tensor(null_vec, dtype=torch.float64)
         A = _make_rank3_matrix(nv, device=device, dtype=dtype)  # (1, 3, 4)
-        v = solvers.null_vector_3x4(A)                           # (1, 4)
-        residual = (A @ v.unsqueeze(-1)).squeeze(-1)             # (1, 3)
+        v = solvers.null_vector_3x4(A)  # (1, 4)
+        residual = (A @ v.unsqueeze(-1)).squeeze(-1)  # (1, 3)
         atol = {torch.float16: 1e-1, torch.bfloat16: 1e-1, torch.float32: 1e-4}.get(dtype, 1e-8)
         self.assert_close(residual, torch.zeros_like(residual), atol=atol, rtol=0.0)
 
@@ -247,6 +241,7 @@ class TestNullVector3x4(BaseTester):
         # null_vector_3x4 is a plain function; verify it is importable from the
         # top-level kornia.geometry.solvers namespace.
         import kornia.geometry.solvers as s
+
         assert hasattr(s, "null_vector_3x4")
         A = torch.rand(1, 3, 4, device=device, dtype=dtype)
         v = s.null_vector_3x4(A)

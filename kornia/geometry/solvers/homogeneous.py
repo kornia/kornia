@@ -25,9 +25,15 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def _det3(
-    a0: torch.Tensor, a1: torch.Tensor, a2: torch.Tensor,
-    b0: torch.Tensor, b1: torch.Tensor, b2: torch.Tensor,
-    c0: torch.Tensor, c1: torch.Tensor, c2: torch.Tensor,
+    a0: torch.Tensor,
+    a1: torch.Tensor,
+    a2: torch.Tensor,
+    b0: torch.Tensor,
+    b1: torch.Tensor,
+    b2: torch.Tensor,
+    c0: torch.Tensor,
+    c1: torch.Tensor,
+    c2: torch.Tensor,
 ) -> torch.Tensor:
     """Compute a batch of 3x3 determinants via Sarrus' rule.
 
@@ -114,24 +120,48 @@ def null_vector_3x4(A: torch.Tensor) -> torch.Tensor:
 
     # Each component of the null vector is a signed 3x3 cofactor determinant.
     v0 = _det3(
-        a[..., 1], a[..., 2], a[..., 3],
-        b[..., 1], b[..., 2], b[..., 3],
-        c[..., 1], c[..., 2], c[..., 3],
+        a[..., 1],
+        a[..., 2],
+        a[..., 3],
+        b[..., 1],
+        b[..., 2],
+        b[..., 3],
+        c[..., 1],
+        c[..., 2],
+        c[..., 3],
     )
     v1 = -_det3(
-        a[..., 0], a[..., 2], a[..., 3],
-        b[..., 0], b[..., 2], b[..., 3],
-        c[..., 0], c[..., 2], c[..., 3],
+        a[..., 0],
+        a[..., 2],
+        a[..., 3],
+        b[..., 0],
+        b[..., 2],
+        b[..., 3],
+        c[..., 0],
+        c[..., 2],
+        c[..., 3],
     )
     v2 = _det3(
-        a[..., 0], a[..., 1], a[..., 3],
-        b[..., 0], b[..., 1], b[..., 3],
-        c[..., 0], c[..., 1], c[..., 3],
+        a[..., 0],
+        a[..., 1],
+        a[..., 3],
+        b[..., 0],
+        b[..., 1],
+        b[..., 3],
+        c[..., 0],
+        c[..., 1],
+        c[..., 3],
     )
     v3 = -_det3(
-        a[..., 0], a[..., 1], a[..., 2],
-        b[..., 0], b[..., 1], b[..., 2],
-        c[..., 0], c[..., 1], c[..., 2],
+        a[..., 0],
+        a[..., 1],
+        a[..., 2],
+        b[..., 0],
+        b[..., 1],
+        b[..., 2],
+        c[..., 0],
+        c[..., 1],
+        c[..., 2],
     )
 
     return torch.stack([v0, v1, v2, v3], dim=-1)
