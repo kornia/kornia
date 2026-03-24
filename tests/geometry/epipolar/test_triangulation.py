@@ -165,7 +165,8 @@ class TestTriangulation(BaseTester):
         P1 = torch.eye(3, 4, device=device, dtype=dtype).unsqueeze(0).expand(B, -1, -1)
         R2 = torch.tensor(
             [[0.9998, -0.0175, 0.0], [0.0175, 0.9998, 0.0], [0.0, 0.0, 1.0]],
-            device=device, dtype=dtype,
+            device=device,
+            dtype=dtype,
         )
         t2 = torch.tensor([[-1.0], [0.0], [0.0]], device=device, dtype=dtype)
         P2 = torch.cat([R2, t2], dim=-1).unsqueeze(0).expand(B, -1, -1)
