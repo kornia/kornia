@@ -159,7 +159,7 @@ def KRt_from_projection(P: torch.Tensor, eps: float = 1e-6) -> Tuple[torch.Tenso
 
     K = torch.matmul(upper_mat, signs_mat)
     R = torch.matmul(signs_mat, ortho_mat)
-    t = torch.matmul(torch.inverse(K), last_column)
+    t = torch.linalg.solve(K, last_column)
 
     return K, R, t
 
