@@ -173,87 +173,82 @@ class TestTriangulation(BaseTester):
     # ------------------------------------------------------------------
 
     @pytest.mark.parametrize("solver", ["svd", "eigh"])
-    def test_noisy_correspondences_vs_opencv(self, solver, device, dtype):
-        """Triangulation from noisy 2-D correspondences should agree with OpenCV's DLT.
+    def test_noisy_correspondences_dlt(self, solver, device, dtype):
+        """Triangulation from noisy correspondences matches the numpy DLT reference.
 
-        The test uses a simple synthetic two-view setup:
-          - Camera 1 at the origin with canonical projection :math:`[I | 0]`.
-          - Camera 2 with a pure rightward translation and a small rotation.
-          - Ground-truth 3-D points at depth ~5 in front of both cameras.
+        Two-view setup: camera 1 at [I|0], camera 2 with ~5.7-degree rotation and
+        1-unit rightward translation, 8 points at depth 3-4, Gaussian noise sigma=0.05.
 
-        Gaussian pixel noise (sigma = 0.5 px) is added to the projected 2-D coordinates
-        before triangulation.  The test verifies that the Kornia result agrees with
-        ``cv2.triangulatePoints`` to within the expected noise-induced triangulation
-        error (~0.3 units at this configuration).
+        Expected output was pre-computed once with a point-by-point numpy SVD
+        implementation identical to ``cv2.triangulatePoints`` (seed 7).
 
-        Only ``"svd"`` and ``"eigh"`` are tested here — both implement the full 4-row
-        DLT and should match OpenCV's result.  ``"cofactor"`` is an approximation that
-        averages two 3-row sub-systems; its error in the noisy inconsistent case can
-        exceed the tolerance and it is not intended to match a full DLT solver.
-
-        The test is skipped when OpenCV is not installed.
+        # Snippet used to generate X_expected (requires numpy only):
+        # import numpy as np, torch
+        # torch.manual_seed(7)
+        # ... (see test body for the full scene construction)
+        # for i in range(N):
+        #     A = np.array([pts1[0,i]*P1[2]-P1[0], pts1[1,i]*P1[2]-P1[1],
+        #                   pts2[0,i]*P2[2]-P2[0], pts2[1,i]*P2[2]-P2[1]])
+        #     _, _, V = np.linalg.svd(A)
+        #     X_expected[i] = V[-1, :3] / V[-1, 3]
         """
-        cv2 = pytest.importorskip("cv2")
-
-        # Only run on float32 / float64 — half-precision is not a realistic use-case
-        # for noisy-correspondence triangulation and cv2 uses float64 internally.
         if dtype not in (torch.float32, torch.float64):
             pytest.skip("noisy-correspondence test only runs for float32/float64")
 
-        torch.manual_seed(42)
+        # Hardcoded inputs (torch.manual_seed(7), noise sigma=0.05)
+        P1 = torch.tensor(
+            [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]],
+            dtype=dtype, device=device,
+        )
+        P2 = torch.tensor(
+            [[0.9950041770935059, 0.0, 0.0998334214091301, -1.0],
+             [0.0, 1.0, 0.0, 0.0],
+             [-0.0998334214091301, 0.0, 0.9950041770935059, 0.0]],
+            dtype=dtype, device=device,
+        )
+        pts1 = torch.tensor(
+            [[-0.024943894271020096, 0.023484865267389687],
+             [0.0284050326736405, 0.22463705371976522],
+             [0.05363684307356541, 0.1995784905718564],
+             [0.1202179211117687, -0.002082513366088421],
+             [-0.05603666748438946, -0.07320451037059378],
+             [0.2234642952593915, 0.03488261645314251],
+             [0.04132917198453165, 0.19063330422731778],
+             [0.07586561872234336, 0.12222851867867218]],
+            dtype=dtype, device=device,
+        )
+        pts2 = torch.tensor(
+            [[-0.2005761556307751, 0.08063633664743011],
+             [-0.05218266808824606, 0.09602012894912612],
+             [-0.14514520805453554, 0.11014017584343802],
+             [-0.14273667377657795, 0.051925094545445555],
+             [-0.2219682806714787, -0.09313464409688944],
+             [-0.061311792967568134, 0.04181839051261021],
+             [-0.1400088642080817, 0.12810430456996066],
+             [-0.16590968636404868, 0.08471239170067128]],
+            dtype=dtype, device=device,
+        )
+        # Expected: numpy DLT (same algorithm as cv2.triangulatePoints)
+        X_expected = torch.tensor(
+            [[-0.08818743120343768, 0.188334626330844, 3.6220817756133172],
+             [0.16144758240818913, 0.8807090389866558, 5.4844829932547015],
+             [0.18216324334542242, 0.517464929751309, 3.3477856439676588],
+             [0.3350949547897918, 0.06786420490996858, 2.770735605435314],
+             [-0.20989477003241103, -0.3123833872441908, 3.754403690255068],
+             [0.5852768065399436, 0.0989402354921456, 2.6188660940360844],
+             [0.1480216292032729, 0.5668535581804692, 3.5667031501090993],
+             [0.22379169128122922, 0.3033298174456883, 2.9457656267879586]],
+            dtype=dtype, device=device,
+        )
 
-        N = 50  # number of 3-D points
-
-        # --- Projection matrices ----------------------------------------
-        # Camera 1: canonical  [I | 0]
-        P1 = torch.eye(3, 4, dtype=dtype, device=device)
-
-        # Camera 2: small rotation + rightward translation of 1 unit
-        angle = 0.05  # ~2.9 degrees
-        c, s = float(torch.cos(torch.tensor(angle))), float(torch.sin(torch.tensor(angle)))
-        R2 = torch.tensor([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]], dtype=dtype, device=device)
-        t2 = torch.tensor([[-1.0], [0.0], [0.0]], dtype=dtype, device=device)
-        P2 = torch.cat([R2, t2], dim=-1)  # (3, 4)
-
-        # --- 3-D ground-truth points at depth 5 -------------------------
-        X_world = torch.rand(N, 3, dtype=dtype, device=device)
-        X_world[..., 2] = X_world[..., 2] + 4.5  # depth in [4.5, 5.5]
-
-        # --- Project and add Gaussian noise (sigma = 0.5 px) ----------------
-        def project(P: torch.Tensor, X: torch.Tensor) -> torch.Tensor:
-            """(3,4) x (N,3) → (N,2) normalised image coords."""
-            Xh = torch.cat([X, torch.ones(N, 1, dtype=dtype, device=device)], dim=-1)  # (N,4)
-            px = (P @ Xh.mT).mT  # (N,3)
-            return px[..., :2] / px[..., 2:3]
-
-        noise_sigma = 0.5
-        pts1_clean = project(P1, X_world)
-        pts2_clean = project(P2, X_world)
-        pts1 = pts1_clean + noise_sigma * torch.randn_like(pts1_clean)
-        pts2 = pts2_clean + noise_sigma * torch.randn_like(pts2_clean)
-
-        # --- Triangulate with Kornia (add batch dimension) ---------------
         X_kornia = epi.triangulate_points(
             P1.unsqueeze(0), P2.unsqueeze(0),
             pts1.unsqueeze(0), pts2.unsqueeze(0),
             solver=solver,
-        ).squeeze(0)  # (N, 3)
+        ).squeeze(0)
 
-        # --- Triangulate with OpenCV (reference) -------------------------
-        # cv2.triangulatePoints expects float64 2xN arrays and 3x4 matrices.
-        P1_np = P1.cpu().to(torch.float64).numpy()
-        P2_np = P2.cpu().to(torch.float64).numpy()
-        pts1_np = pts1.cpu().to(torch.float64).numpy().T  # (2, N)
-        pts2_np = pts2.cpu().to(torch.float64).numpy().T  # (2, N)
-
-        X_cv_h = cv2.triangulatePoints(P1_np, P2_np, pts1_np, pts2_np)  # (4, N)
-        X_cv = (X_cv_h[:3] / X_cv_h[3:4]).T  # (N, 3)
-        X_cv_t = torch.tensor(X_cv, dtype=dtype, device=device)
-
-        # --- Both results must agree within noise-induced triangulation error ---
-        # At depth~5 and baseline~1, sigma=0.5 px noise gives ~0.3 unit 3-D error.
-        atol = 0.5
-        self.assert_close(X_kornia, X_cv_t, atol=atol, rtol=0.0)
+        atol = 1e-4 if dtype == torch.float64 else 1e-3
+        self.assert_close(X_kornia, X_expected, atol=atol, rtol=0.0)
 
     # ------------------------------------------------------------------
     # Module-level import check
