@@ -22,6 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, LineMatcherCfg
 from kornia.geometry.conversions import normalize_pixel_coordinates
@@ -29,8 +30,11 @@ from kornia.geometry.conversions import normalize_pixel_coordinates
 from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
 
-urls: Dict[str, str] = {}
-urls["wireframe"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"
+urls: Dict[str, str | list[str]] = {}
+urls["wireframe"] = [
+    hf_url("sold2", "sold2_wireframe.pth"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
+]
 
 
 class SOLD2(nn.Module):
@@ -74,7 +78,7 @@ class SOLD2(nn.Module):
         # Load the pre-trained model
         self.model = SOLD2Net(dataclass_to_dict(self.config))
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
             state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
             self.model.load_state_dict(state_dict)
         self.eval()

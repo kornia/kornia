@@ -26,6 +26,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.feature.laf import laf_to_three_points, scale_laf
 
 try:
@@ -531,13 +532,29 @@ class LightGlue(nn.Module):
             if features == "dog_affnet_hardnet":
                 features = "doghardnet"  # new dog model is better for affnet as well
             if features in ["keynet_affnet_hardnet"]:
-                fname = "keynet_affnet_hardnet_lightlue.pth"
-                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth"
+                fname = "keynet_affnet_hardnet_lightglue.pth"
+                url = [
+                    hf_url("lightglue", "keynet_affnet_hardnet_lightglue.pth"),
+                    "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth",
+                ]
             elif features in ["dedodeb"]:
                 fname = "dedodeb_lightglue.pth"
-                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeb_lightglue.pth"
+                url = [
+                    hf_url("lightglue", "dedodeb_lightglue.pth"),
+                    "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeb_lightglue.pth",
+                ]
             elif features in ["dedodeg"]:
                 fname = "dedodeg_lightglue.pth"
+                url = [
+                    hf_url("lightglue", "dedodeg_lightglue.pth"),
+                    "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth",
+                ]
+            else:
+                url = [
+                    hf_url("lightglue", f"{features.replace('-', '_')}_lightglue.pth"),
+                    self.url.format(self.version, features.replace("-", "_")),
+                ]
+            state_dict = load_state_dict_from_url(url, file_name=fname)
                 url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth"
             elif features == "xfeat":
                 fname = "xfeat-lighterglue.pt"

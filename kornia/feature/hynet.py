@@ -20,10 +20,21 @@ from typing import Dict
 import torch
 from torch import nn
 
-urls: Dict[str, str] = {}
-urls["liberty"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth"  # pylint: disable
-urls["notredame"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_ND.pth"  # pylint: disable
-urls["yosemite"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_YOS.pth"  # pylint: disable
+from kornia.core.download import hf_url, load_state_dict_from_url
+
+urls: Dict[str, str | list[str]] = {}
+urls["liberty"] = [
+    hf_url("hynet", "HyNet_LIB.pth"),
+    "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth",
+]  # pylint: disable
+urls["notredame"] = [
+    hf_url("hynet", "HyNet_ND.pth"),
+    "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_ND.pth",
+]  # pylint: disable
+urls["yosemite"] = [
+    hf_url("hynet", "HyNet_YOS.pth"),
+    "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_YOS.pth",
+]  # pylint: disable
 
 
 class FilterResponseNorm2d(nn.Module):
@@ -226,7 +237,7 @@ class HyNet(nn.Module):
         self.desc_norm = nn.LocalResponseNorm(2 * self.dim_desc, 2.0 * self.dim_desc, 0.5, 0.0)
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

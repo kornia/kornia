@@ -29,6 +29,7 @@ from torch import nn
 from torch.utils import checkpoint
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.models.common import DropPath, LayerNorm2d, window_partition, window_unpartition
 
 
@@ -575,9 +576,9 @@ class TinyViT(nn.Module):
         return {"5m": _tiny_vit_5m, "11m": _tiny_vit_11m, "21m": _tiny_vit_21m}[variant](pretrained, **kwargs)
 
 
-def _load_pretrained(model: TinyViT, url: str) -> TinyViT:
+def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
     model_state_dict = model.state_dict()
-    state_dict = torch.hub.load_state_dict_from_url(url)
+    state_dict = load_state_dict_from_url(url)
 
     # official checkpoint has "model" key
     if "model" in state_dict:
@@ -623,10 +624,14 @@ def _tiny_vit_5m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
             pretrained = "in1k"
 
         url = {
-            "in22k": (
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22k_distill.pth"
-            ),
-            "in1k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22kto1k_distill.pth",
+            "in22k": [
+                hf_url("tiny_vit", "tiny_vit_5m_22k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22k_distill.pth",
+            ],
+            "in1k": [
+                hf_url("tiny_vit", "tiny_vit_5m_22kto1k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22kto1k_distill.pth",
+            ],
         }[pretrained]
         model = _load_pretrained(model, url)
 
@@ -648,10 +653,14 @@ def _tiny_vit_11m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
             pretrained = "in1k"
 
         url = {
-            "in22k": (
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22k_distill.pth"
-            ),
-            "in1k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22kto1k_distill.pth",
+            "in22k": [
+                hf_url("tiny_vit", "tiny_vit_11m_22k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22k_distill.pth",
+            ],
+            "in1k": [
+                hf_url("tiny_vit", "tiny_vit_11m_22kto1k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22kto1k_distill.pth",
+            ],
         }[pretrained]
         model = _load_pretrained(model, url)
 
@@ -678,12 +687,22 @@ def _tiny_vit_21m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
                 pretrained = "in1k_512"
 
         url = {
-            "in22k": (
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22k_distill.pth"
-            ),
-            "in1k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_distill.pth",
-            "in1k_384": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_384_distill.pth",
-            "in1k_512": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_512_distill.pth",
+            "in22k": [
+                hf_url("tiny_vit", "tiny_vit_21m_22k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22k_distill.pth",
+            ],
+            "in1k": [
+                hf_url("tiny_vit", "tiny_vit_21m_22kto1k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_distill.pth",
+            ],
+            "in1k_384": [
+                hf_url("tiny_vit", "tiny_vit_21m_22kto1k_384_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_384_distill.pth",
+            ],
+            "in1k_512": [
+                hf_url("tiny_vit", "tiny_vit_21m_22kto1k_512_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_512_distill.pth",
+            ],
         }[pretrained]
         model = _load_pretrained(model, url)
 

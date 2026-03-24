@@ -20,9 +20,17 @@ from typing import Callable, Dict, List, Optional, Type
 import torch
 from torch import nn
 
-urls: Dict[str, str] = {}
-urls["defmo_encoder"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt"
-urls["defmo_rendering"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt"
+from kornia.core.download import hf_url, load_state_dict_from_url
+
+urls: Dict[str, str | list[str]] = {}
+urls["defmo_encoder"] = [
+    hf_url("defmo", "encoder_best.pt"),
+    "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt",
+]
+urls["defmo_rendering"] = [
+    hf_url("defmo", "rendering_best.pt"),
+    "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt",
+]
 
 
 # conv1x1, conv3x3, Bottleneck, ResNet are taken from:
@@ -356,13 +364,9 @@ class DeFMO(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls["defmo_encoder"], map_location=torch.device("cpu")
-            )
+            pretrained_dict = load_state_dict_from_url(urls["defmo_encoder"], map_location=torch.device("cpu"))
             self.encoder.load_state_dict(pretrained_dict, strict=True)
-            pretrained_dict_ren = torch.hub.load_state_dict_from_url(
-                urls["defmo_rendering"], map_location=torch.device("cpu")
-            )
+            pretrained_dict_ren = load_state_dict_from_url(urls["defmo_rendering"], map_location=torch.device("cpu"))
             self.rendering.load_state_dict(pretrained_dict_ren, strict=True)
         self.eval()
 
