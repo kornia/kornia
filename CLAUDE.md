@@ -124,7 +124,10 @@ Install hooks with `pre-commit install`. CI enforces ruff formatting, linting, a
 
 ## Documentation and Visualizations
 
+**Every public class or function added to a `kornia/` submodule must also be listed in the corresponding `docs/source/*.rst` file** — otherwise it will not appear in the rendered docs.  Check the relevant `.rst` after adding any public API symbol and add an `.. autoclass::` or `.. autofunction::` directive if it is missing.
+
 When adding a new feature detector or descriptor to `kornia/feature/`:
+- Add an `.. autoclass::` entry to `docs/source/feature.rst` in the appropriate section (Detectors, Descriptors, or Local Features).
 - Add an entry to the `responses` list in `docs/generate_examples.py` with a corresponding `elif` block that produces a heatmap/score visualization (`(B, 3, H, W)` BGR image in `img_in`, `(B, 3, H, W)` response map in `out`).
 - See existing entries (`DISK`, `ALIKED`, `XFeat`) for the expected pattern.
 
@@ -136,5 +139,33 @@ All PRs must:
 - Reference an algorithm source (PyTorch, OpenCV, scikit-image, paper, etc.) for any new implementation
 
 **Comments**: No redundant or ghost comments (e.g., "this returns the input tensor", or comments explaining deleted code). Violation triggers mandatory manual rewrite request.
+
+## Test-First Debugging
+
+**Always run the relevant tests before answering a question about a bug or test failure.**
+Do not assume a failure is pre-existing or unrelated to recent changes without running it:
+
+```bash
+# Run the failing test(s) first, then investigate
+pixi run -e default uv run pytest <failing_test_file> -q --dtype=float32,float64
+```
+
+If the test passes on the current branch, verify on `main` with `git stash` before concluding it is pre-existing.
+
+## Hardcoded Reference Values in Tests
+
+**Never use `pytest.importorskip` to gate correctness tests on optional third-party libraries** (OpenCV, scipy, etc.). Instead, compute the expected output once offline and embed it as a hardcoded tensor literal, following the pattern used in `tests/geometry/epipolar/test_fundamental.py`:
+
+```python
+# Snippet used to generate expected (requires numpy only):
+# import numpy as np
+# ... run the reference algorithm ...
+# expected = result  # <-- print and paste below
+
+expected = torch.tensor([[...]], dtype=dtype, device=device)
+self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+```
+
+Leave a comment above the literal showing the generation snippet so it can be reproduced. This makes tests self-contained, deterministic, and runnable without optional dependencies.
 
 See `AI_POLICY.md` for the full contribution policy, including AI usage disclosure requirements.
