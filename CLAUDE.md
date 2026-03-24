@@ -124,7 +124,10 @@ Install hooks with `pre-commit install`. CI enforces ruff formatting, linting, a
 
 ## Documentation and Visualizations
 
+**Every public class or function added to a `kornia/` submodule must also be listed in the corresponding `docs/source/*.rst` file** — otherwise it will not appear in the rendered docs.  Check the relevant `.rst` after adding any public API symbol and add an `.. autoclass::` or `.. autofunction::` directive if it is missing.
+
 When adding a new feature detector or descriptor to `kornia/feature/`:
+- Add an `.. autoclass::` entry to `docs/source/feature.rst` in the appropriate section (Detectors, Descriptors, or Local Features).
 - Add an entry to the `responses` list in `docs/generate_examples.py` with a corresponding `elif` block that produces a heatmap/score visualization (`(B, 3, H, W)` BGR image in `img_in`, `(B, 3, H, W)` response map in `out`).
 - See existing entries (`DISK`, `ALIKED`, `XFeat`) for the expected pattern.
 
