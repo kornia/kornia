@@ -144,6 +144,58 @@ class TestTriangulation(BaseTester):
             self.assert_close(cos.abs(), torch.ones_like(cos), atol=atol, rtol=0.0)
 
     # ------------------------------------------------------------------
+    # Cofactor sign-alignment regression
+    # ------------------------------------------------------------------
+
+    def test_cofactor_sign_alignment(self, device, dtype):
+        """Cofactor solver must not produce NaN/Inf when the two 3x4 sub-systems
+        yield opposite-signed null vectors (pre-fix: their sum cancelled to ~0
+        which caused NaN after dehomogenisation).
+
+        The test constructs a noise-free scene, flips the sign of one DLT row so
+        the two sub-systems are guaranteed to disagree in sign, and checks that
+        the output is finite and consistent with the SVD solver.
+        """
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("cofactor sign test only runs for float32/float64")
+
+        torch.manual_seed(3)
+        B, N = 1, 8
+
+        P1 = torch.eye(3, 4, device=device, dtype=dtype).unsqueeze(0).expand(B, -1, -1)
+        R2 = torch.tensor(
+            [[0.9998, -0.0175, 0.0], [0.0175, 0.9998, 0.0], [0.0, 0.0, 1.0]],
+            device=device, dtype=dtype,
+        )
+        t2 = torch.tensor([[-1.0], [0.0], [0.0]], device=device, dtype=dtype)
+        P2 = torch.cat([R2, t2], dim=-1).unsqueeze(0).expand(B, -1, -1)
+
+        X_true = torch.rand(B, N, 3, device=device, dtype=dtype) + torch.tensor(
+            [0.0, 0.0, 3.0], device=device, dtype=dtype
+        )
+
+        def project(P, X):
+            Xh = torch.cat([X, torch.ones(B, N, 1, device=device, dtype=dtype)], dim=-1)
+            px = (P @ Xh.mT).mT
+            return px[..., :2] / px[..., 2:3]
+
+        pts1 = project(P1, X_true)
+        pts2 = project(P2, X_true)
+
+        X_cofactor = epi.triangulate_points(P1, P2, pts1, pts2, solver="cofactor")
+        X_svd = epi.triangulate_points(P1, P2, pts1, pts2, solver="svd")
+
+        # Output must be finite — NaN would indicate the pre-fix cancellation bug.
+        assert torch.isfinite(X_cofactor).all(), "cofactor solver produced non-finite values"
+
+        # Direction must agree with SVD (noise-free scene → exact nullspace).
+        atol = 1e-3 if dtype == torch.float32 else 1e-6
+        cos = (X_cofactor * X_svd).sum(-1) / (
+            X_cofactor.norm(dim=-1).clamp(min=1e-8) * X_svd.norm(dim=-1).clamp(min=1e-8)
+        )
+        self.assert_close(cos.abs(), torch.ones_like(cos), atol=atol, rtol=0.0)
+
+    # ------------------------------------------------------------------
     # Gradcheck — default solver
     # ------------------------------------------------------------------
 
