@@ -46,10 +46,19 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         self._transform_matrices.append(module.transform_matrix)
 
     def clear_state(self) -> None:
+        """Clears the internal state of the policy, including the transform matrices."""
         self._reset_transform_matrix_state()
         return super().clear_state()
 
     def validate_operations(self, *operations: OperationBase) -> None:
+        """Validates that all provided operations are instances of OperationBase.
+
+        Args:
+            *operations: A variable number of operations to validate.
+
+        Raises:
+            ValueError: If any operation is not an instance of OperationBase.
+        """
         invalid_ops: List[OperationBase] = []
         for op in operations:
             if not isinstance(op, OperationBase):
@@ -104,6 +113,11 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         return res_mat
 
     def is_intensity_only(self) -> bool:
+        """Checks if the policy contains only intensity-based transformations.
+
+        Returns:
+            True if there are no geometric augmentations, False otherwise.
+        """
         for module in self.children():
             module = cast(OperationBase, module)
             if isinstance(module.op, (K.GeometricAugmentationBase2D,)):
@@ -111,11 +125,27 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         return True
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
+        """Retrieves the forward sequence of operations.
+
+        Args:
+            params: Optional list of parameters to retrieve specific children.
+
+        Returns:
+            An iterator yielding tuples of operation names and their corresponding modules.
+        """
         if params is not None:
             return super().get_children_by_params(params)
         return self.named_children()
 
     def forward_parameters(self, batch_shape: Size) -> List[ParamItem]:
+        """Generates the parameters for the forward pass based on the batch shape.
+
+        Args:
+            batch_shape: The shape of the input batch.
+
+        Returns:
+            A list of generated parameters for each operation in the policy.
+        """
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()
 
         params: List[ParamItem] = []
@@ -130,6 +160,16 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     def transform_inputs(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Transforms the input tensor using the provided parameters and updates the transform matrix.
+
+        Args:
+            input: The input tensor to transform.
+            params: The list of parameters for each operation.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The transformed input tensor.
+        """
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
