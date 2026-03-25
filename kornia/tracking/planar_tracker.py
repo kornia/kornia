@@ -102,7 +102,15 @@ class HomographyTracker(nn.Module):
         return torch.empty(3, 3, device=self.device, dtype=self.dtype), False
 
     def match_initial(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
-        """Matches keypoints from the initial reference frame to the current frame."""
+        """Matches keypoints from the initial reference frame to the current frame.
+
+        Args:
+            x: The input image frame tensor to match against the initial reference.
+
+        Returns:
+            A tuple containing the computed transformation matrix and a boolean flag 
+            indicating whether the initial matching was successful.
+        """
         input_dict: Dict[str, torch.Tensor] = {"image0": self.target, "image1": x}
 
         for k, v in self.target_initial_representation.items():
