@@ -102,7 +102,7 @@ class HomographyTracker(nn.Module):
         return torch.empty(3, 3, device=self.device, dtype=self.dtype), False
 
     def match_initial(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
-        """Match the frame `x` with initial_matcher and verified with ransac."""
+        """Matches keypoints from the initial reference frame to the current frame."""
         input_dict: Dict[str, torch.Tensor] = {"image0": self.target, "image1": x}
 
         for k, v in self.target_initial_representation.items():
