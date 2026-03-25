@@ -172,6 +172,19 @@ class PatchSequential(ImageSequential):
     def compute_padding(
         self, input: torch.Tensor, padding: str, grid_size: Optional[Tuple[int, int]] = None
     ) -> Tuple[int, int, int, int]:
+        """Computes the padding required for the input tensor based on the grid size and padding mode.
+
+        Args:
+            input: The input image tensor.
+            padding: The padding mode, either "same" or "valid".
+            grid_size: The size of the patch grid. Defaults to the instance's grid_size.
+
+        Returns:
+            A tuple of four integers representing the padding (left, right, top, bottom).
+
+        Raises:
+            NotImplementedError: If the padding mode is not "valid" or "same".
+        """
         if grid_size is None:
             grid_size = self.grid_size
         if padding == "valid":
@@ -260,6 +273,14 @@ class PatchSequential(ImageSequential):
         return restored_tensor
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[PatchParamItem]:  # type: ignore[override]
+        """Generates the parameters for each patch augmentation in the sequence.
+
+        Args:
+            batch_shape: The shape of the input batch.
+
+        Returns:
+            A list of generated parameters specifically structured for patch-wise application.
+        """
         out_param: List[PatchParamItem] = []
         if not self.patchwise_apply:
             params = self.generate_parameters(torch.Size([1, batch_shape[0] * batch_shape[1], *batch_shape[2:]]))
@@ -322,6 +343,15 @@ class PatchSequential(ImageSequential):
                         yield ParamItem(s[0], None), i
 
     def forward_by_params(self, input: torch.Tensor, params: List[PatchParamItem]) -> torch.Tensor:
+        """Applies transformations to specific patches based on the provided parameters.
+
+        Args:
+            input: The tensor of extracted patches.
+            params: A list of PatchParamItem containing the indices and transformation parameters.
+
+        Returns:
+            The augmented tensor of patches.
+        """
         in_shape = input.shape
         input = input.reshape(-1, *in_shape[-3:])
 
@@ -337,6 +367,16 @@ class PatchSequential(ImageSequential):
     def transform_inputs(  # type: ignore[override]
         self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Applies the patch-wise augmentation transformations to the input tensor.
+
+        Args:
+            input: The input image tensor to transform.
+            params: The list of patch parameters for the operations.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The transformed image tensor.
+        """
         pad = self.compute_padding(input, self.padding)
         input = self.extract_patches(input, self.grid_size, pad)
         input = self.forward_by_params(input, params)
@@ -347,6 +387,19 @@ class PatchSequential(ImageSequential):
     def inverse_inputs(  # type: ignore[override]
         self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Applies the inverse transformations to the augmented input tensor.
+
+        Args:
+            input: The augmented image tensor to inverse.
+            params: The list of patch parameters used during the forward pass.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The inversed image tensor.
+
+        Raises:
+            NotImplementedError: If the sequence contains geometric transformations.
+        """
         if self.is_intensity_only():
             return input
 
@@ -355,6 +408,19 @@ class PatchSequential(ImageSequential):
     def transform_masks(  # type: ignore[override]
         self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Applies the patch-wise augmentation transformations to the mask tensor.
+
+        Args:
+            input: The input mask tensor to transform.
+            params: The list of patch parameters for the operations.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The transformed mask tensor.
+
+        Raises:
+            NotImplementedError: If the sequence contains geometric transformations.
+        """
         if self.is_intensity_only():
             return input
 
@@ -363,6 +429,19 @@ class PatchSequential(ImageSequential):
     def inverse_masks(  # type: ignore[override]
         self, input: torch.Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Applies the inverse transformations to the augmented mask tensor.
+
+        Args:
+            input: The augmented mask tensor to inverse.
+            params: The list of patch parameters used during the forward pass.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The inversed mask tensor.
+
+        Raises:
+            NotImplementedError: If the sequence contains geometric transformations.
+        """
         if self.is_intensity_only():
             return input
 
@@ -371,6 +450,19 @@ class PatchSequential(ImageSequential):
     def transform_boxes(  # type: ignore[override]
         self, input: Boxes, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
+        """Applies the patch-wise augmentation transformations to the bounding boxes.
+
+        Args:
+            input: The bounding boxes to transform.
+            params: The list of patch parameters for the operations.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The transformed bounding boxes.
+
+        Raises:
+            NotImplementedError: If the sequence contains geometric transformations.
+        """
         if self.is_intensity_only():
             return input
 
@@ -379,6 +471,19 @@ class PatchSequential(ImageSequential):
     def inverse_boxes(  # type: ignore[override]
         self, input: Boxes, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
+        """Applies the inverse transformations to the augmented bounding boxes.
+
+        Args:
+            input: The augmented bounding boxes to inverse.
+            params: The list of patch parameters used during the forward pass.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The inversed bounding boxes.
+
+        Raises:
+            NotImplementedError: If the sequence contains geometric transformations.
+        """
         if self.is_intensity_only():
             return input
 
@@ -387,6 +492,19 @@ class PatchSequential(ImageSequential):
     def transform_keypoints(  # type: ignore[override]
         self, input: Keypoints, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
+        """Applies the patch-wise augmentation transformations to the keypoints.
+
+        Args:
+            input: The keypoints to transform.
+            params: The list of patch parameters for the operations.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The transformed keypoints.
+
+        Raises:
+            NotImplementedError: If the sequence contains geometric transformations.
+        """
         if self.is_intensity_only():
             return input
 
@@ -395,6 +513,19 @@ class PatchSequential(ImageSequential):
     def inverse_keypoints(  # type: ignore[override]
         self, input: Keypoints, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
+        """Applies the inverse transformations to the augmented keypoints.
+
+        Args:
+            input: The augmented keypoints to inverse.
+            params: The list of patch parameters used during the forward pass.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The inversed keypoints.
+
+        Raises:
+            NotImplementedError: If the sequence contains geometric transformations.
+        """
         if self.is_intensity_only():
             return input
 
