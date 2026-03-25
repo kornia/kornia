@@ -296,6 +296,7 @@ def pytest_report_header(config):
 
     import kornia_rs
     import onnx
+
     onnx_version = getattr(onnx, "__version__", "unknown")
 
     env_info = _get_env_info()
