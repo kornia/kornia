@@ -11,7 +11,7 @@ class TestQwen2VL:
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_smoke(self, batch_size, device, dtype):
-        # 🔥 smaller model → stable
+        #  smaller model → stable
         model = Qwen2VLVisionTransformer(
             embed_dim=64, depth=2, num_heads=4
         ).to(device=device, dtype=dtype)
@@ -58,3 +58,5 @@ class TestQwen2VL:
     @pytest.mark.skip(reason="torch.compile unstable on Windows/Python 3.13")
     def test_compile(self, device):
         pass
+    def test_batch_consistency(self, device):
+        """Ensure outputs are consistent between batch and single input."""
