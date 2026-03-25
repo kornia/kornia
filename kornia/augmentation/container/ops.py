@@ -44,6 +44,17 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
     @classmethod
     def get_instance_module_param(cls, param: ParamItem) -> Dict[str, torch.Tensor]:
+        """Retrieves parameters for a single augmentation instance.
+
+        Args:
+            param: A ParamItem containing the parameters, expected to be a dictionary.
+
+        Returns:
+            A dictionary containing the tensor parameters for the instance.
+
+        Raises:
+            TypeError: If the param.data is not a dictionary.
+        """
         if isinstance(param, ParamItem) and isinstance(param.data, dict):
             _params = param.data
         else:
@@ -52,6 +63,17 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
     @classmethod
     def get_sequential_module_param(cls, param: ParamItem) -> List[ParamItem]:
+        """Retrieves parameters for a sequential module.
+
+        Args:
+            param: A ParamItem containing the parameters, expected to be a list.
+
+        Returns:
+            A list of ParamItems for the sequential operations.
+
+        Raises:
+            TypeError: If the param.data is not a list.
+        """
         if isinstance(param, ParamItem) and isinstance(param.data, list):
             _params = param.data
         else:
@@ -102,6 +124,7 @@ class AugmentationSequentialOps:
 
     @property
     def data_keys(self) -> Optional[List[DataKey]]:
+        """Returns the list of data keys configured for the sequential container."""
         return self._data_keys
 
     @data_keys.setter
@@ -112,6 +135,18 @@ class AugmentationSequentialOps:
             self._data_keys = None
 
     def preproc_datakeys(self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None) -> List[DataKey]:
+        """Preprocesses the input data keys into standard DataKey enum values.
+
+        Args:
+            data_keys: An optional list of strings, ints, or DataKeys to process. 
+                If None, falls back to the instance's configured data_keys.
+
+        Returns:
+            A list of validated DataKey enum values.
+
+        Raises:
+            ValueError: If no data keys are provided or configured.
+        """
         if data_keys is None:
             if isinstance(self.data_keys, list):
                 return self.data_keys
@@ -141,6 +176,18 @@ class AugmentationSequentialOps:
         extra_args: Dict[DataKey, Dict[str, Any]],
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
     ) -> Union[DataType, SequenceDataType]:
+        """Applies a transformation module to all configured inputs based on their data keys.
+
+        Args:
+            *arg: The inputs to transform (e.g., images, masks, boxes).
+            module: The augmentation module to apply.
+            param: The parameter item containing generation data for the module.
+            extra_args: A dictionary mapping data keys to extra arguments for the transformation.
+            data_keys: Optional list of data keys to override the default configuration.
+
+        Returns:
+            The transformed inputs. Returns a single item if only one input is provided, otherwise a list.
+        """
         _data_keys = self.preproc_datakeys(data_keys)
 
         if isinstance(module, K.RandomTransplantation):
@@ -175,6 +222,18 @@ class AugmentationSequentialOps:
         extra_args: Dict[DataKey, Dict[str, Any]],
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
     ) -> Union[DataType, SequenceDataType]:
+        """Applies an inverse transformation module to all configured inputs based on their data keys.
+
+        Args:
+            *arg: The augmented inputs to inverse.
+            module: The augmentation module used in the forward pass.
+            param: The parameter item containing generation data used in the forward pass.
+            extra_args: A dictionary mapping data keys to extra arguments for the inversion.
+            data_keys: Optional list of data keys to override the default configuration.
+
+        Returns:
+            The inversed inputs. Returns a single item if only one input is provided, otherwise a list.
+        """
         _data_keys = self.preproc_datakeys(data_keys)
         outputs = []
         for inp, dcate in zip(arg, _data_keys):
@@ -220,6 +279,20 @@ class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
     def transform(
         cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Applies a transformation to an input image tensor within a sequential container.
+
+        Args:
+            input: The input image tensor.
+            module: The module performing the transformation.
+            param: The parameters associated with the module.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The transformed image tensor.
+            
+        Raises:
+            AssertionError: If a non-augmentation module receives non-empty parameters.
+        """
         if extra_args is None:
             extra_args = {}
         if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
@@ -238,6 +311,20 @@ class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
     def inverse(
         cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Applies an inverse transformation to an augmented image tensor within a sequential container.
+
+        Args:
+            input: The augmented image tensor to inverse.
+            module: The module performing the inverse transformation.
+            param: The parameters associated with the module used in the forward pass.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The inversed image tensor.
+
+        Raises:
+            NotImplementedError: If the module is a 3D geometric augmentation.
+        """
         if extra_args is None:
             extra_args = {}
         if isinstance(module, K.GeometricAugmentationBase2D):
@@ -262,6 +349,20 @@ class ClassSequentialOps(SequentialOpsInterface[torch.Tensor]):
     def transform(
         cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Applies a transformation to class labels within a sequential container.
+
+        Args:
+            input: The input class label tensor.
+            module: The module performing the transformation.
+            param: The parameters associated with the module.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The transformed class label tensor.
+            
+        Raises:
+            NotImplementedError: If the module is a mix augmentation attempting to change class labels.
+        """
         if isinstance(module, K.MixAugmentationBaseV2):
             raise NotImplementedError(
                 "The support for class labels for mix augmentations that change the class label is not yet supported."
@@ -272,6 +373,21 @@ class ClassSequentialOps(SequentialOpsInterface[torch.Tensor]):
     def inverse(
         cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Applies an inverse transformation to class labels within a sequential container.
+        
+        Note:
+            Class labels typically do not undergo geometric or intensity inversions, so this method 
+            currently acts as an identity function.
+
+        Args:
+            input: The input class label tensor.
+            module: The module performing the transformation.
+            param: The parameters associated with the module.
+            extra_args: Optional dictionary of extra arguments.
+
+        Returns:
+            The original class label tensor.
+        """
         return input
 
 
