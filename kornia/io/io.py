@@ -95,10 +95,10 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
             img = kornia_rs.read_image_png_u8(str(path_file), mode)
     else:
         try:
-             img = kornia_rs.read_image_any(str(path_file))
+            img = kornia_rs.read_image_any(str(path_file))
         except Exception:
-            from PIL import Image
             import numpy as np
+            from PIL import Image
 
             img = np.array(Image.open(path_file))
 
