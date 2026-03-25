@@ -296,6 +296,7 @@ def pytest_report_header(config):
 
     import kornia_rs
     import onnx
+    onnx_version = getattr(onnx, "__version__", "unknown")
 
     env_info = _get_env_info()
     cached_weights = os.listdir(WEIGHTS_CACHE_DIR) if os.path.exists(WEIGHTS_CACHE_DIR) else []
@@ -322,7 +323,7 @@ x deps:
     - {accelerate_info}
 dev deps:
     - kornia_rs-{kornia_rs.__version__}
-    - onnx-{onnx.__version__}
+    - onnx-{onnx_version}
 {gcc_info}
 available optimizers: {TEST_OPTIMIZER_BACKEND}
 model weights cached: {cached_weights}
