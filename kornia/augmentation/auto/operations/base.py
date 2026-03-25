@@ -129,27 +129,46 @@ class OperationBase(nn.Module):
             self.op._p_gen = Bernoulli(self.probability)
 
     def train(self, mode: bool = True) -> Self:
-        self._update_probability_gen(relaxation=mode)
+        """Sets the module in training mode.
 
+        Args:
+            mode: Whether to set training mode (True) or evaluation mode (False).
+
+        Returns:
+            The module itself.
+        """
+        self._update_probability_gen(relaxation=mode)
         return super().train(mode=mode)
 
     def eval(self) -> Self:
+        """Sets the module in evaluation mode.
+
+        Returns:
+            The module itself.
+        """
         return self.train(False)
 
     def forward_parameters(
         self, batch_shape: torch.Size, mag: Optional[torch.Tensor] = None
     ) -> Dict[str, torch.Tensor]:
+        """Generates the parameters for the forward pass.
+
+        Args:
+            batch_shape: The shape of the input batch.
+            mag: Optional magnitude tensor to override the default magnitude.
+
+        Returns:
+            A dictionary containing the generated parameters.
+        """
         if mag is None:
             mag = self.magnitude
-        # Need to setup the sampler again for each update.
-        # Otherwise, an error for updating the same graph twice will be thrown.
+            
         self._update_probability_gen(relaxation=True)
         params = self.op.forward_parameters(batch_shape)
 
         if mag is not None:
             if self._factor_name is None:
                 raise RuntimeError("No factor found in the params while `mag` is provided.")
-            # For single factor operations, this is equivalent to `same_on_batch=True`
             params[self._factor_name] = params[self._factor_name].zero_() + mag
 
         if self._factor_name is not None:
@@ -158,6 +177,15 @@ class OperationBase(nn.Module):
         return params
 
     def forward(self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
+        """Performs the forward pass of the operation.
+
+        Args:
+            input: The input tensor.
+            params: Optional parameters to use for the operation.
+
+        Returns:
+            The augmented input tensor.
+        """
         if params is None:
             params = self.forward_parameters(input.shape)
 
@@ -167,12 +195,22 @@ class OperationBase(nn.Module):
 
     @property
     def transform_matrix(self) -> Optional[torch.Tensor]:
+        """Returns the transformation matrix of the operation.
+
+        Returns:
+            The transformation matrix tensor or None.
+        """
         if hasattr(self.op, "transform_matrix"):
             return self.op.transform_matrix
         return None
 
     @property
     def magnitude(self) -> Optional[torch.Tensor]:
+        """Returns the magnitude of the operation.
+
+        Returns:
+            The clamped magnitude tensor or None.
+        """
         if self._magnitude is None:
             return None
         mag = self._magnitude
@@ -182,5 +220,10 @@ class OperationBase(nn.Module):
 
     @property
     def probability(self) -> torch.Tensor:
+        """Returns the probability of applying the operation.
+
+        Returns:
+            The clamped probability tensor.
+        """
         p = self._probability.clamp(*self.probability_range)
         return p
