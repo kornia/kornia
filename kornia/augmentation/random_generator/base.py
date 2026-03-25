@@ -67,14 +67,44 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
 
     # TODO: refine the logic with module.to()
     def to(self, *args: Any, **kwargs: Any) -> "RandomGeneratorBase":
+        """Moves and/or casts the parameters and buffers of the random generator.
+
+        Args:
+            *args: Arguments passed to torch._C._nn._parse_to.
+            **kwargs: Keyword arguments passed to torch._C._nn._parse_to.
+
+        Returns:
+            The module itself with the updated device and dtype.
+        """
         device, dtype, _, _ = torch._C._nn._parse_to(*args, **kwargs)
         self.set_rng_device_and_dtype(device=device, dtype=dtype)
         return self
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        """Initializes the random distributions on the specified device and dtype.
+
+        Args:
+            device: The target device for the samplers.
+            dtype: The target data type for the samplers.
+
+        Raises:
+            NotImplementedError: If not implemented in the child class.
+        """
         raise NotImplementedError
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+        """Generates the random parameters for the augmentation.
+
+        Args:
+            batch_shape: The shape of the batch to generate parameters for.
+            same_on_batch: Whether to generate the same parameters for the entire batch.
+
+        Returns:
+            A dictionary containing the generated parameter tensors.
+
+        Raises:
+            NotImplementedError: If not implemented in the child class.
+        """
         raise NotImplementedError
 
 
@@ -109,18 +139,42 @@ class DistributionWithMapper(Distribution):
         self.map_fn = map_fn
 
     def rsample(self, sample_shape: Tuple[int, ...]) -> torch.Tensor:  # type: ignore[override]
+        """Generates a reparameterized sample from the distribution and applies the map function.
+
+        Args:
+            sample_shape: The shape of the sample to draw.
+
+        Returns:
+            The drawn sample tensor, optionally modified by the map function.
+        """
         out = self.dist.rsample(torch.Size(sample_shape))
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
     def sample(self, sample_shape: Tuple[int, ...]) -> torch.Tensor:  # type: ignore[override]
+        """Generates a sample from the distribution and applies the map function.
+
+        Args:
+            sample_shape: The shape of the sample to draw.
+
+        Returns:
+            The drawn sample tensor, optionally modified by the map function.
+        """
         out = self.dist.sample(torch.Size(sample_shape))
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
     def sample_n(self, n: int) -> torch.Tensor:
+        """Generates `n` samples from the distribution and applies the map function.
+
+        Args:
+            n: The number of samples to draw.
+
+        Returns:
+            A tensor containing the `n` drawn samples, optionally modified by the map function.
+        """
         out = self.dist.sample_n(n)
         if self.map_fn is not None:
             out = self.map_fn(out)
