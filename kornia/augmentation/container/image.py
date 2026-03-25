@@ -224,6 +224,18 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         return [idx for idx, (_, child) in enumerate(named_modules) if isinstance(child, K.MixAugmentationBaseV2)]
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
+        """Retrieves the sequence of augmentation modules to be applied during the forward pass.
+
+        Args:
+            params: Optional list of parameters to retrieve specific children. If None, it uses 
+                random application settings or returns all named children.
+
+        Returns:
+            An iterator yielding tuples of operation names and their corresponding modules.
+
+        Raises:
+            ValueError: If multiple mix augmentations are detected without enabling random_apply.
+        """
         if params is None:
             # Mix augmentation can only be applied once per forward
             mix_indices = self.get_mix_augmentation_indices(self.named_children())
@@ -242,6 +254,14 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         return self.get_children_by_params(params)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+        """Generates the parameters for each augmentation in the sequence based on the batch shape.
+
+        Args:
+            batch_shape: The shape of the input batch.
+
+        Returns:
+            A list of generated parameters (ParamItem) for each module in the forward sequence.
+        """
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()
 
         params: List[ParamItem] = []
