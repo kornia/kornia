@@ -94,13 +94,7 @@ def _load_image_to_tensor(path_file: Path, device: Union[str, torch.device, None
         else:
             img = kornia_rs.read_image_png_u8(str(path_file), mode)
     else:
-        try:
-            img = kornia_rs.read_image_any(str(path_file))
-        except Exception:
-            import numpy as np
-            from PIL import Image
-
-            img = np.array(Image.open(path_file))
+        img = kornia_rs.read_image_any(str(path_file))
 
     # convert the image to torch.Tensor with shape CxHxW
     img_t = image_to_tensor(img, keepdim=True)

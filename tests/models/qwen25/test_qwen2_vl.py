@@ -71,3 +71,11 @@ class TestQwen2VL:
 
     def test_batch_consistency(self, device):
         """Ensure outputs are consistent between batch and single input."""
+        model = Qwen2VLVisionTransformer(embed_dim=64, depth=2, num_heads=4).to(device)
+
+        x = torch.randn(2, 3, 224, 224, device=device)
+
+        out_batch = model(x)
+        out_single = model(x[:1])
+
+        assert torch.allclose(out_batch[0], out_single[0], atol=1e-5)
