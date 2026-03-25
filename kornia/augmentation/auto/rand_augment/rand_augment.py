@@ -91,26 +91,59 @@ class RandAugment(PolicyAugmentBase):
         self.m = m
 
     def rand_selector(self, n: int) -> torch.Tensor:
+        """Randomly selects a specified number of augmentation indices.
+
+        Args:
+            n: The number of unique indices to select.
+
+        Returns:
+            A tensor containing the randomly selected indices.
+        """
         perm = torch.randperm(len(self._modules))
         idx = perm[:n]
         return idx
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
+        """Composes a sequential policy module from a single-operation subpolicy.
+
+        Args:
+            subpolicy: A list containing exactly one operation configuration (name, low, high).
+
+        Returns:
+            The composed sequential policy module.
+
+        Raises:
+            RuntimeError: If the subpolicy does not contain exactly one operation.
+        """
         if len(subpolicy) != 1:
             raise RuntimeError(f"Each policy must have only one operation for RandAugment. Got {len(subpolicy)}.")
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
+        """Retrieves the sequence of augmentation modules to be applied.
+
+        Args:
+            params: Optional parameters to fetch a specific sequence of modules.
+
+        Returns:
+            An iterator yielding tuples of operation names and their corresponding modules.
+        """
         if params is None:
-            idx = self.rand_selector(
-                self.n,
-            )
+            idx = self.rand_selector(self.n)
             return self.get_children_by_indices(idx)
 
         return self.get_children_by_params(params)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+        """Generates augmentation parameters for the forward pass.
+
+        Args:
+            batch_shape: The shape of the input batch.
+
+        Returns:
+            A list of parameters for each selected augmentation module.
+        """
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
