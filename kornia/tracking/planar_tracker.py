@@ -108,7 +108,7 @@ class HomographyTracker(nn.Module):
             x: The input image frame tensor to match against the initial reference.
 
         Returns:
-            A tuple containing the computed transformation matrix and a boolean flag 
+            A tuple containing the computed transformation matrix and a boolean flag
             indicating whether the initial matching was successful.
         """
         input_dict: Dict[str, torch.Tensor] = {"image0": self.target, "image1": x}
