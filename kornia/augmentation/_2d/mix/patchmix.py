@@ -28,15 +28,26 @@ class PatchMix(MixAugmentationBaseV2):
 
     def generate_parameters(self, batch_shape):
         lam = torch.distributions.Beta(self.alpha, self.alpha).sample((batch_shape[0],))
-        # ensure lambda is on the module RNG device and dtype
+        # ensure lambda is on the module RNG device and dtype when available
+        dev = None
+        dt = None
         try:
-            lam = lam.to(self.device).to(self.dtype)
-        except Exception:
-            lam = lam
+            dev = self.device
+            dt = self.dtype
+        except AttributeError:
+            dev = None
+            dt = None
+        if dev is not None or dt is not None:
+            to_kwargs = {}
+            if dev is not None:
+                to_kwargs["device"] = dev
+            if dt is not None:
+                to_kwargs["dtype"] = dt
+            lam = lam.to(**to_kwargs)
         return {"lam": lam}
 
     def apply_transform(self, input, params, extra_args):
-        B, C, H, W = input.shape
+        B, _, H, W = input.shape
         lam = params["lam"].to(input.device)
         idx = torch.randperm(B, device=input.device)
         out = input.clone()
