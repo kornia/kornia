@@ -285,6 +285,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self.extra_args = extra_args or {DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}}
 
     def clear_state(self) -> None:
+        """Clears the internal state of the augmentation sequence, including the transform matrix."""
         self._reset_transform_matrix_state()
         return super().clear_state()
 
