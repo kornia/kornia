@@ -227,7 +227,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         """Retrieves the sequence of augmentation modules to be applied during the forward pass.
 
         Args:
-            params: Optional list of parameters to retrieve specific children. If None, it uses 
+            params: Optional list of parameters to retrieve specific children. If None, it uses
                 random application settings or returns all named children.
 
         Returns:

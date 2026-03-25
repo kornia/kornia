@@ -138,7 +138,7 @@ class AugmentationSequentialOps:
         """Preprocesses the input data keys into standard DataKey enum values.
 
         Args:
-            data_keys: An optional list of strings, ints, or DataKeys to process. 
+            data_keys: An optional list of strings, ints, or DataKeys to process.
                 If None, falls back to the instance's configured data_keys.
 
         Returns:
@@ -289,7 +289,7 @@ class InputSequentialOps(SequentialOpsInterface[torch.Tensor]):
 
         Returns:
             The transformed image tensor.
-            
+
         Raises:
             AssertionError: If a non-augmentation module receives non-empty parameters.
         """
@@ -359,7 +359,7 @@ class ClassSequentialOps(SequentialOpsInterface[torch.Tensor]):
 
         Returns:
             The transformed class label tensor.
-            
+
         Raises:
             NotImplementedError: If the module is a mix augmentation attempting to change class labels.
         """
@@ -374,9 +374,9 @@ class ClassSequentialOps(SequentialOpsInterface[torch.Tensor]):
         cls, input: torch.Tensor, module: nn.Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
         """Applies an inverse transformation to class labels within a sequential container.
-        
+
         Note:
-            Class labels typically do not undergo geometric or intensity inversions, so this method 
+            Class labels typically do not undergo geometric or intensity inversions, so this method
             currently acts as an identity function.
 
         Args:

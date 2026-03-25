@@ -162,7 +162,7 @@ class OperationBase(nn.Module):
         """
         if mag is None:
             mag = self.magnitude
-            
+
         self._update_probability_gen(relaxation=True)
         params = self.op.forward_parameters(batch_shape)
 
