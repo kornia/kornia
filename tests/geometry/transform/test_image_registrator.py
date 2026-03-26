@@ -17,7 +17,7 @@
 
 import sys
 
-from kornia.conftest import device
+
 import pytest
 import torch
 
