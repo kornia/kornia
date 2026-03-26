@@ -1,18 +1,36 @@
-import torch
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 import warnings
 from collections import defaultdict
 
+import torch
 from feature_extractor import FeatureExtractor
 
 # Lazy pandas import (Kornia style)
 from kornia.core.external import LazyLoader
-pandas = LazyLoader("pandas")
 
 # Metric registry
 from kornia.profiler.metrics.cosine import cosine_similarity
-from kornia.profiler.metrics.linear import linear_similarity
 from kornia.profiler.metrics.gram import gram_similarity
 from kornia.profiler.metrics.l2 import l2_normalized
+from kornia.profiler.metrics.linear import linear_similarity
+
+pandas = LazyLoader("pandas")
 
 METRIC_REGISTRY = {
     "cosine": cosine_similarity,
@@ -38,11 +56,7 @@ class ModelProfiler:
         self.extractor = None
 
     def __enter__(self):
-        self.extractor = FeatureExtractor(
-            self.model,
-            self.layers,
-            processing=self.processing
-        )
+        self.extractor = FeatureExtractor(self.model, self.layers, processing=self.processing)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -53,14 +67,11 @@ class ModelProfiler:
         with torch.no_grad():
             features = self.extractor(**inputs)
 
-        self.storage[group].append({
-            "features": features,
-            "tag": tag
-        })
+        self.storage[group].append({"features": features, "tag": tag})
 
     def compute(self, metrics, groups):
-        assert len(groups) == 2, "Currently supports pairwise group comparison"
-
+        if len(groups) != 2:
+            raise ValueError("Currently supports pairwise group comparison")
         g1, g2 = groups
         feats1 = self.storage[g1]
         feats2 = self.storage[g2]
@@ -69,7 +80,7 @@ class ModelProfiler:
             raise RuntimeError("One of the groups has no data.")
 
         if len(feats1) != len(feats2):
-            warnings.warn("Unequal group sizes, truncating to minimum length.")
+            warnings.warn("Unequal group sizes, truncating to minimum length.", stacklevel=2)
 
         min_len = min(len(feats1), len(feats2))
 
