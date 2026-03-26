@@ -1,19 +1,30 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+from typing import List, Optional
+
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 
 class FeatureExtractor:
-    def __init__(self, model: nn.Module, layers: list = None, processing: str = "none"):
-        """
-        model: PyTorch model
-        layers: list of layer names (strings) to hook
-                if None → hooks all layers
-        processing:
-            "none"    → raw features
-            "flatten" → flatten to (B, -1)
-            "gap"     → global average pooling (if applicable)
-        """
+    def __init__(self, model: nn.Module, layers: Optional[List[str]] = None, processing: str = "none"):
+        """Initialize feature extractor for selected layers."""
         self.model = model
         self.layers = layers
         self.processing = processing
@@ -48,6 +59,7 @@ class FeatureExtractor:
         def hook(module, input, output):
             if isinstance(output, torch.Tensor):
                 self.features[name] = self._process(output.detach())
+
         return hook
 
     def _register_hooks(self):
@@ -56,7 +68,8 @@ class FeatureExtractor:
         # Auto-select all layers if None
         if self.layers is None:
             self.layers = [
-                name for name in layer_dict.keys()
+                name
+                for name in layer_dict.keys()
                 if name != ""  # skip root module
             ]
 
@@ -64,9 +77,7 @@ class FeatureExtractor:
             if name not in layer_dict:
                 raise ValueError(f"Layer {name} not found in model")
 
-            handle = layer_dict[name].register_forward_hook(
-                self._hook_fn(name)
-            )
+            handle = layer_dict[name].register_forward_hook(self._hook_fn(name))
             self.handles.append(handle)
 
     def clear(self):
@@ -78,12 +89,7 @@ class FeatureExtractor:
         self.handles = []
 
     def __call__(self, **inputs):
-        """
-        Supports:
-            model(x=...)
-            model(input=...)
-            model(**kwargs)
-        """
+        """Run model forward pass and collect features."""
         self.clear()
 
         with torch.no_grad():
