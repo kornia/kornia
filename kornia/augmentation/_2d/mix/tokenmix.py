@@ -149,10 +149,7 @@ class TokenMix(MixAugmentationBaseV2):
                 f"(H={H}, W={W}). num_tokens must be <= min(H, W)."
             )
         if H % self.num_tokens != 0 or W % self.num_tokens != 0:
-            raise ValueError(
-                f"TokenMix: input size (H={H}, W={W}) must be divisible by "
-                f"num_tokens={self.num_tokens}."
-            )
+            raise ValueError(f"TokenMix: input size (H={H}, W={W}) must be divisible by num_tokens={self.num_tokens}.")
 
         idx = params["batch_perm"].to(input.device)
         num_mix_tokens = params["num_mix_tokens"].to(input.device)  # (B,)
