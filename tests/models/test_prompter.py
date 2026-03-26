@@ -60,7 +60,6 @@ class TestVisualPrompter(BaseTester):
 
     def test_exception(self):
         prompter = VisualPrompter(SamConfig("vit_b"))
-        #
         data = torch.rand(1, 2, 3, 256, 256)
 
         # Wrong shape for the image
