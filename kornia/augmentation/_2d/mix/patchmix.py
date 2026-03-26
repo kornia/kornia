@@ -15,38 +15,52 @@
 # limitations under the License.
 #
 
+from typing import Any, Dict, Optional
+
 import torch
 
 from .base import MixAugmentationBaseV2
 
 
 class PatchMix(MixAugmentationBaseV2):
-    def __init__(self, alpha=1.0, patch_size=16, p=1.0, same_on_batch=False, keepdim=False):
+    r"""PatchMix augmentation.
+
+    Replaces a random patch in each image of a batch with the corresponding
+    region from a randomly chosen different image in the batch.
+
+    Args:
+        alpha: Hyperparameter for the Beta distribution used to generate the
+            mixing parameter lambda.
+        patch_size: The size of the square patch to mix.
+        p: Probability for applying the augmentation.
+        same_on_batch: Apply the same transformation across the batch.
+        keepdim: Whether to keep the output shape the same as input ``True``
+            or broadcast it to the batch form ``False``.
+    """
+
+    def __init__(
+        self,
+        alpha: float = 1.0,
+        patch_size: int = 16,
+        p: float = 1.0,
+        same_on_batch: bool = False,
+        keepdim: bool = False,
+    ) -> None:
         super().__init__(p=p, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.alpha = alpha
         self.patch_size = patch_size
 
-    def generate_parameters(self, batch_shape):
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         lam = torch.distributions.Beta(self.alpha, self.alpha).sample((batch_shape[0],))
-        # ensure lambda is on the module RNG device and dtype when available
-        dev = None
-        dt = None
         try:
-            dev = self.device
-            dt = self.dtype
-        except AttributeError:
-            dev = None
-            dt = None
-        if dev is not None or dt is not None:
-            to_kwargs = {}
-            if dev is not None:
-                to_kwargs["device"] = dev
-            if dt is not None:
-                to_kwargs["dtype"] = dt
-            lam = lam.to(**to_kwargs)
+            lam = lam.to(device=self.device, dtype=self.dtype)
+        except (AttributeError, RuntimeError):
+            pass
         return {"lam": lam}
 
-    def apply_transform(self, input, params, extra_args):
+    def apply_transform(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], extra_args: Dict[str, Any]
+    ) -> torch.Tensor:
         B, _, H, W = input.shape
         lam = params["lam"].to(input.device)
         idx = torch.randperm(B, device=input.device)
@@ -58,4 +72,8 @@ class PatchMix(MixAugmentationBaseV2):
             out[i, :, y : y + self.patch_size, x : x + self.patch_size] = input[
                 idx[i], :, y : y + self.patch_size, x : x + self.patch_size
             ]
-        return out, idx, lam
+        
+        # Expose mix parameters via params as expected by MixAugmentationBaseV2
+        params["idx"] = idx
+        params["lam"] = lam
+        return out
