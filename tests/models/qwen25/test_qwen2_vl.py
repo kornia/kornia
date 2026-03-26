@@ -55,8 +55,6 @@ class TestQwen2VL:
 
         assert output.shape == (1, 256, 64)
 
-   
-
     def test_batch_consistency(self, device):
         """Ensure outputs are consistent between batch and single input."""
         model = Qwen2VLVisionTransformer(embed_dim=64, depth=2, num_heads=4).to(device)
