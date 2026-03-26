@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-# ruff: noqa: D103, S101
 import pytest
 import torch
 
