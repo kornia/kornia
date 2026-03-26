@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import torch
 
@@ -72,7 +72,7 @@ class PatchMix(MixAugmentationBaseV2):
             out[i, :, y : y + self.patch_size, x : x + self.patch_size] = input[
                 idx[i], :, y : y + self.patch_size, x : x + self.patch_size
             ]
-        
+
         # Expose mix parameters via params as expected by MixAugmentationBaseV2
         params["idx"] = idx
         params["lam"] = lam
