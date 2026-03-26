@@ -55,9 +55,7 @@ class TestQwen2VL:
 
         assert output.shape == (1, 256, 64)
 
-    @pytest.mark.skip(reason="torch.compile unstable on Windows/Python 3.13")
-    def test_compile(self, device):
-        pass
+   
 
     def test_batch_consistency(self, device):
         """Ensure outputs are consistent between batch and single input."""
