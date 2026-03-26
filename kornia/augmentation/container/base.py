@@ -396,8 +396,8 @@ class ImageSequentialBase(SequentialBase):
         """Inverses the transformation applied to keypoints.
 
         Args:
-            input: The transformed keypoints to inverse. The underlying data conceptually 
-                represents a shape of (B, N, 2), where B is the batch size, N is the 
+            input: The transformed keypoints to inverse. The underlying data conceptually
+                represents a shape of (B, N, 2), where B is the batch size, N is the
                 number of keypoints, and 2 represents the (x, y) coordinates.
             params: The list of parameters used during the forward pass.
             extra_args: Optional dictionary of extra arguments.
