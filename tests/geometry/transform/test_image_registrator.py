@@ -17,7 +17,6 @@
 
 import sys
 
-
 import pytest
 import torch
 
@@ -133,7 +132,7 @@ class TestImageRegistrator(BaseTester):
         out = registrator.register(img1, img2)
 
         assert out is not None
-    
+
     def test_register_shape_mismatch_raises(self, device):
         img1 = torch.rand(1, 1, 64, 64, device=device)
         img2 = torch.rand(1, 1, 32, 32, device=device)
