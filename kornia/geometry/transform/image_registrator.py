@@ -308,3 +308,4 @@ class ImageRegistrator(nn.Module):
         warper = self.warper(_height, _width)
         img_dst_to_src = warper(dst_img, self.model.forward_inverse())
         return img_dst_to_src
+    
