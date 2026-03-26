@@ -707,11 +707,16 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
         """Inverse a transformation with respect to the parameters.
 
         Args:
-            input: the input torch.Tensor.
+            input: The input keypoints. The underlying data conceptually 
+                represents a shape of (B, N, 2), where B is the batch size, N is the 
+                number of keypoints, and 2 represents the (x, y) coordinates.
             module: any torch nn.Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
+
+        Returns:
+            The inversed keypoints, maintaining the same structure as the input.
         """
         if extra_args is None:
             extra_args = {}

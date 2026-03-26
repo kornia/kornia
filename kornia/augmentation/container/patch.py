@@ -516,12 +516,14 @@ class PatchSequential(ImageSequential):
         """Applies the inverse transformations to the augmented keypoints.
 
         Args:
-            input: The augmented keypoints to inverse.
+            input: The augmented keypoints to inverse. The underlying data conceptually 
+                represents a shape of (B, N, 2), where B is the batch size, N is the 
+                number of keypoints, and 2 represents the (x, y) coordinates.
             params: The list of patch parameters used during the forward pass.
             extra_args: Optional dictionary of extra arguments.
 
         Returns:
-            The inversed keypoints.
+            The inversed keypoints, maintaining the same structure as the input.
 
         Raises:
             NotImplementedError: If the sequence contains geometric transformations.
