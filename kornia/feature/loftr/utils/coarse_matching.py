@@ -80,6 +80,25 @@ def compute_max_candidates(p_m0: torch.Tensor, p_m1: torch.Tensor) -> torch.Tens
     return max_cand
 
 
+def log_sinkhorn_iterations(Z: torch.Tensor, log_mu: torch.Tensor, log_nu: torch.Tensor, iters: int) -> torch.Tensor:
+    """Perform Sinkhorn Normalization in Log-space for stability.
+
+    Args:
+        Z: log of the input matrix to be normalized
+        log_mu: log of the target row sums
+        log_nu: log of the target column sums
+        iters: number of iterations to perform
+
+    Returns:
+        log of the normalized matrix
+    """
+    u, v = torch.zeros_like(log_mu), torch.zeros_like(log_nu)
+    for _ in range(iters):
+        u = log_mu - torch.logsumexp(Z + v.unsqueeze(1), dim=2)
+        v = log_nu - torch.logsumexp(Z + u.unsqueeze(2), dim=1)
+    return Z + u.unsqueeze(2) + v.unsqueeze(1)
+
+
 class BaseCoarseMatching(nn.Module):
     """Base class for Coarse matching.
 
@@ -236,16 +255,41 @@ class CoarseMatching(BaseCoarseMatching):
         if self.match_type == "dual_softmax":
             self.temperature = config["dsmax_temperature"]
         elif self.match_type == "sinkhorn":
-            try:
-                from .superglue import log_optimal_transport
-            except ImportError:
-                raise ImportError("download superglue.py first!") from None
-            self.log_optimal_transport = log_optimal_transport
             self.bin_score = nn.Parameter(torch.tensor(config["skh_init_bin_score"], requires_grad=True))
             self.skh_iters = config["skh_iters"]
             self.skh_prefilter = config["skh_prefilter"]
         else:
             raise NotImplementedError
+
+    def log_optimal_transport(self, scores: torch.Tensor, alpha: torch.Tensor, iters: int) -> torch.Tensor:
+        """Perform Differentiable Optimal Transport in Log-space for stability.
+
+        Args:
+            scores: [B, M, N] similarity scores between two sets of features
+            alpha: log of the uniform prior for the dustbin (unmatched) class
+            iters: number of Sinkhorn iterations to perform
+
+        Returns:
+            log of the optimal transport matrix
+        """
+        b, m, n = scores.shape
+        one = scores.new_tensor(1)
+        ms, ns = (m * one).to(scores), (n * one).to(scores)
+
+        bins0 = alpha.expand(b, m, 1)
+        bins1 = alpha.expand(b, 1, n)
+        alpha = alpha.expand(b, 1, 1)
+
+        couplings = torch.cat([torch.cat([scores, bins0], -1), torch.cat([bins1, alpha], -1)], 1)
+
+        norm = -(ms + ns).log()
+        log_mu = torch.cat([norm.expand(m), ns.log()[None] + norm])
+        log_nu = torch.cat([norm.expand(n), ms.log()[None] + norm])
+        log_mu, log_nu = log_mu[None].expand(b, -1), log_nu[None].expand(b, -1)
+
+        Z = log_sinkhorn_iterations(couplings, log_mu, log_nu, iters)
+        Z = Z - norm  # multiply probabilities by M+N
+        return Z
 
     def forward(
         self,
