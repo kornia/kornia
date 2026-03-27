@@ -375,12 +375,14 @@ def pytest_report_header(config):
 
     try:
         import kornia_rs
+
         rs_version = kornia_rs.__version__
     except ImportError:
         rs_version = "not found"
 
     try:
         import onnx
+
         onnx_version = onnx.__version__
     except ImportError:
         onnx_version = "not found"
