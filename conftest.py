@@ -373,8 +373,17 @@ def pytest_report_header(config):
     except ImportError:
         accelerate_info = "`accelerate` not found"
 
-    import kornia_rs
-    import onnx
+    try:
+        import kornia_rs
+        rs_version = kornia_rs.__version__
+    except ImportError:
+        rs_version = "not found"
+
+    try:
+        import onnx
+        onnx_version = onnx.__version__
+    except ImportError:
+        onnx_version = "not found"
 
     env_info = _get_env_info()
     cached_weights = os.listdir(WEIGHTS_CACHE_DIR) if os.path.exists(WEIGHTS_CACHE_DIR) else []
@@ -400,8 +409,8 @@ main deps:
 x deps:
     - {accelerate_info}
 dev deps:
-    - kornia_rs-{kornia_rs.__version__}
-    - onnx-{onnx.__version__}
+    - kornia_rs-{rs_version}
+    - onnx-{onnx_version}
 {gcc_info}
 available optimizers: {TEST_OPTIMIZER_BACKEND}
 model weights cached: {cached_weights}
