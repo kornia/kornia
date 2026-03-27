@@ -20,7 +20,7 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_le
-from kornia.filters import fft_conv, filter2d, filter2d_separable, filter3d
+from kornia.filters import convolve2d, correlate2d, fft_conv, filter2d, filter2d_separable, filter3d
 
 from testing.base import BaseTester
 
@@ -88,9 +88,14 @@ class TestFilter2D(BaseTester):
             dtype=dtype,
         )
         out_corr = filter2d(inp, kernel, behaviour="corr")
+        out_corr_alias = correlate2d(inp, kernel)
         self.assert_close(out_corr, corr_expected)
+        self.assert_close(out_corr_alias, corr_expected)
+
         out_conv = filter2d(inp, kernel, behaviour="conv")
+        out_conv_alias = convolve2d(inp, kernel)
         self.assert_close(out_conv, conv_expected)
+        self.assert_close(out_conv_alias, conv_expected)
 
     def test_exception(self):
         from kornia.core.exceptions import ShapeError, TypeCheckError

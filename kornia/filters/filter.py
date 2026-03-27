@@ -152,6 +152,36 @@ def filter2d(
     return out
 
 
+def correlate2d(
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    border_type: str = "reflect",
+    normalized: bool = False,
+    padding: str = "same",
+) -> torch.Tensor:
+    r"""Cross-correlate a tensor with a 2d kernel.
+
+    Alias for :func:`~kornia.filters.filter2d` with ``behaviour="corr"``.
+    See :func:`~kornia.filters.filter2d` for more details.
+    """
+    return filter2d(input, kernel, border_type=border_type, normalized=normalized, padding=padding, behaviour="corr")
+
+
+def convolve2d(
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    border_type: str = "reflect",
+    normalized: bool = False,
+    padding: str = "same",
+) -> torch.Tensor:
+    r"""Convolve a tensor with a 2d kernel.
+
+    Alias for :func:`~kornia.filters.filter2d` with ``behaviour="conv"``.
+    See :func:`~kornia.filters.filter2d` for more details.
+    """
+    return filter2d(input, kernel, border_type=border_type, normalized=normalized, padding=padding, behaviour="conv")
+
+
 def filter2d_separable(
     input: torch.Tensor,
     kernel_x: torch.Tensor,
