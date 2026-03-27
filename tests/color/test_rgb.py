@@ -262,14 +262,14 @@ class TestRgbToRgba(BaseTester):
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.RgbToRgba(1.0).to(device, dtype)
         fcn = kornia.color.rgb_to_rgba
         self.assert_close(ops(img), fcn(img, 1.0))
 
     def test_module_bgr(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
-        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         ops = kornia.color.BgrToRgba(1.0).to(device, dtype)
         fcn = kornia.color.bgr_to_rgba
         self.assert_close(ops(img), fcn(img, 1.0))
