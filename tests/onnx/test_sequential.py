@@ -19,7 +19,7 @@ import pytest
 
 onnx = pytest.importorskip("onnx")
 
-from kornia.onnx.sequential import ONNXSequential
+from kornia.onnx.sequential import ONNXSequential  # noqa: E402
 
 
 class TestONNXSequential:

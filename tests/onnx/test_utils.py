@@ -22,7 +22,7 @@ import pytest
 
 onnx = pytest.importorskip("onnx")
 
-from kornia.onnx.utils import ONNXLoader
+from kornia.onnx.utils import ONNXLoader  # noqa: E402
 
 
 class TestONNXLoader:
@@ -98,7 +98,7 @@ class TestONNXLoader:
         with mock.patch(
             "urllib.request.urlretrieve",
             side_effect=urllib.error.HTTPError(url=None, code=404, msg="Not Found", hdrs=None, fp=None),
-        ) as mock_urlretrieve:
+        ) as _:
             url = "https://huggingface.co/non_existent_model.onnx"
             file_path = os.path.join(".test_cache", "non_existent_model.onnx")
 
@@ -202,7 +202,7 @@ def test_add_metadata():
         mock_model.metadata_props.add.return_value = mock_metadata_props
 
         # Act
-        model_with_metadata = add_metadata(mock_model, [("test_key", "test_value")])
+        add_metadata(mock_model, [("test_key", "test_value")])
 
         # Assert
         calls = [
@@ -214,5 +214,4 @@ def test_add_metadata():
         assert mock_model.metadata_props.add.call_count == 3
         # Check if version was added
         # (Since it's a mock, we just check if any call set value to kornia.__version__)
-        values = [c.value for c in mock_metadata_props.mock_calls if hasattr(c, "value")]
         # Metadata logic: metadata_props.key = key; metadata_props.value = str(value)
