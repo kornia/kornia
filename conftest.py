@@ -649,6 +649,7 @@ _DATA_TEST_SHA = {
     "loftr": "cb8f42bf28b9f347df6afba5558738f62a11f28a",
     "adalam": "f7d8da661701424babb64850e03c5e8faec7ea62",
     "disk": "8b98f44abbe92b7a84631ed06613b08fee7dae14",
+    "eloftr": "61a40d1f92ffbeb3e86d6b41119250e6669d1e86",
     "xfeat": "279e95e411f2d3926953dea3842347242190f4da",
 }
 
@@ -661,6 +662,7 @@ _TEST_DATA_URLS: dict[str, str] = {
     "disk_outdoor": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['disk']}/knchurch_disk.pt?raw=true",
     "xfeat_outdoor": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['xfeat']}/xfeat_reference.pt?raw=true",
     "dexined": "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
+    "eloftr_outdoor": f"https://github.com/kornia/data_test/blob/{_DATA_TEST_SHA['eloftr']}/eloftr_outdoor_full_fp32_data.pt?raw=true",
 }
 
 
