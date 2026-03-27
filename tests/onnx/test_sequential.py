@@ -35,7 +35,7 @@ class TestONNXSequential:
         graph = make_graph([node], "test_graph", [input_info], [output_info])
         op = onnx.OperatorSetIdProto()
         op.version = 17
-        model = make_model(graph, opset_imports=[op])
+        model = make_model(graph, opset_imports=[op], ir_version=9)
         return model
 
     @pytest.fixture
@@ -92,3 +92,18 @@ class TestONNXSequential:
         mock_session = MagicMock(spec=ort.InferenceSession)
         onnx_sequential.set_session(mock_session)
         assert onnx_sequential.get_session() == mock_session
+
+    def test_auto_version_conversion(self, mock_model_proto):
+        # Test the auto version conversion logic
+        onnx_sequential = ONNXSequential(
+            mock_model_proto,
+            auto_ir_version_conversion=False,
+        )
+        # Manually call _auto_version_conversion with multiple models
+        # This verifies the fix for *args type hint
+        converted_ops = onnx_sequential._auto_version_conversion(
+            mock_model_proto, mock_model_proto, target_ir_version=9, target_opset_version=17
+        )
+        assert len(converted_ops) == 2
+        assert isinstance(converted_ops[0], onnx.ModelProto)
+        assert isinstance(converted_ops[1], onnx.ModelProto)

@@ -646,8 +646,8 @@ class Boxes:
         ys = torch.arange(height, device=device)
         xs = torch.arange(width, device=device)
 
-        y_mask = (ys[None, :] >= y1[:, None]) & (ys[None, :] < y2[:, None] + 1)
-        x_mask = (xs[None, :] >= x1[:, None]) & (xs[None, :] < x2[:, None] + 1)
+        y_mask = (ys[None, :] >= y1[:, None]) & (ys[None, :] < y2[:, None])
+        x_mask = (xs[None, :] >= x1[:, None]) & (xs[None, :] < x2[:, None])
 
         masks = (y_mask.unsqueeze(2) & x_mask.unsqueeze(1)).to(dtype)
         return masks.view(*out_shape)

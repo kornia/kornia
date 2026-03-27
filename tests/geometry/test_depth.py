@@ -60,6 +60,16 @@ class TestDepthTo3d(BaseTester):
         # Align the output format of depth_to_3d with depth_to_3d_v2 by reordering dimensions.
         self.assert_close(points3d.permute(0, 2, 3, 1), points3d_v2)
 
+    def test_depth_to_3d_v2_cached_grid(self, device, dtype):
+        # Passing a pre-computed xyz_grid must not raise "Boolean value of Tensor
+        # is ambiguous" (regression for the `xyz_grid or ...` truthiness bug).
+        depth = torch.rand(2, 3, 4, device=device, dtype=dtype).add_(0.1)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).expand(2, -1, -1).contiguous()
+        grid = kornia.geometry.unproject_meshgrid(3, 4, camera_matrix, device=device, dtype=dtype)
+        out_cached = kornia.geometry.depth.depth_to_3d_v2(depth, camera_matrix, xyz_grid=grid)
+        out_uncached = kornia.geometry.depth.depth_to_3d_v2(depth, camera_matrix)
+        self.assert_close(out_cached, out_uncached)
+
     def test_unproject_meshgrid(self, device, dtype):
         # TODO: implement me with batch
         camera_matrix = torch.eye(3, device=device, dtype=dtype).repeat(2, 1, 1)

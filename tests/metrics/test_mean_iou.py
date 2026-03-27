@@ -88,6 +88,17 @@ class TestMeanIoU(BaseTester):
         assert mean_iou.shape == (batch_size, num_classes)
         self.assert_close(mean_iou, mean_iou_real)
 
+    def test_exception_shape_mismatch(self, device, dtype):
+        pred = torch.zeros(1, 4, dtype=torch.long, device=device)
+        target = torch.zeros(1, 5, dtype=torch.long, device=device)
+        with pytest.raises(ValueError, match="same shape"):
+            kornia.metrics.mean_iou(pred, target, num_classes=2)
+
+    def test_exception_num_classes_too_small(self, device, dtype):
+        pred = torch.zeros(1, 4, dtype=torch.long, device=device)
+        with pytest.raises(ValueError, match="bigger than two"):
+            kornia.metrics.mean_iou(pred, pred, num_classes=1)
+
 
 class TestMeanIoUBBox(BaseTester):
     """Tests for mean_iou_bbox with different box formats."""

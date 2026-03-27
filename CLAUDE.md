@@ -86,6 +86,7 @@ class TestMyFunction(BaseTester):
     def test_smoke(self, device, dtype): ...          # Basic run with all arg combinations
     def test_exception(self, device, dtype): ...      # Exception cases
     def test_cardinality(self, device, dtype): ...    # Output shapes
+    def test_feature(self, device, dtype): ...        # Correctness / numerical accuracy
     def test_gradcheck(self, device): ...             # Gradient checking via self.gradcheck()
     def test_dynamo(self, device, dtype, torch_optimizer): ...  # torch.compile compat
 ```
@@ -102,6 +103,71 @@ The `device` and `dtype` fixtures are injected automatically. Use `self.assert_c
 - **Docstrings**: Follow existing codebase style; all public APIs need docstrings
 - Every source file must start with the Apache 2.0 license header (managed by `add-license-header`)
 
+## Benchmarks
+
+Scripts under `benchmarks/` measure the speed and/or quality of existing kornia functions, modules, or models. Each benchmark must:
+
+- Report **CPU and CUDA timings** in a table.
+- Include **quality metrics** where applicable (see `benchmarks/feature/` for an example with local-feature matching scores).
+- Record the **date, hardware description, and git commit hash** being evaluated at the top of the output or in a results file.
+- Benchmark **only the public kornia API** — no custom reimplementations or alternative snippets inside the script.
+
+### Workflow for performance PRs
+
+1. Check out `main` (or the relevant release tag) and run the benchmark to establish a baseline.
+2. Apply your changes on a new branch and run the same benchmark again.
+3. Include both result tables in the PR description so reviewers can compare before and after.
+
 ## Pre-commit Hooks
 
 Install hooks with `pre-commit install`. CI enforces ruff formatting, linting, and docformatter.
+
+**Always run `pixi run lint` before pushing** to catch ruff errors (formatting, style, ambiguous Unicode characters, etc.) that will cause CI to fail. Fix any reported issues before committing.
+
+## Documentation and Visualizations
+
+**Every public class or function added to a `kornia/` submodule must also be listed in the corresponding `docs/source/*.rst` file** — otherwise it will not appear in the rendered docs.  Check the relevant `.rst` after adding any public API symbol and add an `.. autoclass::` or `.. autofunction::` directive if it is missing.
+
+When adding a new feature detector or descriptor to `kornia/feature/`:
+- Add an `.. autoclass::` entry to `docs/source/feature.rst` in the appropriate section (Detectors, Descriptors, or Local Features).
+- Add an entry to the `responses` list in `docs/generate_examples.py` with a corresponding `elif` block that produces a heatmap/score visualization (`(B, 3, H, W)` BGR image in `img_in`, `(B, 3, H, W)` response map in `out`).
+- See existing entries (`DISK`, `ALIKED`, `XFeat`) for the expected pattern.
+
+## PR Requirements
+
+All PRs must:
+- Be linked to a previously discussed GitHub issue or Discord discussion (`Fixes #123`)
+- Include pasted local test log output as proof of execution (`pixi run test ...`)
+- Reference an algorithm source (PyTorch, OpenCV, scikit-image, paper, etc.) for any new implementation
+
+**Comments**: No redundant or ghost comments (e.g., "this returns the input tensor", or comments explaining deleted code). Violation triggers mandatory manual rewrite request.
+
+## Test-First Debugging
+
+**Always run the relevant tests before answering a question about a bug or test failure.**
+Do not assume a failure is pre-existing or unrelated to recent changes without running it:
+
+```bash
+# Run the failing test(s) first, then investigate
+pixi run -e default uv run pytest <failing_test_file> -q --dtype=float32,float64
+```
+
+If the test passes on the current branch, verify on `main` with `git stash` before concluding it is pre-existing.
+
+## Hardcoded Reference Values in Tests
+
+**Never use `pytest.importorskip` to gate correctness tests on optional third-party libraries** (OpenCV, scipy, etc.). Instead, compute the expected output once offline and embed it as a hardcoded tensor literal, following the pattern used in `tests/geometry/epipolar/test_fundamental.py`:
+
+```python
+# Snippet used to generate expected (requires numpy only):
+# import numpy as np
+# ... run the reference algorithm ...
+# expected = result  # <-- print and paste below
+
+expected = torch.tensor([[...]], dtype=dtype, device=device)
+self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+```
+
+Leave a comment above the literal showing the generation snippet so it can be reproduced. This makes tests self-contained, deterministic, and runnable without optional dependencies.
+
+See `AI_POLICY.md` for the full contribution policy, including AI usage disclosure requirements.

@@ -80,9 +80,9 @@ class ModelBaseMixin:
         timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
         if isinstance(output, list):
             for i, out in enumerate(output):
-                write_image(out, os.path.join(directory, f"{self.name}_{timestamp}_{i}.png"))
+                write_image(os.path.join(directory, f"{self.name}_{timestamp}_{i}.png"), out)
         else:
-            write_image(output, os.path.join(directory, f"{self.name}_{timestamp}.png"))
+            write_image(os.path.join(directory, f"{self.name}_{timestamp}.png"), output)
         logger.info(f"Outputs are saved in {directory}")
 
     def _save_outputs(
@@ -104,9 +104,9 @@ class ModelBaseMixin:
         timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
         if isinstance(output, list):
             for i, out in enumerate(output):
-                write_image(out, os.path.join(directory, f"{self.name}{suffix}_{timestamp}_{i}.png"))
+                write_image(os.path.join(directory, f"{self.name}{suffix}_{timestamp}_{i}.png"), out)
         else:
-            write_image(output, os.path.join(directory, f"{self.name}{suffix}_{timestamp}.png"))
+            write_image(os.path.join(directory, f"{self.name}{suffix}_{timestamp}.png"), output)
         logger.info(f"Outputs are saved in {directory}")
 
 

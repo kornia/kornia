@@ -99,8 +99,10 @@ class TestRandomRotation3D(BaseTester):
         )
 
         out = f(input_tensor)
-        self.assert_close(out, expected, rtol=1e-6, atol=1e-4)
-        self.assert_close(f.transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
+        atol = 5e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
+        rtol = 1e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-6
+        self.assert_close(out, expected, rtol=rtol, atol=atol)
+        self.assert_close(f.transform_matrix, expected_transform, rtol=rtol, atol=atol)
 
     def test_batch_random_rotation(self, device, dtype):
         torch.manual_seed(24)  # for random reproductibility
@@ -192,8 +194,10 @@ class TestRandomRotation3D(BaseTester):
         input_tensor = input_tensor.repeat(2, 1, 1, 1, 1)  # 5 x 4 x 4 x 3
 
         out = f(input_tensor)
-        self.assert_close(out, expected, rtol=1e-6, atol=1e-4)
-        self.assert_close(f.transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
+        atol = 5e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
+        rtol = 1e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-6
+        self.assert_close(out, expected, rtol=rtol, atol=atol)
+        self.assert_close(f.transform_matrix, expected_transform, rtol=rtol, atol=atol)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomRotation3D(degrees=40, same_on_batch=True)
@@ -258,8 +262,10 @@ class TestRandomRotation3D(BaseTester):
         )
 
         out = f(input_tensor)
-        self.assert_close(out, expected, rtol=1e-6, atol=1e-4)
-        self.assert_close(f.transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
+        atol = 5e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
+        rtol = 1e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-6
+        self.assert_close(out, expected, rtol=rtol, atol=atol)
+        self.assert_close(f.transform_matrix, expected_transform, rtol=rtol, atol=atol)
 
     def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility

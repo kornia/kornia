@@ -87,6 +87,8 @@ class TestZCA(BaseTester):
 
     def test_grad_zca_individual_transforms(self, device):
         """Check if the gradients of the transforms are correct w.r.t to the input data."""
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 required for gradcheck")
         data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=torch.float64)
 
         def zca_T(x):
@@ -103,6 +105,8 @@ class TestZCA(BaseTester):
         self.gradcheck(zca_T_inv, (data,))
 
     def test_grad_zca_with_fit(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 required for gradcheck")
         data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=torch.float64)
 
         def zca_fit(x):
@@ -112,6 +116,8 @@ class TestZCA(BaseTester):
         self.gradcheck(zca_fit, (data,))
 
     def test_grad_detach_zca(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64 required for gradcheck")
         data = torch.tensor([[1, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=torch.float64)
 
         zca = kornia.enhance.ZCAWhitening()

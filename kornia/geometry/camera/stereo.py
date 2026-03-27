@@ -280,9 +280,9 @@ def _check_disparity_tensor(disparity_tensor: torch.Tensor) -> None:
             f"Got {disparity_tensor.shape}."
         )
 
-    if disparity_tensor.dtype not in (torch.float16, torch.float32, torch.float64):
+    if disparity_tensor.dtype not in (torch.bfloat16, torch.float16, torch.float32, torch.float64):
         raise StereoException(
-            "Expected 'disparity_tensor' to have dtype torch.float16, torch.float32 or torch.float64."
+            "Expected 'disparity_tensor' to have dtype torch.bfloat16, torch.float16, torch.float32 or torch.float64."
             f"Got {disparity_tensor.dtype}"
         )
 
@@ -303,9 +303,10 @@ def _check_Q_matrix(Q_matrix: torch.Tensor) -> None:
     if not Q_matrix.shape[1:] == (4, 4):
         raise StereoException(f"Expected last two dimensions of 'Q_matrix' to be of shape (4, 4). Got {Q_matrix.shape}")
 
-    if Q_matrix.dtype not in (torch.float16, torch.float32, torch.float64):
+    if Q_matrix.dtype not in (torch.bfloat16, torch.float16, torch.float32, torch.float64):
         raise StereoException(
-            f"Expected 'Q_matrix' to be of type torch.float16, torch.float32 or torch.float64. Got {Q_matrix.dtype}"
+            "Expected 'Q_matrix' to be of type torch.bfloat16, torch.float16, torch.float32 or torch.float64. "
+            f"Got {Q_matrix.dtype}"
         )
 
 

@@ -15,10 +15,10 @@
 # limitations under the License.
 #
 
-"""Reference tests for iterative_quad_interp3d.
+"""Reference tests for conv_quad_interp3d.
 
 These tests verify that the subpixel localisation implemented in
-``iterative_quad_interp3d`` agrees with the single-step C++ HessAff
+``conv_quad_interp3d`` agrees with the single-step C++ HessAff
 ``localizeKeypoint`` formula (ported here in pure Python/NumPy).
 
 A synthetic 3-scale Gaussian response map is used as input so that the
@@ -33,7 +33,7 @@ import pytest
 import torch
 
 from kornia.geometry.subpix.nms import nms3d
-from kornia.geometry.subpix.spatial_soft_argmax import iterative_quad_interp3d
+from kornia.geometry.subpix.spatial_soft_argmax import conv_quad_interp3d
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -106,7 +106,7 @@ class TestIterativeQuadInterp3dVsRefFormula:
         assert nms3d(resp_t, (3, 3, 3), True).sum().item() >= 1, "no NMS peak found"
 
         # Our function — one iteration keeps the initial integer position
-        coords, _ = iterative_quad_interp3d(resp_t, n_iters=1, strict_maxima_bonus=0)
+        coords, _ = conv_quad_interp3d(resp_t, n_iters=1, strict_maxima_bonus=0)
 
         # Reference: apply the C++ formula to the numpy arrays
         resp_np = resp_t.cpu().float().numpy()[0, 0]  # (3, H, W)
@@ -135,7 +135,7 @@ class TestIterativeQuadInterp3dVsRefFormula:
 
 
 class TestIterativeQuadInterp3dAccuracy:
-    """Verify that iterative_quad_interp3d accurately recovers subpixel positions."""
+    """Verify that conv_quad_interp3d accurately recovers subpixel positions."""
 
     def _run(self, cx: float, cy: float, cs: float, device: torch.device, dtype: torch.dtype) -> None:
         resp_t = _make_3d_gauss_response(19, 19, cx, cy, cs).to(device=device, dtype=dtype)
@@ -143,7 +143,7 @@ class TestIterativeQuadInterp3dAccuracy:
         nms_mask = nms3d(resp_t, (3, 3, 3), True)
         assert nms_mask.sum().item() >= 1, "no NMS peak"
 
-        coords, _ = iterative_quad_interp3d(resp_t, strict_maxima_bonus=0)
+        coords, _ = conv_quad_interp3d(resp_t, strict_maxima_bonus=0)
         d_peak = 1
         h_peak, w_peak = round(cy), round(cx)
         ours_x = coords[0, 0, 1, d_peak, h_peak, w_peak].item()
@@ -165,7 +165,7 @@ class TestIterativeQuadInterp3dAccuracy:
         """Blob at an integer position — recovered coords should be very close to integer."""
         cx, cy, cs = 9.0, 9.0, 1.0
         resp_t = _make_3d_gauss_response(19, 19, cx, cy, cs)
-        coords, _ = iterative_quad_interp3d(resp_t, strict_maxima_bonus=0)
+        coords, _ = conv_quad_interp3d(resp_t, strict_maxima_bonus=0)
         d_peak = 1
         h_peak, w_peak = round(cy), round(cx)
         ours_x = coords[0, 0, 1, d_peak, h_peak, w_peak].item()
@@ -186,7 +186,7 @@ class TestIterativeQuadInterp3dAccuracy:
                 resp_np[d] += np.exp(-((xx - bx) ** 2 + (yy - by) ** 2) / (2 * 1.5**2) - (d - bs) ** 2 / (2 * 1.0**2))
         resp_t = torch.from_numpy(resp_np).unsqueeze(0).unsqueeze(0)
 
-        coords, _ = iterative_quad_interp3d(resp_t, strict_maxima_bonus=0)
+        coords, _ = conv_quad_interp3d(resp_t, strict_maxima_bonus=0)
         d_peak = 1
         for bx, by, _ in blobs:
             h_int, w_int = round(by), round(bx)
