@@ -55,6 +55,8 @@ class TestONNXSequential:
 
         from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
 
+        # The patch must wrap ONNXSequential() construction so merge_models is mocked
+        # when _combine() actually calls it.
         with patch("onnx.compose.merge_models") as mock_merge_models:
             # Create a small ONNX model as the return value of merge_models
             input_info = make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 2])
@@ -69,13 +71,13 @@ class TestONNXSequential:
 
             mock_merge_models.return_value = combined_model
 
-        # Test combining multiple ONNX models with io_maps
-        onnx_sequential = ONNXSequential(
-            mock_model_proto,
-            mock_model_proto,
-            io_maps=[("output", "input")],  # Dummy io_maps
-        )
-        combined_op = onnx_sequential._combined_op
+            # Test combining multiple ONNX models with io_maps
+            onnx_sequential = ONNXSequential(
+                mock_model_proto,
+                mock_model_proto,
+                io_maps=[[("output", "input")]],  # list-of-list-of-tuples format
+            )
+            combined_op = onnx_sequential._combined_op
 
         assert isinstance(combined_op, onnx.ModelProto)
 

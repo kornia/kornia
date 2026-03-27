@@ -28,7 +28,9 @@ import os
 import pytest
 import torch
 import torch.nn.functional as F
-from safetensors.torch import load_file
+
+safetensors_torch = pytest.importorskip("safetensors.torch")
+load_file = safetensors_torch.load_file
 
 from kornia.models.kimi_vl import KimiVLConfig, KimiVLModel
 from kornia.models.kimi_vl.config import KimiVLProjectorConfig, MoonViTConfig

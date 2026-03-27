@@ -311,7 +311,7 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
         kwargs.setdefault(
             "dynamic_axes",
             {
-                "input": {0: "batch", 2: "height", 3: "width"},
+                "input": {0: "batch"},
                 "pred_logits": {0: "batch"},
                 "pred_boxes": {0: "batch"},
             },
@@ -320,7 +320,7 @@ class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
             pseudo_shape = [1, 3, 640, 640]
         return super().to_onnx(
             onnx_name=onnx_name,
-            input_shape=[-1, 3, -1, -1],
+            input_shape=[-1, 3, pseudo_shape[2], pseudo_shape[3]],
             pseudo_shape=pseudo_shape,
             save=save,
             **kwargs,

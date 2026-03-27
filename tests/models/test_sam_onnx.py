@@ -46,7 +46,7 @@ def test_sam_encoder_to_onnx(tmp_path):
     onnx_path = tmp_path / "sam_encoder.onnx"
     # Export only the image encoder (Sam.to_onnx overrides the full-model export).
     # Use a small spatial size to keep the test fast; only batch dimension is dynamic.
-    op = model.to_onnx(save=True, onnx_name=str(onnx_path), pseudo_shape=[1, 3, 64, 64])
+    op = model.to_onnx(save=True, onnx_name=str(onnx_path), pseudo_shape=[1, 3, 1024, 1024])
 
     assert isinstance(op, onnx.ModelProto)
     assert onnx_path.exists(), "ONNX file was not written to disk"

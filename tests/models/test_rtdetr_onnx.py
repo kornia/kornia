@@ -32,7 +32,7 @@ def test_rtdetr_to_onnx(tmp_path):
     model.eval()
 
     onnx_path = tmp_path / "rtdetr.onnx"
-    op = model.to_onnx(save=True, onnx_name=str(onnx_path), pseudo_shape=[1, 3, 64, 64])
+    op = model.to_onnx(save=True, onnx_name=str(onnx_path), pseudo_shape=[1, 3, 640, 640])
 
     assert isinstance(op, onnx.ModelProto)
     assert onnx_path.exists(), "ONNX file was not written to disk"
