@@ -16,10 +16,10 @@
 #
 
 from unittest.mock import MagicMock, patch
-
-import onnx
-import onnxruntime as ort
 import pytest
+
+onnx = pytest.importorskip("onnx")
+import onnxruntime as ort
 from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
 
 from kornia.onnx.sequential import ONNXSequential

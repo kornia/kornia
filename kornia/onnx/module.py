@@ -45,9 +45,9 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
 
     def __init__(
         self,
-        op: Union[onnx.ModelProto, str],  # type:ignore
+        op: Union["onnx.ModelProto", str],  # type:ignore
         providers: Optional[list[str]] = None,
-        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
+        session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
         cache_dir: Optional[str] = None,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
@@ -62,13 +62,13 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
 
     def create_session(
         self, providers: list[str] | None = None, session_options: Any | None = None
-    ) -> ort.InferenceSession:  # type: ignore
+    ) -> "ort.InferenceSession":  # type: ignore
         return super()._create_session(self.op, providers, session_options)
 
     def export(self, file_path: str, **kwargs: Any) -> None:
         return super()._export(self.op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
+    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> "onnx.ModelProto":  # type:ignore
         return super()._add_metadata(self.op, additional_metadata)
 
 

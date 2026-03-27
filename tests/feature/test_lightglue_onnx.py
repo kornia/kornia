@@ -16,6 +16,8 @@
 #
 
 import pytest
+
+pytest.importorskip("onnx")
 import torch
 
 from kornia.core._compat import torch_version_le

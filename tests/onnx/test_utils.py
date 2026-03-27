@@ -18,8 +18,9 @@
 import os
 import urllib
 from unittest import mock
-
 import pytest
+
+onnx = pytest.importorskip("onnx")
 from onnx import ModelProto  # Assuming `onnx` is installed and ModelProto is part of the library
 
 from kornia.onnx.utils import ONNXLoader
