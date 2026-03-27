@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature affine shape."""
+
 import math
 from typing import Dict, Optional
 

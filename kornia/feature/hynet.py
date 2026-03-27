@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature hynet."""
+
 from typing import Dict
 
 import torch

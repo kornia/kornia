@@ -18,6 +18,8 @@
 # Based on code from:
 # https://github.com/lyuwenyu/RT-DETR/blob/8a1b85a91f527bed0c4e2424a7a6b4bcdd200fb1/rtdetr_pytorch/src/zoo/rtdetr/rtdetr_decoder.py
 
+"""Module for Models rt detr architecture rtdetr head."""
+
 from __future__ import annotations
 
 import copy

@@ -15,6 +15,10 @@
 # limitations under the License.
 #
 
+"""Module for core tensor operations and functional interfaces."""
+
+from __future__ import annotations
+
 import torch
 
 from kornia.core.check import KORNIA_CHECK

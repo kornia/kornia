@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Enhance adjust."""
+
 from __future__ import annotations
 
 from math import pi

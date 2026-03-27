@@ -25,6 +25,8 @@
 #   https://github.com/facebookresearch/dino/blob/master/vision_transformer.py
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/models/vision_transformer.py
 
+"""Module for Feature dedode transformer layers attention."""
+
 import logging
 
 from torch import Tensor, nn

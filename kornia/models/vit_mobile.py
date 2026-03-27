@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Models vit mobile."""
+
 from typing import Any, Dict, Tuple
 
 import torch

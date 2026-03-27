@@ -16,6 +16,8 @@
 #
 
 # Adapted from https://github.com/Hakuyume/chainer-ssd
+"""Module for Models yunet processors."""
+
 import math
 from typing import List, Tuple
 

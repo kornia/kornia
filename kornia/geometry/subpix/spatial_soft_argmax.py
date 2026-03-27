@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Geometry subpix spatial soft argmax."""
+
 from __future__ import annotations
 
 from typing import Optional

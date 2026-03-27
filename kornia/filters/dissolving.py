@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Filters dissolving."""
+
 import os
 from typing import Any
 

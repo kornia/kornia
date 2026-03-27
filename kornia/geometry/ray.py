@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Geometry ray."""
+
 from kornia.geometry.line import ParametrizedLine
 
 # NOTE: for now lets make an alias

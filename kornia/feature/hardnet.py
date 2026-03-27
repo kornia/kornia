@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature hardnet."""
+
 from typing import Dict
 
 import torch

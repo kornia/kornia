@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature siftdesc."""
+
 import math
 from typing import Tuple
 

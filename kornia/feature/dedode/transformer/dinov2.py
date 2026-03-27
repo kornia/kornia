@@ -25,6 +25,8 @@
 #   https://github.com/facebookresearch/dino/blob/main/vision_transformer.py
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/models/vision_transformer.py
 
+"""Module for Feature dedode transformer dinov2."""
+
 import math
 from functools import partial
 from typing import Callable, Sequence, Tuple, Union

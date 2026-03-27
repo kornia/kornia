@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Enhance histogram."""
+
 from typing import Optional, Tuple
 
 import torch

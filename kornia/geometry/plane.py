@@ -18,6 +18,8 @@
 # kornia.geometry.plane module inspired by Eigen::geometry::Hyperplane
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h
 
+"""Module for Geometry plane."""
+
 from typing import Optional
 
 import torch

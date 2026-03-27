@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Models paligemma modeling paligemma."""
+
 from __future__ import annotations
 
 from typing import Optional, Tuple

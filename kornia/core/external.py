@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for managing external library integrations (e.g., OpenCV, NumPy)."""
+
 import importlib
 import logging
 import subprocess

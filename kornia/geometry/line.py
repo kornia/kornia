@@ -17,6 +17,8 @@
 
 # kornia.geometry.line module inspired by Eigen::geometry::ParametrizedLine
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/ParametrizedLine.h
+"""Module for Geometry line."""
+
 from typing import Iterator, Optional, Tuple, Union
 
 import torch

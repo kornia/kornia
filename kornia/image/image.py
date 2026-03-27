@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Image image."""
+
 from __future__ import annotations
 
 from pathlib import Path

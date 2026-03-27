@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature dedode vgg."""
+
 from typing import Any, Dict, List, Optional, Union, cast
 
 import torch

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Augmentation presets ada."""
+
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 

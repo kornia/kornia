@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Augmentation auto trivial augment trivial augment."""
+
 from typing import Iterator, List, Optional, Tuple
 
 import torch

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Raw Beyer color space conversions."""
+
 from __future__ import annotations
 
 from enum import Enum

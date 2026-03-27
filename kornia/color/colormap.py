@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for colormap utilities in Kornia."""
+
 from __future__ import annotations
 
 from enum import Enum

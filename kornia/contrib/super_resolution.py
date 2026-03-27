@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Contrib super resolution."""
+
 from typing import Any, List, Optional, Tuple, Union
 
 import torch

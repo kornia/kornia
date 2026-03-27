@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for library-wide constants and enumerations in Kornia."""
+
 from enum import Enum, EnumMeta
 from typing import Iterator, Type, TypeVar, Union
 

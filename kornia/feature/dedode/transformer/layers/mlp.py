@@ -26,6 +26,8 @@
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/layers/mlp.py
 
 
+"""Module for Feature dedode transformer layers mlp."""
+
 from typing import Callable, Optional
 
 from torch import Tensor, nn

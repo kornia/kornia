@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Metrics average meter."""
+
 from typing import Union
 
 import torch

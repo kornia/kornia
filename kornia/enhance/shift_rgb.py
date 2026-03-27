@@ -16,6 +16,8 @@
 #
 
 
+"""Module for Enhance shift rgb."""
+
 import torch
 
 from kornia.core.check import KORNIA_CHECK_IS_COLOR, KORNIA_CHECK_IS_TENSOR
