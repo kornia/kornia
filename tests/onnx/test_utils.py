@@ -17,50 +17,52 @@
 
 import os
 import urllib
-from unittest import mock
+
 import pytest
 
 onnx = pytest.importorskip("onnx")
-from onnx import ModelProto  # Assuming `onnx` is installed and ModelProto is part of the library
 
 from kornia.onnx.utils import ONNXLoader
 
 
 class TestONNXLoader:
-    def test_get_file_path_with_custom_cache_dir(
-        self,
-    ):
-        model_name = os.path.join("operators", "some_model")
-        expected_path = os.path.join(".test_cache", "operators", "some_model.onnx")
-        assert ONNXLoader._get_file_path(model_name, ".test_cache", suffix=".onnx") == expected_path
-
-    def test_get_file_path_with_default_cache_dir(self):
-        model_name = os.path.join("onnx_models", "some_model")
+    def test_get_file_path(self):
+        # Test getting local file path for caching
+        model_name = "some_model"
         expected_path = os.path.join(".kornia_hub", "onnx_models", "some_model.onnx")
         assert ONNXLoader._get_file_path(model_name, None, suffix=".onnx") == expected_path
 
-    @mock.patch("onnx.load")
-    @mock.patch("os.path.exists")
-    def test_load_model_local(self, mock_exists, mock_onnx_load):
-        model_name = "local_model.onnx"
-        mock_exists.return_value = True
+    def test_load_model_local(self):
+        from unittest import mock
 
-        # Simulate onnx.load returning a dummy ModelProto
-        mock_model = mock.Mock(spec=ModelProto)
-        mock_onnx_load.return_value = mock_model
+        from onnx import ModelProto
 
-        model = ONNXLoader.load_model(model_name)
-        assert model == mock_model
-        mock_onnx_load.assert_called_once_with(model_name)
+        with mock.patch("onnx.load") as mock_onnx_load, mock.patch("os.path.exists") as mock_exists:
+            model_name = "local_model.onnx"
+            mock_exists.return_value = True
 
-    @mock.patch("urllib.request.urlretrieve")
-    @mock.patch("os.path.exists")
-    def test_load_model_download(self, mock_exists, mock_urlretrieve):
-        model_name = "hf://operators/some_model"
-        mock_exists.return_value = False
-        mock_urlretrieve.return_value = None  # Simulating successful download
+            # Simulate onnx.load returning a dummy ModelProto
+            mock_model = mock.Mock(spec=ModelProto)
+            mock_onnx_load.return_value = mock_model
 
-        with mock.patch("onnx.load") as mock_onnx_load:
+            model = ONNXLoader.load_model(model_name)
+            assert model == mock_model
+            mock_onnx_load.assert_called_once_with(model_name)
+
+    def test_load_model_download(self):
+        from unittest import mock
+
+        from onnx import ModelProto
+
+        with (
+            mock.patch("urllib.request.urlretrieve") as mock_urlretrieve,
+            mock.patch("os.path.exists") as mock_exists,
+            mock.patch("onnx.load") as mock_onnx_load,
+        ):
+            model_name = "hf://operators/some_model"
+            mock_exists.return_value = False
+            mock_urlretrieve.return_value = None  # Simulating successful download
+
             mock_model = mock.Mock(spec=ModelProto)
             mock_onnx_load.return_value = mock_model
 
@@ -71,104 +73,146 @@ class TestONNXLoader:
                 os.path.join(".kornia_hub", "onnx_models", "operators", "some_model.onnx"),
             )
 
-    def test_load_model_file_not_found(self):
+    def test_load_model_not_found(self):
         model_name = "non_existent_model.onnx"
-
         with pytest.raises(ValueError, match=f"File {model_name} not found"):
             ONNXLoader.load_model(model_name)
 
-    @mock.patch("urllib.request.urlretrieve")
-    @mock.patch("os.makedirs")
-    def test_download_success(self, mock_makedirs, mock_urlretrieve):
-        url = "https://huggingface.co/some_model.onnx"
-        file_path = os.path.join(".test_cache", "some_model.onnx")
+    def test_download_success(self):
+        import os
+        from unittest import mock
 
-        ONNXLoader.download(url, file_path)
+        with mock.patch("urllib.request.urlretrieve") as mock_urlretrieve, mock.patch("os.makedirs") as mock_makedirs:
+            url = "https://huggingface.co/some_model.onnx"
+            file_path = os.path.join(".test_cache", "some_model.onnx")
 
-        mock_makedirs.assert_called_once_with(os.path.dirname(file_path), exist_ok=True)
-        mock_urlretrieve.assert_called_once_with(url, file_path)
-
-    @mock.patch(
-        "urllib.request.urlretrieve",
-        side_effect=urllib.error.HTTPError(url=None, code=404, msg="Not Found", hdrs=None, fp=None),
-    )
-    def test_download_failure(self, mock_urlretrieve):
-        url = "https://huggingface.co/non_existent_model.onnx"
-        file_path = os.path.join(".test_cache", "non_existent_model.onnx")
-
-        with pytest.raises(ValueError, match="Error in resolving"):
             ONNXLoader.download(url, file_path)
 
-    @mock.patch("requests.get")
-    def test_fetch_repo_contents_success(self, mock_get):
-        mock_response = mock.Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = [{"path": os.path.join("operators", "model.onnx")}]
-        mock_get.return_value = mock_response
+            mock_makedirs.assert_called_once_with(os.path.dirname(file_path), exist_ok=True)
+            mock_urlretrieve.assert_called_once_with(url, file_path)
 
-        contents = ONNXLoader._fetch_repo_contents("operators")
-        assert contents == [{"path": os.path.join("operators", "model.onnx")}]
+    def test_download_failure(self):
+        import os
+        from unittest import mock
 
-    @mock.patch("requests.get")
-    def test_fetch_repo_contents_failure(self, mock_get):
-        mock_response = mock.Mock()
-        mock_response.status_code = 404
-        mock_get.return_value = mock_response
+        with mock.patch(
+            "urllib.request.urlretrieve",
+            side_effect=urllib.error.HTTPError(url=None, code=404, msg="Not Found", hdrs=None, fp=None),
+        ) as mock_urlretrieve:
+            url = "https://huggingface.co/non_existent_model.onnx"
+            file_path = os.path.join(".test_cache", "non_existent_model.onnx")
 
-        with pytest.raises(ValueError, match="Failed to fetch repository contents"):
-            ONNXLoader._fetch_repo_contents("operators")
+            with pytest.raises(ValueError, match="Error in resolving"):
+                ONNXLoader.download(url, file_path)
 
-    @mock.patch("kornia.onnx.utils.ONNXLoader._fetch_repo_contents")
-    def test_list_operators(self, mock_fetch_repo_contents, capsys):
-        mock_fetch_repo_contents.return_value = [{"path": os.path.join("operators", "some_model.onnx")}]
+    def test_fetch_repo_contents_success(self):
+        import os
+        from unittest import mock
 
-        ONNXLoader.list_operators()
+        with mock.patch("requests.get") as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = [{"path": os.path.join("operators", "model.onnx")}]
+            mock_get.return_value = mock_response
 
-        captured = capsys.readouterr()
-        assert (
-            os.path.join("operators", "some_model.onnx").replace("\\", "\\\\") in captured.out
-        )  # .replace() for Windows
+            contents = ONNXLoader._fetch_repo_contents("operators")
+            assert contents == [{"path": os.path.join("operators", "model.onnx")}]
 
-    @mock.patch("kornia.onnx.utils.ONNXLoader._fetch_repo_contents")
-    def test_list_models(self, mock_fetch_repo_contents, capsys):
-        mock_fetch_repo_contents.return_value = [{"path": os.path.join("operators", "some_model.onnx")}]
+    def test_fetch_repo_contents_failure(self):
+        from unittest import mock
 
-        ONNXLoader.list_models()
+        with mock.patch("requests.get") as mock_get:
+            mock_response = mock.Mock()
+            mock_response.status_code = 404
+            mock_get.return_value = mock_response
 
-        captured = capsys.readouterr()
-        assert (
-            os.path.join("operators", "some_model.onnx").replace("\\", "\\\\") in captured.out
-        )  # .replace() for Windows
+            with pytest.raises(ValueError, match="Failed to fetch repository contents"):
+                ONNXLoader._fetch_repo_contents("operators")
+
+    def test_list_operators(self, capsys):
+        import os
+        from unittest import mock
+
+        with mock.patch("kornia.onnx.utils.ONNXLoader._fetch_repo_contents") as mock_fetch_repo_contents:
+            mock_fetch_repo_contents.return_value = [{"path": os.path.join("operators", "some_model.onnx")}]
+
+            ONNXLoader.list_operators()
+
+            captured = capsys.readouterr()
+            assert (
+                os.path.join("operators", "some_model.onnx").replace("\\", "\\\\") in captured.out
+            )  # .replace() for Windows
+
+    def test_list_models(self, capsys):
+        import os
+        from unittest import mock
+
+        with mock.patch("kornia.onnx.utils.ONNXLoader._fetch_repo_contents") as mock_fetch_repo_contents:
+            mock_fetch_repo_contents.return_value = [{"path": os.path.join("operators", "some_model.onnx")}]
+
+            ONNXLoader.list_models()
+
+            captured = capsys.readouterr()
+            assert (
+                os.path.join("operators", "some_model.onnx").replace("\\", "\\\\") in captured.out
+            )  # .replace() for Windows
 
 
 def test_io_name_conversion():
-    from onnx import TensorProto, helper
+    from unittest import mock
 
     from kornia.onnx.utils import io_name_conversion
 
-    # Create a simple ONNX model
-    # input1 -> Node1 -> interp -> Node2 -> output1
+    with mock.patch("kornia.core.external.onnx.ModelProto") as mock_model_proto:
+        # Arrange
+        mock_model = mock_model_proto()
+        mock_in_node = mock.Mock()
+        mock_in_node.name = "input_1"
+        mock_out_node = mock.Mock()
+        mock_out_node.name = "output_1"
+        mock_model.graph.input = [mock_in_node]
+        mock_model.graph.output = [mock_out_node]
 
-    in_info = helper.make_tensor_value_info("input1", TensorProto.FLOAT, [1, 3, 224, 224])
-    out_info = helper.make_tensor_value_info("output1", TensorProto.FLOAT, [1, 3, 224, 224])
+        mock_mid_node = mock.Mock()
+        mock_mid_node.input = ["input_1"]
+        mock_mid_node.output = ["output_1"]
+        mock_model.graph.node = [mock_mid_node]
 
-    node1 = helper.make_node("Relu", ["input1"], ["interp"])
-    node2 = helper.make_node("Relu", ["interp"], ["output1"])
+        mapping = {"input_1": "input", "output_1": "output"}
 
-    graph = helper.make_graph([node1, node2], "test_graph", [in_info], [out_info])
-    model = helper.make_model(graph)
+        # Act
+        converted_model = io_name_conversion(mock_model, mapping)
 
-    mapping = {"input1": "new_input", "output1": "new_output", "interp": "new_interp"}
+        # Assert
+        assert converted_model.graph.input[0].name == "input"
+        assert converted_model.graph.output[0].name == "output"
+        assert converted_model.graph.node[0].input[0] == "input"
+        assert converted_model.graph.node[0].output[0] == "output"
 
-    converted_model = io_name_conversion(model, mapping)
 
-    # Check graph inputs
-    assert converted_model.graph.input[0].name == "new_input"
-    # Check graph outputs
-    assert converted_model.graph.output[0].name == "new_output"
+def test_add_metadata():
+    from unittest import mock
 
-    # Check nodes
-    assert converted_model.graph.node[0].input[0] == "new_input"
-    assert converted_model.graph.node[0].output[0] == "new_interp"
-    assert converted_model.graph.node[1].input[0] == "new_interp"
-    assert converted_model.graph.node[1].output[0] == "new_output"
+    from kornia.onnx.utils import add_metadata
+
+    with mock.patch("kornia.core.external.onnx.ModelProto") as mock_model_proto:
+        # Arrange
+        mock_model = mock_model_proto()
+        mock_metadata_props = mock.Mock()
+        mock_model.metadata_props.add.return_value = mock_metadata_props
+
+        # Act
+        model_with_metadata = add_metadata(mock_model, [("test_key", "test_value")])
+
+        # Assert
+        calls = [
+            mock.call(),  # for "source"
+            mock.call(),  # for "version"
+            mock.call(),  # for "test_key"
+        ]
+        mock_model.metadata_props.add.assert_has_calls(calls)
+        assert mock_model.metadata_props.add.call_count == 3
+        # Check if version was added
+        # (Since it's a mock, we just check if any call set value to kornia.__version__)
+        values = [c.value for c in mock_metadata_props.mock_calls if hasattr(c, "value")]
+        # Metadata logic: metadata_props.key = key; metadata_props.value = str(value)

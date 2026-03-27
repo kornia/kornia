@@ -73,7 +73,7 @@ class ONNXExportMixin:
         save: bool = True,
         additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
-    ) -> "onnx.ModelProto":  # type: ignore
+    ) -> onnx.ModelProto:  # type: ignore
         """Export the current object to an ONNX model file.
 
         Args:
@@ -169,10 +169,10 @@ class ONNXRuntimeMixin:
 
     def _create_session(
         self,
-        op: "onnx.ModelProto",  # type:ignore
+        op: onnx.ModelProto,  # type:ignore
         providers: Optional[list[str]] = None,
-        session_options: Optional["ort.InferenceSession"] = None,  # type:ignore
-    ) -> "ort.InferenceSession":  # type:ignore
+        session_options: Optional[ort.InferenceSession] = None,  # type:ignore
+    ) -> ort.InferenceSession:  # type:ignore
         """Create an optimized ONNXRuntime InferenceSession for the combined model.
 
         Args:
@@ -196,7 +196,7 @@ class ONNXRuntimeMixin:
         )
         return session
 
-    def set_session(self, session: "ort.InferenceSession") -> None:  # type: ignore
+    def set_session(self, session: ort.InferenceSession) -> None:  # type: ignore
         """Set a custom ONNXRuntime InferenceSession.
 
         Args:
@@ -206,7 +206,7 @@ class ONNXRuntimeMixin:
         """
         self._session = session
 
-    def get_session(self) -> "ort.InferenceSession":  # type: ignore
+    def get_session(self) -> ort.InferenceSession:  # type: ignore
         """Get the current ONNXRuntime InferenceSession.
 
         Returns:
@@ -293,9 +293,9 @@ class ONNXMixin:
 
     def _load_op(
         self,
-        arg: Union["onnx.ModelProto", str],  # type:ignore
+        arg: Union[onnx.ModelProto, str],  # type:ignore
         cache_dir: Optional[str] = None,
-    ) -> "onnx.ModelProto":  # type:ignore
+    ) -> onnx.ModelProto:  # type:ignore
         """Load an ONNX model, either from a file path or use the provided ONNX ModelProto.
 
         Args:
@@ -336,9 +336,9 @@ class ONNXMixin:
 
     def _combine(
         self,
-        *args: list["onnx.ModelProto"],  # type:ignore
+        *args: list[onnx.ModelProto],  # type:ignore
         io_maps: Optional[list[tuple[str, str]]] = None,
-    ) -> "onnx.ModelProto":  # type:ignore
+    ) -> onnx.ModelProto:  # type:ignore
         """Combine the provided ONNX models into a single ONNX graph.
 
         Optionally, map inputs and outputs between operators using the `io_map`.
@@ -371,7 +371,7 @@ class ONNXMixin:
 
     def _export(
         self,
-        op: "onnx.ModelProto",  # type:ignore
+        op: onnx.ModelProto,  # type:ignore
         file_path: str,
         **kwargs: Any,
     ) -> None:
@@ -388,9 +388,9 @@ class ONNXMixin:
 
     def _add_metadata(
         self,
-        op: "onnx.ModelProto",  # type:ignore
+        op: onnx.ModelProto,  # type:ignore
         additional_metadata: Optional[list[tuple[str, str]]] = None,
-    ) -> "onnx.ModelProto":  # type:ignore
+    ) -> onnx.ModelProto:  # type:ignore
         """Add metadata to the combined ONNX model.
 
         Args:
@@ -405,7 +405,7 @@ class ONNXMixin:
 
     def _onnx_version_conversion(
         self,
-        op: "onnx.ModelProto",  # type:ignore
+        op: onnx.ModelProto,  # type:ignore
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
     ) -> onnx.ModelProto:  # type:ignore

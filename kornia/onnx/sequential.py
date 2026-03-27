@@ -51,9 +51,9 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
 
     def __init__(
         self,
-        *args: Union["onnx.ModelProto", str],  # type:ignore
+        *args: Union[onnx.ModelProto, str],  # type:ignore
         providers: Optional[list[str]] = None,
-        session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
+        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
         io_maps: Optional[list[tuple[str, str]]] = None,
         cache_dir: Optional[str] = None,
         auto_ir_version_conversion: bool = False,
@@ -100,16 +100,16 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             op_list.append(op)
         return op_list
 
-    def combine(self, io_maps: list[tuple[str, str]] | None = None) -> "onnx.ModelProto":  # type: ignore
+    def combine(self, io_maps: list[tuple[str, str]] | None = None) -> onnx.ModelProto:  # type: ignore
         return super()._combine(*self.operators, io_maps=io_maps)
 
     def create_session(
         self, providers: list[str] | None = None, session_options: Any | None = None
-    ) -> "ort.InferenceSession":  # type: ignore
+    ) -> ort.InferenceSession:  # type: ignore
         return super()._create_session(self._combined_op, providers, session_options)
 
     def export(self, file_path: str, **kwargs: Any) -> None:
         return super()._export(self._combined_op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> "onnx.ModelProto":  # type:ignore
+    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
         return super()._add_metadata(self._combined_op, additional_metadata)
