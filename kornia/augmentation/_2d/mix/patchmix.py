@@ -57,7 +57,7 @@ class PatchMix(MixAugmentationBaseV2):
     def apply_transform_class(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        B, C, H, W = params["batch_shape"]
+        B, _, H, W = params["batch_shape"]
         idx = params["mix_pairs"].to(input.device)
 
         # Calculate area-based lambda for labels
@@ -99,7 +99,7 @@ class PatchMix(MixAugmentationBaseV2):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], extra_args: Dict[str, Any]
     ) -> torch.Tensor:
-        B, C, H, W = input.shape
+        B, _, _, _ = input.shape
         idx = params["mix_pairs"].to(input.device)
         patch_coords = params["patch_coords"].to(input.device)
 
