@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Tuple
 
 import torch
 from torch.distributions import Beta, Uniform
@@ -105,8 +105,16 @@ class PatchMixGenerator(RandomGeneratorBase):
             max_y = height - self.patch_size
             max_x = width - self.patch_size
 
-            y = (_adapted_sampling((batch_size,), self.rand_sampler, same_on_batch) * (max_y + 1)).floor().to(torch.long)
-            x = (_adapted_sampling((batch_size,), self.rand_sampler, same_on_batch) * (max_x + 1)).floor().to(torch.long)
+            y = (
+                (_adapted_sampling((batch_size,), self.rand_sampler, same_on_batch) * (max_y + 1))
+                .floor()
+                .to(torch.long)
+            )
+            x = (
+                (_adapted_sampling((batch_size,), self.rand_sampler, same_on_batch) * (max_x + 1))
+                .floor()
+                .to(torch.long)
+            )
 
         return {
             "mix_pairs": mix_pairs.to(device=_device, dtype=torch.long),

@@ -23,6 +23,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey
 
+
 class PatchMix(MixAugmentationBaseV2):
     r"""PatchMix augmentation.
 
