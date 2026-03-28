@@ -18,7 +18,8 @@
 import pytest
 import torch
 
-from kornia.augmentation import EdgeAwareAugmentation, RandomGaussianBlur, RandomBrightness
+from kornia.augmentation import EdgeAwareAugmentation, RandomBrightness, RandomGaussianBlur
+
 from testing.base import BaseTester
 
 

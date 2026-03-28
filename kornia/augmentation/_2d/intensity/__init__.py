@@ -17,7 +17,6 @@
 
 from kornia.augmentation._2d.intensity.auto_contrast import RandomAutoContrast
 from kornia.augmentation._2d.intensity.box_blur import RandomBoxBlur
-from kornia.augmentation._2d.intensity.edge_aware import EdgeAwareAugmentation
 from kornia.augmentation._2d.intensity.brightness import RandomBrightness
 from kornia.augmentation._2d.intensity.channel_dropout import RandomChannelDropout
 from kornia.augmentation._2d.intensity.channel_shuffle import RandomChannelShuffle
@@ -27,6 +26,7 @@ from kornia.augmentation._2d.intensity.color_jitter import ColorJitter
 from kornia.augmentation._2d.intensity.contrast import RandomContrast
 from kornia.augmentation._2d.intensity.denormalize import Denormalize
 from kornia.augmentation._2d.intensity.dissolving import RandomDissolving
+from kornia.augmentation._2d.intensity.edge_aware import EdgeAwareAugmentation
 from kornia.augmentation._2d.intensity.equalize import RandomEqualize
 from kornia.augmentation._2d.intensity.erasing import RandomErasing
 from kornia.augmentation._2d.intensity.gamma import RandomGamma
