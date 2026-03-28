@@ -40,3 +40,4 @@ from kornia.augmentation.random_generator._2d.resize import *
 from kornia.augmentation.random_generator._2d.salt_pepper_noise import *
 from kornia.augmentation.random_generator._2d.shear import *
 from kornia.augmentation.random_generator._2d.translate import *
+from kornia.augmentation.random_generator._2d.patchmix import *

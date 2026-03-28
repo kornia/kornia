@@ -34,7 +34,7 @@ def test_patchmix_shape_and_type(batch_size, channels, height, width, patch_size
     params = aug.generate_parameters(x.shape)
     out = aug.apply_transform(x, params, {})
     assert out.shape == x.shape
-    assert params["idx"].shape[0] == batch_size
+    assert params["mix_pairs"].shape[0] == batch_size
     assert params["lam"].shape[0] == batch_size
     assert out.dtype == x.dtype
 

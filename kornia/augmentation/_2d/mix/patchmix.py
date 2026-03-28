@@ -15,12 +15,13 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 
-from .base import MixAugmentationBaseV2
-
+from kornia.augmentation import random_generator as rg
+from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
+from kornia.constants import DataKey
 
 class PatchMix(MixAugmentationBaseV2):
     r"""PatchMix augmentation.
@@ -45,35 +46,68 @@ class PatchMix(MixAugmentationBaseV2):
         p: float = 1.0,
         same_on_batch: bool = False,
         keepdim: bool = False,
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> None:
-        super().__init__(p=p, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
         self.alpha = alpha
         self.patch_size = patch_size
+        self._param_generator = rg.PatchMixGenerator(alpha, patch_size, p)
+
+    def apply_transform_class(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
+        B, C, H, W = params["batch_shape"]
+        idx = params["mix_pairs"].to(input.device)
+
+        # Calculate area-based lambda for labels
+        area_ratio = (float(self.patch_size) ** 2) / (float(H) * float(W))
+        lam = torch.full((B,), 1.0 - area_ratio, device=input.device, dtype=input.dtype)
+
+        # Prepare mixed labels: [label_orig, label_perm, lam]
+        labels_permute = input.index_select(dim=0, index=idx)
+
+        out = torch.stack(
+            [
+                input.to(dtype=input.dtype),
+                labels_permute.to(dtype=input.dtype),
+                lam.to(dtype=input.dtype),
+            ],
+            -1,
+        )
+
+        return out
+
+    def apply_non_transform_class(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
+        B = input.shape[0]
+        lam = torch.ones((B,), device=input.device, dtype=input.dtype)
+        out = torch.stack(
+            [
+                input.to(dtype=input.dtype),
+                input.to(dtype=input.dtype),
+                lam.to(dtype=input.dtype),
+            ],
+            -1,
+        )
+        return out
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
-        lam = torch.distributions.Beta(self.alpha, self.alpha).sample((batch_shape[0],))
-        try:
-            lam = lam.to(device=self.device, dtype=self.dtype)
-        except (AttributeError, RuntimeError):
-            pass
-        return {"lam": lam}
+        return self._param_generator(batch_shape, self.same_on_batch)
 
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], extra_args: Dict[str, Any]
     ) -> torch.Tensor:
-        B, _, H, W = input.shape
-        lam = params["lam"].to(input.device)
-        idx = torch.randperm(B, device=input.device)
+        B, C, H, W = input.shape
+        idx = params["mix_pairs"].to(input.device)
+        patch_coords = params["patch_coords"].to(input.device)
+
         out = input.clone()
         for i in range(B):
-            # Random patch coordinates
-            y = int(torch.randint(0, H - self.patch_size + 1, (), device=input.device).item())
-            x = int(torch.randint(0, W - self.patch_size + 1, (), device=input.device).item())
+            x, y = patch_coords[i]
+            x, y = int(x.item()), int(y.item())
             out[i, :, y : y + self.patch_size, x : x + self.patch_size] = input[
                 idx[i], :, y : y + self.patch_size, x : x + self.patch_size
             ]
 
-        # Expose mix parameters via params as expected by MixAugmentationBaseV2
-        params["idx"] = idx
-        params["lam"] = lam
         return out
