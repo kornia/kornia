@@ -134,6 +134,7 @@ class BoxBlur(nn.Module):
             self.kernel: torch.Tensor
 
     def __repr__(self) -> str:
+                """See :class:`BoxBlur` for details."""
         return (
             f"{self.__class__.__name__}"
             f"(kernel_size={self.kernel_size}, "
@@ -142,6 +143,7 @@ class BoxBlur(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+                """See :class:`BoxBlur` for details."""
         KORNIA_CHECK_IS_TENSOR(input)
         if self.separable:
             return filter2d_separable(input, self.kernel_x, self.kernel_y, self.border_type)
