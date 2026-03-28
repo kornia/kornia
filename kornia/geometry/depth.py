@@ -375,7 +375,7 @@ class DepthWarper(nn.Module):
         return convert_points_to_homogeneous(grid)  # append ones to last dim
 
     def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> DepthWarper:
-        """Compute the projection matrix from the source to destination frame."""
+        """Compute the projection matrix from the source to destination frame.""" See :class:`DepthWarper` for details.
         # Inline type checks for faster fail-fast
         if type(self._pinhole_dst) is not PinholeCamera:
             raise TypeError(
