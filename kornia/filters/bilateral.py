@@ -240,6 +240,7 @@ class BilateralBlur(_BilateralBlur):
     """
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+                """See :class:`BilateralBlur` for details."""
         return bilateral_blur(
             input, self.kernel_size, self.sigma_color, self.sigma_space, self.border_type, self.color_distance_type
         )
