@@ -18,7 +18,7 @@
 import pytest
 import torch
 
-from kornia.augmentation._2d.mix.patchmix import PatchMix
+from kornia.augmentation import PatchMix
 
 
 @pytest.mark.parametrize(
