@@ -200,6 +200,7 @@ class Canny(nn.Module):
         hysteresis: bool = True,
         eps: float = 1e-6,
     ) -> None:
+                """See :class:`Canny` for details."""
         super().__init__()
 
         KORNIA_CHECK(
@@ -225,6 +226,7 @@ class Canny(nn.Module):
 
         self.eps: float = eps
 
+        """See :class:`Canny` for details."""
     def __repr__(self) -> str:
         return "".join(
             (
@@ -237,6 +239,7 @@ class Canny(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+                """See :class:`Canny` for details."""
         return canny(
             input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps
         )
