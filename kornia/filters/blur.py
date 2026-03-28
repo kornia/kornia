@@ -1,110 +1,51 @@
-# LICENSE HEADER MANAGED BY add-license-header
-#
-# Copyright 2018 Kornia Team
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-
-from __future__ import annotations
-
-import torch
-from torch import nn
-
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR
-
-from .filter import filter2d, filter2d_separable
-from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
 
 
-def box_blur(
-    input: torch.Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = False
-) -> torch.Tensor:
-    r"""Blur an image using the box filter.
-
-    .. image:: _static/img/box_blur.png
-
-    The function smooths an image using the kernel:
-
-    .. math::
-        K = \frac{1}{\text{kernel_size}_x * \text{kernel_size}_y}
-        \begin{bmatrix}
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-            \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-        \end{bmatrix}
-
-    Args:
-        input: the image to blur with shape :math:`(B,C,H,W)`.
-        kernel_size: the blurring kernel size.
-        border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
-        separable: run as composition of two 1d-convolutions.
-
-    Returns:
-        the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
-
-    .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_operators.html>`__.
-
-    Example:
-        >>> input = torch.rand(2, 4, 5, 7)
-        >>> output = box_blur(input, (3, 3))  # 2x4x5x7
-        >>> output.shape
-        torch.Size([2, 4, 5, 7])
-
-    """
-    KORNIA_CHECK_IS_TENSOR(input)
-
-    if separable:
-        ky, kx = _unpack_2d_ks(kernel_size)
-        kernel_y = get_box_kernel1d(ky, device=input.device, dtype=input.dtype)
-        kernel_x = get_box_kernel1d(kx, device=input.device, dtype=input.dtype)
-        out = filter2d_separable(input, kernel_x, kernel_y, border_type)
-    else:
-        kernel = get_box_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
-        out = filter2d(input, kernel, border_type)
-
-    return out
 
 
-class BoxBlur(nn.Module):
-    r"""Blur an image using the box filter.
 
-    The function smooths an image using the kernel:
 
-    .. math::
-        K = \frac{1}{\text{kernel_size}_x * \text{kernel_size}_y}
-        \begin{bmatrix}
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-            \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-        \end{bmatrix}
 
-    Args:
-        kernel_size: the blurring kernel size.
-        border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        separable: run as composition of two 1d-convolutions.
+
+
+
+
 
     Returns:
         the blurred input torch.Tensor.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     Shape:
         - Input: :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
@@ -113,7 +54,37 @@ class BoxBlur(nn.Module):
         >>> output.shape
         torch.Size([2, 4, 5, 7])
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     """
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     def __init__(
         self, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = False
@@ -122,6 +93,21 @@ class BoxBlur(nn.Module):
         self.kernel_size = kernel_size
         self.border_type = border_type
         self.separable = separable
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         if separable:
             ky, kx = _unpack_2d_ks(self.kernel_size)
@@ -133,8 +119,23 @@ class BoxBlur(nn.Module):
             self.register_buffer("kernel", get_box_kernel2d(kernel_size))
             self.kernel: torch.Tensor
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     def __repr__(self) -> str:
-                """See :class:`BoxBlur` for details."""
+        """See :class:`BoxBlur` for details."""
         return (
             f"{self.__class__.__name__}"
             f"(kernel_size={self.kernel_size}, "
@@ -142,9 +143,39 @@ class BoxBlur(nn.Module):
             f"separable={self.separable})"
         )
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-                """See :class:`BoxBlur` for details."""
+        """See :class:`BoxBlur` for details."""
         KORNIA_CHECK_IS_TENSOR(input)
         if self.separable:
             return filter2d_separable(input, self.kernel_x, self.kernel_y, self.border_type)
         return filter2d(input, self.kernel, self.border_type)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
