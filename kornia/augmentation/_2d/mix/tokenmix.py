@@ -31,7 +31,8 @@ class TokenMix(MixAugmentationBaseV2):
     The number of tokens replaced is controlled by a Beta-distributed mixing coefficient
     ``lam``, so that ``alpha`` has a meaningful effect on the strength of mixing.
 
-    Implementation for `TokenMix: Rethinking Image Mixing for Data Augmentation in Vision Transformers` :cite:`ji2022tokenmix`.
+    Implementation for `TokenMix: Rethinking Image Mixing for Data Augmentation
+    in Vision Transformers` :cite:`ji2022tokenmix`.
 
     Args:
         alpha: concentration parameter for the Beta distribution used to sample
