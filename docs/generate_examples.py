@@ -238,9 +238,9 @@ def main():
         # set seed
         torch.manual_seed(seed)
         # apply the augmentation to the image and concat
-        # TokenMix returns only an image tensor (no label tuple)
+        # TokenMix returns (B, C, H, W); index [0] to get (C, H, W) for cat
         if aug_name == "TokenMix":
-            img_aug = aug(img_in)
+            img_aug = aug(img_in)[0]
         else:
             img_aug, _ = aug(img_in, torch.tensor([0, 1]))
 
