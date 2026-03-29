@@ -48,14 +48,14 @@ def box_blur(
         input: the image to blur with shape :math:`(B,C,H,W)`.
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+          The expected modes are: `'constant'`, `'reflect'`, `'replicate'` or `'circular'`.
         separable: run as composition of two 1d-convolutions.
 
     Returns:
         the blurred torch.Tensor with shape :math:`(B,C,H,W)`.
 
     .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/filtering_operators.html>`__.
+       See a working example [here](https://kornia.github.io/tutorials/nbs/filtering_operators.html).
 
     Example:
         >>> input = torch.rand(2, 4, 5, 7)
@@ -95,8 +95,8 @@ class BoxBlur(nn.Module):
     Args:
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+          The expected modes are: `'constant'`, `'reflect'`,
+          `'replicate'` or `'circular'`. Default: `'reflect'`.
         separable: run as composition of two 1d-convolutions.
 
     Returns:
@@ -118,6 +118,7 @@ class BoxBlur(nn.Module):
     def __init__(
         self, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = False
     ) -> None:
+        """See :class:`BoxBlur` for details."""
         super().__init__()
         self.kernel_size = kernel_size
         self.border_type = border_type
