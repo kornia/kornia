@@ -57,10 +57,10 @@ def canny(
                                                                                         Returns:
                                                                                                 - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
                                                                                                         - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
-                                                                                                        
+
                                                                                                             .. note::
                                                                                                                    See a working example `here <https://kornia.github.io/tutorials/nbs/canny.html>`__.
-                                                                                                                   
+
                                                                                                                        Example:
                                                                                                                                >>> input = torch.rand(5, 3, 4, 4)
                                                                                                                                        >>> magnitude, edges = canny(input)  # 5x3x4x4
@@ -68,7 +68,7 @@ def canny(
                                                                                                                                                        torch.Size([5, 1, 4, 4])
                                                                                                                                                                >>> edges.shape
                                                                                                                                                                        torch.Size([5, 1, 4, 4])
-                                                                                                                                                                       
+
                                                                                                                                                                            """
         KORNIA_CHECK_IS_TENSOR(input)
         KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -177,7 +177,7 @@ class Canny(nn.Module):
                                                                                     Returns:
                                                                                             - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
                                                                                                     - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
-                                                                                                    
+
                                                                                                         Example:
                                                                                                                 >>> input = torch.rand(5, 3, 4, 4)
                                                                                                                         >>> magnitude, edges = Canny()(input)  # 5x3x4x4
@@ -185,7 +185,7 @@ class Canny(nn.Module):
                                                                                                                                         torch.Size([5, 1, 4, 4])
                                                                                                                                                 >>> edges.shape
                                                                                                                                                         torch.Size([5, 1, 4, 4])
-                                                                                                                                                        
+
                                                                                                                                                             """
 
     # TODO: Handle multiple inputs and outputs models later
@@ -243,4 +243,4 @@ class Canny(nn.Module):
                 return canny(
                     input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps
                 )
-        
+
