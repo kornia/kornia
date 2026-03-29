@@ -47,6 +47,8 @@ class TestOnnxLightGlue:
     @pytest.mark.slow
     @pytest.mark.parametrize("dtype", [torch.float32])
     def test_forward(self, dtype, device):
+        if device.type == "cuda" and "CUDAExecutionProvider" not in ort.get_available_providers():
+            pytest.skip("OnnxLightGlue on CUDA requires onnxruntime-gpu with CUDAExecutionProvider")
         model = OnnxLightGlue(device=device)
 
         kpts = torch.zeros(1, 5, 2, dtype=dtype, device=device)

@@ -21,6 +21,7 @@ This subpackage provides modules for keypoint detection, descriptors, and featur
 """
 
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
+from .aliked import ALIKED, ALIKEDFeatures
 from .dedode import DeDoDe
 from .defmo import DeFMO
 from .disk import DISK, DISKFeatures
@@ -93,12 +94,15 @@ from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
+from .xfeat import InterpolateSparse2d, XFeat, XFeatModel
 
 __all__ = [
+    "ALIKED",
     "DISK",
     "KORNIA_CHECK_LAF",
     "SOLD2",
     "TLU",
+    "ALIKEDFeatures",
     "BlobDoG",
     "BlobDoGSingle",
     "BlobHessian",
@@ -118,6 +122,7 @@ __all__ = [
     "HardNet8",
     "HesAffNetHardNet",
     "HyNet",
+    "InterpolateSparse2d",
     "KeyNet",
     "KeyNet",
     "KeyNetAffNetHardNet",
@@ -150,6 +155,8 @@ __all__ = [
     "SOSNet",
     "ScaleSpaceDetector",
     "TFeat",
+    "XFeat",
+    "XFeatModel",
     "denormalize_laf",
     "dog_response",
     "dog_response_single",

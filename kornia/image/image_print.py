@@ -367,7 +367,7 @@ def image_to_string(image: torch.Tensor, max_width: int = 256) -> str:
     KORNIA_CHECK_IS_IMAGE(image, None, raises=True)
     KORNIA_CHECK_SHAPE(image, ["C", "H", "W"])
 
-    if image.dtype not in [float16, float32, float64]:
+    if image.dtype not in [torch.bfloat16, float16, float32, float64]:
         image = image / 255.0
 
     if image.shape[-1] > max_width:

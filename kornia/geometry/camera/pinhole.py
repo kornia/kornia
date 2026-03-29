@@ -496,9 +496,6 @@ def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
                  [1.0000e-06, 1.0000e-06, 1.0000e-06, 1.0000e+00]]])
 
     """
-    # warnings.warn("pinhole_matrix will be deprecated in version 0.2, "
-    #              "use PinholeCamera.camera_matrix instead",
-    #              PendingDeprecationWarning)
     if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
         raise AssertionError(pinholes.shape)
     # unpack pinhole values
@@ -542,9 +539,6 @@ def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Te
                  [ 0.0000,  0.0000,  0.0000,  1.0000]]])
 
     """
-    # warnings.warn("inverse_pinhole_matrix will be deprecated in version 0.2, "
-    #              "use PinholeCamera.intrinsics_inverse() instead",
-    #              PendingDeprecationWarning)
     if not (len(pinhole.shape) == 2 and pinhole.shape[1] == 12):
         raise AssertionError(pinhole.shape)
     # unpack pinhole values
@@ -587,9 +581,6 @@ def scale_pinhole(pinholes: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
                  0.6323, 0.3489, 0.4017]])
 
     """
-    # warnings.warn("scale_pinhole will be deprecated in version 0.2, "
-    #              "use PinholeCamera.scale() instead",
-    #              PendingDeprecationWarning)
     if not (len(pinholes.shape) == 2 and pinholes.shape[1] == 12):
         raise AssertionError(pinholes.shape)
     if len(scale.shape) != 1:

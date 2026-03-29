@@ -30,8 +30,15 @@ from .adalam import get_adalam_default_config, match_adalam
 
 
 def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
-    r"""Manual `torch.cdist` for M1."""
-    if (not is_mps_tensor_safe(d1)) and (not is_mps_tensor_safe(d2)):
+    r"""Compute pairwise L2 distances between rows of d1 and d2.
+
+    Uses ``torch.cdist`` for float32/float64 on non-MPS devices.  Falls back to a
+    manual expand-and-norm implementation for MPS tensors and for half-precision
+    dtypes (float16/bfloat16), since ``torch.cdist`` does not support half precision
+    on CUDA and may be unavailable for these dtypes elsewhere.
+    """
+    half = (torch.float16, torch.bfloat16)
+    if (not is_mps_tensor_safe(d1)) and (not is_mps_tensor_safe(d2)) and d1.dtype not in half and d2.dtype not in half:
         return torch.cdist(d1, d2)
     d1_sq = (d1**2).sum(dim=1, keepdim=True)
     d2_sq = (d2**2).sum(dim=1, keepdim=True)
@@ -172,7 +179,7 @@ def match_snn(
     KORNIA_CHECK_SHAPE(desc1, ["B", "DIM"])
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
 
-    if desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
+    if desc1.shape[0] == 0 or desc2.shape[0] < 2:  # We cannot perform snn check, so output empty matches
         return _no_match(desc1)
     distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
     vals, idxs_in_2 = torch.topk(distance_matrix, 2, dim=1, largest=False)

@@ -482,7 +482,7 @@ class Quaternion(nn.Module):
     def identity(
         cls,
         batch_size: Optional[int] = None,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> "Quaternion":
         """Create a quaternion representing an identity rotation.
@@ -527,7 +527,7 @@ class Quaternion(nn.Module):
     def random(
         cls,
         batch_size: Optional[int] = None,
-        device: Optional[Union[str, torch.device, None]] = None,
+        device: Union[None, str, torch.device] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> "Quaternion":
         """Create a random unit quaternion of shape :math:`(B, 4)`.
@@ -669,8 +669,15 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
         w = w / w.sum()
         A = data.T @ torch.diag(w) @ data
 
+    orig_dtype = A.dtype
+    if A.dtype in (torch.float16, torch.bfloat16):
+        A = A.float()
     eigenvalues, eigenvectors = torch.linalg.eigh(A)
-    q_avg = eigenvectors[:, torch.argmax(eigenvalues)]
+    # Use float32 eigenvalues for argmax to avoid half-precision rounding
+    # changing which eigenvector is selected when eigenvalues are close.
+    max_idx = torch.argmax(eigenvalues)
+    eigenvectors = eigenvectors.to(orig_dtype)
+    q_avg = eigenvectors[:, max_idx]
     q_avg = q_avg / q_avg.norm()
 
     return Quaternion(q_avg.unsqueeze(0))

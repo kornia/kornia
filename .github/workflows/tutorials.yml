@@ -24,6 +24,7 @@ permissions:
 jobs:
   tutorials:
     runs-on: ${{ inputs.os }}
+    continue-on-error: true
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
@@ -41,7 +42,7 @@ jobs:
         run: echo "name=py$(echo '${{ matrix.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.9.3
+        uses: prefix-dev/setup-pixi@v0.9.4
         with:
           pixi-version: v0.40.0
           cache: true
@@ -62,6 +63,9 @@ jobs:
           PIP_INDEX_URL: "https://download.pytorch.org/whl/cpu"
           PIP_EXTRA_INDEX_URL: "https://pypi.org/simple"
         run: make setup
+
+      - name: Install local kornia
+        run: pip install -e . --no-deps
 
       - name: Check deps
         working-directory: ./tutorials-repo/

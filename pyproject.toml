@@ -57,7 +57,7 @@ dev = [
   "requests",
   "ruff",
   "setuptools",  # For torch.compile
-  "transformers<4.58",
+  "transformers<5.2",
 ]
 docs = [
   "furo",
@@ -133,6 +133,7 @@ select = [
   # "ARG",  # flake8-unused-arguments
   # "COM",  # flake8-commas
   "D",  # pydocstyle
+  "D400",  # missing-trailing-period
   # "DJ",   # flake8-django
   # "EM",   # flake8-errmsg
   # "ERA",  # eradicate
@@ -205,8 +206,9 @@ max-statements = 64  # Recommended: 50
   "RUF012",
   "S101",
   "S311",
+  "S603",
   "D",
-]  # allow assert, random, ignore BLE, mutable class attr
+]  # allow assert, random, subprocess calls, ignore BLE, mutable class attr
 "docs/*" = [
   "PLR0912",
   "PLR0915",
@@ -253,6 +255,7 @@ markers = [
   "jit: mark a test as torchscript test",
   "nn: mark a test as module test",
   "slow: mark test as slow to run",
+  "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul precision; xfail by default, run with --tf32 to activate",
 ]
 filterwarnings = [
   "ignore::DeprecationWarning:onnxscript.converter",
@@ -266,7 +269,45 @@ filterwarnings = [
 [tool.coverage.run]
 branch = true
 source = ["kornia/"]
-omit = ["*/__main__.py", "*/setup.py"]
+omit = [
+  "*/__main__.py",
+  "*/setup.py",
+  "kornia/models/sam/*",
+  "kornia/models/sam3/*",
+  "kornia/models/siglip2/*",
+  "kornia/models/paligemma/*",
+  "kornia/models/kimi_vl/*",
+  "kornia/models/qwen25/*",
+  "kornia/models/smolvlm2/*",
+  "kornia/models/efficient_vit/*",
+  "kornia/models/rt_detr/*",
+  "kornia/models/depth_estimation/*",
+  "kornia/models/_hf_models/*",
+  "kornia/models/processors/*",
+  "kornia/models/vit.py",
+  "kornia/models/vit_mobile.py",
+  "kornia/models/tiny_vit.py",
+  # Feature model building blocks (vendored architectures)
+  "kornia/feature/adalam/*",
+  "kornia/feature/dedode/transformer/*",
+  "kornia/feature/dedode/dedode_models.py",
+  "kornia/feature/dedode/vgg.py",
+  "kornia/feature/loftr/loftr_module/*",
+  "kornia/feature/loftr/backbone/*",
+  "kornia/feature/loftr/utils/*",
+  "kornia/feature/sold2/backbones.py",
+  "kornia/feature/sold2/sold2_detector.py",
+  "kornia/feature/lightglue.py",
+  "kornia/feature/lightglue_onnx/*",
+  "kornia/feature/aliked/deform_conv2d.py",
+  "kornia/feature/disk/_unets/*",
+  "kornia/feature/defmo.py",
+  # DexiNed vendored architecture (building blocks only; high-level API in kornia/contrib/edge_detection.py is kept)
+  "kornia/filters/dexined.py",
+  "kornia/models/dexined.py",
+  # HuggingFace diffusers wrapper — requires diffusers as optional dep, not unit-testable as a filter
+  "kornia/filters/dissolving.py",
+]
 
 [tool.coverage.report]
 show_missing = true

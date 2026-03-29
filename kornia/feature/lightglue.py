@@ -44,7 +44,14 @@ def math_clamp(x, min_, max_):  # type: ignore
     return min(max(x, min_), max_)
 
 
-@torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
+AMP_CUSTOM_FWD_F32 = (
+    torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
+    if hasattr(torch, "amp") and hasattr(torch.amp, "custom_fwd")
+    else torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
+)
+
+
+@AMP_CUSTOM_FWD_F32
 def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
     """Normalize torch.Tensor of keypoints."""
     if isinstance(size, torch.Size):
@@ -445,6 +452,20 @@ class LightGlue(nn.Module):
             "weights": "aliked_lightglue",
             "input_dim": 128,
         },
+        "raco-aliked": {
+            "weights": "raco_aliked_lightglue",
+            "input_dim": 128,
+        },
+        "xfeat": {
+            "weights": "xfeat_lighterglue",
+            "input_dim": 64,
+            "descriptor_dim": 96,
+            "n_layers": 6,
+            "num_heads": 1,
+            "depth_confidence": -1,
+            "width_confidence": 0.95,
+            "filter_threshold": 0.1,
+        },
         "sift": {
             "weights": "sift_lightglue",
             "input_dim": 128,
@@ -518,14 +539,20 @@ class LightGlue(nn.Module):
             elif features in ["dedodeg"]:
                 fname = "dedodeg_lightglue.pth"
                 url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth"
+            elif features == "xfeat":
+                fname = "xfeat-lighterglue.pt"
+                url = "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat-lighterglue.pt"
             else:
-                url = self.url.format(self.version, features)
+                url = self.url.format(self.version, features.replace("-", "_"))
             state_dict = torch.hub.load_state_dict_from_url(url, file_name=fname)
         elif conf.weights is not None:
             path = Path(__file__).parent
             path = path / f"weights/{self.conf.weights}.pth"
             state_dict = torch.load(str(path), map_location="cpu")
         if state_dict:
+            # xfeat-lighterglue weights are nested under a 'matcher.' prefix
+            prefix = "matcher."
+            state_dict = {k[len(prefix) :] if k.startswith(prefix) else k: v for k, v in state_dict.items()}
             # rename old state dict entries
             for i in range(self.conf.n_layers):
                 pattern = f"self_attn.{i}", f"transformers.{i}.self_attn"
@@ -546,6 +573,12 @@ class LightGlue(nn.Module):
                 stacklevel=2,
             )
 
+        if (
+            hasattr(torch, "_inductor")
+            and hasattr(torch._inductor, "cudagraph_mark_step_begin")
+            and torch.cuda.is_available()
+        ):
+            torch._inductor.cudagraph_mark_step_begin()
         for i in range(self.conf.n_layers):
             self.transformers[i].masked_forward = torch.compile(  # type: ignore[assignment]
                 self.transformers[i].masked_forward, mode=mode, fullgraph=True
@@ -624,6 +657,26 @@ class LightGlue(nn.Module):
         desc0 = data0["descriptors"].detach().contiguous()
         desc1 = data1["descriptors"].detach().contiguous()
 
+        # Guard against empty-descriptors after pruning
+        if desc0.shape[1] == 0 or desc1.shape[1] == 0:
+            empty_m0 = torch.full((b, m), -1, device=device, dtype=torch.long)
+            empty_m1 = torch.full((b, n), -1, device=device, dtype=torch.long)
+            empty_s0 = torch.zeros((b, m), device=device)
+            empty_s1 = torch.zeros((b, n), device=device)
+
+            return {
+                "log_assignment": torch.empty((b, 1, 1), device=device),
+                "matches0": empty_m0,
+                "matches1": empty_m1,
+                "matching_scores0": empty_s0,
+                "matching_scores1": empty_s1,
+                "stop": 0,
+                "matches": [torch.empty((0, 2), device=device, dtype=torch.long) for _ in range(b)],
+                "scores": [torch.empty((0,), device=device) for _ in range(b)],
+                "prune0": torch.ones_like(empty_s0) * self.conf.n_layers,
+                "prune1": torch.ones_like(empty_s1) * self.conf.n_layers,
+            }
+
         KORNIA_CHECK(desc0.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
         KORNIA_CHECK(desc1.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
 
@@ -683,9 +736,11 @@ class LightGlue(nn.Module):
                 encoding1 = encoding1.index_select(-2, keep1)
                 prune1[:, ind1] += 1
 
-        desc0, desc1 = desc0[..., :m, :], desc1[..., :n, :]
+            desc0, desc1 = desc0[..., :m, :], desc1[..., :n, :]
+
         scores, _ = self.log_assignment[i](desc0, desc1)
         m0, m1, mscores0, mscores1 = filter_matches(scores, self.conf.filter_threshold)
+
         matches, mscores = [], []
         for k in range(b):
             valid = m0[k] > -1

@@ -20,18 +20,22 @@
 This subpackage provides polynomial solvers and related utilities for geometry tasks.
 """
 
+from .homogeneous import null_vector_3x4
 from .polynomial_solver import (
     determinant_to_polynomial,
     multiply_deg_one_poly,
     multiply_deg_two_one_poly,
     solve_cubic,
     solve_quadratic,
+    solve_quartic,
 )
 
 __all__ = [
     "determinant_to_polynomial",
     "multiply_deg_one_poly",
     "multiply_deg_two_one_poly",
+    "null_vector_3x4",
     "solve_cubic",
     "solve_quadratic",
+    "solve_quartic",
 ]
