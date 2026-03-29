@@ -198,7 +198,7 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
-        normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
+        normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth
         represented as the Euclidean ray length from the camera position.
 
     Return:
@@ -223,7 +223,7 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
 
     # Rearrange to (B, H, W, 3) before cross product so the 3 XYZ components are
-    # contiguous in memory.  Cross product along dim=1 on a (B,3,H,W) tensor strides
+    # contiguous in memory.  Cross product along dim=-1 on a (B,3,H,W) tensor strides
     # H*W elements between components, causing severe cache thrashing on CPU.
     a: torch.Tensor = gradients[:, :, 0].permute(0, 2, 3, 1).contiguous()  # BxHxWx3
     b: torch.Tensor = gradients[:, :, 1].permute(0, 2, 3, 1).contiguous()  # BxHxWx3
@@ -326,9 +326,9 @@ class DepthWarper(nn.Module):
     r"""Warp a patch by depth.
 
     .. math::
-        P_{src}^{\{dst\}} = K_{dst} * T_{src}^{\{dst\}}
+        P_{src}^{{dst}} = K_{dst} * T_{src}^{{dst}}
 
-        I_{src} = \\omega(I_{dst}, P_{src}^{\{dst\}}, D_{src})
+        I_{src} = \omega(I_{dst}, P_{src}^{{dst}}, D_{src})
 
     Args:
         pinholes_dst: the pinhole models for the destination frame.
