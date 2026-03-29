@@ -243,4 +243,3 @@ class Canny(nn.Module):
                 return canny(
                     input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps
                 )
-
