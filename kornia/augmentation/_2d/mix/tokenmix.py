@@ -25,6 +25,8 @@ from .base import MixAugmentationBaseV2
 class TokenMix(MixAugmentationBaseV2):
     r"""Apply token-based mixing augmentation to a batch of images.
 
+    .. image:: _static/img/TokenMix.png
+
     Inspired by token-mixing strategies in vision transformers, this augmentation
     replaces a subset of non-overlapping image patches ("tokens") from each image
     with the corresponding patches from another randomly selected image in the batch.
