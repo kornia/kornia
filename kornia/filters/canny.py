@@ -68,6 +68,7 @@ def canny(
         torch.Size([5, 1, 4, 4])
         >>> edges.shape
         torch.Size([5, 1, 4, 4])
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
@@ -184,6 +185,7 @@ class Canny(nn.Module):
         torch.Size([5, 1, 4, 4])
         >>> edges.shape
         torch.Size([5, 1, 4, 4])
+
     """
 
     # TODO: Handle multiple inputs and outputs models later
@@ -225,6 +227,7 @@ class Canny(nn.Module):
         self.eps: float = eps
 
     def __repr__(self) -> str:
+        """See :class:`Canny` for details."""
         return "".join(
             (
                 f"{type(self).__name__}(",
