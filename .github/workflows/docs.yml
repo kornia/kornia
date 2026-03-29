@@ -36,9 +36,9 @@ jobs:
     name: docs
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: ${{ inputs.fail-fast }}
+      fail-fast: ${{ inputs.fail-fast || false }}
       matrix:
-        python-version: ${{ fromJSON(inputs.python-version) }}
+        python-version: ${{ fromJSON(inputs.python-version || '["3.11"]') }}
 
     steps:
       - name: Checkout repository
