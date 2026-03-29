@@ -47,12 +47,11 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || inputs.ref }}
 
       - name: Restore cache
-        if: inputs.cache-path != ''
         uses: actions/cache/restore@v5
         with:
-          path: ${{ inputs.cache-path }}
-          key: ${{ inputs.cache-key }}
-          restore-keys: ${{ inputs.cache-restore-keys }}
+          path: ${{ inputs.cache-path || 'weights/' }}
+          key: ${{ inputs.cache-key || format('model-weights-{0}', hashFiles('.github/download-models-weights.py')) }}
+          restore-keys: ${{ inputs.cache-restore-keys || 'model-weights-' }}
 
       - name: Set pixi environment name
         id: pixi-env
@@ -71,6 +70,9 @@ jobs:
 
       - name: Install docs dependencies
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install-docs
+
+      - name: Download model weights safely before doctests
+        run: pixi run uv run python .github/download-models-weights.py -t weights/ 2>/dev/null || true
 
       - name: Run doctest
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} doctest
