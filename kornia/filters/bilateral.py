@@ -184,6 +184,7 @@ class _BilateralBlur(nn.Module):
         border_type: str = "reflect",
         color_distance_type: str = "l1",
     ) -> None:
+        """See :class:`BilateralBlur` for details."""
         super().__init__()
         self.kernel_size = kernel_size
         self.sigma_color = sigma_color
@@ -192,6 +193,7 @@ class _BilateralBlur(nn.Module):
         self.color_distance_type = color_distance_type
 
     def __repr__(self) -> str:
+        """See :class:`BilateralBlur` for details."""
         return (
             f"{self.__class__.__name__}"
             f"(kernel_size={self.kernel_size}, "
