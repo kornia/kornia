@@ -31,6 +31,8 @@ class TokenMix(MixAugmentationBaseV2):
     The number of tokens replaced is controlled by a Beta-distributed mixing coefficient
     ``lam``, so that ``alpha`` has a meaningful effect on the strength of mixing.
 
+    Implementation for `TokenMix: Rethinking Image Mixing for Data Augmentation in Vision Transformers` :cite:`ji2022tokenmix`.
+
     Args:
         alpha: concentration parameter for the Beta distribution used to sample
             the per-sample mixing coefficient ``lam``. Higher values produce ``lam``
@@ -99,10 +101,6 @@ class TokenMix(MixAugmentationBaseV2):
         """
         B = batch_shape[0]
         lam = torch.distributions.Beta(self.alpha, self.alpha).sample((B,))
-        try:
-            lam = lam.to(self.device).to(self.dtype)  # type: ignore[attr-defined]
-        except (AttributeError, RuntimeError):
-            pass
 
         # Map lam in [0, 1] to a per-sample token count in [1, num_tokens^2].
         total_tokens = self.num_tokens * self.num_tokens

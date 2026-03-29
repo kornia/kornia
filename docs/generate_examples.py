@@ -224,7 +224,11 @@ def main():
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
-    mix_augmentations_list = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019)}
+    mix_augmentations_list = {
+        "RandomMixUpV2": ((), 2, 20),
+        "RandomCutMixV2": ((), 2, 2019),
+        "TokenMix": ((), 2, 2024),
+    }
     # ITERATE OVER THE TRANSFORMS
     for aug_name, (args, _, seed) in mix_augmentations_list.items():
         img_in = torch.cat([img1, img2])
