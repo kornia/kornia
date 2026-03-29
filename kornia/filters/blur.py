@@ -62,6 +62,7 @@ def box_blur(
         >>> output = box_blur(input, (3, 3))  # 2x4x5x7
         >>> output.shape
         torch.Size([2, 4, 5, 7])
+
     """
     KORNIA_CHECK_IS_TENSOR(input)
 
@@ -111,12 +112,12 @@ class BoxBlur(nn.Module):
         >>> output = blur(input)  # 2x4x5x7
         >>> output.shape
         torch.Size([2, 4, 5, 7])
+
     """
 
     def __init__(
         self, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = False
     ) -> None:
-        """See :class:`BoxBlur` for details."""
         super().__init__()
         self.kernel_size = kernel_size
         self.border_type = border_type
@@ -133,6 +134,7 @@ class BoxBlur(nn.Module):
             self.kernel: torch.Tensor
 
     def __repr__(self) -> str:
+        """See :class:`BoxBlur` for details."""
         return (
             f"{self.__class__.__name__}"
             f"(kernel_size={self.kernel_size}, "
