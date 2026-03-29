@@ -27,8 +27,13 @@ from kornia.constants import DataKey
 class PatchMix(MixAugmentationBaseV2):
     r"""PatchMix augmentation.
 
+    .. image:: _static/img/PatchMix.png
+
     Replaces a random patch in each image of a batch with the corresponding
     region from a randomly chosen different image in the batch.
+
+    Implementation for `CutMix: Regularization Strategy to Train Strong
+    Classifiers with Localizable Features` :cite:`yun2019cutmix`.
 
     Args:
         alpha: Hyperparameter for the Beta distribution used to generate the
@@ -38,6 +43,13 @@ class PatchMix(MixAugmentationBaseV2):
         same_on_batch: Apply the same transformation across the batch.
         keepdim: Whether to keep the output shape the same as input ``True``
             or broadcast it to the batch form ``False``.
+
+    Examples:
+        >>> aug = PatchMix(alpha=1.0, patch_size=4)
+        >>> x = torch.rand(2, 3, 32, 32)
+        >>> out = aug(x)
+        >>> out.shape
+        torch.Size([2, 3, 32, 32])
     """
 
     def __init__(
@@ -53,45 +65,6 @@ class PatchMix(MixAugmentationBaseV2):
         self.alpha = alpha
         self.patch_size = patch_size
         self._param_generator = rg.PatchMixGenerator(alpha, patch_size, p)
-
-    def apply_transform_class(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
-    ) -> torch.Tensor:
-        B, _, H, W = params["batch_shape"]
-        idx = params["mix_pairs"].to(input.device)
-
-        # Calculate area-based lambda for labels
-        area_ratio = (float(self.patch_size) ** 2) / (float(H) * float(W))
-        lam = torch.full((B,), 1.0 - area_ratio, device=input.device, dtype=input.dtype)
-
-        # Prepare mixed labels: [label_orig, label_perm, lam]
-        labels_permute = input.index_select(dim=0, index=idx)
-
-        out = torch.stack(
-            [
-                input.to(dtype=input.dtype),
-                labels_permute.to(dtype=input.dtype),
-                lam.to(dtype=input.dtype),
-            ],
-            -1,
-        )
-
-        return out
-
-    def apply_non_transform_class(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
-    ) -> torch.Tensor:
-        B = input.shape[0]
-        lam = torch.ones((B,), device=input.device, dtype=input.dtype)
-        out = torch.stack(
-            [
-                input.to(dtype=input.dtype),
-                input.to(dtype=input.dtype),
-                lam.to(dtype=input.dtype),
-            ],
-            -1,
-        )
-        return out
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, torch.Tensor]:
         return self._param_generator(batch_shape, self.same_on_batch)
