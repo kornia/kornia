@@ -33,8 +33,6 @@ from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproje
 from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
 from .linalg import convert_points_to_homogeneous, transform_points
 
-"""nn.Module containing operators to work on RGB-Depth images."""
-
 __all__ = [
     "DepthWarper",
     "depth_from_disparity",
@@ -198,7 +196,7 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
-        normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth
+        normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
         represented as the Euclidean ray length from the camera position.
 
     Return:
@@ -223,7 +221,7 @@ def depth_to_normals(depth: torch.Tensor, camera_matrix: torch.Tensor, normalize
     gradients: torch.Tensor = spatial_gradient(xyz)  # Bx3x2xHxW
 
     # Rearrange to (B, H, W, 3) before cross product so the 3 XYZ components are
-    # contiguous in memory.  Cross product along dim=-1 on a (B,3,H,W) tensor strides
+    # contiguous in memory.  Cross product along dim=1 on a (B,3,H,W) tensor strides
     # H*W elements between components, causing severe cache thrashing on CPU.
     a: torch.Tensor = gradients[:, :, 0].permute(0, 2, 3, 1).contiguous()  # BxHxWx3
     b: torch.Tensor = gradients[:, :, 1].permute(0, 2, 3, 1).contiguous()  # BxHxWx3
@@ -328,7 +326,7 @@ class DepthWarper(nn.Module):
     .. math::
         P_{src}^{{dst}} = K_{dst} * T_{src}^{{dst}}
 
-        I_{src} = \omega(I_{dst}, P_{src}^{{dst}}, D_{src})
+        I_{src} = \\omega(I_{dst}, P_{src}^{{dst}}, D_{src})
 
     Args:
         pinholes_dst: the pinhole models for the destination frame.
@@ -350,6 +348,7 @@ class DepthWarper(nn.Module):
         padding_mode: str = "zeros",
         align_corners: bool = True,
     ) -> None:
+        """See :class:`DepthWarper` for details."""
         super().__init__()
         self.width: int = width
         self.height: int = height
@@ -371,6 +370,7 @@ class DepthWarper(nn.Module):
 
     @staticmethod
     def _create_meshgrid(height: int, width: int) -> torch.Tensor:
+        """See :class:`DepthWarper` for details."""
         grid: torch.Tensor = create_meshgrid(height, width, normalized_coordinates=False)  # 1xHxWx2
         return convert_points_to_homogeneous(grid)  # append ones to last dim
 
@@ -422,6 +422,7 @@ class DepthWarper(nn.Module):
         return self
 
     def _compute_projection(self, x: float, y: float, invd: float) -> torch.Tensor:
+        """See :class:`DepthWarper` for details."""
         if self._dst_proj_src is None or self._pinhole_src is None:
             raise ValueError("Please, call compute_projection_matrix.")
 
