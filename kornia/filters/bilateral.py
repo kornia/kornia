@@ -123,6 +123,7 @@ def bilateral_blur(
         >>> output = bilateral_blur(input, (3, 3), 0.1, (1.5, 1.5))
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
     return _bilateral_blur(input, None, kernel_size, sigma_color, sigma_space, border_type, color_distance_type)
 
@@ -168,6 +169,7 @@ def joint_bilateral_blur(
         >>> output = joint_bilateral_blur(input, guidance, (3, 3), 0.1, (1.5, 1.5))
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
     return _bilateral_blur(input, guidance, kernel_size, sigma_color, sigma_space, border_type, color_distance_type)
 
@@ -234,6 +236,7 @@ class BilateralBlur(_BilateralBlur):
         >>> output = blur(input)
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
@@ -277,10 +280,11 @@ class JointBilateralBlur(_BilateralBlur):
         >>> output = blur(input, guidance)
         >>> output.shape
         torch.Size([2, 4, 5, 5])
+
     """
 
     def forward(self, input: torch.Tensor, guidance: torch.Tensor) -> torch.Tensor:
-        """See :class:`JointBilateralBlur` for details."""
+        """See :class:`BilateralBlur` for details."""
         return joint_bilateral_blur(
             input,
             guidance,
