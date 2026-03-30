@@ -61,8 +61,45 @@ class TestDistortPoints(BaseTester):
         assert pointsu.shape == (B, N, 2)
 
     def test_gradcheck(self, device):
+        # ── ORIGINAL (partial): only points had requires_grad ──────────────
+        # This left distCoeff, K, and new_K untested — meaning nobody had
+        # verified that gradients actually flow through distortion coefficients.
+        # That matters: without coefficient gradients you cannot optimise camera
+        # intrinsics end-to-end via gradient descent (NeRF, bundle adjustment).
+        #
+        # ── FIX: enable requires_grad on ALL differentiable inputs ──────────
         points = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)
+        K = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
+        new_K = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
+        distCoeff = torch.rand(1, 4, device=device, dtype=torch.float64, requires_grad=True)
+
+        assert self.gradcheck(distort_points, (points, K, distCoeff, new_K), raise_exception=True, fast_mode=True)
+
+    def test_gradcheck_distcoeff_only(self, device):
+        """Gradient flows through distortion coefficients independently.
+
+        This is the critical use-case test: optimising distCoeff via gradient
+        descent (e.g. camera calibration refinement during NeRF training) requires
+        that d(output)/d(distCoeff) is non-zero and correctly computed.
+
+        We fix points and K, and only differentiate through distCoeff — isolating
+        the coefficient gradient path from the point gradient path.
+        """
+        points = torch.rand(1, 8, 2, device=device, dtype=torch.float64)
         K = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
+        new_K = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
+        distCoeff = torch.rand(1, 4, device=device, dtype=torch.float64, requires_grad=True)
+
+        assert self.gradcheck(distort_points, (points, K, distCoeff, new_K), raise_exception=True, fast_mode=True)
+
+    def test_gradcheck_K_only(self, device):
+        """Gradient flows through the camera intrinsic matrix K independently.
+
+        Verifies that d(output)/d(K) is correctly computed, which is required
+        for joint optimisation of intrinsics and distortion parameters.
+        """
+        points = torch.rand(1, 8, 2, device=device, dtype=torch.float64)
+        K = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         new_K = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         distCoeff = torch.rand(1, 4, device=device, dtype=torch.float64)
 
