@@ -27,20 +27,36 @@ from kornia.filters import canny, sobel
 
 
 class EdgeAwareAugmentation(IntensityAugmentationBase2D):
-    r"""Edge-aware augmentation that uses edge/structure priors to modulate augmentation strength.
+    r"""Edge-aware augmentation for images.
 
-    This augmentation preserves object boundaries and fine-grained spatial structure by reducing
-    augmentation strength in high-edge regions while allowing stronger augmentation in smooth regions.
-    Particularly useful for VLM grounding tasks and VLA/robotics pipelines where spatial structure matters.
+    This module wraps another intensity augmentation (brightness, blur, etc.) and
+    applies it more strongly in smooth image regions while reducing its effect
+    near sharp edges or boundaries.
+
+    Why use this?
+    - Avoids over-augmenting edges, which helps preserve object structure.
+    - Offers controlled, interpretable behavior via `edge_weight` and mode.
+    - Works with existing Kornia augmentations as a drop-in wrapper.
+
+    The augmentation works by:
+    1. Computing an edge map from the input image using either Sobel or Canny edge detection
+    2. Creating a modulation mask that reduces augmentation intensity near edges
+    3. Blending the original image with the augmented version based on the modulation mask
+
+    In "soft" mode, the modulation is continuous: modulation = 1 - edge_weight * edge_map
+    In "hard" mode, the modulation is binary: edges are thresholded and scaled by edge_weight
 
     .. image:: _static/img/EdgeAwareAugmentation.png
 
     Args:
         base_aug: The base augmentation module to apply (e.g., RandomBrightness, RandomGaussianBlur).
-        edge_detector: Edge detection method, either "sobel" or "canny".
+        edge_detector: Edge detection method, either "sobel" or "canny". Sobel is faster but Canny may be more accurate.
         mode: Modulation mode, either "soft" (continuous weighting) or "hard" (binary masking).
-        edge_weight: Weight for edge modulation. Higher values preserve edges more strongly.
-        detach_edges: Whether to detach edge computation from the gradient graph.
+            - "soft": Applies continuous modulation where augmentation strength decreases linearly with edge strength
+            - "hard": Applies binary modulation where regions above edge threshold get reduced augmentation
+        edge_weight: Weight for edge modulation, must be in [0.0, 1.0]. Higher values preserve edges more strongly.
+            At 0.0, no edge preservation occurs (normal augmentation). At 1.0, edges are fully preserved.
+        detach_edges: Whether to detach edge computation from the gradient graph. Default True for efficiency.
         same_on_batch: Apply the same transformation across the batch.
         p: Probability of applying the transformation.
         keepdim: Whether to keep the output shape the same as input (True) or broadcast to batch form (False).
