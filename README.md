@@ -323,5 +323,3 @@ Contributions from the community are welcome and appreciated.
 ## License
 
 Kornia is released under the Apache 2.0 license. See the [LICENSE](./LICENSE) file for more information.
-
-
