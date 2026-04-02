@@ -19,7 +19,19 @@ import torch.nn.functional as F
 
 
 def linear_cka(x, y):
-    """Compute linear CKA similarity."""
+    r"""Compute linear CKA similarity between two tensors.
+
+    The inputs are first centered along the feature dimension and then
+    L2-normalized. The similarity is computed as the mean cosine similarity
+    between corresponding samples.
+
+    Args:
+        x: Input tensor of shape :math:`(B, D)`.
+        y: Input tensor of shape :math:`(B, D)`.
+
+    Returns:
+        Scalar similarity score (float), averaged over the batch.
+    """
     x = x - x.mean(dim=1, keepdim=True)
     y = y - y.mean(dim=1, keepdim=True)
 
@@ -30,7 +42,21 @@ def linear_cka(x, y):
 
 
 def linear_similarity(f1, f2):
-    """Applies CKA layer-wise."""
+    r"""Apply linear CKA similarity layer-wise between feature dictionaries.
+
+    For each matching layer, feature tensors are flattened into 2D tensors
+    of shape :math:`(B, D)` and compared using ``linear_cka``.
+
+    Args:
+        f1: Dictionary mapping layer names to feature tensors.
+        f2: Dictionary mapping layer names to feature tensors.
+
+    Returns:
+        Dictionary mapping each layer name to its similarity score (float).
+
+    Raises:
+        ValueError: If the input dictionaries do not have identical keys.
+    """
     if f1.keys() != f2.keys():
         raise ValueError("Feature dictionaries must have same layers")
 

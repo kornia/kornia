@@ -15,18 +15,35 @@
 # limitations under the License.
 #
 
+from typing import Dict
+
+import torch
 import torch.nn.functional as F
 
 
-def cosine_similarity(f1, f2):
-    """Layer-wise cosine similarity between feature dictionaries."""
+def cosine_similarity(
+    f1: Dict[str, torch.Tensor],
+    f2: Dict[str, torch.Tensor],
+) -> Dict[str, float]:
+    """Compute layer-wise cosine similarity between feature dictionaries.
+
+    Each dictionary maps layer names to feature tensors. The features are
+    flattened and cosine similarity is computed independently for each layer.
+
+    Args:
+        f1: Dictionary mapping layer names to tensors of shape (B, ...).
+        f2: Dictionary mapping layer names to tensors of shape (B, ...).
+
+    Returns:
+        Dictionary mapping layer names to mean cosine similarity across batch.
+    """
     if f1.keys() != f2.keys():
         raise ValueError("Feature dictionaries must have same layers")
 
     results = {}
 
-    for layer in f1:
-        x = f1[layer].reshape(f1[layer].size(0), -1)
+    for layer, x in f1.items():
+        x = x.reshape(x.size(0), -1)
         y = f2[layer].reshape(f2[layer].size(0), -1)
 
         sim = F.cosine_similarity(x, y, dim=1).mean().item()
