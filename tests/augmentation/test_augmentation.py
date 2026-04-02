@@ -4607,6 +4607,27 @@ class TestPadTo(BaseTester):
         assert out.shape == (1, 1, 4, 5)
         self.assert_close(aug.inverse(out), img)
 
+    def test_crop_if_exceeds_true(self, device, dtype):
+        # Default behavior: crops when input exceeds target size
+        img = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=True)
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
+
+    def test_crop_if_exceeds_false(self, device, dtype):
+        # When crop_if_exceeds=False, dimensions that exceed target are unchanged
+        img = torch.rand(1, 1, 6, 8, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        out = aug(img)
+        assert out.shape == (1, 1, 6, 8)
+
+    def test_crop_if_exceeds_false_mixed(self, device, dtype):
+        # One dimension needs padding, the other exceeds
+        img = torch.rand(1, 1, 2, 8, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 8)
+
 
 class TestResize:
     def test_smoke(self, device, dtype):
