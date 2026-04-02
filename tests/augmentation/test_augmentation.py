@@ -5326,3 +5326,45 @@ class TestRandomThinPlateSpline(CommonTests):
             return aug(x, params=fixed_params)
 
         self.gradcheck(forward_with_fixed_params, (input_tensor,))
+
+
+class TestPadTo:
+    def test_pad_smaller_input(self, device, dtype):
+        input = torch.zeros(1, 1, 3, 3, device=device, dtype=dtype)
+        pad = PadTo((5, 5), pad_value=1.0)
+        output = pad(input)
+        assert output.shape == (1, 1, 5, 5)
+        assert (output[..., :3, :3] == 0).all()
+        assert (output[..., 3:, :] == 1).all()
+        assert (output[..., :3, 3:] == 1).all()
+
+    def test_crop_if_exceeds_true(self, device, dtype):
+        input = torch.ones(1, 1, 10, 10, device=device, dtype=dtype)
+        pad = PadTo((5, 5), crop_if_exceeds=True)
+        output = pad(input)
+        assert output.shape == (1, 1, 5, 5)
+
+    def test_crop_if_exceeds_false(self, device, dtype):
+        input = torch.ones(1, 1, 10, 10, device=device, dtype=dtype)
+        pad = PadTo((5, 5), crop_if_exceeds=False)
+        output = pad(input)
+        assert output.shape == (1, 1, 10, 10)
+
+    def test_crop_if_exceeds_false_mixed(self, device, dtype):
+        input = torch.ones(1, 1, 10, 3, device=device, dtype=dtype)
+        pad = PadTo((5, 5), pad_value=0.0, crop_if_exceeds=False)
+        output = pad(input)
+        assert output.shape == (1, 1, 10, 5)
+        assert (output[..., :10, :3] == 1).all()
+        assert (output[..., :10, 3:] == 0).all()
+
+    def test_inverse(self, device, dtype):
+        input = torch.zeros(1, 1, 3, 3, device=device, dtype=dtype)
+        pad = PadTo((5, 5))
+        output = pad(input)
+        recovered = pad.inverse(output)
+        assert recovered.shape == input.shape
+
+    def test_keyword_only(self):
+        with pytest.raises(TypeError):
+            PadTo((5, 5), "constant", 0, False, True)
