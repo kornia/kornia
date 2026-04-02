@@ -19,23 +19,76 @@ import torch
 
 import kornia.augmentation as K
 
-AUGMENTATION_REGISTRY = {
-    "rotation": lambda cfg: K.RandomRotation(degrees=cfg.get("degrees", 15.0), p=1.0),
-    "blur": lambda cfg: K.RandomGaussianBlur(
+
+def _build_rotation(cfg):
+    r"""Build a RandomRotation augmentation module.
+
+    Args:
+        cfg: Configuration dictionary containing augmentation parameters.
+
+    Returns:
+        Initialized ``RandomRotation`` module.
+    """
+    return K.RandomRotation(degrees=cfg.get("degrees", 15.0), p=1.0)
+
+
+def _build_blur(cfg):
+    r"""Build a RandomGaussianBlur augmentation module.
+
+    Args:
+        cfg: Configuration dictionary containing augmentation parameters.
+
+    Returns:
+        Initialized ``RandomGaussianBlur`` module.
+    """
+    return K.RandomGaussianBlur(
         kernel_size=cfg.get("kernel_size", (3, 3)),
         sigma=cfg.get("sigma", (0.1, 2.0)),
         p=1.0,
-    ),
-    "brightness": lambda cfg: K.RandomBrightness(
+    )
+
+
+def _build_brightness(cfg):
+    r"""Build a RandomBrightness augmentation module.
+
+    Args:
+        cfg: Configuration dictionary containing augmentation parameters.
+
+    Returns:
+        Initialized ``RandomBrightness`` module.
+    """
+    return K.RandomBrightness(
         brightness=cfg.get("brightness", (0.8, 1.2)),
         p=1.0,
-    ),
+    )
+
+
+AUGMENTATION_REGISTRY = {
+    "rotation": _build_rotation,
+    "blur": _build_blur,
+    "brightness": _build_brightness,
 }
 
 
 class AugmentationPipeline:
     def __init__(self, augmentations_config=None, mode="sequential"):
-        """Initialize augmentation pipeline."""
+        r"""Initialize an augmentation pipeline.
+
+        The pipeline can operate either by applying all augmentations
+        sequentially or by applying each augmentation independently.
+
+        Args:
+            augmentations_config: List of augmentation configurations, where each
+                configuration is a dictionary with keys:
+                - ``"name"``: Name of the augmentation.
+                - ``"params"``: Optional parameters for the augmentation.
+            mode: Execution mode of the pipeline:
+                - ``"sequential"``: Apply all augmentations in sequence.
+                - ``"individual"``: Apply each augmentation independently.
+
+        Raises:
+            ValueError: If an unknown augmentation name is provided.
+        """
         self.mode = mode
         self.augmentations = []
 
@@ -61,6 +114,22 @@ class AugmentationPipeline:
             self.pipeline = torch.nn.Sequential(*modules)
 
     def __call__(self, x):
+        r"""Apply augmentations to the input tensor.
+
+        Depending on the selected mode, either applies all augmentations
+        sequentially or applies each augmentation independently.
+
+        Args:
+            x: Input tensor to be augmented.
+
+        Returns:
+            Dictionary mapping augmentation names to augmented outputs:
+            - In ``"sequential"`` mode, a single entry with the combined name.
+            - In ``"individual"`` mode, one entry per augmentation.
+
+        Raises:
+            ValueError: If an unknown mode is specified.
+        """
         if self.mode == "sequential":
             combined_name = "+".join([name for name, _ in self.augmentations])
             return {combined_name: self.pipeline(x)}

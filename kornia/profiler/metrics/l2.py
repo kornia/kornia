@@ -15,23 +15,46 @@
 # limitations under the License.
 #
 
+from typing import Dict
+
 import torch
+from torch import Tensor
 
 
-def l2_normalized(f1, f2):
-    """Normalized L2 distance per layer."""
+def l2_normalized(
+    f1: Dict[str, Tensor],
+    f2: Dict[str, Tensor],
+) -> Dict[str, float]:
+    r"""Compute normalized L2 distance between feature dictionaries.
+
+    For each matching layer, computes the L2 distance between flattened
+    feature tensors and normalizes it by the L2 norm of the reference tensor.
+
+    The normalization is performed per sample and then averaged across the batch.
+
+    Args:
+        f1: Dictionary mapping layer names to feature tensors.
+        f2: Dictionary mapping layer names to feature tensors.
+
+    Returns:
+        Dictionary mapping layer names to normalized L2 distance (float).
+
+    Raises:
+        ValueError: If the dictionaries do not have identical keys.
+    """
     if f1.keys() != f2.keys():
         raise ValueError("Feature dictionaries must have same layers")
 
-    results = {}
+    results: Dict[str, float] = {}
 
-    for layer in f1:
-        x = f1[layer].reshape(f1[layer].size(0), -1)
+    for layer, x in f1.items():
+        x = x.reshape(x.size(0), -1)
         y = f2[layer].reshape(f2[layer].size(0), -1)
 
-        l2 = torch.norm(x - y, p=2, dim=1).mean()
-        norm = torch.norm(x, p=2, dim=1).mean()
+        l2 = torch.norm(x - y, p=2, dim=1)
+        norm = torch.norm(x, p=2, dim=1)
 
-        results[layer] = (l2 / (norm + 1e-8)).item()
+        normalized = l2 / (norm + 1e-8)
+        results[layer] = normalized.mean().item()
 
     return results

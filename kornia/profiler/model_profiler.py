@@ -42,6 +42,18 @@ METRIC_REGISTRY = {
 
 class ModelProfiler:
     def __init__(self, model, layers=None, processing="flatten"):
+        r"""Initialize the model profiler.
+
+        This class captures intermediate representations from selected layers
+        of a model and computes similarity metrics between different input groups.
+
+        Args:
+            model: PyTorch model to be profiled.
+            layers: List of layer names to extract features from. If ``None``,
+                all layers are used.
+            processing: Feature processing method applied to extracted outputs.
+                Common options include ``"flatten"`` and ``"none"``.
+        """
         self.model = model
         self.model.eval()
 
@@ -56,20 +68,49 @@ class ModelProfiler:
         self.extractor = None
 
     def __enter__(self):
+        r"""Enter context manager and initialize feature extraction hooks.
+
+        Returns:
+            The current ``ModelProfiler`` instance.
+        """
         self.extractor = FeatureExtractor(self.model, self.layers, processing=self.processing)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        r"""Exit context manager and remove registered hooks."""
         if hasattr(self.extractor, "remove_hooks"):
             self.extractor.remove_hooks()
 
     def __call__(self, group="default", tag=None, **inputs):
+        r"""Run a forward pass and store extracted features.
+
+        Features are grouped and optionally tagged for later comparison.
+
+        Args:
+            group: Name of the group to which the input belongs.
+            tag: Optional identifier for the input (e.g., augmentation name).
+            **inputs: Keyword arguments passed to the model's forward method.
+        """
         with torch.no_grad():
             features = self.extractor(**inputs)
 
         self.storage[group].append({"features": features, "tag": tag})
 
     def compute(self, metrics, groups):
+        r"""Compute similarity metrics between two groups of inputs.
+
+        The comparison is performed pairwise between corresponding entries
+        in the specified groups.
+
+        Args:
+            metrics: List of metric names to compute.
+            groups: List of exactly two group names to compare.
+
+        Raises:
+            ValueError: If the number of groups is not two or if an unknown
+                metric is specified.
+            RuntimeError: If one of the groups has no stored data.
+        """
         if len(groups) != 2:
             raise ValueError("Currently supports pairwise group comparison")
         g1, g2 = groups
@@ -119,12 +160,24 @@ class ModelProfiler:
         self._df = pandas.DataFrame(results)
 
     def print(self):
+        r"""Print the computed results as a DataFrame."""
         if self._df is not None:
             print(self._df)
         else:
             print("No results computed yet.")
 
     def save_as_report(self, path):
+        r"""Save computed results to a file.
+
+        Supported formats include CSV and JSON.
+
+        Args:
+            path: File path where the report will be saved.
+
+        Raises:
+            RuntimeError: If results have not been computed.
+            ValueError: If the file format is unsupported.
+        """
         if self._df is None:
             raise RuntimeError("Run compute() before saving report.")
 
@@ -137,4 +190,10 @@ class ModelProfiler:
 
     @property
     def df(self):
+        r"""Return the results as a pandas DataFrame.
+
+        Returns:
+            DataFrame containing computed similarity metrics, or ``None``
+            if results have not been computed yet.
+        """
         return self._df
