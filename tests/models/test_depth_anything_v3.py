@@ -1,6 +1,6 @@
 import pytest
 import torch
-from common import Attention,LayerScale,MLP,DropPath,Block
+from kornia.depth_anything_v3.common import Attention,LayerScale,MLP,DropPath,Block
 #======================= TESTS FOR ATTENTION =======================
 def test_attention_forward_shape():
     batch_size, seq_len, dim = 2, 14, 64

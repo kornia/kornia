@@ -3,17 +3,17 @@ class Attention(torch.nn.Module):
     """
     Multi head attentions layer
     """
-    def __init__(self, dim:int, nb_heads :int, bias_for_qkv=True)->None:
+    def __init__(self, dim:int, nb_head :int, bias_for_qkv=True)->None:
         super().__init__()
         if dim<=0:
             raise ValueError("dim must be > 0")
-        if nb_heads<=0:
-            raise ValueError("nb_heads must be > 0")
+        if nb_head<=0:
+            raise ValueError("nb_head must be > 0")
         self.dim=dim 
-        self.nb_heads=nb_heads 
-        self.head_dim = dim//nb_heads 
-        if self.head_dim*nb_heads!=dim:
-            raise ValueError(f"dim{dim} must be divisible by the number of heads {nb_heads}")
+        self.nb_head=nb_head 
+        self.head_dim = dim//nb_head 
+        if self.head_dim*nb_head!=dim:
+            raise ValueError(f"dim{dim} must be divisible by the number of heads {nb_head}")
         #weights layers for queries,keys and values
         self.w_q=torch.nn.Linear(dim,dim,bias=bias_for_qkv)
         self.w_k=torch.nn.Linear(dim,dim,bias=bias_for_qkv)
@@ -27,10 +27,10 @@ class Attention(torch.nn.Module):
         k_out=self.w_k(x)
         v_out=self.w_v(x) 
 
-        #reshape to separate the heads with the new dimensions : (B,C,nb_heads,head_dim)
-        q_out=q_out.view(B,C,self.nb_heads,self.head_dim)
-        k_out=k_out.view(B,C,self.nb_heads,self.head_dim)
-        v_out=v_out.view(B,C,self.nb_heads,self.head_dim)
+        #reshape to separate the heads with the new dimensions : (B,C,nb_head,head_dim)
+        q_out=q_out.view(B,C,self.nb_head,self.head_dim)
+        k_out=k_out.view(B,C,self.nb_head,self.head_dim)
+        v_out=v_out.view(B,C,self.nb_head,self.head_dim)
 
         #transpose the matrix, for the dimensions to be (B,nb_head,C,head_dim) 
         q_out=q_out.transpose(1,2)
@@ -85,4 +85,44 @@ class MLP(torch.nn.Module):
         x=self.fc1(x)
         x=self.acti(x)
         x=self.fc2(x)
+        return x
+class DropPath(torch.nn.Module):
+    """drop paths per sample"""
+    def __init__(self,drop_prob:float = 0.0)->None:
+        super().__init__()
+        self.drop_prob=drop_prob 
+    def forward(self,x:torch.Tensor)->torch.Tensor:
+        #if drop_prob is null or the model is not in training mode we do nothing
+        if self.drop_prob==0.0 or not self.training:
+            return x 
+        #generate a binary mask of size (B,1,1) for a 2 dimensionnal input 
+        #and size (B,1,1,1) for a 3 dimensionnal input etc...
+        shape = (x.shape[0],) + (len(x.shape)-1)*(1,) 
+
+        random_tensor=(1.0-self.drop_prob)+torch.rand(shape,dtype=x.dtype,device=x.device)
+        random_tensor.floor_()
+        #normalisation by 1-p
+        x=x.div(1.0-self.drop_prob)
+        return x*random_tensor
+class Block(torch.nn.Module):
+    """Vision Transformer Block
+    LayerNormalisation->Attention->LayerScale->DropPath->LayerNorm->MLP->LayerScale->Dropath
+    """
+    def __init__(self,dim:int, nb_head:int, dim_hidden_f:int, bias_for_qkv:bool = True, drop_prob : float = 0.0, init_value:float = 1e-5)->None:
+        super().__init__()
+        
+        self.norm_layer1 = torch.nn.LayerNorm(dim)
+        self.attention_layer = Attention(dim=dim, nb_head=nb_head, bias_for_qkv=bias_for_qkv)
+        self.layerscale1= LayerScale(dim=dim, init_value=init_value)
+        self.drop_path1 = DropPath(drop_prob=drop_prob)
+        
+        self.norm_layer2 = torch.nn.LayerNorm(dim)
+        self.mlp_layer = MLP(dim_in_f=dim, dim_hidden_f=dim_hidden_f)
+        self.layerscale2 = LayerScale(dim=dim, init_value=init_value)
+        self.drop_path2 = DropPath(drop_prob=drop_prob)
+    def forward(self, x:torch.Tensor)->torch.Tensor:
+        #attention path
+        x = x + self.drop_path1(self.layerscale1(self.attention_layer(self.norm_layer1(x))))
+        #mlp path
+        x = x + self.drop_path2(self.layerscale2(self.mlp_layer(self.norm_layer2(x))))
         return x
