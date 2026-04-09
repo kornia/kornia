@@ -21,7 +21,7 @@ import torch
 class Attention(torch.nn.Module):
     """Multi head attentions layer"""
 
-    def __init__(self, dim: int, nb_head: int, bias_for_qkv:bool =True) -> None:
+    def __init__(self, dim: int, nb_head: int, bias_for_qkv: bool = True) -> None:
         super().__init__()
         if dim <= 0:
             raise ValueError("dim must be > 0")
