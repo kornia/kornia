@@ -133,8 +133,8 @@ class DropPath(torch.nn.Module):
         random_tensor = (1.0 - self.drop_prob) + torch.rand(shape, dtype=x.dtype, device=x.device)
         random_tensor.floor_()
         # normalisation by 1-p
-        if self.drop_prob==1.0:
-            return x*random_tensor  
+        if self.drop_prob == 1.0:
+            return x * random_tensor
         x = x.div(1.0 - self.drop_prob)
         return x * random_tensor
 
