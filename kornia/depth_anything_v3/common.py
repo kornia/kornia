@@ -1,9 +1,26 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 import torch
 class Attention(torch.nn.Module):
     """
     Multi head attentions layer
     """
-    def __init__(self, dim:int, nb_head :int, bias_for_qkv=True)->None:
+    def __init__(self, dim:int, nb_head :int, bias_for_qkv:bool     =True)->None:
         super().__init__()
         if dim<=0:
             raise ValueError("dim must be > 0")
@@ -101,7 +118,9 @@ class DropPath(torch.nn.Module):
 
         random_tensor=(1.0-self.drop_prob)+torch.rand(shape,dtype=x.dtype,device=x.device)
         random_tensor.floor_()
-        #normalisation by 1-p
+        #normalisation by 1-p 
+        if self.drop_prob==1.0:
+            return x*random_tensor  
         x=x.div(1.0-self.drop_prob)
         return x*random_tensor
 class Block(torch.nn.Module):
