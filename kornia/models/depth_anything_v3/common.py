@@ -73,6 +73,8 @@ class LayerScale(torch.nn.Module):
     Multiplies the input by a learnable diagonal matrix"""
     def __init__(self,dim:int, init_value:float = 1e-5, inplace:bool = False)->None:
         super().__init__()
+        if dim <=0 : 
+            raise ValueError("dim must be > 0")
         self.inplace=inplace 
         self.gamma=torch.nn.Parameter(init_value*torch.ones(dim))
     def forward(self, x:torch.Tensor)->torch.Tensor:

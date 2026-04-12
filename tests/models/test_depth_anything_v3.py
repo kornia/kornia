@@ -19,8 +19,8 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
-from kornia.depth_anything_v3.common import Attention, Block, DropPath, LayerScale, MLP
-from kornia.testing import BaseTester
+from kornia.models.depth_anything_v3.common import Attention, Block, DropPath, LayerScale, MLP
+from testing.base import BaseTester
 
 
 #=== tests for the class Atention ===
@@ -163,9 +163,9 @@ class TestMLP(BaseTester):
         with pytest.raises(ValueError, match="dimension of the hidden layer must be > 0"):
             MLP(dim_in_f=1, dim_hidden_f=-1, dim_out_f=1)
         with pytest.raises(ValueError, match="dimension of the output must be > 0"):
-            MLP(dim_in_f=1, dim_hidden_f=-1, dim_out_f=-1)
+            MLP(dim_in_f=1, dim_hidden_f=1, dim_out_f=-1)
         with pytest.raises(ValueError, match="dimension of the input must be > 0"):
-             MLP(dim_in_f=-1, dim_hidden_f=-1, dim_out_f=1)
+             MLP(dim_in_f=-1, dim_hidden_f=1, dim_out_f=1)
 
     def test_gradcheck(self, device):
         model = MLP(dim_in_f=64, dim_hidden_f=128).to(device=device, dtype=torch.float64)
