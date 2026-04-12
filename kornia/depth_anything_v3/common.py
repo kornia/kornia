@@ -14,13 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
+from __future__ import annotations
 import torch
+from kornia.models.common import DropPath
+
 class Attention(torch.nn.Module):
     """
     Multi head attentions layer
     """
-    def __init__(self, dim:int, nb_head :int, bias_for_qkv:bool     =True)->None:
+    def __init__(self, dim:int, nb_head :int, bias_for_qkv:bool =True)->None:
         super().__init__()
         if dim<=0:
             raise ValueError("dim must be > 0")
@@ -103,45 +105,25 @@ class MLP(torch.nn.Module):
         x=self.acti(x)
         x=self.fc2(x)
         return x
-class DropPath(torch.nn.Module):
-    """drop paths per sample"""
-    def __init__(self,drop_prob:float = 0.0)->None:
-        super().__init__()
-        self.drop_prob=drop_prob 
-    def forward(self,x:torch.Tensor)->torch.Tensor:
-        #if drop_prob is null or the model is not in training mode we do nothing
-        if self.drop_prob==0.0 or not self.training:
-            return x 
-        #generate a binary mask of size (B,1,1) for a 2 dimensionnal input 
-        #and size (B,1,1,1) for a 3 dimensionnal input etc...
-        shape = (x.shape[0],) + (len(x.shape)-1)*(1,) 
-
-        random_tensor=(1.0-self.drop_prob)+torch.rand(shape,dtype=x.dtype,device=x.device)
-        random_tensor.floor_()
-        #normalisation by 1-p 
-        if self.drop_prob==1.0:
-            return x*random_tensor  
-        x=x.div(1.0-self.drop_prob)
-        return x*random_tensor
 class Block(torch.nn.Module):
     """Vision Transformer Block
     LayerNormalisation->Attention->LayerScale->DropPath->LayerNorm->MLP->LayerScale->Dropath
     """
-    def __init__(self,dim:int, nb_head:int, dim_hidden_f:int, bias_for_qkv:bool = True, drop_prob : float = 0.0, init_value:float = 1e-5)->None:
+    def __init__(self,dim:int, nb_head:int, dim_hidden_f:int, bias_for_qkv:bool = True, drop_prob : float = 0.0, init_value:float = 1e-5, scale_by_keep:bool = True)->None:
         super().__init__()
         
         self.norm_layer1 = torch.nn.LayerNorm(dim)
         self.attention_layer = Attention(dim=dim, nb_head=nb_head, bias_for_qkv=bias_for_qkv)
         self.layerscale1= LayerScale(dim=dim, init_value=init_value)
-        self.drop_path1 = DropPath(drop_prob=drop_prob)
+        self.drop_path1 = DropPath(drop_prob=drop_prob,scale_by_keep=scale_by_keep)
         
         self.norm_layer2 = torch.nn.LayerNorm(dim)
         self.mlp_layer = MLP(dim_in_f=dim, dim_hidden_f=dim_hidden_f)
         self.layerscale2 = LayerScale(dim=dim, init_value=init_value)
-        self.drop_path2 = DropPath(drop_prob=drop_prob)
+        self.drop_path2 = DropPath(drop_prob=drop_prob,scale_by_keep=scale_by_keep)
     def forward(self, x:torch.Tensor)->torch.Tensor:
         #attention path
         x = x + self.drop_path1(self.layerscale1(self.attention_layer(self.norm_layer1(x))))
         #mlp path
         x = x + self.drop_path2(self.layerscale2(self.mlp_layer(self.norm_layer2(x))))
-        return x
+        return x        
