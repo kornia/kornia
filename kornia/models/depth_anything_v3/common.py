@@ -118,6 +118,7 @@ class MLP(torch.nn.Module):
 
 class Block(torch.nn.Module):
     """Vision Transformer Block.
+    
     LayerNormalisation->Attention->LayerScale->DropPath->LayerNorm->MLP->LayerScale->Dropath.
     """
 
