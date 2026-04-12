@@ -20,7 +20,7 @@ from kornia.models.common import DropPath
 
 class Attention(torch.nn.Module):
     """
-    Multi head attentions layer
+    Multi head attentions layer.
     """
     def __init__(self, dim:int, nb_head :int, bias_for_qkv:bool =True)->None:
         super().__init__()
@@ -70,7 +70,7 @@ class Attention(torch.nn.Module):
 class LayerScale(torch.nn.Module):
     """LayerScale module.
     
-    Multiplies the input by a learnable diagonal matrix"""
+    Multiplies the input by a learnable diagonal matrix."""
     def __init__(self,dim:int, init_value:float = 1e-5, inplace:bool = False)->None:
         super().__init__()
         if dim <=0 : 
@@ -82,7 +82,7 @@ class LayerScale(torch.nn.Module):
             return x.mul_(self.gamma)
         return x*self.gamma
 class MLP(torch.nn.Module): 
-    """Multilayer perceptron module"""
+    """Multilayer perceptron module."""
     def __init__(self, dim_in_f:int,dim_hidden_f:int|None = None,dim_out_f:int|None = None)->None:
         super().__init__()
         if dim_hidden_f is None:
@@ -108,8 +108,8 @@ class MLP(torch.nn.Module):
         x=self.fc2(x)
         return x
 class Block(torch.nn.Module):
-    """Vision Transformer Block
-    LayerNormalisation->Attention->LayerScale->DropPath->LayerNorm->MLP->LayerScale->Dropath
+    """Vision Transformer Block.
+    LayerNormalisation->Attention->LayerScale->DropPath->LayerNorm->MLP->LayerScale->Dropath.
     """
     def __init__(self,dim:int, nb_head:int, dim_hidden_f:int, bias_for_qkv:bool = True, drop_prob : float = 0.0, init_value:float = 1e-5, scale_by_keep:bool = True)->None:
         super().__init__()
