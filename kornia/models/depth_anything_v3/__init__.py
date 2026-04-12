@@ -15,8 +15,6 @@
 # limitations under the License.
 #
 
-"""Depth anything v3 models submodule for Kornia.
-"""
+"""Depth anything v3 models submodule for Kornia."""
 
 from .common import *
-
