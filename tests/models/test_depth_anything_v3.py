@@ -24,7 +24,7 @@ from kornia.models.depth_anything_v3.common import MLP, Attention, Block, LayerS
 from testing.base import BaseTester
 
 
-# === tests for the class Atention ===
+# === tests for the class Attention ===
 class TestAttention(BaseTester):
     def test_smoke(self, device, dtype):
         model = Attention(dim=64, nb_head=8).to(device=device, dtype=dtype)
