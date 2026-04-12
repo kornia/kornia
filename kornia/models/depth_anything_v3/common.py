@@ -22,10 +22,9 @@ from kornia.models.common import DropPath
 
 
 class Attention(torch.nn.Module):
-    """
-    Multi head attentions layer.
-    """
-    def __init__(self, dim:int, nb_head :int, bias_for_qkv:bool =True)->None:
+    """Multi head attentions layer."""
+
+    def __init__(self, dim: int, nb_head: int, bias_for_qkv: bool = True) -> None:
         super().__init__()
         if dim <= 0:
             raise ValueError("dim must be > 0")
@@ -74,9 +73,11 @@ class Attention(torch.nn.Module):
 
 class LayerScale(torch.nn.Module):
     """LayerScale module.
-    
-    Multiplies the input by a learnable diagonal matrix."""
-    def __init__(self,dim:int, init_value:float = 1e-5, inplace:bool = False)->None:
+
+    Multiplies the input by a learnable diagonal matrix.
+    """
+
+    def __init__(self, dim: int, init_value: float = 1e-5, inplace: bool = False) -> None:
         super().__init__()
         if dim <= 0:
             raise ValueError("dim must be > 0")
@@ -86,10 +87,13 @@ class LayerScale(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.inplace:
             return x.mul_(self.gamma)
-        return x*self.gamma
-class MLP(torch.nn.Module): 
+        return x * self.gamma
+
+
+class MLP(torch.nn.Module):
     """Multilayer perceptron module."""
-    def __init__(self, dim_in_f:int,dim_hidden_f:int|None = None,dim_out_f:int|None = None)->None:
+
+    def __init__(self, dim_in_f: int, dim_hidden_f: int | None = None, dim_out_f: int | None = None) -> None:
         super().__init__()
         if dim_hidden_f is None:
             dim_hidden_f = dim_in_f
