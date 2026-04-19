@@ -478,7 +478,7 @@ class BgrToRgba(nn.Module):
         self.alpha_val = alpha_val
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        return rgb_to_rgba(image, self.alpha_val)
+        return bgr_to_rgba(image, self.alpha_val)
 
 
 class RgbaToRgb(nn.Module):
