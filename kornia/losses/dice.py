@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module containing the Sørensen-Dice Coefficient loss."""
+
 from __future__ import annotations
 
 from typing import Optional
@@ -204,6 +206,7 @@ class DiceLoss(nn.Module):
         weight: Optional[torch.Tensor] = None,
         ignore_index: Optional[int] = -100,
     ) -> None:
+        """Initialize the DiceLoss module."""
         super().__init__()
         self.average = average
         self.eps = eps
@@ -211,4 +214,13 @@ class DiceLoss(nn.Module):
         self.ignore_index = ignore_index
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Compute the Sørensen-Dice Coefficient loss.
+
+        Args:
+            pred: the prediction tensor.
+            target: the target tensor.
+
+        Returns:
+            The computed loss.
+        """
         return dice_loss(pred, target, self.average, self.eps, self.weight, self.ignore_index)
