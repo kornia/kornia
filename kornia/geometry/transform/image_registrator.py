@@ -168,6 +168,7 @@ class ImageRegistrator(nn.Module):
         num_iterations: int = 100,
         tolerance: float = 1e-4,
         warper: Optional[Type[BaseWarper]] = None,
+        allow_shape_mismatch: bool = False,
     ) -> None:
         super().__init__()
         self.known_models = ["homography", "similarity", "translation", "scale", "rotation"]
@@ -201,6 +202,7 @@ class ImageRegistrator(nn.Module):
         self.loss_fn = loss_fn
         self.num_iterations = num_iterations
         self.tolerance = tolerance
+        self.allow_shape_mismatch = allow_shape_mismatch
 
     def get_single_level_loss(
         self, img_src: torch.Tensor, img_dst: torch.Tensor, transform_model: torch.Tensor
@@ -248,6 +250,18 @@ class ImageRegistrator(nn.Module):
 
         """
         self.reset_model()
+        if src_img.shape != dst_img.shape:
+            if not self.allow_shape_mismatch:
+                raise ValueError(
+                    f"Cannot register images of different shapes {src_img.shape} {dst_img.shape}. "
+                    "Consider setting `allow_shape_mismatch = True`"
+                )
+            src_img = F.interpolate(
+                src_img,
+                size=dst_img.shape[-2:],
+                mode="bilinear",
+                align_corners=False,
+            )
         # ToDo: better parameter passing to optimizer
         _opt_args: Dict[str, Any] = {}
         _opt_args["lr"] = self.lr
