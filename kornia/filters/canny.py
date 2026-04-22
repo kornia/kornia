@@ -32,60 +32,60 @@ from .sobel import spatial_gradient
 
 
 def canny(
-    input: torch.Tensor,
-    low_threshold: float = 0.1,
-    high_threshold: float = 0.2,
-    kernel_size: tuple[int, int] | int = (5, 5),
-    sigma: tuple[float, float] | torch.Tensor = (1, 1),
-    hysteresis: bool = True,
-    eps: float = 1e-6,
+            input: torch.Tensor,
+            low_threshold: float = 0.1,
+            high_threshold: float = 0.2,
+            kernel_size: tuple[int, int] | int = (5, 5),
+            sigma: tuple[float, float] | torch.Tensor = (1, 1),
+            hysteresis: bool = True,
+            eps: float = 1e-6,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Find edges of the input image and filters them using the Canny algorithm.
+            r"""Find edges of the input image and filters them using the Canny algorithm.
 
-    .. image:: _static/img/canny.png
+                .. image:: _static/img/canny.png
 
-    Args:
-        input: input image torch.Tensor with shape :math:`(B,C,H,W)`.
-        low_threshold: lower threshold for the hysteresis procedure.
-        high_threshold: upper threshold for the hysteresis procedure.
-        kernel_size: the size of the kernel for the gaussian blur.
-        sigma: the standard deviation of the kernel for the gaussian blur.
-        hysteresis: if True, applies the hysteresis edge tracking.
-            Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
-        eps: regularization number to avoid NaN during backprop.
+                    Args:
+                            input: input image torch.Tensor with shape :math:`(B,C,H,W)`.
+                                    low_threshold: lower threshold for the hysteresis procedure.
+                                            high_threshold: upper threshold for the hysteresis procedure.
+                                                    kernel_size: the size of the kernel for the gaussian blur.
+                                                            sigma: the standard deviation of the kernel for the gaussian blur.
+                                                                    hysteresis: if True, applies the hysteresis edge tracking.
+                                                                                Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
+                                                                                        eps: regularization number to avoid NaN during backprop.
 
-    Returns:
-        - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
-        - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
+                                                                                            Returns:
+                                                                                                    - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
+                                                                                                            - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 
-    .. note::
-       See a working example `here <https://kornia.github.io/tutorials/nbs/canny.html>`__.
+                                                                                                                .. note::
+                                                                                                                       See a working example `here <https://kornia.github.io/tutorials/nbs/canny.html>`__.
 
-    Example:
-        >>> input = torch.rand(5, 3, 4, 4)
-        >>> magnitude, edges = canny(input)  # 5x3x4x4
-        >>> magnitude.shape
-        torch.Size([5, 1, 4, 4])
-        >>> edges.shape
-        torch.Size([5, 1, 4, 4])
+                                                                                                                           Example:
+                                                                                                                                   >>> input = torch.rand(5, 3, 4, 4)
+                                                                                                                                           >>> magnitude, edges = canny(input)  # 5x3x4x4
+                                                                                                                                                   >>> magnitude.shape
+                                                                                                                                                           torch.Size([5, 1, 4, 4])
+                                                                                                                                                                   >>> edges.shape
+                                                                                                                                                                           torch.Size([5, 1, 4, 4])
 
-    """
-    KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
-    KORNIA_CHECK(
-        low_threshold <= high_threshold,
-        "Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: "
-        f"{low_threshold}>{high_threshold}",
-    )
-    KORNIA_CHECK(0 < low_threshold < 1, f"Invalid low threshold. Should be in range (0, 1). Got: {low_threshold}")
-    KORNIA_CHECK(0 < high_threshold < 1, f"Invalid high threshold. Should be in range (0, 1). Got: {high_threshold}")
+                                                                                                                                                                               """
+            KORNIA_CHECK_IS_TENSOR(input)
+            KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+            KORNIA_CHECK(
+                low_threshold <= high_threshold,
+                "Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: "
+                f"{low_threshold}>{high_threshold}",
+            )
+            KORNIA_CHECK(0 < low_threshold < 1, f"Invalid low threshold. Should be in range (0, 1). Got: {low_threshold}")
+            KORNIA_CHECK(0 < high_threshold < 1, f"Invalid high threshold. Should be in range (0, 1). Got: {high_threshold}")
 
     device = input.device
     dtype = input.dtype
 
     # To Grayscale
     if input.shape[1] == 3:
-        input = rgb_to_grayscale(input)
+                    input = rgb_to_grayscale(input)
 
     # Gaussian filter
     blurred: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma)
@@ -122,7 +122,7 @@ def canny(
     channel_select_filtered_negative: torch.Tensor = torch.gather(nms_magnitude, 1, negative_idx)
 
     channel_select_filtered: torch.Tensor = torch.stack(
-        [channel_select_filtered_positive, channel_select_filtered_negative], 1
+                    [channel_select_filtered_positive, channel_select_filtered_negative], 1
     )
 
     is_max: torch.Tensor = channel_select_filtered.min(dim=1)[0] > 0.0
@@ -140,15 +140,15 @@ def canny(
 
     # Hysteresis
     if hysteresis:
-        edges_old: torch.Tensor = -torch.ones(edges.shape, device=edges.device, dtype=dtype)
-        hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, dtype)
+                    edges_old: torch.Tensor = -torch.ones(edges.shape, device=edges.device, dtype=dtype)
+                    hysteresis_kernels: torch.Tensor = get_hysteresis_kernel(device, dtype)
 
         while ((edges_old - edges).abs() != 0).any():
-            weak: torch.Tensor = (edges == 0.5).float()
-            strong: torch.Tensor = (edges == 1).float()
+                            weak: torch.Tensor = (edges == 0.5).float()
+                            strong: torch.Tensor = (edges == 1).float()
 
             hysteresis_magnitude: torch.Tensor = F.conv2d(
-                edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1] // 2
+                                    edges, hysteresis_kernels, padding=hysteresis_kernels.shape[-1] // 2
             )
             hysteresis_magnitude = (hysteresis_magnitude == 1).any(1, keepdim=True).to(dtype)
             hysteresis_magnitude = hysteresis_magnitude * weak + strong
@@ -162,54 +162,55 @@ def canny(
 
 
 class Canny(nn.Module):
-    r"""nn.Module that finds edges of the input image and filters them using the Canny algorithm.
+            r"""nn.Module that finds edges of the input image and filters them using the Canny algorithm.
 
-    Args:
-        input: input image torch.Tensor with shape :math:`(B,C,H,W)`.
-        low_threshold: lower threshold for the hysteresis procedure.
-        high_threshold: upper threshold for the hysteresis procedure.
-        kernel_size: the size of the kernel for the gaussian blur.
-        sigma: the standard deviation of the kernel for the gaussian blur.
-        hysteresis: if True, applies the hysteresis edge tracking.
-            Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
-        eps: regularization number to avoid NaN during backprop.
+                Args:
+                        input: input image torch.Tensor with shape :math:`(B,C,H,W)`.
+                                low_threshold: lower threshold for the hysteresis procedure.
+                                        high_threshold: upper threshold for the hysteresis procedure.
+                                                kernel_size: the size of the kernel for the gaussian blur.
+                                                        sigma: the standard deviation of the kernel for the gaussian blur.
+                                                                hysteresis: if True, applies the hysteresis edge tracking.
+                                                                            Otherwise, the edges are divided between weak (0.5) and strong (1) edges.
+                                                                                    eps: regularization number to avoid NaN during backprop.
 
-    Returns:
-        - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
-        - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
+                                                                                        Returns:
+                                                                                                - the canny edge magnitudes map, shape of :math:`(B,1,H,W)`.
+                                                                                                        - the canny edge detection filtered by thresholds and hysteresis, shape of :math:`(B,1,H,W)`.
 
-    Example:
-        >>> input = torch.rand(5, 3, 4, 4)
-        >>> magnitude, edges = Canny()(input)  # 5x3x4x4
-        >>> magnitude.shape
-        torch.Size([5, 1, 4, 4])
-        >>> edges.shape
-        torch.Size([5, 1, 4, 4])
+                                                                                                            Example:
+                                                                                                                    >>> input = torch.rand(5, 3, 4, 4)
+                                                                                                                            >>> magnitude, edges = Canny()(input)  # 5x3x4x4
+                                                                                                                                    >>> magnitude.shape
+                                                                                                                                            torch.Size([5, 1, 4, 4])
+                                                                                                                                                    >>> edges.shape
+                                                                                                                                                            torch.Size([5, 1, 4, 4])
 
-    """
+                                                                                                                                                                """
 
     # TODO: Handle multiple inputs and outputs models later
-    ONNX_EXPORTABLE = False
+            ONNX_EXPORTABLE = False
 
     def __init__(
-        self,
-        low_threshold: float = 0.1,
-        high_threshold: float = 0.2,
-        kernel_size: tuple[int, int] | int = (5, 5),
-        sigma: tuple[float, float] | torch.Tensor = (1, 1),
-        hysteresis: bool = True,
-        eps: float = 1e-6,
+                    self,
+                    low_threshold: float = 0.1,
+                    high_threshold: float = 0.2,
+                    kernel_size: tuple[int, int] | int = (5, 5),
+                    sigma: tuple[float, float] | torch.Tensor = (1, 1),
+                    hysteresis: bool = True,
+                    eps: float = 1e-6,
     ) -> None:
-        super().__init__()
+                    """See :class:`Canny` for details."""
+                    super().__init__()
 
         KORNIA_CHECK(
-            low_threshold <= high_threshold,
-            "Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: "
-            f"{low_threshold}>{high_threshold}",
+                            low_threshold <= high_threshold,
+                            "Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: "
+                            f"{low_threshold}>{high_threshold}",
         )
         KORNIA_CHECK(0 < low_threshold < 1, f"Invalid low threshold. Should be in range (0, 1). Got: {low_threshold}")
         KORNIA_CHECK(
-            0 < high_threshold < 1, f"Invalid high threshold. Should be in range (0, 1). Got: {high_threshold}"
+                            0 < high_threshold < 1, f"Invalid high threshold. Should be in range (0, 1). Got: {high_threshold}"
         )
 
         # Gaussian blur parameters
@@ -226,17 +227,19 @@ class Canny(nn.Module):
         self.eps: float = eps
 
     def __repr__(self) -> str:
-        return "".join(
-            (
-                f"{type(self).__name__}(",
-                ", ".join(
-                    f"{name}={getattr(self, name)}" for name in sorted(self.__dict__) if not name.startswith("_")
-                ),
-                ")",
-            )
-        )
+                    """See :class:`Canny` for details."""
+                    return "".join(
+                        (
+                            f"{type(self).__name__}(",
+                            ", ".join(
+                                f"{name}={getattr(self, name)}" for name in sorted(self.__dict__) if not name.startswith("_")
+                            ),
+                            ")",
+                        )
+                    )
 
     def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        return canny(
-            input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps
-        )
+                    """See :class:`Canny` for details."""
+                    return canny(
+                        input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps
+                    )

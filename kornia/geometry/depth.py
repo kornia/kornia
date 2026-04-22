@@ -33,8 +33,6 @@ from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproje
 from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
 from .linalg import convert_points_to_homogeneous, transform_points
 
-"""nn.Module containing operators to work on RGB-Depth images."""
-
 __all__ = [
     "DepthWarper",
     "depth_from_disparity",
@@ -326,9 +324,9 @@ class DepthWarper(nn.Module):
     r"""Warp a patch by depth.
 
     .. math::
-        P_{src}^{\{dst\}} = K_{dst} * T_{src}^{\{dst\}}
+        P_{src}^{{dst}} = K_{dst} * T_{src}^{{dst}}
 
-        I_{src} = \\omega(I_{dst}, P_{src}^{\{dst\}}, D_{src})
+        I_{src} = \\omega(I_{dst}, P_{src}^{{dst}}, D_{src})
 
     Args:
         pinholes_dst: the pinhole models for the destination frame.
@@ -350,6 +348,7 @@ class DepthWarper(nn.Module):
         padding_mode: str = "zeros",
         align_corners: bool = True,
     ) -> None:
+        """See :class:`DepthWarper` for details."""
         super().__init__()
         self.width: int = width
         self.height: int = height
@@ -371,11 +370,15 @@ class DepthWarper(nn.Module):
 
     @staticmethod
     def _create_meshgrid(height: int, width: int) -> torch.Tensor:
+        """See :class:`DepthWarper` for details."""
         grid: torch.Tensor = create_meshgrid(height, width, normalized_coordinates=False)  # 1xHxWx2
         return convert_points_to_homogeneous(grid)  # append ones to last dim
 
     def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> DepthWarper:
-        """Compute the projection matrix from the source to destination frame."""
+        """Compute the projection matrix from the source to destination frame.
+
+        See :class:`DepthWarper` for details.
+        """
         # Inline type checks for faster fail-fast
         if type(self._pinhole_dst) is not PinholeCamera:
             raise TypeError(
@@ -419,6 +422,7 @@ class DepthWarper(nn.Module):
         return self
 
     def _compute_projection(self, x: float, y: float, invd: float) -> torch.Tensor:
+        """See :class:`DepthWarper` for details."""
         if self._dst_proj_src is None or self._pinhole_src is None:
             raise ValueError("Please, call compute_projection_matrix.")
 
