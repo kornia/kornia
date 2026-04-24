@@ -22,9 +22,7 @@ from kornia.models.depth_anything_v3.common import Block
 
 
 def run_benchmark():
-    """
-    test of execution time between torch implementation of Block and common.py implementation of Block.
-    """
+    """Test of execution time between torch implementation of Block and common.py implementation of Block."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     B, Seq, D = 32, 128, 256
