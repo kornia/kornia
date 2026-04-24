@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Augmentation base."""
+
 from enum import Enum
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 

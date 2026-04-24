@@ -17,6 +17,8 @@
 
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
+"""Module for Geometry liegroup se3."""
+
 from __future__ import annotations
 
 from typing import Optional, Union

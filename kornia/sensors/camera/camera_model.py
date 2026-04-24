@@ -16,6 +16,8 @@
 #
 
 # adapted from: https://github.com/strasdat/Sophus/blob/sophus2/cpp/sophus/sensor/camera_model.h
+"""Module for Sensors camera camera model."""
+
 from __future__ import annotations
 
 from enum import Enum

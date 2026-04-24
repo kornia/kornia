@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Models segmentation segmentation models."""
+
 from __future__ import annotations
 
 from typing import Any, Optional

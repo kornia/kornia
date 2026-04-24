@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Enhance integral."""
+
 from typing import Optional, Tuple
 
 import torch

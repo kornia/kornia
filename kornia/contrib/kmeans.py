@@ -17,6 +17,8 @@
 
 # based on https://github.com/subhadarship/kmeans_pytorch
 
+"""Module for Contrib kmeans."""
+
 from __future__ import annotations
 
 import torch

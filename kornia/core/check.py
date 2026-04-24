@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-"""The testing package contains testing-specific utilities."""
+"""Module for input validation and consistency checks in Kornia."""
 
 from __future__ import annotations
 

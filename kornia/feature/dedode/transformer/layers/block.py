@@ -25,6 +25,8 @@
 #   https://github.com/facebookresearch/dino/blob/master/vision_transformer.py
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/layers/patch_embed.py
 
+"""Module for Feature dedode transformer layers block."""
+
 import logging
 from typing import Any, Callable, Dict, List, Tuple
 

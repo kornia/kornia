@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature loftr backbone resnet fpn."""
+
 from typing import Any, Dict, List, Type, Union
 
 import torch

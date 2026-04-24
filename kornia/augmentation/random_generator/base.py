@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Augmentation random generator base."""
+
 from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar, Union
 
 import torch

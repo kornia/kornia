@@ -19,6 +19,8 @@
 # https://github.com/cavalli1234/AdaLAM
 # Copyright (c) 2020, Luca Cavalli
 
+"""Module for Feature adalam adalam."""
+
 from typing import Optional, Tuple, Union
 
 import torch

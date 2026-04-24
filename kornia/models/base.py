@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Models base."""
+
 from __future__ import annotations
 
 import datetime

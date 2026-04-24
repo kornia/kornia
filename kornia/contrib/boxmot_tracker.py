@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Contrib boxmot tracker."""
+
 from __future__ import annotations
 
 import datetime

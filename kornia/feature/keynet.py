@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature keynet."""
+
 from typing import List, Optional
 
 import torch

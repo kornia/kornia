@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature dedode decoder."""
+
 from typing import Any, Optional, Tuple
 
 import torch

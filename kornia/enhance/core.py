@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Enhance core."""
+
 from typing import Union
 
 import torch

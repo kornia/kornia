@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Augmentation container patch."""
+
 from itertools import cycle, islice
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 

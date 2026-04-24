@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Core mixin image module."""
+
 import datetime
 import math
 import os

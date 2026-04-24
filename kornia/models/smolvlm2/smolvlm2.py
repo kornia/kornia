@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Models smolvlm2 smolvlm2."""
+
 import torch
 from torch import nn
 

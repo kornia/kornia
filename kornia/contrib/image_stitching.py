@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Contrib image stitching."""
+
 from typing import Dict, Optional, Tuple
 
 import torch

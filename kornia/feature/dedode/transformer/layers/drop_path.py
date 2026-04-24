@@ -24,6 +24,8 @@
 # References:
 #   https://github.com/facebookresearch/dino/blob/master/vision_transformer.py
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/layers/drop.py
+"""Module for Feature dedode transformer layers drop path."""
+
 from typing import Optional
 
 import torch

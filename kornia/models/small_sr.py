@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Models small sr."""
+
 import torch
 from torch import nn
 

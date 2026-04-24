@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+"""Module for PyTorch and Python version compatibility utilities."""
 
 import warnings
 from functools import wraps

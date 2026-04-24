@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Augmentation container image."""
+
 from typing import Any, Dict, Iterator, List, Literal, Optional, Tuple, Union, cast
 
 import torch

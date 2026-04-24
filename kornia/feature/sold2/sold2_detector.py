@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature sold2 sold2 detector."""
+
 import math
 import warnings
 from typing import Any, Dict, Optional, Tuple, cast

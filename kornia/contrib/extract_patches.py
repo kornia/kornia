@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Contrib extract patches."""
+
 from math import ceil
 from typing import Optional, Tuple, Union, cast
 from warnings import warn

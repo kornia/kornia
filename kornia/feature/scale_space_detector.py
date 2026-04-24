@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature scale space detector."""
+
 import math
 from typing import List, Optional, Tuple, Union
 

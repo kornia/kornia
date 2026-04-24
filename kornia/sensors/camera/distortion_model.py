@@ -16,6 +16,8 @@
 #
 
 
+"""Module for Sensors camera distortion model."""
+
 import torch
 
 from kornia.geometry.vector import Vector2
