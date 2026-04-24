@@ -73,7 +73,7 @@ class TestAttention(BaseTester):
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         model = Attention(dim=64, nb_head=8).to(device=device, dtype=dtype)
-        x = torch.randn(2,14, 64, device=device, dtype=dtype)
+        x = torch.randn(2, 14, 64, device=device, dtype=dtype)
         op = torch_optimizer(model)
         actual = op(x)
         expected = model(x)
