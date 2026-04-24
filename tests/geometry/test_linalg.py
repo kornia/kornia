@@ -67,6 +67,16 @@ class TestTransformPoints(BaseTester):
         expected = op(transform, points)
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.parametrize("trans_dtype", [torch.float16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("points_dtype", [torch.float16, torch.float32, torch.float64])
+    def test_mixed_dtypes(self, device, trans_dtype, points_dtype):
+        # Regression test for https://github.com/kornia/kornia/issues/3705
+        points_src = torch.rand(2, 3, 2, device=device, dtype=points_dtype)
+        trans = kornia.core.ops.eye_like(3, points_src).to(trans_dtype)
+        out = kgl.transform_points(trans, points_src)
+        assert out.dtype == points_dtype
+        self.assert_close(out.to(torch.float32), points_src.to(torch.float32), atol=1e-2, rtol=1e-2)
+
 
 class TestComposeTransforms(BaseTester):
     def test_smoke(self, device, dtype):
