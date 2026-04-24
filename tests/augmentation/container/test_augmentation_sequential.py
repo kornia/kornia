@@ -107,6 +107,24 @@ class TestAugmentationSequential:
         out = aug_list(input)
         assert out.shape == input.shape
 
+    @pytest.mark.parametrize("image_dtype", [torch.float16, torch.float32, torch.float64, torch.bfloat16])
+    def test_mixed_image_bbox_dtypes(self, device, image_dtype):
+        # Regression test for https://github.com/kornia/kornia/issues/3705 and #3706:
+        # bbox stays in fp32 while the image uses a half/double compute dtype.
+        torch.manual_seed(0)
+        img = torch.rand(2, 3, 32, 32, device=device, dtype=image_dtype)
+        bb = torch.tensor(
+            [[[[4.0, 4.0], [12.0, 4.0], [12.0, 12.0], [4.0, 12.0]]]] * 2,
+            device=device,
+            dtype=torch.float32,
+        )
+        aug = K.AugmentationSequential(K.RandomAffine(degrees=10, p=1.0), data_keys=["image", "bbox"])
+        out_img, out_bb = aug(img, bb)
+        assert out_img.dtype == image_dtype
+        assert out_bb.dtype == torch.float32
+        assert out_img.shape == img.shape
+        assert out_bb.shape == bb.shape
+
     def test_random_flips(self, device, dtype):
         inp = torch.randn(1, 3, 510, 1020, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)

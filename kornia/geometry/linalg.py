@@ -218,15 +218,19 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     trans_01 = torch.repeat_interleave(trans_01, repeats=int(points_1.shape[0] // trans_01.shape[0]), dim=0)
     # to homogeneous
     points_1_h = convert_points_to_homogeneous(points_1)  # BxNxD+1
+    # `torch.bmm` requires both operands to share a scalar type. Callers may pass coordinate
+    # tensors in a different dtype than the transform matrix (e.g. fp32 bbox + fp16 image), so
+    # harmonise at the bmm site and restore the caller's coordinate dtype on return.
+    points_dtype = points_1_h.dtype
     # transform coordinates
-    points_0_h = torch.bmm(points_1_h, trans_01.permute(0, 2, 1))
+    points_0_h = torch.bmm(points_1_h.to(trans_01.dtype), trans_01.permute(0, 2, 1))
     # to euclidean
     points_0 = convert_points_from_homogeneous(points_0_h)  # BxNxD
     # reshape to the input shape
     shape_inp[-2] = points_0.shape[-2]
     shape_inp[-1] = points_0.shape[-1]
     points_0 = points_0.reshape(shape_inp)
-    return points_0
+    return points_0.to(points_dtype)
 
 
 def point_line_distance(point: torch.Tensor, line: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
