@@ -45,7 +45,7 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         self._transform_matrices.append(module.transform_matrix)
 
     def clear_state(self) -> None:
-        """Clears the internal state of the augmentation, including the transform matrix."""
+        """Reset cached params and transformation-matrix state."""
         self._reset_transform_matrix_state()
         return super().clear_state()
 
@@ -54,13 +54,13 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         return [self.compose_subpolicy_sequential(subpolicy) for subpolicy in policy]
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
-        """Composes a sequential policy module from a subpolicy configuration.
+        """Build a :class:`PolicySequential` from a single sub-policy spec.
 
         Args:
-            subpolicy: A list of operations containing their names, probabilities, and magnitudes.
+            subpolicy: Sub-policy definition used by the concrete augmentation.
 
         Returns:
-            The composed sequential policy module.
+            The sequential module representing that sub-policy.
         """
         raise NotImplementedError
 
@@ -100,13 +100,13 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         return res_mat
 
     def is_intensity_only(self, params: Optional[List[ParamItem]] = None) -> bool:
-        """Checks if the sequence of operations contains only intensity transformations.
+        """Check whether all selected sub-policies are intensity-only.
 
         Args:
-            params: Optional parameters to evaluate specific modules.
+            params: Optional parameters that define which sub-policies to inspect.
 
         Returns:
-            True if only intensity transformations are present, False otherwise.
+            ``True`` if no geometric transform is selected, ``False`` otherwise.
         """
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence(params)
         for _, module in named_modules:
@@ -116,13 +116,13 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
         return True
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
-        """Generates the parameters for the forward pass based on the batch shape.
+        """Generate per-module parameters for one policy forward pass.
 
         Args:
-            batch_shape: The shape of the input batch.
+            batch_shape: Input shape used to sample operation parameters.
 
         Returns:
-            A list of generated parameters for each module in the sequence.
+            Parameters for each selected child module, in execution order.
         """
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()
 
@@ -138,15 +138,15 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
     def transform_inputs(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
-        """Transforms the input tensor using the provided parameters.
+        """Apply a prepared parameter list to the input tensor.
 
         Args:
-            input: The input tensor to transform.
-            params: The list of parameters for each operation.
-            extra_args: Optional dictionary of extra arguments.
+            input: Input tensor.
+            params: Parameters produced by :meth:`forward_parameters`.
+            extra_args: Optional overrides forwarded to child transforms.
 
         Returns:
-            The transformed input tensor.
+            Transformed tensor.
         """
         for param in params:
             module = self.get_submodule(param.name)
@@ -156,15 +156,16 @@ class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
     def forward(
         self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
-        """Performs the forward pass of the policy augmentation.
+        """Apply the policy to ``input`` and cache the parameters used.
 
         Args:
-            input: The input tensor.
-            params: Optional parameters to use for the transformations.
-            extra_args: Optional dictionary of extra arguments.
+            input: Input tensor.
+            params: Optional precomputed parameters. If omitted, parameters are
+                sampled on-the-fly.
+            extra_args: Optional overrides forwarded to child transforms.
 
         Returns:
-            The augmented input tensor.
+            Augmented tensor.
         """
         self.clear_state()
 

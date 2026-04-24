@@ -224,17 +224,18 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         return [idx for idx, (_, child) in enumerate(named_modules) if isinstance(child, K.MixAugmentationBaseV2)]
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
-        """Retrieves the sequence of augmentation modules to be applied during the forward pass.
+        """Return the module sequence used for the current forward call.
 
         Args:
-            params: Optional list of parameters to retrieve specific children. If None, it uses
-                random application settings or returns all named children.
+            params: Optional recorded parameters. When provided, the sequence is
+                reconstructed from them.
 
         Returns:
-            An iterator yielding tuples of operation names and their corresponding modules.
+            Iterator of ``(name, module)`` pairs.
 
         Raises:
-            ValueError: If multiple mix augmentations are detected without enabling random_apply.
+            ValueError: More than one mix augmentation is present while
+                ``random_apply`` is disabled.
         """
         if params is None:
             # Mix augmentation can only be applied once per forward
@@ -254,13 +255,13 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         return self.get_children_by_params(params)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
-        """Generates the parameters for each augmentation in the sequence based on the batch shape.
+        """Generate parameters for all modules in the chosen sequence.
 
         Args:
-            batch_shape: The shape of the input batch.
+            batch_shape: Input batch shape.
 
         Returns:
-            A list of generated parameters (ParamItem) for each module in the forward sequence.
+            Parameter list aligned with the execution order.
         """
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()
 

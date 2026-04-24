@@ -156,24 +156,25 @@ class AutoAugment(PolicyAugmentBase):
         self.rand_selector = Categorical(selection_weights)
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
-        """Composes a sequential policy module from a subpolicy configuration.
+        """Build a :class:`PolicySequential` from one AutoAugment sub-policy.
 
         Args:
-            subpolicy: A list of operations containing their names, probabilities, and magnitudes.
+            subpolicy: Sequence of ``(name, probability, magnitude)`` operation tuples.
 
         Returns:
-            The composed sequential policy module.
+            A sequential container that applies the configured operations in order.
         """
         return PolicySequential(*[getattr(ops, name)(prob, mag) for name, prob, mag in subpolicy])
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
-        """Retrieves the forward sequence of operations to be applied.
+        """Return the operations to run for the current forward call.
 
         Args:
-            params: Optional parameters to fetch a specific sequence of modules.
+            params: Optional recorded parameters. When provided, the sequence is
+                reconstructed from them.
 
         Returns:
-            An iterator yielding tuples of operation names and their corresponding modules.
+            Iterator of ``(name, module)`` pairs.
         """
         if params is None:
             idx = self.rand_selector.sample((1,))

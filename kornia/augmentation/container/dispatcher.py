@@ -60,13 +60,13 @@ class ManyToManyAugmentationDispather(nn.Module):
         return True
 
     def forward(self, *input: Union[List[Tensor], List[Tuple[Tensor]]]) -> Union[List[Tensor], List[Tuple[Tensor]]]:
-        """Dispatches each augmentation to its corresponding input in the sequence.
+        """Apply each augmentation to the matching input tuple.
 
         Args:
-            *input: A variable number of inputs, where each input corresponds to an augmentation sequence.
+            *input: One input bundle per configured augmentation.
 
         Returns:
-            A list containing the results of each augmentation applied to its respective input.
+            Outputs from each augmentation, preserving input order.
         """
         return [aug(*inp) for inp, aug in zip(input, self.augmentations)]
 
@@ -119,12 +119,12 @@ class ManyToOneAugmentationDispather(nn.Module):
         return True
 
     def forward(self, *input: Union[Tensor, Tuple[Tensor]]) -> Union[List[Tensor], List[Tuple[Tensor]]]:
-        """Applies all defined augmentations to the same single input.
+        """Apply all augmentations to the same input payload.
 
         Args:
-            *input: The shared input (e.g., image, mask) to be augmented by multiple sequences.
+            *input: Shared input payload passed to every augmentation.
 
         Returns:
-            A list containing the results of each individual augmentation sequence applied to the input.
+            One output per augmentation sequence.
         """
         return [aug(*input) for aug in self.augmentations]

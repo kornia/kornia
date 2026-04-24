@@ -129,36 +129,37 @@ class OperationBase(nn.Module):
             self.op._p_gen = Bernoulli(self.probability)
 
     def train(self, mode: bool = True) -> Self:
-        """Sets the module in training mode.
+        """Switch training mode and refresh probability samplers.
 
         Args:
-            mode: Whether to set training mode (True) or evaluation mode (False).
+            mode: ``True`` for training mode, ``False`` for evaluation mode.
 
         Returns:
-            The module itself.
+            This module.
         """
         self._update_probability_gen(relaxation=mode)
         return super().train(mode=mode)
 
     def eval(self) -> Self:
-        """Sets the module in evaluation mode.
+        """Switch to evaluation mode.
 
         Returns:
-            The module itself.
+            This module.
         """
         return self.train(False)
 
     def forward_parameters(
         self, batch_shape: torch.Size, mag: Optional[torch.Tensor] = None
     ) -> Dict[str, torch.Tensor]:
-        """Generates the parameters for the forward pass.
+        """Sample parameters for the wrapped augmentation op.
 
         Args:
-            batch_shape: The shape of the input batch.
-            mag: Optional magnitude tensor to override the default magnitude.
+            batch_shape: Input batch shape used for sampling.
+            mag: Optional magnitude override. When set, it replaces the sampled
+                factor before the magnitude mapping function is applied.
 
         Returns:
-            A dictionary containing the generated parameters.
+            Parameter dictionary consumed by :meth:`forward`.
         """
         if mag is None:
             mag = self.magnitude
@@ -177,14 +178,16 @@ class OperationBase(nn.Module):
         return params
 
     def forward(self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None) -> torch.Tensor:
-        """Performs the forward pass of the operation.
+        """Apply the operation with probabilistic gating.
 
         Args:
-            input: The input tensor.
-            params: Optional parameters to use for the operation.
+            input: Input tensor.
+            params: Optional precomputed parameters. If omitted, parameters are
+                sampled from ``input.shape``.
 
         Returns:
-            The augmented input tensor.
+            Tensor where each sample is either transformed or left unchanged
+            according to ``batch_prob``.
         """
         if params is None:
             params = self.forward_parameters(input.shape)
@@ -195,10 +198,10 @@ class OperationBase(nn.Module):
 
     @property
     def transform_matrix(self) -> Optional[torch.Tensor]:
-        """Returns the transformation matrix of the operation.
+        """Return the latest transform matrix from the wrapped op, if available.
 
         Returns:
-            The transformation matrix tensor or None.
+            Transform matrix tensor or ``None`` for non-geometric operations.
         """
         if hasattr(self.op, "transform_matrix"):
             return self.op.transform_matrix
@@ -206,10 +209,12 @@ class OperationBase(nn.Module):
 
     @property
     def magnitude(self) -> Optional[torch.Tensor]:
-        """Returns the magnitude of the operation.
+        """Return the learned magnitude value for the operation.
 
         Returns:
-            The clamped magnitude tensor or None.
+            Magnitude tensor, clamped to ``magnitude_range`` when defined; otherwise
+            the raw learnable value. Returns ``None`` when this operation has no
+            magnitude parameter.
         """
         if self._magnitude is None:
             return None
@@ -220,10 +225,10 @@ class OperationBase(nn.Module):
 
     @property
     def probability(self) -> torch.Tensor:
-        """Returns the probability of applying the operation.
+        """Return the operation probability after applying configured bounds.
 
         Returns:
-            The clamped probability tensor.
+            Probability tensor clamped to ``probability_range``.
         """
         p = self._probability.clamp(*self.probability_range)
         return p

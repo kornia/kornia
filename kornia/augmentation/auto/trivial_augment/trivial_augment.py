@@ -79,16 +79,16 @@ class TrivialAugment(PolicyAugmentBase):
         self.rand_selector = Categorical(selection_weights)
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
-        """Composes a sequential policy module from a single-operation subpolicy.
+        """Build a :class:`PolicySequential` from one TrivialAugment candidate.
 
         Args:
-            subpolicy: A list containing exactly one operation configuration (name, low, high).
+            subpolicy: Single-entry policy as ``[(name, low, high)]``.
 
         Returns:
-            The composed sequential policy module.
+            Sequential wrapper around the selected operation.
 
         Raises:
-            RuntimeError: If the subpolicy does not contain exactly one operation.
+            RuntimeError: ``subpolicy`` contains more than one operation.
         """
         if len(subpolicy) != 1:
             raise RuntimeError(f"Each policy must have only one operation for TrivialAugment. Got {len(subpolicy)}.")
@@ -96,13 +96,14 @@ class TrivialAugment(PolicyAugmentBase):
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
-        """Retrieves the sequence of augmentation modules to be applied.
+        """Return the operation sequence to execute.
 
         Args:
-            params: Optional parameters to fetch a specific sequence of modules.
+            params: Optional recorded parameters. When provided, the sequence is
+                reconstructed from them.
 
         Returns:
-            An iterator yielding tuples of operation names and their corresponding modules.
+            Iterator of ``(name, module)`` pairs.
         """
         if params is None:
             idx = self.rand_selector.sample((1,))

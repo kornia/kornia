@@ -46,18 +46,18 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         self._transform_matrices.append(module.transform_matrix)
 
     def clear_state(self) -> None:
-        """Clears the internal state of the policy, including the transform matrices."""
+        """Reset cached params and transformation-matrix state."""
         self._reset_transform_matrix_state()
         return super().clear_state()
 
     def validate_operations(self, *operations: OperationBase) -> None:
-        """Validates that all provided operations are instances of OperationBase.
+        """Ensure all provided modules are :class:`OperationBase` instances.
 
         Args:
-            *operations: A variable number of operations to validate.
+            *operations: Operations passed to :class:`PolicySequential`.
 
         Raises:
-            ValueError: If any operation is not an instance of OperationBase.
+            ValueError: Any provided operation is not a Kornia auto operation.
         """
         invalid_ops: List[OperationBase] = []
         for op in operations:
@@ -113,10 +113,10 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         return res_mat
 
     def is_intensity_only(self) -> bool:
-        """Checks if the policy contains only intensity-based transformations.
+        """Check whether the policy contains only intensity transforms.
 
         Returns:
-            True if there are no geometric augmentations, False otherwise.
+            ``True`` when no geometric operation is present.
         """
         for module in self.children():
             module = cast(OperationBase, module)
@@ -125,26 +125,27 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         return True
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
-        """Retrieves the forward sequence of operations.
+        """Return the operation sequence used for execution.
 
         Args:
-            params: Optional list of parameters to retrieve specific children.
+            params: Optional recorded parameters. When provided, only modules
+                referenced by those params are returned.
 
         Returns:
-            An iterator yielding tuples of operation names and their corresponding modules.
+            Iterator of ``(name, module)`` pairs.
         """
         if params is not None:
             return super().get_children_by_params(params)
         return self.named_children()
 
     def forward_parameters(self, batch_shape: Size) -> List[ParamItem]:
-        """Generates the parameters for the forward pass based on the batch shape.
+        """Generate parameter dictionaries for each operation in the policy.
 
         Args:
-            batch_shape: The shape of the input batch.
+            batch_shape: Input shape used to sample operation parameters.
 
         Returns:
-            A list of generated parameters for each operation in the policy.
+            List of :class:`ParamItem` objects in execution order.
         """
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()
 
@@ -160,15 +161,15 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     def transform_inputs(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
-        """Transforms the input tensor using the provided parameters and updates the transform matrix.
+        """Apply all operations using a prepared parameter list.
 
         Args:
-            input: The input tensor to transform.
-            params: The list of parameters for each operation.
-            extra_args: Optional dictionary of extra arguments.
+            input: Input tensor.
+            params: Parameters for each operation in this policy.
+            extra_args: Optional overrides forwarded to child modules.
 
         Returns:
-            The transformed input tensor.
+            Transformed tensor.
         """
         for param in params:
             module = self.get_submodule(param.name)

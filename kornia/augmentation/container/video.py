@@ -192,13 +192,14 @@ class VideoSequential(ImageSequential):
         return input
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
-        """Generates parameters for the video augmentation sequence based on the batch shape.
+        """Generate per-module parameters for video inputs.
 
         Args:
-            batch_shape: The shape of the input video batch (typically 5D).
+            batch_shape: Video batch shape, typically 5D.
 
         Returns:
-            A list of generated parameters (ParamItem) for each module in the sequence.
+            Parameter list aligned with execution order, with values broadcast
+            across frames depending on ``same_on_frame`` and module settings.
         """
         frame_num = batch_shape[self._temporal_channel]
         named_modules = self.get_forward_sequence()
@@ -252,15 +253,15 @@ class VideoSequential(ImageSequential):
     def transform_inputs(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
-        """Applies the augmentation transformations to the video input tensor.
+        """Apply sequence transforms to video tensors.
 
         Args:
-            input: The input video tensor to transform.
-            params: The list of parameters for each operation in the sequence.
-            extra_args: Optional dictionary of extra arguments.
+            input: Input video tensor.
+            params: Parameters aligned with the execution sequence.
+            extra_args: Optional per-input-type overrides.
 
         Returns:
-            The transformed video tensor.
+            Transformed video tensor in the original video layout.
         """
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
@@ -273,15 +274,15 @@ class VideoSequential(ImageSequential):
     def inverse_inputs(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
-        """Applies the inverse transformations to the video input tensor.
+        """Apply inverse sequence transforms to video tensors.
 
         Args:
-            input: The augmented video tensor to inverse.
-            params: The list of parameters used during the forward pass.
-            extra_args: Optional dictionary of extra arguments.
+            input: Augmented video tensor.
+            params: Parameters used during forward execution.
+            extra_args: Optional per-input-type overrides.
 
         Returns:
-            The inversed video tensor.
+            Inverse-transformed video tensor in the original layout.
         """
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
@@ -294,15 +295,15 @@ class VideoSequential(ImageSequential):
     def transform_masks(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
-        """Applies the augmentation transformations to the video mask tensor.
+        """Apply sequence transforms to video mask tensors.
 
         Args:
-            input: The video mask tensor to transform.
-            params: The list of parameters for each operation.
-            extra_args: Optional dictionary of extra arguments.
+            input: Input video mask tensor.
+            params: Parameters aligned with the execution sequence.
+            extra_args: Optional per-input-type overrides.
 
         Returns:
-            The transformed video mask tensor.
+            Transformed mask tensor in the original video layout.
         """
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
@@ -315,15 +316,15 @@ class VideoSequential(ImageSequential):
     def inverse_masks(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
-        """Applies the inverse transformations to the video mask tensor.
+        """Apply inverse sequence transforms to video masks.
 
         Args:
-            input: The transformed video mask tensor to inverse.
-            params: The list of parameters used during the forward pass.
-            extra_args: Optional dictionary of extra arguments.
+            input: Augmented video mask tensor.
+            params: Parameters used during forward execution.
+            extra_args: Optional per-input-type overrides.
 
         Returns:
-            The inversed video mask tensor.
+            Inverse-transformed mask tensor in the original layout.
         """
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
