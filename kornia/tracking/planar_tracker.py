@@ -69,17 +69,36 @@ class HomographyTracker(nn.Module):
 
     @property
     def device(self) -> torch.device:
-        """Return the device of the target tensor."""
+        """Return the device used by the current target image tensor.
+
+        Returns:
+            The ``torch.device`` where ``self.target`` is allocated.
+        """
         return self.target.device
 
     @property
     def dtype(self) -> torch.dtype:
-        """Return the data type of the target tensor."""
+        """Return the data type used by the current target image tensor.
+
+        Returns:
+            The ``torch.dtype`` of ``self.target``.
+        """
         return self.target.dtype
 
     @torch.no_grad()
     def set_target(self, target: torch.Tensor) -> None:
-        """Set the target tensor and extract its initial and fast representations."""
+        """Register a new target image and refresh cached matcher features.
+
+        Args:
+            target: Reference target image tensor used for subsequent matching.
+
+        Returns:
+            None.
+
+        The method clears previously cached features and precomputes new
+        feature representations when the configured matchers expose an
+        ``extract_features`` method.
+        """
         self.target = target
         self.target_initial_representation = {}
         self.target_fast_representation = {}
@@ -91,25 +110,37 @@ class HomographyTracker(nn.Module):
             self.target_fast_representation = self.fast_matcher.extract_features(target)
 
     def reset_tracking(self) -> None:
-        """Reset the tracking state by clearing the previous homography."""
+        """Reset temporal tracking state from previously processed frames.
+
+        Returns:
+            None.
+        """
         self.previous_homography = None
 
     def no_match(self) -> Tuple[torch.Tensor, bool]:
-        """Handle the case where no match is found and return an empty homography."""
+        """Return a failed-match response and clear current match statistics.
+
+        Returns:
+            A tuple ``(H, is_valid)`` where ``H`` is an empty ``3 x 3`` tensor
+            on the tracker device and dtype, and ``is_valid`` is ``False``.
+        """
         self.inliers_num = 0
         self.keypoints0_num = 0
         self.keypoints1_num = 0
         return torch.empty(3, 3, device=self.device, dtype=self.dtype), False
 
     def match_initial(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
-        """Matches keypoints from the initial reference frame to the current frame.
+        """Estimate a homography from the initial target frame to frame ``x``.
 
         Args:
-            x: The input image frame tensor to match against the initial reference.
+            x: Current frame tensor to match against the stored target image.
 
         Returns:
-            A tuple containing the computed transformation matrix and a boolean flag
-            indicating whether the initial matching was successful.
+            A tuple ``(H, is_valid)`` where ``H`` is the estimated homography
+            matrix and ``is_valid`` indicates whether enough inliers were found.
+
+        The method updates keypoint counters, inlier statistics, and stores the
+        estimated homography as ``previous_homography`` on success.
         """
         input_dict: Dict[str, torch.Tensor] = {"image0": self.target, "image1": x}
 
@@ -136,9 +167,17 @@ class HomographyTracker(nn.Module):
         return H, True
 
     def track_next_frame(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
-        """Prewarp the frame `x` according to the previous frame homography.
+        """Track the target in frame ``x`` using the previous homography prior.
 
-        Matched with fast_matcher verified with ransac.
+        Args:
+            x: Current frame tensor to align with the target image.
+
+        Returns:
+            A tuple ``(H, is_valid)`` where ``H`` is the updated homography and
+            ``is_valid`` indicates whether tracking remained reliable.
+
+        The frame is first prewarped by the inverse of the previous homography,
+        then matched with ``fast_matcher`` and verified using RANSAC.
         """
         if self.previous_homography is not None:  # mypy, shut up
             Hwarp = self.previous_homography.clone()[None]
@@ -175,7 +214,15 @@ class HomographyTracker(nn.Module):
         return H, True
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, bool]:
-        """Track the target in the given frame either by initial matching or tracking from previous."""
+        """Run one tracking step on frame ``x``.
+
+        Args:
+            x: Current frame tensor.
+
+        Returns:
+            A tuple ``(H, is_valid)`` from ``track_next_frame`` when previous
+            state exists, otherwise from ``match_initial``.
+        """
         if self.previous_homography is not None:
             return self.track_next_frame(x)
         return self.match_initial(x)
