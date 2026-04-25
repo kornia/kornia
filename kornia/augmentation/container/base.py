@@ -95,20 +95,52 @@ class BasicSequentialBase(nn.Sequential):
 
     # TODO: Implement this for all submodules.
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+        """Generate parameters for a forward pass.
+
+        Args:
+            batch_shape: Input batch shape.
+
+        Returns:
+            Per-module parameters in execution order.
+        """
         raise NotImplementedError
 
     def get_children_by_indices(self, indices: torch.Tensor) -> Iterator[Tuple[str, nn.Module]]:
+        """Yield child modules selected by index.
+
+        Args:
+            indices: Indices of children to fetch.
+
+        Yields:
+            ``(name, module)`` pairs matching ``indices`` order.
+        """
         modules = list(self.named_children())
         for idx in indices:
             yield modules[idx]
 
     def get_children_by_params(self, params: List[ParamItem]) -> Iterator[Tuple[str, nn.Module]]:
+        """Yield child modules referenced by a list of params.
+
+        Args:
+            params: Parameter items whose ``name`` fields identify the children.
+
+        Yields:
+            ``(name, module)`` pairs matching ``params`` order.
+        """
         modules = list(self.named_children())
         # TODO: Wrong params passed here when nested ImageSequential
         for param in params:
             yield modules[list(dict(self.named_children()).keys()).index(param.name)]
 
     def get_params_by_module(self, named_modules: Iterator[Tuple[str, nn.Module]]) -> Iterator[ParamItem]:
+        """Create placeholder params for a module iterator.
+
+        Args:
+            named_modules: Modules that will be executed.
+
+        Yields:
+            :class:`ParamItem` entries with ``data=None``.
+        """
         # This will not take module._params
         for name, _ in named_modules:
             yield ParamItem(name, None)
@@ -141,6 +173,13 @@ class SequentialBase(BasicSequentialBase):
         return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
     ) -> None:
+        """Propagate sequence-level flags to child augmentation modules.
+
+        Args:
+            same_on_batch: Override for ``same_on_batch``.
+            return_transform: Reserved for compatibility with older interfaces.
+            keepdim: Override for ``keepdim``.
+        """
         for mod in self.children():
             # MixAugmentation does not have return transform
             if isinstance(mod, (_AugmentationBase, K.MixAugmentationBaseV2)):
@@ -153,6 +192,7 @@ class SequentialBase(BasicSequentialBase):
 
     @property
     def same_on_batch(self) -> Optional[bool]:
+        """Return the sequence-level ``same_on_batch`` setting."""
         return self._same_on_batch
 
     @same_on_batch.setter
@@ -162,6 +202,7 @@ class SequentialBase(BasicSequentialBase):
 
     @property
     def keepdim(self) -> Optional[bool]:
+        """Return the sequence-level ``keepdim`` setting."""
         return self._keepdim
 
     @keepdim.setter
@@ -212,6 +253,14 @@ class ImageSequentialBase(SequentialBase):
         raise NotImplementedError
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+        """Generate parameters for child modules.
+
+        Args:
+            batch_shape: Input batch shape.
+
+        Returns:
+            Per-module parameter list.
+        """
         raise NotImplementedError
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
@@ -221,6 +270,16 @@ class ImageSequentialBase(SequentialBase):
     def transform_inputs(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Apply the sequence to an input tensor.
+
+        Args:
+            input: Input tensor.
+            params: Parameters aligned with the execution sequence.
+            extra_args: Optional per-input-type overrides.
+
+        Returns:
+            Transformed tensor.
+        """
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
@@ -229,6 +288,16 @@ class ImageSequentialBase(SequentialBase):
     def inverse_inputs(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Apply inverse transforms for an input tensor.
+
+        Args:
+            input: Tensor produced by :meth:`transform_inputs`.
+            params: Parameters used during forward execution.
+            extra_args: Optional per-input-type overrides.
+
+        Returns:
+            Tensor mapped back through inverse operations.
+        """
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
@@ -236,6 +305,16 @@ class ImageSequentialBase(SequentialBase):
     def transform_masks(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Apply the sequence to mask tensors.
+
+        Args:
+            input: Mask tensor.
+            params: Parameters aligned with the execution sequence.
+            extra_args: Optional per-input-type overrides.
+
+        Returns:
+            Transformed mask tensor.
+        """
         for param in params:
             module = self.get_submodule(param.name)
             input = MaskSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
@@ -244,6 +323,16 @@ class ImageSequentialBase(SequentialBase):
     def inverse_masks(
         self, input: torch.Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Apply inverse transforms for mask tensors.
+
+        Args:
+            input: Mask tensor produced by :meth:`transform_masks`.
+            params: Parameters used during forward execution.
+            extra_args: Optional per-input-type overrides.
+
+        Returns:
+            Inverse-transformed mask tensor.
+        """
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
@@ -251,6 +340,16 @@ class ImageSequentialBase(SequentialBase):
     def transform_boxes(
         self, input: Boxes, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
+        """Apply the sequence to bounding boxes.
+
+        Args:
+            input: Bounding boxes.
+            params: Parameters aligned with the execution sequence.
+            extra_args: Optional per-input-type overrides.
+
+        Returns:
+            Transformed boxes.
+        """
         for param in params:
             module = self.get_submodule(param.name)
             input = BoxSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
@@ -259,6 +358,16 @@ class ImageSequentialBase(SequentialBase):
     def inverse_boxes(
         self, input: Boxes, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
+        """Apply inverse transforms for bounding boxes.
+
+        Args:
+            input: Boxes produced by :meth:`transform_boxes`.
+            params: Parameters used during forward execution.
+            extra_args: Optional per-input-type overrides.
+
+        Returns:
+            Inverse-transformed boxes.
+        """
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = BoxSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
@@ -266,6 +375,16 @@ class ImageSequentialBase(SequentialBase):
     def transform_keypoints(
         self, input: Keypoints, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
+        """Apply the sequence to keypoints.
+
+        Args:
+            input: Keypoints.
+            params: Parameters aligned with the execution sequence.
+            extra_args: Optional per-input-type overrides.
+
+        Returns:
+            Transformed keypoints.
+        """
         for param in params:
             module = self.get_submodule(param.name)
             input = KeypointSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
@@ -274,6 +393,18 @@ class ImageSequentialBase(SequentialBase):
     def inverse_keypoints(
         self, input: Keypoints, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
+        """Apply inverse transforms for keypoints.
+
+        Args:
+            input: Keypoints produced by :meth:`transform_keypoints` (conceptually
+                ``(B, N, 2)`` coordinates, where the last dimension stores
+                ``(x, y)``.
+            params: Parameters used during forward execution.
+            extra_args: Optional per-input-type overrides.
+
+        Returns:
+            Inverse-transformed keypoints.
+        """
         for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = KeypointSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
@@ -301,6 +432,17 @@ class ImageSequentialBase(SequentialBase):
     def forward(
         self, input: torch.Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
+        """Run the sequential augmentation pipeline.
+
+        Args:
+            input: Input tensor.
+            params: Optional precomputed parameters. If omitted, parameters are
+                sampled from ``input``.
+            extra_args: Optional per-input-type overrides.
+
+        Returns:
+            Augmented tensor.
+        """
         self.clear_state()
 
         if params is None:
