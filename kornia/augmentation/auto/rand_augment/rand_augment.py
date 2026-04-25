@@ -91,26 +91,61 @@ class RandAugment(PolicyAugmentBase):
         self.m = m
 
     def rand_selector(self, n: int) -> torch.Tensor:
+        """Randomly choose ``n`` policy indices without replacement.
+
+        Args:
+            n: Number of candidate policies to sample.
+
+        Returns:
+            Tensor of indices into this module's children.
+        """
         perm = torch.randperm(len(self._modules))
         idx = perm[:n]
         return idx
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
+        """Build a :class:`PolicySequential` for one RandAugment candidate op.
+
+        Args:
+            subpolicy: Single-entry policy as ``[(name, low, high)]``.
+
+        Returns:
+            Sequential wrapper around that operation.
+
+        Raises:
+            RuntimeError: ``subpolicy`` contains more than one operation.
+        """
         if len(subpolicy) != 1:
             raise RuntimeError(f"Each policy must have only one operation for RandAugment. Got {len(subpolicy)}.")
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
+        """Return the policy modules to execute for this forward call.
+
+        Args:
+            params: Optional recorded parameters. When provided, the sequence is
+                reconstructed from them.
+
+        Returns:
+            Iterator of ``(name, module)`` pairs.
+        """
         if params is None:
-            idx = self.rand_selector(
-                self.n,
-            )
+            idx = self.rand_selector(self.n)
             return self.get_children_by_indices(idx)
 
         return self.get_children_by_params(params)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+        """Sample parameters for the selected RandAugment operations.
+
+        Args:
+            batch_shape: Input shape used for parameter sampling.
+
+        Returns:
+            Parameters for the sampled operations, including magnitude scaled from
+            the global ``m`` value.
+        """
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, torch.Tensor], List[ParamItem]]
