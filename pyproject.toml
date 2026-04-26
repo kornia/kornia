@@ -57,7 +57,7 @@ dev = [
   "requests",
   "ruff",
   "setuptools",  # For torch.compile
-  "transformers<5.6",
+  "transformers<5.7",
 ]
 docs = [
   "furo",
