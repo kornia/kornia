@@ -21,10 +21,18 @@ from .config import (
     Qwen3VLTextConfig,
     Qwen3VLVisionConfig,
 )
+from .preprocessor import (
+    Qwen3VLImageProcessor,
+    Qwen3VLImageProcessorConfig,
+    smart_resize,
+)
 
 __all__ = [
     "Qwen3VLConfig",
+    "Qwen3VLImageProcessor",
+    "Qwen3VLImageProcessorConfig",
     "Qwen3VLProjectorConfig",
     "Qwen3VLTextConfig",
     "Qwen3VLVisionConfig",
+    "smart_resize",
 ]

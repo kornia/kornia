@@ -21,12 +21,8 @@ Qwen3-VL
     +++
     **Authors:** Qwen Team
 
-Module reference
-----------------
-
-The configuration dataclasses are scaffolded first; encoder, preprocessor, and core
-model classes will be filled in by follow-up pull requests tracked in
-`kornia#3622 <https://github.com/kornia/kornia/issues/3622>`_.
+Configuration
+-------------
 
 .. autoclass:: kornia.models.qwen3_vl.Qwen3VLConfig
    :members:
@@ -39,3 +35,22 @@ model classes will be filled in by follow-up pull requests tracked in
 
 .. autoclass:: kornia.models.qwen3_vl.Qwen3VLTextConfig
    :members:
+
+Image preprocessor
+------------------
+
+The image preprocessor performs Qwen3-VL's dynamic-resolution resize policy
+followed by per-channel normalization. Output dimensions are constrained to
+multiples of ``patch_size * spatial_merge_size`` so each merged token covers a
+whole patch grid cell, and the total pixel count is clamped to a configurable
+``[min_pixels, max_pixels]`` band. The vision encoder and core multimodal model
+classes arrive in follow-up pull requests tracked in
+`kornia#3622 <https://github.com/kornia/kornia/issues/3622>`_.
+
+.. autoclass:: kornia.models.qwen3_vl.Qwen3VLImageProcessor
+   :members:
+
+.. autoclass:: kornia.models.qwen3_vl.Qwen3VLImageProcessorConfig
+   :members:
+
+.. autofunction:: kornia.models.qwen3_vl.smart_resize
