@@ -26,13 +26,33 @@ from .preprocessor import (
     Qwen3VLImageProcessorConfig,
     smart_resize,
 )
+from .vision_encoder import (
+    Qwen3VLAttention,
+    Qwen3VLEncoder,
+    Qwen3VLLayer,
+    Qwen3VLMLP,
+    Qwen3VLPatchEmbed,
+    Qwen3VLRotaryEmbedding,
+    Qwen3VLVisionEncoderOutput,
+    Qwen3VLVisionTransformer,
+    apply_rotary_pos_emb,
+)
 
 __all__ = [
+    "Qwen3VLAttention",
     "Qwen3VLConfig",
+    "Qwen3VLEncoder",
     "Qwen3VLImageProcessor",
     "Qwen3VLImageProcessorConfig",
+    "Qwen3VLLayer",
+    "Qwen3VLMLP",
+    "Qwen3VLPatchEmbed",
     "Qwen3VLProjectorConfig",
+    "Qwen3VLRotaryEmbedding",
     "Qwen3VLTextConfig",
     "Qwen3VLVisionConfig",
+    "Qwen3VLVisionEncoderOutput",
+    "Qwen3VLVisionTransformer",
+    "apply_rotary_pos_emb",
     "smart_resize",
 ]
