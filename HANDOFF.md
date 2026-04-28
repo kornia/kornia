@@ -181,10 +181,10 @@ kornia/augmentations2/                   # NEW package — RFC §10 layout
       horizontal_flip.py                 # exemplar per RFC §4.7
     intensity/
       normalize.py
-  
+
 kornia/tensors/                          # NEW — tagged tensor types
   __init__.py
-  
+
 tests/augmentations2/
   test_base.py
   test_horizontal_flip.py
