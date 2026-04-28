@@ -22,10 +22,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 
+from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.models.base import ModelBase
 from kornia.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
@@ -116,7 +117,7 @@ class RTDETRConfig:
         return config
 
 
-class RTDETR(ModelBase[RTDETRConfig]):
+class RTDETR(ONNXExportMixin, ModelBase[RTDETRConfig]):
     """RT-DETR Object Detection model, as described in https://arxiv.org/abs/2304.08069."""
 
     def __init__(self, backbone: ResNetD | PPHGNetV2, encoder: HybridEncoder, decoder: RTDETRHead):
@@ -277,6 +278,53 @@ class RTDETR(ModelBase[RTDETRConfig]):
         """
         model = RTDETR.from_config(RTDETRConfig.from_name(model_name, num_classes))
         return model
+
+    def to_onnx(
+        self,
+        onnx_name: Optional[str] = None,
+        pseudo_shape: Optional[list[int]] = None,
+        save: bool = True,
+        **kwargs: Any,
+    ) -> Any:
+        """Export RT-DETR to ONNX with correct dual-output names and dynamic axes.
+
+        RT-DETR's :meth:`forward` returns ``(logits, boxes)`` — a two-output model.
+        The base :class:`~kornia.core.mixin.onnx.ONNXExportMixin` defaults to a single
+        ``"output"`` name, which mismatches the actual graph. This override provides
+        ``output_names=["pred_logits", "pred_boxes"]`` and sets per-output dynamic axes
+        for the batch dimension.
+
+        Args:
+            onnx_name: Path for the saved ``.onnx`` file. Defaults to
+                ``"Kornia-RTDETR.onnx"``.
+            pseudo_shape: Concrete input shape used to trace the model, e.g.
+                ``[1, 3, 640, 640]``.  Defaults to ``[1, 3, 640, 640]``.
+            save: Whether to write the model to disk. Default ``True``.
+            **kwargs: Additional keyword arguments forwarded to
+                :func:`torch.onnx.export`.
+
+        Returns:
+            ``onnx.ModelProto`` of the exported model.
+
+        """
+        kwargs.setdefault("output_names", ["pred_logits", "pred_boxes"])
+        kwargs.setdefault(
+            "dynamic_axes",
+            {
+                "input": {0: "batch"},
+                "pred_logits": {0: "batch"},
+                "pred_boxes": {0: "batch"},
+            },
+        )
+        if pseudo_shape is None:
+            pseudo_shape = [1, 3, 640, 640]
+        return super().to_onnx(
+            onnx_name=onnx_name,
+            input_shape=[-1, 3, pseudo_shape[2], pseudo_shape[3]],
+            pseudo_shape=pseudo_shape,
+            save=save,
+            **kwargs,
+        )
 
     def forward(self, images: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Detect objects in an image.
