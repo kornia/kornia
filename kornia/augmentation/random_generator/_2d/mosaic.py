@@ -18,10 +18,9 @@
 from typing import Dict, Optional, Tuple
 
 import torch
-from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.augmentation.utils import _common_param_check
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -70,11 +69,10 @@ class MosaicGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self.start_ratio_range_sampler = Uniform(
-            torch.tensor(self.start_ratio_range[0], device=device, dtype=dtype),
-            torch.tensor(self.start_ratio_range[1], device=device, dtype=dtype),
-            validate_args=False,
-        )
+        self._start_ratio_low = torch.tensor(self.start_ratio_range[0], device=device, dtype=dtype)
+        self._start_ratio_high = torch.tensor(self.start_ratio_range[1], device=device, dtype=dtype)
+        self._device = device
+        self._dtype = dtype
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
@@ -93,8 +91,12 @@ class MosaicGenerator(RandomGeneratorBase):
             .permute(1, 0)
         )
 
-        start_corner_factor = _adapted_rsampling(
-            (batch_size, 2), self.start_ratio_range_sampler, same_on_batch=False
+        # GPU-side uniform sampling: no host sync, replaces Uniform.rsample() via _adapted_rsampling
+        # same_on_batch=False is hardcoded for mosaic (each image needs distinct crop corners)
+        start_corner_factor = (
+            torch.empty(batch_size, 2, device=self._device, dtype=self._dtype).uniform_(0.0, 1.0)
+            * (self._start_ratio_high - self._start_ratio_low)
+            + self._start_ratio_low
         ).to(device=_device, dtype=_dtype)
         start_corner_x = start_corner_factor[:, 0] * batch_shape[-2]
         start_corner_y = start_corner_factor[:, 1] * batch_shape[-1]

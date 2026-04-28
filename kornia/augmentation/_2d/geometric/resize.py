@@ -24,6 +24,7 @@ from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
 from kornia.core.ops import eye_like
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
+from kornia.geometry.transform.affwarp import _side_to_image_size
 
 
 class Resize(GeometricAugmentationBase2D):
@@ -80,25 +81,29 @@ class Resize(GeometricAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        B, C, _, _ = input.shape
-        out_size = tuple(params["output_size"][0].tolist())
-        out = torch.empty(B, C, *out_size, device=input.device, dtype=input.dtype)
+        # Compute the output size from flags (static Python scalars/tuples) and
+        # the concrete input shape.  This avoids going through params["output_size"]
+        # which carries tensor values that torch.export treats as data-dependent
+        # symbolic integers (GuardOnDataDependentSymNode).
+        size_flag = flags["size"]
+        if isinstance(size_flag, int):
+            H, W = input.shape[-2], input.shape[-1]
+            # Both H and W are static integers under torch.export when the input
+            # shape is concrete (no dynamic_shapes).
+            aspect_ratio = float(W) / float(H)
+            out_size: Tuple[int, int] = _side_to_image_size(size_flag, aspect_ratio, flags["side"])
+        else:
+            out_size = tuple(size_flag)  # type: ignore[assignment]
 
-        for i in range(B):
-            x1 = int(params["src"][i, 0, 0])
-            x2 = int(params["src"][i, 1, 0]) + 1
-            y1 = int(params["src"][i, 0, 1])
-            y2 = int(params["src"][i, 3, 1]) + 1
-            out[i] = resize(
-                input[i : i + 1, :, y1:y2, x1:x2],
-                out_size,
-                interpolation=flags["resample"].name.lower(),
-                align_corners=(
-                    flags["align_corners"] if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC] else None
-                ),
-                antialias=flags["antialias"],
-            )
-        return out
+        interpolation = flags["resample"].name.lower()
+        align_corners = flags["align_corners"] if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC] else None
+        return resize(
+            input,
+            out_size,
+            interpolation=interpolation,
+            align_corners=align_corners,
+            antialias=flags["antialias"],
+        )
 
     def inverse_transform(
         self,

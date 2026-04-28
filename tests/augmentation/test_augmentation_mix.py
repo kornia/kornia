@@ -122,6 +122,86 @@ class TestRandomMixUpV2(BaseTester):
         self.assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
         self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
 
+    def test_boxes_concatenated_xyxy(self, device, dtype):
+        # Boxes are non-spatial annotations: MixUp must concatenate, not blend.
+        # With B=2, N=2 boxes each, output must be (B, 2N, 4).
+        torch.manual_seed(1)
+        f = RandomMixUpV2(p=1.0, data_keys=["input", "bbox_xyxy"])
+
+        images = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+        boxes = torch.tensor(
+            [[[1.0, 1.0, 4.0, 4.0], [2.0, 2.0, 6.0, 6.0]], [[0.0, 0.0, 3.0, 3.0], [1.0, 1.0, 5.0, 5.0]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        _, out_boxes = f(images, boxes)
+
+        # Output must double the object dimension.
+        assert out_boxes.shape == (2, 4, 4), f"Expected (2, 4, 4), got {out_boxes.shape}"
+
+        # First N boxes for each image are the original boxes.
+        self.assert_close(out_boxes[:, :2, :], boxes, rtol=1e-4, atol=1e-4)
+
+        # Second N boxes for each image are the boxes from the paired (permuted) image.
+        pairs = f._params["mixup_pairs"]
+        self.assert_close(out_boxes[:, 2:, :], boxes[pairs], rtol=1e-4, atol=1e-4)
+
+    def test_boxes_concatenated_xywh(self, device, dtype):
+        torch.manual_seed(1)
+        f = RandomMixUpV2(p=1.0, data_keys=["input", "bbox_xywh"])
+
+        images = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+        boxes = torch.tensor(
+            [[[1.0, 1.0, 3.0, 3.0], [2.0, 2.0, 4.0, 4.0]], [[0.0, 0.0, 3.0, 3.0], [1.0, 1.0, 4.0, 4.0]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        _, out_boxes = f(images, boxes)
+
+        assert out_boxes.shape == (2, 4, 4), f"Expected (2, 4, 4), got {out_boxes.shape}"
+
+    def test_boxes_preserved_when_p0(self, device, dtype):
+        # When p=0 (no augmentation) boxes must pass through unchanged.
+        torch.manual_seed(1)
+        f = RandomMixUpV2(p=0.0, data_keys=["input", "bbox_xyxy"])
+
+        images = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+        boxes = torch.tensor(
+            [[[1.0, 1.0, 4.0, 4.0], [2.0, 2.0, 6.0, 6.0]], [[0.0, 0.0, 3.0, 3.0], [1.0, 1.0, 5.0, 5.0]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        _, out_boxes = f(images, boxes)
+
+        # Shape and values unchanged: no concatenation when transform is skipped.
+        assert out_boxes.shape == boxes.shape, f"Expected {boxes.shape}, got {out_boxes.shape}"
+        self.assert_close(out_boxes, boxes, rtol=1e-4, atol=1e-4)
+
+    def test_boxes_image_label_unchanged(self, device, dtype):
+        # Adding bbox key must not change image or label output.
+        torch.manual_seed(42)
+        images = torch.rand(2, 1, 4, 4, device=device, dtype=dtype)
+        label = torch.tensor([0, 1], device=device, dtype=dtype)
+        boxes = torch.tensor(
+            [[[0.0, 0.0, 2.0, 2.0]], [[1.0, 1.0, 3.0, 3.0]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        f_no_box = RandomMixUpV2(p=1.0, data_keys=["input", "class"])
+        torch.manual_seed(42)
+        out_img_ref, out_lbl_ref = f_no_box(images.clone(), label.clone())
+
+        f_with_box = RandomMixUpV2(p=1.0, data_keys=["input", "class", "bbox_xyxy"])
+        torch.manual_seed(42)
+        out_img, out_lbl, _ = f_with_box(images.clone(), label.clone(), boxes.clone())
+
+        self.assert_close(out_img, out_img_ref, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_lbl, out_lbl_ref, rtol=1e-4, atol=1e-4)
+
 
 class TestRandomCutMixV2(BaseTester):
     def test_smoke(self):
@@ -268,6 +348,240 @@ class TestRandomCutMixV2(BaseTester):
             out_label[0, :, 2], torch.tensor([0.5000, 0.5000], device=device, dtype=dtype), rtol=1e-4, atol=1e-4
         )
 
+    def test_boxes_target_fully_outside_cut_kept(self, device, dtype):
+        # A target box that does not intersect the cut rectangle must be kept unchanged.
+        #
+        # Setup:
+        #   image size 8x8, cut rect (xyxy_plus) [2,2,5,5] (4x4 pixels),
+        #   target box [6,6,7,7] xyxy_plus (bottom-right corner, fully outside cut).
+        #   source (permuted image) has a single zero-area box at [0,0,0,0].
+        from kornia.geometry.bbox import bbox_generator
+
+        f = RandomCutMixV2(p=1.0, data_keys=["input", "bbox_xyxy"], use_correct_lambda=True, min_area=1.0)
+        imgs = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+
+        # xyxy: width = xmax - xmin, so [6,6,7,7] xyxy_plus -> [6,6,8,8] xyxy
+        boxes = torch.tensor([[[6.0, 6.0, 8.0, 8.0]], [[0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype)  # (2, 1, 4)
+
+        # cut rect: x_start=2, y_start=2, width=4, height=4 -> TL=(2,2), BR=(5,5)
+        crop = bbox_generator(
+            torch.tensor([2.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([2.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([4.0, 4.0], device=device, dtype=dtype),
+            torch.tensor([4.0, 4.0], device=device, dtype=dtype),
+        ).unsqueeze(0)  # (1, 2, 4, 2)
+
+        params = {
+            "mix_pairs": torch.tensor([[1, 0]], device=device),
+            "crop_src": crop,
+            "image_shape": torch.tensor([8.0, 8.0], device=device, dtype=dtype),
+            "batch_prob": torch.tensor([True, True]),
+            "dtype": torch.tensor(6),
+        }
+
+        _, out_boxes = f(imgs, boxes, params=params)
+        # Image 0 output: first slot = target box kept, second = clipped source (zero-area, zeroed)
+        # Target box [6,6,8,8] is fully outside cut → first slot unchanged
+        self.assert_close(
+            out_boxes[0, 0],
+            torch.tensor([6.0, 6.0, 8.0, 8.0], device=device, dtype=dtype),
+            rtol=1e-4,
+            atol=1e-4,
+        )
+
+    def test_boxes_target_fully_inside_cut_dropped(self, device, dtype):
+        # A target box that is completely covered by the cut rectangle must be zeroed out.
+        #
+        # Setup:
+        #   cut rect (xyxy_plus) [2,2,5,5]; target box [2,2,5,5] xyxy_plus (same as cut -> fully inside).
+        from kornia.geometry.bbox import bbox_generator
+
+        f = RandomCutMixV2(p=1.0, data_keys=["input", "bbox_xyxy"], use_correct_lambda=True, min_area=1.0)
+        imgs = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+
+        # xyxy_plus [2,2,5,5] -> xyxy [2,2,6,6]
+        boxes = torch.tensor([[[2.0, 2.0, 6.0, 6.0]], [[0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype)
+
+        crop = bbox_generator(
+            torch.tensor([2.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([2.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([4.0, 4.0], device=device, dtype=dtype),
+            torch.tensor([4.0, 4.0], device=device, dtype=dtype),
+        ).unsqueeze(0)
+
+        params = {
+            "mix_pairs": torch.tensor([[1, 0]], device=device),
+            "crop_src": crop,
+            "image_shape": torch.tensor([8.0, 8.0], device=device, dtype=dtype),
+            "batch_prob": torch.tensor([True, True]),
+            "dtype": torch.tensor(6),
+        }
+
+        _, out_boxes = f(imgs, boxes, params=params)
+        # First output slot for image 0 should be zeroed (dropped box).
+        # Zeroed xyxy_plus [0,0,0,0] -> xyxy [0,0,1,1]
+        self.assert_close(
+            out_boxes[0, 0],
+            torch.tensor([0.0, 0.0, 1.0, 1.0], device=device, dtype=dtype),
+            rtol=1e-4,
+            atol=1e-4,
+        )
+
+    def test_boxes_target_partially_inside_cut_clipped_kept(self, device, dtype):
+        # A target box that partially overlaps the cut rectangle is kept if its remaining visible
+        # area (original_area - intersection_area) is >= min_area.
+        #
+        # Setup:
+        #   cut rect (xyxy_plus) [2,2,5,5]; target box [1,1,3,3] xyxy_plus.
+        #   Intersection = [2,2,3,3] -> area = 1x1 = 1.
+        #   Original area = 2x2 = 4.  Visible = 3 >= min_area=1.0 -> kept unchanged.
+        from kornia.geometry.bbox import bbox_generator
+
+        f = RandomCutMixV2(p=1.0, data_keys=["input", "bbox_xyxy"], use_correct_lambda=True, min_area=1.0)
+        imgs = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+
+        # xyxy_plus [1,1,3,3] -> xyxy [1,1,4,4]
+        boxes = torch.tensor([[[1.0, 1.0, 4.0, 4.0]], [[0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype)
+
+        crop = bbox_generator(
+            torch.tensor([2.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([2.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([4.0, 4.0], device=device, dtype=dtype),
+            torch.tensor([4.0, 4.0], device=device, dtype=dtype),
+        ).unsqueeze(0)
+
+        params = {
+            "mix_pairs": torch.tensor([[1, 0]], device=device),
+            "crop_src": crop,
+            "image_shape": torch.tensor([8.0, 8.0], device=device, dtype=dtype),
+            "batch_prob": torch.tensor([True, True]),
+            "dtype": torch.tensor(6),
+        }
+
+        _, out_boxes = f(imgs, boxes, params=params)
+        # Visible area = 3 >= 1.0 -> first slot of image 0 kept at original coords
+        self.assert_close(
+            out_boxes[0, 0],
+            torch.tensor([1.0, 1.0, 4.0, 4.0], device=device, dtype=dtype),
+            rtol=1e-4,
+            atol=1e-4,
+        )
+
+    def test_boxes_target_partially_inside_cut_dropped_when_below_min_area(self, device, dtype):
+        # A target box whose visible area after cut is below min_area must be zeroed out.
+        #
+        # Setup:
+        #   cut rect (xyxy_plus) [2,2,5,5]; target box [1,1,3,3] xyxy_plus.
+        #   Visible area = 3.  With min_area=4.0 the box should be dropped.
+        from kornia.geometry.bbox import bbox_generator
+
+        f = RandomCutMixV2(p=1.0, data_keys=["input", "bbox_xyxy"], use_correct_lambda=True, min_area=4.0)
+        imgs = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+
+        # xyxy_plus [1,1,3,3] -> xyxy [1,1,4,4]
+        boxes = torch.tensor([[[1.0, 1.0, 4.0, 4.0]], [[0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype)
+
+        crop = bbox_generator(
+            torch.tensor([2.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([2.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([4.0, 4.0], device=device, dtype=dtype),
+            torch.tensor([4.0, 4.0], device=device, dtype=dtype),
+        ).unsqueeze(0)
+
+        params = {
+            "mix_pairs": torch.tensor([[1, 0]], device=device),
+            "crop_src": crop,
+            "image_shape": torch.tensor([8.0, 8.0], device=device, dtype=dtype),
+            "batch_prob": torch.tensor([True, True]),
+            "dtype": torch.tensor(6),
+        }
+
+        _, out_boxes = f(imgs, boxes, params=params)
+        # Visible area = 3 < min_area=4 -> dropped, zeroed in xyxy_plus -> xyxy [0,0,1,1]
+        self.assert_close(
+            out_boxes[0, 0],
+            torch.tensor([0.0, 0.0, 1.0, 1.0], device=device, dtype=dtype),
+            rtol=1e-4,
+            atol=1e-4,
+        )
+
+    def test_boxes_source_inside_cut_kept_clipped(self, device, dtype):
+        # A source box that intersects the cut rectangle must be clipped to the cut bounds and added.
+        #
+        # Setup:
+        #   cut rect (xyxy_plus) [2,2,5,5]; source box [4,4,6,6] xyxy_plus.
+        #   Intersection with cut = [4,4,5,5] -> area=1 >= min_area=1.0 -> kept, clipped.
+        from kornia.geometry.bbox import bbox_generator
+
+        f = RandomCutMixV2(p=1.0, data_keys=["input", "bbox_xyxy"], use_correct_lambda=True, min_area=1.0)
+        imgs = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+
+        # Target image 0 has no real boxes; source image 1 has the box of interest.
+        # xyxy_plus [4,4,6,6] -> xyxy [4,4,7,7]
+        boxes = torch.tensor([[[0.0, 0.0, 1.0, 1.0]], [[4.0, 4.0, 7.0, 7.0]]], device=device, dtype=dtype)
+
+        crop = bbox_generator(
+            torch.tensor([2.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([2.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([4.0, 4.0], device=device, dtype=dtype),
+            torch.tensor([4.0, 4.0], device=device, dtype=dtype),
+        ).unsqueeze(0)
+
+        params = {
+            "mix_pairs": torch.tensor([[1, 0]], device=device),
+            "crop_src": crop,
+            "image_shape": torch.tensor([8.0, 8.0], device=device, dtype=dtype),
+            "batch_prob": torch.tensor([True, True]),
+            "dtype": torch.tensor(6),
+        }
+
+        _, out_boxes = f(imgs, boxes, params=params)
+        # Image 0: second slot = clipped source box.
+        # Source [4,4,6,6] xyxy_plus clipped to cut [2,2,5,5] -> [4,4,5,5] xyxy_plus -> xyxy [4,4,6,6]
+        self.assert_close(
+            out_boxes[0, 1],
+            torch.tensor([4.0, 4.0, 6.0, 6.0], device=device, dtype=dtype),
+            rtol=1e-4,
+            atol=1e-4,
+        )
+
+    def test_boxes_source_outside_cut_dropped(self, device, dtype):
+        # A source box that has no intersection with the cut rectangle must be zeroed out.
+        #
+        # Setup:
+        #   cut rect (xyxy_plus) [2,2,5,5]; source box [6,6,8,8] xyxy_plus (outside cut).
+        from kornia.geometry.bbox import bbox_generator
+
+        f = RandomCutMixV2(p=1.0, data_keys=["input", "bbox_xyxy"], use_correct_lambda=True, min_area=1.0)
+        imgs = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
+
+        # xyxy_plus [6,6,8,8] -> xyxy [6,6,9,9]
+        boxes = torch.tensor([[[0.0, 0.0, 1.0, 1.0]], [[6.0, 6.0, 9.0, 9.0]]], device=device, dtype=dtype)
+
+        crop = bbox_generator(
+            torch.tensor([2.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([2.0, 2.0], device=device, dtype=dtype),
+            torch.tensor([4.0, 4.0], device=device, dtype=dtype),
+            torch.tensor([4.0, 4.0], device=device, dtype=dtype),
+        ).unsqueeze(0)
+
+        params = {
+            "mix_pairs": torch.tensor([[1, 0]], device=device),
+            "crop_src": crop,
+            "image_shape": torch.tensor([8.0, 8.0], device=device, dtype=dtype),
+            "batch_prob": torch.tensor([True, True]),
+            "dtype": torch.tensor(6),
+        }
+
+        _, out_boxes = f(imgs, boxes, params=params)
+        # Image 0: second slot = source box fully outside cut -> zeroed -> xyxy [0,0,1,1]
+        self.assert_close(
+            out_boxes[0, 1],
+            torch.tensor([0.0, 0.0, 1.0, 1.0], device=device, dtype=dtype),
+            rtol=1e-4,
+            atol=1e-4,
+        )
+
 
 class TestRandomMosaic(BaseTester):
     def test_smoke(self):
@@ -369,6 +683,108 @@ class TestRandomMosaic(BaseTester):
         )
 
         f(input, boxes)
+
+    def test_mask_numerical(self, device, dtype):
+        # Verify mask compositing uses same 2x2 grid coordinates as image.
+        # Generation snippet:
+        #   torch.manual_seed(76)
+        #   f = RandomMosaic(p=1.0, data_keys=["input", "mask"])
+        #   masks = torch.stack([ones(1,8,8)*10, ones(1,8,8)*20])
+        #   out_image, out_mask = f(input_img, masks)
+        torch.manual_seed(76)
+        f = RandomMosaic(p=1.0, data_keys=["input", "mask"])
+
+        input_img = torch.stack(
+            [
+                torch.ones(1, 8, 8, device=device, dtype=dtype) * 0.5,
+                torch.ones(1, 8, 8, device=device, dtype=dtype) * 0.25,
+            ]
+        )
+        masks = torch.stack(
+            [
+                torch.ones(1, 8, 8, device=device, dtype=dtype) * 10.0,
+                torch.ones(1, 8, 8, device=device, dtype=dtype) * 20.0,
+            ]
+        )
+
+        _out_image, out_mask = f(input_img, masks)
+
+        assert out_mask.shape == torch.Size([2, 1, 8, 8])
+        expected_mask = torch.tensor(
+            [
+                [
+                    [
+                        [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+                        [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+                        [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+                        [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0],
+                        [20.0, 20.0, 20.0, 20.0, 20.0, 10.0, 10.0, 10.0],
+                        [20.0, 20.0, 20.0, 20.0, 20.0, 10.0, 10.0, 10.0],
+                        [20.0, 20.0, 20.0, 20.0, 20.0, 10.0, 10.0, 10.0],
+                        [20.0, 20.0, 20.0, 20.0, 20.0, 10.0, 10.0, 10.0],
+                    ]
+                ],
+                [
+                    [
+                        [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
+                        [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
+                        [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
+                        [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
+                        [20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
+                        [10.0, 10.0, 10.0, 20.0, 20.0, 20.0, 20.0, 20.0],
+                        [10.0, 10.0, 10.0, 20.0, 20.0, 20.0, 20.0, 20.0],
+                        [10.0, 10.0, 10.0, 20.0, 20.0, 20.0, 20.0, 20.0],
+                    ]
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(out_mask, expected_mask, rtol=1e-4, atol=1e-4)
+
+    def test_mask_output_size(self, device, dtype):
+        # Mask is resized to output_size together with image; shape must match.
+        torch.manual_seed(76)
+        f = RandomMosaic(output_size=(300, 300), p=1.0, data_keys=["input", "mask"])
+
+        input_img = torch.randn(2, 3, 224, 224, device=device, dtype=dtype)
+        masks = torch.zeros(2, 1, 224, 224, device=device, dtype=dtype)
+
+        out_image, out_mask = f(input_img, masks)
+        assert out_image.shape == torch.Size([2, 3, 300, 300])
+        assert out_mask.shape == torch.Size([2, 1, 300, 300])
+
+    def test_mask_non_transform(self, device, dtype):
+        # When p=0.0 the mask is padded to output_size but not composited.
+        torch.manual_seed(76)
+        f = RandomMosaic(output_size=(300, 300), p=0.0, data_keys=["input", "mask"])
+
+        input_img = torch.randn(2, 3, 224, 224, device=device, dtype=dtype)
+        masks = torch.zeros(2, 1, 224, 224, device=device, dtype=dtype)
+
+        _out_image, out_mask = f(input_img, masks)
+        assert out_mask.shape == torch.Size([2, 1, 300, 300])
+
+    def test_mask_and_boxes_jointly(self, device, dtype):
+        # All three data keys (image, mask, bbox_xyxy) routed simultaneously through same params.
+        torch.manual_seed(76)
+        f = RandomMosaic(p=1.0, data_keys=["input", "mask", "bbox_xyxy"])
+
+        input_img = torch.stack(
+            [torch.ones(1, 8, 8, device=device, dtype=dtype), torch.zeros(1, 8, 8, device=device, dtype=dtype)]
+        )
+        masks = torch.stack(
+            [
+                torch.ones(1, 8, 8, device=device, dtype=dtype) * 10.0,
+                torch.ones(1, 8, 8, device=device, dtype=dtype) * 20.0,
+            ]
+        )
+        boxes = torch.tensor([[[4.0, 5, 6, 7], [1, 2, 3, 4]], [[2, 2, 6, 6], [0, 0, 0, 0]]], device=device, dtype=dtype)
+
+        out_image, out_mask, out_box = f(input_img, masks, boxes)
+        assert out_image.shape == torch.Size([2, 1, 8, 8])
+        assert out_mask.shape == torch.Size([2, 1, 8, 8])
+        assert out_box.shape[0] == 2
 
 
 class TestRandomJigsaw(BaseTester):

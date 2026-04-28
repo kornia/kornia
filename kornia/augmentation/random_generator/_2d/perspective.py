@@ -18,10 +18,9 @@
 from typing import Dict, Tuple, Union
 
 import torch
-from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.augmentation.utils import _common_param_check
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["PerspectiveGenerator"]
@@ -64,11 +63,8 @@ class PerspectiveGenerator(RandomGeneratorBase):
         self._distortion_scale = torch.as_tensor(self.distortion_scale, device=device, dtype=dtype)
         if not (self._distortion_scale.dim() == 0 and 0 <= self._distortion_scale <= 1):
             raise AssertionError(f"'distortion_scale' must be a scalar within [0, 1]. Got {self._distortion_scale}.")
-        self.rand_val_sampler = Uniform(
-            torch.tensor(0, device=device, dtype=dtype),
-            torch.tensor(1, device=device, dtype=dtype),
-            validate_args=False,
-        )
+        self._device = device
+        self._dtype = dtype
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
@@ -90,10 +86,21 @@ class PerspectiveGenerator(RandomGeneratorBase):
 
         factor = torch.stack([fx, fy], dim=0).view(-1, 1, 2).to(device=_device, dtype=_dtype)
 
-        # TODO: This line somehow breaks the gradcheck
-        rand_val: torch.Tensor = _adapted_rsampling(start_points.shape, self.rand_val_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
-        )
+        # GPU-side uniform sampling: no host sync, replaces Uniform.rsample() via _adapted_rsampling
+        if same_on_batch:
+            rand_val = (
+                torch.empty((1, *start_points.shape[1:]), device=self._device, dtype=self._dtype)
+                .uniform_(0.0, 1.0)
+                .expand(start_points.shape)
+                .to(device=_device, dtype=_dtype)
+            )
+        else:
+            # TODO: This line somehow breaks the gradcheck
+            rand_val = (
+                torch.empty(start_points.shape, device=self._device, dtype=self._dtype)
+                .uniform_(0.0, 1.0)
+                .to(device=_device, dtype=_dtype)
+            )
         if self.sampling_method == "basic":
             pts_norm = torch.tensor([[[1, 1], [-1, 1], [-1, -1], [1, -1]]], device=_device, dtype=_dtype)
             offset = factor * rand_val * pts_norm

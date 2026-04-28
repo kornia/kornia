@@ -22,6 +22,7 @@ This subpackage provides augmentation containers and dispatchers for flexible pi
 
 from kornia.augmentation.container.augment import AugmentationSequential
 from kornia.augmentation.container.base import ImageSequentialBase
+from kornia.augmentation.container.bbox_params import BboxParams, filter_bboxes
 from kornia.augmentation.container.dispatcher import ManyToManyAugmentationDispather, ManyToOneAugmentationDispather
 from kornia.augmentation.container.image import ImageSequential
 from kornia.augmentation.container.patch import PatchSequential

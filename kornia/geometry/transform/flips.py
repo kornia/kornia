@@ -145,7 +145,7 @@ def hflip(input: torch.Tensor) -> torch.Tensor:
         The horizontally flipped image torch.Tensor.
 
     """
-    return input.flip(-1).contiguous()
+    return input.flip(-1)
 
 
 def vflip(input: torch.Tensor) -> torch.Tensor:
@@ -162,4 +162,4 @@ def vflip(input: torch.Tensor) -> torch.Tensor:
         The vertically flipped image torch.Tensor.
 
     """
-    return input.flip(-2).contiguous()
+    return input.flip(-2)

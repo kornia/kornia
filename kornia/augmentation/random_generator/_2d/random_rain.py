@@ -69,7 +69,6 @@ class RainGenerator(RandomGeneratorBase):
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.drop_width, self.drop_height, self.number_of_drops])
-        # self.ksize_factor.expand((batch_size, -1))
         number_of_drops_factor = _adapted_rsampling((batch_size,), self.number_of_drops_sampler).to(
             device=_device, dtype=torch.long
         )
@@ -79,8 +78,13 @@ class RainGenerator(RandomGeneratorBase):
         drop_width_factor = _adapted_rsampling((batch_size,), self.drop_width_sampler, same_on_batch).to(
             device=_device, dtype=torch.long
         )
+        # Use a static upper bound (max value of number_of_drops parameter) instead of
+        # the runtime max of number_of_drops_factor, which requires a host-sync via .item().
+        # Always generating max_drops coordinates is functionally identical because
+        # apply_transform already slices coordinates_factor[i][:number_of_drops_factor[i]].
+        max_drops: int = self.number_of_drops[1]
         coordinates_factor = _adapted_rsampling(
-            (batch_size, int(number_of_drops_factor.max().item()) if number_of_drops_factor.numel() > 0 else 0, 2),
+            (batch_size, max_drops, 2),
             self.coordinates_sampler,
             same_on_batch=same_on_batch,
         ).to(device=_device)

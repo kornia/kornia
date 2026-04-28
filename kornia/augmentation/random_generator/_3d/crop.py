@@ -18,10 +18,9 @@
 from typing import Dict, Optional, Tuple, Union
 
 import torch
-from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.augmentation.utils import _common_param_check
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator3d
 
@@ -60,9 +59,9 @@ class CropGenerator3D(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(1.0, device=device, dtype=dtype)
-        )
+        # Store device/dtype for GPU-side uniform_ sampling in forward().
+        self._rand_device = device
+        self._rand_dtype = dtype
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size, _, depth, height, width = batch_shape
@@ -92,10 +91,13 @@ class CropGenerator3D(RandomGeneratorBase):
         y_diff = height - size[:, 1] + 1
         z_diff = depth - size[:, 0] + 1
 
-        if (x_diff < 0).any() or (y_diff < 0).any() or (z_diff < 0).any():
-            raise ValueError(
-                f"input_size {(depth, height, width)} cannot be smaller than crop size {size!s} in any dimension."
-            )
+        # Clamp to zero instead of raising on negative diff; this removes the
+        # host-sync caused by `.any()` on a CUDA tensor, making the generator
+        # compatible with CUDA graph capture. A zero diff means the start is
+        # fixed at 0 (crop fills the entire dimension).
+        x_diff = x_diff.clamp_min(0)
+        y_diff = y_diff.clamp_min(0)
+        z_diff = z_diff.clamp_min(0)
 
         if batch_size == 0:
             return {
@@ -103,9 +105,16 @@ class CropGenerator3D(RandomGeneratorBase):
                 "dst": torch.zeros([0, 8, 3], device=_device, dtype=_dtype),
             }
 
-        x_start = _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
-        y_start = _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
-        z_start = _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+        if same_on_batch:
+            _r = torch.empty(3, 1, device=self._rand_device, dtype=self._rand_dtype).uniform_(0.0, 1.0)
+            x_start = _r[0].expand(batch_size).to(device=_device, dtype=_dtype)
+            y_start = _r[1].expand(batch_size).to(device=_device, dtype=_dtype)
+            z_start = _r[2].expand(batch_size).to(device=_device, dtype=_dtype)
+        else:
+            _r = torch.empty(3, batch_size, device=self._rand_device, dtype=self._rand_dtype).uniform_(0.0, 1.0)
+            x_start = _r[0].to(device=_device, dtype=_dtype)
+            y_start = _r[1].to(device=_device, dtype=_dtype)
+            z_start = _r[2].to(device=_device, dtype=_dtype)
 
         x_start = (x_start * x_diff).floor()
         y_start = (y_start * y_diff).floor()

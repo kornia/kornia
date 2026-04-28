@@ -46,6 +46,12 @@ class RandomContrast(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_contrast`
 
+    .. note::
+        A minimal-overhead fast forward path is taken automatically when called
+        with a single plain ``Tensor`` (no boxes/masks/keypoints, no replay
+        ``params=``, no kwargs) and ``p`` is deterministic (``0.0`` or ``1.0``).
+        For boxes/masks/keypoints/replay the standard chain is preserved.
+
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
@@ -85,6 +91,43 @@ class RandomContrast(IntensityAugmentationBase2D):
         self._param_generator = rg.PlainUniformGenerator((self.contrast, "contrast_factor", None, None))
 
         self.clip_output = clip_output
+
+    @torch.no_grad()
+    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+        # Aggressive fast path: bypass the framework chain for the simple
+        # "single image tensor, deterministic p" call.  The contrast factor
+        # is still drawn through ``self._param_generator`` so the RNG sequence
+        # matches the standard chain.
+        if (
+            len(args) == 1
+            and isinstance(args[0], torch.Tensor)
+            and not kwargs
+            and self.p_batch == 1.0
+            and not self.keepdim
+            and self.p in (0.0, 1.0)
+        ):
+            x = args[0]
+            d = x.dim()
+            if d == 3:
+                x = x.unsqueeze(0)
+                d = 4
+            if d == 4:
+                b = x.shape[0]
+                eye = torch.eye(3, device=x.device, dtype=x.dtype)
+                self._transform_matrix = eye.unsqueeze(0).expand(b, 3, 3)
+                if self.p == 0.0:
+                    self._params = {
+                        "batch_prob": torch.zeros(b, dtype=torch.bool),
+                        "forward_input_shape": torch.tensor(x.shape, dtype=torch.long),
+                    }
+                    return x
+                params = self._param_generator(torch.Size((b, *x.shape[1:])), self.same_on_batch)
+                self._params = dict(params)
+                self._params["batch_prob"] = torch.ones(b, dtype=torch.bool)
+                self._params["forward_input_shape"] = torch.tensor(x.shape, dtype=torch.long)
+                contrast_factor = params["contrast_factor"].to(x)
+                return adjust_contrast(x, contrast_factor, self.clip_output)
+        return super().forward(*args, **kwargs)
 
     def apply_transform(
         self,

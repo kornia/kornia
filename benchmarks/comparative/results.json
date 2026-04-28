@@ -1,0 +1,48 @@
+{
+  "platform": "Jetson Orin aarch64",
+  "device": "cuda:0",
+  "device_name": "Orin",
+  "cuda_available": true,
+  "batch": 8,
+  "resolution": 512,
+  "n_runs": 50,
+  "warmup": 10,
+  "torch_version": "2.8.0",
+  "library_versions": {
+    "kornia": "0.7.4",
+    "albumentations": "2.0.8",
+    "torchvision": "0.23.0"
+  },
+  "results": {
+    "kornia (GPU)": {
+      "median_ms": 71.21261302381754,
+      "p25_ms": 67.03478400595486,
+      "p75_ms": 75.65080397762358,
+      "min_ms": 59.437419986352324,
+      "max_ms": 98.97721302695572,
+      "mean_ms": 72.45196105679497,
+      "stddev_ms": 7.547301793907373,
+      "n": 50
+    },
+    "torchvision.v2 (GPU)": {
+      "median_ms": 14.597843051888049,
+      "p25_ms": 14.097955077886581,
+      "p75_ms": 15.431726002134383,
+      "min_ms": 13.678197981789708,
+      "max_ms": 16.29584899637848,
+      "mean_ms": 14.78936125524342,
+      "stddev_ms": 0.7632172805688582,
+      "n": 50
+    },
+    "Albumentations CPU + transfer": {
+      "median_ms": 79.86444199923426,
+      "p25_ms": 76.36279391590506,
+      "p75_ms": 83.15462700556964,
+      "min_ms": 73.5086229396984,
+      "max_ms": 100.39031505584717,
+      "mean_ms": 80.57425273349509,
+      "stddev_ms": 5.395712574631945,
+      "n": 50
+    }
+  }
+}

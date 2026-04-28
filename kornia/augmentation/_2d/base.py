@@ -83,6 +83,12 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
     _transform_matrix: Optional[torch.Tensor]
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # Initialise here so torch.export sees this attribute as pre-existing
+        # rather than as a new attribute created inside forward().
+        self._transform_matrix = None
+
     @property
     def transform_matrix(self) -> Optional[torch.Tensor]:
         return self._transform_matrix
@@ -104,7 +110,13 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         in_tensor = self.transform_tensor(input)
-        if not to_apply.any():
+        # When _always_apply is True (p == p_batch == 1.0), every element is
+        # always selected.  Skip the data-dependent .any()/.all() guards so that
+        # torch.export can trace the module without raising
+        # GuardOnDataDependentSymNode.
+        if self._always_apply:
+            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
+        elif not to_apply.any():
             trans_matrix = self.identity_matrix(in_tensor)
         elif to_apply.all():
             trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
@@ -173,6 +185,11 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
         trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
         output = self.transform_inputs(in_tensor, params, flags, trans_matrix)
-        self._transform_matrix = trans_matrix
+        # Under torch.export / torch.compile the attribute assignment would be
+        # flagged as a mutation of module state that the exporter cannot track.
+        # Skip caching the matrix in those contexts; it is only needed for
+        # post-forward inspection in eager mode.
+        if not torch.compiler.is_compiling():
+            self._transform_matrix = trans_matrix
 
         return output
