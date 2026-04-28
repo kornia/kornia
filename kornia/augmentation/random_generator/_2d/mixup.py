@@ -75,8 +75,10 @@ class MixupGenerator(RandomGeneratorBase):
         # GPU-side Bernoulli: no host sync, no torch.no_grad() wrapper
         if same_on_batch:
             batch_probs = (
-                torch.empty(1, device=self._device, dtype=self._dtype).uniform_(0.0, 1.0) < self._p
-            ).float().expand(batch_size)
+                (torch.empty(1, device=self._device, dtype=self._dtype).uniform_(0.0, 1.0) < self._p)
+                .float()
+                .expand(batch_size)
+            )
         else:
             batch_probs = (
                 torch.empty(batch_size, device=self._device, dtype=self._dtype).uniform_(0.0, 1.0) < self._p

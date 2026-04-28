@@ -19,6 +19,7 @@
 Closes torchgeo#3108 (isaaccorley note: 'ONNX support... onnxruntime-web').
 Skipped if onnx or onnxruntime not installed.
 """
+
 from __future__ import annotations
 
 import io
@@ -26,6 +27,7 @@ import io
 import numpy as np
 import pytest
 import torch
+
 import kornia.augmentation as K
 
 onnx = pytest.importorskip("onnx")

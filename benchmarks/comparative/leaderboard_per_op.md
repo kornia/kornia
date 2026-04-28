@@ -1,14 +1,14 @@
 # Per-op eager benchmark -- kornia (patched) vs torchvision.v2 vs albumentations
 
-**Date:** 2026-04-27  
-**GPU:** Orin  
-**PyTorch:** 2.8.0  
-**kornia:** 0.7.4 (5 eager patches applied)  
-**torchvision:** 0.23.0  
-**albumentations:** 2.0.8  
-**Input:** B=8, 512x512, fp32 GPU (kornia/TV); uint8 CPU (Alb)  
-**Timing:** 25 warmup + 100 CUDA-event iterations  
-**Total elapsed:** 252.2s  
+**Date:** 2026-04-27
+**GPU:** Orin
+**PyTorch:** 2.8.0
+**kornia:** 0.7.4 (5 eager patches applied)
+**torchvision:** 0.23.0
+**albumentations:** 2.0.8
+**Input:** B=8, 512x512, fp32 GPU (kornia/TV); uint8 CPU (Alb)
+**Timing:** 25 warmup + 100 CUDA-event iterations
+**Total elapsed:** 252.2s
 
 > Note: albumentations times are CPU-only (per-image loop over uint8 HWC numpy). GPU vs CPU comparisons are informational only -- not apples-to-apples.
 
@@ -125,4 +125,3 @@
   - (none)
 
 > albumentations runs on CPU; times are not directly comparable to GPU kornia/torchvision times.
-

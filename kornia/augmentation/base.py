@@ -318,15 +318,11 @@ class _BasicAugmentationBase(nn.Module):
                 # deterministic fast path (``p`` in {0, 1}) this is uniform.
                 if isinstance(input, torch.Tensor) and input.dim() >= 2:
                     in_shape: Tuple[int, ...] = (
-                        tuple(input.shape)
-                        if input.dim() == 4
-                        else (1,) * (4 - input.dim()) + tuple(input.shape)
+                        tuple(input.shape) if input.dim() == 4 else (1,) * (4 - input.dim()) + tuple(input.shape)
                     )
                     fill_value = bool(self.p > 0.5)
                     base_params: Dict[str, torch.Tensor] = {
-                        "batch_prob": torch.full(
-                            (in_shape[0],), fill_value, dtype=torch.bool
-                        ),
+                        "batch_prob": torch.full((in_shape[0],), fill_value, dtype=torch.bool),
                         "forward_input_shape": torch.tensor(in_shape, dtype=torch.long),
                     }
                     # Per-class fast paths may stash additional generated

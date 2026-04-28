@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Per-transform CUDA Graph capture harness.
 
 Attempts torch.cuda.graph capture on each kornia transform at a fixed input
@@ -6,17 +23,21 @@ launch_overhead_pct) into a JSONL log.
 
 Capture failures are the strongest test that a transform has no host syncs.
 """
+
 from __future__ import annotations
+
 import dataclasses
 import json
 import sys
 from pathlib import Path
+
 import torch
+
 
 @dataclasses.dataclass
 class GraphBenchResult:
     transform: str
-    capture_status: str            # "OK" | "FAILED" | "SKIPPED"
+    capture_status: str  # "OK" | "FAILED" | "SKIPPED"
     capture_error: str | None
     eager_ms: float | None
     replay_ms: float | None
@@ -27,7 +48,7 @@ class GraphBenchResult:
 
 
 def _bench_one(
-    transform_factory,                # callable returning a fresh transform
+    transform_factory,  # callable returning a fresh transform
     name: str,
     input_shape: tuple[int, ...] = (8, 3, 512, 512),
     device: str = "cuda",
@@ -95,7 +116,9 @@ def _bench_one(
 def discover_transforms() -> list[tuple[str, callable]]:
     """Return list of (name, factory) pairs for every public concrete kornia transform."""
     import inspect
+
     import kornia.augmentation as K
+
     out: list[tuple[str, callable]] = []
     for name in sorted(dir(K)):
         if name.startswith("_"):
@@ -114,7 +137,8 @@ def discover_transforms() -> list[tuple[str, callable]]:
         try:
             sig = inspect.signature(obj.__init__)
             required = [
-                p for p in sig.parameters.values()
+                p
+                for p in sig.parameters.values()
                 if p.name != "self"
                 and p.default is inspect.Parameter.empty
                 and p.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
@@ -144,6 +168,7 @@ def run_all(output_jsonl: Path, input_shape: tuple[int, ...] = (8, 3, 512, 512))
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="benchmarks/cuda_graph/results.jsonl")
     parser.add_argument("--batch", type=int, default=8)

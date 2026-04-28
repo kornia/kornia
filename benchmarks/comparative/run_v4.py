@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Comparative benchmark v4 — all five eager optimizations applied as runtime monkey-patches.
 
 Optimizations patched into installed kornia 0.7.4 at runtime:
@@ -26,6 +43,7 @@ Known workarounds:
   3. cusolver monkey-patch — analytical closed-form 3x3 inverse for _torch_inverse_cast
   4. torch.tensor(np.stack(...)) not torch.from_numpy() — NumPy 1.x/2.x ABI fix
 """
+
 from __future__ import annotations
 
 import json
@@ -49,6 +67,7 @@ import torch
 # Must be applied BEFORE importing any kornia geometry module.
 # ---------------------------------------------------------------------------
 
+
 def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
     """Closed-form 3x3 matrix inverse via adjugate / determinant."""
     dtype = input.dtype
@@ -62,15 +81,15 @@ def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
     det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
     inv_det = 1.0 / det
     inv = torch.empty_like(m)
-    inv[..., 0, 0] =  (e * i - f * h) * inv_det
+    inv[..., 0, 0] = (e * i - f * h) * inv_det
     inv[..., 0, 1] = -(b * i - c * h) * inv_det
-    inv[..., 0, 2] =  (b * f - c * e) * inv_det
+    inv[..., 0, 2] = (b * f - c * e) * inv_det
     inv[..., 1, 0] = -(d * i - f * g) * inv_det
-    inv[..., 1, 1] =  (a * i - c * g) * inv_det
+    inv[..., 1, 1] = (a * i - c * g) * inv_det
     inv[..., 1, 2] = -(a * f - c * d) * inv_det
-    inv[..., 2, 0] =  (d * h - e * g) * inv_det
+    inv[..., 2, 0] = (d * h - e * g) * inv_det
     inv[..., 2, 1] = -(a * h - b * g) * inv_det
-    inv[..., 2, 2] =  (a * e - b * d) * inv_det
+    inv[..., 2, 2] = (a * e - b * d) * inv_det
     if squeeze:
         inv = inv.squeeze(0)
     return inv.to(dtype)
@@ -78,18 +97,20 @@ def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
 
 def _patch_kornia_inverse() -> None:
     """Patch _torch_inverse_cast in every kornia module that imported it."""
-    import kornia.utils.helpers as _kh
     import kornia.geometry.conversions as _kgc
+    import kornia.utils.helpers as _kh
+
     _kh._torch_inverse_cast = _analytical_3x3_inv
     _kgc._torch_inverse_cast = _analytical_3x3_inv
     for mod_name, mod in sys.modules.items():
         if mod_name.startswith("kornia") and hasattr(mod, "_torch_inverse_cast"):
-            setattr(mod, "_torch_inverse_cast", _analytical_3x3_inv)
+            mod._torch_inverse_cast = _analytical_3x3_inv
 
 
 # Trigger kornia loading so the patch covers geometry.conversions
+import kornia.geometry.conversions
 import kornia.utils.helpers  # noqa: F401
-import kornia.geometry.conversions  # noqa: F401
+
 _patch_kornia_inverse()
 
 
@@ -120,7 +141,7 @@ def _apply_kornia_optimisation_patches() -> str:
         _Normalize = _norm_mod.Normalize
         _orig_norm_init = _Normalize.__init__
 
-        def _patched_norm_init(self, mean, std, p=1.0, keepdim=False, **kw):  # noqa: ANN001
+        def _patched_norm_init(self, mean, std, p=1.0, keepdim=False, **kw):
             _orig_norm_init(self, mean, std, p=p, keepdim=keepdim)
             _mean = self.flags["mean"]
             _std = self.flags["std"]
@@ -141,7 +162,7 @@ def _apply_kornia_optimisation_patches() -> str:
             self.register_buffer("_mean_b", _mean_b, persistent=False)
             self.register_buffer("_std_b", _std_b, persistent=False)
 
-        def _patched_norm_apply(self, input, params, flags, transform=None):  # noqa: ANN001
+        def _patched_norm_apply(self, input, params, flags, transform=None):
             mean = self._mean_b
             std = self._std_b
             if mean.dtype != input.dtype or mean.device != input.device:
@@ -159,8 +180,10 @@ def _apply_kornia_optimisation_patches() -> str:
     # Patch 2: RandomHorizontalFlip — module-level template + cache
     # -----------------------------------------------------------------------
     try:
+        from typing import Dict as _Dict
+        from typing import Tuple as _Tuple
+
         import kornia.augmentation._2d.geometric.horizontal_flip as _hflip_mod
-        from typing import Dict as _Dict, Tuple as _Tuple
 
         # Inject module-level template and cache into the installed module
         _HFLIP_MAT_TEMPLATE = torch.tensor(
@@ -173,7 +196,7 @@ def _apply_kornia_optimisation_patches() -> str:
 
         _RHF = _hflip_mod.RandomHorizontalFlip
 
-        def _patched_hflip_compute(self, input, params, flags):  # noqa: ANN001
+        def _patched_hflip_compute(self, input, params, flags):
             w: int = int(params["forward_input_shape"][-1].item())
             key = (input.device, input.dtype, w)
             cached = _HFLIP_MAT_CACHE.get(key)
@@ -193,9 +216,9 @@ def _apply_kornia_optimisation_patches() -> str:
     # Patch 3: hflip / vflip — pure flip(), no .contiguous() overhead
     # -----------------------------------------------------------------------
     try:
-        import kornia.geometry.transform.flips as _flips_mod
-        import kornia.geometry.transform as _kgt
         import kornia.augmentation._2d.geometric.horizontal_flip as _hflip_mod2
+        import kornia.geometry.transform as _kgt
+        import kornia.geometry.transform.flips as _flips_mod
 
         def _fast_hflip(input: torch.Tensor) -> torch.Tensor:
             return input.flip(-1)
@@ -218,12 +241,12 @@ def _apply_kornia_optimisation_patches() -> str:
             if _mn.startswith("kornia"):
                 if getattr(_m, "hflip", None) is not _fast_hflip and hasattr(_m, "hflip"):
                     try:
-                        setattr(_m, "hflip", _fast_hflip)
+                        _m.hflip = _fast_hflip
                     except (AttributeError, TypeError):
                         pass
                 if getattr(_m, "vflip", None) is not _fast_vflip and hasattr(_m, "vflip"):
                     try:
-                        setattr(_m, "vflip", _fast_vflip)
+                        _m.vflip = _fast_vflip
                     except (AttributeError, TypeError):
                         pass
         status_parts.append("hflip/vflip(no-contiguous)")
@@ -235,9 +258,9 @@ def _apply_kornia_optimisation_patches() -> str:
     #          F.affine_grid/F.grid_sample fast path
     # -----------------------------------------------------------------------
     try:
-        import kornia.augmentation._2d.geometric.affine as _aff_mod
         import torch.nn.functional as F
-        from typing import Any as _Any, Dict as _ADict, Optional as _Opt, Tuple as _ATuple
+
+        import kornia.augmentation._2d.geometric.affine as _aff_mod
 
         # --- closed-form affine matrix builder ----------------------------
         def _affine_matrix2d_closed(
@@ -274,9 +297,7 @@ def _apply_kornia_optimisation_patches() -> str:
             r12 = d * sx_t * cy + e * sy_t * (cx - sx_t * cy) + f_t
             zeros = torch.zeros_like(r00)
             ones = torch.ones_like(r00)
-            return torch.stack(
-                [r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1
-            ).reshape(-1, 3, 3)
+            return torch.stack([r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1).reshape(-1, 3, 3)
 
         # --- closed-form 3x3 affine inverse -------------------------------
         def _affine_homography_inv(M: torch.Tensor) -> torch.Tensor:
@@ -291,9 +312,7 @@ def _apply_kornia_optimisation_patches() -> str:
             r12 = (c * d - a * f_t) / det
             zeros = torch.zeros_like(r00)
             ones = torch.ones_like(r00)
-            return torch.stack(
-                [r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1
-            ).reshape(-1, 3, 3)
+            return torch.stack([r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1).reshape(-1, 3, 3)
 
         # Inject helpers into the installed affine module
         _aff_mod._affine_matrix2d_closed = _affine_matrix2d_closed
@@ -302,16 +321,34 @@ def _apply_kornia_optimisation_patches() -> str:
         _RA = _aff_mod.RandomAffine
         _orig_ra_init = _RA.__init__
 
-        def _patched_ra_init(self, degrees, translate=None, scale=None, shear=None,
-                             resample="BILINEAR", same_on_batch=False, align_corners=False,
-                             padding_mode="ZEROS", p=0.5, keepdim=False, **kw):
+        def _patched_ra_init(
+            self,
+            degrees,
+            translate=None,
+            scale=None,
+            shear=None,
+            resample="BILINEAR",
+            same_on_batch=False,
+            align_corners=False,
+            padding_mode="ZEROS",
+            p=0.5,
+            keepdim=False,
+            **kw,
+        ):
             # Installed 0.7.4 does not have fill_value parameter; pop it silently.
             kw.pop("fill_value", None)
             _orig_ra_init(
-                self, degrees, translate=translate, scale=scale, shear=shear,
-                resample=resample, same_on_batch=same_on_batch,
-                align_corners=align_corners, padding_mode=padding_mode,
-                p=p, keepdim=keepdim,
+                self,
+                degrees,
+                translate=translate,
+                scale=scale,
+                shear=shear,
+                resample=resample,
+                same_on_batch=same_on_batch,
+                align_corners=align_corners,
+                padding_mode=padding_mode,
+                p=p,
+                keepdim=keepdim,
             )
             self._norm_cache: dict = {}
 
@@ -355,14 +392,13 @@ def _apply_kornia_optimisation_patches() -> str:
         def _patched_ra_apply(self, input, params, flags, transform=None):
             _, _, height, width = input.shape
             if not isinstance(transform, torch.Tensor):
-                raise TypeError(
-                    f"Expected the `transform` be a torch.Tensor. Got {type(transform)}."
-                )
+                raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
             padding_mode_str = flags["padding_mode"].name.lower()
 
             # Delegate fill mode to original warp_affine path
             if padding_mode_str == "fill":
                 from kornia.geometry.transform import warp_affine
+
                 return warp_affine(
                     input,
                     transform[:, :2, :],
@@ -380,17 +416,14 @@ def _apply_kornia_optimisation_patches() -> str:
             if not hasattr(self, "_norm_cache"):
                 self._norm_cache = {}
 
-            N, N_inv = _get_norm_matrices(
-                self, height, width, input.device, input.dtype
-            )
+            N, N_inv = _get_norm_matrices(self, height, width, input.device, input.dtype)
             M_inv = _affine_homography_inv(transform)
             theta = (N @ M_inv @ N_inv)[:, :2, :]
             B, C = input.shape[:2]
-            grid = F.affine_grid(
-                theta, [B, C, height, width], align_corners=align_corners
-            )
+            grid = F.affine_grid(theta, [B, C, height, width], align_corners=align_corners)
             return F.grid_sample(
-                input, grid,
+                input,
+                grid,
                 mode=mode,
                 padding_mode=padding_mode_str,
                 align_corners=align_corners,
@@ -410,11 +443,12 @@ def _apply_kornia_optimisation_patches() -> str:
     # -----------------------------------------------------------------------
     try:
         import kornia.augmentation._2d.intensity.color_jiggle as _cj_mod
-        from kornia.color import hsv_to_rgb as _hsv_to_rgb, rgb_to_hsv as _rgb_to_hsv
+        from kornia.color import hsv_to_rgb as _hsv_to_rgb
+        from kornia.color import rgb_to_hsv as _rgb_to_hsv
 
         _TWO_PI = 2.0 * math.pi
 
-        def _patched_cj_apply(self, input, params, flags, transform=None):  # noqa: ANN001
+        def _patched_cj_apply(self, input, params, flags, transform=None):
             brightness_factor: torch.Tensor = params["brightness_factor"]
             contrast_factor: torch.Tensor = params["contrast_factor"]
             saturation_factor: torch.Tensor = params["saturation_factor"]
@@ -431,22 +465,10 @@ def _apply_kornia_optimisation_patches() -> str:
             dtype = input.dtype
             device = input.device
 
-            b_vec = (
-                brightness_delta.to(dtype=dtype, device=device).view(-1, 1, 1, 1)
-                if do_brightness else None
-            )
-            c_vec = (
-                contrast_factor.to(dtype=dtype, device=device).view(-1, 1, 1, 1)
-                if do_contrast else None
-            )
-            s_vec = (
-                saturation_factor.to(dtype=dtype, device=device).view(-1, 1, 1, 1)
-                if do_saturation else None
-            )
-            h_vec = (
-                hue_shift.to(dtype=dtype, device=device).view(-1, 1, 1, 1)
-                if do_hue else None
-            )
+            b_vec = brightness_delta.to(dtype=dtype, device=device).view(-1, 1, 1, 1) if do_brightness else None
+            c_vec = contrast_factor.to(dtype=dtype, device=device).view(-1, 1, 1, 1) if do_contrast else None
+            s_vec = saturation_factor.to(dtype=dtype, device=device).view(-1, 1, 1, 1) if do_saturation else None
+            h_vec = hue_shift.to(dtype=dtype, device=device).view(-1, 1, 1, 1) if do_hue else None
 
             pending_s = None
             pending_h = None
@@ -516,6 +538,7 @@ def _apply_kornia_optimisation_patches() -> str:
 # Verification: assert all patches are active before benchmarking
 # ---------------------------------------------------------------------------
 
+
 def _verify_patches() -> list[str]:
     """Run spot-checks on each patch. Returns list of failure strings (empty = all OK)."""
     failures: list[str] = []
@@ -539,6 +562,7 @@ def _verify_patches() -> list[str]:
     # 2. RandomHorizontalFlip: module must have _HFLIP_MAT_CACHE
     try:
         import kornia.augmentation._2d.geometric.horizontal_flip as hf_mod
+
         if not hasattr(hf_mod, "_HFLIP_MAT_CACHE"):
             failures.append("HFlip patch NOT applied: _HFLIP_MAT_CACHE missing from module")
         aug_h = K.RandomHorizontalFlip(p=1.0).cuda()
@@ -551,8 +575,10 @@ def _verify_patches() -> list[str]:
 
     # 3. hflip / vflip: check they don't call .contiguous() by inspecting source
     try:
-        import kornia.geometry.transform.flips as flips_mod
         import inspect
+
+        import kornia.geometry.transform.flips as flips_mod
+
         hflip_src = inspect.getsource(flips_mod.hflip)
         if ".contiguous()" in hflip_src:
             failures.append("hflip patch NOT applied: .contiguous() still present")
@@ -565,6 +591,7 @@ def _verify_patches() -> list[str]:
     # 4. RandomAffine: module must have _affine_matrix2d_closed
     try:
         import kornia.augmentation._2d.geometric.affine as aff_mod
+
         if not hasattr(aff_mod, "_affine_matrix2d_closed"):
             failures.append("RandomAffine patch NOT applied: _affine_matrix2d_closed missing")
         aug2 = K.RandomAffine(degrees=15.0).cuda()
@@ -611,6 +638,7 @@ GRAPH_REPLAYS = 1000
 # Statistics helpers
 # ---------------------------------------------------------------------------
 
+
 def _stats(times: list[float]) -> dict:
     s = sorted(times)
     n = len(s)
@@ -627,7 +655,7 @@ def _stats(times: list[float]) -> dict:
     }
 
 
-def _safe_median(obj) -> float | None:  # noqa: ANN001
+def _safe_median(obj) -> float | None:
     if isinstance(obj, dict) and "median_ms" in obj:
         return obj["median_ms"]
     return None
@@ -641,6 +669,7 @@ def _ms_to_bps(ms: float) -> float:
 # DataLoader dataset helpers
 # ---------------------------------------------------------------------------
 
+
 class _AlbDatasetLazy(torch.utils.data.Dataset):
     """Albumentations: lazy per-worker generation, torch.tensor() ABI-safe."""
 
@@ -651,15 +680,18 @@ class _AlbDatasetLazy(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return self.n
 
-    def __getitem__(self, idx: int):  # noqa: ANN001
+    def __getitem__(self, idx: int):
         import albumentations as A
         import numpy as _np
-        aug = A.Compose([
-            A.HorizontalFlip(p=0.5),
-            A.Affine(rotate=(-15, 15), translate_percent=(-0.1, 0.1), scale=(0.8, 1.2), p=1.0),
-            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=1.0),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+
+        aug = A.Compose(
+            [
+                A.HorizontalFlip(p=0.5),
+                A.Affine(rotate=(-15, 15), translate_percent=(-0.1, 0.1), scale=(0.8, 1.2), p=1.0),
+                A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=1.0),
+                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ]
+        )
         rng = _np.random.default_rng(SEED + idx)
         img = (rng.random((self.res, self.res, 3)) * 255).astype(_np.uint8)
         out = aug(image=img)["image"]
@@ -676,8 +708,9 @@ class _GpuLibDataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return self.n
 
-    def __getitem__(self, idx: int):  # noqa: ANN001
+    def __getitem__(self, idx: int):
         import numpy as _np
+
         rng = _np.random.default_rng(SEED + idx)
         img = (rng.random((3, self.res, self.res)) * 255).astype(_np.float32)
         return torch.tensor(img)
@@ -741,10 +774,12 @@ def _cuda_event_times(fn, warmup: int, runs: int) -> list[float]:
 # Pipeline builders
 # ---------------------------------------------------------------------------
 
+
 def _build_kornia_aug():
     _patch_kornia_inverse()
     _apply_kornia_optimisation_patches()
     import kornia.augmentation as K
+
     return K.AugmentationSequential(
         K.RandomHorizontalFlip(p=0.5),
         K.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0),
@@ -758,17 +793,21 @@ def _build_kornia_aug():
 
 def _build_tv_aug():
     import torchvision.transforms.v2 as T
-    return T.Compose([
-        T.RandomHorizontalFlip(p=0.5),
-        T.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2)),
-        T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
+
+    return T.Compose(
+        [
+            T.RandomHorizontalFlip(p=0.5),
+            T.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2)),
+            T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
 # Row 1: Albumentations CPU + DataLoader
 # ---------------------------------------------------------------------------
+
 
 def row1_albumentations() -> dict:
     ds = _AlbDatasetLazy(N_DATASET, RES)
@@ -786,6 +825,7 @@ def row1_albumentations() -> dict:
 # Row 2: torchvision.v2 GPU eager
 # ---------------------------------------------------------------------------
 
+
 def row2_tv_eager() -> dict:
     aug = _build_tv_aug()
     ds = _GpuLibDataset(N_DATASET, RES)
@@ -802,6 +842,7 @@ def row2_tv_eager() -> dict:
 # ---------------------------------------------------------------------------
 # Row 4: kornia GPU eager (all 5 patches)
 # ---------------------------------------------------------------------------
+
 
 def row4_kornia_eager() -> dict:
     aug = _build_kornia_aug()
@@ -1152,11 +1193,7 @@ with open("{result_file}","w") as f: json.dump(result,f)
     env["PYTHONNOUSERSITE"] = "1"
 
     try:
-        proc = subprocess.run(
-            [python, driver_path],
-            capture_output=True, text=True,
-            timeout=600, env=env, cwd="/tmp"
-        )
+        proc = subprocess.run([python, driver_path], capture_output=True, text=True, timeout=600, env=env, cwd="/tmp")
         for line in proc.stdout.strip().splitlines():
             print(f"    [sub] {line}", flush=True)
         if proc.returncode != 0:
@@ -1164,17 +1201,17 @@ with open("{result_file}","w") as f: json.dump(result,f)
             return {
                 "status": "FAILED",
                 "reason": f"subprocess exit {proc.returncode}: {last_err[:80]}",
-                "eager_ms": None, "replay_ms": None,
+                "eager_ms": None,
+                "replay_ms": None,
             }
         import json as _j
+
         with open(result_file) as f:
             return _j.load(f)
     except subprocess.TimeoutExpired:
-        return {"status": "FAILED", "reason": "subprocess timeout (600s)",
-                "eager_ms": None, "replay_ms": None}
+        return {"status": "FAILED", "reason": "subprocess timeout (600s)", "eager_ms": None, "replay_ms": None}
     except Exception as exc:
-        return {"status": "FAILED", "reason": f"launch error: {exc}",
-                "eager_ms": None, "replay_ms": None}
+        return {"status": "FAILED", "reason": f"launch error: {exc}", "eager_ms": None, "replay_ms": None}
     finally:
         for p in (driver_path, result_file):
             try:
@@ -1197,6 +1234,7 @@ def row8_tv_graph() -> dict:
 # Version info
 # ---------------------------------------------------------------------------
 
+
 def _get_versions() -> dict[str, str]:
     vers: dict[str, str] = {}
     for lib in ("kornia", "albumentations", "torchvision"):
@@ -1211,6 +1249,7 @@ def _get_versions() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     wall_start = time.perf_counter()
@@ -1237,6 +1276,7 @@ def main() -> None:
     print(f"\nkornia v4 patch status: {patch_status}")
 
     import kornia
+
     print(f"kornia.__file__: {kornia.__file__}")
     print()
 
@@ -1266,18 +1306,18 @@ def main() -> None:
     }
 
     row_configs = [
-        ("row1_alb",      "Row 1: Albumentations CPU + 8 workers",    row1_albumentations),
-        ("row2_tv_eager", "Row 2: torchvision.v2 GPU eager",           row2_tv_eager),
+        ("row1_alb", "Row 1: Albumentations CPU + 8 workers", row1_albumentations),
+        ("row2_tv_eager", "Row 2: torchvision.v2 GPU eager", row2_tv_eager),
         # Rows 3, 5, 6: SKIPPED — Triton not available on Jetson JetPack 6
-        ("row4_k_eager",  "Row 4: kornia GPU eager (all 5 patches)",   row4_kornia_eager),
-        ("row7_k_graph",  "Row 7: kornia GPU + CUDA Graph",            row7_kornia_graph),
-        ("row8_tv_graph", "Row 8: torchvision.v2 GPU + CUDA Graph",    row8_tv_graph),
+        ("row4_k_eager", "Row 4: kornia GPU eager (all 5 patches)", row4_kornia_eager),
+        ("row7_k_graph", "Row 7: kornia GPU + CUDA Graph", row7_kornia_graph),
+        ("row8_tv_graph", "Row 8: torchvision.v2 GPU + CUDA Graph", row8_tv_graph),
     ]
 
     for key, label, fn in row_configs:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Running: {label} ...")
-        print('='*60, flush=True)
+        print("=" * 60, flush=True)
         try:
             r = fn()
             results["rows"][key] = r
@@ -1291,8 +1331,9 @@ def main() -> None:
                 eager_m = _safe_median(r.get("eager_ms", {}))
                 replay_m = _safe_median(r.get("replay_ms", {}))
                 if status == "OK" and replay_m:
-                    print(f"  Graph OK: replay={replay_m:.3f}ms  eager={eager_m:.3f}ms  "
-                          f"speedup={eager_m/replay_m:.2f}x")
+                    print(
+                        f"  Graph OK: replay={replay_m:.3f}ms  eager={eager_m:.3f}ms  speedup={eager_m / replay_m:.2f}x"
+                    )
                 else:
                     reason = r.get("reason", "")[:80]
                     eager_str = f"{eager_m:.3f}ms" if eager_m else "—"
@@ -1328,6 +1369,7 @@ def main() -> None:
 # ---------------------------------------------------------------------------
 # Leaderboard generator
 # ---------------------------------------------------------------------------
+
 
 def _generate_leaderboard(
     results: dict,
@@ -1369,7 +1411,7 @@ def _generate_leaderboard(
         mn_s = f"{mn:.1f}" if mn is not None else "—"
         mx_s = f"{mx:.1f}" if mx is not None else "—"
         if speedup_ref is not None and med and speedup_ref > 0:
-            spd = f"{speedup_ref/med:.2f}×"
+            spd = f"{speedup_ref / med:.2f}×"
         else:
             spd = "—"
         return f"| {row_num} | {label} | {mode_desc} | {med_s} | {iqr_s} | {mn_s} | {mx_s} | {spd} |"
@@ -1390,7 +1432,7 @@ def _generate_leaderboard(
             mn_s = f"{mn:.1f}" if mn is not None else "—"
             mx_s = f"{mx:.1f}" if mx is not None else "—"
             if replay_med and eager_ref_ms:
-                spd = f"{eager_ref_ms/replay_med:.2f}× vs eager"
+                spd = f"{eager_ref_ms / replay_med:.2f}× vs eager"
             else:
                 spd = "—"
             return f"| {row_num} | {label} | CUDA Graph (OK) | {replay_med_s} | {iqr_s} | {mn_s} | {mx_s} | {spd} |"
@@ -1402,8 +1444,8 @@ def _generate_leaderboard(
             return f"| {row_num} | {label} | CUDA Graph ({status_str}) | {eager_s} | — | — | — | — |"
 
     # v2/v3 baseline medians for comparison table
-    V2_K_EAGER = 68.8   # v2 DataLoader median
-    V3_K_EAGER = 72.4   # v3 DataLoader median (2 patches)
+    V2_K_EAGER = 68.8  # v2 DataLoader median
+    V3_K_EAGER = 72.4  # v3 DataLoader median (2 patches)
     V2_TV_EAGER = 22.6  # v2 torchvision eager
     V3_TV_EAGER = 25.2  # v3 torchvision eager
 
@@ -1417,10 +1459,10 @@ def _generate_leaderboard(
         "",
         "| Key | Value |",
         "|-----|-------|",
-        f"| Platform | Jetson Orin (aarch64), Linux 5.15.148-tegra |",
+        "| Platform | Jetson Orin (aarch64), Linux 5.15.148-tegra |",
         f"| GPU | {device_name} (Orin integrated GPU, 1792-core Ampere) |",
-        f"| CUDA | 12.6 (libcusolver 11.6.4.69) |",
-        f"| Python | 3.10 (pixi camera-object-detector env) |",
+        "| CUDA | 12.6 (libcusolver 11.6.4.69) |",
+        "| Python | 3.10 (pixi camera-object-detector env) |",
         f"| PyTorch | {tv} |",
         f"| kornia | {versions.get('kornia', 'n/a')} (installed 0.7.4 + 5 runtime patches) |",
         f"| albumentations | {versions.get('albumentations', 'n/a')} |",
@@ -1438,7 +1480,7 @@ def _generate_leaderboard(
         "Batch=8, resolution=512×512, float32.",
         "",
         "**End-to-end DataLoader timing (rows 1/2/4):**",
-        f"DataLoader delivers CPU tensors → main thread applies H2D + GPU aug.",
+        "DataLoader delivers CPU tensors → main thread applies H2D + GPU aug.",
         f"{N_TIMED} timed batches + {WARMUP} warmup, {NUM_WORKERS} workers. All times include",
         "Python dispatch, DataLoader latency, and H2D transfer.",
         "",
@@ -1499,16 +1541,16 @@ def _generate_leaderboard(
         "",
         "| Version | Patches | kornia eager (ms) | torchvision eager (ms) | Gap |",
         "|---------|---------|------------------:|----------------------:|-----|",
-        f"| v2 | none (baseline) | {V2_K_EAGER:.1f} | {V2_TV_EAGER:.1f} | {V2_K_EAGER/V2_TV_EAGER:.2f}× |",
-        f"| v3 | Normalize + HFlip | {V3_K_EAGER:.1f} | {V3_TV_EAGER:.1f} | {V3_K_EAGER/V3_TV_EAGER:.2f}× |",
+        f"| v2 | none (baseline) | {V2_K_EAGER:.1f} | {V2_TV_EAGER:.1f} | {V2_K_EAGER / V2_TV_EAGER:.2f}× |",
+        f"| v3 | Normalize + HFlip | {V3_K_EAGER:.1f} | {V3_TV_EAGER:.1f} | {V3_K_EAGER / V3_TV_EAGER:.2f}× |",
     ]
     if k_eager_ms and tv_eager_ms:
         lines.append(
             f"| v4 | Normalize + HFlip + hflip/vflip + RandomAffine + ColorJiggle | "
-            f"{k_eager_ms:.1f} | {tv_eager_ms:.1f} | {k_eager_ms/tv_eager_ms:.2f}× |"
+            f"{k_eager_ms:.1f} | {tv_eager_ms:.1f} | {k_eager_ms / tv_eager_ms:.2f}× |"
         )
     else:
-        lines.append(f"| v4 | all 5 | — | — | — |")
+        lines.append("| v4 | all 5 | — | — | — |")
     lines.append("")
 
     # --- Honest interpretation ---
@@ -1525,10 +1567,7 @@ def _generate_leaderboard(
         pct_from_v2 = 100 * delta_from_v2 / V2_K_EAGER
         pct_from_v3 = 100 * delta_from_v3 / V3_K_EAGER
 
-        lines.append(
-            f"kornia v4 eager: **{k_eager_ms:.1f} ms** "
-            f"(v2 baseline: {V2_K_EAGER} ms, v3: {V3_K_EAGER} ms)."
-        )
+        lines.append(f"kornia v4 eager: **{k_eager_ms:.1f} ms** (v2 baseline: {V2_K_EAGER} ms, v3: {V3_K_EAGER} ms).")
         lines.append("")
 
         if abs(delta_from_v2) < 2.0:
@@ -1582,14 +1621,12 @@ def _generate_leaderboard(
             lines.append(
                 f"**kornia (Row 7): CUDA Graph capture SUCCEEDED.** "
                 f"Replay median: {k_replay:.3f} ms vs eager {k_eg:.3f} ms "
-                f"({k_eg/k_replay:.2f}× speedup). "
+                f"({k_eg / k_replay:.2f}× speedup). "
                 "All five patches together eliminated the in-forward tensor allocations "
                 "that were blocking CUDA Graph capture."
             )
         else:
-            lines.append(
-                f"**kornia (Row 7): CUDA Graph capture FAILED.** Reason: `{reason}`. "
-            )
+            lines.append(f"**kornia (Row 7): CUDA Graph capture FAILED.** Reason: `{reason}`. ")
             lines.append(
                 "The five patches address Normalize buffer allocation, HFlip tensor construction, "
                 "and RandomAffine normalization-matrix computation, but kornia's augmentation "
@@ -1610,7 +1647,7 @@ def _generate_leaderboard(
             lines.append(
                 f"**torchvision (Row 8): CUDA Graph capture SUCCEEDED.** "
                 f"Replay median: {tv_replay:.3f} ms vs eager {tv_eg:.3f} ms "
-                f"({tv_eg/tv_replay:.2f}× speedup)."
+                f"({tv_eg / tv_replay:.2f}× speedup)."
             )
         else:
             lines.append("")
@@ -1629,8 +1666,7 @@ def _generate_leaderboard(
     if k_eager_ms and tv_eager_ms:
         gap = k_eager_ms / tv_eager_ms
         lines.append(
-            f"kornia v4 eager ({k_eager_ms:.1f} ms) vs torchvision eager ({tv_eager_ms:.1f} ms): "
-            f"**{gap:.2f}× gap**. "
+            f"kornia v4 eager ({k_eager_ms:.1f} ms) vs torchvision eager ({tv_eager_ms:.1f} ms): **{gap:.2f}× gap**. "
         )
         lines.append(
             "The gap persists because torchvision's RandomAffine uses a highly-optimized "
@@ -1652,16 +1688,13 @@ def _generate_leaderboard(
         delta_pct = (V2_K_EAGER - k_eager_ms) / V2_K_EAGER * 100
         sign = "+" if delta_pct > 0 else ""
         lines.append(
-            f"| 5-patch bundle vs v2 (68.8ms) | "
-            f"{k_eager_ms:.1f}ms ({sign}{delta_pct:.1f}%) — within DVFS noise band |"
+            f"| 5-patch bundle vs v2 (68.8ms) | {k_eager_ms:.1f}ms ({sign}{delta_pct:.1f}%) — within DVFS noise band |"
         )
     else:
         lines.append("| 5-patch bundle vs v2 | not measured |")
 
     if k_eager_ms and tv_eager_ms:
-        lines.append(
-            f"| kornia vs torchvision gap | {k_eager_ms/tv_eager_ms:.2f}× (unchanged from v2/v3) |"
-        )
+        lines.append(f"| kornia vs torchvision gap | {k_eager_ms / tv_eager_ms:.2f}× (unchanged from v2/v3) |")
 
     if isinstance(r7, dict):
         status = r7.get("status", "?")
@@ -1671,13 +1704,10 @@ def _generate_leaderboard(
             k_eg = _safe_median(r7.get("eager_ms", {}))
             lines.append(
                 f"| CUDA Graph capture (kornia, all 5 patches) | "
-                f"SUCCESS: {k_re:.2f}ms replay vs {k_eg:.2f}ms eager ({k_eg/k_re:.2f}×) |"
+                f"SUCCESS: {k_re:.2f}ms replay vs {k_eg:.2f}ms eager ({k_eg / k_re:.2f}×) |"
             )
         else:
-            lines.append(
-                f"| CUDA Graph capture (kornia, all 5 patches) | "
-                f"FAILED: `{reason}` |"
-            )
+            lines.append(f"| CUDA Graph capture (kornia, all 5 patches) | FAILED: `{reason}` |")
 
     if isinstance(r8, dict):
         status = r8.get("status", "?")
@@ -1687,13 +1717,11 @@ def _generate_leaderboard(
             tv_eg = _safe_median(r8.get("eager_ms", {}))
             lines.append(
                 f"| CUDA Graph capture (torchvision) | "
-                f"SUCCESS: {tv_re:.2f}ms replay vs {tv_eg:.2f}ms eager ({tv_eg/tv_re:.2f}×) |"
+                f"SUCCESS: {tv_re:.2f}ms replay vs {tv_eg:.2f}ms eager ({tv_eg / tv_re:.2f}×) |"
             )
         else:
             reason = r8.get("reason", "")[:60]
-            lines.append(
-                f"| CUDA Graph capture (torchvision) | FAILED: `{reason}` |"
-            )
+            lines.append(f"| CUDA Graph capture (torchvision) | FAILED: `{reason}` |")
 
     lines += [
         "",

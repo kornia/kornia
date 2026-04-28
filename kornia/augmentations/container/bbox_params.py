@@ -26,10 +26,10 @@ gets:
 This eliminates the boilerplate downstream users (rf-detr, torchgeo) had to
 write themselves.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Sequence
+from dataclasses import dataclass
 
 import torch
 from torch import Tensor

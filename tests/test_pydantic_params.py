@@ -1,5 +1,24 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Tests for the Pydantic Params models for the rf-detr seven."""
+
 import pytest
+
 from kornia.augmentations.params import PARAMS_BY_NAME, PYDANTIC_AVAILABLE
 
 if not PYDANTIC_AVAILABLE:
@@ -8,9 +27,14 @@ if not PYDANTIC_AVAILABLE:
 
 def test_params_dict_has_all_seven_plus_alias():
     expected = {
-        "RandomHorizontalFlip", "RandomVerticalFlip", "RandomRotation",
-        "RandomAffine", "ColorJiggle", "ColorJitter",
-        "RandomGaussianBlur", "RandomGaussianNoise",
+        "RandomHorizontalFlip",
+        "RandomVerticalFlip",
+        "RandomRotation",
+        "RandomAffine",
+        "ColorJiggle",
+        "ColorJitter",
+        "RandomGaussianBlur",
+        "RandomGaussianNoise",
     }
     assert expected.issubset(set(PARAMS_BY_NAME.keys()))
 
@@ -25,7 +49,7 @@ def test_each_params_class_emits_json_schema(name):
 
 def test_horizontal_flip_validates_p_range():
     cls = PARAMS_BY_NAME["RandomHorizontalFlip"]
-    cls(p=0.5)        # OK
+    cls(p=0.5)  # OK
     with pytest.raises(Exception):
         cls(p=1.5)
     with pytest.raises(Exception):
@@ -42,7 +66,7 @@ def test_random_rotation_requires_degrees():
 
 def test_gaussian_blur_kernel_size_must_be_odd():
     cls = PARAMS_BY_NAME["RandomGaussianBlur"]
-    cls(kernel_size=3, sigma=(0.1, 2.0))     # OK
+    cls(kernel_size=3, sigma=(0.1, 2.0))  # OK
     cls(kernel_size=(5, 5), sigma=(0.1, 2.0))  # OK
     with pytest.raises(Exception):
         cls(kernel_size=4, sigma=(0.1, 2.0))

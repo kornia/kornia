@@ -28,12 +28,12 @@ checked-in snapshot. Adding NEW keyword args (with defaults) is allowed
 If the test fails, the message tells you exactly which params drifted and
 which downstream rf-detr factory call site is at risk.
 """
+
 from __future__ import annotations
 
 import inspect
 
 import pytest
-
 
 RFDETR_SEVEN = [
     "RandomHorizontalFlip",
@@ -82,8 +82,7 @@ def test_class_exists_in_plural_namespace(class_name):
     import kornia.augmentations as KA
 
     assert hasattr(KA, class_name), (
-        f"{class_name} not reachable via kornia.augmentations (plural); "
-        f"namespace shim broken"
+        f"{class_name} not reachable via kornia.augmentations (plural); namespace shim broken"
     )
 
 

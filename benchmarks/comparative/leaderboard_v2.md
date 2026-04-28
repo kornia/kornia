@@ -92,11 +92,11 @@ This scope isolates pure kernel cost from Python dispatch overhead. Any gap betw
 
 ### Scope 3 — CUDA Graph ceiling
 
-**kornia**: CUDA Graph capture failed — `AcceleratorError: CUDA error: operation not permitted when stream is capturing`. 
+**kornia**: CUDA Graph capture failed — `AcceleratorError: CUDA error: operation not permitted when stream is capturing`.
   Eager baseline: 72.57 ms.
   Root cause: `horizontal_flip.py:compute_transformation` allocates a new tensor (`torch.tensor([[-1, 0, w-1], [0, 1, 0], [0, 0, 1]])`) inside the forward pass. CUDA graph capture does not permit new tensor allocations (`cudaErrorStreamCaptureUnsupported`). Fix requires pre-allocating all transformation matrices. `aug.compile()` (torch.compile) is the practical workaround.
 
-**torchvision.v2**: CUDA Graph capture failed — `AcceleratorError: CUDA error: operation not permitted when stream is capturing`. 
+**torchvision.v2**: CUDA Graph capture failed — `AcceleratorError: CUDA error: operation not permitted when stream is capturing`.
   Eager baseline: 14.35 ms.
   Root cause: `_geometry.py:affine_image` calls `torch.tensor(matrix, dtype=dtype, device=image.device).reshape(1, 2, 3)` inside the forward pass — same `cudaErrorStreamCaptureUnsupported` as kornia. Neither library can be captured as-is. Both need pre-allocation of static tensors to support CUDA graph capture.
 

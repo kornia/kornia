@@ -56,17 +56,11 @@ class BboxParams:
 
     def __post_init__(self) -> None:
         if self.format not in _VALID_FORMATS:
-            raise ValueError(
-                f"BboxParams.format must be one of {sorted(_VALID_FORMATS)!r}, got {self.format!r}."
-            )
+            raise ValueError(f"BboxParams.format must be one of {sorted(_VALID_FORMATS)!r}, got {self.format!r}.")
         if not (0.0 <= self.min_visibility <= 1.0):
-            raise ValueError(
-                f"BboxParams.min_visibility must be in [0.0, 1.0], got {self.min_visibility}."
-            )
+            raise ValueError(f"BboxParams.min_visibility must be in [0.0, 1.0], got {self.min_visibility}.")
         if self.min_area < 0.0:
-            raise ValueError(
-                f"BboxParams.min_area must be >= 0, got {self.min_area}."
-            )
+            raise ValueError(f"BboxParams.min_area must be >= 0, got {self.min_area}.")
 
 
 # ---------------------------------------------------------------------------
@@ -167,8 +161,7 @@ def filter_bboxes(
     """
     if boxes_pre.ndim == 3 or boxes_post.ndim == 3:
         raise NotImplementedError(
-            "filter_bboxes does not yet support batched (3-D) boxes. "
-            "Pass 2-D (N, 4) tensors instead."
+            "filter_bboxes does not yet support batched (3-D) boxes. Pass 2-D (N, 4) tensors instead."
         )
 
     if labels is None:

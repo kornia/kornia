@@ -19,10 +19,12 @@
 Closes torchgeo#3108 — the canonical example was:
     torch.export.export(K.Normalize(0, 1), inputs)
 """
+
 from __future__ import annotations
 
 import pytest
 import torch
+
 import kornia.augmentation as K
 
 

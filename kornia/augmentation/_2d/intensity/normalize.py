@@ -23,8 +23,6 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation.utils import _transform_input
-from kornia.enhance import normalize
 
 
 class Normalize(IntensityAugmentationBase2D):
@@ -134,9 +132,7 @@ class Normalize(IntensityAugmentationBase2D):
                     )
                 std_c = std.shape[1] if std.dim() == 4 else (std.shape[0] if std.dim() else 1)
                 if std_c != 1 and std_c != x.shape[1]:
-                    raise ValueError(
-                        f"std length and number of channels do not match. Got {std.shape} and {x.shape}."
-                    )
+                    raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {x.shape}.")
                 if mean.dtype != x.dtype or mean.device != x.device:
                     mean = mean.to(device=x.device, dtype=x.dtype)
                     std = std.to(device=x.device, dtype=x.dtype)

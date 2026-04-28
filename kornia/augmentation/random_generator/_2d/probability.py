@@ -60,13 +60,11 @@ class ProbabilityGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         if same_on_batch:
             # GPU-side Bernoulli: draw one sample and broadcast across batch
-            probs_mask = (
-                torch.empty(1, device=self._device, dtype=self._dtype).uniform_(0.0, 1.0) < self._p
-            ).expand(batch_size)
-        else:
-            probs_mask = (
-                torch.empty(batch_size, device=self._device, dtype=self._dtype).uniform_(0.0, 1.0) < self._p
+            probs_mask = (torch.empty(1, device=self._device, dtype=self._dtype).uniform_(0.0, 1.0) < self._p).expand(
+                batch_size
             )
+        else:
+            probs_mask = torch.empty(batch_size, device=self._device, dtype=self._dtype).uniform_(0.0, 1.0) < self._p
         return {"probs": probs_mask}
 
 

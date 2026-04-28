@@ -361,9 +361,7 @@ class TestRandomCutMixV2(BaseTester):
         imgs = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
 
         # xyxy: width = xmax - xmin, so [6,6,7,7] xyxy_plus -> [6,6,8,8] xyxy
-        boxes = torch.tensor(
-            [[[6.0, 6.0, 8.0, 8.0]], [[0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype
-        )  # (2, 1, 4)
+        boxes = torch.tensor([[[6.0, 6.0, 8.0, 8.0]], [[0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype)  # (2, 1, 4)
 
         # cut rect: x_start=2, y_start=2, width=4, height=4 -> TL=(2,2), BR=(5,5)
         crop = bbox_generator(
@@ -402,9 +400,7 @@ class TestRandomCutMixV2(BaseTester):
         imgs = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
 
         # xyxy_plus [2,2,5,5] -> xyxy [2,2,6,6]
-        boxes = torch.tensor(
-            [[[2.0, 2.0, 6.0, 6.0]], [[0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype
-        )
+        boxes = torch.tensor([[[2.0, 2.0, 6.0, 6.0]], [[0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype)
 
         crop = bbox_generator(
             torch.tensor([2.0, 2.0], device=device, dtype=dtype),
@@ -445,9 +441,7 @@ class TestRandomCutMixV2(BaseTester):
         imgs = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
 
         # xyxy_plus [1,1,3,3] -> xyxy [1,1,4,4]
-        boxes = torch.tensor(
-            [[[1.0, 1.0, 4.0, 4.0]], [[0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype
-        )
+        boxes = torch.tensor([[[1.0, 1.0, 4.0, 4.0]], [[0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype)
 
         crop = bbox_generator(
             torch.tensor([2.0, 2.0], device=device, dtype=dtype),
@@ -485,9 +479,7 @@ class TestRandomCutMixV2(BaseTester):
         imgs = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
 
         # xyxy_plus [1,1,3,3] -> xyxy [1,1,4,4]
-        boxes = torch.tensor(
-            [[[1.0, 1.0, 4.0, 4.0]], [[0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype
-        )
+        boxes = torch.tensor([[[1.0, 1.0, 4.0, 4.0]], [[0.0, 0.0, 1.0, 1.0]]], device=device, dtype=dtype)
 
         crop = bbox_generator(
             torch.tensor([2.0, 2.0], device=device, dtype=dtype),
@@ -526,9 +518,7 @@ class TestRandomCutMixV2(BaseTester):
 
         # Target image 0 has no real boxes; source image 1 has the box of interest.
         # xyxy_plus [4,4,6,6] -> xyxy [4,4,7,7]
-        boxes = torch.tensor(
-            [[[0.0, 0.0, 1.0, 1.0]], [[4.0, 4.0, 7.0, 7.0]]], device=device, dtype=dtype
-        )
+        boxes = torch.tensor([[[0.0, 0.0, 1.0, 1.0]], [[4.0, 4.0, 7.0, 7.0]]], device=device, dtype=dtype)
 
         crop = bbox_generator(
             torch.tensor([2.0, 2.0], device=device, dtype=dtype),
@@ -566,9 +556,7 @@ class TestRandomCutMixV2(BaseTester):
         imgs = torch.rand(2, 1, 8, 8, device=device, dtype=dtype)
 
         # xyxy_plus [6,6,8,8] -> xyxy [6,6,9,9]
-        boxes = torch.tensor(
-            [[[0.0, 0.0, 1.0, 1.0]], [[6.0, 6.0, 9.0, 9.0]]], device=device, dtype=dtype
-        )
+        boxes = torch.tensor([[[0.0, 0.0, 1.0, 1.0]], [[6.0, 6.0, 9.0, 9.0]]], device=device, dtype=dtype)
 
         crop = bbox_generator(
             torch.tensor([2.0, 2.0], device=device, dtype=dtype),
@@ -791,9 +779,7 @@ class TestRandomMosaic(BaseTester):
                 torch.ones(1, 8, 8, device=device, dtype=dtype) * 20.0,
             ]
         )
-        boxes = torch.tensor(
-            [[[4.0, 5, 6, 7], [1, 2, 3, 4]], [[2, 2, 6, 6], [0, 0, 0, 0]]], device=device, dtype=dtype
-        )
+        boxes = torch.tensor([[[4.0, 5, 6, 7], [1, 2, 3, 4]], [[2, 2, 6, 6], [0, 0, 0, 0]]], device=device, dtype=dtype)
 
         out_image, out_mask, out_box = f(input_img, masks, boxes)
         assert out_image.shape == torch.Size([2, 1, 8, 8])

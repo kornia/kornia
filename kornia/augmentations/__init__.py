@@ -26,8 +26,8 @@ from __future__ import annotations
 import importlib
 import sys
 
-from kornia.augmentation import *  # noqa: F401, F403
-from kornia.augmentation import __all__  # noqa: F401
+from kornia.augmentation import *
+from kornia.augmentation import __all__
 
 _SINGULAR = "kornia.augmentation"
 
@@ -53,5 +53,5 @@ _prefix = f"{_SINGULAR}."
 _plural_prefix = f"{__name__}."
 for _key, _mod in list(sys.modules.items()):
     if _key.startswith(_prefix):
-        _suffix = _key[len(_prefix):]
+        _suffix = _key[len(_prefix) :]
         sys.modules[f"{_plural_prefix}{_suffix}"] = _mod

@@ -100,9 +100,11 @@ class PlainUniformGenerator(RandomGeneratorBase):
         out: Dict[str, torch.Tensor] = {}
         for name, (low, high) in self._sampler_bounds.items():
             if same_on_batch:
-                sample = torch.empty(1, device=self._sampler_device, dtype=self._sampler_dtype).uniform_(
-                    low, high
-                ).expand(batch_size)
+                sample = (
+                    torch.empty(1, device=self._sampler_device, dtype=self._sampler_dtype)
+                    .uniform_(low, high)
+                    .expand(batch_size)
+                )
             else:
                 sample = torch.empty(batch_size, device=self._sampler_device, dtype=self._sampler_dtype).uniform_(
                     low, high

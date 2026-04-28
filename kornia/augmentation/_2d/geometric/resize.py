@@ -96,9 +96,7 @@ class Resize(GeometricAugmentationBase2D):
             out_size = tuple(size_flag)  # type: ignore[assignment]
 
         interpolation = flags["resample"].name.lower()
-        align_corners = (
-            flags["align_corners"] if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC] else None
-        )
+        align_corners = flags["align_corners"] if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC] else None
         return resize(
             input,
             out_size,

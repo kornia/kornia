@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Fair three-scope comparative benchmark: kornia vs Albumentations vs torchvision.v2.
 
 Three scopes:
@@ -19,6 +36,7 @@ Known workarounds applied:
 
 Platform: Jetson Orin (aarch64), CUDA 12.6, PyTorch 2.8.0, Python 3.10
 """
+
 from __future__ import annotations
 
 import json
@@ -41,6 +59,7 @@ import torch
 # Must be applied BEFORE importing any kornia geometry module.
 # ---------------------------------------------------------------------------
 
+
 def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
     """Closed-form 3x3 matrix inverse via adjugate / determinant.
 
@@ -59,15 +78,15 @@ def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
     det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
     inv_det = 1.0 / det
     inv = torch.empty_like(m)
-    inv[..., 0, 0] =  (e * i - f * h) * inv_det
+    inv[..., 0, 0] = (e * i - f * h) * inv_det
     inv[..., 0, 1] = -(b * i - c * h) * inv_det
-    inv[..., 0, 2] =  (b * f - c * e) * inv_det
+    inv[..., 0, 2] = (b * f - c * e) * inv_det
     inv[..., 1, 0] = -(d * i - f * g) * inv_det
-    inv[..., 1, 1] =  (a * i - c * g) * inv_det
+    inv[..., 1, 1] = (a * i - c * g) * inv_det
     inv[..., 1, 2] = -(a * f - c * d) * inv_det
-    inv[..., 2, 0] =  (d * h - e * g) * inv_det
+    inv[..., 2, 0] = (d * h - e * g) * inv_det
     inv[..., 2, 1] = -(a * h - b * g) * inv_det
-    inv[..., 2, 2] =  (a * e - b * d) * inv_det
+    inv[..., 2, 2] = (a * e - b * d) * inv_det
     if squeeze:
         inv = inv.squeeze(0)
     return inv.to(dtype)
@@ -75,18 +94,20 @@ def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
 
 def _patch_kornia_inverse() -> None:
     """Patch _torch_inverse_cast in every kornia module that imported it."""
-    import kornia.utils.helpers as _kh
     import kornia.geometry.conversions as _kgc
+    import kornia.utils.helpers as _kh
+
     _kh._torch_inverse_cast = _analytical_3x3_inv
     _kgc._torch_inverse_cast = _analytical_3x3_inv
     for mod_name, mod in sys.modules.items():
         if mod_name.startswith("kornia") and hasattr(mod, "_torch_inverse_cast"):
-            setattr(mod, "_torch_inverse_cast", _analytical_3x3_inv)
+            mod._torch_inverse_cast = _analytical_3x3_inv
 
 
 # Trigger kornia loading so the patch covers geometry.conversions
+import kornia.geometry.conversions
 import kornia.utils.helpers  # noqa: F401
-import kornia.geometry.conversions  # noqa: F401
+
 _patch_kornia_inverse()
 
 
@@ -116,6 +137,7 @@ S3_REPLAYS = 1000
 # Statistics helpers
 # ---------------------------------------------------------------------------
 
+
 def _stats(times: list[float]) -> dict:
     s = sorted(times)
     n = len(s)
@@ -144,6 +166,7 @@ def _ms_to_bps(ms: float) -> float:
 # Worker-safe augmentation: the Dataset stores the pipeline, workers do the
 # augmentation. Each library does the same amount of WORK.
 
+
 class _AlbDataset(torch.utils.data.Dataset):
     """Albumentations path: uint8 HWC numpy -> augment in worker -> return CHW float."""
 
@@ -157,15 +180,18 @@ class _AlbDataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return self.n
 
-    def __getitem__(self, idx: int):  # noqa: ANN001
+    def __getitem__(self, idx: int):
         import albumentations as A
+
         # Build aug lazily in the worker (forked process) to avoid IPC of the A.Compose object
-        aug = A.Compose([
-            A.HorizontalFlip(p=0.5),
-            A.Affine(rotate=(-15, 15), translate_percent=(-0.1, 0.1), scale=(0.8, 1.2), p=1.0),
-            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=1.0),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+        aug = A.Compose(
+            [
+                A.HorizontalFlip(p=0.5),
+                A.Affine(rotate=(-15, 15), translate_percent=(-0.1, 0.1), scale=(0.8, 1.2), p=1.0),
+                A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=1.0),
+                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ]
+        )
         out = aug(image=self.images[idx])["image"]  # HWC float32
         # CHW float32 tensor
         return torch.from_numpy(out.transpose(2, 0, 1).copy())
@@ -186,15 +212,18 @@ class _AlbDatasetLazy(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return self.n
 
-    def __getitem__(self, idx: int):  # noqa: ANN001
+    def __getitem__(self, idx: int):
         import albumentations as A
         import numpy as _np
-        aug = A.Compose([
-            A.HorizontalFlip(p=0.5),
-            A.Affine(rotate=(-15, 15), translate_percent=(-0.1, 0.1), scale=(0.8, 1.2), p=1.0),
-            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=1.0),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+
+        aug = A.Compose(
+            [
+                A.HorizontalFlip(p=0.5),
+                A.Affine(rotate=(-15, 15), translate_percent=(-0.1, 0.1), scale=(0.8, 1.2), p=1.0),
+                A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=1.0),
+                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ]
+        )
         rng = _np.random.default_rng(SEED + idx)
         img = (rng.random((self.res, self.res, 3)) * 255).astype(_np.uint8)
         out = aug(image=img)["image"]  # HWC float32
@@ -216,8 +245,9 @@ class _GpuLibDataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return self.n
 
-    def __getitem__(self, idx: int):  # noqa: ANN001
+    def __getitem__(self, idx: int):
         import numpy as _np
+
         rng = _np.random.default_rng(SEED + idx)
         img = (rng.random((3, self.res, self.res)) * 255).astype(_np.float32)
         # torch.tensor() avoids NumPy ABI dispatch issue in forked workers
@@ -315,12 +345,14 @@ def scope1_torchvision() -> dict:
     """Scope 1C: torchvision.v2 GPU — same DataLoader, GPU aug."""
     import torchvision.transforms.v2 as T
 
-    aug = T.Compose([
-        T.RandomHorizontalFlip(p=0.5),
-        T.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2)),
-        T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
+    aug = T.Compose(
+        [
+            T.RandomHorizontalFlip(p=0.5),
+            T.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2)),
+            T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
 
     ds = _GpuLibDataset(N_DATASET, RES)
     loader = torch.utils.data.DataLoader(
@@ -344,6 +376,7 @@ def scope1_torchvision() -> dict:
 # ---------------------------------------------------------------------------
 # SCOPE 2 — Per-op CUDA event timing
 # ---------------------------------------------------------------------------
+
 
 def _cuda_event_time(fn, warmup: int, runs: int) -> list[float]:
     """Measure fn() with CUDA events. Returns list of ms per call."""
@@ -374,12 +407,8 @@ def scope2_kornia() -> dict:
 
     ops = {
         "RandomHorizontalFlip": K.RandomHorizontalFlip(p=0.5).cuda(),
-        "RandomAffine": K.RandomAffine(
-            degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0
-        ).cuda(),
-        "ColorJiggle": K.ColorJiggle(
-            brightness=0.2, contrast=0.2, saturation=0.2, p=1.0
-        ).cuda(),
+        "RandomAffine": K.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0).cuda(),
+        "ColorJiggle": K.ColorJiggle(brightness=0.2, contrast=0.2, saturation=0.2, p=1.0).cuda(),
         "Normalize": K.Normalize(
             mean=torch.tensor([0.485, 0.456, 0.406]),
             std=torch.tensor([0.229, 0.224, 0.225]),
@@ -405,15 +434,9 @@ def scope2_torchvision() -> dict:
 
     ops = {
         "RandomHorizontalFlip": T.RandomHorizontalFlip(p=0.5),
-        "RandomAffine": T.RandomAffine(
-            degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2)
-        ),
-        "ColorJitter": T.ColorJitter(
-            brightness=0.2, contrast=0.2, saturation=0.2
-        ),
-        "Normalize": T.Normalize(
-            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-        ),
+        "RandomAffine": T.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2)),
+        "ColorJitter": T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        "Normalize": T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     }
 
     results: dict[str, dict] = {}
@@ -430,9 +453,11 @@ def scope2_torchvision() -> dict:
 # SCOPE 3 — CUDA Graph replay
 # ---------------------------------------------------------------------------
 
+
 def _build_kornia_aug():
     _patch_kornia_inverse()
     import kornia.augmentation as K
+
     return K.AugmentationSequential(
         K.RandomHorizontalFlip(p=0.5),
         K.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0),
@@ -446,12 +471,15 @@ def _build_kornia_aug():
 
 def _build_torchvision_aug():
     import torchvision.transforms.v2 as T
-    return T.Compose([
-        T.RandomHorizontalFlip(p=0.5),
-        T.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2)),
-        T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
+
+    return T.Compose(
+        [
+            T.RandomHorizontalFlip(p=0.5),
+            T.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2)),
+            T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
 
 
 def _try_cuda_graph_capture(aug_builder, label: str) -> dict:
@@ -469,9 +497,7 @@ def _try_cuda_graph_capture(aug_builder, label: str) -> dict:
     x_eager = torch.rand(BATCH, 3, RES, RES, device="cuda")
     torch.cuda.synchronize()
 
-    eager_times = _cuda_event_time(
-        lambda a=aug_eager, xi=x_eager: a(xi), warmup=25, runs=100
-    )
+    eager_times = _cuda_event_time(lambda a=aug_eager, xi=x_eager: a(xi), warmup=25, runs=100)
     eager_stats = _stats(eager_times)
     eager_median = eager_stats["median_ms"]
     del aug_eager, x_eager
@@ -514,10 +540,12 @@ def _try_cuda_graph_capture(aug_builder, label: str) -> dict:
         replay_stats = _stats(replay_times)
         replay_median = replay_stats["median_ms"]
 
-        print(f"    {label} CUDA Graph: CAPTURED OK. "
-              f"Replay median={replay_median:.3f}ms, "
-              f"Eager median={eager_median:.3f}ms, "
-              f"Speedup={eager_median/replay_median:.2f}x")
+        print(
+            f"    {label} CUDA Graph: CAPTURED OK. "
+            f"Replay median={replay_median:.3f}ms, "
+            f"Eager median={eager_median:.3f}ms, "
+            f"Speedup={eager_median / replay_median:.2f}x"
+        )
 
     except Exception as exc:
         capture_status = "FAILED"
@@ -707,11 +735,7 @@ with open("{result_file}", "w") as f:
     env["PYTHONNOUSERSITE"] = "1"
 
     try:
-        proc = subprocess.run(
-            [python, driver_path],
-            capture_output=True, text=True,
-            timeout=300, env=env, cwd="/tmp"
-        )
+        proc = subprocess.run([python, driver_path], capture_output=True, text=True, timeout=300, env=env, cwd="/tmp")
         stdout = proc.stdout.strip()
         if stdout:
             for line in stdout.splitlines():
@@ -725,6 +749,7 @@ with open("{result_file}", "w") as f:
                 "replay_ms": None,
             }
         import json as _json
+
         with open(result_file) as f:
             return _json.load(f)
     except subprocess.TimeoutExpired:
@@ -743,30 +768,32 @@ with open("{result_file}", "w") as f:
 
 
 def scope3_kornia() -> dict:
-    print(f"    Running kornia scope3 in isolated subprocess...")
+    print("    Running kornia scope3 in isolated subprocess...")
     result = _scope3_subprocess("kornia")
     status = result.get("status", "?")
     eager = _safe_median(result.get("eager_ms", {}))
     replay = _safe_median(result.get("replay_ms", {}))
     if status == "OK" and replay and eager:
-        print(f"    kornia CUDA Graph: OK. Replay={replay:.3f}ms, Eager={eager:.3f}ms, Speedup={eager/replay:.2f}x")
+        print(f"    kornia CUDA Graph: OK. Replay={replay:.3f}ms, Eager={eager:.3f}ms, Speedup={eager / replay:.2f}x")
     else:
-        print(f"    kornia CUDA Graph: {status} — {result.get('reason','')[:80]}")
+        print(f"    kornia CUDA Graph: {status} — {result.get('reason', '')[:80]}")
         if eager:
             print(f"    kornia eager baseline: {eager:.3f}ms")
     return result
 
 
 def scope3_torchvision() -> dict:
-    print(f"    Running torchvision scope3 in isolated subprocess...")
+    print("    Running torchvision scope3 in isolated subprocess...")
     result = _scope3_subprocess("torchvision")
     status = result.get("status", "?")
     eager = _safe_median(result.get("eager_ms", {}))
     replay = _safe_median(result.get("replay_ms", {}))
     if status == "OK" and replay and eager:
-        print(f"    torchvision CUDA Graph: OK. Replay={replay:.3f}ms, Eager={eager:.3f}ms, Speedup={eager/replay:.2f}x")
+        print(
+            f"    torchvision CUDA Graph: OK. Replay={replay:.3f}ms, Eager={eager:.3f}ms, Speedup={eager / replay:.2f}x"
+        )
     else:
-        print(f"    torchvision CUDA Graph: {status} — {result.get('reason','')[:80]}")
+        print(f"    torchvision CUDA Graph: {status} — {result.get('reason', '')[:80]}")
         if eager:
             print(f"    torchvision eager baseline: {eager:.3f}ms")
     return result
@@ -775,6 +802,7 @@ def scope3_torchvision() -> dict:
 # ---------------------------------------------------------------------------
 # Version info
 # ---------------------------------------------------------------------------
+
 
 def _get_versions() -> dict[str, str]:
     vers: dict[str, str] = {}
@@ -790,6 +818,7 @@ def _get_versions() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     torch.manual_seed(SEED)
@@ -845,10 +874,7 @@ def main() -> None:
             st = fn()
             results["scope1"][key] = st
             bps = _ms_to_bps(st["median_ms"])
-            print(
-                f"  median={st['median_ms']:.1f}ms  IQR={st['iqr_ms']:.1f}ms  "
-                f"batches/sec={bps:.2f}"
-            )
+            print(f"  median={st['median_ms']:.1f}ms  IQR={st['iqr_ms']:.1f}ms  batches/sec={bps:.2f}")
         except Exception as exc:
             tb = _traceback.format_exc()
             print(f"  ERROR: {type(exc).__name__}: {exc}")
@@ -952,10 +978,10 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str) -> st
         "",
         "| Key | Value |",
         "|-----|-------|",
-        f"| Platform | Jetson Orin (aarch64), Linux 5.15.148-tegra |",
+        "| Platform | Jetson Orin (aarch64), Linux 5.15.148-tegra |",
         f"| GPU | {device_name} (Orin integrated GPU, 1792-core Ampere) |",
-        f"| CUDA | 12.6 (libcusolver 11.6.4.69) |",
-        f"| Python | 3.10 (pixi camera-object-detector env) |",
+        "| CUDA | 12.6 (libcusolver 11.6.4.69) |",
+        "| Python | 3.10 (pixi camera-object-detector env) |",
         f"| PyTorch | {tv} |",
         f"| kornia | {versions.get('kornia', 'n/a')} |",
         f"| albumentations | {versions.get('albumentations', 'n/a')} |",
@@ -1013,13 +1039,12 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str) -> st
         ("torchvision", "torchvision.v2 GPU", "uint8 CPU → H2D → GPU aug"),
     ]
 
-    valid_s1 = {
-        k: v for k, v in s1.items()
-        if isinstance(v, dict) and "median_ms" in v
-    }
+    valid_s1 = {k: v for k, v in s1.items() if isinstance(v, dict) and "median_ms" in v}
     if valid_s1:
         slowest_ms = max(v["median_ms"] for v in valid_s1.values())
-        lines.append("| Library | Median batches/sec | IQR batches/sec | Median ms/batch | IQR ms | Speedup vs slowest |")
+        lines.append(
+            "| Library | Median batches/sec | IQR batches/sec | Median ms/batch | IQR ms | Speedup vs slowest |"
+        )
         lines.append("|---------|-------------------|-----------------|-----------------|--------|-------------------|")
         for key, label, _dev in s1_rows:
             r = s1.get(key, {})
@@ -1048,8 +1073,7 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str) -> st
     lines += [
         "## Scope 2 — Per-op kernel time (CUDA event timing)",
         "",
-        f"Pre-resident GPU tensor (B={batch}, 3, {res}, {res}, fp32). "
-        f"{S2_RUNS} measurements + {S2_WARMUP} warmup.",
+        f"Pre-resident GPU tensor (B={batch}, 3, {res}, {res}, fp32). {S2_RUNS} measurements + {S2_WARMUP} warmup.",
         "",
     ]
 
@@ -1064,8 +1088,12 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str) -> st
     ]
 
     if isinstance(k2, dict) and "error" not in k2 and isinstance(tv2_data, dict) and "error" not in tv2_data:
-        lines.append("| Op | kornia median ms | kornia IQR | torchvision median ms | torchvision IQR | kornia/tv (>1 = kornia slower) |")
-        lines.append("|----|-----------------:|----------:|----------------------:|---------------:|:------------------------------:|")
+        lines.append(
+            "| Op | kornia median ms | kornia IQR | torchvision median ms | torchvision IQR | kornia/tv (>1 = kornia slower) |"
+        )
+        lines.append(
+            "|----|-----------------:|----------:|----------------------:|---------------:|:------------------------------:|"
+        )
         for k_name, tv_name in op_map:
             k_r = k2.get(k_name, {})
             tv_r = tv2_data.get(tv_name, {}) or tv2_data.get(k_name, {})
@@ -1077,9 +1105,7 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str) -> st
             if k_med is not None and tv_med is not None:
                 ratio = k_med / tv_med  # >1 means kornia is slower
                 ratio_str = f"{ratio:.2f}×"
-                lines.append(
-                    f"| {k_name} | {k_med:.3f} | ±{k_iqr:.3f} | {tv_med:.3f} | ±{tv_iqr:.3f} | {ratio_str} |"
-                )
+                lines.append(f"| {k_name} | {k_med:.3f} | ±{k_iqr:.3f} | {tv_med:.3f} | ±{tv_iqr:.3f} | {ratio_str} |")
             elif k_med is not None:
                 lines.append(f"| {k_name} | {k_med:.3f} | ±{k_iqr:.3f} | — | — | — |")
             elif tv_med is not None:
@@ -1121,14 +1147,10 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str) -> st
 
             if status == "OK" and replay_med is not None and eager_med is not None:
                 speedup = eager_med / replay_med
-                lines.append(
-                    f"| {label} | OK | {replay_med:.3f} | {eager_med:.3f} | {speedup:.2f}× | — |"
-                )
+                lines.append(f"| {label} | OK | {replay_med:.3f} | {eager_med:.3f} | {speedup:.2f}× | — |")
             elif status == "FAILED":
                 eager_str = f"{eager_med:.3f}" if eager_med is not None else "—"
-                lines.append(
-                    f"| {label} | FAILED | — | {eager_str} | — | `{reason[:60]}` |"
-                )
+                lines.append(f"| {label} | FAILED | — | {eager_str} | — | `{reason[:60]}` |")
             else:
                 lines.append(f"| {label} | {status} | — | — | — | {reason[:60]} |")
         else:
@@ -1247,9 +1269,7 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str) -> st
         elif isinstance(lib_data, dict) and lib_data.get("status") == "FAILED":
             reason = lib_data.get("reason", "")
             eager_med_s3 = _safe_median(lib_data.get("eager_ms", {}))
-            lines.append(
-                f"**{lib_label}**: CUDA Graph capture failed — `{reason}`. "
-            )
+            lines.append(f"**{lib_label}**: CUDA Graph capture failed — `{reason}`. ")
             if eager_med_s3 is not None:
                 lines.append(f"  Eager baseline: {eager_med_s3:.2f} ms.")
             if lib_label == "kornia":

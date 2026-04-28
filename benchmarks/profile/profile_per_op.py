@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Per-op profiling harness using torch.profiler.
 
 Empirical evidence for the kornia 2.0 architecture redesign: identifies
@@ -16,6 +33,7 @@ Run from /tmp with PYTHONNOUSERSITE=1:
     /home/nvidia/bubbaloop-nodes-official/camera-object-detector/.pixi/envs/default/bin/python3.10 \\
     /home/nvidia/kornia/benchmarks/profile/profile_per_op.py
 """
+
 from __future__ import annotations
 
 import json
@@ -29,13 +47,12 @@ warnings.filterwarnings("ignore")
 
 # Apply all v4 + cusolver + v6 aggressive forward patches via run_v6 import side-effects.
 sys.path.insert(0, "/home/nvidia/kornia/benchmarks/comparative")
-import run_v6  # noqa: F401
-
+import run_v6
 import torch
+import torchvision.transforms.v2 as T
 from torch.profiler import ProfilerActivity, profile, record_function
 
 import kornia.augmentation as K
-import torchvision.transforms.v2 as T
 
 OUT_DIR = Path("/home/nvidia/kornia/benchmarks/profile")
 TRACE_DIR = OUT_DIR / "traces"
@@ -204,16 +221,18 @@ def extract_top_ops(prof, n=15, sort_by="self_cuda_time_total"):
     sorted_avgs = sorted(avgs, key=lambda x: getattr(x, sort_by, 0), reverse=True)
     out = []
     for entry in sorted_avgs[:n]:
-        out.append({
-            "name": entry.key,
-            "count": int(entry.count),
-            "self_cuda_us": float(getattr(entry, "self_cuda_time_total", 0)),
-            "self_cpu_us": float(getattr(entry, "self_cpu_time_total", 0)),
-            "cuda_total_us": float(getattr(entry, "cuda_time_total", 0)),
-            "cpu_total_us": float(getattr(entry, "cpu_time_total", 0)),
-            "self_cuda_memory": int(getattr(entry, "self_cuda_memory_usage", 0)),
-            "self_cpu_memory": int(getattr(entry, "self_cpu_memory_usage", 0)),
-        })
+        out.append(
+            {
+                "name": entry.key,
+                "count": int(entry.count),
+                "self_cuda_us": float(getattr(entry, "self_cuda_time_total", 0)),
+                "self_cpu_us": float(getattr(entry, "self_cpu_time_total", 0)),
+                "cuda_total_us": float(getattr(entry, "cuda_time_total", 0)),
+                "cpu_total_us": float(getattr(entry, "cpu_time_total", 0)),
+                "self_cuda_memory": int(getattr(entry, "self_cuda_memory_usage", 0)),
+                "self_cpu_memory": int(getattr(entry, "self_cpu_memory_usage", 0)),
+            }
+        )
     return out
 
 
@@ -267,11 +286,13 @@ def _versions():
         out["device"] = "?"
     try:
         import kornia as _k
+
         out["kornia"] = _k.__version__
     except Exception:
         out["kornia"] = "?"
     try:
         import torchvision as _tv
+
         out["torchvision"] = _tv.__version__
     except Exception:
         out["torchvision"] = "?"
@@ -285,8 +306,7 @@ def main():
     print(f"Patches: v4_status={getattr(run_v6, '_v4_status', '?')}", flush=True)
     print(f"         v6_status={getattr(run_v6, '_v6_status', '?')}", flush=True)
 
-    results = {"_meta": {"versions": versions, "n_warmup": N_WARMUP, "n_iters": N_ITERS,
-                          "batch": BATCH, "res": RES}}
+    results = {"_meta": {"versions": versions, "n_warmup": N_WARMUP, "n_iters": N_ITERS, "batch": BATCH, "res": RES}}
 
     for name, k_fac, tv_fac, kind in OPS:
         try:
@@ -299,6 +319,7 @@ def main():
             }
         except Exception as e:
             import traceback
+
             traceback.print_exc()
             results[name] = {"error": f"{type(e).__name__}: {e}"}
 

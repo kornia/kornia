@@ -163,9 +163,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
 
         return torch.stack(out_labels, 0)
 
-    def apply_transform_boxes(
-        self, input: Boxes, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
-    ) -> Boxes:
+    def apply_transform_boxes(self, input: Boxes, params: Dict[str, torch.Tensor], flags: Dict[str, Any]) -> Boxes:
         """Apply CutMix box remapping.
 
         For each mix, target image boxes that have sufficient visible area after the cut are kept (area

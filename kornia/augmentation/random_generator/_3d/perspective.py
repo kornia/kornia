@@ -92,13 +92,18 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
 
         # GPU-side uniform sampling: no host sync, replaces Uniform.rsample() via _adapted_rsampling
         if same_on_batch:
-            rand_val = torch.empty(
-                (1, *start_points.shape[1:]), device=self._device, dtype=self._dtype
-            ).uniform_(0.0, 1.0).expand(start_points.shape).to(device=_device, dtype=_dtype)
+            rand_val = (
+                torch.empty((1, *start_points.shape[1:]), device=self._device, dtype=self._dtype)
+                .uniform_(0.0, 1.0)
+                .expand(start_points.shape)
+                .to(device=_device, dtype=_dtype)
+            )
         else:
-            rand_val = torch.empty(
-                start_points.shape, device=self._device, dtype=self._dtype
-            ).uniform_(0.0, 1.0).to(device=_device, dtype=_dtype)
+            rand_val = (
+                torch.empty(start_points.shape, device=self._device, dtype=self._dtype)
+                .uniform_(0.0, 1.0)
+                .to(device=_device, dtype=_dtype)
+            )
 
         pts_norm = torch.tensor(
             [[[1, 1, 1], [-1, 1, 1], [-1, -1, 1], [1, -1, 1], [1, 1, -1], [-1, 1, -1], [-1, -1, -1], [1, -1, -1]]],

@@ -460,7 +460,7 @@ from kornia.tensors import Image, Mask
 
 class MyCustomBlur(Transform, _RandomMixin, _MultiTargetMixin):
     """Custom Gaussian blur with random per-sample probability gate."""
-    
+
     def __init__(self, kernel_size: int = 5, sigma: float = 1.5, p: float = 0.5,
                  *, per_sample: bool = False):
         super().__init__()
@@ -468,12 +468,12 @@ class MyCustomBlur(Transform, _RandomMixin, _MultiTargetMixin):
         self.sigma = sigma
         self.p = p
         self.per_sample = per_sample
-    
+
     def _sample_params(self, shape, generator=None):
         if self.per_sample:
             return {"apply": torch.rand(shape[0], generator=generator) < self.p}
         return {"apply": torch.rand(1, generator=generator).item() < self.p}
-    
+
     def _apply(self, x, params):
         apply = params["apply"]
         if isinstance(apply, bool):

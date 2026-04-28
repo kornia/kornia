@@ -90,8 +90,8 @@ def test_no_public_symbols_removed() -> None:
         raise FileNotFoundError(
             f"Snapshot file not found: {snapshot_path}\n"
             "Generate it with:\n"
-            "  python -c \"from tests.test_public_api import _walk; "
-            "import json; print(json.dumps(_walk(), indent=2, sort_keys=True))\" "
+            '  python -c "from tests.test_public_api import _walk; '
+            'import json; print(json.dumps(_walk(), indent=2, sort_keys=True))" '
             "> tests/api_surface.json"
         )
 

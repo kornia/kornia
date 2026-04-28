@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Comparative benchmark v6 -- aggressive forward overrides on CUDA.
 
 Builds on run_v5.py:
@@ -22,11 +39,11 @@ Run from /tmp with PYTHONNOUSERSITE=1:
     /home/nvidia/bubbaloop-nodes-official/camera-object-detector/.pixi/envs/default/bin/python3.10 \\
     /home/nvidia/kornia/benchmarks/comparative/run_v6.py
 """
+
 from __future__ import annotations
 
 import json
 import math
-import os
 import statistics
 import sys
 import time
@@ -42,6 +59,7 @@ import torch
 # ---------------------------------------------------------------------------
 # WORKAROUND 1: _torch_inverse_cast -- analytical closed-form 3x3 inverse
 # ---------------------------------------------------------------------------
+
 
 def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
     dtype = input.dtype
@@ -77,8 +95,8 @@ def _cpu_solve_cast(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
 
 
 def _patch_kornia_solvers() -> None:
-    import kornia.utils.helpers as _kh
     import kornia.geometry.conversions as _kgc
+    import kornia.utils.helpers as _kh
 
     _kh._torch_inverse_cast = _analytical_3x3_inv
     _kgc._torch_inverse_cast = _analytical_3x3_inv
@@ -88,24 +106,26 @@ def _patch_kornia_solvers() -> None:
         if mod_name.startswith("kornia"):
             if hasattr(mod, "_torch_inverse_cast"):
                 try:
-                    setattr(mod, "_torch_inverse_cast", _analytical_3x3_inv)
+                    mod._torch_inverse_cast = _analytical_3x3_inv
                 except (AttributeError, TypeError):
                     pass
             if hasattr(mod, "_torch_solve_cast"):
                 try:
-                    setattr(mod, "_torch_solve_cast", _cpu_solve_cast)
+                    mod._torch_solve_cast = _cpu_solve_cast
                 except (AttributeError, TypeError):
                     pass
 
     try:
         import kornia.geometry.transform.imgwarp as _imgwarp
+
         _imgwarp._torch_solve_cast = _cpu_solve_cast
     except Exception:
         pass
 
 
+import kornia.geometry.conversions
 import kornia.utils.helpers  # noqa: F401
-import kornia.geometry.conversions  # noqa: F401
+
 _patch_kornia_solvers()
 
 
@@ -226,9 +246,9 @@ def _apply_v4_patches() -> str:
         status_parts.append(f"HFlip FAILED: {exc}")
 
     try:
-        import kornia.geometry.transform.flips as _flips_mod
-        import kornia.geometry.transform as _kgt
         import kornia.augmentation._2d.geometric.horizontal_flip as _hflip_mod2
+        import kornia.geometry.transform as _kgt
+        import kornia.geometry.transform.flips as _flips_mod
 
         def _fast_hflip(input):
             return input.flip(-1)
@@ -247,12 +267,12 @@ def _apply_v4_patches() -> str:
             if _mn.startswith("kornia"):
                 if getattr(_m, "hflip", None) is not _fast_hflip and hasattr(_m, "hflip"):
                     try:
-                        setattr(_m, "hflip", _fast_hflip)
+                        _m.hflip = _fast_hflip
                     except (AttributeError, TypeError):
                         pass
                 if getattr(_m, "vflip", None) is not _fast_vflip and hasattr(_m, "vflip"):
                     try:
-                        setattr(_m, "vflip", _fast_vflip)
+                        _m.vflip = _fast_vflip
                     except (AttributeError, TypeError):
                         pass
         status_parts.append("hflip/vflip(no-contiguous)")
@@ -260,8 +280,9 @@ def _apply_v4_patches() -> str:
         status_parts.append(f"hflip/vflip FAILED: {exc}")
 
     try:
-        import kornia.augmentation._2d.geometric.affine as _aff_mod
         import torch.nn.functional as F
+
+        import kornia.augmentation._2d.geometric.affine as _aff_mod
 
         def _affine_matrix2d_closed(translations, center, scale, angle, shear_x, shear_y):
             _PI_OVER_180 = math.pi / 180.0
@@ -290,9 +311,7 @@ def _apply_v4_patches() -> str:
             r12 = d * sx_t * cy + e * sy_t * (cx - sx_t * cy) + f_t
             zeros = torch.zeros_like(r00)
             ones = torch.ones_like(r00)
-            return torch.stack(
-                [r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1
-            ).reshape(-1, 3, 3)
+            return torch.stack([r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1).reshape(-1, 3, 3)
 
         def _affine_homography_inv(M):
             a, b, c = M[:, 0, 0], M[:, 0, 1], M[:, 0, 2]
@@ -306,9 +325,7 @@ def _apply_v4_patches() -> str:
             r12 = (c * d - a * f_t) / det
             zeros = torch.zeros_like(r00)
             ones = torch.ones_like(r00)
-            return torch.stack(
-                [r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1
-            ).reshape(-1, 3, 3)
+            return torch.stack([r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1).reshape(-1, 3, 3)
 
         def _make_norm_matrices(height, width, device, dtype):
             eps = 1e-14
@@ -342,15 +359,33 @@ def _apply_v4_patches() -> str:
         _RA = _aff_mod.RandomAffine
         _orig_ra_init = _RA.__init__
 
-        def _patched_ra_init(self, degrees, translate=None, scale=None, shear=None,
-                             resample="BILINEAR", same_on_batch=False, align_corners=False,
-                             padding_mode="ZEROS", p=0.5, keepdim=False, **kw):
+        def _patched_ra_init(
+            self,
+            degrees,
+            translate=None,
+            scale=None,
+            shear=None,
+            resample="BILINEAR",
+            same_on_batch=False,
+            align_corners=False,
+            padding_mode="ZEROS",
+            p=0.5,
+            keepdim=False,
+            **kw,
+        ):
             kw.pop("fill_value", None)
             _orig_ra_init(
-                self, degrees, translate=translate, scale=scale, shear=shear,
-                resample=resample, same_on_batch=same_on_batch,
-                align_corners=align_corners, padding_mode=padding_mode,
-                p=p, keepdim=keepdim,
+                self,
+                degrees,
+                translate=translate,
+                scale=scale,
+                shear=shear,
+                resample=resample,
+                same_on_batch=same_on_batch,
+                align_corners=align_corners,
+                padding_mode=padding_mode,
+                p=p,
+                keepdim=keepdim,
             )
             self._norm_cache = {}
 
@@ -367,13 +402,12 @@ def _apply_v4_patches() -> str:
         def _patched_ra_apply(self, input, params, flags, transform=None):
             _, _, height, width = input.shape
             if not isinstance(transform, torch.Tensor):
-                raise TypeError(
-                    f"Expected the `transform` be a torch.Tensor. Got {type(transform)}."
-                )
+                raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
             padding_mode_str = flags["padding_mode"].name.lower()
 
             if padding_mode_str == "fill":
                 from kornia.geometry.transform import warp_affine
+
                 return warp_affine(
                     input,
                     transform[:, :2, :],
@@ -396,7 +430,8 @@ def _apply_v4_patches() -> str:
             B, C = input.shape[:2]
             grid = F.affine_grid(theta, [B, C, height, width], align_corners=align_corners)
             return F.grid_sample(
-                input, grid,
+                input,
+                grid,
                 mode=mode,
                 padding_mode=padding_mode_str,
                 align_corners=align_corners,
@@ -413,7 +448,8 @@ def _apply_v4_patches() -> str:
 
     try:
         import kornia.augmentation._2d.intensity.color_jiggle as _cj_mod
-        from kornia.color import hsv_to_rgb as _hsv_to_rgb, rgb_to_hsv as _rgb_to_hsv
+        from kornia.color import hsv_to_rgb as _hsv_to_rgb
+        from kornia.color import rgb_to_hsv as _rgb_to_hsv
 
         _TWO_PI = 2.0 * math.pi
 
@@ -516,6 +552,7 @@ def _apply_v6_aggressive_overrides() -> dict:
 
     try:
         import kornia.augmentation._2d.geometric.horizontal_flip as _hflip_mod
+
         _RHF = _hflip_mod.RandomHorizontalFlip
         _orig_hflip_forward = _RHF.forward
 
@@ -564,6 +601,7 @@ def _apply_v6_aggressive_overrides() -> dict:
 
     try:
         import kornia.augmentation._2d.geometric.vertical_flip as _vflip_mod
+
         _RVF = _vflip_mod.RandomVerticalFlip
         _orig_vflip_forward = _RVF.forward
 
@@ -610,6 +648,7 @@ def _apply_v6_aggressive_overrides() -> dict:
 
     try:
         import kornia.augmentation._2d.geometric.center_crop as _cc_mod
+
         _CC = _cc_mod.CenterCrop
         _orig_cc_forward = _CC.forward
 
@@ -654,6 +693,7 @@ def _apply_v6_aggressive_overrides() -> dict:
 
     try:
         import kornia.augmentation._2d.intensity.normalize as _norm_mod
+
         _Norm = _norm_mod.Normalize
         _orig_norm_forward = _Norm.forward
 
@@ -697,6 +737,7 @@ def _apply_v6_aggressive_overrides() -> dict:
 
     try:
         import kornia.augmentation._2d.intensity.denormalize as _denorm_mod
+
         _Denorm = _denorm_mod.Denormalize
         _orig_denorm_forward = _Denorm.forward
 
@@ -740,6 +781,7 @@ def _apply_v6_aggressive_overrides() -> dict:
 
     try:
         import kornia.augmentation._2d.intensity.invert as _inv_mod
+
         _Inv = _inv_mod.RandomInvert
         _orig_inv_forward = _Inv.forward
 
@@ -781,6 +823,7 @@ def _apply_v6_aggressive_overrides() -> dict:
     try:
         import kornia.augmentation._2d.intensity.grayscale as _gs_mod
         from kornia.color import rgb_to_grayscale as _rgb2gray
+
         _GS = _gs_mod.RandomGrayscale
         _orig_gs_forward = _GS.forward
 
@@ -822,6 +865,7 @@ def _apply_v6_aggressive_overrides() -> dict:
     try:
         import kornia.augmentation._2d.intensity.solarize as _sol_mod
         from kornia.enhance import solarize as _solarize_fn
+
         _Sol = _sol_mod.RandomSolarize
         _orig_sol_forward = _Sol.forward
 
@@ -867,6 +911,7 @@ def _apply_v6_aggressive_overrides() -> dict:
     try:
         import kornia.augmentation._2d.intensity.brightness as _br_mod
         from kornia.enhance.adjust import adjust_brightness as _adj_b
+
         _RB = _br_mod.RandomBrightness
         _orig_br_forward = _RB.forward
 
@@ -911,6 +956,7 @@ def _apply_v6_aggressive_overrides() -> dict:
     try:
         import kornia.augmentation._2d.intensity.contrast as _ct_mod
         from kornia.enhance.adjust import adjust_contrast as _adj_c
+
         _RC = _ct_mod.RandomContrast
         _orig_ct_forward = _RC.forward
 
@@ -955,6 +1001,7 @@ def _apply_v6_aggressive_overrides() -> dict:
     try:
         import kornia.augmentation._2d.intensity.saturation as _sat_mod
         from kornia.enhance.adjust import adjust_saturation as _adj_s
+
         _RS = _sat_mod.RandomSaturation
         _orig_sat_forward = _RS.forward
 
@@ -998,8 +1045,9 @@ def _apply_v6_aggressive_overrides() -> dict:
 
     try:
         import kornia.augmentation._2d.intensity.hue as _hue_mod
-        from kornia.enhance.adjust import adjust_hue as _adj_h
         from kornia.constants import pi as _kpi
+        from kornia.enhance.adjust import adjust_hue as _adj_h
+
         _RH = _hue_mod.RandomHue
         _orig_hue_forward = _RH.forward
 
@@ -1044,6 +1092,7 @@ def _apply_v6_aggressive_overrides() -> dict:
     try:
         import kornia.augmentation._2d.intensity.posterize as _pos_mod
         from kornia.enhance import posterize as _posterize_fn
+
         _RP = _pos_mod.RandomPosterize
         _orig_pos_forward = _RP.forward
 
@@ -1087,6 +1136,7 @@ def _apply_v6_aggressive_overrides() -> dict:
     try:
         import kornia.augmentation._2d.mix.cutmix as _cm_mod
         from kornia.geometry.bbox import bbox_to_mask as _bbox_to_mask
+
         _CM = _cm_mod.RandomCutMixV2
 
         def _cm_apply_transform(self, input, params, maybe_flags=None):
@@ -1105,6 +1155,7 @@ def _apply_v6_aggressive_overrides() -> dict:
 
     try:
         import kornia.augmentation._2d.mix.mixup as _mu_mod
+
         _MU = _mu_mod.RandomMixUpV2
 
         def _mu_apply_transform(self, input, params, maybe_flags=None):
@@ -1134,29 +1185,40 @@ _patch_kornia_solvers()
 # Numerical equivalence verification.
 # ---------------------------------------------------------------------------
 
+
 def _verify_equivalence() -> dict:
     import kornia.augmentation as K
 
     cases = [
         ("RandomHorizontalFlip", lambda: K.RandomHorizontalFlip(p=1.0), (2, 3, 32, 32), False),
-        ("RandomVerticalFlip",   lambda: K.RandomVerticalFlip(p=1.0),   (2, 3, 32, 32), False),
-        ("CenterCrop",           lambda: K.CenterCrop(size=(24, 24)),   (2, 3, 32, 32), False),
-        ("RandomGrayscale",      lambda: K.RandomGrayscale(p=1.0),      (2, 3, 32, 32), False),
-        ("RandomInvert",         lambda: K.RandomInvert(p=1.0),         (2, 3, 32, 32), False),
-        ("Normalize",            lambda: K.Normalize(
-            mean=torch.tensor([0.485, 0.456, 0.406]),
-            std=torch.tensor([0.229, 0.224, 0.225]),
-        ), (2, 3, 32, 32), False),
-        ("Denormalize",          lambda: K.Denormalize(
-            mean=torch.tensor([0.485, 0.456, 0.406]),
-            std=torch.tensor([0.229, 0.224, 0.225]),
-        ), (2, 3, 32, 32), False),
-        ("RandomSolarize",       lambda: K.RandomSolarize(thresholds=0.5, p=1.0), (2, 3, 32, 32), True),
-        ("RandomPosterize",      lambda: K.RandomPosterize(bits=4, p=1.0),         (2, 3, 32, 32), True),
-        ("RandomBrightness",     lambda: K.RandomBrightness(brightness=(0.8, 1.2), p=1.0), (2, 3, 32, 32), True),
-        ("RandomContrast",       lambda: K.RandomContrast(contrast=(0.8, 1.2), p=1.0),     (2, 3, 32, 32), True),
-        ("RandomSaturation",     lambda: K.RandomSaturation(saturation=(0.8, 1.2), p=1.0), (2, 3, 32, 32), True),
-        ("RandomHue",            lambda: K.RandomHue(hue=(-0.1, 0.1), p=1.0),               (2, 3, 32, 32), True),
+        ("RandomVerticalFlip", lambda: K.RandomVerticalFlip(p=1.0), (2, 3, 32, 32), False),
+        ("CenterCrop", lambda: K.CenterCrop(size=(24, 24)), (2, 3, 32, 32), False),
+        ("RandomGrayscale", lambda: K.RandomGrayscale(p=1.0), (2, 3, 32, 32), False),
+        ("RandomInvert", lambda: K.RandomInvert(p=1.0), (2, 3, 32, 32), False),
+        (
+            "Normalize",
+            lambda: K.Normalize(
+                mean=torch.tensor([0.485, 0.456, 0.406]),
+                std=torch.tensor([0.229, 0.224, 0.225]),
+            ),
+            (2, 3, 32, 32),
+            False,
+        ),
+        (
+            "Denormalize",
+            lambda: K.Denormalize(
+                mean=torch.tensor([0.485, 0.456, 0.406]),
+                std=torch.tensor([0.229, 0.224, 0.225]),
+            ),
+            (2, 3, 32, 32),
+            False,
+        ),
+        ("RandomSolarize", lambda: K.RandomSolarize(thresholds=0.5, p=1.0), (2, 3, 32, 32), True),
+        ("RandomPosterize", lambda: K.RandomPosterize(bits=4, p=1.0), (2, 3, 32, 32), True),
+        ("RandomBrightness", lambda: K.RandomBrightness(brightness=(0.8, 1.2), p=1.0), (2, 3, 32, 32), True),
+        ("RandomContrast", lambda: K.RandomContrast(contrast=(0.8, 1.2), p=1.0), (2, 3, 32, 32), True),
+        ("RandomSaturation", lambda: K.RandomSaturation(saturation=(0.8, 1.2), p=1.0), (2, 3, 32, 32), True),
+        ("RandomHue", lambda: K.RandomHue(hue=(-0.1, 0.1), p=1.0), (2, 3, 32, 32), True),
     ]
 
     out: dict = {}
@@ -1210,7 +1272,7 @@ def _verify_equivalence() -> dict:
 
     for nm, factory in (
         ("RandomCutMixV2", lambda: K.RandomCutMixV2(p=1.0)),
-        ("RandomMixUpV2",  lambda: K.RandomMixUpV2(p=1.0)),
+        ("RandomMixUpV2", lambda: K.RandomMixUpV2(p=1.0)),
     ):
         try:
             torch.manual_seed(123)
@@ -1339,164 +1401,368 @@ def time_alb(make_aug_fn, x_np) -> dict:
 
 
 def _build_registry():
-    import kornia.augmentation as K
-    import torchvision.transforms.v2 as T
     import albumentations as A
+    import torchvision.transforms.v2 as T
+
+    import kornia.augmentation as K
 
     MEAN_T = torch.tensor(IMAGENET_MEAN)
     STD_T = torch.tensor(IMAGENET_STD)
 
     registry = []
 
-    registry.append({"name": "HorizontalFlip", "category": "geometric",
-        "kornia": lambda: K.RandomHorizontalFlip(p=1.0),
-        "tv": lambda: T.RandomHorizontalFlip(p=1.0),
-        "alb": lambda: A.HorizontalFlip(p=1.0)})
-    registry.append({"name": "VerticalFlip", "category": "geometric",
-        "kornia": lambda: K.RandomVerticalFlip(p=1.0),
-        "tv": lambda: T.RandomVerticalFlip(p=1.0),
-        "alb": lambda: A.VerticalFlip(p=1.0)})
-    registry.append({"name": "Rotation", "category": "geometric",
-        "kornia": lambda: K.RandomRotation(degrees=15.0, p=1.0),
-        "tv": lambda: T.RandomRotation(degrees=15.0),
-        "alb": lambda: A.Rotate(limit=15, p=1.0)})
-    registry.append({"name": "Affine", "category": "geometric",
-        "kornia": lambda: K.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0),
-        "tv": lambda: T.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.8, 1.2)),
-        "alb": lambda: A.Affine(rotate=(-15, 15), translate_percent=(-0.1, 0.1), scale=(0.8, 1.2), p=1.0)})
-    registry.append({"name": "ResizedCrop", "category": "geometric",
-        "kornia": lambda: K.RandomResizedCrop(size=(224, 224), p=1.0),
-        "tv": lambda: T.RandomResizedCrop(size=224),
-        "alb": lambda: A.RandomResizedCrop(size=(224, 224), p=1.0)})
-    registry.append({"name": "CenterCrop", "category": "geometric",
-        "kornia": lambda: K.CenterCrop(size=224),
-        "tv": lambda: T.CenterCrop(size=224),
-        "alb": lambda: A.CenterCrop(height=224, width=224, p=1.0)})
-    registry.append({"name": "Resize", "category": "geometric",
-        "kornia": lambda: K.Resize(size=224),
-        "tv": lambda: T.Resize(size=224),
-        "alb": lambda: A.Resize(height=224, width=224, p=1.0)})
-    registry.append({"name": "Perspective", "category": "geometric",
-        "kornia": lambda: K.RandomPerspective(distortion_scale=0.2, p=1.0),
-        "tv": lambda: T.RandomPerspective(distortion_scale=0.2, p=1.0),
-        "alb": lambda: A.Perspective(scale=(0.05, 0.2), p=1.0)})
+    registry.append(
+        {
+            "name": "HorizontalFlip",
+            "category": "geometric",
+            "kornia": lambda: K.RandomHorizontalFlip(p=1.0),
+            "tv": lambda: T.RandomHorizontalFlip(p=1.0),
+            "alb": lambda: A.HorizontalFlip(p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "VerticalFlip",
+            "category": "geometric",
+            "kornia": lambda: K.RandomVerticalFlip(p=1.0),
+            "tv": lambda: T.RandomVerticalFlip(p=1.0),
+            "alb": lambda: A.VerticalFlip(p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Rotation",
+            "category": "geometric",
+            "kornia": lambda: K.RandomRotation(degrees=15.0, p=1.0),
+            "tv": lambda: T.RandomRotation(degrees=15.0),
+            "alb": lambda: A.Rotate(limit=15, p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Affine",
+            "category": "geometric",
+            "kornia": lambda: K.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0),
+            "tv": lambda: T.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.8, 1.2)),
+            "alb": lambda: A.Affine(rotate=(-15, 15), translate_percent=(-0.1, 0.1), scale=(0.8, 1.2), p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "ResizedCrop",
+            "category": "geometric",
+            "kornia": lambda: K.RandomResizedCrop(size=(224, 224), p=1.0),
+            "tv": lambda: T.RandomResizedCrop(size=224),
+            "alb": lambda: A.RandomResizedCrop(size=(224, 224), p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "CenterCrop",
+            "category": "geometric",
+            "kornia": lambda: K.CenterCrop(size=224),
+            "tv": lambda: T.CenterCrop(size=224),
+            "alb": lambda: A.CenterCrop(height=224, width=224, p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Resize",
+            "category": "geometric",
+            "kornia": lambda: K.Resize(size=224),
+            "tv": lambda: T.Resize(size=224),
+            "alb": lambda: A.Resize(height=224, width=224, p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Perspective",
+            "category": "geometric",
+            "kornia": lambda: K.RandomPerspective(distortion_scale=0.2, p=1.0),
+            "tv": lambda: T.RandomPerspective(distortion_scale=0.2, p=1.0),
+            "alb": lambda: A.Perspective(scale=(0.05, 0.2), p=1.0),
+        }
+    )
 
-    registry.append({"name": "ColorJitter", "category": "intensity_color",
-        "kornia": lambda: K.ColorJiggle(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0),
-        "tv": lambda: T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-        "alb": lambda: A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0)})
-    registry.append({"name": "Brightness", "category": "intensity_color",
-        "kornia": lambda: K.RandomBrightness(brightness=(0.8, 1.2), p=1.0),
-        "tv": lambda: T.ColorJitter(brightness=0.2),
-        "alb": lambda: A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0, p=1.0)})
-    registry.append({"name": "Contrast", "category": "intensity_color",
-        "kornia": lambda: K.RandomContrast(contrast=(0.8, 1.2), p=1.0),
-        "tv": lambda: T.ColorJitter(contrast=0.2),
-        "alb": lambda: A.RandomBrightnessContrast(brightness_limit=0, contrast_limit=0.2, p=1.0)})
-    registry.append({"name": "Saturation", "category": "intensity_color",
-        "kornia": lambda: K.RandomSaturation(saturation=(0.8, 1.2), p=1.0),
-        "tv": lambda: T.ColorJitter(saturation=0.2),
-        "alb": lambda: A.HueSaturationValue(hue_shift_limit=0, sat_shift_limit=51, val_shift_limit=0, p=1.0)})
-    registry.append({"name": "Hue", "category": "intensity_color",
-        "kornia": lambda: K.RandomHue(hue=(-0.1, 0.1), p=1.0),
-        "tv": lambda: T.ColorJitter(hue=0.1),
-        "alb": lambda: A.HueSaturationValue(hue_shift_limit=18, sat_shift_limit=0, val_shift_limit=0, p=1.0)})
-    registry.append({"name": "Grayscale", "category": "intensity_color",
-        "kornia": lambda: K.RandomGrayscale(p=1.0),
-        "tv": lambda: T.RandomGrayscale(p=1.0),
-        "alb": lambda: A.ToGray(p=1.0)})
-    registry.append({"name": "Solarize", "category": "intensity_color",
-        "kornia": lambda: K.RandomSolarize(thresholds=0.5, p=1.0),
-        "tv": lambda: T.RandomSolarize(threshold=0.5, p=1.0),
-        "alb": lambda: A.Solarize(p=1.0)})
-    registry.append({"name": "Posterize", "category": "intensity_color",
-        "kornia": lambda: K.RandomPosterize(bits=4, p=1.0),
-        "tv": lambda: T.RandomPosterize(bits=4, p=1.0),
-        "alb": lambda: A.Posterize(num_bits=4, p=1.0)})
-    registry.append({"name": "Equalize", "category": "intensity_color",
-        "kornia": lambda: K.RandomEqualize(p=1.0),
-        "tv": lambda: T.RandomEqualize(p=1.0),
-        "alb": lambda: A.Equalize(p=1.0)})
-    registry.append({"name": "Invert", "category": "intensity_color",
-        "kornia": lambda: K.RandomInvert(p=1.0),
-        "tv": lambda: T.RandomInvert(p=1.0),
-        "alb": lambda: A.InvertImg(p=1.0)})
-    registry.append({"name": "Sharpness", "category": "intensity_color",
-        "kornia": lambda: K.RandomSharpness(sharpness=0.5, p=1.0),
-        "tv": lambda: T.RandomAdjustSharpness(sharpness_factor=2.0, p=1.0),
-        "alb": lambda: A.Sharpen(alpha=(0.2, 0.5), lightness=(0.5, 1.0), p=1.0)})
+    registry.append(
+        {
+            "name": "ColorJitter",
+            "category": "intensity_color",
+            "kornia": lambda: K.ColorJiggle(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0),
+            "tv": lambda: T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+            "alb": lambda: A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Brightness",
+            "category": "intensity_color",
+            "kornia": lambda: K.RandomBrightness(brightness=(0.8, 1.2), p=1.0),
+            "tv": lambda: T.ColorJitter(brightness=0.2),
+            "alb": lambda: A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0, p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Contrast",
+            "category": "intensity_color",
+            "kornia": lambda: K.RandomContrast(contrast=(0.8, 1.2), p=1.0),
+            "tv": lambda: T.ColorJitter(contrast=0.2),
+            "alb": lambda: A.RandomBrightnessContrast(brightness_limit=0, contrast_limit=0.2, p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Saturation",
+            "category": "intensity_color",
+            "kornia": lambda: K.RandomSaturation(saturation=(0.8, 1.2), p=1.0),
+            "tv": lambda: T.ColorJitter(saturation=0.2),
+            "alb": lambda: A.HueSaturationValue(hue_shift_limit=0, sat_shift_limit=51, val_shift_limit=0, p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Hue",
+            "category": "intensity_color",
+            "kornia": lambda: K.RandomHue(hue=(-0.1, 0.1), p=1.0),
+            "tv": lambda: T.ColorJitter(hue=0.1),
+            "alb": lambda: A.HueSaturationValue(hue_shift_limit=18, sat_shift_limit=0, val_shift_limit=0, p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Grayscale",
+            "category": "intensity_color",
+            "kornia": lambda: K.RandomGrayscale(p=1.0),
+            "tv": lambda: T.RandomGrayscale(p=1.0),
+            "alb": lambda: A.ToGray(p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Solarize",
+            "category": "intensity_color",
+            "kornia": lambda: K.RandomSolarize(thresholds=0.5, p=1.0),
+            "tv": lambda: T.RandomSolarize(threshold=0.5, p=1.0),
+            "alb": lambda: A.Solarize(p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Posterize",
+            "category": "intensity_color",
+            "kornia": lambda: K.RandomPosterize(bits=4, p=1.0),
+            "tv": lambda: T.RandomPosterize(bits=4, p=1.0),
+            "alb": lambda: A.Posterize(num_bits=4, p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Equalize",
+            "category": "intensity_color",
+            "kornia": lambda: K.RandomEqualize(p=1.0),
+            "tv": lambda: T.RandomEqualize(p=1.0),
+            "alb": lambda: A.Equalize(p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Invert",
+            "category": "intensity_color",
+            "kornia": lambda: K.RandomInvert(p=1.0),
+            "tv": lambda: T.RandomInvert(p=1.0),
+            "alb": lambda: A.InvertImg(p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Sharpness",
+            "category": "intensity_color",
+            "kornia": lambda: K.RandomSharpness(sharpness=0.5, p=1.0),
+            "tv": lambda: T.RandomAdjustSharpness(sharpness_factor=2.0, p=1.0),
+            "alb": lambda: A.Sharpen(alpha=(0.2, 0.5), lightness=(0.5, 1.0), p=1.0),
+        }
+    )
 
-    registry.append({"name": "GaussianBlur", "category": "intensity_blur",
-        "kornia": lambda: K.RandomGaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2.0), p=1.0),
-        "tv": lambda: T.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0)),
-        "alb": lambda: A.GaussianBlur(blur_limit=(5, 5), sigma_limit=(0.1, 2.0), p=1.0)})
-    registry.append({"name": "GaussianNoise", "category": "intensity_blur",
-        "kornia": lambda: K.RandomGaussianNoise(std=0.05, p=1.0),
-        "tv": lambda: T.GaussianNoise(sigma=0.05),
-        "alb": lambda: A.GaussNoise(std_range=(0.05, 0.05), p=1.0)})
-    registry.append({"name": "MotionBlur", "category": "intensity_blur",
-        "kornia": lambda: K.RandomMotionBlur(kernel_size=5, angle=35.0, direction=0.5, p=1.0),
-        "tv": None,
-        "alb": lambda: A.MotionBlur(blur_limit=5, p=1.0)})
-    registry.append({"name": "BoxBlur", "category": "intensity_blur",
-        "kornia": lambda: K.RandomBoxBlur(kernel_size=(3, 3), p=1.0),
-        "tv": None,
-        "alb": lambda: A.Blur(blur_limit=3, p=1.0)})
-    registry.append({"name": "MedianBlur", "category": "intensity_blur",
-        "kornia": lambda: K.RandomMedianBlur(kernel_size=(3, 3), p=1.0),
-        "tv": None,
-        "alb": lambda: A.MedianBlur(blur_limit=3, p=1.0)})
+    registry.append(
+        {
+            "name": "GaussianBlur",
+            "category": "intensity_blur",
+            "kornia": lambda: K.RandomGaussianBlur(kernel_size=(5, 5), sigma=(0.1, 2.0), p=1.0),
+            "tv": lambda: T.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0)),
+            "alb": lambda: A.GaussianBlur(blur_limit=(5, 5), sigma_limit=(0.1, 2.0), p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "GaussianNoise",
+            "category": "intensity_blur",
+            "kornia": lambda: K.RandomGaussianNoise(std=0.05, p=1.0),
+            "tv": lambda: T.GaussianNoise(sigma=0.05),
+            "alb": lambda: A.GaussNoise(std_range=(0.05, 0.05), p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "MotionBlur",
+            "category": "intensity_blur",
+            "kornia": lambda: K.RandomMotionBlur(kernel_size=5, angle=35.0, direction=0.5, p=1.0),
+            "tv": None,
+            "alb": lambda: A.MotionBlur(blur_limit=5, p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "BoxBlur",
+            "category": "intensity_blur",
+            "kornia": lambda: K.RandomBoxBlur(kernel_size=(3, 3), p=1.0),
+            "tv": None,
+            "alb": lambda: A.Blur(blur_limit=3, p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "MedianBlur",
+            "category": "intensity_blur",
+            "kornia": lambda: K.RandomMedianBlur(kernel_size=(3, 3), p=1.0),
+            "tv": None,
+            "alb": lambda: A.MedianBlur(blur_limit=3, p=1.0),
+        }
+    )
 
-    registry.append({"name": "RandomErasing", "category": "erasing",
-        "kornia": lambda: K.RandomErasing(p=1.0),
-        "tv": lambda: T.RandomErasing(p=1.0),
-        "alb": lambda: A.CoarseDropout(num_holes_range=(1, 8), hole_height_range=(32, 64),
-                                        hole_width_range=(32, 64), p=1.0)})
+    registry.append(
+        {
+            "name": "RandomErasing",
+            "category": "erasing",
+            "kornia": lambda: K.RandomErasing(p=1.0),
+            "tv": lambda: T.RandomErasing(p=1.0),
+            "alb": lambda: A.CoarseDropout(
+                num_holes_range=(1, 8), hole_height_range=(32, 64), hole_width_range=(32, 64), p=1.0
+            ),
+        }
+    )
 
-    registry.append({"name": "Normalize", "category": "normalize",
-        "kornia": lambda: K.Normalize(mean=MEAN_T, std=STD_T),
-        "tv": lambda: T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
-        "alb": lambda: A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD, p=1.0)})
-    registry.append({"name": "Denormalize", "category": "normalize",
-        "kornia": lambda: K.Denormalize(mean=MEAN_T, std=STD_T),
-        "tv": None, "alb": None})
+    registry.append(
+        {
+            "name": "Normalize",
+            "category": "normalize",
+            "kornia": lambda: K.Normalize(mean=MEAN_T, std=STD_T),
+            "tv": lambda: T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+            "alb": lambda: A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD, p=1.0),
+        }
+    )
+    registry.append(
+        {
+            "name": "Denormalize",
+            "category": "normalize",
+            "kornia": lambda: K.Denormalize(mean=MEAN_T, std=STD_T),
+            "tv": None,
+            "alb": None,
+        }
+    )
 
-    registry.append({"name": "MixUp", "category": "mix",
-        "kornia": lambda: K.RandomMixUpV2(p=1.0),
-        "tv": lambda: T.MixUp(num_classes=1000),
-        "alb": None,
-        "kornia_timing": "with_labels",
-        "tv_timing": "with_labels"})
-    registry.append({"name": "CutMix", "category": "mix",
-        "kornia": lambda: K.RandomCutMixV2(p=1.0),
-        "tv": lambda: T.CutMix(num_classes=1000),
-        "alb": None,
-        "kornia_timing": "with_labels",
-        "tv_timing": "with_labels"})
-    registry.append({"name": "Mosaic", "category": "mix",
-        "kornia": lambda: K.RandomMosaic(output_size=(512, 512), p=1.0),
-        "tv": None, "alb": None})
+    registry.append(
+        {
+            "name": "MixUp",
+            "category": "mix",
+            "kornia": lambda: K.RandomMixUpV2(p=1.0),
+            "tv": lambda: T.MixUp(num_classes=1000),
+            "alb": None,
+            "kornia_timing": "with_labels",
+            "tv_timing": "with_labels",
+        }
+    )
+    registry.append(
+        {
+            "name": "CutMix",
+            "category": "mix",
+            "kornia": lambda: K.RandomCutMixV2(p=1.0),
+            "tv": lambda: T.CutMix(num_classes=1000),
+            "alb": None,
+            "kornia_timing": "with_labels",
+            "tv_timing": "with_labels",
+        }
+    )
+    registry.append(
+        {
+            "name": "Mosaic",
+            "category": "mix",
+            "kornia": lambda: K.RandomMosaic(output_size=(512, 512), p=1.0),
+            "tv": None,
+            "alb": None,
+        }
+    )
 
-    registry.append({"name": "RandomRain", "category": "kornia_only",
-        "kornia": lambda: K.RandomRain(p=1.0), "tv": None, "alb": None})
-    registry.append({"name": "RandomSnow", "category": "kornia_only",
-        "kornia": lambda: K.RandomSnow(p=1.0), "tv": None, "alb": None})
-    registry.append({"name": "RandomChannelDropout", "category": "kornia_only",
-        "kornia": lambda: K.RandomChannelDropout(p=1.0), "tv": None, "alb": None})
-    registry.append({"name": "RandomChannelShuffle", "category": "kornia_only",
-        "kornia": lambda: K.RandomChannelShuffle(p=1.0), "tv": None, "alb": None})
-    registry.append({"name": "RandomRGBShift", "category": "kornia_only",
-        "kornia": lambda: K.RandomRGBShift(p=1.0), "tv": None, "alb": None})
-    registry.append({"name": "RandomPlanckianJitter", "category": "kornia_only",
-        "kornia": lambda: K.RandomPlanckianJitter(p=1.0), "tv": None, "alb": None})
-    registry.append({"name": "RandomCLAHE", "category": "kornia_only",
-        "kornia": lambda: K.RandomClahe(p=1.0), "tv": None, "alb": None})
+    registry.append(
+        {
+            "name": "RandomRain",
+            "category": "kornia_only",
+            "kornia": lambda: K.RandomRain(p=1.0),
+            "tv": None,
+            "alb": None,
+        }
+    )
+    registry.append(
+        {
+            "name": "RandomSnow",
+            "category": "kornia_only",
+            "kornia": lambda: K.RandomSnow(p=1.0),
+            "tv": None,
+            "alb": None,
+        }
+    )
+    registry.append(
+        {
+            "name": "RandomChannelDropout",
+            "category": "kornia_only",
+            "kornia": lambda: K.RandomChannelDropout(p=1.0),
+            "tv": None,
+            "alb": None,
+        }
+    )
+    registry.append(
+        {
+            "name": "RandomChannelShuffle",
+            "category": "kornia_only",
+            "kornia": lambda: K.RandomChannelShuffle(p=1.0),
+            "tv": None,
+            "alb": None,
+        }
+    )
+    registry.append(
+        {
+            "name": "RandomRGBShift",
+            "category": "kornia_only",
+            "kornia": lambda: K.RandomRGBShift(p=1.0),
+            "tv": None,
+            "alb": None,
+        }
+    )
+    registry.append(
+        {
+            "name": "RandomPlanckianJitter",
+            "category": "kornia_only",
+            "kornia": lambda: K.RandomPlanckianJitter(p=1.0),
+            "tv": None,
+            "alb": None,
+        }
+    )
+    registry.append(
+        {
+            "name": "RandomCLAHE",
+            "category": "kornia_only",
+            "kornia": lambda: K.RandomClahe(p=1.0),
+            "tv": None,
+            "alb": None,
+        }
+    )
 
     return registry
 
 
 def _build_detr_kornia():
     import kornia.augmentation as K
+
     return K.AugmentationSequential(
         K.RandomHorizontalFlip(p=0.5),
         K.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0),
@@ -1541,18 +1807,42 @@ def _versions() -> dict:
 
 # v5 medians for cross-version comparison.
 V5_PER_OP_KORNIA = {
-    "HorizontalFlip": 6.15, "VerticalFlip": 8.09, "Rotation": 50.5,
-    "Affine": 51.0, "ResizedCrop": 16.09, "CenterCrop": 11.83, "Resize": 9.43,
-    "Perspective": 62.01, "ColorJitter": 52.29, "Brightness": 17.98,
-    "Contrast": 21.04, "Saturation": 28.73, "Hue": 31.55, "Grayscale": 8.88,
-    "Solarize": 18.14, "Posterize": 19.42, "Equalize": 53.54, "Invert": 5.84,
-    "Sharpness": 20.35, "GaussianBlur": 32.89, "GaussianNoise": 12.17,
-    "MotionBlur": 33.05, "BoxBlur": 28.04, "MedianBlur": 375.29,
-    "RandomErasing": 38.38, "Normalize": 6.56, "Denormalize": 7.67,
-    "MixUp": 34.20, "CutMix": 82.66, "Mosaic": 36.32,
-    "RandomRain": 40.20, "RandomSnow": 42.77,
-    "RandomChannelDropout": 7.35, "RandomChannelShuffle": 8.05,
-    "RandomRGBShift": 9.78, "RandomPlanckianJitter": 11.43,
+    "HorizontalFlip": 6.15,
+    "VerticalFlip": 8.09,
+    "Rotation": 50.5,
+    "Affine": 51.0,
+    "ResizedCrop": 16.09,
+    "CenterCrop": 11.83,
+    "Resize": 9.43,
+    "Perspective": 62.01,
+    "ColorJitter": 52.29,
+    "Brightness": 17.98,
+    "Contrast": 21.04,
+    "Saturation": 28.73,
+    "Hue": 31.55,
+    "Grayscale": 8.88,
+    "Solarize": 18.14,
+    "Posterize": 19.42,
+    "Equalize": 53.54,
+    "Invert": 5.84,
+    "Sharpness": 20.35,
+    "GaussianBlur": 32.89,
+    "GaussianNoise": 12.17,
+    "MotionBlur": 33.05,
+    "BoxBlur": 28.04,
+    "MedianBlur": 375.29,
+    "RandomErasing": 38.38,
+    "Normalize": 6.56,
+    "Denormalize": 7.67,
+    "MixUp": 34.20,
+    "CutMix": 82.66,
+    "Mosaic": 36.32,
+    "RandomRain": 40.20,
+    "RandomSnow": 42.77,
+    "RandomChannelDropout": 7.35,
+    "RandomChannelShuffle": 8.05,
+    "RandomRGBShift": 9.78,
+    "RandomPlanckianJitter": 11.43,
     "RandomCLAHE": 163.84,
 }
 
@@ -1609,11 +1899,21 @@ def _write_leaderboard(summary: dict) -> Path:
     lines.append("| # | Class | Install status |")
     lines.append("|---|-------|----------------|")
     expected = [
-        "RandomHorizontalFlip", "RandomVerticalFlip", "CenterCrop",
-        "Normalize", "Denormalize", "RandomInvert", "RandomGrayscale",
-        "RandomSolarize", "RandomBrightness", "RandomContrast",
-        "RandomSaturation", "RandomHue", "RandomPosterize",
-        "RandomCutMixV2", "RandomMixUpV2",
+        "RandomHorizontalFlip",
+        "RandomVerticalFlip",
+        "CenterCrop",
+        "Normalize",
+        "Denormalize",
+        "RandomInvert",
+        "RandomGrayscale",
+        "RandomSolarize",
+        "RandomBrightness",
+        "RandomContrast",
+        "RandomSaturation",
+        "RandomHue",
+        "RandomPosterize",
+        "RandomCutMixV2",
+        "RandomMixUpV2",
     ]
     for idx, cls in enumerate(expected, 1):
         status = summary["v6_status"].get(cls, "missing")
@@ -1642,12 +1942,8 @@ def _write_leaderboard(summary: dict) -> Path:
         f"{meta['warmup']} warmup + {meta['runs']} CUDA-event runs. Median ms."
     )
     lines.append("")
-    lines.append(
-        "| Op | k v6 ms | k v5 ms | tv ms | speedup vs v5 | k/tv ratio | improvement |"
-    )
-    lines.append(
-        "|----|--------:|--------:|------:|--------------:|-----------:|:------------|"
-    )
+    lines.append("| Op | k v6 ms | k v5 ms | tv ms | speedup vs v5 | k/tv ratio | improvement |")
+    lines.append("|----|--------:|--------:|------:|--------------:|-----------:|:------------|")
 
     sortable = []
     unsortable = []
@@ -1671,9 +1967,7 @@ def _write_leaderboard(summary: dict) -> Path:
         if v5 and k_now > 0 and (v5 / k_now) >= 5.0:
             flags.append(f"**5x over v5** ({(v5 / k_now):.2f}x)")
         improv = ", ".join(flags) if flags else ""
-        lines.append(
-            f"| {name} | {k_now:.2f} | {v5_s} | {tv_now:.2f} | {spd} | {ratio:.2f}x | {improv} |"
-        )
+        lines.append(f"| {name} | {k_now:.2f} | {v5_s} | {tv_now:.2f} | {spd} | {ratio:.2f}x | {improv} |")
 
     lines.append("")
     lines.append("## Per-op (no torchvision baseline) -- kornia-only / tv-missing")

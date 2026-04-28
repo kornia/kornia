@@ -20,7 +20,6 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
@@ -81,9 +80,7 @@ class RandomLargeScaleJittering(GeometricAugmentationBase2D):
         if scale_range[0] <= 0:
             raise ValueError(f"scale_range min must be > 0, got {scale_range[0]}")
         if scale_range[0] > scale_range[1]:
-            raise ValueError(
-                f"scale_range min must be <= max, got min={scale_range[0]}, max={scale_range[1]}"
-            )
+            raise ValueError(f"scale_range min must be <= max, got min={scale_range[0]}, max={scale_range[1]}")
 
         self.output_size = output_size
         self.flags = {

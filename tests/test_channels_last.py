@@ -22,26 +22,26 @@ Scope: AugmentationSequential must preserve the memory format of the
 primary image input — channels-last in → channels-last out, NCHW in →
 NCHW out.  No silent format promotion in either direction.
 """
+
 from __future__ import annotations
 
-import torch
 import pytest
+import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.container import AugmentationSequential
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_pipeline() -> AugmentationSequential:
     """Representative composition used for all format-preservation tests."""
     return AugmentationSequential(
         K.RandomHorizontalFlip(p=1.0),
         K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
-        K.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]),
-                    std=torch.tensor([0.229, 0.224, 0.225])),
+        K.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),
         data_keys=["input"],
     )
 
@@ -49,6 +49,7 @@ def _make_pipeline() -> AugmentationSequential:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestChannelsLastPreservation:
     """AugmentationSequential must preserve the input memory format."""
@@ -114,6 +115,4 @@ class TestChannelsLastPreservation:
             y_cl = pipeline(x_cl, params=pipeline._params)
 
         # Values must be identical regardless of memory layout
-        assert torch.allclose(y_nchw, y_cl.contiguous()), (
-            "Channels-last and NCHW runs must produce the same values"
-        )
+        assert torch.allclose(y_nchw, y_cl.contiguous()), "Channels-last and NCHW runs must produce the same values"

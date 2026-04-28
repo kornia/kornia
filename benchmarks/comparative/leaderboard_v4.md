@@ -97,14 +97,14 @@ kornia v4 eager: **58.1 ms** (v2 baseline: 68.8 ms, v3: 72.4 ms).
 
 ### CUDA Graph capture status
 
-**kornia (Row 7): CUDA Graph capture FAILED.** Reason: `AcceleratorError: CUDA error: operation not permitted when stream is capturing`. 
+**kornia (Row 7): CUDA Graph capture FAILED.** Reason: `AcceleratorError: CUDA error: operation not permitted when stream is capturing`.
 The five patches address Normalize buffer allocation, HFlip tensor construction, and RandomAffine normalization-matrix computation, but kornia's augmentation dispatch loop (`AugmentationSequential.forward`, random parameter generation via `torch.rand`/`torch.randint` inside `_param_generator`) still performs in-forward GPU allocations that violate CUDA Graph capture requirements. Full CUDA Graph support would require a static-params pre-generation step before capture, reusing fixed parameter buffers on every replay.
 
 **torchvision (Row 8): CUDA Graph capture FAILED.** Reason: `AcceleratorError: CUDA error: operation not permitted when stream is capturing`. torchvision's augmentations also generate random parameters per-call and share the same CUDA stream capture incompatibility.
 
 ### Where kornia stands vs torchvision
 
-kornia v4 eager (58.1 ms) vs torchvision eager (24.3 ms): **2.39× gap**. 
+kornia v4 eager (58.1 ms) vs torchvision eager (24.3 ms): **2.39× gap**.
 The gap persists because torchvision's RandomAffine uses a highly-optimized CUDA kernel path and its ColorJitter operates entirely in fused CUDA kernels, while kornia's path still goes through F.grid_sample (a general interpolation kernel) and python-level HSV decomposition. The five patches reduce Python overhead but cannot close the kernel-level gap.
 
 ### Summary

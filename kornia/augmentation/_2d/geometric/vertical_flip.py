@@ -20,7 +20,6 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation.utils import _transform_input
 from kornia.geometry.transform import vflip
 
 

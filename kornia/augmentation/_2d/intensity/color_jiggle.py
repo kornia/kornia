@@ -25,8 +25,6 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.color import hsv_to_rgb, rgb_to_hsv
-from kornia.constants import pi
-
 
 # 2*pi constant used for hue scaling; computed once at module load.
 _TWO_PI: float = 2.0 * math.pi

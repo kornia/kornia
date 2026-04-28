@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Comparative benchmark v5 -- Path A lightweight forward fast path on CUDA.
 
 Builds on run_v4.py / run_per_op.py:
@@ -23,11 +40,11 @@ Run from /tmp with PYTHONNOUSERSITE=1:
     /home/nvidia/bubbaloop-nodes-official/camera-object-detector/.pixi/envs/default/bin/python3.10 \\
     /home/nvidia/kornia/benchmarks/comparative/run_v5.py
 """
+
 from __future__ import annotations
 
 import json
 import math
-import os
 import statistics
 import sys
 import time
@@ -37,13 +54,13 @@ from pathlib import Path
 
 warnings.filterwarnings("ignore")
 
-import numpy as np
 import torch
 
 # ---------------------------------------------------------------------------
 # WORKAROUND 1: _torch_inverse_cast -- analytical closed-form 3x3 inverse
 # Must be applied BEFORE importing any kornia geometry module.
 # ---------------------------------------------------------------------------
+
 
 def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
     dtype = input.dtype
@@ -79,8 +96,8 @@ def _cpu_solve_cast(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
 
 
 def _patch_kornia_solvers() -> None:
-    import kornia.utils.helpers as _kh
     import kornia.geometry.conversions as _kgc
+    import kornia.utils.helpers as _kh
 
     _kh._torch_inverse_cast = _analytical_3x3_inv
     _kgc._torch_inverse_cast = _analytical_3x3_inv
@@ -90,24 +107,26 @@ def _patch_kornia_solvers() -> None:
         if mod_name.startswith("kornia"):
             if hasattr(mod, "_torch_inverse_cast"):
                 try:
-                    setattr(mod, "_torch_inverse_cast", _analytical_3x3_inv)
+                    mod._torch_inverse_cast = _analytical_3x3_inv
                 except (AttributeError, TypeError):
                     pass
             if hasattr(mod, "_torch_solve_cast"):
                 try:
-                    setattr(mod, "_torch_solve_cast", _cpu_solve_cast)
+                    mod._torch_solve_cast = _cpu_solve_cast
                 except (AttributeError, TypeError):
                     pass
 
     try:
         import kornia.geometry.transform.imgwarp as _imgwarp
+
         _imgwarp._torch_solve_cast = _cpu_solve_cast
     except Exception:
         pass
 
 
+import kornia.geometry.conversions
 import kornia.utils.helpers  # noqa: F401
-import kornia.geometry.conversions  # noqa: F401
+
 _patch_kornia_solvers()
 
 
@@ -234,9 +253,9 @@ def _apply_v4_patches() -> str:
 
     # Patch 3: hflip / vflip
     try:
-        import kornia.geometry.transform.flips as _flips_mod
-        import kornia.geometry.transform as _kgt
         import kornia.augmentation._2d.geometric.horizontal_flip as _hflip_mod2
+        import kornia.geometry.transform as _kgt
+        import kornia.geometry.transform.flips as _flips_mod
 
         def _fast_hflip(input):
             return input.flip(-1)
@@ -255,12 +274,12 @@ def _apply_v4_patches() -> str:
             if _mn.startswith("kornia"):
                 if getattr(_m, "hflip", None) is not _fast_hflip and hasattr(_m, "hflip"):
                     try:
-                        setattr(_m, "hflip", _fast_hflip)
+                        _m.hflip = _fast_hflip
                     except (AttributeError, TypeError):
                         pass
                 if getattr(_m, "vflip", None) is not _fast_vflip and hasattr(_m, "vflip"):
                     try:
-                        setattr(_m, "vflip", _fast_vflip)
+                        _m.vflip = _fast_vflip
                     except (AttributeError, TypeError):
                         pass
         status_parts.append("hflip/vflip(no-contiguous)")
@@ -269,8 +288,9 @@ def _apply_v4_patches() -> str:
 
     # Patch 4: RandomAffine closed-form
     try:
-        import kornia.augmentation._2d.geometric.affine as _aff_mod
         import torch.nn.functional as F
+
+        import kornia.augmentation._2d.geometric.affine as _aff_mod
 
         def _affine_matrix2d_closed(translations, center, scale, angle, shear_x, shear_y):
             _PI_OVER_180 = math.pi / 180.0
@@ -299,9 +319,7 @@ def _apply_v4_patches() -> str:
             r12 = d * sx_t * cy + e * sy_t * (cx - sx_t * cy) + f_t
             zeros = torch.zeros_like(r00)
             ones = torch.ones_like(r00)
-            return torch.stack(
-                [r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1
-            ).reshape(-1, 3, 3)
+            return torch.stack([r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1).reshape(-1, 3, 3)
 
         def _affine_homography_inv(M):
             a, b, c = M[:, 0, 0], M[:, 0, 1], M[:, 0, 2]
@@ -315,9 +333,7 @@ def _apply_v4_patches() -> str:
             r12 = (c * d - a * f_t) / det
             zeros = torch.zeros_like(r00)
             ones = torch.ones_like(r00)
-            return torch.stack(
-                [r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1
-            ).reshape(-1, 3, 3)
+            return torch.stack([r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1).reshape(-1, 3, 3)
 
         def _make_norm_matrices(height, width, device, dtype):
             eps = 1e-14
@@ -351,15 +367,33 @@ def _apply_v4_patches() -> str:
         _RA = _aff_mod.RandomAffine
         _orig_ra_init = _RA.__init__
 
-        def _patched_ra_init(self, degrees, translate=None, scale=None, shear=None,
-                             resample="BILINEAR", same_on_batch=False, align_corners=False,
-                             padding_mode="ZEROS", p=0.5, keepdim=False, **kw):
+        def _patched_ra_init(
+            self,
+            degrees,
+            translate=None,
+            scale=None,
+            shear=None,
+            resample="BILINEAR",
+            same_on_batch=False,
+            align_corners=False,
+            padding_mode="ZEROS",
+            p=0.5,
+            keepdim=False,
+            **kw,
+        ):
             kw.pop("fill_value", None)
             _orig_ra_init(
-                self, degrees, translate=translate, scale=scale, shear=shear,
-                resample=resample, same_on_batch=same_on_batch,
-                align_corners=align_corners, padding_mode=padding_mode,
-                p=p, keepdim=keepdim,
+                self,
+                degrees,
+                translate=translate,
+                scale=scale,
+                shear=shear,
+                resample=resample,
+                same_on_batch=same_on_batch,
+                align_corners=align_corners,
+                padding_mode=padding_mode,
+                p=p,
+                keepdim=keepdim,
             )
             self._norm_cache = {}
 
@@ -376,13 +410,12 @@ def _apply_v4_patches() -> str:
         def _patched_ra_apply(self, input, params, flags, transform=None):
             _, _, height, width = input.shape
             if not isinstance(transform, torch.Tensor):
-                raise TypeError(
-                    f"Expected the `transform` be a torch.Tensor. Got {type(transform)}."
-                )
+                raise TypeError(f"Expected the `transform` be a torch.Tensor. Got {type(transform)}.")
             padding_mode_str = flags["padding_mode"].name.lower()
 
             if padding_mode_str == "fill":
                 from kornia.geometry.transform import warp_affine
+
                 return warp_affine(
                     input,
                     transform[:, :2, :],
@@ -405,7 +438,8 @@ def _apply_v4_patches() -> str:
             B, C = input.shape[:2]
             grid = F.affine_grid(theta, [B, C, height, width], align_corners=align_corners)
             return F.grid_sample(
-                input, grid,
+                input,
+                grid,
                 mode=mode,
                 padding_mode=padding_mode_str,
                 align_corners=align_corners,
@@ -423,7 +457,8 @@ def _apply_v4_patches() -> str:
     # Patch 5: ColorJiggle fused HSV
     try:
         import kornia.augmentation._2d.intensity.color_jiggle as _cj_mod
-        from kornia.color import hsv_to_rgb as _hsv_to_rgb, rgb_to_hsv as _rgb_to_hsv
+        from kornia.color import hsv_to_rgb as _hsv_to_rgb
+        from kornia.color import rgb_to_hsv as _rgb_to_hsv
 
         _TWO_PI = 2.0 * math.pi
 
@@ -566,9 +601,7 @@ def _apply_path_a_patches() -> dict:
                             in_shape = (1,) * (4 - input.dim()) + tuple(input.shape)
                         fill_value = bool(self.p > 0.5)
                         base_params = {
-                            "batch_prob": torch.full(
-                                (in_shape[0],), fill_value, dtype=torch.bool
-                            ),
+                            "batch_prob": torch.full((in_shape[0],), fill_value, dtype=torch.bool),
                             "forward_input_shape": torch.tensor(in_shape, dtype=torch.long),
                         }
                         extra = getattr(self, "_fast_path_extra_params", None)
@@ -588,11 +621,9 @@ def _apply_path_a_patches() -> dict:
         return statuses  # bail early -- nothing else will fire
 
     # Helper: import _transform_input once
-    from kornia.augmentation.utils import _transform_input as _ti
-
     # ----- Step 2: per-class opt-ins -----
-
     import kornia.augmentation as K
+    from kornia.augmentation.utils import _transform_input as _ti
 
     # 2.1 RandomHorizontalFlip
     try:
@@ -609,9 +640,7 @@ def _apply_path_a_patches() -> dict:
                 cache = _hflip_mod._HFLIP_MAT_CACHE
                 cached = cache.get(key)
                 if cached is None:
-                    fm = _hflip_mod._HFLIP_MAT_TEMPLATE.to(
-                        device=in_tensor.device, dtype=in_tensor.dtype
-                    ).clone()
+                    fm = _hflip_mod._HFLIP_MAT_TEMPLATE.to(device=in_tensor.device, dtype=in_tensor.dtype).clone()
                     fm[0, 2] = w - 1
                     cached = fm.unsqueeze(0)
                     cache[key] = cached
@@ -629,6 +658,7 @@ def _apply_path_a_patches() -> dict:
 
     # 2.2 RandomVerticalFlip
     try:
+
         def _vflip_fast(self, input):
             if self.p not in (0.0, 1.0):
                 return None
@@ -655,6 +685,7 @@ def _apply_path_a_patches() -> dict:
 
     # 2.3 CenterCrop (slice mode only)
     try:
+
         def _cc_fast(self, input):
             if self.flags.get("cropping_mode") != "slice":
                 return None
@@ -702,6 +733,7 @@ def _apply_path_a_patches() -> dict:
 
     # 2.5 RandomInvert
     try:
+
         def _inv_fast(self, input):
             if self.p not in (0.0, 1.0):
                 return None
@@ -711,9 +743,7 @@ def _apply_path_a_patches() -> dict:
             self._transform_matrix = eye.unsqueeze(0).expand(b, 3, 3)
             if self.p == 0.0:
                 return in_tensor
-            max_val = torch.as_tensor(
-                self.flags["max_val"], device=in_tensor.device, dtype=in_tensor.dtype
-            )
+            max_val = torch.as_tensor(self.flags["max_val"], device=in_tensor.device, dtype=in_tensor.dtype)
             return max_val - in_tensor
 
         K.RandomInvert._supports_fast_image_only_path = True
@@ -735,9 +765,7 @@ def _apply_path_a_patches() -> dict:
             self._transform_matrix = eye.unsqueeze(0).expand(b, 3, 3)
             if self.p == 0.0:
                 return in_tensor
-            params = self._param_generator(
-                torch.Size((b, *in_tensor.shape[1:])), self.same_on_batch
-            )
+            params = self._param_generator(torch.Size((b, *in_tensor.shape[1:])), self.same_on_batch)
             self._fast_path_extra_params = dict(params)
             thresholds = params["thresholds"]
             additions = params.get("additions")
@@ -762,9 +790,7 @@ def _apply_path_a_patches() -> dict:
             self._transform_matrix = eye.unsqueeze(0).expand(b, 3, 3)
             if self.p == 0.0:
                 return in_tensor
-            params = self._param_generator(
-                torch.Size((b, *in_tensor.shape[1:])), self.same_on_batch
-            )
+            params = self._param_generator(torch.Size((b, *in_tensor.shape[1:])), self.same_on_batch)
             self._fast_path_extra_params = dict(params)
             return _posterize(in_tensor, params["bits_factor"].to(in_tensor.device))
 
@@ -776,6 +802,7 @@ def _apply_path_a_patches() -> dict:
 
     # 2.8 Normalize
     try:
+
         def _norm_fast(self, input):
             if self.p not in (0.0, 1.0):
                 return None
@@ -800,6 +827,7 @@ def _apply_path_a_patches() -> dict:
 
     # 2.9 Denormalize
     try:
+
         def _dnorm_fast(self, input):
             if self.p not in (0.0, 1.0):
                 return None
@@ -839,26 +867,35 @@ _patch_kornia_solvers()
 # Numerical equivalence verification
 # ---------------------------------------------------------------------------
 
+
 def _verify_path_a_equivalence() -> dict:
     """For each opted-in transform, assert fast-path output == standard-path output."""
     import kornia.augmentation as K
 
     cases = [
         ("RandomHorizontalFlip", lambda: K.RandomHorizontalFlip(p=1.0), (2, 3, 32, 32)),
-        ("RandomVerticalFlip",   lambda: K.RandomVerticalFlip(p=1.0),   (2, 3, 32, 32)),
-        ("CenterCrop",           lambda: K.CenterCrop(size=(24, 24)),   (2, 3, 32, 32)),
-        ("RandomGrayscale",      lambda: K.RandomGrayscale(p=1.0),      (2, 3, 32, 32)),
-        ("RandomInvert",         lambda: K.RandomInvert(p=1.0),         (2, 3, 32, 32)),
-        ("RandomSolarize",       lambda: K.RandomSolarize(thresholds=0.5, p=1.0), (2, 3, 32, 32)),
-        ("RandomPosterize",      lambda: K.RandomPosterize(bits=4, p=1.0),         (2, 3, 32, 32)),
-        ("Normalize",            lambda: K.Normalize(
-            mean=torch.tensor([0.485, 0.456, 0.406]),
-            std=torch.tensor([0.229, 0.224, 0.225]),
-        ), (2, 3, 32, 32)),
-        ("Denormalize",          lambda: K.Denormalize(
-            mean=torch.tensor([0.485, 0.456, 0.406]),
-            std=torch.tensor([0.229, 0.224, 0.225]),
-        ), (2, 3, 32, 32)),
+        ("RandomVerticalFlip", lambda: K.RandomVerticalFlip(p=1.0), (2, 3, 32, 32)),
+        ("CenterCrop", lambda: K.CenterCrop(size=(24, 24)), (2, 3, 32, 32)),
+        ("RandomGrayscale", lambda: K.RandomGrayscale(p=1.0), (2, 3, 32, 32)),
+        ("RandomInvert", lambda: K.RandomInvert(p=1.0), (2, 3, 32, 32)),
+        ("RandomSolarize", lambda: K.RandomSolarize(thresholds=0.5, p=1.0), (2, 3, 32, 32)),
+        ("RandomPosterize", lambda: K.RandomPosterize(bits=4, p=1.0), (2, 3, 32, 32)),
+        (
+            "Normalize",
+            lambda: K.Normalize(
+                mean=torch.tensor([0.485, 0.456, 0.406]),
+                std=torch.tensor([0.229, 0.224, 0.225]),
+            ),
+            (2, 3, 32, 32),
+        ),
+        (
+            "Denormalize",
+            lambda: K.Denormalize(
+                mean=torch.tensor([0.485, 0.456, 0.406]),
+                std=torch.tensor([0.229, 0.224, 0.225]),
+            ),
+            (2, 3, 32, 32),
+        ),
     ]
 
     out: dict = {}
@@ -975,42 +1012,34 @@ def _time_module(aug, x_gpu) -> dict:
 # Scope A: per-op CUDA event timing for the 10 patched transforms
 # ---------------------------------------------------------------------------
 
+
 def _build_scope_a_registry():
-    import kornia.augmentation as K
     import torchvision.transforms.v2 as T
+
+    import kornia.augmentation as K
 
     MEAN_T = torch.tensor(IMAGENET_MEAN)
     STD_T = torch.tensor(IMAGENET_STD)
 
     # Each entry: {name, kornia_factory, tv_factory or None}
     entries = [
-        ("CenterCrop",
-            lambda: K.CenterCrop(size=(224, 224)),
-            lambda: T.CenterCrop(size=224)),
-        ("RandomHorizontalFlip",
-            lambda: K.RandomHorizontalFlip(p=1.0),
-            lambda: T.RandomHorizontalFlip(p=1.0)),
-        ("RandomVerticalFlip",
-            lambda: K.RandomVerticalFlip(p=1.0),
-            lambda: T.RandomVerticalFlip(p=1.0)),
-        ("RandomGrayscale",
-            lambda: K.RandomGrayscale(p=1.0),
-            lambda: T.RandomGrayscale(p=1.0)),
-        ("RandomInvert",
-            lambda: K.RandomInvert(p=1.0),
-            lambda: T.RandomInvert(p=1.0)),
-        ("RandomSolarize",
+        ("CenterCrop", lambda: K.CenterCrop(size=(224, 224)), lambda: T.CenterCrop(size=224)),
+        ("RandomHorizontalFlip", lambda: K.RandomHorizontalFlip(p=1.0), lambda: T.RandomHorizontalFlip(p=1.0)),
+        ("RandomVerticalFlip", lambda: K.RandomVerticalFlip(p=1.0), lambda: T.RandomVerticalFlip(p=1.0)),
+        ("RandomGrayscale", lambda: K.RandomGrayscale(p=1.0), lambda: T.RandomGrayscale(p=1.0)),
+        ("RandomInvert", lambda: K.RandomInvert(p=1.0), lambda: T.RandomInvert(p=1.0)),
+        (
+            "RandomSolarize",
             lambda: K.RandomSolarize(thresholds=0.5, p=1.0),
-            lambda: T.RandomSolarize(threshold=0.5, p=1.0)),
-        ("RandomPosterize",
-            lambda: K.RandomPosterize(bits=4, p=1.0),
-            lambda: T.RandomPosterize(bits=4, p=1.0)),
-        ("Normalize",
+            lambda: T.RandomSolarize(threshold=0.5, p=1.0),
+        ),
+        ("RandomPosterize", lambda: K.RandomPosterize(bits=4, p=1.0), lambda: T.RandomPosterize(bits=4, p=1.0)),
+        (
+            "Normalize",
             lambda: K.Normalize(mean=MEAN_T, std=STD_T),
-            lambda: T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)),
-        ("Denormalize",
-            lambda: K.Denormalize(mean=MEAN_T, std=STD_T),
-            None),
+            lambda: T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+        ),
+        ("Denormalize", lambda: K.Denormalize(mean=MEAN_T, std=STD_T), None),
     ]
     return entries
 
@@ -1028,7 +1057,7 @@ def run_scope_a(x_gpu) -> dict:
             aug_fast = k_factory().cuda()
             r_fast = _time_module(aug_fast, x_gpu)
             f_med = r_fast.get("median_ms", None)
-            print(f" fast={f_med:.3f}ms" if f_med else f" fast=FAIL", end="", flush=True)
+            print(f" fast={f_med:.3f}ms" if f_med else " fast=FAIL", end="", flush=True)
         except Exception:
             r_fast = {"status": "error", "reason": _traceback.format_exc().splitlines()[-1]}
             print(" fast=FAIL", end="", flush=True)
@@ -1039,7 +1068,7 @@ def run_scope_a(x_gpu) -> dict:
             aug_std._supports_fast_image_only_path = False
             r_std = _time_module(aug_std, x_gpu)
             s_med = r_std.get("median_ms", None)
-            print(f" std={s_med:.3f}ms" if s_med else f" std=FAIL", end="", flush=True)
+            print(f" std={s_med:.3f}ms" if s_med else " std=FAIL", end="", flush=True)
         except Exception:
             r_std = {"status": "error", "reason": _traceback.format_exc().splitlines()[-1]}
             print(" std=FAIL", end="", flush=True)
@@ -1050,7 +1079,7 @@ def run_scope_a(x_gpu) -> dict:
                 aug_tv = tv_factory()
                 r_tv = _time_module(aug_tv, x_gpu)
                 tv_med = r_tv.get("median_ms", None)
-                print(f" tv={tv_med:.3f}ms" if tv_med else f" tv=FAIL", end="", flush=True)
+                print(f" tv={tv_med:.3f}ms" if tv_med else " tv=FAIL", end="", flush=True)
             except Exception:
                 r_tv = {"status": "error", "reason": _traceback.format_exc().splitlines()[-1]}
                 print(" tv=FAIL", end="", flush=True)
@@ -1086,6 +1115,7 @@ def run_scope_a(x_gpu) -> dict:
 # ---------------------------------------------------------------------------
 # Scope B: DETR-style 4-op pipeline (HFlip + Affine + ColorJitter + Normalize)
 # ---------------------------------------------------------------------------
+
 
 def _build_detr_kornia(*, fast_path: bool):
     """Build the DETR pipeline with fast-path enabled or disabled per-instance."""
@@ -1133,6 +1163,7 @@ def run_scope_b(x_gpu) -> dict:
 # Versions
 # ---------------------------------------------------------------------------
 
+
 def _versions() -> dict:
     out = {}
     for lib in ("kornia", "torchvision", "albumentations"):
@@ -1148,6 +1179,7 @@ def _versions() -> dict:
 # Leaderboard generator
 # ---------------------------------------------------------------------------
 
+
 def _write_leaderboard(summary: dict) -> Path:
     meta = summary["meta"]
     lines: list[str] = []
@@ -1159,10 +1191,10 @@ def _write_leaderboard(summary: dict) -> Path:
     lines.append("| Key | Value |")
     lines.append("|-----|-------|")
     lines.append(f"| Date | {meta['date']} |")
-    lines.append(f"| Platform | Jetson Orin (aarch64), Linux 5.15.148-tegra |")
+    lines.append("| Platform | Jetson Orin (aarch64), Linux 5.15.148-tegra |")
     lines.append(f"| GPU | {meta['device']} (Orin integrated GPU, 1792-core Ampere) |")
-    lines.append(f"| CUDA | 12.6 (libcusolver 11.6.4.69) |")
-    lines.append(f"| Python | 3.10 (pixi camera-object-detector env) |")
+    lines.append("| CUDA | 12.6 (libcusolver 11.6.4.69) |")
+    lines.append("| Python | 3.10 (pixi camera-object-detector env) |")
     lines.append(f"| PyTorch | {meta['torch']} |")
     lines.append(f"| kornia | {meta['kornia']} (installed 0.7.4 + v4 + Path A runtime patches) |")
     lines.append(f"| torchvision | {meta['torchvision']} |")
@@ -1208,12 +1240,10 @@ def _write_leaderboard(summary: dict) -> Path:
     )
     lines.append("")
     lines.append(
-        "| Transform | k fast (ms) | k std (ms) | tv (ms) | "
-        "fast / std speedup | fast / tv ratio | std / tv ratio |"
+        "| Transform | k fast (ms) | k std (ms) | tv (ms) | fast / std speedup | fast / tv ratio | std / tv ratio |"
     )
     lines.append(
-        "|-----------|------------:|-----------:|--------:|"
-        "-------------------:|----------------:|---------------:|"
+        "|-----------|------------:|-----------:|--------:|-------------------:|----------------:|---------------:|"
     )
     for name, row in summary["scope_a"].items():
         f_med = row["fast"].get("median_ms")
@@ -1228,23 +1258,24 @@ def _write_leaderboard(summary: dict) -> Path:
         spd_s = f"{spd:.2f}x" if spd else "n/a"
         rtv_s = f"{rtv:.2f}x" if rtv else "n/a"
         rstv_s = f"{rstv:.2f}x" if rstv else "n/a"
-        lines.append(
-            f"| {name} | {f_str} | {s_str} | {tv_str} | "
-            f"{spd_s} | {rtv_s} | {rstv_s} |"
-        )
+        lines.append(f"| {name} | {f_str} | {s_str} | {tv_str} | {spd_s} | {rtv_s} | {rstv_s} |")
     lines.append("")
 
     # Scope B table
     lines.append("## Scope B -- DETR-style 4-op pipeline (kornia)")
     lines.append("")
-    lines.append("Pipeline: HFlip(p=0.5) -> Affine(deg=15, t=0.1, s=0.8-1.2) -> "
-                 "ColorJiggle(0.2, 0.2, 0.2) -> Normalize(ImageNet)")
+    lines.append(
+        "Pipeline: HFlip(p=0.5) -> Affine(deg=15, t=0.1, s=0.8-1.2) -> "
+        "ColorJiggle(0.2, 0.2, 0.2) -> Normalize(ImageNet)"
+    )
     lines.append("")
     lines.append("| Configuration | Median ms | IQR | Min ms | Max ms | Delta vs v4 (58.1ms) |")
     lines.append("|---------------|----------:|----:|-------:|-------:|---------------------:|")
     V4_BASELINE = 58.1
-    for label, key in (("Fast path ENABLED (Path A active)", "fast_on"),
-                       ("Fast path DISABLED (forces v4 standard chain)", "fast_off")):
+    for label, key in (
+        ("Fast path ENABLED (Path A active)", "fast_on"),
+        ("Fast path DISABLED (forces v4 standard chain)", "fast_off"),
+    ):
         r = summary["scope_b"].get(key, {})
         med = r.get("median_ms")
         iqr = r.get("iqr_ms")
@@ -1271,14 +1302,11 @@ def _write_leaderboard(summary: dict) -> Path:
     lines.append("### Did the CenterCrop CPU 33x speedup translate to CUDA?")
     if cc_spd:
         lines.append("")
-        lines.append(
-            f"Kornia CenterCrop on CUDA: fast={cc_fast:.3f}ms, std={cc_std:.3f}ms, "
-            f"speedup={cc_spd:.2f}x."
-        )
+        lines.append(f"Kornia CenterCrop on CUDA: fast={cc_fast:.3f}ms, std={cc_std:.3f}ms, speedup={cc_spd:.2f}x.")
         if cc_tv:
             lines.append(
-                f"vs torchvision CenterCrop ({cc_tv:.3f}ms): fast/tv={cc_fast/cc_tv:.2f}x, "
-                f"std/tv={cc_std/cc_tv:.2f}x."
+                f"vs torchvision CenterCrop ({cc_tv:.3f}ms): fast/tv={cc_fast / cc_tv:.2f}x, "
+                f"std/tv={cc_std / cc_tv:.2f}x."
             )
         if cc_spd >= 60:
             lines.append("**Verdict: the projected ~80x CUDA speedup HELD or BEAT.**")
@@ -1326,11 +1354,7 @@ def _write_leaderboard(summary: dict) -> Path:
         lines.append("")
 
     lines.append("### Per-op fast vs standard speedups (top 3)")
-    speedups = [
-        (n, r["k_fast_speedup_vs_std"])
-        for n, r in summary["scope_a"].items()
-        if r["k_fast_speedup_vs_std"]
-    ]
+    speedups = [(n, r["k_fast_speedup_vs_std"]) for n, r in summary["scope_a"].items() if r["k_fast_speedup_vs_std"]]
     speedups.sort(key=lambda x: x[1], reverse=True)
     for name, spd in speedups[:3]:
         lines.append(f"- **{name}**: {spd:.2f}x faster than the standard path")
@@ -1383,8 +1407,7 @@ def _write_leaderboard(summary: dict) -> Path:
             )
         else:
             cross_verdict = (
-                f"vs the v4 reference run (58.1ms) the v5 fast-path run is "
-                f"{delta_v4:+.2f}ms (within noise band)."
+                f"vs the v4 reference run (58.1ms) the v5 fast-path run is {delta_v4:+.2f}ms (within noise band)."
             )
         lines.append(cross_verdict)
         lines.append("")
@@ -1419,8 +1442,7 @@ def _write_leaderboard(summary: dict) -> Path:
 
     lines.append("---")
     lines.append(
-        f"*Generated: benchmark v5 on {meta['device']}, batch={meta['batch']}, "
-        f"res={meta['res']}x{meta['res']}.*"
+        f"*Generated: benchmark v5 on {meta['device']}, batch={meta['batch']}, res={meta['res']}x{meta['res']}.*"
     )
 
     md_path = OUT_DIR / "leaderboard_v5.md"
@@ -1432,6 +1454,7 @@ def _write_leaderboard(summary: dict) -> Path:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     t0 = time.perf_counter()
 
@@ -1439,7 +1462,7 @@ def main() -> None:
     print("Comparative benchmark v5 -- Path A lightweight forward fast path on CUDA")
     print("=" * 70)
     print(f"v4 patches: {_v4_status}")
-    print(f"Path A status:")
+    print("Path A status:")
     for k, v in _path_a_status.items():
         print(f"  {k:35s} {v}")
 

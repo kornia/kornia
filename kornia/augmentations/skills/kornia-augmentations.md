@@ -226,12 +226,12 @@ if torch.cuda.is_available():
     dummy = torch.randn(*batch_shape, device='cuda')
     for _ in range(3):
         _ = aug(dummy)
-    
+
     # Capture
     g = torch.cuda.CUDAGraph()
     with torch.cuda.graph(g):
         out = aug(dummy)
-    
+
     # Reuse on same-shaped inputs
     images = torch.randn(*batch_shape, device='cuda')
     images.copy_(images)  # or images_copy[:] = images
@@ -311,7 +311,7 @@ except Exception:
 try:
     import torch.onnx
     torch.onnx.export(
-        aug, 
+        aug,
         torch.randn(1, 3, 224, 224),
         "augmentation.onnx",
         opset_version=14,
@@ -382,21 +382,21 @@ import torch.nn.functional as F
 class RandomCustomBlurParams(BaseModel):
     kernel_size: int = Field(gt=0, description="Blur kernel size (odd)")
     sigma: torch.Tensor  # Per-sample parameter, shape (B,)
-    
+
     class Config:
         arbitrary_types_allowed = True
 
 # Step 2: Implement Transform inheriting from Base2D or RigidAffineAugmentationBase2D
 class RandomCustomBlur(RigidAffineAugmentationBase2D):
     r"""Apply random custom blur.
-    
+
     Args:
         kernel_size: blur kernel size (must be odd).
         sigma: standard deviation range (min, max).
         p: probability of applying the augmentation.
         same_on_batch: apply same transformation across batch.
     """
-    
+
     def __init__(
         self,
         kernel_size: int = 5,
@@ -408,17 +408,17 @@ class RandomCustomBlur(RigidAffineAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.kernel_size = kernel_size
         self.sigma_range = sigma
-    
+
     # Step 3: sample_params — return Pydantic Params with sampled tensors
     def sample_params(self, shape: torch.Size, device: torch.device, dtype: torch.dtype) -> dict[str, Any]:
         B = shape[0]
         sigma = torch.empty(B, device=device, dtype=dtype).uniform_(*self.sigma_range)
         return {"sigma": sigma}
-    
+
     # Step 4: apply — core forward logic
     def apply_transform(
-        self, 
-        input: torch.Tensor, 
+        self,
+        input: torch.Tensor,
         params: dict[str, Any],
         transform_matrix: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
@@ -431,26 +431,26 @@ class RandomCustomBlur(RigidAffineAugmentationBase2D):
             s_i = sigma[i].item()
             # Apply blur (deterministic per sampled sigma)
             blurred = torch.nn.functional.gaussian_blur(
-                img_i, 
-                kernel_size=self.kernel_size, 
+                img_i,
+                kernel_size=self.kernel_size,
                 sigma=s_i
             )
             output.append(blurred)
         return torch.cat(output, dim=0)
-    
+
     # Step 5 (optional): apply_to_mask, apply_to_boxes, apply_to_keypoints
     def apply_to_mask(self, input: torch.Tensor, params: dict[str, Any]) -> torch.Tensor:
         # Masks use same blur as images (or identity)
         return self.apply_transform(input, params)
-    
+
     def apply_to_boxes(self, input: torch.Tensor, params: dict[str, Any]) -> torch.Tensor:
         # Blur doesn't affect box geometry (identity)
         return input
-    
+
     def apply_to_keypoints(self, input: torch.Tensor, params: dict[str, Any]) -> torch.Tensor:
         # Blur doesn't affect keypoint coordinates (identity)
         return input
-    
+
     # Step 6 (optional): inverse — undo transformation if invertible
     # If not invertible, omit this method
 ```
@@ -465,14 +465,14 @@ import torch
 from kornia.augmentation import RandomCustomBlur
 
 class TestRandomCustomBlur(BaseTester):
-    
+
     def test_smoke(self, device, dtype):
         """Basic run with all device/dtype combos."""
         aug = RandomCustomBlur(p=1.0)
         img = torch.randn(2, 3, 32, 32, device=device, dtype=dtype)
         out = aug(img)
         assert out.shape == img.shape
-    
+
     def test_cardinality(self, device, dtype):
         """Output shapes match input."""
         aug = RandomCustomBlur(p=1.0)
@@ -480,14 +480,14 @@ class TestRandomCustomBlur(BaseTester):
             img = torch.randn(4, 3, h, w, device=device, dtype=dtype)
             out = aug(img)
             assert out.shape == img.shape
-    
+
     def test_exception(self, device, dtype):
         """Invalid inputs raise exceptions."""
         aug = RandomCustomBlur()
         # Wrong shape
         with self.assertRaises(RuntimeError):
             aug(torch.randn(3, 32, 32, device=device, dtype=dtype))  # missing batch
-    
+
     def test_feature(self, device, dtype):
         """Numerical correctness: blur increases smoothness."""
         aug = RandomCustomBlur(sigma=(1.0, 1.0), p=1.0)  # Fixed sigma for determinism
@@ -497,14 +497,14 @@ class TestRandomCustomBlur(BaseTester):
         out = aug(img_contrast)
         # Edges should be blurred (gradient magnitude decreases)
         assert out.shape == img_contrast.shape
-    
+
     def test_gradcheck(self, device):
         """Gradients flow correctly."""
         aug = RandomCustomBlur(sigma=(1.0, 1.0), p=1.0)
         img = torch.randn(2, 3, 16, 16, device=device, requires_grad=True, dtype=torch.float64)
         # Use BaseTester.gradcheck
         self.gradcheck(aug, img)
-    
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         """torch.compile compatibility."""
         aug = RandomCustomBlur(p=1.0)
@@ -595,7 +595,7 @@ Example: DETR augmentation for object detection
 ```python
 # kornia/augmentations/presets/detr.py
 from kornia.augmentation import (
-    AugmentationSequential, RandomHorizontalFlip, RandomAffine, 
+    AugmentationSequential, RandomHorizontalFlip, RandomAffine,
     Normalize, Resize
 )
 
@@ -735,27 +735,27 @@ from kornia.geometry.transform import perspective
 
 class RandomPerspectiveCustom(RigidAffineAugmentationBase2D):
     r"""Apply random perspective transformation with custom params."""
-    
+
     def __init__(self, distortion_scale: float = 0.5, p: float = 0.5):
         super().__init__(p=p)
         self.distortion_scale = distortion_scale
-    
+
     def sample_params(self, shape: torch.Size, device: torch.device, dtype: torch.dtype) -> dict:
         B, _, H, W = shape
         # Sample random homography perturbations
         start_points = torch.tensor(
             [[[0., 0.], [W - 1, 0.], [W - 1, H - 1], [0., H - 1]]]
         ).repeat(B, 1, 1).to(device=device, dtype=dtype)
-        
+
         end_points = start_points + torch.empty_like(start_points).uniform_(
             -self.distortion_scale * H, self.distortion_scale * H
         )
-        
+
         return {
             "start_points": start_points,
             "end_points": end_points,
         }
-    
+
     def apply_transform(self, input: torch.Tensor, params: dict, transform_matrix=None) -> torch.Tensor:
         # Use kornia.geometry.transform.perspective
         H_mat = perspective(params["start_points"], params["end_points"])
@@ -770,14 +770,14 @@ class RandomPerspectiveCustom(RigidAffineAugmentationBase2D):
 # Test
 if __name__ == "__main__":
     from testing.base import BaseTester
-    
+
     class TestRandomPerspectiveCustom(BaseTester):
         def test_smoke(self, device, dtype):
             aug = RandomPerspectiveCustom(p=1.0)
             img = torch.randn(2, 3, 32, 32, device=device, dtype=dtype)
             out = aug(img)
             assert out.shape == img.shape
-    
+
     tester = TestRandomPerspectiveCustom()
     tester.test_smoke('cpu', torch.float32)
     print("✓ Transform works!")

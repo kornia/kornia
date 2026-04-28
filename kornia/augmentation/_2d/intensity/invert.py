@@ -21,7 +21,6 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation.utils import _transform_input
 from kornia.enhance import invert
 
 

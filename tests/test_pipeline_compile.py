@@ -29,16 +29,18 @@ Known compile-time limitations today (pre PR-G1):
 These are documented as xfail where relevant.  Tests that must pass use
 backend="eager" which bypasses Inductor's symbolic-shape analysis.
 """
+
 from __future__ import annotations
 
 import pytest
 import torch
-import kornia.augmentation as K
 
+import kornia.augmentation as K
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_simple_pipeline(device: torch.device) -> K.AugmentationSequential:
     """HFlip + ColorJiggle + Normalize — a common image-classification pipeline.
@@ -81,6 +83,7 @@ def _make_hflip_normalize_pipeline(device: torch.device) -> K.AugmentationSequen
 # Case 1: compile() returns a callable
 # ---------------------------------------------------------------------------
 
+
 def test_compile_returns_callable():
     """compile() must return something callable — regardless of CUDA availability."""
     device = torch.device("cpu")
@@ -93,9 +96,11 @@ def test_compile_returns_callable():
 # Case 2: output shape matches eager — backend="eager" avoids Inductor issues
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("device_str", ["cpu", pytest.param("cuda", marks=pytest.mark.skipif(
-    not torch.cuda.is_available(), reason="CUDA not available"
-))])
+
+@pytest.mark.parametrize(
+    "device_str",
+    ["cpu", pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"))],
+)
 def test_compile_output_shape_matches_eager(device_str):
     """Compiled pipeline (backend=eager) output shape must match the eager forward pass."""
     device = torch.device(device_str)
@@ -111,18 +116,18 @@ def test_compile_output_shape_matches_eager(device_str):
     compiled_out = compiled(x.clone())
     compiled_shape = compiled_out.shape if isinstance(compiled_out, torch.Tensor) else compiled_out[0].shape
 
-    assert compiled_shape == eager_shape, (
-        f"Shape mismatch: compiled {compiled_shape} vs eager {eager_shape}"
-    )
+    assert compiled_shape == eager_shape, f"Shape mismatch: compiled {compiled_shape} vs eager {eager_shape}"
 
 
 # ---------------------------------------------------------------------------
 # Case 3: second call does not error (kernel is cached / reused)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("device_str", ["cpu", pytest.param("cuda", marks=pytest.mark.skipif(
-    not torch.cuda.is_available(), reason="CUDA not available"
-))])
+
+@pytest.mark.parametrize(
+    "device_str",
+    ["cpu", pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available"))],
+)
 def test_compile_second_call_stable(device_str):
     """Calling the compiled pipeline twice on identically-shaped inputs must not error."""
     device = torch.device(device_str)
@@ -144,6 +149,7 @@ def test_compile_second_call_stable(device_str):
 # Case 4: CPU smoke test with backend="eager" — always runs, no CUDA needed
 # ---------------------------------------------------------------------------
 
+
 def test_compile_cpu_smoke():
     """Pipeline-wide compile with backend=eager must not raise on CPU."""
     device = torch.device("cpu")
@@ -158,6 +164,7 @@ def test_compile_cpu_smoke():
 # ---------------------------------------------------------------------------
 # Case 5: default fullgraph=False (most lenient), backend="eager"
 # ---------------------------------------------------------------------------
+
 
 def test_compile_default_args_eager_backend():
     """compile() with backend=eager and default fullgraph=False must succeed."""
@@ -176,6 +183,7 @@ def test_compile_default_args_eager_backend():
 # GuardOnDataDependentSymNode in Inductor.  This is the exact failure the
 # PR-G1 / augmentation refactor work needs to resolve.
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.xfail(
     strict=False,
@@ -204,6 +212,7 @@ def test_compile_inductor_colojiggle_known_issue():
 # informative but non-blocking.
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.xfail(
     strict=False,
     reason=(
@@ -226,6 +235,7 @@ def test_compile_fullgraph_deterministic_pipeline():
 # ---------------------------------------------------------------------------
 # Case 7: kwargs forwarded to torch.compile
 # ---------------------------------------------------------------------------
+
 
 def test_compile_kwargs_forwarded():
     """Extra kwargs (e.g. backend='eager') must be forwarded to torch.compile."""

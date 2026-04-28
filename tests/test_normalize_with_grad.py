@@ -1,9 +1,27 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Tests for NormalizeWithGrad — the gradient-preserving Normalize.
 
 This test file intentionally avoids importing ``kornia`` at the top level to
 remain runnable on Python 3.10 where other parts of kornia require 3.11+ enum
 features.  The deterministic subpackage itself has no such dependency.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -36,9 +54,7 @@ def _bootstrap() -> type:
             sys.modules[name] = types.ModuleType(name)
 
     nwg_path = os.path.join(_DET_BASE, "normalize_with_grad.py")
-    spec = importlib.util.spec_from_file_location(
-        "kornia.augmentations.deterministic.normalize_with_grad", nwg_path
-    )
+    spec = importlib.util.spec_from_file_location("kornia.augmentations.deterministic.normalize_with_grad", nwg_path)
     nwg_mod = importlib.util.module_from_spec(spec)
     sys.modules["kornia.augmentations.deterministic.normalize_with_grad"] = nwg_mod
     spec.loader.exec_module(nwg_mod)
@@ -56,8 +72,9 @@ def _bootstrap() -> type:
 # Fixture: run bootstrap only during test execution, restore sys.modules after.
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session")
-def NWG():  # noqa: N802
+def NWG():
     """Bootstrap the deterministic subpackage, yield NormalizeWithGrad, then clean up.
 
     Runs only for tests in this file (no autouse). Restores sys.modules after the
@@ -79,6 +96,7 @@ def NWG():  # noqa: N802
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 def test_basic_forward_4d(NWG):
     m = NWG(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))

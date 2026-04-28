@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Comparative throughput benchmark: kornia vs Albumentations vs torchvision.v2.
 
 Measures end-to-end batch processing time for a DETR-style augmentation pipeline:
@@ -27,18 +44,21 @@ Jetson Orin system note:
   warning that becomes an error after CUDA init (NumPy 1.x compiled ext vs
   NumPy 2.2.6 runtime). Use torch.tensor(np.stack(...)) instead.
 """
+
 from __future__ import annotations
+
 import json
 import statistics
 import sys
 import time
+import warnings
 from pathlib import Path
 
-import warnings
 warnings.filterwarnings("ignore")
 
-import torch
 import numpy as np
+import torch
+
 
 # ---------------------------------------------------------------------------
 # Workaround: kornia uses torch.linalg.inv for 3x3 homography matrices.
@@ -65,15 +85,15 @@ def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
     det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
     inv_det = 1.0 / det
     inv = torch.empty_like(m)
-    inv[..., 0, 0] =  (e * i - f * h) * inv_det
+    inv[..., 0, 0] = (e * i - f * h) * inv_det
     inv[..., 0, 1] = -(b * i - c * h) * inv_det
-    inv[..., 0, 2] =  (b * f - c * e) * inv_det
+    inv[..., 0, 2] = (b * f - c * e) * inv_det
     inv[..., 1, 0] = -(d * i - f * g) * inv_det
-    inv[..., 1, 1] =  (a * i - c * g) * inv_det
+    inv[..., 1, 1] = (a * i - c * g) * inv_det
     inv[..., 1, 2] = -(a * f - c * d) * inv_det
-    inv[..., 2, 0] =  (d * h - e * g) * inv_det
+    inv[..., 2, 0] = (d * h - e * g) * inv_det
     inv[..., 2, 1] = -(a * h - b * g) * inv_det
-    inv[..., 2, 2] =  (a * e - b * d) * inv_det
+    inv[..., 2, 2] = (a * e - b * d) * inv_det
     if squeeze:
         inv = inv.squeeze(0)
     return inv.to(dtype)
@@ -81,19 +101,21 @@ def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
 
 def _patch_kornia_inverse() -> None:
     """Patch _torch_inverse_cast in every kornia module that imported it."""
-    import kornia.utils.helpers as _kh
     import kornia.geometry.conversions as _kgc
+    import kornia.utils.helpers as _kh
+
     _kh._torch_inverse_cast = _analytical_3x3_inv
     _kgc._torch_inverse_cast = _analytical_3x3_inv
     # Sweep all loaded kornia modules in case others imported it
     for mod_name, mod in sys.modules.items():
         if mod_name.startswith("kornia") and hasattr(mod, "_torch_inverse_cast"):
-            setattr(mod, "_torch_inverse_cast", _analytical_3x3_inv)
+            mod._torch_inverse_cast = _analytical_3x3_inv
 
 
 # Trigger kornia loading so the patch covers geometry.conversions
+import kornia.geometry.conversions
 import kornia.utils.helpers  # noqa: F401
-import kornia.geometry.conversions  # noqa: F401
+
 _patch_kornia_inverse()
 
 
@@ -109,8 +131,10 @@ SEED = 42
 # Benchmark functions
 # ---------------------------------------------------------------------------
 
+
 def _bench_kornia_gpu() -> list[float] | None:
     import kornia.augmentation as K
+
     if not torch.cuda.is_available():
         return None
     # Re-apply patch in case augmentation submodules loaded new refs
@@ -148,12 +172,14 @@ def _bench_torchvision_v2_gpu() -> list[float] | None:
         import torchvision.transforms.v2 as T
     except ImportError:
         return None
-    aug = T.Compose([
-        T.RandomHorizontalFlip(p=0.5),
-        T.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2)),
-        T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
+    aug = T.Compose(
+        [
+            T.RandomHorizontalFlip(p=0.5),
+            T.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2)),
+            T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
     x = torch.rand(BATCH, 3, RES, RES, device="cuda")
     for _ in range(WARMUP):
         _ = aug(x)
@@ -178,12 +204,14 @@ def _bench_albumentations_cpu_plus_transfer() -> list[float] | None:
         import albumentations as A
     except ImportError:
         return None
-    aug = A.Compose([
-        A.HorizontalFlip(p=0.5),
-        A.Affine(rotate=(-15, 15), translate_percent=(-0.1, 0.1), scale=(0.8, 1.2), p=1.0),
-        A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=1.0),
-        A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
+    aug = A.Compose(
+        [
+            A.HorizontalFlip(p=0.5),
+            A.Affine(rotate=(-15, 15), translate_percent=(-0.1, 0.1), scale=(0.8, 1.2), p=1.0),
+            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=1.0),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
     rng = np.random.default_rng(SEED)
     x_np = (rng.random((BATCH, RES, RES, 3)) * 255).astype(np.uint8)
 
@@ -215,6 +243,7 @@ def _bench_albumentations_cpu_plus_transfer() -> list[float] | None:
 # Statistics helpers
 # ---------------------------------------------------------------------------
 
+
 def _stats(times: list[float]) -> dict:
     s = sorted(times)
     n = len(s)
@@ -234,16 +263,19 @@ def _get_versions() -> dict[str, str]:
     vers: dict[str, str] = {}
     try:
         import kornia
+
         vers["kornia"] = kornia.__version__
     except ImportError:
         vers["kornia"] = "not installed"
     try:
         import albumentations
+
         vers["albumentations"] = albumentations.__version__
     except ImportError:
         vers["albumentations"] = "not installed"
     try:
         import torchvision
+
         vers["torchvision"] = torchvision.__version__
     except ImportError:
         vers["torchvision"] = "not installed"
@@ -253,6 +285,7 @@ def _get_versions() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     torch.manual_seed(SEED)
@@ -296,6 +329,7 @@ def main() -> None:
             )
         except Exception as exc:
             import traceback
+
             tb = traceback.format_exc()
             print(f"  ERROR: {type(exc).__name__}: {exc}")
             results[name] = {"error": str(exc), "traceback": tb}
@@ -325,10 +359,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Generate leaderboard.md
     # ------------------------------------------------------------------
-    valid = {
-        k: v for k, v in results.items()
-        if "error" not in v and "skipped" not in v and v is not None
-    }
+    valid = {k: v for k, v in results.items() if "error" not in v and "skipped" not in v and v is not None}
     slowest_median = max(v["median_ms"] for v in valid.values()) if valid else 1.0
 
     # Build kornia note about the cusolver workaround
@@ -349,10 +380,10 @@ def main() -> None:
         "",
         "| Key | Value |",
         "|-----|-------|",
-        f"| Platform | Jetson Orin (aarch64), Linux 5.15.148-tegra |",
+        "| Platform | Jetson Orin (aarch64), Linux 5.15.148-tegra |",
         f"| GPU | {device_name} (Orin integrated GPU, 1792-core Ampere) |",
-        f"| CUDA | 12.6 (libcusolver 11.6.4.69) |",
-        f"| Python | 3.10 (pixi camera-object-detector env) |",
+        "| CUDA | 12.6 (libcusolver 11.6.4.69) |",
+        "| Python | 3.10 (pixi camera-object-detector env) |",
         f"| PyTorch | {torch.__version__} |",
         f"| kornia | {versions.get('kornia', 'n/a')} |",
         f"| albumentations | {versions.get('albumentations', 'n/a')} |",
@@ -387,14 +418,10 @@ def main() -> None:
     for name, dev_label in ordered:
         r = results.get(name, {})
         if r.get("skipped"):
-            md_lines.append(
-                f"| — | {name} | {dev_label} | — | — | — | — | skipped |"
-            )
+            md_lines.append(f"| — | {name} | {dev_label} | — | — | — | — | skipped |")
         elif "error" in r:
             short_err = r["error"][:70]
-            md_lines.append(
-                f"| — | {name} | {dev_label} | ERROR | `{short_err}` | — | — | — |"
-            )
+            md_lines.append(f"| — | {name} | {dev_label} | ERROR | `{short_err}` | — | — | — |")
         elif name in valid:
             rank += 1
             rv = valid[name]
@@ -406,9 +433,7 @@ def main() -> None:
                 f"{rv['min_ms']:.1f} | {rv['max_ms']:.1f} | **{speedup:.2f}×** |"
             )
         else:
-            md_lines.append(
-                f"| — | {name} | {dev_label} | — | — | — | — | not run |"
-            )
+            md_lines.append(f"| — | {name} | {dev_label} | — | — | — | — | not run |")
 
     md_lines += [
         "",

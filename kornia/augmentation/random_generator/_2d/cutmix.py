@@ -113,9 +113,7 @@ class CutmixGenerator(RandomGeneratorBase):
 
         _n = batch_size * self.num_mix
         with torch.no_grad():
-            batch_probs: torch.Tensor = _adapted_sampling(
-                (_n,), self.prob_sampler, same_on_batch
-            )
+            batch_probs: torch.Tensor = _adapted_sampling((_n,), self.prob_sampler, same_on_batch)
             # Use GPU-side uniform for pair sorting (was Uniform(0,1).sample()).
             if same_on_batch:
                 pair_rand = (
@@ -151,18 +149,12 @@ class CutmixGenerator(RandomGeneratorBase):
             cut_width = cut_width[0]
 
         # Reserve at least 1 pixel for cropping. Use GPU-side uniform.
-        x_start = (
-            torch.empty(_gen_shape, device=self._rand_device, dtype=self._rand_dtype)
-            .uniform_(0.0, 1.0)
-            .to(device=_device, dtype=_dtype)
-            * (width - cut_width - 1)
-        )
-        y_start = (
-            torch.empty(_gen_shape, device=self._rand_device, dtype=self._rand_dtype)
-            .uniform_(0.0, 1.0)
-            .to(device=_device, dtype=_dtype)
-            * (height - cut_height - 1)
-        )
+        x_start = torch.empty(_gen_shape, device=self._rand_device, dtype=self._rand_dtype).uniform_(0.0, 1.0).to(
+            device=_device, dtype=_dtype
+        ) * (width - cut_width - 1)
+        y_start = torch.empty(_gen_shape, device=self._rand_device, dtype=self._rand_dtype).uniform_(0.0, 1.0).to(
+            device=_device, dtype=_dtype
+        ) * (height - cut_height - 1)
         x_start = x_start.floor()
         y_start = y_start.floor()
 

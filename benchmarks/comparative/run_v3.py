@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Comparative benchmark v3 — eager vs compiled vs CUDA-Graph leaderboard.
 
 Expanded 8-row matrix:
@@ -27,6 +44,7 @@ Known workarounds:
      closed-form analytical 3×3 inverse (elementwise CUDA ops only)
   4. torch.tensor(np.stack(...)) not torch.from_numpy() — NumPy 1.x/2.x ABI fix
 """
+
 from __future__ import annotations
 
 import json
@@ -49,6 +67,7 @@ import torch
 # Must be applied BEFORE importing any kornia geometry module.
 # ---------------------------------------------------------------------------
 
+
 def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
     """Closed-form 3×3 matrix inverse via adjugate / determinant."""
     dtype = input.dtype
@@ -62,15 +81,15 @@ def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
     det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
     inv_det = 1.0 / det
     inv = torch.empty_like(m)
-    inv[..., 0, 0] =  (e * i - f * h) * inv_det
+    inv[..., 0, 0] = (e * i - f * h) * inv_det
     inv[..., 0, 1] = -(b * i - c * h) * inv_det
-    inv[..., 0, 2] =  (b * f - c * e) * inv_det
+    inv[..., 0, 2] = (b * f - c * e) * inv_det
     inv[..., 1, 0] = -(d * i - f * g) * inv_det
-    inv[..., 1, 1] =  (a * i - c * g) * inv_det
+    inv[..., 1, 1] = (a * i - c * g) * inv_det
     inv[..., 1, 2] = -(a * f - c * d) * inv_det
-    inv[..., 2, 0] =  (d * h - e * g) * inv_det
+    inv[..., 2, 0] = (d * h - e * g) * inv_det
     inv[..., 2, 1] = -(a * h - b * g) * inv_det
-    inv[..., 2, 2] =  (a * e - b * d) * inv_det
+    inv[..., 2, 2] = (a * e - b * d) * inv_det
     if squeeze:
         inv = inv.squeeze(0)
     return inv.to(dtype)
@@ -78,18 +97,20 @@ def _analytical_3x3_inv(input: torch.Tensor) -> torch.Tensor:
 
 def _patch_kornia_inverse() -> None:
     """Patch _torch_inverse_cast in every kornia module that imported it."""
-    import kornia.utils.helpers as _kh
     import kornia.geometry.conversions as _kgc
+    import kornia.utils.helpers as _kh
+
     _kh._torch_inverse_cast = _analytical_3x3_inv
     _kgc._torch_inverse_cast = _analytical_3x3_inv
     for mod_name, mod in sys.modules.items():
         if mod_name.startswith("kornia") and hasattr(mod, "_torch_inverse_cast"):
-            setattr(mod, "_torch_inverse_cast", _analytical_3x3_inv)
+            mod._torch_inverse_cast = _analytical_3x3_inv
 
 
 # Trigger kornia loading so the patch covers geometry.conversions
+import kornia.geometry.conversions
 import kornia.utils.helpers  # noqa: F401
-import kornia.geometry.conversions  # noqa: F401
+
 _patch_kornia_inverse()
 
 
@@ -99,6 +120,7 @@ _patch_kornia_inverse()
 # ---------------------------------------------------------------------------
 
 _KORNIA_PATCHED = False
+
 
 def _apply_kornia_optimisation_patches() -> str:
     """Apply Normalize and RandomHorizontalFlip patches to installed kornia 0.7.4.
@@ -114,8 +136,6 @@ def _apply_kornia_optimisation_patches() -> str:
     # --- Patch 1: Normalize.apply_transform -----------------------------------
     try:
         import kornia.augmentation._2d.intensity.normalize as _norm_mod
-        from torch import Tensor as _Tensor
-        from typing import Any as _Any, Optional as _Optional
 
         _Normalize = _norm_mod.Normalize
 
@@ -123,7 +143,7 @@ def _apply_kornia_optimisation_patches() -> str:
         # replicate the __init__ logic for new instances by patching __init__).
         _orig_norm_init = _Normalize.__init__
 
-        def _patched_norm_init(self, mean, std, p=1.0, keepdim=False, **kw):  # noqa: ANN001
+        def _patched_norm_init(self, mean, std, p=1.0, keepdim=False, **kw):
             _orig_norm_init(self, mean, std, p=p, keepdim=keepdim)
             # Pull mean/std back from flags (set by original __init__)
             _mean = self.flags["mean"]
@@ -145,7 +165,7 @@ def _apply_kornia_optimisation_patches() -> str:
             self.register_buffer("_mean_b", _mean_b, persistent=False)
             self.register_buffer("_std_b", _std_b, persistent=False)
 
-        def _patched_norm_apply(self, input, params, flags, transform=None):  # noqa: ANN001
+        def _patched_norm_apply(self, input, params, flags, transform=None):
             mean = self._mean_b
             std = self._std_b
             if mean.dtype != input.dtype or mean.device != input.device:
@@ -163,16 +183,12 @@ def _apply_kornia_optimisation_patches() -> str:
     try:
         import kornia.augmentation._2d.geometric.horizontal_flip as _hflip_mod
 
-        _HFLIP_TEMPLATE = torch.tensor(
-            [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=torch.float32
-        )
+        _HFLIP_TEMPLATE = torch.tensor([[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=torch.float32)
 
         _RHF = _hflip_mod.RandomHorizontalFlip
 
-        def _patched_hflip_compute(self, input, params, flags):  # noqa: ANN001
-            w_minus_one = (params["forward_input_shape"][-1] - 1).to(
-                device=input.device, dtype=input.dtype
-            )
+        def _patched_hflip_compute(self, input, params, flags):
+            w_minus_one = (params["forward_input_shape"][-1] - 1).to(device=input.device, dtype=input.dtype)
             flip_mat = _HFLIP_TEMPLATE.to(device=input.device, dtype=input.dtype).clone()
             flip_mat[0, 2] = w_minus_one
             return flip_mat.expand(input.shape[0], 3, 3)
@@ -209,6 +225,7 @@ GRAPH_REPLAYS = 1000
 # Statistics helpers
 # ---------------------------------------------------------------------------
 
+
 def _stats(times: list[float]) -> dict:
     s = sorted(times)
     n = len(s)
@@ -225,7 +242,7 @@ def _stats(times: list[float]) -> dict:
     }
 
 
-def _safe_median(obj) -> float | None:  # noqa: ANN001
+def _safe_median(obj) -> float | None:
     if isinstance(obj, dict) and "median_ms" in obj:
         return obj["median_ms"]
     return None
@@ -239,6 +256,7 @@ def _ms_to_bps(ms: float) -> float:
 # DataLoader dataset helpers
 # ---------------------------------------------------------------------------
 
+
 class _AlbDatasetLazy(torch.utils.data.Dataset):
     """Albumentations: lazy per-worker generation, torch.tensor() ABI-safe."""
 
@@ -249,15 +267,18 @@ class _AlbDatasetLazy(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return self.n
 
-    def __getitem__(self, idx: int):  # noqa: ANN001
+    def __getitem__(self, idx: int):
         import albumentations as A
         import numpy as _np
-        aug = A.Compose([
-            A.HorizontalFlip(p=0.5),
-            A.Affine(rotate=(-15, 15), translate_percent=(-0.1, 0.1), scale=(0.8, 1.2), p=1.0),
-            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=1.0),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+
+        aug = A.Compose(
+            [
+                A.HorizontalFlip(p=0.5),
+                A.Affine(rotate=(-15, 15), translate_percent=(-0.1, 0.1), scale=(0.8, 1.2), p=1.0),
+                A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, p=1.0),
+                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            ]
+        )
         rng = _np.random.default_rng(SEED + idx)
         img = (rng.random((self.res, self.res, 3)) * 255).astype(_np.uint8)
         out = aug(image=img)["image"]
@@ -274,8 +295,9 @@ class _GpuLibDataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return self.n
 
-    def __getitem__(self, idx: int):  # noqa: ANN001
+    def __getitem__(self, idx: int):
         import numpy as _np
+
         rng = _np.random.default_rng(SEED + idx)
         img = (rng.random((3, self.res, self.res)) * 255).astype(_np.float32)
         return torch.tensor(img)
@@ -339,10 +361,12 @@ def _cuda_event_times(fn, warmup: int, runs: int) -> list[float]:
 # Pipeline builders
 # ---------------------------------------------------------------------------
 
+
 def _build_kornia_aug():
     _patch_kornia_inverse()
     _apply_kornia_optimisation_patches()
     import kornia.augmentation as K
+
     return K.AugmentationSequential(
         K.RandomHorizontalFlip(p=0.5),
         K.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0),
@@ -356,17 +380,21 @@ def _build_kornia_aug():
 
 def _build_tv_aug():
     import torchvision.transforms.v2 as T
-    return T.Compose([
-        T.RandomHorizontalFlip(p=0.5),
-        T.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2)),
-        T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
+
+    return T.Compose(
+        [
+            T.RandomHorizontalFlip(p=0.5),
+            T.RandomAffine(degrees=15.0, translate=(0.1, 0.1), scale=(0.8, 1.2)),
+            T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+            T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
 # Row 1: Albumentations CPU + DataLoader
 # ---------------------------------------------------------------------------
+
 
 def row1_albumentations() -> dict:
     ds = _AlbDatasetLazy(N_DATASET, RES)
@@ -383,6 +411,7 @@ def row1_albumentations() -> dict:
 # ---------------------------------------------------------------------------
 # Row 2: torchvision.v2 GPU eager
 # ---------------------------------------------------------------------------
+
 
 def row2_tv_eager() -> dict:
     aug = _build_tv_aug()
@@ -401,14 +430,14 @@ def row2_tv_eager() -> dict:
 # Row 3: torchvision.v2 GPU + torch.compile
 # ---------------------------------------------------------------------------
 
+
 def row3_tv_compiled() -> dict:
-    import torchvision.transforms.v2 as T
 
     aug = _build_tv_aug()
 
     # Wrap in a module so torch.compile can trace it
     class _TVWrap(torch.nn.Module):
-        def __init__(self, pipe) -> None:  # noqa: ANN001
+        def __init__(self, pipe) -> None:
             super().__init__()
             self.pipe = pipe
 
@@ -449,6 +478,7 @@ def row3_tv_compiled() -> dict:
 # Row 4: kornia GPU eager (patched)
 # ---------------------------------------------------------------------------
 
+
 def row4_kornia_eager() -> dict:
     aug = _build_kornia_aug()
     ds = _GpuLibDataset(N_DATASET, RES)
@@ -465,6 +495,7 @@ def row4_kornia_eager() -> dict:
 # ---------------------------------------------------------------------------
 # Row 5: kornia GPU + aug.compile(backend="eager")
 # ---------------------------------------------------------------------------
+
 
 def row5_kornia_compile_eager() -> dict:
     aug = _build_kornia_aug()
@@ -495,6 +526,7 @@ def row5_kornia_compile_eager() -> dict:
 # ---------------------------------------------------------------------------
 # Row 6: kornia GPU + aug.compile() (default Inductor)
 # ---------------------------------------------------------------------------
+
 
 def row6_kornia_compile_inductor() -> dict:
     aug = _build_kornia_aug()
@@ -530,6 +562,7 @@ def row6_kornia_compile_inductor() -> dict:
 # Row 7: kornia + CUDA Graph (subprocess for clean isolation)
 # Row 8: torchvision + CUDA Graph (subprocess for clean isolation)
 # ---------------------------------------------------------------------------
+
 
 def _graph_subprocess(lib: str, patched: bool = False) -> dict:
     """Run CUDA Graph capture + replay in an isolated subprocess.
@@ -738,11 +771,7 @@ with open("{result_file}", "w") as f:
     env["PYTHONNOUSERSITE"] = "1"
 
     try:
-        proc = subprocess.run(
-            [python, driver_path],
-            capture_output=True, text=True,
-            timeout=600, env=env, cwd="/tmp"
-        )
+        proc = subprocess.run([python, driver_path], capture_output=True, text=True, timeout=600, env=env, cwd="/tmp")
         for line in proc.stdout.strip().splitlines():
             print(f"    [sub] {line}", flush=True)
         if proc.returncode != 0:
@@ -750,17 +779,17 @@ with open("{result_file}", "w") as f:
             return {
                 "status": "FAILED",
                 "reason": f"subprocess exit {proc.returncode}: {last_err[:80]}",
-                "eager_ms": None, "replay_ms": None,
+                "eager_ms": None,
+                "replay_ms": None,
             }
         import json as _j
+
         with open(result_file) as f:
             return _j.load(f)
     except subprocess.TimeoutExpired:
-        return {"status": "FAILED", "reason": "subprocess timeout (600s)",
-                "eager_ms": None, "replay_ms": None}
+        return {"status": "FAILED", "reason": "subprocess timeout (600s)", "eager_ms": None, "replay_ms": None}
     except Exception as exc:
-        return {"status": "FAILED", "reason": f"launch error: {exc}",
-                "eager_ms": None, "replay_ms": None}
+        return {"status": "FAILED", "reason": f"launch error: {exc}", "eager_ms": None, "replay_ms": None}
     finally:
         for p in (driver_path, result_file):
             try:
@@ -783,6 +812,7 @@ def row8_tv_graph() -> dict:
 # Version info
 # ---------------------------------------------------------------------------
 
+
 def _get_versions() -> dict[str, str]:
     vers: dict[str, str] = {}
     for lib in ("kornia", "albumentations", "torchvision"):
@@ -797,6 +827,7 @@ def _get_versions() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     torch.manual_seed(SEED)
@@ -822,6 +853,7 @@ def main() -> None:
     print(f"\nkornia patch status: {patch_status}")
 
     import kornia
+
     print(f"kornia.__file__: {kornia.__file__}")
     print()
 
@@ -839,20 +871,20 @@ def main() -> None:
     }
 
     row_configs = [
-        ("row1_alb",     "Row 1: Albumentations CPU + 8 workers",         row1_albumentations),
-        ("row2_tv_eager","Row 2: torchvision.v2 GPU eager",                row2_tv_eager),
-        ("row3_tv_comp", "Row 3: torchvision.v2 GPU + torch.compile",      row3_tv_compiled),
-        ("row4_k_eager", "Row 4: kornia GPU eager (patched)",              row4_kornia_eager),
-        ("row5_k_comp_e","Row 5: kornia GPU + compile(backend=eager)",     row5_kornia_compile_eager),
-        ("row6_k_comp_i","Row 6: kornia GPU + compile(mode=reduce-overhead)", row6_kornia_compile_inductor),
-        ("row7_k_graph", "Row 7: kornia GPU + CUDA Graph",                 row7_kornia_graph),
-        ("row8_tv_graph","Row 8: torchvision.v2 GPU + CUDA Graph",         row8_tv_graph),
+        ("row1_alb", "Row 1: Albumentations CPU + 8 workers", row1_albumentations),
+        ("row2_tv_eager", "Row 2: torchvision.v2 GPU eager", row2_tv_eager),
+        ("row3_tv_comp", "Row 3: torchvision.v2 GPU + torch.compile", row3_tv_compiled),
+        ("row4_k_eager", "Row 4: kornia GPU eager (patched)", row4_kornia_eager),
+        ("row5_k_comp_e", "Row 5: kornia GPU + compile(backend=eager)", row5_kornia_compile_eager),
+        ("row6_k_comp_i", "Row 6: kornia GPU + compile(mode=reduce-overhead)", row6_kornia_compile_inductor),
+        ("row7_k_graph", "Row 7: kornia GPU + CUDA Graph", row7_kornia_graph),
+        ("row8_tv_graph", "Row 8: torchvision.v2 GPU + CUDA Graph", row8_tv_graph),
     ]
 
     for key, label, fn in row_configs:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Running: {label} ...")
-        print('='*60, flush=True)
+        print("=" * 60, flush=True)
         try:
             r = fn()
             results["rows"][key] = r
@@ -866,15 +898,16 @@ def main() -> None:
                 if "compile_backend" in r:
                     extra = f"  compile_backend={r['compile_backend']}"
                 if "status" in r:
-                    extra = f"  status={r.get('status','?')}"
+                    extra = f"  status={r.get('status', '?')}"
                 print(f"  median={med:.1f}ms  IQR={iqr:.1f}ms  batches/sec={bps:.2f}{extra}")
             elif "status" in r:
                 status = r.get("status", "?")
                 eager_m = _safe_median(r.get("eager_ms", {}))
                 replay_m = _safe_median(r.get("replay_ms", {}))
                 if status == "OK" and replay_m:
-                    print(f"  Graph OK: replay={replay_m:.3f}ms  eager={eager_m:.3f}ms  "
-                          f"speedup={eager_m/replay_m:.2f}x")
+                    print(
+                        f"  Graph OK: replay={replay_m:.3f}ms  eager={eager_m:.3f}ms  speedup={eager_m / replay_m:.2f}x"
+                    )
                 else:
                     reason = r.get("reason", "")[:80]
                     eager_str = f"{eager_m:.3f}ms" if eager_m else "—"
@@ -907,6 +940,7 @@ def main() -> None:
 # Leaderboard generator
 # ---------------------------------------------------------------------------
 
+
 def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch_status: str) -> str:
     tv = results["torch_version"]
     rows = results["rows"]
@@ -933,7 +967,7 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
         n = _safe_median(r_num)
         d = _safe_median(r_den)
         if n and d and n > 0:
-            return f"{d/n:.2f}×"
+            return f"{d / n:.2f}×"
         return "—"
 
     # Reference medians
@@ -966,7 +1000,7 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
         mx_s = f"{mx:.1f}" if mx is not None else "—"
 
         if speedup_ref is not None and med and speedup_ref > 0:
-            spd = f"{speedup_ref/med:.2f}×"
+            spd = f"{speedup_ref / med:.2f}×"
         else:
             spd = "—"
 
@@ -991,7 +1025,7 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
             mn_s = f"{mn:.1f}" if mn is not None else "—"
             mx_s = f"{mx:.1f}" if mx is not None else "—"
             if replay_med and eager_ref_ms:
-                spd = f"{eager_ref_ms/replay_med:.2f}× vs eager"
+                spd = f"{eager_ref_ms / replay_med:.2f}× vs eager"
             else:
                 spd = "—"
             return f"| {row_num} | {label} | CUDA Graph (OK) | {replay_med_s} | {iqr_s} | {mn_s} | {mx_s} | {spd} |"
@@ -1009,10 +1043,10 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
         "",
         "| Key | Value |",
         "|-----|-------|",
-        f"| Platform | Jetson Orin (aarch64), Linux 5.15.148-tegra |",
+        "| Platform | Jetson Orin (aarch64), Linux 5.15.148-tegra |",
         f"| GPU | {device_name} (Orin integrated GPU, 1792-core Ampere) |",
-        f"| CUDA | 12.6 (libcusolver 11.6.4.69) |",
-        f"| Python | 3.10 (pixi camera-object-detector env) |",
+        "| CUDA | 12.6 (libcusolver 11.6.4.69) |",
+        "| Python | 3.10 (pixi camera-object-detector env) |",
         f"| PyTorch | {tv} |",
         f"| kornia | {versions.get('kornia', 'n/a')} (installed 0.7.4 + runtime patches) |",
         f"| albumentations | {versions.get('albumentations', 'n/a')} |",
@@ -1028,7 +1062,7 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
         "Batch=8, resolution=512×512, float32.",
         "",
         "**End-to-end DataLoader timing (rows 1–6):**",
-        f"DataLoader delivers CPU tensors → main thread applies H2D + GPU aug.",
+        "DataLoader delivers CPU tensors → main thread applies H2D + GPU aug.",
         f"{N_TIMED} timed batches + {WARMUP} warmup. All times include Python dispatch,",
         "DataLoader latency, and H2D transfer.",
         "",
@@ -1123,9 +1157,11 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
     if isinstance(r3, dict) and "compile_mode" in r3:
         lines.append(f"- **Row 3**: torch.compile(mode='{r3.get('compile_mode')}') applied to torchvision Compose.")
     if isinstance(r5, dict) and "compile_backend" in r5:
-        lines.append(f"- **Row 5**: torch.compile(backend='eager') applied to kornia AugmentationSequential.")
+        lines.append("- **Row 5**: torch.compile(backend='eager') applied to kornia AugmentationSequential.")
     if isinstance(r6, dict) and "compile_mode" in r6:
-        lines.append(f"- **Row 6**: torch.compile(mode='{r6.get('compile_mode')}') applied to kornia AugmentationSequential.")
+        lines.append(
+            f"- **Row 6**: torch.compile(mode='{r6.get('compile_mode')}') applied to kornia AugmentationSequential."
+        )
 
     if isinstance(r7, dict):
         status = r7.get("status", "?")
@@ -1133,8 +1169,10 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
         if status == "OK":
             k_replay = _safe_median(r7.get("replay_ms", {}))
             k_eg = _safe_median(r7.get("eager_ms", {}))
-            lines.append(f"- **Row 7**: CUDA Graph capture SUCCEEDED for kornia (patched HFlip template). "
-                         f"Replay={k_replay:.3f}ms vs eager={k_eg:.3f}ms.")
+            lines.append(
+                f"- **Row 7**: CUDA Graph capture SUCCEEDED for kornia (patched HFlip template). "
+                f"Replay={k_replay:.3f}ms vs eager={k_eg:.3f}ms."
+            )
         else:
             lines.append(f"- **Row 7**: CUDA Graph capture FAILED for kornia. Reason: `{reason}`.")
             if "tensor" in reason.lower() or "allocation" in reason.lower() or "cudaError" in reason.lower():
@@ -1149,8 +1187,10 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
         if status == "OK":
             tv_replay = _safe_median(r8.get("replay_ms", {}))
             tv_eg = _safe_median(r8.get("eager_ms", {}))
-            lines.append(f"- **Row 8**: CUDA Graph capture SUCCEEDED for torchvision. "
-                         f"Replay={tv_replay:.3f}ms vs eager={tv_eg:.3f}ms.")
+            lines.append(
+                f"- **Row 8**: CUDA Graph capture SUCCEEDED for torchvision. "
+                f"Replay={tv_replay:.3f}ms vs eager={tv_eg:.3f}ms."
+            )
         else:
             lines.append(f"- **Row 8**: CUDA Graph capture FAILED for torchvision. Reason: `{reason}`.")
 
@@ -1210,7 +1250,7 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
             "Eager backend eliminates Python dispatch without Inductor kernel fusion."
         )
     elif isinstance(r5, dict) and "error" in r5:
-        lines.append(f"- `torch.compile(backend='eager')` (Row 5): FAILED — {r5.get('error','')[:80]}")
+        lines.append(f"- `torch.compile(backend='eager')` (Row 5): FAILED — {r5.get('error', '')[:80]}")
 
     if k6_med and k_eager_ms:
         gain6 = (k_eager_ms - k6_med) / k_eager_ms * 100
@@ -1220,14 +1260,13 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
             "Inductor may fuse or lower some ops to triton kernels."
         )
     elif isinstance(r6, dict) and "error" in r6:
-        lines.append(f"- `torch.compile(inductor)` (Row 6): FAILED — {r6.get('error','')[:80]}")
+        lines.append(f"- `torch.compile(inductor)` (Row 6): FAILED — {r6.get('error', '')[:80]}")
 
     tv3_med = _safe_median(r3)
     if tv3_med and tv_eager_ms:
         gain3 = (tv_eager_ms - tv3_med) / tv_eager_ms * 100
         lines.append(
-            f"- torchvision `torch.compile` (Row 3): {tv3_med:.1f} ms "
-            f"({gain3:+.1f}% vs torchvision eager Row 2). "
+            f"- torchvision `torch.compile` (Row 3): {tv3_med:.1f} ms ({gain3:+.1f}% vs torchvision eager Row 2). "
         )
 
     lines.append("")
@@ -1244,7 +1283,7 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
             lines.append(
                 f"**YES** — CUDA Graph capture succeeded for kornia (Row 7). "
                 f"Replay median: {k_replay:.3f} ms vs eager {k_eg:.3f} ms "
-                f"({k_eg/k_replay:.2f}× speedup). "
+                f"({k_eg / k_replay:.2f}× speedup). "
                 "The HFlip `_HFLIP_MAT_TEMPLATE` patch removes the `torch.tensor([...])`"
                 " in-capture allocation that blocked graph capture in v2."
             )
@@ -1293,7 +1332,9 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
     if k_eager_ms:
         delta_pct = abs((v2_k_eager - k_eager_ms) / v2_k_eager * 100)
         if delta_pct < 2.0:
-            lines.append(f"| Patches moved eager perf | Negligible ({delta_pct:.1f}% change on end-to-end DataLoader time) — expected for ops dominated by Affine kernel |")
+            lines.append(
+                f"| Patches moved eager perf | Negligible ({delta_pct:.1f}% change on end-to-end DataLoader time) — expected for ops dominated by Affine kernel |"
+            )
         else:
             lines.append(f"| Patches moved eager perf | {delta_pct:.1f}% gain on DataLoader row |")
     else:
@@ -1309,7 +1350,9 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
         k_re = _safe_median(r7.get("replay_ms", {}))
         k_eg = _safe_median(r7.get("eager_ms", {}))
         if k_re and k_eg:
-            lines.append(f"| CUDA Graph capture (kornia, patched HFlip) | SUCCESS: {k_re:.2f} ms replay vs {k_eg:.2f} ms eager ({k_eg/k_re:.2f}×) |")
+            lines.append(
+                f"| CUDA Graph capture (kornia, patched HFlip) | SUCCESS: {k_re:.2f} ms replay vs {k_eg:.2f} ms eager ({k_eg / k_re:.2f}×) |"
+            )
     else:
         reason = r7.get("reason", "")[:60] if isinstance(r7, dict) else "not run"
         lines.append(f"| CUDA Graph capture (kornia, patched HFlip) | FAILED: `{reason}` |")
@@ -1318,7 +1361,9 @@ def _generate_leaderboard(results: dict, versions: dict, device_name: str, patch
         tv_re = _safe_median(r8.get("replay_ms", {}))
         tv_eg = _safe_median(r8.get("eager_ms", {}))
         if tv_re and tv_eg:
-            lines.append(f"| CUDA Graph capture (torchvision) | SUCCESS: {tv_re:.2f} ms replay vs {tv_eg:.2f} ms eager ({tv_eg/tv_re:.2f}×) |")
+            lines.append(
+                f"| CUDA Graph capture (torchvision) | SUCCESS: {tv_re:.2f} ms replay vs {tv_eg:.2f} ms eager ({tv_eg / tv_re:.2f}×) |"
+            )
     else:
         reason = r8.get("reason", "")[:60] if isinstance(r8, dict) else "not run"
         lines.append(f"| CUDA Graph capture (torchvision) | FAILED: `{reason}` |")

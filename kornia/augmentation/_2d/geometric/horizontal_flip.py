@@ -21,16 +21,13 @@ import torch
 
 # from torch import Tensor (use torch.Tensor instead)
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation.utils import _transform_input
 from kornia.geometry.transform import hflip
 
 # Module-level template for the horizontal-flip transformation matrix.
 # Per-call we read width from params and substitute the `w-1` entry; this
 # avoids Python-level torch.tensor([...]) allocation in the hot path and
 # enables CUDA Graph capture (no in-forward tensor allocation).
-_HFLIP_MAT_TEMPLATE = torch.tensor(
-    [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=torch.float32
-)
+_HFLIP_MAT_TEMPLATE = torch.tensor([[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=torch.float32)
 
 # Per-process cache: (device, dtype, width_int) -> (B, 3, 3) matrix.
 # Populated lazily on first call for a given (device, dtype, width) triple and

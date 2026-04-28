@@ -1,11 +1,11 @@
 # Bottleneck categorization — all 37 augmentation transforms
 
-**Date:** 2026-04-27  
-**Hardware:** Orin (aarch64)  
-**PyTorch:** 2.8.0, CUDA 12.6, kornia 0.7.4, torchvision 0.23.0  
-**Patches:** v4: Normalize(buffers); Denormalize(buffers); HFlip(cache); hflip/vflip(no-contiguous); RandomAffine(closed-form+cache); ColorJiggle(fused-HSV); v6: {'RandomHorizontalFlip': 'OK', 'RandomVerticalFlip': 'OK', 'CenterCrop': 'OK', 'Normalize': 'OK', 'Denormalize': 'OK', 'RandomInvert': 'OK', 'RandomGrayscale': 'OK', 'RandomSolarize': 'OK', 'RandomBrightness': 'OK', 'RandomContrast': 'OK', 'RandomSaturation': 'OK', 'RandomHue': 'OK', 'RandomPosterize': 'OK', 'RandomCutMixV2': 'OK', 'RandomMixUpV2': 'OK'}  
-**Profile:** 5 warmup + 20 timed iters via `torch.profiler` (CPU+CUDA, record_shapes=True, profile_memory=True)  
-**Inputs:** B=8, 3x512x512, fp32, GPU pre-resident  
+**Date:** 2026-04-27
+**Hardware:** Orin (aarch64)
+**PyTorch:** 2.8.0, CUDA 12.6, kornia 0.7.4, torchvision 0.23.0
+**Patches:** v4: Normalize(buffers); Denormalize(buffers); HFlip(cache); hflip/vflip(no-contiguous); RandomAffine(closed-form+cache); ColorJiggle(fused-HSV); v6: {'RandomHorizontalFlip': 'OK', 'RandomVerticalFlip': 'OK', 'CenterCrop': 'OK', 'Normalize': 'OK', 'Denormalize': 'OK', 'RandomInvert': 'OK', 'RandomGrayscale': 'OK', 'RandomSolarize': 'OK', 'RandomBrightness': 'OK', 'RandomContrast': 'OK', 'RandomSaturation': 'OK', 'RandomHue': 'OK', 'RandomPosterize': 'OK', 'RandomCutMixV2': 'OK', 'RandomMixUpV2': 'OK'}
+**Profile:** 5 warmup + 20 timed iters via `torch.profiler` (CPU+CUDA, record_shapes=True, profile_memory=True)
+**Inputs:** B=8, 3x512x512, fp32, GPU pre-resident
 
 **CUPTI note:** `CUPTI_ERROR_INSUFFICIENT_PRIVILEGES` on this unprivileged Jetson run means kernel-level CUDA self-times are 0 in every event. We classify using **self CPU time + event count + sync proxy** (the trailing `aten::copy_` self CPU is the closest proxy for CUDA wall-clock since each iter ends with `cuda.synchronize()`).
 
@@ -152,4 +152,3 @@ Based on the categorization above, these architectural decisions are justified:
 7. **Adopt a v6-style `forward()` override path as the default.** The `run_v6.py` aggressive override shaves 30-70% off many ops by skipping `_AugmentationBase.forward`. The kornia 2.0 base class should have this as its only path — no opt-in monkey-patch needed.
 
 8. **Verify on Jetson Orin (this rig): CUPTI privileges block CUDA-self-time profiling.** k2 RFC should mandate dual profiling (CPU self-time + CUDA-event wallclock) to detect regressions in either dimension; relying on `aten::copy_` as a sync proxy is fragile.
-

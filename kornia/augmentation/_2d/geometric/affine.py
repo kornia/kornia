@@ -56,11 +56,11 @@ def _affine_matrix2d_closed(
     # Rotation: kornia convention passes -angle to angle_to_rotation_matrix, which gives
     #   [[cos(angle_deg), -sin(angle_deg)], [sin(angle_deg), cos(angle_deg)]]
     ang_rad = angle * _PI_OVER_180
-    cos_a = torch.cos(ang_rad)   # (B,)
-    sin_a = torch.sin(ang_rad)   # (B,)
+    cos_a = torch.cos(ang_rad)  # (B,)
+    sin_a = torch.sin(ang_rad)  # (B,)
 
-    sx = scale[:, 0]   # (B,)
-    sy = scale[:, 1]   # (B,)
+    sx = scale[:, 0]  # (B,)
+    sy = scale[:, 1]  # (B,)
     cx = center[:, 0]  # (B,)
     cy = center[:, 1]  # (B,)
     tx = translations[:, 0]  # (B,)
@@ -74,7 +74,7 @@ def _affine_matrix2d_closed(
     #   f = cy*(1 - e) - cx*d + ty
     a = sx * cos_a
     b = -sy * sin_a
-    c = cx - a * cx - b * cy + tx   # note: -b because b = -sy*sin_a, so -b = sy*sin_a
+    c = cx - a * cx - b * cy + tx  # note: -b because b = -sy*sin_a, so -b = sy*sin_a
     d = sx * sin_a
     e = sy * cos_a
     f = cy - e * cy - d * cx + ty
@@ -82,8 +82,8 @@ def _affine_matrix2d_closed(
     # Apply shear (same effect as right-multiplying by shear_3x3):
     #   shear_3x3 top-left 2x3: [[1, -sx_tan, sx_tan*cy], [-sy_tan, 1+sx_tan*sy_tan, sy_tan*(cx-sx_tan*cy)]]
     #   result[row, :] = [row_a, row_b, row_c] @ shear_3x3
-    sx_t = torch.tan(shear_x * _PI_OVER_180)   # (B,)
-    sy_t = torch.tan(shear_y * _PI_OVER_180)   # (B,)
+    sx_t = torch.tan(shear_x * _PI_OVER_180)  # (B,)
+    sy_t = torch.tan(shear_y * _PI_OVER_180)  # (B,)
 
     r00 = a - b * sy_t
     r01 = -a * sx_t + b * (1.0 + sx_t * sy_t)
@@ -96,9 +96,7 @@ def _affine_matrix2d_closed(
     ones = torch.ones_like(r00)
 
     # Stack into Bx3x3
-    return torch.stack(
-        [r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1
-    ).reshape(-1, 3, 3)
+    return torch.stack([r00, r01, r02, r10, r11, r12, zeros, zeros, ones], dim=-1).reshape(-1, 3, 3)
 
 
 def _affine_homography_inv(M: torch.Tensor) -> torch.Tensor:
@@ -341,8 +339,8 @@ class RandomAffine(GeometricAugmentationBase2D):
         # transform is Bx3x3 (forward pixel-space affine produced by compute_transformation).
         # Its last row is always [0, 0, 1], so we use the analytical 2x2-block inverse
         # instead of the general linalg.inv (~35x faster for small B on CPU).
-        M_inv = _affine_homography_inv(transform)     # Bx3x3, analytical inversion
-        theta = (N @ M_inv @ N_inv)[:, :2, :]         # Bx2x3
+        M_inv = _affine_homography_inv(transform)  # Bx3x3, analytical inversion
+        theta = (N @ M_inv @ N_inv)[:, :2, :]  # Bx2x3
 
         B, C = input.shape[:2]
         grid = F.affine_grid(theta, [B, C, height, width], align_corners=align_corners)
