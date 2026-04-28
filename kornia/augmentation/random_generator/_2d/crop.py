@@ -18,10 +18,9 @@
 from typing import Dict, Optional, Tuple, Union
 
 import torch
-from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
+from kornia.augmentation.utils import _common_param_check, _joint_range_check
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -60,9 +59,9 @@ class CropGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(1.0, device=device, dtype=dtype)
-        )
+        # Store device/dtype for GPU-side uniform_ sampling in forward(); no Distribution object needed.
+        self._rand_device = device
+        self._rand_dtype = dtype
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
@@ -97,16 +96,20 @@ class CropGenerator(RandomGeneratorBase):
         y_diff = y_diff.clamp(0)
 
         if same_on_batch:
-            # If same_on_batch, select the first then repeat.
+            # If same_on_batch, draw one sample and broadcast across the batch.
+            _r_x = torch.empty(1, device=self._rand_device, dtype=self._rand_dtype).uniform_(0.0, 1.0).to(x_diff)
+            _r_y = torch.empty(1, device=self._rand_device, dtype=self._rand_dtype).uniform_(0.0, 1.0).to(y_diff)
+            x_start = (_r_x.expand(batch_size) * x_diff[0]).floor()
+            y_start = (_r_y.expand(batch_size) * y_diff[0]).floor()
+        else:
             x_start = (
-                _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(x_diff) * x_diff[0]
+                torch.empty(batch_size, device=self._rand_device, dtype=self._rand_dtype).uniform_(0.0, 1.0).to(x_diff)
+                * x_diff
             ).floor()
             y_start = (
-                _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(y_diff) * y_diff[0]
+                torch.empty(batch_size, device=self._rand_device, dtype=self._rand_dtype).uniform_(0.0, 1.0).to(y_diff)
+                * y_diff
             ).floor()
-        else:
-            x_start = (_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(x_diff) * x_diff).floor()
-            y_start = (_adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(y_diff) * y_diff).floor()
         crop_src = bbox_generator(
             x_start.view(-1).to(device=_device, dtype=_dtype),
             y_start.view(-1).to(device=_device, dtype=_dtype),
@@ -214,10 +217,12 @@ class ResizedCropGenerator(CropGenerator):
         ratio = torch.as_tensor(self.ratio, device=device, dtype=dtype)
         _joint_range_check(scale, "scale")
         _joint_range_check(ratio, "ratio")
-        self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype), torch.tensor(1.0, device=device, dtype=dtype)
-        )
-        self.log_ratio_sampler = Uniform(torch.log(ratio[0]), torch.log(ratio[1]), validate_args=False)
+        # Store log-ratio bounds as Python floats for GPU-side sampling; the scale
+        # sampler (Uniform[0,1]) is replaced by torch.empty().uniform_() in forward.
+        self._log_ratio_low: float = float(torch.log(ratio[0]))
+        self._log_ratio_high: float = float(torch.log(ratio[1]))
+        self._rand_device = device
+        self._rand_dtype = dtype
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
@@ -231,14 +236,22 @@ class ResizedCropGenerator(CropGenerator):
                 "size": torch.zeros([0, 2], device=_device, dtype=_dtype),
             }
 
-        rand_tensor = _adapted_rsampling((batch_size, 10), self.rand_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
-        )
+        _sample_shape = (1, 10) if same_on_batch else (batch_size, 10)
+
+        rand_tensor = torch.empty(_sample_shape, device=self._rand_device, dtype=self._rand_dtype).uniform_(0.0, 1.0)
+        if same_on_batch:
+            rand_tensor = rand_tensor.expand(batch_size, -1)
+        rand_tensor = rand_tensor.to(device=_device, dtype=_dtype)
+
         scale_tensor = torch.as_tensor(self.scale, device=_device, dtype=_dtype)
         area = (rand_tensor * (scale_tensor[1] - scale_tensor[0]) + scale_tensor[0]) * size[0] * size[1]
-        log_ratio = _adapted_rsampling((batch_size, 10), self.log_ratio_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
+
+        log_ratio = torch.empty(_sample_shape, device=self._rand_device, dtype=self._rand_dtype).uniform_(
+            self._log_ratio_low, self._log_ratio_high
         )
+        if same_on_batch:
+            log_ratio = log_ratio.expand(batch_size, -1)
+        log_ratio = log_ratio.to(device=_device, dtype=_dtype)
         aspect_ratio = torch.exp(log_ratio)
 
         w = torch.sqrt(area * aspect_ratio).round().floor()
@@ -252,24 +265,25 @@ class ResizedCropGenerator(CropGenerator):
         h_out = h[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
         w_out = w[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
 
-        if not cond_bool.all():
-            # Fallback to center crop
-            in_ratio = float(size[0]) / float(size[1])
-            _min = float(self.ratio.min()) if isinstance(self.ratio, torch.Tensor) else min(self.ratio)
-            if in_ratio < _min:
-                h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
-                w_ct = torch.round(h_ct / _min)
-            elif in_ratio > _min:
-                w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
-                h_ct = torch.round(w_ct * _min)
-            else:  # whole image
-                h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
-                w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
-            h_ct = h_ct.floor()
-            w_ct = w_ct.floor()
-
-            h_out = torch.where(cond_bool, h_out, h_ct)
-            w_out = torch.where(cond_bool, w_out, w_ct)
+        # Fallback to center crop for elements where no valid candidate was found.
+        # Always compute the fallback values to avoid a Python-level branch on cond_bool
+        # (which would cause a host sync). The torch.where selects between candidate and
+        # fallback element-wise without any host-side conditional.
+        in_ratio = float(size[0]) / float(size[1])
+        _min = float(self.ratio.min()) if isinstance(self.ratio, torch.Tensor) else min(self.ratio)  # type: ignore[union-attr]
+        if in_ratio < _min:
+            h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
+            w_ct = torch.round(h_ct / _min)
+        elif in_ratio > _min:
+            w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
+            h_ct = torch.round(w_ct * _min)
+        else:  # whole image
+            h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
+            w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
+        h_ct = h_ct.floor()
+        w_ct = w_ct.floor()
+        h_out = torch.where(cond_bool, h_out, h_ct)
+        w_out = torch.where(cond_bool, w_out, w_ct)
 
         # Clamp crop size to input size to prevent out-of-bounds crops
         h_out = torch.clamp(h_out, min=1, max=size[0])

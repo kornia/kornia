@@ -18,10 +18,9 @@
 from typing import Dict, Optional, Tuple
 
 import torch
-from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_sampling, _common_param_check
+from kornia.augmentation.utils import _common_param_check
 
 __all__ = ["ProbabilityGenerator"]
 
@@ -52,12 +51,22 @@ class ProbabilityGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        p = torch.tensor(float(self.p), device=device, dtype=dtype)
-        self.sampler = Bernoulli(p)
+        self._p = torch.tensor(float(self.p), device=device, dtype=dtype)
+        self._device = device
+        self._dtype = dtype
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
-        probs_mask: torch.Tensor = _adapted_sampling((batch_size,), self.sampler, same_on_batch).bool()
+        _common_param_check(batch_size, same_on_batch)
+        if same_on_batch:
+            # GPU-side Bernoulli: draw one sample and broadcast across batch
+            probs_mask = (
+                torch.empty(1, device=self._device, dtype=self._dtype).uniform_(0.0, 1.0) < self._p
+            ).expand(batch_size)
+        else:
+            probs_mask = (
+                torch.empty(batch_size, device=self._device, dtype=self._dtype).uniform_(0.0, 1.0) < self._p
+            )
         return {"probs": probs_mask}
 
 
@@ -91,7 +100,10 @@ def random_prob_generator(
     if not isinstance(p, (int, float)) or p > 1 or p < 0:
         raise TypeError(f"The probability should be a float number within [0, 1]. Got {type(p)}.")
 
-    _bernoulli = Bernoulli(torch.tensor(float(p), device=device, dtype=dtype))
-    probs_mask: torch.Tensor = _adapted_sampling((batch_size,), _bernoulli, same_on_batch).bool()
+    _p = torch.tensor(float(p), device=device, dtype=dtype)
+    if same_on_batch:
+        probs_mask = (torch.empty(1, device=device, dtype=dtype).uniform_(0.0, 1.0) < _p).expand(batch_size)
+    else:
+        probs_mask = torch.empty(batch_size, device=device, dtype=dtype).uniform_(0.0, 1.0) < _p
 
-    return probs_mask
+    return probs_mask.bool()

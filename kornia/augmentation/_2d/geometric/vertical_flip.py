@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.utils import _transform_input
 from kornia.geometry.transform import vflip
 
 
@@ -40,6 +41,12 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.vflip`.
+
+    .. note::
+        A minimal-overhead fast forward path is taken automatically when called
+        with a single plain ``Tensor`` (no boxes/masks/keypoints, no replay
+        ``params=``, no kwargs) and ``p`` is deterministic (``0.0`` or ``1.0``).
+        For boxes/masks/keypoints/replay the standard chain is preserved.
 
     Examples:
         >>> import torch
@@ -63,6 +70,49 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         tensor(True)
 
     """
+
+    # The legacy ``_fast_image_only_apply`` opt-in is disabled — the aggressive
+    # forward override below is strictly faster.
+    _supports_fast_image_only_path: bool = False
+
+    @torch.no_grad()
+    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+        # Aggressive fast path: completely bypass the framework chain for the
+        # simple "single image tensor, deterministic p" call.  See
+        # ``RandomHorizontalFlip.forward`` for the full rationale.
+        if (
+            len(args) == 1
+            and isinstance(args[0], torch.Tensor)
+            and not kwargs
+            and self.p_batch == 1.0
+            and not self.same_on_batch
+            and not self.keepdim
+            and self.p in (0.0, 1.0)
+        ):
+            x = args[0]
+            d = x.dim()
+            if d == 3:
+                x = x.unsqueeze(0)
+                d = 4
+            if d == 4:
+                b = x.shape[0]
+                self._params = {
+                    "batch_prob": torch.full((b,), bool(self.p > 0.5), dtype=torch.bool),
+                    "forward_input_shape": torch.tensor(x.shape, dtype=torch.long),
+                }
+                if self.p == 1.0:
+                    h = x.shape[-2]
+                    flip_mat = torch.tensor(
+                        [[1, 0, 0], [0, -1, h - 1], [0, 0, 1]],
+                        device=x.device,
+                        dtype=x.dtype,
+                    )
+                    self._transform_matrix = flip_mat.unsqueeze(0).expand(b, 3, 3)
+                    return x.flip(-2)
+                eye = torch.eye(3, device=x.device, dtype=x.dtype)
+                self._transform_matrix = eye.unsqueeze(0).expand(b, 3, 3)
+                return x
+        return super().forward(*args, **kwargs)
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]

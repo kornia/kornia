@@ -432,7 +432,22 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
     ) -> Union[DataType, List[DataType], Dict[str, DataType]]:
-        """Compute multiple tensors simultaneously according to ``self.data_keys``."""
+        """Compute multiple tensors simultaneously according to ``self.data_keys``.
+
+        Memory-format preservation: when the primary input image tensor uses
+        ``torch.channels_last`` memory format the corresponding output tensor(s)
+        are restored to ``channels_last`` after the pipeline completes.  NCHW
+        contiguous inputs are left unchanged — no silent format promotion occurs.
+
+        .. note::
+            Individual geometry transforms (e.g. :func:`~kornia.geometry.transform.hflip`,
+            :func:`~kornia.geometry.transform.vflip`) internally call ``.contiguous()``
+            *without* a ``memory_format`` argument, which silently downgrades a
+            channels-last tensor to NCHW contiguous.  This container-level fix
+            re-applies channels-last at the very end of the forward pass.  A
+            follow-up PR should patch those leaf transforms so the conversion
+            overhead is avoided entirely.
+        """
         self.clear_state()
 
         # Unpack/handle dictionary args
@@ -445,6 +460,15 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
         in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
+
+        # Capture whether the primary image input is channels-last so the
+        # format can be restored after the pipeline runs.
+        _input_is_channels_last = False
+        if DataKey.INPUT in self.transform_op.data_keys:
+            _img_idx = self.transform_op.data_keys.index(DataKey.INPUT)
+            _raw_inp = in_args[_img_idx]
+            if isinstance(_raw_inp, torch.Tensor) and _raw_inp.dim() == 4:
+                _input_is_channels_last = _raw_inp.is_contiguous(memory_format=torch.channels_last)
 
         if params is None:
             # image data must exist if params is not provided.
@@ -473,6 +497,16 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             self._update_transform_matrix_by_module(module)
 
         outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
+
+        # Restore channels-last format on image outputs if the input was channels-last.
+        if _input_is_channels_last:
+            restored: List[DataType] = []
+            for out_item, dcate in zip(outputs, self.transform_op.data_keys):
+                if DataKey.get(dcate) in _IMG_OPTIONS and isinstance(out_item, torch.Tensor) and out_item.dim() == 4:
+                    out_item = out_item.contiguous(memory_format=torch.channels_last)
+                restored.append(out_item)
+            outputs = restored
+
         # Restore it back
         self.transform_op.data_keys = self.data_keys
 
@@ -542,6 +576,70 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         else:
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image
+
+    def compile(
+        self,
+        *,
+        fullgraph: bool = False,
+        mode: str = "default",
+        dynamic: bool = False,
+        **kwargs: Any,
+    ) -> Any:
+        """Return a ``torch.compile``-wrapped callable of this pipeline.
+
+        Calling ``aug.compile()`` is the preferred way to accelerate a kornia
+        augmentation pipeline end-to-end.  It wraps ``self.__call__`` with
+        ``torch.compile`` so the *entire* graph — including all chained
+        transforms — is compiled in a single pass rather than per-operator.
+
+        Args:
+            fullgraph: If ``True``, requires the entire pipeline to compile
+                without graph breaks.  May raise on transforms that still
+                contain host-synchronising branches (e.g. probability sampling
+                before PR-G1 is complete).  Start with ``False`` (the default)
+                and tighten once your pipeline is confirmed graph-break-free.
+            mode: ``torch.compile`` compilation mode.  ``"default"`` balances
+                compile time and runtime speed.  Try
+                ``"max-autotune-no-cudagraphs"`` for fixed-shape pipelines once
+                host syncs have been removed (post PR-G1).
+            dynamic: Allow dynamic tensor shapes.  Defaults to ``False``; most
+                augmentation pipelines have a fixed spatial size after an
+                initial ``Resize``.
+            **kwargs: Forwarded verbatim to :func:`torch.compile`.
+
+        Returns:
+            A callable whose signature matches ``self.__call__``.  The first
+            invocation triggers JIT compilation; subsequent calls with
+            identically-shaped inputs reuse the cached kernel.
+
+        .. note::
+            **Per-operator compile (deprecated in favour of this method)**
+
+            Several individual transforms — :class:`~kornia.augmentation.RandomGaussianBlur`,
+            :class:`~kornia.augmentation.ColorJiggle`, and
+            :class:`~kornia.augmentation.RandomGaussianIllumination` — expose
+            their own ``.compile()`` methods that wrap an internal kernel
+            function.  Those per-operator overrides remain in place for
+            backwards compatibility but are superseded by this pipeline-wide
+            method.  Avoid combining both: wrapping an already-compiled
+            sub-module inside a compiled pipeline may produce redundant
+            recompilations.
+
+        Example:
+            >>> import kornia.augmentation as K
+            >>> import torch
+            >>> aug = K.AugmentationSequential(
+            ...     K.RandomHorizontalFlip(p=1.0),
+            ...     K.Normalize(mean=torch.tensor([0.5, 0.5, 0.5]),
+            ...                 std=torch.tensor([0.2, 0.2, 0.2])),
+            ... )
+            >>> compiled_aug = aug.compile()
+            >>> x = torch.rand(2, 3, 64, 64)
+            >>> out = compiled_aug(x)  # first call: compiles; subsequent calls fast
+            >>> out.shape
+            torch.Size([2, 3, 64, 64])
+        """
+        return torch.compile(self.__call__, fullgraph=fullgraph, mode=mode, dynamic=dynamic, **kwargs)
 
     def _preproc_dict_data(
         self, data: Dict[str, DataType]

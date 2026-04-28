@@ -33,3 +33,9 @@ weights/
 .uv_cache/
 
 .python-version
+
+# kornia 2.0 RFC work
+.omc/
+benchmarks/profile/traces/
+benchmarks/profile/bottlenecks_all.json
+benchmarks/profile/traces_all/

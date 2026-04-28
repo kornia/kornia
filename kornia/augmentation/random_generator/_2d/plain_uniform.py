@@ -18,10 +18,9 @@
 from typing import Any, Dict, Optional, Tuple
 
 import torch
-from torch.distributions import Distribution
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
+from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.utils import _common_param_check, _range_bound
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["ParameterBound", "PlainUniformGenerator"]
@@ -80,7 +79,10 @@ class PlainUniformGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self.sampler_dict: Dict[str, Distribution] = {}
+        # Store Python float (low, high) pairs for GPU-side uniform_ sampling.
+        self._sampler_bounds: Dict[str, Tuple[float, float]] = {}
+        self._sampler_device = device
+        self._sampler_dtype = dtype
         for factor, name, center, bound in self.samplers:
             if center is None and bound is None:
                 factor = torch.as_tensor(factor, device=device, dtype=dtype)
@@ -88,14 +90,22 @@ class PlainUniformGenerator(RandomGeneratorBase):
                 raise ValueError(f"`center` and `bound` should be both None or provided. Got {center} and {bound}.")
             else:
                 factor = _range_bound(factor, name, center=center, bounds=bound, device=device, dtype=dtype)
-            self.sampler_dict.update({name: UniformDistribution(factor[0], factor[1], validate_args=False)})
+            self._sampler_bounds[name] = (float(factor[0]), float(factor[1]))
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])
 
-        return {
-            name: _adapted_rsampling((batch_size,), dist, same_on_batch).to(device=_device, dtype=_dtype)
-            for name, dist in self.sampler_dict.items()
-        }
+        out: Dict[str, torch.Tensor] = {}
+        for name, (low, high) in self._sampler_bounds.items():
+            if same_on_batch:
+                sample = torch.empty(1, device=self._sampler_device, dtype=self._sampler_dtype).uniform_(
+                    low, high
+                ).expand(batch_size)
+            else:
+                sample = torch.empty(batch_size, device=self._sampler_device, dtype=self._sampler_dtype).uniform_(
+                    low, high
+                )
+            out[name] = sample.to(device=_device, dtype=_dtype)
+        return out

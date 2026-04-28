@@ -74,6 +74,13 @@ class _BasicAugmentationBase(nn.Module):
     # Please contribute if anyone interested.
     ONNX_EXPORTABLE = False
 
+    # Opt-in flag: subclasses that implement ``_fast_image_only_apply`` and that
+    # are safe to bypass the full forward chain (parameter generation, transform
+    # matrix construction, batch-prob branching, ``_params`` caching) for the
+    # simple "image-only, no replay, no transform_matrix tracking" call shape
+    # set this to ``True``.  See ``forward`` for the activation conditions.
+    _supports_fast_image_only_path: bool = False
+
     def __init__(
         self,
         p: float = 0.5,
@@ -96,6 +103,12 @@ class _BasicAugmentationBase(nn.Module):
         self._param_generator: Optional[RandomGeneratorBase] = None
         self.flags: Dict[str, Any] = {}
         self.set_rng_device_and_dtype(torch.device("cpu"), torch.get_default_dtype())
+        # Construction-time flag: when both p and p_batch are 1.0, every element
+        # in every batch is always selected.  We cache this here so that
+        # forward_parameters and transform_inputs can avoid data-dependent
+        # runtime branches (e.g. batch_prob.sum().item()) that prevent
+        # torch.export from tracing the module.
+        self._always_apply: bool = p == 1.0 and p_batch == 1.0
 
     apply_transform: Callable[..., torch.Tensor] = _apply_transform_unimplemented
 
@@ -172,19 +185,16 @@ class _BasicAugmentationBase(nn.Module):
         else:
             batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch)
 
-        if batch_prob.sum() == 1:
-            elem_prob: torch.Tensor
-            if p == 1:
-                elem_prob = torch.zeros(batch_shape[0]) + 1
-            elif p == 0:
-                elem_prob = torch.zeros(batch_shape[0])
-            elif isinstance(self._p_gen, (RelaxedBernoulli,)):
-                elem_prob = _adapted_rsampling((batch_shape[0],), self._p_gen, same_on_batch)
-            else:
-                elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch)
-            batch_prob = batch_prob * elem_prob
+        elem_prob: torch.Tensor
+        if p == 1:
+            elem_prob = torch.zeros(batch_shape[0]) + 1
+        elif p == 0:
+            elem_prob = torch.zeros(batch_shape[0])
+        elif isinstance(self._p_gen, (RelaxedBernoulli,)):
+            elem_prob = _adapted_rsampling((batch_shape[0],), self._p_gen, same_on_batch)
         else:
-            batch_prob = batch_prob.repeat(batch_shape[0])
+            elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch)
+        batch_prob = batch_prob * elem_prob
         if len(batch_prob.shape) == 2:
             return batch_prob[..., 0]
         return batch_prob
@@ -203,9 +213,14 @@ class _BasicAugmentationBase(nn.Module):
 
         if save_kwargs:
             params = override_parameters(params, kwargs, in_place=True)
-            self._params = params
+            # Do not mutate self._params while being traced by torch.export /
+            # torch.compile — the exporter detects attribute changes and raises.
+            if not torch.compiler.is_compiling():
+                self._params = params
         else:
-            self._params = params
+            # Same guard: skip the cache-write under export/compile.
+            if not torch.compiler.is_compiling():
+                self._params = params
             params = override_parameters(params, kwargs, in_place=False)
 
         flags = override_parameters(flags, kwargs, in_place=False)
@@ -214,7 +229,16 @@ class _BasicAugmentationBase(nn.Module):
     def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         batch_prob = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         to_apply = batch_prob > 0.5
-        _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
+        # When all elements are always selected (p == p_batch == 1.0) the number
+        # of elements to generate parameters for equals the full batch size, which
+        # is a static integer known at construction time.  Avoid the data-dependent
+        # `.sum().item()` call so that torch.export can trace without raising
+        # GuardOnDataDependentSymNode.
+        if self._always_apply:
+            n_apply = batch_shape[0]
+        else:
+            n_apply = int(to_apply.sum().item())
+        _params = self.generate_parameters(torch.Size((n_apply, *batch_shape[1:])))
         if _params is None:
             _params = {}
         _params["batch_prob"] = batch_prob
@@ -227,6 +251,29 @@ class _BasicAugmentationBase(nn.Module):
     def apply_func(self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]) -> torch.Tensor:
         return self.apply_transform(input, params, flags)
 
+    def _fast_image_only_apply(self, input: torch.Tensor) -> Optional[torch.Tensor]:
+        """Image-only fast path implementation.
+
+        Subclasses that opt into the fast path by setting
+        ``_supports_fast_image_only_path = True`` MUST override this method.  The
+        contract is: produce the same numerical output as the full forward chain
+        for an "image-only, no replay, no transform_matrix tracking" call.  The
+        per-sample probability ``self.p`` MUST be honoured here; the activation
+        gate in ``forward`` only checks ``p_batch == 1.0``.
+
+        Returning ``None`` signals the standard forward chain should be used
+        instead (e.g. for runtime configurations the fast path does not cover).
+
+        Args:
+            input: the input torch.Tensor with shape (B, C, H, W) (or (C, H, W)
+                / (H, W) — caller guarantees only that it is a tensor).
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} sets _supports_fast_image_only_path=True but does not "
+            "override _fast_image_only_apply."
+        )
+
+    @torch.no_grad()
     def forward(
         self, input: torch.Tensor, params: Optional[Dict[str, torch.Tensor]] = None, **kwargs: Any
     ) -> torch.Tensor:
@@ -244,6 +291,61 @@ class _BasicAugmentationBase(nn.Module):
             ``save_kwargs=True`` additionally.
 
         """
+        # Opt-in fast path: bypass parameter generation, transform-matrix
+        # construction, batch-prob branching, and ``_params`` caching for the
+        # simple "image-only" call shape.  The per-sample probability ``self.p``
+        # is handled inside ``_fast_image_only_apply``; only ``p_batch == 1.0``
+        # is gated here so the whole batch is always considered.
+        if (
+            self._supports_fast_image_only_path
+            and params is None
+            and not kwargs
+            and isinstance(input, torch.Tensor)
+            and self.p_batch == 1.0
+            and not self.keepdim
+        ):
+            output = self._fast_image_only_apply(input)
+            # ``_fast_image_only_apply`` may return ``None`` to signal that the
+            # current configuration is not supported and the caller should fall
+            # back to the standard forward chain.
+            if output is not None:
+                # Populate ``_params`` with the minimum viable suite so that
+                # post-forward operations like ``aug.inverse(...)`` (which
+                # consume ``params['batch_prob']`` and
+                # ``params['forward_input_shape']``) keep working without
+                # forcing the fast path to materialise the full param dict.
+                # ``batch_prob`` reflects the per-sample apply mask; for the
+                # deterministic fast path (``p`` in {0, 1}) this is uniform.
+                if isinstance(input, torch.Tensor) and input.dim() >= 2:
+                    in_shape: Tuple[int, ...] = (
+                        tuple(input.shape)
+                        if input.dim() == 4
+                        else (1,) * (4 - input.dim()) + tuple(input.shape)
+                    )
+                    fill_value = bool(self.p > 0.5)
+                    base_params: Dict[str, torch.Tensor] = {
+                        "batch_prob": torch.full(
+                            (in_shape[0],), fill_value, dtype=torch.bool
+                        ),
+                        "forward_input_shape": torch.tensor(in_shape, dtype=torch.long),
+                    }
+                    # Per-class fast paths may stash additional generated
+                    # parameters (e.g. random ``thresholds`` for Solarize) so
+                    # ``aug(input, params=aug._params)`` replay reproduces the
+                    # exact output via the standard chain.
+                    extra = getattr(self, "_fast_path_extra_params", None)
+                    if extra:
+                        base_params.update(extra)
+                        self._fast_path_extra_params = None
+                    self._params = base_params
+                else:
+                    self._params = {}
+                # ``_transform_matrix`` is the responsibility of the per-class
+                # ``_fast_image_only_apply`` implementation: it may either set
+                # the matrix explicitly (preferred when cheap) or leave the
+                # previous value untouched.  See the per-class overrides.
+                return output
+
         in_tensor = self.__unpack_input__(input)
         input_shape = in_tensor.shape
         in_tensor = self.transform_tensor(in_tensor)
@@ -315,7 +417,13 @@ class _AugmentationBase(_BasicAugmentationBase):
         in_tensor = self.transform_tensor(input)
 
         self.validate_tensor(in_tensor)
-        if to_apply.all():
+        # When _always_apply is True (p == p_batch == 1.0), every element is
+        # always selected.  Skip the data-dependent .all()/.any() guards so that
+        # torch.export can trace the module without raising
+        # GuardOnDataDependentSymNode.
+        if self._always_apply:
+            output = self.apply_transform(in_tensor, params, flags, transform=transform)
+        elif to_apply.all():
             output = self.apply_transform(in_tensor, params, flags, transform=transform)
         elif not to_apply.any():
             output = self.apply_non_transform(in_tensor, params, flags, transform=transform)

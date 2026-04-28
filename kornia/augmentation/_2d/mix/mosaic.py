@@ -106,10 +106,20 @@ class RandomMosaic(MixAugmentationBaseV2):
             "cropping_mode": cropping_mode,
         }
 
+    def apply_non_transform_mask(
+        self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
+    ) -> torch.Tensor:
+        if flags["output_size"] is not None:
+            output_size = KORNIA_UNWRAP(flags["output_size"], Tuple[int, int])
+            return F.pad(input, [0, output_size[1] - input.shape[-1], 0, output_size[0] - input.shape[-2]])
+        return input
+
     def apply_transform_mask(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        raise NotImplementedError
+        output = self._compose_images(input, params, flags=flags)
+        transform = self.compute_transformation(output, params, flags=flags)
+        return self._crop_images(output, params, flags=flags, transform=transform)
 
     @torch.no_grad()
     def apply_transform_boxes(self, input: Boxes, params: Dict[str, torch.Tensor], flags: Dict[str, Any]) -> Boxes:

@@ -18,10 +18,10 @@
 from typing import Dict, Optional, Tuple, Union
 
 import torch
-from torch.distributions import Bernoulli, Beta, Uniform
+from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _adapted_sampling, _common_param_check, _joint_range_check
+from kornia.augmentation.utils import _adapted_sampling, _common_param_check, _joint_range_check
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -83,18 +83,17 @@ class CutmixGenerator(RandomGeneratorBase):
 
         _joint_range_check(self._cut_size, "cut_size", bounds=(0, 1))
 
-        self.beta_sampler = Beta(self._beta, self._beta)
+        # Beta(a, a) is approximated via the Gamma-ratio identity:
+        #   g1 = Exponential(1)^(1/a),  g2 = Exponential(1)^(1/a)
+        #   beta_sample = g1 / (g1 + g2)
+        # This avoids the Beta distribution's host-side acceptance-rejection sampler,
+        # making the generator compatible with CUDA graph capture.
+        # NOTE: The approximation changes the RNG sequence relative to torch.distributions.Beta;
+        # golden snapshots for RandomCutMixV2 will drift and must be regenerated explicitly.
+        self._beta_alpha_inv = 1.0 / self._beta  # store reciprocal for exponentiation
+        self._rand_device = device
+        self._rand_dtype = dtype
         self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
-        self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype),
-            torch.tensor(1.0, device=device, dtype=dtype),
-            validate_args=False,
-        )
-        self.pair_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype),
-            torch.tensor(1.0, device=device, dtype=dtype),
-            validate_args=False,
-        )
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
@@ -112,17 +111,30 @@ class CutmixGenerator(RandomGeneratorBase):
                 "crop_src": torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
             }
 
+        _n = batch_size * self.num_mix
         with torch.no_grad():
             batch_probs: torch.Tensor = _adapted_sampling(
-                (batch_size * self.num_mix,), self.prob_sampler, same_on_batch
+                (_n,), self.prob_sampler, same_on_batch
             )
-            mix_pairs: torch.Tensor = (
-                _adapted_sampling((self.num_mix, batch_size), self.pair_sampler, same_on_batch)
-                .to(device=_device, dtype=_dtype)
-                .argsort(dim=1)
-            )
+            # Use GPU-side uniform for pair sorting (was Uniform(0,1).sample()).
+            if same_on_batch:
+                pair_rand = (
+                    torch.empty(1, batch_size, device=self._rand_device, dtype=self._rand_dtype)
+                    .uniform_(0.0, 1.0)
+                    .expand(self.num_mix, -1)
+                )
+            else:
+                pair_rand = torch.empty(
+                    self.num_mix, batch_size, device=self._rand_device, dtype=self._rand_dtype
+                ).uniform_(0.0, 1.0)
+            mix_pairs: torch.Tensor = pair_rand.to(device=_device, dtype=_dtype).argsort(dim=1)
 
-        cutmix_betas: torch.Tensor = _adapted_rsampling((batch_size * self.num_mix,), self.beta_sampler, same_on_batch)
+        # Beta(a,a) via Gamma-ratio: sample two Gamma(a,1) via exponential^(1/a) trick.
+        # g ~ Exp(1) => g^(1/a) ~ Gamma(a,1) (up to a scale that cancels in the ratio).
+        alpha_inv = self._beta_alpha_inv
+        g1 = torch.empty(_n, device=self._rand_device, dtype=self._rand_dtype).exponential_().pow(alpha_inv)
+        g2 = torch.empty(_n, device=self._rand_device, dtype=self._rand_dtype).exponential_().pow(alpha_inv)
+        cutmix_betas: torch.Tensor = (g1 / (g1 + g2)).to(device=_device, dtype=_dtype)
 
         # Note: torch.clamp does not accept torch.Tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
         # Argument 1 to "clamp" of "_TensorBase" has incompatible type "torch.Tensor"; expected "float"
@@ -138,12 +150,18 @@ class CutmixGenerator(RandomGeneratorBase):
             cut_height = cut_height[0]
             cut_width = cut_width[0]
 
-        # Reserve at least 1 pixel for cropping.
-        x_start = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype) * (
-            width - cut_width - 1
+        # Reserve at least 1 pixel for cropping. Use GPU-side uniform.
+        x_start = (
+            torch.empty(_gen_shape, device=self._rand_device, dtype=self._rand_dtype)
+            .uniform_(0.0, 1.0)
+            .to(device=_device, dtype=_dtype)
+            * (width - cut_width - 1)
         )
-        y_start = _adapted_rsampling(_gen_shape, self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype) * (
-            height - cut_height - 1
+        y_start = (
+            torch.empty(_gen_shape, device=self._rand_device, dtype=self._rand_dtype)
+            .uniform_(0.0, 1.0)
+            .to(device=_device, dtype=_dtype)
+            * (height - cut_height - 1)
         )
         x_start = x_start.floor()
         y_start = y_start.floor()

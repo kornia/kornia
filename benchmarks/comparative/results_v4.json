@@ -1,0 +1,85 @@
+{
+  "platform": "Jetson Orin aarch64",
+  "device": "cuda:0",
+  "device_name": "Orin",
+  "cuda_available": true,
+  "torch_version": "2.8.0",
+  "library_versions": {
+    "kornia": "0.7.4",
+    "albumentations": "2.0.8",
+    "torchvision": "0.23.0"
+  },
+  "batch": 8,
+  "resolution": 512,
+  "kornia_patch_status": "Normalize(buffers); HFlip(cache); hflip/vflip(no-contiguous); RandomAffine(closed-form+cache); ColorJiggle(fused-HSV)",
+  "patch_verification": {
+    "ok": true,
+    "failures": []
+  },
+  "rows": {
+    "row1_alb": {
+      "median_ms": 4.1164199355989695,
+      "p25_ms": 4.080226994119585,
+      "p75_ms": 4.331787000410259,
+      "iqr_ms": 0.2515600062906742,
+      "min_ms": 3.6974939284846187,
+      "max_ms": 16.45614206790924,
+      "mean_ms": 4.748956384137273,
+      "stddev_ms": 2.459385594169987,
+      "n": 50
+    },
+    "row2_tv_eager": {
+      "median_ms": 24.2986970115453,
+      "p25_ms": 17.793464940041304,
+      "p75_ms": 25.78453696332872,
+      "iqr_ms": 7.9910720232874155,
+      "min_ms": 15.030529000796378,
+      "max_ms": 35.17056501004845,
+      "mean_ms": 23.10848439577967,
+      "stddev_ms": 5.398552715955429,
+      "n": 50
+    },
+    "row4_k_eager": {
+      "median_ms": 58.08296101167798,
+      "p25_ms": 54.53019600827247,
+      "p75_ms": 59.33904706034809,
+      "iqr_ms": 4.8088510520756245,
+      "min_ms": 52.343721967190504,
+      "max_ms": 87.13261794764549,
+      "mean_ms": 58.394827926531434,
+      "stddev_ms": 6.10820130378808,
+      "n": 50
+    },
+    "row7_k_graph": {
+      "status": "FAILED",
+      "reason": "AcceleratorError: CUDA error: operation not permitted when stream is capturing",
+      "eager_ms": {
+        "median_ms": 56.48400115966797,
+        "p25_ms": 54.52336120605469,
+        "p75_ms": 57.951904296875,
+        "iqr_ms": 3.4285430908203125,
+        "min_ms": 49.8054084777832,
+        "max_ms": 61.86662292480469,
+        "mean_ms": 56.13343353271485,
+        "n": 100
+      },
+      "replay_ms": null
+    },
+    "row8_tv_graph": {
+      "status": "FAILED",
+      "reason": "AcceleratorError: CUDA error: operation not permitted when stream is capturing",
+      "eager_ms": {
+        "median_ms": 14.087552070617676,
+        "p25_ms": 13.771903991699219,
+        "p75_ms": 14.383872032165527,
+        "iqr_ms": 0.6119680404663086,
+        "min_ms": 12.789728164672852,
+        "max_ms": 22.03340721130371,
+        "mean_ms": 14.677269735336303,
+        "n": 100
+      },
+      "replay_ms": null
+    }
+  },
+  "wall_elapsed_s": 39.26915360603016
+}

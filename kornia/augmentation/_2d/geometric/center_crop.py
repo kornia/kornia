@@ -21,6 +21,7 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.utils import _transform_input
 from kornia.constants import Resample
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
@@ -106,6 +107,50 @@ class CenterCrop(GeometricAugmentationBase2D):
             "padding_mode": "zeros",
         }
 
+    # The legacy ``_fast_image_only_apply`` opt-in is disabled — the aggressive
+    # forward override below is strictly faster.
+    _supports_fast_image_only_path: bool = False
+
+    @torch.no_grad()
+    def forward(self, *args: Any, **kwargs: Any) -> torch.Tensor:
+        # Aggressive fast path: completely bypass the framework chain for the
+        # ``slice`` cropping_mode + simple "single image tensor" call.  Slice
+        # center crops are a pure ``input[..., y0:y1, x0:x1]`` view op.  The
+        # ``resample`` mode requires ``warp_affine`` so we fall through.
+        if (
+            len(args) == 1
+            and isinstance(args[0], torch.Tensor)
+            and not kwargs
+            and self.p_batch == 1.0
+            and not self.keepdim
+            and self.flags.get("cropping_mode") == "slice"
+        ):
+            x = args[0]
+            d = x.dim()
+            if d == 3:
+                x = x.unsqueeze(0)
+                d = 4
+            if d == 4:
+                b = x.shape[0]
+                crop_h, crop_w = self.size
+                in_h, in_w = x.shape[-2], x.shape[-1]
+                start_y = int(in_h / 2 - crop_h / 2)
+                start_x = int(in_w / 2 - crop_w / 2)
+                self._params = {
+                    "batch_prob": torch.full((b,), True, dtype=torch.bool),
+                    "forward_input_shape": torch.tensor(x.shape, dtype=torch.long),
+                }
+                # Mirror what ``get_perspective_transform`` would produce: a
+                # pure translation matrix.
+                mat = torch.tensor(
+                    [[1.0, 0.0, -float(start_x)], [0.0, 1.0, -float(start_y)], [0.0, 0.0, 1.0]],
+                    device=x.device,
+                    dtype=x.dtype,
+                )
+                self._transform_matrix = mat.unsqueeze(0).expand(b, 3, 3)
+                return x[..., start_y : start_y + crop_h, start_x : start_x + crop_w]
+        return super().forward(*args, **kwargs)
+
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         return rg.center_crop_generator(batch_shape[0], batch_shape[-2], batch_shape[-1], self.size, self.device)
 
@@ -138,6 +183,18 @@ class CenterCrop(GeometricAugmentationBase2D):
                 flags["align_corners"],
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
+            # Under torch.export the params["src"] tensor carries symbolic
+            # values that make int() / .item() calls data-dependent.  For
+            # CenterCrop the crop box is fully determined by the static output
+            # size (flags["size"]) and the concrete input shape, so we can
+            # compute the slice indices directly in Python without going
+            # through the params tensor.
+            if torch.compiler.is_compiling():
+                crop_h, crop_w = flags["size"]
+                in_h, in_w = input.shape[-2], input.shape[-1]
+                start_y = int(in_h / 2 - crop_h / 2)
+                start_x = int(in_w / 2 - crop_w / 2)
+                return input[..., start_y : start_y + crop_h, start_x : start_x + crop_w]
             return crop_by_indices(input, params["src"], flags["size"])
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 

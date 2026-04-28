@@ -18,10 +18,9 @@
 from typing import Dict, Optional, Tuple, Union
 
 import torch
-from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
-from kornia.augmentation.utils import _adapted_rsampling, _adapted_sampling, _common_param_check, _joint_range_check
+from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["MixupGenerator"]
@@ -63,7 +62,9 @@ class MixupGenerator(RandomGeneratorBase):
 
         _joint_range_check(lambda_val, "lambda_val", bounds=(0, 1))
         self.lambda_sampler = UniformDistribution(lambda_val[0], lambda_val[1], validate_args=False)
-        self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
+        self._p = torch.tensor(float(self.p), device=device, dtype=dtype)
+        self._device = device
+        self._dtype = dtype
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
@@ -71,8 +72,15 @@ class MixupGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.lambda_val])
 
-        with torch.no_grad():
-            batch_probs: torch.Tensor = _adapted_sampling((batch_size,), self.prob_sampler, same_on_batch)
+        # GPU-side Bernoulli: no host sync, no torch.no_grad() wrapper
+        if same_on_batch:
+            batch_probs = (
+                torch.empty(1, device=self._device, dtype=self._dtype).uniform_(0.0, 1.0) < self._p
+            ).float().expand(batch_size)
+        else:
+            batch_probs = (
+                torch.empty(batch_size, device=self._device, dtype=self._dtype).uniform_(0.0, 1.0) < self._p
+            ).float()
         mixup_pairs: torch.Tensor = torch.randperm(batch_size, device=_device, dtype=_dtype).long()
         mixup_lambdas: torch.Tensor = _adapted_rsampling((batch_size,), self.lambda_sampler, same_on_batch)
         mixup_lambdas = mixup_lambdas * batch_probs

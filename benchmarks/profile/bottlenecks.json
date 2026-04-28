@@ -1,0 +1,2336 @@
+{
+  "_meta": {
+    "versions": {
+      "platform": "Linux-5.15.148-tegra-aarch64-with-glibc2.35",
+      "machine": "aarch64",
+      "python": "3.10.20",
+      "torch": "2.8.0",
+      "cuda": "12.6",
+      "device": "Orin",
+      "kornia": "0.7.4",
+      "torchvision": "0.23.0"
+    },
+    "n_warmup": 5,
+    "n_iters": 20,
+    "batch": 8,
+    "res": 512
+  },
+  "CenterCrop": {
+    "kornia_top_ops": [
+      {
+        "name": "CenterCrop_kornia",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 22235.54000000001,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 136128.152,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -119539144
+      },
+      {
+        "name": "aten::full",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 637.202000000083,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1627.697000000032,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty",
+        "count": 80,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1178.9159999999674,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1178.9159999999674,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 1520
+      },
+      {
+        "name": "aten::fill_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 538.1289999999653,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 538.1289999999653,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::to",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 435.47500000000673,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 108368.884,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::lift_fresh",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 130.566000000058,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 130.566000000058,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::detach_",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 186.7879999999377,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 344.1699999999746,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "detach_",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 157.3820000000369,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 157.3820000000369,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_to_copy",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 892.8640000000523,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 107933.409,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty_strided",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1624.8159999999862,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1624.8159999999862,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 125829120
+      },
+      {
+        "name": "aten::copy_",
+        "count": 80,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 103759.13599999988,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 194048.9709999999,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::unsqueeze",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 686.2319999999554,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 878.7489999999698,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::as_strided",
+        "count": 100,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 617.3290000000397,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 617.3290000000397,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::expand",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 945.8240000000342,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1153.8280000000113,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::slice",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 800.7879999999313,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1017.5959999999795,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "kornia_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 136128.152,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 6.8064076,
+      "total_event_count": 800,
+      "events_per_iter": 40.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    },
+    "tv_top_ops": [
+      {
+        "name": "CenterCrop_tv",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 3470.600000000002,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 4218.2750000000015,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::slice",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 559.7049999999997,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 747.674999999999,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::as_strided",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 187.96999999999935,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 187.96999999999935,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "tv_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 4218.2750000000015,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 0.21091375000000007,
+      "total_event_count": 100,
+      "events_per_iter": 5.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    }
+  },
+  "HFlip": {
+    "kornia_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "HFlip_kornia",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 16128.932999999874,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 364251.241,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -478151416
+      },
+      {
+        "name": "aten::full",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 624.952999999982,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1668.596999999999,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 642.8640000001305,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 642.8640000001305,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 800
+      },
+      {
+        "name": "aten::fill_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 553.647000000035,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 553.647000000035,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::to",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 294.5640000000218,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 341317.329,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::lift_fresh",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 56.929000000039764,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 56.929000000039764,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::detach_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 100.35599999985072,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 194.79199999987895,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "detach_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 94.43600000002823,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 94.43600000002823,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::expand",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 635.8259999999681,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 896.8910000000042,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::as_strided",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 355.5640000000425,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 355.5640000000425,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::flip",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 2384.1049999998972,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 3442.889999999884,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty_like",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 325.89799999999286,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 964.2859999999805,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty_strided",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1832.8559999999873,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1832.8559999999873,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 503316480
+      },
+      {
+        "name": "aten::detach",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 128.9300000000951,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 392.01300000012725,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "kornia_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 364251.241,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 18.21256205,
+      "total_event_count": 440,
+      "events_per_iter": 22.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    },
+    "tv_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "HFlip_tv",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 4672.364999999979,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 8594.050999999996,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -100
+      },
+      {
+        "name": "aten::rand",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 299.72699999999986,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 674.4210000000027,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 176.22600000001125,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 176.22600000001125,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 80
+      },
+      {
+        "name": "aten::uniform_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 198.46799999999155,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 198.46799999999155,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::ge",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 485.39400000000376,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1123.6840000000057,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -60
+      },
+      {
+        "name": "aten::to",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 110.4690000000013,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 638.2900000000018,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_to_copy",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 242.24699999999257,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 527.8210000000005,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty_strided",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 459.9809999999933,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 459.9809999999933,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 80
+      },
+      {
+        "name": "aten::copy_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 164.61100000000852,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 164.61100000000852,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::is_nonzero",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 138.40200000001437,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 296.87000000000273,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::item",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 102.14699999999402,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 158.46799999998836,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_local_scalar_dense",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 56.32099999999434,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 56.32099999999434,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::flip",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1200.9330000000077,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1826.7110000000057,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty_like",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 168.19700000000842,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 507.2150000000023,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "tv_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 8594.050999999998,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 0.42970254999999985,
+      "total_event_count": 340,
+      "events_per_iter": 17.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    }
+  },
+  "Grayscale": {
+    "kornia_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "Grayscale_kornia",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 26929.4869999999,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 456187.61999999994,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -478151656
+      },
+      {
+        "name": "aten::full",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 619.2489999997854,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1995.1009999999783,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty",
+        "count": 100,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1613.905000000137,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1613.905000000137,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 1040
+      },
+      {
+        "name": "aten::fill_",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 3679.8929999999696,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 3679.8929999999696,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::to",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 441.1080000002245,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 393450.3980000001,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::lift_fresh",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 122.56500000003075,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 122.56500000003075,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::detach_",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 201.47799999983044,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 376.5859999999908,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "detach_",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 175.10800000016036,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 175.10800000016036,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::eye",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 9601.855999999838,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 18252.8089999999,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::resize_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 451.5040000001118,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 451.5040000001118,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::zero_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 200.70700000005854,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 2041.2490000000653,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::as_strided",
+        "count": 200,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1027.0430000000852,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1027.0430000000852,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::unsqueeze",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 562.0320000000738,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 642.7720000000554,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::expand",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 672.3069999997206,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 868.9219999997513,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "kornia_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 456187.6200000001,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 22.809381000000005,
+      "total_event_count": 1240,
+      "events_per_iter": 62.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    },
+    "tv_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "Grayscale_tv",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 9299.10500000002,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 18128.929999999993,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -100
+      },
+      {
+        "name": "aten::rand",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 678.8709999999777,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1215.2689999999943,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 248.5490000000134,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 248.5490000000134,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 80
+      },
+      {
+        "name": "aten::uniform_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 287.8490000000031,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 287.8490000000031,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::ge",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 612.8500000000107,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1420.9700000000043,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -60
+      },
+      {
+        "name": "aten::to",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 190.11599999998361,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 872.7930000000074,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_to_copy",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 305.26000000000533,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 682.6770000000238,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty_strided",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 154.9140000000208,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 154.9140000000208,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 80
+      },
+      {
+        "name": "aten::copy_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 222.50299999999766,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 222.50299999999766,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::is_nonzero",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 119.23999999999239,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 357.93299999999783,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::item",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 145.38000000001068,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 238.69300000000544,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_local_scalar_dense",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 93.31299999999476,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 93.31299999999476,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::unbind",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 415.855999999972,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1293.5099999999832,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::select",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 587.1150000000033,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 877.6540000000111,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "tv_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 18128.929999999993,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 0.9064464999999997,
+      "total_event_count": 560,
+      "events_per_iter": 28.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    }
+  },
+  "Normalize": {
+    "kornia_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "Normalize_kornia",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 20867.403999999937,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 424244.54,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -478151416
+      },
+      {
+        "name": "aten::full",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 668.4960000001265,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1789.4930000000772,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1195.5580000000864,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1195.5580000000864,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 800
+      },
+      {
+        "name": "aten::fill_",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 3329.986999999892,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 3329.986999999892,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::to",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 315.7839999998798,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 390762.952,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::lift_fresh",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 77.40999999985013,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 77.40999999985013,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::detach_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 106.31100000014658,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 231.40100000001166,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "detach_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 125.08999999986509,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 125.08999999986509,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::eye",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1318.6949999999301,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 9811.722000000012,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::resize_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 453.804999999957,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 453.804999999957,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::zero_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 195.04700000001367,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 2049.885999999909,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::as_strided",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 421.4900000000191,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 421.4900000000191,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::unsqueeze",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 713.0749999998284,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 796.4709999999429,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::expand",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 420.9750000001577,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 521.042000000069,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "kornia_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 424244.54,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 21.212227,
+      "total_event_count": 600,
+      "events_per_iter": 30.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    },
+    "tv_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "Normalize_tv",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 10577.145999999992,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 20832.916999999972,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -480
+      },
+      {
+        "name": "aten::empty",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 688.5639999999995,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 688.5639999999995,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 480
+      },
+      {
+        "name": "aten::to",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 368.2010000000421,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 5796.973000000038,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_to_copy",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 910.6180000000047,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 5428.771999999996,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty_strided",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 923.9329999999995,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 923.9329999999995,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::copy_",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 3594.220999999992,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 3594.220999999992,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::lift_fresh",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 196.9999999999336,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 196.9999999999336,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::view",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 542.4830000000031,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 542.4830000000031,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::sub",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1730.1000000000042,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1730.1000000000042,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::div_",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1300.6510000000017,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1300.6510000000017,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "tv_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 20832.916999999976,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 1.0416458499999988,
+      "total_event_count": 360,
+      "events_per_iter": 18.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    }
+  },
+  "Affine": {
+    "kornia_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "Affine_kornia",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 148957.34700000024,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1316948.4379999998,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -478181504
+      },
+      {
+        "name": "aten::zeros",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1165.4140000006219,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 2394.9189999996506,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty",
+        "count": 300,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 4727.582999999886,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 4727.582999999886,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 6640
+      },
+      {
+        "name": "aten::zero_",
+        "count": 80,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 738.3329999986754,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 3241.703999999064,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::add",
+        "count": 320,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 16137.130999997285,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 18789.5599999981,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 3120
+      },
+      {
+        "name": "aten::to",
+        "count": 500,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 4311.705999998879,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 946263.398,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_to_copy",
+        "count": 360,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 8752.378999999422,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 941951.6920000012,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty_strided",
+        "count": 760,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 11932.0909999985,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 11932.0909999985,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 503332640
+      },
+      {
+        "name": "aten::copy_",
+        "count": 740,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 932819.4080000024,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 932819.4080000024,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::sum",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 2571.9789999994014,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 3941.656000000136,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -1040
+      },
+      {
+        "name": "aten::as_strided",
+        "count": 1160,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 7058.040999998552,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 7058.040999998552,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::fill_",
+        "count": 200,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 5748.369000000288,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 5748.369000000288,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::eq",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 789.3999999999598,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1644.594999999837,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -60
+      },
+      {
+        "name": "aten::is_nonzero",
+        "count": 80,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 629.8760000009033,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1875.7100000006365,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "kornia_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 1316948.4379999992,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 65.84742189999996,
+      "total_event_count": 9320,
+      "events_per_iter": 466.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    },
+    "tv_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "Affine_tv",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 46979.33400000039,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 237698.70800000007,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -1040
+      },
+      {
+        "name": "aten::empty",
+        "count": 260,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 5039.358000000109,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 5039.358000000109,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 1040
+      },
+      {
+        "name": "aten::uniform_",
+        "count": 80,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1676.5350000000003,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1676.5350000000003,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::item",
+        "count": 80,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 725.4619999999253,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1108.2589999999243,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_local_scalar_dense",
+        "count": 80,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 382.796999999999,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 382.796999999999,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::to",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 813.3059999998131,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 145315.2119999999,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_to_copy",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1612.4329999999395,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 144501.9060000001,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty_strided",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1548.4610000000343,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1548.4610000000343,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::copy_",
+        "count": 100,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 143940.38300000006,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 143940.38300000006,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::lift_fresh",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 376.07600000009734,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 376.07600000009734,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::detach_",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 419.0180000000969,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 721.8070000000125,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "detach_",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 302.78899999991563,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 302.78899999991563,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::reshape",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 924.7300000000182,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 2257.4790000000125,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::view",
+        "count": 120,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 2777.7229999999417,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 2777.7229999999417,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "tv_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 237698.70800000004,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 11.884935400000002,
+      "total_event_count": 1940,
+      "events_per_iter": 97.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    }
+  },
+  "ColorJitter": {
+    "kornia_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "ColorJitter_kornia",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 132479.6639999993,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1069407.326,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -478173676
+      },
+      {
+        "name": "aten::zeros",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 861.2460000006765,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1761.4310000001224,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty",
+        "count": 262,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 3742.5440000000895,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 3742.5440000000895,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 4364
+      },
+      {
+        "name": "aten::zero_",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 420.19899999933045,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 2313.024999999322,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::add",
+        "count": 295,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 14137.51399999991,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 16301.417000000238,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 3120
+      },
+      {
+        "name": "aten::to",
+        "count": 642,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 4120.104000001623,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 747007.3920000015,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_to_copy",
+        "count": 442,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 8673.971999999929,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 742887.288,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty_strided",
+        "count": 773,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 8727.435999999456,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 8727.435999999456,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 503328480
+      },
+      {
+        "name": "aten::copy_",
+        "count": 762,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 733510.3560000014,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 733510.3560000014,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::sum",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1919.416999999771,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 3019.3229999999326,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -1040
+      },
+      {
+        "name": "aten::as_strided",
+        "count": 971,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 6037.829000001605,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 6037.829000001605,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::fill_",
+        "count": 251,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 4837.420000000252,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 4837.420000000252,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::eq",
+        "count": 51,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 3438.2500000000446,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 4234.594000000226,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -60
+      },
+      {
+        "name": "aten::is_nonzero",
+        "count": 160,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 917.8510000007368,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 2411.919999999769,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "kornia_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 1069407.3259999997,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 53.47036629999998,
+      "total_event_count": 8815,
+      "events_per_iter": 440.75,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    },
+    "tv_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "ColorJitter_tv",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 87053.79900000052,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 245370.04700000002,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -4040
+      },
+      {
+        "name": "aten::randperm",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1582.8020000000392,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 3871.18799999993,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -160
+      },
+      {
+        "name": "aten::empty",
+        "count": 160,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 2534.0849999999887,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 2534.0849999999887,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 3840
+      },
+      {
+        "name": "aten::scalar_tensor",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 293.0629999999062,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 293.0629999999062,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 160
+      },
+      {
+        "name": "aten::resize_",
+        "count": 80,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1240.3510000001893,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1240.3510000001893,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::uniform_",
+        "count": 80,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1450.8879999998503,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1450.8879999998503,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::item",
+        "count": 280,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 2266.8129999996686,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 3957.008999999897,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_local_scalar_dense",
+        "count": 280,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1690.1960000002282,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1690.1960000002282,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::unbind",
+        "count": 140,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 4096.896000000285,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 13710.657000000061,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::select",
+        "count": 440,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 6865.095999999452,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 9613.760999999775,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::as_strided",
+        "count": 620,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 4298.788999999988,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 4298.788999999988,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::eq",
+        "count": 240,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 8586.58199999993,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 8586.58199999993,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 200
+      },
+      {
+        "name": "aten::is_nonzero",
+        "count": 200,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1650.8990000001747,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 4219.962999999948,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::mul",
+        "count": 140,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 12230.355000000312,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 12230.355000000312,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "tv_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 245370.04699999996,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 12.268502349999999,
+      "total_event_count": 4780,
+      "events_per_iter": 239.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    }
+  },
+  "CutMix": {
+    "kornia_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "CutMix_kornia",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 165364.47599999903,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 844057.0300000003,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -478186636
+      },
+      {
+        "name": "aten::zeros",
+        "count": 100,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1850.9650000008487,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 5205.242000000575,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty",
+        "count": 480,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 5859.815000000054,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 5859.815000000054,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 12720
+      },
+      {
+        "name": "aten::zero_",
+        "count": 100,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 572.3019999997343,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1839.2859999998911,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::add",
+        "count": 880,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 36907.505999998975,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 47842.08199999954,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 1360
+      },
+      {
+        "name": "aten::to",
+        "count": 1020,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 5433.846000001628,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 374165.57500000123,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_to_copy",
+        "count": 780,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 11508.7890000008,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 368731.72899999964,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty_strided",
+        "count": 800,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 7815.114999999945,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 7815.114999999945,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 503321600
+      },
+      {
+        "name": "aten::copy_",
+        "count": 980,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 352502.13599999936,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 352502.13599999936,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::sum",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 2603.601999999767,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 3930.7409999996917,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 240
+      },
+      {
+        "name": "aten::as_strided",
+        "count": 3460,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 18243.131000001238,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 18243.131000001238,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::fill_",
+        "count": 240,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 10367.45999999965,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 12638.392999999687,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::eq",
+        "count": 100,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 5138.366000000077,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 5865.844000000268,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -60
+      },
+      {
+        "name": "aten::is_nonzero",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 431.91699999991033,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1112.7089999999953,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "kornia_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 844057.0300000004,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 42.20285150000002,
+      "total_event_count": 17320,
+      "events_per_iter": 866.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    },
+    "tv_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "CutMix_tv",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 32115.398999999994,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 70123.65800000004,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -1760
+      },
+      {
+        "name": "aten::expand",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 843.8660000000326,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1237.8000000000525,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::as_strided",
+        "count": 180,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1541.1430000000364,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1541.1430000000364,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "_Dirichlet",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1594.2229999999495,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 5907.666999999992,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_sample_dirichlet",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1558.4129999999018,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 4313.444000000043,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -480
+      },
+      {
+        "name": "aten::zeros",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1000.1870000001024,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 3869.7170000000388,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty",
+        "count": 140,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 2462.6090000000795,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 2462.6090000000795,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 800
+      },
+      {
+        "name": "aten::zero_",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 549.588999999974,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1886.330999999981,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::sum",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 983.3219999999781,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1091.1040000000464,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 160
+      },
+      {
+        "name": "aten::fill_",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1444.5240000000754,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1444.5240000000754,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::select",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 654.223999999957,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 786.2959999999575,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::item",
+        "count": 100,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 903.0330000001018,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1352.2960000000603,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_local_scalar_dense",
+        "count": 100,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 449.26299999995854,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 449.26299999995854,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::randint",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 836.2479999999325,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1747.6100000000215,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "tv_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 70123.65800000004,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 3.5061829000000015,
+      "total_event_count": 1620,
+      "events_per_iter": 81.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    }
+  },
+  "MedianBlur": {
+    "kornia_top_ops": [
+      {
+        "name": "[memory]",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 0.0,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 0.0,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "MedianBlur_kornia",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 61695.25199999462,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 7220953.635999997,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -478156672
+      },
+      {
+        "name": "aten::zeros",
+        "count": 60,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1735.9880000047647,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 4909.399000000663,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty",
+        "count": 180,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 4381.9599999989405,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 4381.9599999989405,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 1360
+      },
+      {
+        "name": "aten::zero_",
+        "count": 80,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 843.125000000377,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 4437.4439999987935,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::add",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 2327.334999999452,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 5285.150999999223,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 560
+      },
+      {
+        "name": "aten::to",
+        "count": 200,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 1856.396999998758,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 7089297.098000001,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::_to_copy",
+        "count": 160,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 3939.9909999974443,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 7087440.701000003,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::empty_strided",
+        "count": 240,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 2824.2210000063565,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 2824.2210000063565,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 503320800
+      },
+      {
+        "name": "aten::copy_",
+        "count": 260,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 7084483.257999998,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 7084483.257999998,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::sum",
+        "count": 40,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 2595.020999999432,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 4105.978000000058,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -1040
+      },
+      {
+        "name": "aten::as_strided",
+        "count": 320,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 2643.33299999912,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 2643.33299999912,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::fill_",
+        "count": 160,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 5301.792000000496,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 5301.792000000496,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      },
+      {
+        "name": "aten::eq",
+        "count": 20,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 937.372999998898,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1955.8679999996727,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": -60
+      },
+      {
+        "name": "aten::is_nonzero",
+        "count": 80,
+        "self_cuda_us": 0.0,
+        "self_cpu_us": 769.231000000749,
+        "cuda_total_us": 0.0,
+        "cpu_total_us": 1950.1310000013082,
+        "self_cuda_memory": 0,
+        "self_cpu_memory": 0
+      }
+    ],
+    "kornia_totals": {
+      "n_iters": 20,
+      "total_self_cuda_us": 0.0,
+      "total_self_cpu_us": 7220953.635999996,
+      "per_iter_self_cuda_ms": 0.0,
+      "per_iter_self_cpu_ms": 361.04768179999985,
+      "total_event_count": 3220,
+      "events_per_iter": 161.0,
+      "cuda_kernel_event_count": 0,
+      "cuda_kernels_per_iter": 0.0,
+      "total_self_cuda_memory_bytes": 0
+    },
+    "tv_top_ops": null,
+    "tv_totals": null
+  }
+}
