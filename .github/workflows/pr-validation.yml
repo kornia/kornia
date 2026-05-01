@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Validate PR requirements
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const pr = context.payload.pull_request;
