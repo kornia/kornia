@@ -177,6 +177,7 @@ class RgbToLab(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB image tensor to Lab."""
         return rgb_to_lab(image)
 
 
@@ -208,4 +209,5 @@ class LabToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor, clip: bool = True) -> torch.Tensor:
+        """Convert a Lab image tensor to RGB."""
         return lab_to_rgb(image, clip)

@@ -165,6 +165,7 @@ class RgbToXyz(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB image tensor to XYZ."""
         return rgb_to_xyz(image)
 
 
@@ -192,4 +193,5 @@ class XyzToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an XYZ image tensor to RGB."""
         return xyz_to_rgb(image)

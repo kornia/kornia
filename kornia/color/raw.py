@@ -317,6 +317,7 @@ class RawToRgb(nn.Module):
         self.cfa = cfa
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert a Bayer raw image tensor to RGB."""
         return raw_to_rgb(image, cfa=self.cfa)
 
 
@@ -347,6 +348,7 @@ class RgbToRaw(nn.Module):
         self.cfa = cfa
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB image tensor to Bayer raw."""
         return rgb_to_raw(image, cfa=self.cfa)
 
 
@@ -372,4 +374,5 @@ class RawToRgb2x2Downscaled(nn.Module):
         self.cfa = cfa
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert a Bayer raw image tensor to downscaled RGB."""
         return raw_to_rgb_2x2_downscaled(image, cfa=self.cfa)

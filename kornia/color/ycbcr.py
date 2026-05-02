@@ -148,6 +148,7 @@ class RgbToYcbcr(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB image tensor to YCbCr."""
         return rgb_to_ycbcr(image)
 
 
@@ -174,4 +175,5 @@ class YcbcrToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert a YCbCr image tensor to RGB."""
         return ycbcr_to_rgb(image)

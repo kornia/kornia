@@ -170,6 +170,7 @@ class RgbToHls(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB image tensor to HLS."""
         return rgb_to_hls(image)
 
 
@@ -199,4 +200,5 @@ class HlsToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an HLS image tensor to RGB."""
         return hls_to_rgb(image)

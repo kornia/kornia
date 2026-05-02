@@ -380,6 +380,7 @@ class BgrToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert a BGR image tensor to RGB."""
         return bgr_to_rgb(image)
 
 
@@ -406,6 +407,7 @@ class RgbToBgr(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB image tensor to BGR."""
         return rgb_to_bgr(image)
 
 
@@ -442,6 +444,7 @@ class RgbToRgba(nn.Module):
         self.alpha_val = alpha_val
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB image tensor to RGBA."""
         return rgb_to_rgba(image, self.alpha_val)
 
 
@@ -478,6 +481,7 @@ class BgrToRgba(nn.Module):
         self.alpha_val = alpha_val
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Add this module's alpha channel to the input image."""
         return rgb_to_rgba(image, self.alpha_val)
 
 
@@ -504,6 +508,7 @@ class RgbaToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGBA image tensor to RGB."""
         return rgba_to_rgb(image)
 
 
@@ -530,6 +535,7 @@ class RgbaToBgr(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGBA image tensor to BGR."""
         return rgba_to_bgr(image)
 
 
@@ -564,6 +570,7 @@ class RgbToLinearRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an sRGB image tensor to linear RGB."""
         return rgb_to_linear_rgb(image)
 
 
@@ -597,6 +604,7 @@ class LinearRgbToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert a linear RGB image tensor to sRGB."""
         return linear_rgb_to_rgb(image)
 
 
@@ -618,6 +626,7 @@ class NormalsToRgb255(nn.Module):
     """
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert surface normals to RGB values in the [0, 255] range."""
         return normals_to_rgb255(image)
 
 
@@ -639,6 +648,7 @@ class RgbToRgb255(nn.Module):
     """
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert RGB values in the [0, 1] range to [0, 255]."""
         return rgb_to_rgb255(image)
 
 
@@ -660,6 +670,7 @@ class Rgb255ToRgb(nn.Module):
     """
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert RGB values in the [0, 255] range to [0, 1]."""
         return rgb255_to_rgb(image)
 
 
@@ -681,4 +692,5 @@ class Rgb255ToNormals(nn.Module):
     """
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert RGB values in the [0, 255] range to surface normals."""
         return rgb255_to_normals(image)

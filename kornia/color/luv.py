@@ -170,6 +170,7 @@ class RgbToLuv(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB image tensor to Luv."""
         return rgb_to_luv(image)
 
 
@@ -201,4 +202,5 @@ class LuvToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert a Luv image tensor to RGB."""
         return luv_to_rgb(image)
