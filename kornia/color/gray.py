@@ -157,7 +157,14 @@ class GrayscaleToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        """Convert a grayscale image tensor to RGB."""
+        """Convert a grayscale tensor to RGB.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 1, H, W)`.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H, W)`.
+        """
         return grayscale_to_rgb(image)
 
 
@@ -190,7 +197,14 @@ class RgbToGrayscale(nn.Module):
         self.rgb_weights = rgb_weights
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        """Convert an RGB image tensor to grayscale."""
+        """Convert an RGB tensor to grayscale.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 3, H, W)`.
+
+        Returns:
+            Grayscale tensor with shape :math:`(*, 1, H, W)`, computed with the module's RGB weights.
+        """
         return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
 
 
@@ -217,5 +231,12 @@ class BgrToGrayscale(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        """Convert a BGR image tensor to grayscale."""
+        """Convert a BGR tensor to grayscale.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 3, H, W)`.
+
+        Returns:
+            Grayscale tensor with shape :math:`(*, 1, H, W)`.
+        """
         return bgr_to_grayscale(image)

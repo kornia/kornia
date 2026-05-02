@@ -296,7 +296,14 @@ class RgbToYuv(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        """Convert an RGB image tensor to YUV."""
+        """Convert an RGB tensor to YUV.
+
+        Args:
+            input: Input tensor with shape :math:`(*, 3, H, W)`.
+
+        Returns:
+            YUV tensor with shape :math:`(*, 3, H, W)`.
+        """
         return rgb_to_yuv(input)
 
 
@@ -332,7 +339,15 @@ class RgbToYuv420(nn.Module):
     ONNX_EXPORTABLE = False
 
     def forward(self, yuvinput: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
-        """Convert an RGB image tensor to YUV420 planes."""
+        """Convert an RGB tensor to YUV420 planes.
+
+        Args:
+            yuvinput: Input tensor with shape :math:`(*, 3, H, W)`.
+
+        Returns:
+            Tuple of ``(y, uv)`` where ``y`` has shape :math:`(*, 1, H, W)` and ``uv`` has
+            shape :math:`(*, 2, H / 2, W / 2)`.
+        """
         return rgb_to_yuv420(yuvinput)
 
 
@@ -368,7 +383,15 @@ class RgbToYuv422(nn.Module):
     ONNX_EXPORTABLE = False
 
     def forward(self, yuvinput: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:  # skipcq: PYL-R0201
-        """Convert an RGB image tensor to YUV422 planes."""
+        """Convert an RGB tensor to YUV422 planes.
+
+        Args:
+            yuvinput: Input tensor with shape :math:`(*, 3, H, W)`.
+
+        Returns:
+            Tuple of ``(y, uv)`` where ``y`` has shape :math:`(*, 1, H, W)` and ``uv`` has
+            shape :math:`(*, 2, H, W / 2)`.
+        """
         return rgb_to_yuv422(yuvinput)
 
 
@@ -400,7 +423,14 @@ class YuvToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        """Convert a YUV image tensor to RGB."""
+        """Convert a YUV tensor to RGB.
+
+        Args:
+            input: Input tensor with shape :math:`(*, 3, H, W)`.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H, W)`.
+        """
         return yuv_to_rgb(input)
 
 
@@ -436,7 +466,15 @@ class Yuv420ToRgb(nn.Module):
     ONNX_EXPORTABLE = False
 
     def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:  # skipcq: PYL-R0201
-        """Convert YUV420 luma and chroma planes to RGB."""
+        """Convert YUV420 luma/chroma planes to RGB.
+
+        Args:
+            inputy: Luma tensor with shape :math:`(*, 1, H, W)`.
+            inputuv: Chroma tensor with shape :math:`(*, 2, H / 2, W / 2)`.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H, W)`.
+        """
         return yuv420_to_rgb(inputy, inputuv)
 
 
@@ -472,5 +510,13 @@ class Yuv422ToRgb(nn.Module):
     ONNX_EXPORTABLE = False
 
     def forward(self, inputy: torch.Tensor, inputuv: torch.Tensor) -> torch.Tensor:  # skipcq: PYL-R0201
-        """Convert YUV422 luma and chroma planes to RGB."""
+        """Convert YUV422 luma/chroma planes to RGB.
+
+        Args:
+            inputy: Luma tensor with shape :math:`(*, 1, H, W)`.
+            inputuv: Chroma tensor with shape :math:`(*, 2, H, W / 2)`.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H, W)`.
+        """
         return yuv422_to_rgb(inputy, inputuv)

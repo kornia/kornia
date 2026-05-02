@@ -145,7 +145,14 @@ class RgbToHsv(nn.Module):
         self.eps = eps
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        """Convert an RGB image tensor to HSV."""
+        """Convert an RGB tensor to HSV.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 3, H, W)`.
+
+        Returns:
+            HSV tensor with shape :math:`(*, 3, H, W)`.
+        """
         return rgb_to_hsv(image, self.eps)
 
 
@@ -172,5 +179,12 @@ class HsvToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
-        """Convert an HSV image tensor to RGB."""
+        """Convert an HSV tensor to RGB.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 3, H, W)`.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H, W)`.
+        """
         return hsv_to_rgb(image)
