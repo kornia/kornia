@@ -161,6 +161,8 @@ class GrayscaleToRgb(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 1, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``1`` is a single grayscale channel, and ``H``/``W`` are height and width.
 
         Returns:
             RGB tensor with shape :math:`(*, 3, H, W)`.
@@ -201,6 +203,8 @@ class RgbToGrayscale(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             Grayscale tensor with shape :math:`(*, 1, H, W)`, computed with the module's RGB weights.
@@ -235,6 +239,8 @@ class BgrToGrayscale(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to BGR channels, and ``H``/``W`` are height and width.
 
         Returns:
             Grayscale tensor with shape :math:`(*, 1, H, W)`.

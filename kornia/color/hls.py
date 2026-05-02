@@ -174,6 +174,8 @@ class RgbToHls(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             HLS tensor with shape :math:`(*, 3, H, W)`.
@@ -211,6 +213,8 @@ class HlsToRgb(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to HLS channels, and ``H``/``W`` are height and width.
 
         Returns:
             RGB tensor with shape :math:`(*, 3, H, W)`.

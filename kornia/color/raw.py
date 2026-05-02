@@ -321,6 +321,8 @@ class RawToRgb(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 1, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``1`` is a single raw Bayer channel, and ``H``/``W`` are height and width.
 
         Returns:
             RGB tensor with shape :math:`(*, 3, H, W)` using this module's CFA pattern.
@@ -359,6 +361,8 @@ class RgbToRaw(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             Raw tensor with shape :math:`(*, 1, H, W)` using this module's CFA pattern.
@@ -392,6 +396,8 @@ class RawToRgb2x2Downscaled(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 1, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``1`` is a single raw Bayer channel, and ``H``/``W`` are height and width.
 
         Returns:
             RGB tensor with shape :math:`(*, 3, H / 2, W / 2)`.

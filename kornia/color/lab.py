@@ -181,6 +181,8 @@ class RgbToLab(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             Lab tensor with shape :math:`(*, 3, H, W)`.
@@ -220,6 +222,8 @@ class LabToRgb(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to Lab channels, and ``H``/``W`` are height and width.
             clip: If ``True``, clamp output values to :math:`[0, 1]`.
 
         Returns:

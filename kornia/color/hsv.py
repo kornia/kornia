@@ -149,6 +149,8 @@ class RgbToHsv(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` is the channel dimension, and ``H``/``W`` are height and width.
 
         Returns:
             HSV tensor with shape :math:`(*, 3, H, W)`.
@@ -183,6 +185,8 @@ class HsvToRgb(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` is the channel dimension, and ``H``/``W`` are height and width.
 
         Returns:
             RGB tensor with shape :math:`(*, 3, H, W)`.

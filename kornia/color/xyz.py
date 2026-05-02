@@ -169,6 +169,8 @@ class RgbToXyz(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             XYZ tensor with shape :math:`(*, 3, H, W)`.
@@ -204,6 +206,8 @@ class XyzToRgb(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to XYZ channels, and ``H``/``W`` are height and width.
 
         Returns:
             RGB tensor with shape :math:`(*, 3, H, W)`.

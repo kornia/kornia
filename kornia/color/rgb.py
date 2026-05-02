@@ -384,6 +384,8 @@ class BgrToRgb(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to BGR channels, and ``H``/``W`` are height and width.
 
         Returns:
             RGB tensor with shape :math:`(*, 3, H, W)`.
@@ -418,6 +420,8 @@ class RgbToBgr(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             BGR tensor with shape :math:`(*, 3, H, W)`.
@@ -462,6 +466,8 @@ class RgbToRgba(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             RGBA tensor with shape :math:`(*, 4, H, W)` using this module's alpha value.
@@ -506,6 +512,8 @@ class BgrToRgba(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` is the input channel count, and ``H``/``W`` are height and width.
 
         Returns:
             RGBA tensor with shape :math:`(*, 4, H, W)`.
@@ -540,6 +548,8 @@ class RgbaToRgb(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 4, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``4`` corresponds to RGBA channels, and ``H``/``W`` are height and width.
 
         Returns:
             RGB tensor with shape :math:`(*, 3, H, W)`.
@@ -574,6 +584,8 @@ class RgbaToBgr(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 4, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``4`` corresponds to RGBA channels, and ``H``/``W`` are height and width.
 
         Returns:
             BGR tensor with shape :math:`(*, 3, H, W)`.
@@ -616,6 +628,8 @@ class RgbToLinearRgb(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             Linear RGB tensor with shape :math:`(*, 3, H, W)`.
@@ -657,6 +671,8 @@ class LinearRgbToRgb(nn.Module):
 
         Args:
             image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             sRGB tensor with shape :math:`(*, 3, H, W)`.
@@ -686,6 +702,8 @@ class NormalsToRgb255(nn.Module):
 
         Args:
             image: Input normal map tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to XYZ normal components, and ``H``/``W`` are height and width.
 
         Returns:
             RGB tensor in :math:`[0, 255]` with shape :math:`(*, 3, H, W)`.
@@ -715,6 +733,8 @@ class RgbToRgb255(nn.Module):
 
         Args:
             image: Input RGB tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             RGB tensor in :math:`[0, 255]` with shape :math:`(*, 3, H, W)`.
@@ -744,6 +764,8 @@ class Rgb255ToRgb(nn.Module):
 
         Args:
             image: Input RGB tensor in :math:`[0, 255]` with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             RGB tensor in :math:`[0, 1]` with shape :math:`(*, 3, H, W)`.
@@ -773,6 +795,8 @@ class Rgb255ToNormals(nn.Module):
 
         Args:
             image: Input RGB tensor in :math:`[0, 255]` with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             Normal map tensor with shape :math:`(*, 3, H, W)`.

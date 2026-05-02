@@ -300,6 +300,8 @@ class RgbToYuv(nn.Module):
 
         Args:
             input: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             YUV tensor with shape :math:`(*, 3, H, W)`.
@@ -343,10 +345,13 @@ class RgbToYuv420(nn.Module):
 
         Args:
             yuvinput: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             Tuple of ``(y, uv)`` where ``y`` has shape :math:`(*, 1, H, W)` and ``uv`` has
-            shape :math:`(*, 2, H / 2, W / 2)`.
+            shape :math:`(*, 2, H / 2, W / 2)`. The ``1`` channel is luma and the ``2``
+            channels are chroma.
         """
         return rgb_to_yuv420(yuvinput)
 
@@ -387,10 +392,13 @@ class RgbToYuv422(nn.Module):
 
         Args:
             yuvinput: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
 
         Returns:
             Tuple of ``(y, uv)`` where ``y`` has shape :math:`(*, 1, H, W)` and ``uv`` has
-            shape :math:`(*, 2, H, W / 2)`.
+            shape :math:`(*, 2, H, W / 2)`. The ``1`` channel is luma and the ``2`` channels
+            are chroma.
         """
         return rgb_to_yuv422(yuvinput)
 
@@ -427,6 +435,8 @@ class YuvToRgb(nn.Module):
 
         Args:
             input: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to YUV channels, and ``H``/``W`` are height and width.
 
         Returns:
             RGB tensor with shape :math:`(*, 3, H, W)`.
@@ -471,6 +481,8 @@ class Yuv420ToRgb(nn.Module):
         Args:
             inputy: Luma tensor with shape :math:`(*, 1, H, W)`.
             inputuv: Chroma tensor with shape :math:`(*, 2, H / 2, W / 2)`.
+                For both tensors, ``*`` means any number of leading dimensions (for example,
+                batch size), and ``H``/``W`` are the full-resolution height and width.
 
         Returns:
             RGB tensor with shape :math:`(*, 3, H, W)`.
@@ -515,6 +527,8 @@ class Yuv422ToRgb(nn.Module):
         Args:
             inputy: Luma tensor with shape :math:`(*, 1, H, W)`.
             inputuv: Chroma tensor with shape :math:`(*, 2, H, W / 2)`.
+                For both tensors, ``*`` means any number of leading dimensions (for example,
+                batch size), and ``H``/``W`` are the full-resolution height and width.
 
         Returns:
             RGB tensor with shape :math:`(*, 3, H, W)`.
