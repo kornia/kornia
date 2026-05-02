@@ -518,7 +518,7 @@ class BgrToRgba(nn.Module):
         Returns:
             RGBA tensor with shape :math:`(*, 4, H, W)`.
         """
-        return rgb_to_rgba(image, self.alpha_val)
+        return bgr_to_rgba(image, self.alpha_val)
 
 
 class RgbaToRgb(nn.Module):
