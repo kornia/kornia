@@ -696,8 +696,8 @@ def get_shear_matrix2d(
         This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
 
     """
-    sx = torch.tensor([0.0]).repeat(center.size(0)) if sx is None else sx
-    sy = torch.tensor([0.0]).repeat(center.size(0)) if sy is None else sy
+    sx = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if sx is None else sx
+    sy = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if sy is None else sy
 
     x, y = torch.split(center, 1, dim=-1)
     x, y = x.view(-1), y.view(-1)
@@ -818,12 +818,12 @@ def get_shear_matrix3d(
         This function is often used in conjunction with :func:`warp_perspective3d`.
 
     """
-    sxy = torch.tensor([0.0]).repeat(center.size(0)) if sxy is None else sxy
-    sxz = torch.tensor([0.0]).repeat(center.size(0)) if sxz is None else sxz
-    syx = torch.tensor([0.0]).repeat(center.size(0)) if syx is None else syx
-    syz = torch.tensor([0.0]).repeat(center.size(0)) if syz is None else syz
-    szx = torch.tensor([0.0]).repeat(center.size(0)) if szx is None else szx
-    szy = torch.tensor([0.0]).repeat(center.size(0)) if szy is None else szy
+    sxy = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if sxy is None else sxy
+    sxz = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if sxz is None else sxz
+    syx = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if syx is None else syx
+    syz = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if syz is None else syz
+    szx = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if szx is None else szx
+    szy = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if szy is None else szy
 
     x, y, z = torch.split(center, 1, dim=-1)
     x, y, z = x.view(-1), y.view(-1), z.view(-1)

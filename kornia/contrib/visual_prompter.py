@@ -149,7 +149,11 @@ class VisualPrompter:
             std: standard deviation of dataset for normalization.
 
         """
-        KORNIA_CHECK_SHAPE(image, ["3", "H", "W"])
+        if image.ndim == 3:
+            KORNIA_CHECK_SHAPE(image, ["3", "H", "W"])
+            image = image.unsqueeze(0)
+        else:
+            KORNIA_CHECK_SHAPE(image, ["B", "3", "H", "W"])
 
         self.reset_image()
 
@@ -180,13 +184,17 @@ class VisualPrompter:
     def _valid_boxes(self, boxes: Boxes | torch.Tensor) -> Boxes:
         """Validate the boxes shape and ensure to be a Boxes into xyxy mode."""
         if isinstance(boxes, torch.Tensor):
-            KORNIA_CHECK_SHAPE(boxes.data, ["K", "4"])
-            boxes = Boxes(boxes, mode="xyxy")
+            if boxes.ndim == 2:
+                KORNIA_CHECK_SHAPE(boxes.data, ["K", "4"])
+            else:
+                KORNIA_CHECK_SHAPE(boxes.data, ["B", "K", "4"])
+
+            boxes = Boxes.from_tensor(boxes, mode="xyxy")
 
         if boxes.mode == "xyxy":
             boxes_xyxy = boxes
         else:
-            boxes_xyxy = Boxes(boxes.to_tensor(mode="xyxy"), mode="xyxy")
+            boxes_xyxy = Boxes.from_tensor(boxes.to_tensor(mode="xyxy"), mode="xyxy")
 
         return boxes_xyxy
 
