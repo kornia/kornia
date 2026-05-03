@@ -30,31 +30,44 @@ Configuration
 .. autoclass:: kornia.models.qwen3_vl.Qwen3VLVisionConfig
    :members:
 
-.. autoclass:: kornia.models.qwen3_vl.Qwen3VLProjectorConfig
-   :members:
-
 .. autoclass:: kornia.models.qwen3_vl.Qwen3VLTextConfig
    :members:
 
-Vision encoder
---------------
+Image preprocessor
+------------------
 
-The vision tower is a pre-norm ViT with 2D rotary positional embeddings and a
-DeepStack fusion mechanism that surfaces intermediate transformer-layer features
-to downstream projectors. The core multimodal model class arrives in a follow-up
-pull request tracked in
-`kornia#3622 <https://github.com/kornia/kornia/issues/3622>`_.
+The image preprocessor performs Qwen3-VL's dynamic-resolution resize policy, per-channel
+normalisation, and patchification. The output is a flat
+``(N_patches, in_channels * temporal_patch_size * patch_size**2)`` tensor paired with a
+``grid_thw`` descriptor of shape ``(B, 3)`` that the vision tower consumes directly.
 
-.. autoclass:: kornia.models.qwen3_vl.Qwen3VLVisionTransformer
+.. autoclass:: kornia.models.qwen3_vl.Qwen3VLImageProcessor
+   :members:
+
+.. autoclass:: kornia.models.qwen3_vl.Qwen3VLImageProcessorConfig
+   :members:
+
+.. autoclass:: kornia.models.qwen3_vl.Qwen3VLPreprocessorOutput
+   :members:
+
+.. autofunction:: kornia.models.qwen3_vl.smart_resize
+
+Vision tower
+------------
+
+The vision tower is a pre-norm ViT with Conv3d patch embedding, a learned absolute position
+embedding (bilinearly interpolated to the input grid), 2D rotary positional embeddings, and a
+DeepStack fusion mechanism that surfaces intermediate transformer-layer features through dedicated
+patch mergers. The state-dict layout matches the official ``model.visual.*`` keys, so weights from
+the published Qwen3-VL checkpoints can be loaded after the prefix is stripped.
+
+.. autoclass:: kornia.models.qwen3_vl.Qwen3VLVisionModel
    :members:
 
 .. autoclass:: kornia.models.qwen3_vl.Qwen3VLVisionEncoderOutput
    :members:
 
-.. autoclass:: kornia.models.qwen3_vl.Qwen3VLEncoder
-   :members:
-
-.. autoclass:: kornia.models.qwen3_vl.Qwen3VLLayer
+.. autoclass:: kornia.models.qwen3_vl.Qwen3VLBlock
    :members:
 
 .. autoclass:: kornia.models.qwen3_vl.Qwen3VLAttention
@@ -66,24 +79,17 @@ pull request tracked in
 .. autoclass:: kornia.models.qwen3_vl.Qwen3VLPatchEmbed
    :members:
 
+.. autoclass:: kornia.models.qwen3_vl.Qwen3VLPatchMerger
+   :members:
+
 .. autoclass:: kornia.models.qwen3_vl.Qwen3VLRotaryEmbedding
    :members:
 
-.. autofunction:: kornia.models.qwen3_vl.apply_rotary_pos_emb
+.. autofunction:: kornia.models.qwen3_vl.apply_rotary_pos_emb_vision
 
-Image preprocessor
-------------------
+.. autofunction:: kornia.models.qwen3_vl.rotate_half
 
-The image preprocessor performs Qwen3-VL's dynamic-resolution resize policy
-followed by per-channel normalization. Output dimensions are constrained to
-multiples of ``patch_size * spatial_merge_size`` so each merged token covers a
-whole patch grid cell, and the total pixel count is clamped to a configurable
-``[min_pixels, max_pixels]`` band.
+Loading official weights
+------------------------
 
-.. autoclass:: kornia.models.qwen3_vl.Qwen3VLImageProcessor
-   :members:
-
-.. autoclass:: kornia.models.qwen3_vl.Qwen3VLImageProcessorConfig
-   :members:
-
-.. autofunction:: kornia.models.qwen3_vl.smart_resize
+.. autofunction:: kornia.models.qwen3_vl.remap_hf_vision_state_dict

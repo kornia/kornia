@@ -1,396 +1,370 @@
-# LICENSE HEADER MANAGED BY add-license-header
-#
-# Copyright 2018 Kornia Team
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-
 from __future__ import annotations
 
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from .config import Qwen3VLVisionConfig
+from .config import Qwen3VLConfig, Qwen3VLVisionConfig
 
 __all__ = [
     "Qwen3VLAttention",
-    "Qwen3VLEncoder",
-    "Qwen3VLLayer",
+    "Qwen3VLBlock",
     "Qwen3VLMLP",
     "Qwen3VLPatchEmbed",
+    "Qwen3VLPatchMerger",
     "Qwen3VLRotaryEmbedding",
     "Qwen3VLVisionEncoderOutput",
-    "Qwen3VLVisionTransformer",
-    "apply_rotary_pos_emb",
+    "Qwen3VLVisionModel",
+    "apply_rotary_pos_emb_vision",
+    "rotate_half",
 ]
 
 
-def apply_rotary_pos_emb(x: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
-    """Apply rotary positional embeddings to a query or key tensor.
+def rotate_half(x: Tensor) -> Tensor:
+    """Swap and negate the two halves of the last dimension."""
+    half = x.shape[-1] // 2
+    return torch.cat((-x[..., half:], x[..., :half]), dim=-1)
 
-    Args:
-        x: Tensor of shape ``(..., seq_len, head_dim)``.
-        cos: Cosine table broadcastable against ``x``.
-        sin: Sine table broadcastable against ``x``.
 
-    Returns:
-        Tensor of the same shape as ``x`` with RoPE applied along the last dim.
-    """
-    x1, x2 = x.chunk(2, dim=-1)
-    x_rotated = torch.cat((-x2, x1), dim=-1)
-    return (x * cos) + (x_rotated * sin)
+def apply_rotary_pos_emb_vision(q: Tensor, k: Tensor, cos: Tensor, sin: Tensor) -> tuple[Tensor, Tensor]:
+    """Apply 2D rotary positional embeddings shared between query and key tensors."""
+    q_dtype, k_dtype = q.dtype, k.dtype
+    compute_dtype = q.dtype if q.dtype in (torch.float32, torch.float64) else torch.float32
+    q = q.to(compute_dtype)
+    k = k.to(compute_dtype)
+    cos = cos.unsqueeze(-2).to(compute_dtype)
+    sin = sin.unsqueeze(-2).to(compute_dtype)
+    q_out = (q * cos) + (rotate_half(q) * sin)
+    k_out = (k * cos) + (rotate_half(k) * sin)
+    return q_out.to(q_dtype), k_out.to(k_dtype)
 
 
 class Qwen3VLPatchEmbed(nn.Module):
-    """Spatial patch embedding for the Qwen3-VL vision tower.
+    """Conv3d patch embedding shared between image and video inputs.
 
-    Splits an input image into non-overlapping patches via a strided 2D convolution
-    and projects each patch into the model hidden dimension. Video / temporal
-    handling is added in a follow-up PR; this module currently expects ``BCHW``.
-
-    Args:
-        config: Vision encoder configuration providing ``in_channels``,
-            ``patch_size`` and ``hidden_size``.
+    The encoder consumes flat patch tensors of shape
+    ``(N, in_channels * temporal_patch_size * patch_size * patch_size)``
+    produced by the image processor; this module reshapes them into a
+    ``(N, C, T, P, P)`` mini-batch and applies the official 3D conv.
     """
 
     def __init__(self, config: Qwen3VLVisionConfig) -> None:
         super().__init__()
+        self.in_channels = config.in_channels
         self.patch_size = config.patch_size
+        self.temporal_patch_size = config.temporal_patch_size
         self.hidden_size = config.hidden_size
-        self.proj = nn.Conv2d(
-            config.in_channels,
-            config.hidden_size,
-            kernel_size=config.patch_size,
-            stride=config.patch_size,
-            bias=False,
-        )
+        kernel = (self.temporal_patch_size, self.patch_size, self.patch_size)
+        self.proj = nn.Conv3d(self.in_channels, self.hidden_size, kernel_size=kernel, stride=kernel, bias=True)
 
-    def forward(self, pixel_values: Tensor) -> tuple[Tensor, int, int]:
-        """Embed patches and return the token sequence with the spatial grid size.
-
-        Args:
-            pixel_values: Tensor of shape ``(B, C, H, W)``.
-
-        Returns:
-            Tuple ``(tokens, h_patches, w_patches)`` where ``tokens`` has shape
-            ``(B, h_patches * w_patches, hidden_size)``.
-        """
-        if pixel_values.dim() != 4:
-            raise ValueError(f"Expected 4D input (B, C, H, W); got shape {tuple(pixel_values.shape)}.")
-        if pixel_values.shape[-1] % self.patch_size != 0 or pixel_values.shape[-2] % self.patch_size != 0:
+    def forward(self, hidden_states: Tensor) -> Tensor:
+        if hidden_states.dim() != 2:
             raise ValueError(
-                f"Input spatial size {tuple(pixel_values.shape[-2:])} must be divisible by patch_size "
-                f"{self.patch_size}."
+                f"Expected flat patch tensor of shape (N, C*T*P*P); got {tuple(hidden_states.shape)}."
             )
-        x = self.proj(pixel_values)
-        h_patches, w_patches = x.shape[-2], x.shape[-1]
-        x = x.flatten(2).transpose(1, 2)
-        return x, h_patches, w_patches
+        target_dtype = self.proj.weight.dtype
+        x = hidden_states.view(
+            -1, self.in_channels, self.temporal_patch_size, self.patch_size, self.patch_size
+        )
+        x = self.proj(x.to(target_dtype))
+        return x.view(-1, self.hidden_size)
 
 
 class Qwen3VLRotaryEmbedding(nn.Module):
-    """Two-dimensional rotary positional embedding.
+    """Half-dim rotary frequency table.
 
-    The head dimension is split in half: the first half rotates with the row
-    coordinate, the second half with the column coordinate. This mirrors the
-    convention used by Qwen2-VL and Kimi-VL.
-
-    Args:
-        head_dim: Per-head feature dimension.
-        theta: Base frequency for the rotary embedding.
+    Stores ``inv_freq`` of length ``dim // 2`` (where ``dim`` is half of the
+    attention head dimension) and returns the outer-product frequency table
+    used to build separate row / column position embeddings for each token.
     """
 
-    def __init__(self, head_dim: int, theta: float = 10000.0) -> None:
+    inv_freq: Tensor
+
+    def __init__(self, dim: int, theta: float = 10000.0) -> None:
         super().__init__()
-        if head_dim % 4 != 0:
-            raise ValueError(f"head_dim must be divisible by 4 for 2D RoPE, got {head_dim}.")
-        self.head_dim = head_dim
+        if dim % 2 != 0:
+            raise ValueError(f"rotary dim must be even, got {dim}.")
+        self.dim = dim
         self.theta = theta
+        inv_freq = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=torch.float32) / dim))
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
 
-    def forward(self, h: int, w: int, device: torch.device, dtype: torch.dtype) -> tuple[Tensor, Tensor]:
-        """Build cosine/sine tables for the (h, w) patch grid.
-
-        Args:
-            h: Number of patches along height.
-            w: Number of patches along width.
-            device: Device on which to allocate the tables.
-            dtype: Dtype of the returned tables.
-
-        Returns:
-            ``(cos, sin)`` each of shape ``(h * w, head_dim)``.
-        """
-        half = self.head_dim // 2
-        inv_freq = 1.0 / (self.theta ** (torch.arange(0, half, 2, device=device, dtype=torch.float32) / half))
-
-        seq_h = torch.arange(h, device=device, dtype=torch.float32)
-        seq_w = torch.arange(w, device=device, dtype=torch.float32)
-
-        freqs_h = torch.outer(seq_h, inv_freq)
-        freqs_w = torch.outer(seq_w, inv_freq)
-
-        freqs_h = freqs_h.repeat_interleave(w, dim=0)
-        freqs_w = freqs_w.repeat(h, 1)
-
-        emb_h = torch.cat((freqs_h, freqs_h), dim=-1)
-        emb_w = torch.cat((freqs_w, freqs_w), dim=-1)
-        emb = torch.cat((emb_h, emb_w), dim=-1)
-
-        return emb.cos().to(dtype), emb.sin().to(dtype)
+    def forward(self, seqlen: int) -> Tensor:
+        seq = torch.arange(seqlen, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
+        return torch.outer(seq, self.inv_freq)
 
 
 class Qwen3VLAttention(nn.Module):
-    """Multi-head self-attention block with 2D rotary positional embeddings.
+    """Multi-head self-attention over a packed-sequence input.
 
-    Args:
-        config: Vision encoder configuration providing ``hidden_size`` and
-            ``num_attention_heads``.
+    Operates on the flat ``(seq_len, hidden_size)`` token stream, splitting
+    into per-image segments via ``cu_seqlens`` so each image attends only to
+    its own patches via ``F.scaled_dot_product_attention``.
     """
 
     def __init__(self, config: Qwen3VLVisionConfig) -> None:
         super().__init__()
-        if config.hidden_size % config.num_attention_heads != 0:
+        if config.hidden_size % config.num_heads != 0:
             raise ValueError(
-                f"hidden_size ({config.hidden_size}) must be divisible by "
-                f"num_attention_heads ({config.num_attention_heads})."
+                f"hidden_size ({config.hidden_size}) must be divisible by num_heads ({config.num_heads})."
             )
-        self.num_heads = config.num_attention_heads
-        self.head_dim = config.hidden_size // config.num_attention_heads
-        self.hidden_size = config.hidden_size
+        self.dim = config.hidden_size
+        self.num_heads = config.num_heads
+        self.head_dim = self.dim // self.num_heads
+        self.qkv = nn.Linear(self.dim, self.dim * 3, bias=True)
+        self.proj = nn.Linear(self.dim, self.dim)
 
-        self.q_proj = nn.Linear(config.hidden_size, config.hidden_size)
-        self.k_proj = nn.Linear(config.hidden_size, config.hidden_size)
-        self.v_proj = nn.Linear(config.hidden_size, config.hidden_size)
-        self.out_proj = nn.Linear(config.hidden_size, config.hidden_size)
+    def forward(self, hidden_states: Tensor, cu_seqlens: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
+        seq_len = hidden_states.shape[0]
+        qkv = self.qkv(hidden_states).reshape(seq_len, 3, self.num_heads, self.head_dim).permute(1, 0, 2, 3)
+        q, k, v = qkv.unbind(0)
+        q, k = apply_rotary_pos_emb_vision(q, k, cos, sin)
 
-    def forward(
-        self,
-        hidden_states: Tensor,
-        cos: Tensor,
-        sin: Tensor,
-        attention_mask: Optional[Tensor] = None,
-    ) -> Tensor:
-        """Apply attention with rotary embeddings.
+        q = q.transpose(0, 1).unsqueeze(0)
+        k = k.transpose(0, 1).unsqueeze(0)
+        v = v.transpose(0, 1).unsqueeze(0)
 
-        Args:
-            hidden_states: ``(B, N, hidden_size)``.
-            cos: Rotary cosine table ``(N, head_dim)``.
-            sin: Rotary sine table ``(N, head_dim)``.
-            attention_mask: Optional broadcastable attention mask.
+        lengths = (cu_seqlens[1:] - cu_seqlens[:-1]).tolist()
+        if len(lengths) == 1:
+            attn = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0)
+        else:
+            q_splits = torch.split(q, lengths, dim=2)
+            k_splits = torch.split(k, lengths, dim=2)
+            v_splits = torch.split(v, lengths, dim=2)
+            attn_chunks = [
+                F.scaled_dot_product_attention(qi, ki, vi, dropout_p=0.0)
+                for qi, ki, vi in zip(q_splits, k_splits, v_splits)
+            ]
+            attn = torch.cat(attn_chunks, dim=2)
 
-        Returns:
-            Tensor of shape ``(B, N, hidden_size)``.
-        """
-        batch_size, seq_len, _ = hidden_states.shape
-
-        q = self.q_proj(hidden_states).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
-        k = self.k_proj(hidden_states).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
-        v = self.v_proj(hidden_states).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
-
-        cos = cos.view(1, 1, seq_len, self.head_dim)
-        sin = sin.view(1, 1, seq_len, self.head_dim)
-
-        q = apply_rotary_pos_emb(q, cos, sin)
-        k = apply_rotary_pos_emb(k, cos, sin)
-
-        attn = F.scaled_dot_product_attention(q, k, v, attn_mask=attention_mask, dropout_p=0.0)
-        attn = attn.transpose(1, 2).contiguous().view(batch_size, seq_len, self.hidden_size)
-        return self.out_proj(attn)
+        attn = attn.squeeze(0).transpose(0, 1).contiguous().reshape(seq_len, self.dim)
+        return self.proj(attn)
 
 
 class Qwen3VLMLP(nn.Module):
-    """Feed-forward block used inside each Qwen3-VL vision layer.
-
-    Args:
-        config: Vision encoder configuration providing ``hidden_size`` and
-            ``intermediate_size``.
-    """
+    """Feed-forward block: ``linear_fc1 -> activation -> linear_fc2``."""
 
     def __init__(self, config: Qwen3VLVisionConfig) -> None:
         super().__init__()
-        self.fc1 = nn.Linear(config.hidden_size, config.intermediate_size)
-        self.act = nn.GELU()
-        self.fc2 = nn.Linear(config.intermediate_size, config.hidden_size)
+        self.linear_fc1 = nn.Linear(config.hidden_size, config.intermediate_size, bias=True)
+        self.linear_fc2 = nn.Linear(config.intermediate_size, config.hidden_size, bias=True)
+        if config.hidden_act == "gelu_pytorch_tanh":
+            self.act_fn: nn.Module = nn.GELU(approximate="tanh")
+        elif config.hidden_act == "gelu":
+            self.act_fn = nn.GELU()
+        else:
+            raise ValueError(f"Unsupported hidden_act={config.hidden_act!r}.")
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.fc2(self.act(self.fc1(x)))
+        return self.linear_fc2(self.act_fn(self.linear_fc1(x)))
 
 
-class Qwen3VLLayer(nn.Module):
-    """A single pre-norm transformer layer of the Qwen3-VL vision tower.
-
-    Applies layer normalization before self-attention and again before the MLP,
-    with residual connections around each sublayer.
-
-    Args:
-        config: Vision encoder configuration.
-    """
+class Qwen3VLBlock(nn.Module):
+    """Single pre-norm transformer block of the Qwen3-VL vision tower."""
 
     def __init__(self, config: Qwen3VLVisionConfig) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.attn = Qwen3VLAttention(config)
         self.norm2 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.attn = Qwen3VLAttention(config)
         self.mlp = Qwen3VLMLP(config)
 
-    def forward(
-        self,
-        x: Tensor,
-        cos: Tensor,
-        sin: Tensor,
-        attention_mask: Optional[Tensor] = None,
-    ) -> Tensor:
-        x = x + self.attn(self.norm1(x), cos, sin, attention_mask)
-        x = x + self.mlp(self.norm2(x))
-        return x
+    def forward(self, hidden_states: Tensor, cu_seqlens: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
+        hidden_states = hidden_states + self.attn(self.norm1(hidden_states), cu_seqlens, cos, sin)
+        hidden_states = hidden_states + self.mlp(self.norm2(hidden_states))
+        return hidden_states
 
 
-class Qwen3VLEncoder(nn.Module):
-    """Stack of :class:`Qwen3VLLayer` blocks with optional DeepStack feature collection.
+class Qwen3VLPatchMerger(nn.Module):
+    """Patch merger that flattens ``spatial_merge_size**2`` patches into a single token.
 
-    When ``deepstack_layer_indices`` is non-empty the encoder additionally returns
-    the hidden state immediately after each indexed layer, in the order of the
-    indices supplied. These intermediate features feed the projector's DeepStack
-    fusion in subsequent PRs.
-
-    Args:
-        config: Vision encoder configuration.
-        deepstack_layer_indices: Layer indices whose outputs should be exposed
-            as DeepStack features.
+    With ``use_postshuffle_norm=False`` the layer norm is applied at the per-patch
+    ``hidden_size`` (matching the main projector). With ``use_postshuffle_norm=True``
+    the norm runs on the post-shuffle dimension ``hidden_size * spatial_merge_size**2``
+    (matching the DeepStack mergers).
     """
 
-    def __init__(self, config: Qwen3VLVisionConfig, deepstack_layer_indices: tuple[int, ...]) -> None:
+    def __init__(self, config: Qwen3VLVisionConfig, use_postshuffle_norm: bool = False) -> None:
         super().__init__()
-        for idx in deepstack_layer_indices:
-            if idx < 0 or idx >= config.num_hidden_layers:
-                raise ValueError(
-                    f"deepstack_layer_indices contain {idx}, which is out of range for "
-                    f"num_hidden_layers={config.num_hidden_layers}."
-                )
-        self.deepstack_layer_indices = tuple(deepstack_layer_indices)
-        self.layers = nn.ModuleList([Qwen3VLLayer(config) for _ in range(config.num_hidden_layers)])
+        self.merged_size = config.hidden_size * (config.spatial_merge_size ** 2)
+        self.use_postshuffle_norm = use_postshuffle_norm
+        norm_dim = self.merged_size if use_postshuffle_norm else config.hidden_size
+        self.norm = nn.LayerNorm(norm_dim, eps=config.layer_norm_eps)
+        self.linear_fc1 = nn.Linear(self.merged_size, self.merged_size, bias=True)
+        self.act_fn = nn.GELU()
+        self.linear_fc2 = nn.Linear(self.merged_size, config.out_hidden_size, bias=True)
 
-    def forward(
-        self,
-        x: Tensor,
-        cos: Tensor,
-        sin: Tensor,
-        attention_mask: Optional[Tensor] = None,
-    ) -> tuple[Tensor, tuple[Tensor, ...]]:
-        """Run the layer stack and collect DeepStack features.
-
-        Args:
-            x: ``(B, N, hidden_size)``.
-            cos: Rotary cosine table ``(N, head_dim)``.
-            sin: Rotary sine table ``(N, head_dim)``.
-            attention_mask: Optional broadcastable mask.
-
-        Returns:
-            Tuple ``(last_hidden_state, deepstack_features)`` where the second
-            element is a tuple of intermediate hidden states.
-        """
-        index_set = set(self.deepstack_layer_indices)
-        deepstack: list[Tensor] = []
-        for idx, layer in enumerate(self.layers):
-            x = layer(x, cos, sin, attention_mask)
-            if idx in index_set:
-                deepstack.append(x)
-        # Preserve caller-specified order, even if a layer index is requested twice.
-        ordered = tuple(deepstack[self.deepstack_layer_indices.index(i)] for i in self.deepstack_layer_indices)
-        return x, ordered
+    def forward(self, x: Tensor) -> Tensor:
+        if self.use_postshuffle_norm:
+            x = self.norm(x.view(-1, self.merged_size))
+        else:
+            x = self.norm(x).view(-1, self.merged_size)
+        return self.linear_fc2(self.act_fn(self.linear_fc1(x)))
 
 
 class Qwen3VLVisionEncoderOutput(NamedTuple):
-    """Container returned by :class:`Qwen3VLVisionTransformer`.
+    """Output of :class:`Qwen3VLVisionModel`.
 
-    Attributes:
-        last_hidden_state: Final encoded tokens of shape ``(B, N, hidden_size)``.
-        deepstack_features: Tuple of intermediate hidden states collected at
-            the layer indices configured for DeepStack fusion.
-        grid_hw: ``(h_patches, w_patches)`` describing the spatial grid that
-            produced the token sequence; downstream modules (projector, video
-            handler) need this to reshape tokens back into 2D.
+    ``last_hidden_state`` and ``deepstack_features`` are post-merger and live
+    in ``out_hidden_size`` space, ready to be injected into the LLM. Both are
+    flat ``(N_merged, out_hidden_size)`` tensors where
+    ``N_merged = sum(grid_t * grid_h * grid_w) // spatial_merge_size**2``.
     """
 
     last_hidden_state: Tensor
     deepstack_features: tuple[Tensor, ...]
-    grid_hw: tuple[int, int]
+    grid_thw: Tensor
 
 
-def _default_deepstack_indices(num_hidden_layers: int) -> tuple[int, ...]:
-    """Return the default DeepStack layer indices for a tower with ``num_hidden_layers`` blocks."""
-    if num_hidden_layers < 3:
-        return (num_hidden_layers - 1,)
-    return (num_hidden_layers // 3, (2 * num_hidden_layers) // 3, num_hidden_layers - 1)
-
-
-class Qwen3VLVisionTransformer(nn.Module):
+class Qwen3VLVisionModel(nn.Module):
     """Qwen3-VL vision tower with DeepStack feature fusion.
 
-    The encoder is a pre-norm ViT with 2D rotary positional embeddings and no
-    absolute position parameters, enabling dynamic-resolution inputs once the
-    Qwen3-VL preprocessor lands. Beyond returning the final hidden state the
-    forward pass also exposes intermediate features from a configurable set of
-    transformer layers, matching the Qwen3-VL DeepStack fusion strategy.
-
-    Args:
-        config: Vision encoder configuration. The default ``deepstack_layer_indices``
-            schedule selects three layers spaced roughly evenly through the tower.
+    Consumes flat patch tensors and a ``grid_thw`` descriptor produced by
+    :class:`Qwen3VLImageProcessor`. The state-dict layout matches the
+    ``model.visual.*`` keys of the official HuggingFace checkpoints, so
+    weights loaded via :mod:`._hf_weights` slot in directly.
     """
 
     def __init__(self, config: Qwen3VLVisionConfig) -> None:
         super().__init__()
         self.config = config
+        self.patch_size = config.patch_size
+        self.spatial_merge_size = config.spatial_merge_size
+
         self.patch_embed = Qwen3VLPatchEmbed(config)
-        head_dim = config.hidden_size // config.num_attention_heads
-        self.rope = Qwen3VLRotaryEmbedding(head_dim, theta=config.rope_theta)
+        self.pos_embed = nn.Embedding(config.num_position_embeddings, config.hidden_size)
+        self.num_grid_per_side = round(config.num_position_embeddings ** 0.5)
+        if self.num_grid_per_side * self.num_grid_per_side != config.num_position_embeddings:
+            raise ValueError(
+                f"num_position_embeddings={config.num_position_embeddings} must be a perfect square."
+            )
 
-        if config.deepstack_layer_indices is None:
-            deepstack_indices = _default_deepstack_indices(config.num_hidden_layers)
-        else:
-            deepstack_indices = config.deepstack_layer_indices
-        self.encoder = Qwen3VLEncoder(config, deepstack_indices)
-        self.norm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        head_dim = config.hidden_size // config.num_heads
+        self.rotary_pos_emb = Qwen3VLRotaryEmbedding(head_dim // 2, theta=config.rope_theta)
 
-    @property
-    def deepstack_layer_indices(self) -> tuple[int, ...]:
-        """Layer indices whose outputs are returned as DeepStack features."""
-        return self.encoder.deepstack_layer_indices
+        self.blocks = nn.ModuleList([Qwen3VLBlock(config) for _ in range(config.depth)])
+        self.merger = Qwen3VLPatchMerger(config, use_postshuffle_norm=False)
 
-    def forward(
-        self,
-        pixel_values: Tensor,
-        attention_mask: Optional[Tensor] = None,
-    ) -> Qwen3VLVisionEncoderOutput:
-        """Encode a batch of images.
+        for idx in config.deepstack_visual_indexes:
+            if idx < 0 or idx >= config.depth:
+                raise ValueError(
+                    f"deepstack_visual_indexes contain {idx}, out of range for depth={config.depth}."
+                )
+        self.deepstack_visual_indexes = tuple(config.deepstack_visual_indexes)
+        self.deepstack_merger_list = nn.ModuleList(
+            [Qwen3VLPatchMerger(config, use_postshuffle_norm=True) for _ in self.deepstack_visual_indexes]
+        )
 
-        Args:
-            pixel_values: ``(B, C, H, W)``. Spatial dims must be divisible by
-                ``config.patch_size``.
-            attention_mask: Optional broadcastable mask, e.g. ``(B, 1, N, N)``.
+    @classmethod
+    def from_size(cls, size: str) -> Qwen3VLVisionModel:
+        vision_config = Qwen3VLConfig.from_size(size).vision_config or Qwen3VLVisionConfig()
+        return cls(vision_config)
 
-        Returns:
-            :class:`Qwen3VLVisionEncoderOutput` containing the final hidden
-            state, the DeepStack feature tuple, and the spatial grid size.
-        """
-        x, h_patches, w_patches = self.patch_embed(pixel_values)
-        cos, sin = self.rope(h_patches, w_patches, x.device, x.dtype)
-        last, deepstack = self.encoder(x, cos, sin, attention_mask=attention_mask)
-        last = self.norm(last)
+    def fast_pos_embed_interpolate(self, grid_thw: Tensor) -> Tensor:
+        device = self.pos_embed.weight.device
+        weight_dtype = self.pos_embed.weight.dtype
+        merge_size = self.spatial_merge_size
+        side = self.num_grid_per_side
+
+        chunks: list[Tensor] = []
+        for t, h, w in grid_thw.tolist():
+            h_idxs = torch.linspace(0, side - 1, h, dtype=torch.float32, device=device)
+            w_idxs = torch.linspace(0, side - 1, w, dtype=torch.float32, device=device)
+            h_floor = h_idxs.to(torch.long)
+            w_floor = w_idxs.to(torch.long)
+            h_ceil = (h_floor + 1).clamp(max=side - 1)
+            w_ceil = (w_floor + 1).clamp(max=side - 1)
+            dh = h_idxs - h_floor.to(torch.float32)
+            dw = w_idxs - w_floor.to(torch.float32)
+
+            base_h = h_floor * side
+            base_h_ceil = h_ceil * side
+
+            indices = (
+                (base_h.unsqueeze(1) + w_floor.unsqueeze(0)).reshape(-1),
+                (base_h.unsqueeze(1) + w_ceil.unsqueeze(0)).reshape(-1),
+                (base_h_ceil.unsqueeze(1) + w_floor.unsqueeze(0)).reshape(-1),
+                (base_h_ceil.unsqueeze(1) + w_ceil.unsqueeze(0)).reshape(-1),
+            )
+            weights = (
+                ((1 - dh).unsqueeze(1) * (1 - dw).unsqueeze(0)).reshape(-1).to(weight_dtype),
+                ((1 - dh).unsqueeze(1) * dw.unsqueeze(0)).reshape(-1).to(weight_dtype),
+                (dh.unsqueeze(1) * (1 - dw).unsqueeze(0)).reshape(-1).to(weight_dtype),
+                (dh.unsqueeze(1) * dw.unsqueeze(0)).reshape(-1).to(weight_dtype),
+            )
+            embed = self.pos_embed(indices[0]) * weights[0].unsqueeze(-1)
+            for idx, w_ij in zip(indices[1:], weights[1:]):
+                embed = embed + self.pos_embed(idx) * w_ij.unsqueeze(-1)
+
+            embed = embed.repeat(t, 1)
+            embed = (
+                embed.view(t, h // merge_size, merge_size, w // merge_size, merge_size, -1)
+                .permute(0, 1, 3, 2, 4, 5)
+                .flatten(0, 4)
+            )
+            chunks.append(embed)
+        return torch.cat(chunks, dim=0)
+
+    def rot_pos_emb(self, grid_thw: Tensor) -> Tensor:
+        merge_size = self.spatial_merge_size
+        max_hw = int(grid_thw[:, 1:].max().item())
+        freq_table = self.rotary_pos_emb(max_hw)
+        device = freq_table.device
+
+        total_tokens = int(torch.prod(grid_thw, dim=1).sum().item())
+        pos_ids = torch.empty((total_tokens, 2), dtype=torch.long, device=device)
+
+        offset = 0
+        for t, h, w in grid_thw.tolist():
+            merged_h, merged_w = h // merge_size, w // merge_size
+            block_rows = torch.arange(merged_h, device=device)
+            block_cols = torch.arange(merged_w, device=device)
+            intra_row = torch.arange(merge_size, device=device)
+            intra_col = torch.arange(merge_size, device=device)
+            row_idx = block_rows[:, None, None, None] * merge_size + intra_row[None, None, :, None]
+            col_idx = block_cols[None, :, None, None] * merge_size + intra_col[None, None, None, :]
+            row_idx = row_idx.expand(merged_h, merged_w, merge_size, merge_size).reshape(-1)
+            col_idx = col_idx.expand(merged_h, merged_w, merge_size, merge_size).reshape(-1)
+            coords = torch.stack((row_idx, col_idx), dim=-1)
+            if t > 1:
+                coords = coords.repeat(t, 1)
+            n = coords.shape[0]
+            pos_ids[offset : offset + n] = coords
+            offset += n
+
+        embeddings = freq_table[pos_ids].flatten(1)
+        return embeddings
+
+    def forward(self, hidden_states: Tensor, grid_thw: Tensor) -> Qwen3VLVisionEncoderOutput:
+        if grid_thw.dim() != 2 or grid_thw.shape[1] != 3:
+            raise ValueError(f"grid_thw must have shape (B, 3); got {tuple(grid_thw.shape)}.")
+        if grid_thw.dtype not in (torch.int32, torch.int64):
+            raise ValueError(f"grid_thw must be an integer tensor; got dtype {grid_thw.dtype}.")
+
+        x = self.patch_embed(hidden_states)
+        pos = self.fast_pos_embed_interpolate(grid_thw).to(x.dtype)
+        x = x + pos
+
+        rot = self.rot_pos_emb(grid_thw)
+        emb = torch.cat((rot, rot), dim=-1)
+        cos, sin = emb.cos(), emb.sin()
+
+        token_counts = grid_thw[:, 0] * grid_thw[:, 1] * grid_thw[:, 2]
+        cu_seqlens = F.pad(torch.cumsum(token_counts, dim=0, dtype=torch.int32), (1, 0))
+
+        deepstack_set = set(self.deepstack_visual_indexes)
+        deepstack_outputs: list[Tensor] = []
+        for i, blk in enumerate(self.blocks):
+            x = blk(x, cu_seqlens, cos, sin)
+            if i in deepstack_set:
+                merger_idx = self.deepstack_visual_indexes.index(i)
+                deepstack_outputs.append(self.deepstack_merger_list[merger_idx](x))
+
+        merged = self.merger(x)
         return Qwen3VLVisionEncoderOutput(
-            last_hidden_state=last,
-            deepstack_features=deepstack,
-            grid_hw=(h_patches, w_patches),
+            last_hidden_state=merged,
+            deepstack_features=tuple(deepstack_outputs),
+            grid_thw=grid_thw,
         )
