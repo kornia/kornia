@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+"""Module for core library utilities and device management in Kornia."""
 
 import importlib.util
 import platform

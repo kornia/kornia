@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Color utils."""
+
 import torch
 from torch.nn import functional as F
 

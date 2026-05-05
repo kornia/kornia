@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Metrics endpoint error."""
+
 import torch
 from torch import Tensor, nn
 

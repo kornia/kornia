@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature lightglue onnx lightglue."""
+
 from __future__ import annotations
 
 from typing import ClassVar, Union

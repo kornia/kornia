@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Contrib connected components."""
+
 import torch
 import torch.nn.functional as F
 

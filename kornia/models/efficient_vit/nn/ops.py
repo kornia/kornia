@@ -20,6 +20,8 @@
 # International Conference on Computer Vision (ICCV), 2023
 
 # type: ignore
+"""Module for Models efficient vit nn ops."""
+
 from __future__ import annotations
 
 import torch

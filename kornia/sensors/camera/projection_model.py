@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Sensors camera projection model."""
+
 from __future__ import annotations
 
 import torch

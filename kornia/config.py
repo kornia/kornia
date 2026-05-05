@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Kornia configuration and lazy loading management."""
+
 import os
 from dataclasses import dataclass, field
 from enum import StrEnum

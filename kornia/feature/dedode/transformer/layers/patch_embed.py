@@ -25,6 +25,8 @@
 #   https://github.com/facebookresearch/dino/blob/master/vision_transformer.py
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/layers/patch_embed.py
 
+"""Module for Feature dedode transformer layers patch embed."""
+
 from typing import Callable, Optional, Tuple, Union
 
 from torch import Tensor, nn

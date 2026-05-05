@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Geometry camera stereo."""
+
 from typing import Any
 
 import torch

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for tensor wrapping and attribute tracking utilities."""
+
 from __future__ import annotations
 
 import collections.abc

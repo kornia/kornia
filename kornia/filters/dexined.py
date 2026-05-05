@@ -17,6 +17,8 @@
 
 # adapted from: https://github.com/xavysp/DexiNed/blob/d944b70eb6eaf40e22f8467c1e12919aa600d8e4/model.py
 
+"""Module for Filters dexined."""
+
 from __future__ import annotations
 
 from collections import OrderedDict

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Geometry bbox."""
+
 from __future__ import annotations
 
 import warnings

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for downloading models weights."""
+
 import argparse
 import logging
 import os

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Morphology morphology."""
+
 from typing import List, Optional
 
 import torch

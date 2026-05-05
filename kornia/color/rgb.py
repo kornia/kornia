@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for RGB color space conversions."""
+
 from __future__ import annotations
 
 from typing import ClassVar, Optional, Union, cast

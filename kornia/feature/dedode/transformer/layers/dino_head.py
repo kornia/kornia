@@ -21,6 +21,8 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+"""Module for Feature dedode transformer layers dino head."""
+
 import torch
 from torch import nn
 from torch.nn.init import trunc_normal_

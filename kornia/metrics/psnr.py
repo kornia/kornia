@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Metrics psnr."""
+
 import torch
 from torch.nn.functional import mse_loss as mse
 

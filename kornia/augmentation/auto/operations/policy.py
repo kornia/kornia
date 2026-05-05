@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Augmentation auto operations policy."""
+
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import torch

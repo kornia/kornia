@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Onnx download."""
+
 from __future__ import annotations
 
 import logging

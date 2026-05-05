@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Augmentation container ops."""
+
 import copy
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar, Union

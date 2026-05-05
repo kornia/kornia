@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Pytest configuration for the Kornia package."""
+
 import os
 import subprocess
 import sys

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Filters canny."""
+
 from __future__ import annotations
 
 import math

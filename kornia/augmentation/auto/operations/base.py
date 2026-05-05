@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Augmentation auto operations base."""
+
 from typing import Callable, Dict, List, Optional, Tuple, TypeVar
 
 import torch

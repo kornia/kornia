@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Augmentation auto operations ops."""
+
 from typing import Optional, Tuple
 
 import torch

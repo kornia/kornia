@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Losses one hot."""
+
 import torch
 import torch.nn.functional as F
 

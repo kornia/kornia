@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Models efficient vit model."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

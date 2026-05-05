@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+"""Module for Losses mutual information."""
+
 from __future__ import annotations
 
 from enum import Enum, member

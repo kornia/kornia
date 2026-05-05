@@ -17,6 +17,8 @@
 
 # kornia.geometry.so2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
+"""Module for Geometry liegroup so2."""
+
 from __future__ import annotations
 
 from typing import Optional, Union, overload

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Geometry calibration undistort."""
+
 from __future__ import annotations
 
 from typing import Optional

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Metrics ssim3d."""
+
 from typing import List
 
 import torch

@@ -19,6 +19,8 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/quaternion.py
 # https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Quaternion.h
+"""Module for Geometry quaternion."""
+
 from math import pi
 from typing import Any, Optional, Tuple, Union
 

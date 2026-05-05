@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Losses ssim3d."""
+
 from __future__ import annotations
 
 import torch

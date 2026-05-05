@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Enhance rescale."""
+
 from typing import Union
 
 import torch

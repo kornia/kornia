@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Filters laplacian."""
+
 from __future__ import annotations
 
 import torch

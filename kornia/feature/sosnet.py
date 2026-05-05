@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature sosnet."""
+
 from typing import Dict
 
 import torch

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Contrib face detection."""
+
 from enum import Enum
 from typing import Dict, List, Optional
 

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Metrics mean average precision."""
+
 from typing import Dict, List, Tuple
 
 import torch

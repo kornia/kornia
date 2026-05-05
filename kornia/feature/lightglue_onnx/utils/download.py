@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature lightglue onnx utils download."""
+
 from __future__ import annotations
 
 import os

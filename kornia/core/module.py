@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for core neural network module abstractions and base classes."""
+
 from __future__ import annotations
 
 from typing import Any, Literal, Optional

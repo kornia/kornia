@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Geometry keypoints."""
+
 from typing import List, Optional, Tuple, Union, cast
 
 import torch

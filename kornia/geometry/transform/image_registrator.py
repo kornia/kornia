@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Geometry transform image registrator."""
+
 from abc import abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 

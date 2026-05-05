@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature integrated."""
+
 import warnings
 from typing import ClassVar, Dict, List, Optional, Tuple, Union
 

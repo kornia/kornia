@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Augmentation container base."""
+
 from collections import OrderedDict
 from itertools import zip_longest
 from typing import Any, Dict, Iterator, List, Optional, Tuple

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Metrics mean iou."""
+
 import torch
 
 from .confusion_matrix import confusion_matrix

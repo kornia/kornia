@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Geometry pose."""
+
 from __future__ import annotations
 
 import uuid

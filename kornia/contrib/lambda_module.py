@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Contrib lambda module."""
+
 from typing import Any, Callable
 
 import torch

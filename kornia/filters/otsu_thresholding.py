@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Filters otsu thresholding."""
+
 from __future__ import annotations
 
 from typing import Optional, Tuple

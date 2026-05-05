@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Tracking planar tracker."""
+
 from typing import Dict, Optional, Tuple
 
 import torch

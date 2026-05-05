@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Enhance threshold."""
+
 from __future__ import annotations
 
 from enum import IntEnum

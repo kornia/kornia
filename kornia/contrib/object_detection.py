@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Contrib object detection."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature loftr utils coarse matching."""
+
 from typing import Any, Dict, Optional, Union
 
 import torch

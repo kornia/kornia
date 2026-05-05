@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Onnx sequential."""
+
 from __future__ import annotations
 
 from typing import Any, Optional, Union

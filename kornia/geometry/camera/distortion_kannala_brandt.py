@@ -17,6 +17,8 @@
 
 # inspired by: shttps://github.com/farm-ng/sophus-rs/blob/main/src/sensor/kannala_brandt.rs
 
+"""Module for Geometry camera distortion kannala brandt."""
+
 import torch
 
 from kornia.core.check import KORNIA_CHECK_SHAPE

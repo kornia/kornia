@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Augmentation container video."""
+
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch

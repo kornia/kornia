@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature disk structs."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

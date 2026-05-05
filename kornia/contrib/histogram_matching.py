@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Contrib histogram matching."""
+
 import torch
 
 

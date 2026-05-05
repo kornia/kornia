@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature loftr utils position encoding."""
+
 import math
 from typing import Tuple
 

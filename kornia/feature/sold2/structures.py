@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature sold2 structures."""
+
 from dataclasses import dataclass, field
 
 

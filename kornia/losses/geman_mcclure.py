@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Losses geman mcclure."""
+
 from __future__ import annotations
 
 import torch

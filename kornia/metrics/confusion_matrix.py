@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Metrics confusion matrix."""
+
 import torch
 
 # Inspired by:

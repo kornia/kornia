@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Image base."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

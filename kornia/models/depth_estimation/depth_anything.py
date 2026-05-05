@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Models depth estimation depth anything."""
+
 from typing import Optional
 
 from kornia.models._hf_models import HFONNXComunnityModelLoader

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Geometry calibration pnp."""
+
 from typing import Optional, Tuple
 
 import torch

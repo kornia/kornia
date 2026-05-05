@@ -16,6 +16,8 @@
 #
 
 # based on: https://github.com/anguelos/tormentor/blob/e8050ac235b0c7ad3c7d931cfa47c308a305c486/diamond_square/diamond_square.py  # noqa: E501
+"""Module for Contrib diamond square."""
+
 import math
 from typing import Callable, List, Optional, Tuple, Union
 

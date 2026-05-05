@@ -23,6 +23,8 @@
 
 # Modified from: https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/vision_transformer.py#L103-L110
 
+"""Module for Feature dedode transformer layers layer scale."""
+
 from typing import Union
 
 import torch

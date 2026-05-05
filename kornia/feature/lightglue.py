@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Module for Feature lightglue."""
+
 import math
 import warnings
 from pathlib import Path
