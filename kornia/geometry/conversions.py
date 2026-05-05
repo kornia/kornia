@@ -658,6 +658,10 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
     k_neg: torch.Tensor = 2.0 * torch.ones_like(sin_theta)
     k: torch.Tensor = torch.where(sin_squared_theta > 0.0, k_pos, k_neg)
 
+    # Propagate NaN from w-component: when cos_theta is NaN, the angle is
+    # undefined and the output must be NaN rather than silently returning zero.
+    k = torch.where(torch.isnan(cos_theta), cos_theta, k)
+
     axis_angle: torch.Tensor = torch.zeros_like(quaternion)[..., :3]
     axis_angle[..., 0] += q1 * k
     axis_angle[..., 1] += q2 * k

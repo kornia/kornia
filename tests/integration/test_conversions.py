@@ -94,6 +94,17 @@ class TestQuaternionToAngleAxisToQuaternion(BaseTester):
         quaternion_hat = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         self.assert_close(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
+    def test_nan_w_propagation(self, device, dtype, atol, rtol):
+        # gh-3629: NaN in w-component should propagate to output
+        quaternion = torch.tensor([float("nan"), 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert axis_angle.isnan().all()
+
+    def test_nan_w_nonzero_xyz_propagation(self, device, dtype, atol, rtol):
+        quaternion = torch.tensor([float("nan"), 1.0, 0.0, 0.0], device=device, dtype=dtype)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert axis_angle.isnan().all()
+
 
 class TestQuaternionToRotationMatrixToAngleAxis(BaseTester):
     @pytest.mark.parametrize("axis", (0, 1, 2))
