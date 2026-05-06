@@ -167,6 +167,21 @@ class RRDBNetBuilder:
 
     @staticmethod
     def build(model_name: str = "RealESRNet_x4plus", pretrained: bool = True) -> SuperResolution:
+        """Build a preconfigured RRDB-based super-resolution pipeline.
+
+        Args:
+            model_name: Name of the RRDB variant to construct. Supported options are
+                ``"RealESRGAN_x4plus"``, ``"RealESRNet_x4plus"``,
+                ``"RealESRGAN_x4plus_anime_6B"``, and ``"RealESRGAN_x2plus"``.
+            pretrained: If ``True``, download and load pretrained weights for the
+                selected model variant.
+
+        Returns:
+            A :class:`SuperResolution` wrapper ready for inference.
+
+        Raises:
+            ValueError: If ``model_name`` is not one of the supported variants.
+        """
         if model_name == "RealESRGAN_x4plus":
             model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
                 num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4
@@ -213,6 +228,23 @@ class SmallSRBuilder:
     def build(
         model_name: str = "small_sr", pretrained: bool = True, upscale_factor: int = 3, image_size: Optional[int] = None
     ) -> SuperResolution:
+        """Build a lightweight super-resolution pipeline.
+
+        Args:
+            model_name: Name of the model variant to build. Currently only
+                ``"small_sr"`` is supported.
+            pretrained: If ``True``, load pretrained weights for the selected model.
+            upscale_factor: Upscaling factor used by ``SmallSRNetWrapper``.
+            image_size: Optional fixed input size. When provided, output metadata is
+                configured as ``image_size * upscale_factor``.
+
+        Returns:
+            A :class:`SuperResolution` instance configured with resizing pre-processing
+            and identity post-processing.
+
+        Raises:
+            ValueError: If ``model_name`` is not supported.
+        """
         if model_name.lower() == "small_sr":
             model = SmallSRNetWrapper(upscale_factor, pretrained=pretrained)
         else:

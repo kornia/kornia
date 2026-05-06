@@ -47,4 +47,14 @@ class Lambda(nn.Module):
         self.func = func
 
     def forward(self, img: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+        """Apply the wrapped callable to the provided tensor.
+
+        Args:
+            img: Input tensor passed as the first argument to ``self.func``.
+            *args: Additional positional arguments forwarded to ``self.func``.
+            **kwargs: Additional keyword arguments forwarded to ``self.func``.
+
+        Returns:
+            The tensor produced by ``self.func``.
+        """
         return self.func(img, *args, **kwargs)
