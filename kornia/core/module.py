@@ -44,10 +44,22 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
 
     @property
     def disable_features(self) -> bool:
+        """Return whether convenience I/O conversion features are disabled.
+
+        Returns:
+            ``True`` when :class:`ImageModuleMixIn` input/output conversion wrappers
+            are bypassed and the module behaves like a plain ``nn.Module`` call.
+        """
         return self._disable_features
 
     @disable_features.setter
     def disable_features(self, value: bool = True) -> None:
+        """Enable or disable convenience input/output handling features.
+
+        Args:
+            value: If ``True``, skip automatic conversion, caching, and visualization
+                helper behavior in ``__call__``. If ``False``, keep those features active.
+        """
         self._disable_features = value
 
     def __call__(
@@ -103,10 +115,22 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
 
     @property
     def disable_features(self) -> bool:
+        """Return whether convenience I/O conversion features are disabled.
+
+        Returns:
+            ``True`` when :class:`ImageModuleMixIn` input/output conversion wrappers
+            are bypassed and the module behaves like a plain ``nn.Sequential`` call.
+        """
         return self._disable_features
 
     @disable_features.setter
     def disable_features(self, value: bool = True) -> None:
+        """Enable or disable convenience input/output handling features.
+
+        Args:
+            value: If ``True``, skip automatic conversion, caching, and visualization
+                helper behavior in ``__call__``. If ``False``, keep those features active.
+        """
         self._disable_features = value
 
     def __call__(
