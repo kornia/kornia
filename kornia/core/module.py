@@ -44,21 +44,27 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
 
     @property
     def disable_features(self) -> bool:
-        """Return whether convenience I/O conversion features are disabled.
+        """Whether convenience I/O (input/output) helper features are disabled.
+
+        This flag controls the extra behavior provided by :class:`ImageModuleMixIn`,
+        such as automatic input conversion (for example, PIL or NumPy inputs),
+        automatic output conversion, and output caching for visualization helpers.
 
         Returns:
-            ``True`` when :class:`ImageModuleMixIn` input/output conversion wrappers
-            are bypassed and the module behaves like a plain ``nn.Module`` call.
+            ``True`` if the helper features are bypassed and the module behaves like
+            a plain :class:`torch.nn.Module` call. ``False`` if helper features are enabled.
         """
         return self._disable_features
 
     @disable_features.setter
     def disable_features(self, value: bool = True) -> None:
-        """Enable or disable convenience input/output handling features.
+        """Enable or disable convenience I/O (input/output) handling features.
 
         Args:
-            value: If ``True``, skip automatic conversion, caching, and visualization
-                helper behavior in ``__call__``. If ``False``, keep those features active.
+            value: Feature toggle.
+                - ``True``: disable automatic type conversion and output caching,
+                  so ``__call__`` behaves closer to a raw PyTorch module call.
+                - ``False``: keep helper features active.
         """
         self._disable_features = value
 
@@ -115,21 +121,27 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
 
     @property
     def disable_features(self) -> bool:
-        """Return whether convenience I/O conversion features are disabled.
+        """Whether convenience I/O (input/output) helper features are disabled.
+
+        This flag controls the extra behavior provided by :class:`ImageModuleMixIn`,
+        such as automatic input conversion (for example, PIL or NumPy inputs),
+        automatic output conversion, and output caching for visualization helpers.
 
         Returns:
-            ``True`` when :class:`ImageModuleMixIn` input/output conversion wrappers
-            are bypassed and the module behaves like a plain ``nn.Sequential`` call.
+            ``True`` if the helper features are bypassed and the module behaves like
+            a plain :class:`torch.nn.Sequential` call. ``False`` if helper features are enabled.
         """
         return self._disable_features
 
     @disable_features.setter
     def disable_features(self, value: bool = True) -> None:
-        """Enable or disable convenience input/output handling features.
+        """Enable or disable convenience I/O (input/output) handling features.
 
         Args:
-            value: If ``True``, skip automatic conversion, caching, and visualization
-                helper behavior in ``__call__``. If ``False``, keep those features active.
+            value: Feature toggle.
+                - ``True``: disable automatic type conversion and output caching,
+                  so ``__call__`` behaves closer to a raw PyTorch sequential call.
+                - ``False``: keep helper features active.
         """
         self._disable_features = value
 
