@@ -72,9 +72,13 @@ class KMeans:
         """Return the current cluster centers.
 
         Returns:
-            A tensor with shape :math:`(C, D)` containing cluster center coordinates.
-            If the model has been fit, this returns the final learned centers;
-            otherwise, it returns the user-provided initialization.
+            A tensor with shape :math:`(C, D)`:
+            - ``C`` is the number of clusters.
+            - ``D`` is the feature dimension of each sample.
+
+            If :meth:`fit` has already been called, this returns the learned
+            final centers. Otherwise, it returns the initialization provided
+            during construction.
 
         Raises:
             TypeError: If no initial centers were provided and ``fit`` has not been run.
@@ -91,7 +95,9 @@ class KMeans:
         """Return cluster labels assigned during the most recent ``fit`` call.
 
         Returns:
-            A 1D tensor with one cluster index per input sample used in ``fit``.
+            A 1D tensor with shape :math:`(N,)`, where ``N`` is the number of
+            samples given to :meth:`fit`. Each value is the cluster index
+            assigned to the corresponding sample.
 
         Raises:
             TypeError: If ``fit`` has not been run yet.

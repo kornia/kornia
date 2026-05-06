@@ -47,14 +47,21 @@ class Lambda(nn.Module):
         self.func = func
 
     def forward(self, img: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
-        """Apply the wrapped callable to the provided tensor.
+        """Run the user-provided transform function.
+
+        This method simply forwards all arguments to ``self.func``.
+        It is useful when you want to insert a custom Python callable inside a
+        ``torch.nn.Module`` pipeline.
 
         Args:
-            img: Input tensor passed as the first argument to ``self.func``.
+            img: Primary input tensor passed as the first positional argument.
+                For image tasks this is commonly shaped ``(B, C, H, W)``, where
+                ``B`` = batch size, ``C`` = number of channels,
+                ``H`` = height, and ``W`` = width.
             *args: Additional positional arguments forwarded to ``self.func``.
             **kwargs: Additional keyword arguments forwarded to ``self.func``.
 
         Returns:
-            The tensor produced by ``self.func``.
+            The output tensor returned by ``self.func``.
         """
         return self.func(img, *args, **kwargs)

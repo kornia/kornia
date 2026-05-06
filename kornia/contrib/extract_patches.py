@@ -197,12 +197,17 @@ class ExtractTensorPatches(nn.Module):
         """Extract sliding-window patches from a batched image tensor.
 
         Args:
-            input: Input tensor with shape :math:`(B, C, H, W)`.
+            input: Input tensor with shape :math:`(B, C, H, W)`, where:
+                - ``B`` is the batch size (number of images),
+                - ``C`` is the number of channels,
+                - ``H`` is height,
+                - ``W`` is width.
 
         Returns:
             A tensor containing stacked patches with shape
-            :math:`(B, N, C, H_{out}, W_{out})`, where ``N`` is the number of
-            extracted windows.
+            :math:`(B, N, C, H_{out}, W_{out})`, where:
+            - ``N`` is the number of extracted windows per image,
+            - ``H_{out}`` and ``W_{out}`` are patch height and patch width.
         """
         return extract_tensor_patches(
             input,
@@ -300,11 +305,15 @@ class CombineTensorPatches(nn.Module):
         """Reconstruct full images from extracted patches.
 
         Args:
-            input: Patch tensor with shape :math:`(B, N, C, H_{out}, W_{out})`.
+            input: Patch tensor with shape :math:`(B, N, C, H_{out}, W_{out})`, where:
+                - ``B`` is the batch size,
+                - ``N`` is the number of patches,
+                - ``C`` is the number of channels,
+                - ``H_{out}`` and ``W_{out}`` are patch height and width.
 
         Returns:
-            A reconstructed tensor with shape :math:`(B, C, H, W)`, where
-            ``(H, W)`` corresponds to ``original_size`` after optional unpadding.
+            A reconstructed tensor with shape :math:`(B, C, H, W)`, where ``H``
+            and ``W`` correspond to ``original_size`` after optional unpadding.
         """
         return combine_tensor_patches(
             input,

@@ -189,7 +189,11 @@ class FaceDetector(nn.Module):
         """Preprocess input images before feeding them to YuNet.
 
         Args:
-            image: Batch of images with shape :math:`(B, 3, H, W)`.
+            image: Batch of RGB images with shape :math:`(B, 3, H, W)`, where:
+                - ``B`` is batch size,
+                - ``3`` is the RGB channel dimension,
+                - ``H`` is image height,
+                - ``W`` is image width.
 
         Returns:
             The preprocessed image tensor. The current implementation returns the
@@ -208,7 +212,12 @@ class FaceDetector(nn.Module):
 
         Returns:
             A list with one tensor per batch element. Each tensor is shaped
-            :math:`(N, 15)` and stores 14 geometry/keypoint values plus one score.
+            :math:`(N, 15)`, where ``N`` is the number of detections kept after
+            confidence filtering and non-maximum suppression (NMS).
+
+            The 15 values per detection are:
+            - 14 geometry values (bounding box + five keypoints),
+            - 1 confidence score.
         """
         loc, conf, iou = data["loc"], data["conf"], data["iou"]
 

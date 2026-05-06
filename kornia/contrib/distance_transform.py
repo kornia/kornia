@@ -160,10 +160,17 @@ class DistanceTransform(nn.Module):
         dimension, processed independently, and then reshaped back.
 
         Args:
-            image: Input tensor with shape :math:`(B, C, H, W)` or :math:`(B, C, D, H, W)`.
+            image: Input tensor with shape :math:`(B, C, H, W)` for 2D data or
+                :math:`(B, C, D, H, W)` for 3D data, where:
+                - ``B`` is batch size,
+                - ``C`` is the number of channels,
+                - ``D`` is depth (only for 3D volumes),
+                - ``H`` is height,
+                - ``W`` is width.
 
         Returns:
-            Distance-transform tensor with the same shape as ``image``.
+            A distance-transform tensor with the same shape as ``image``.
+            Each channel is processed independently.
         """
         # Reshape multi-channel inputs to batch dimension to ensure independent processing
         if image.shape[1] > 1:

@@ -167,10 +167,14 @@ class RRDBNetBuilder:
 
     @staticmethod
     def build(model_name: str = "RealESRNet_x4plus", pretrained: bool = True) -> SuperResolution:
-        """Build a preconfigured RRDB-based super-resolution pipeline.
+        """Build a preconfigured RRDB (Residual-in-Residual Dense Block) model.
+
+        The returned object is a :class:`SuperResolution` wrapper configured for
+        inference. Internally, this factory selects architecture hyperparameters
+        based on ``model_name``, and optionally loads pretrained weights.
 
         Args:
-            model_name: Name of the RRDB variant to construct. Supported options are
+            model_name: Name of the RRDB variant to construct. Supported options are:
                 ``"RealESRGAN_x4plus"``, ``"RealESRNet_x4plus"``,
                 ``"RealESRGAN_x4plus_anime_6B"``, and ``"RealESRGAN_x2plus"``.
             pretrained: If ``True``, download and load pretrained weights for the
@@ -228,13 +232,18 @@ class SmallSRBuilder:
     def build(
         model_name: str = "small_sr", pretrained: bool = True, upscale_factor: int = 3, image_size: Optional[int] = None
     ) -> SuperResolution:
-        """Build a lightweight super-resolution pipeline.
+        """Build a lightweight super-resolution (SR) model wrapper.
+
+        SR stands for *super-resolution*, which means generating a higher
+        resolution output from a lower resolution input.
 
         Args:
             model_name: Name of the model variant to build. Currently only
                 ``"small_sr"`` is supported.
             pretrained: If ``True``, load pretrained weights for the selected model.
-            upscale_factor: Upscaling factor used by ``SmallSRNetWrapper``.
+            upscale_factor: Integer scale used by ``SmallSRNetWrapper``.
+                For example, ``3`` maps an input image of size ``H x W`` to an
+                output image of approximately ``3H x 3W``.
             image_size: Optional fixed input size. When provided, output metadata is
                 configured as ``image_size * upscale_factor``.
 
