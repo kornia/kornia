@@ -188,6 +188,12 @@ class TestQuaternionToAngleAxis(BaseTester):
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
         self.assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
+    def test_nan_w_component_propagates(self, device, dtype):
+        """NaN in the w-component should propagate to the output, not be silently swallowed."""
+        quaternion = torch.tensor((float("nan"), 0.0, 0.0, 0.0), device=device, dtype=dtype)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert torch.isnan(axis_angle).any(), "NaN in w-component should propagate to axis_angle output"
+
     def test_gradcheck(self, device):
         dtype = torch.float64
         eps = torch.finfo(dtype).eps
