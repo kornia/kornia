@@ -649,9 +649,6 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
 
     sin_squared_theta: torch.Tensor = q1 * q1 + q2 * q2 + q3 * q3
 
-    # Propagate NaN from w-component: if cos_theta is NaN but xyz are zero,
-    # sin_squared_theta is zero and NaN would be silently swallowed.
-    sin_squared_theta = sin_squared_theta + cos_theta * 0.0
     sin_theta: torch.Tensor = torch.sqrt(sin_squared_theta)
     two_theta: torch.Tensor = 2.0 * torch.where(
         cos_theta < 0.0, torch.atan2(-sin_theta, -cos_theta), torch.atan2(sin_theta, cos_theta)
@@ -665,6 +662,9 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
     axis_angle[..., 0] += q1 * k
     axis_angle[..., 1] += q2 * k
     axis_angle[..., 2] += q3 * k
+    # Propagate NaN from w-component: if cos_theta is NaN but xyz are zero,
+    # NaN would be silently swallowed through the where/atan2 path above.
+    axis_angle = axis_angle + cos_theta.unsqueeze(-1) * 0.0
     return axis_angle
 
 
