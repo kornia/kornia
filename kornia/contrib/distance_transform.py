@@ -153,6 +153,25 @@ class DistanceTransform(nn.Module):
         self.h = h
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Compute the distance transform while preserving the original tensor layout.
+
+        The underlying functional implementation expects a single-channel tensor.
+        For multi-channel inputs, channels are temporarily folded into the batch
+        dimension, processed independently, and then reshaped back.
+
+        Args:
+            image: Input tensor with shape :math:`(B, C, H, W)` for 2D data or
+                :math:`(B, C, D, H, W)` for 3D data, where:
+                - ``B`` is batch size,
+                - ``C`` is the number of channels,
+                - ``D`` is depth (only for 3D volumes),
+                - ``H`` is height,
+                - ``W`` is width.
+
+        Returns:
+            A distance-transform tensor with the same shape as ``image``.
+            Each channel is processed independently.
+        """
         # Reshape multi-channel inputs to batch dimension to ensure independent processing
         if image.shape[1] > 1:
             # Dynamically determine spatial dimensions (works for H,W or D,H,W)
