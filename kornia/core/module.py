@@ -44,10 +44,28 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
 
     @property
     def disable_features(self) -> bool:
+        """Whether convenience I/O (input/output) helper features are disabled.
+
+        This flag controls the extra behavior provided by :class:`ImageModuleMixIn`,
+        such as automatic input conversion (for example, PIL or NumPy inputs),
+        automatic output conversion, and output caching for visualization helpers.
+
+        Returns:
+            ``True`` if the helper features are bypassed and the module behaves like
+            a plain :class:`torch.nn.Module` call. ``False`` if helper features are enabled.
+        """
         return self._disable_features
 
     @disable_features.setter
     def disable_features(self, value: bool = True) -> None:
+        """Enable or disable convenience I/O (input/output) handling features.
+
+        Args:
+            value: Feature toggle.
+                - ``True``: disable automatic type conversion and output caching,
+                  so ``__call__`` behaves closer to a raw PyTorch module call.
+                - ``False``: keep helper features active.
+        """
         self._disable_features = value
 
     def __call__(
@@ -103,10 +121,28 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
 
     @property
     def disable_features(self) -> bool:
+        """Whether convenience I/O (input/output) helper features are disabled.
+
+        This flag controls the extra behavior provided by :class:`ImageModuleMixIn`,
+        such as automatic input conversion (for example, PIL or NumPy inputs),
+        automatic output conversion, and output caching for visualization helpers.
+
+        Returns:
+            ``True`` if the helper features are bypassed and the module behaves like
+            a plain :class:`torch.nn.Sequential` call. ``False`` if helper features are enabled.
+        """
         return self._disable_features
 
     @disable_features.setter
     def disable_features(self, value: bool = True) -> None:
+        """Enable or disable convenience I/O (input/output) handling features.
+
+        Args:
+            value: Feature toggle.
+                - ``True``: disable automatic type conversion and output caching,
+                  so ``__call__`` behaves closer to a raw PyTorch sequential call.
+                - ``False``: keep helper features active.
+        """
         self._disable_features = value
 
     def __call__(
