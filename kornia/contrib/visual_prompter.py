@@ -321,6 +321,18 @@ class VisualPrompter:
         return results
 
     def reset_image(self) -> None:
+        """Clear cached image state and prompt-transform metadata.
+
+        This method invalidates previously computed image embeddings and resets all
+        size/transform bookkeeping so a new call to :meth:`set_image` starts from a
+        clean state.
+
+        In practice, this resets:
+        - transformed-image parameters,
+        - original/input/encoder spatial sizes,
+        - cached image embeddings,
+        - ``is_image_set`` status flag.
+        """
         self._tfs_params = None
         self._original_image_size = None
         self._input_image_size = None
