@@ -22,14 +22,22 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import is_mps_tensor_safe
 
-urls: Dict[str, str] = {}
-urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth"
-urls["liberty_aug"] = (
-    "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth"
-)
-urls["hardnet8v2"] = "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt"
+urls: Dict[str, str | list[str]] = {}
+urls["hardnet++"] = [
+    hf_url("hardnet", "HardNetPP.pth"),
+    "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth",
+]
+urls["liberty_aug"] = [
+    hf_url("hardnet", "checkpoint_liberty_with_aug.pth"),
+    "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth",
+]
+urls["hardnet8v2"] = [
+    hf_url("hardnet", "hardnet8v2.pt"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt",
+]
 
 
 class HardNet(nn.Module):
@@ -85,7 +93,7 @@ class HardNet(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["liberty_aug"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["liberty_aug"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
         self.eval()
 
@@ -169,7 +177,7 @@ class HardNet8(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["hardnet8v2"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["hardnet8v2"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

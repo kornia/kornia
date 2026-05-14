@@ -22,6 +22,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.filters.sobel import SpatialGradient
 
@@ -35,8 +36,11 @@ from .laf import (
     set_laf_orientation,
 )
 
-urls: Dict[str, str] = {}
-urls["affnet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth"
+urls: Dict[str, str | list[str]] = {}
+urls["affnet"] = [
+    hf_url("affnet", "AffNet.pth"),
+    "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth",
+]
 
 
 class PatchAffineShapeEstimator(nn.Module):
@@ -202,7 +206,7 @@ class LAFAffNetShapeEstimator(nn.Module):
         self.patch_size = 32
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["affnet"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["affnet"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=False)
         self.preserve_orientation = preserve_orientation
         self.eval()

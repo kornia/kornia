@@ -32,6 +32,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.download import load_state_dict_from_url
 
 __all__ = ["VisionTransformer"]
 
@@ -299,7 +300,7 @@ class VisionTransformer(nn.Module):
 
         if pretrained:
             url = _get_weight_url(variant)
-            state_dict = torch.hub.load_state_dict_from_url(url)
+            state_dict = load_state_dict_from_url(url)
             model.load_state_dict(state_dict)
 
         return model
