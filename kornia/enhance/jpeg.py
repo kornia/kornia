@@ -745,6 +745,24 @@ class JPEGCodecDifferentiable(nn.Module):
         image_rgb: torch.Tensor,
         jpeg_quality: torch.Tensor,
     ) -> torch.Tensor:
+        """Apply differentiable JPEG compression and decompression.
+
+        The method runs an RGB image through the internal JPEG codec pipeline
+        using the module's quantization tables, then reconstructs an RGB tensor.
+        Quantization tables are moved to the input device and dtype before
+        encoding/decoding.
+
+        Args:
+            image_rgb: Input RGB tensor with shape :math:`(*, 3, H, W)`.
+            jpeg_quality: JPEG quality factor tensor. It can be scalar or
+                batched, and must be broadcast-compatible with the leading
+                dimensions of ``image_rgb`` as required by
+                :func:`jpeg_codec_differentiable`.
+
+        Returns:
+            Reconstructed RGB tensor after differentiable JPEG processing, with
+            the same shape as ``image_rgb``.
+        """
         device = image_rgb.device
         dtype = image_rgb.dtype
         # Move quantization tables to the same device and dtype as input
