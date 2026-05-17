@@ -4015,6 +4015,7 @@ class TestRandomGaussianNoise(BaseTester):
         transform = RandomGaussianNoise(p=1.0, same_on_batch=True)
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
+        assert not torch.allclose(input_tensor, output_tensor)
 
 
 class TestRandomSaltAndPepperNoise(BaseTester):
