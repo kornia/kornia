@@ -56,7 +56,11 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
 
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         B, C, _, _ = shape
-        channels = torch.rand(B, C).argsort(dim=1)
+        if self.same_on_batch:
+            # Generate one permutation and repeat it for all batch items
+            channels = torch.rand(1, C).argsort(dim=1).expand(B, -1)
+        else:
+            channels = torch.rand(B, C).argsort(dim=1)
         return {"channels": channels}
 
     def apply_transform(
