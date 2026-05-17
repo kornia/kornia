@@ -184,25 +184,21 @@ class CommonTests(BaseTester):
         generated_params = augmentation.forward_parameters(batch_shape)
         assert isinstance(generated_params, dict)
 
-        # compute_transformation can be called and returns the correct shaped transformation matrix
-        to_apply = generated_params["batch_prob"] > 0.5
-        expected_transformation_shape = torch.Size((to_apply.sum(), 3, 3))
+        # compute_transformation now operates on the full batch (ONNX-friendly contract)
+        # and returns a (B, 3, 3) transform matrix.
+        expected_transformation_shape = torch.Size((batch_shape[0], 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
-        transformation = augmentation.compute_transformation(test_input[to_apply], generated_params, augmentation.flags)
+        transformation = augmentation.compute_transformation(test_input, generated_params, augmentation.flags)
         assert transformation.shape == expected_transformation_shape
 
-        # apply_transform can be called and returns the correct batch sized output
-        if to_apply.sum() != 0:
-            output = augmentation.apply_transform(
-                test_input[to_apply],
-                generated_params,
-                augmentation.flags,
-                transformation,
-            )
-            assert output.shape[0] == to_apply.sum()
-        else:
-            # Re-generate parameters if 0 batch size
-            self._test_smoke_implementation(params)
+        # apply_transform can be called on the full batch and returns full-batch output
+        output = augmentation.apply_transform(
+            test_input,
+            generated_params,
+            augmentation.flags,
+            transformation,
+        )
+        assert output.shape[0] == batch_shape[0]
 
     def _test_smoke_call_implementation(self, params):
         batch_shape = (4, 3, 5, 6)
@@ -262,26 +258,36 @@ class CommonTests(BaseTester):
             self.assert_close(transform, expected_transformation, low_tolerance=True)
 
     def _test_module_implementation(self, params):
-        augmentation = self._create_augmentation_from_params(**params, p=0.5)
+        # Verifies the composition invariant of AugmentationSequential:
+        #   Sequential(aug_a, aug_b)(x) == aug_b(aug_a(x))
+        # and the transform matrix is the product of the individual matrices.
+        #
+        # Two distinct instances are required because `AugmentationSequential(aug, aug)`
+        # registers a single child (nn.Module dedupes same-instance children).
+        # We force p=1.0 so both augmentations always fire — without this, the comparison
+        # would be RNG-consumption-dependent (the manual chain and the sequential draw the
+        # same number of random numbers but in different module instances).
+        augmentation_a = self._create_augmentation_from_params(**params, p=1.0)
+        augmentation_b = self._create_augmentation_from_params(**params, p=1.0)
 
-        augmentation_sequence = AugmentationSequential(augmentation, augmentation)
+        augmentation_sequence = AugmentationSequential(augmentation_a, augmentation_b)
 
-        input_tensor = torch.rand(3, 5, 5, device=self.device, dtype=self.dtype)  # 3 x 5 x 5
+        input_tensor = torch.rand(2, 3, 5, 5, device=self.device, dtype=self.dtype)
 
         torch.manual_seed(42)
-        out1 = augmentation(input_tensor)
-        transform1 = augmentation.transform_matrix
-        out2 = augmentation(out1)
-        transform = augmentation.transform_matrix @ transform1
+        out_manual_a = augmentation_a(input_tensor)
+        transform_a = augmentation_a.transform_matrix
+        out_manual = augmentation_b(out_manual_a)
+        transform_manual = augmentation_b.transform_matrix @ transform_a
 
         torch.manual_seed(42)
         out_sequence = augmentation_sequence(input_tensor)
         transform_sequence = augmentation_sequence.transform_matrix
 
-        assert out1.shape == out_sequence.shape
-        assert transform.shape == transform_sequence.shape
-        self.assert_close(out2, out_sequence, low_tolerance=True)
-        self.assert_close(transform, transform_sequence, low_tolerance=True)
+        assert out_manual.shape == out_sequence.shape
+        assert transform_manual.shape == transform_sequence.shape
+        self.assert_close(out_manual, out_sequence, low_tolerance=True)
+        self.assert_close(transform_manual, transform_sequence, low_tolerance=True)
 
     def _test_inverse_coordinate_check_implementation(self, params):
         torch.manual_seed(42)

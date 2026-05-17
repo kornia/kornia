@@ -20,7 +20,6 @@ from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import torch
 from torch import nn
-from torch.distributions import Bernoulli, Distribution, RelaxedBernoulli
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import (
@@ -70,9 +69,25 @@ class _BasicAugmentationBase(nn.Module):
 
     """
 
-    # TODO: Hard to support. Many codes are not ONNX-friendly that contains lots of if-else blocks, etc.
-    # Please contribute if anyone interested.
-    ONNX_EXPORTABLE = False
+    # Whether this augmentation is expected to export cleanly via torch.onnx.export
+    # (legacy TorchScript tracer, opset 20). Subclasses should override to ``False``
+    # if they call into ops that don't lower (e.g. ``torch.histc``,
+    # ``torch.distributions.Beta``) and have not been refactored to a traceable form.
+    # Users can introspect via ``aug.exportable``; CI iterates the known-exportable
+    # subset in ``tests/augmentation/test_onnx_export.py``.
+    ONNX_EXPORTABLE = True
+
+    @property
+    def exportable(self) -> bool:
+        """Whether this augmentation supports ONNX export via the legacy tracer at opset 20.
+
+        Reflects the class-level ``ONNX_EXPORTABLE`` flag. Note that ``True`` here
+        means *the graph traces and exports* — it does not guarantee the resulting
+        ONNX runtime output is bit-equivalent to eager. See the categorisation in
+        ``tests/augmentation/test_onnx_export.py`` for the numerical-correctness
+        signal per augmentation.
+        """
+        return bool(self.ONNX_EXPORTABLE)
 
     def __init__(
         self,
@@ -87,12 +102,6 @@ class _BasicAugmentationBase(nn.Module):
         self.same_on_batch = same_on_batch
         self.keepdim = keepdim
         self._params: Dict[str, torch.Tensor] = {}
-        self._p_gen: Distribution
-        self._p_batch_gen: Distribution
-        if p not in {0.0, 1.0}:
-            self._p_gen = Bernoulli(self.p)
-        if p_batch not in {0.0, 1.0}:
-            self._p_batch_gen = Bernoulli(self.p_batch)
         self._param_generator: Optional[RandomGeneratorBase] = None
         self.flags: Dict[str, Any] = {}
         self.set_rng_device_and_dtype(torch.device("cpu"), torch.get_default_dtype())
@@ -163,28 +172,27 @@ class _BasicAugmentationBase(nn.Module):
     ) -> torch.Tensor:
         batch_prob: torch.Tensor
         if p_batch == 1:
-            batch_prob = torch.zeros(1) + 1
+            batch_prob = torch.ones(1, device=self.device, dtype=self.dtype)
         elif p_batch == 0:
-            batch_prob = torch.zeros(1)
-        elif isinstance(self._p_batch_gen, (RelaxedBernoulli,)):
-            # NOTE: there is no simple way to know if the sampler has `rsample` or not
-            batch_prob = _adapted_rsampling((1,), self._p_batch_gen, same_on_batch)
+            batch_prob = torch.zeros(1, device=self.device, dtype=self.dtype)
         else:
-            batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch)
+            batch_prob = (torch.rand(1, device=self.device) < p_batch).to(self.dtype)
 
         if batch_prob.sum() == 1:
             elem_prob: torch.Tensor
             if p == 1:
-                elem_prob = torch.zeros(batch_shape[0]) + 1
+                elem_prob = torch.ones(batch_shape[0], device=self.device, dtype=self.dtype)
             elif p == 0:
-                elem_prob = torch.zeros(batch_shape[0])
-            elif isinstance(self._p_gen, (RelaxedBernoulli,)):
-                elem_prob = _adapted_rsampling((batch_shape[0],), self._p_gen, same_on_batch)
+                elem_prob = torch.zeros(batch_shape[0], device=self.device, dtype=self.dtype)
             else:
-                elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch)
+                if same_on_batch:
+                    elem_prob = (torch.rand(1, device=self.device) < p).to(self.dtype).expand(batch_shape[0])
+                else:
+                    elem_prob = (torch.rand(batch_shape[0], device=self.device) < p).to(self.dtype)
             batch_prob = batch_prob * elem_prob
         else:
             batch_prob = batch_prob.repeat(batch_shape[0])
+
         if len(batch_prob.shape) == 2:
             return batch_prob[..., 0]
         return batch_prob
@@ -213,8 +221,7 @@ class _BasicAugmentationBase(nn.Module):
 
     def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         batch_prob = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
-        to_apply = batch_prob > 0.5
-        _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
+        _params = self.generate_parameters(batch_shape)
         if _params is None:
             _params = {}
         _params["batch_prob"] = batch_prob
@@ -310,28 +317,37 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
 
         self.validate_tensor(in_tensor)
-        if to_apply.all():
-            output = self.apply_transform(in_tensor, params, flags, transform=transform)
-        elif not to_apply.any():
-            output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
-        else:  # If any torch.Tensor needs to be transformed.
-            output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
-            applied = self.apply_transform(
-                in_tensor[to_apply],
-                params,
-                flags,
-                transform=transform if transform is None else transform[to_apply],
-            )
 
-            if is_autocast_enabled():
-                output = output.type(input.dtype)
-                applied = applied.type(input.dtype)
-            output = output.index_put((to_apply,), applied)
+        # Always apply both transforms and blend using torch.where.
+        # For shape-changing augmentations (e.g. RandomCrop, Resize) the two outputs have
+        # different spatial shapes — in that case we cannot blend, so we fall through to the
+        # transformed output. This mirrors the old code's behavior (which only worked when
+        # to_apply.all() for such augmentations) and keeps the common shape-preserving path
+        # ONNX-traceable.
+        output_transformed = self.apply_transform(in_tensor, params, flags, transform=transform)
+        output_not_transformed = self.apply_non_transform(in_tensor, params, flags, transform=transform)
+
+        if (
+            output_transformed.shape == output_not_transformed.shape
+            and output_transformed.shape[0] == to_apply.shape[0]
+        ):
+            to_apply_expanded = to_apply.view(-1, *([1] * (len(output_transformed.shape) - 1)))
+            output = torch.where(to_apply_expanded, output_transformed, output_not_transformed)
+        else:
+            # Shape-changing augmentations (e.g. RandomCrop, Resize) cannot be where-blended
+            # because the two outputs differ in spatial size. We fall back to a Python branch
+            # on to_apply.any(); this is non-exportable, but matches the old all-or-nothing
+            # behavior for these augmentations and is acceptable since shape-changing augs
+            # are explicitly out-of-scope for ONNX export.
+            output = output_transformed if bool(to_apply.any()) else output_not_transformed
+
+        if is_autocast_enabled():
+            output = output.type(input.dtype)
 
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
 
@@ -352,26 +368,32 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5
         ori_shape = input.shape
 
         shape = params["forward_input_shape"]
         in_tensor = self.transform_tensor(input, shape=shape, match_channel=False)
 
         self.validate_tensor(in_tensor)
-        if to_apply.all():
-            output = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
-        elif not to_apply.any():
-            output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
-        else:  # If any torch.Tensor needs to be transformed.
-            output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
-            applied = self.apply_transform_mask(
-                in_tensor[to_apply],
-                params,
-                flags,
-                transform=transform if transform is None else transform[to_apply],
-            )
-            output = output.index_put((to_apply,), applied)
+
+        # Always apply both transforms and blend using torch.where (shape-permitting).
+        output_transformed = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
+        output_not_transformed = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
+
+        if (
+            output_transformed.shape == output_not_transformed.shape
+            and output_transformed.shape[0] == to_apply.shape[0]
+        ):
+            to_apply_expanded = to_apply.view(-1, *([1] * (len(output_transformed.shape) - 1)))
+            output = torch.where(to_apply_expanded, output_transformed, output_not_transformed)
+        else:
+            # Shape-changing augmentations (e.g. RandomCrop, Resize) cannot be where-blended
+            # because the two outputs differ in spatial size. We fall back to a Python branch
+            # on to_apply.any(); this is non-exportable, but matches the old all-or-nothing
+            # behavior for these augmentations and is acceptable since shape-changing augs
+            # are explicitly out-of-scope for ONNX export.
+            output = output_transformed if bool(to_apply.any()) else output_not_transformed
+
         output = _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
         return output
 
@@ -391,25 +413,31 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        output: Boxes
-        if to_apply.bool().all():
-            output = self.apply_transform_box(input, params, flags, transform=transform)
-        elif not to_apply.any():
-            output = self.apply_non_transform_box(input, params, flags, transform=transform)
-        else:  # If any torch.Tensor needs to be transformed.
-            output = self.apply_non_transform_box(input, params, flags, transform=transform)
-            applied = self.apply_transform_box(
-                input[to_apply],
-                params,
-                flags,
-                transform=transform if transform is None else transform[to_apply],
-            )
-            if is_autocast_enabled():
-                output = output.type(input.dtype)
-                applied = applied.type(input.dtype)
+        to_apply = batch_prob > 0.5
 
-            output = output.index_put((to_apply,), applied)
+        output_transformed = self.apply_transform_box(input, params, flags, transform=transform)
+        output_not_transformed = self.apply_non_transform_box(input, params, flags, transform=transform)
+
+        data_transformed = output_transformed.data
+        data_not_transformed = output_not_transformed.data
+
+        if is_autocast_enabled():
+            data_transformed = data_transformed.type(input.data.dtype)
+            data_not_transformed = data_not_transformed.type(input.data.dtype)
+
+        if (
+            data_transformed.shape == data_not_transformed.shape
+            and data_transformed.shape[0] == to_apply.shape[0]
+        ):
+            to_apply_expanded = to_apply.view(-1, *([1] * (len(data_transformed.shape) - 1)))
+            blended_data = torch.where(to_apply_expanded, data_transformed, data_not_transformed)
+        else:
+            blended_data = data_transformed if bool(to_apply.any()) else data_not_transformed
+
+        # Reuse the not-transformed Boxes container (preserves mode/_N/is_batched/etc.)
+        # and swap in the blended data — same effect as the old index_put on .data.
+        output = output_not_transformed.clone()
+        output._data = blended_data
         return output
 
     def transform_keypoints(
@@ -428,23 +456,29 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        if to_apply.all():
-            output = self.apply_transform_keypoint(input, params, flags, transform=transform)
-        elif not to_apply.any():
-            output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
-        else:  # If any torch.Tensor needs to be transformed.
-            output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
-            applied = self.apply_transform_keypoint(
-                input[to_apply],
-                params,
-                flags,
-                transform=transform if transform is None else transform[to_apply],
-            )
-            if is_autocast_enabled():
-                output = output.type(input.dtype)
-                applied = applied.type(input.dtype)
-            output = output.index_put((to_apply,), applied)
+        to_apply = batch_prob > 0.5
+
+        output_transformed = self.apply_transform_keypoint(input, params, flags, transform=transform)
+        output_not_transformed = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
+
+        data_transformed = output_transformed.data
+        data_not_transformed = output_not_transformed.data
+
+        if is_autocast_enabled():
+            data_transformed = data_transformed.type(input.data.dtype)
+            data_not_transformed = data_not_transformed.type(input.data.dtype)
+
+        if (
+            data_transformed.shape == data_not_transformed.shape
+            and data_transformed.shape[0] == to_apply.shape[0]
+        ):
+            to_apply_expanded = to_apply.view(-1, *([1] * (len(data_transformed.shape) - 1)))
+            blended_data = torch.where(to_apply_expanded, data_transformed, data_not_transformed)
+        else:
+            blended_data = data_transformed if bool(to_apply.any()) else data_not_transformed
+
+        output = output_not_transformed.clone()
+        output._data = blended_data
         return output
 
     def transform_classes(
@@ -460,20 +494,25 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        if to_apply.all():
-            output = self.apply_transform_class(input, params, flags, transform=transform)
-        elif not to_apply.any():
-            output = self.apply_non_transform_class(input, params, flags, transform=transform)
-        else:  # If any torch.Tensor needs to be transformed.
-            output = self.apply_non_transform_class(input, params, flags, transform=transform)
-            applied = self.apply_transform_class(
-                input[to_apply],
-                params,
-                flags,
-                transform=transform if transform is None else transform[to_apply],
-            )
-            output = output.index_put((to_apply,), applied)
+        to_apply = batch_prob > 0.5
+
+        output_transformed = self.apply_transform_class(input, params, flags, transform=transform)
+        output_not_transformed = self.apply_non_transform_class(input, params, flags, transform=transform)
+
+        if (
+            output_transformed.shape == output_not_transformed.shape
+            and output_transformed.shape[0] == to_apply.shape[0]
+        ):
+            to_apply_expanded = to_apply.view(-1, *([1] * (len(output_transformed.shape) - 1)))
+            output = torch.where(to_apply_expanded, output_transformed, output_not_transformed)
+        else:
+            # Shape-changing augmentations (e.g. RandomCrop, Resize) cannot be where-blended
+            # because the two outputs differ in spatial size. We fall back to a Python branch
+            # on to_apply.any(); this is non-exportable, but matches the old all-or-nothing
+            # behavior for these augmentations and is acceptable since shape-changing augs
+            # are explicitly out-of-scope for ONNX export.
+            output = output_transformed if bool(to_apply.any()) else output_not_transformed
+
         return output
 
     def apply_non_transform_mask(

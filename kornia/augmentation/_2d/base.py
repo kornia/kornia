@@ -101,22 +101,26 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     ) -> torch.Tensor:
         """Generate transformation matrices with the given input and param settings."""
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5
 
         in_tensor = self.transform_tensor(input)
-        if not to_apply.any():
-            trans_matrix = self.identity_matrix(in_tensor)
-        elif to_apply.all():
-            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
+
+        # Always compute both transform and identity for the full batch, then blend.
+        # This avoids NonZero/index_put dynamic-shape ops and is ONNX-traceable.
+        trans_matrix_applied = self.compute_transformation(in_tensor, params=params, flags=flags)
+        trans_matrix_identity = self.identity_matrix(in_tensor)
+
+        if is_autocast_enabled():
+            trans_matrix_applied = trans_matrix_applied.type(input.dtype)
+            trans_matrix_identity = trans_matrix_identity.type(input.dtype)
+
+        # If batch sizes line up, do the where-blend. Otherwise (e.g. VideoSequential
+        # passes B-sized batch_prob into a B*T-sized input) fall back to all-or-nothing.
+        if trans_matrix_applied.shape[0] == to_apply.shape[0] == trans_matrix_identity.shape[0]:
+            to_apply_expanded = to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1)))
+            trans_matrix = torch.where(to_apply_expanded, trans_matrix_applied, trans_matrix_identity)
         else:
-            trans_matrix_A = self.identity_matrix(in_tensor)
-            trans_matrix_B = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
-
-            if is_autocast_enabled():
-                trans_matrix_A = trans_matrix_A.type(input.dtype)
-                trans_matrix_B = trans_matrix_B.type(input.dtype)
-
-            trans_matrix = trans_matrix_A.index_put((to_apply,), trans_matrix_B)
+            trans_matrix = trans_matrix_applied if bool(to_apply.any()) else trans_matrix_identity
 
         return trans_matrix
 

@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -124,13 +125,19 @@ class RandomAffine(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        # ``torch.deg2rad`` lowers as ``aten::deg2rad`` which the legacy ONNX exporter
+        # does not support at opset 20. Multiply by ``pi/180`` explicitly — same value,
+        # but only basic arithmetic ops in the trace.
+        deg2rad_factor: float = math.pi / 180.0
+        shear_x = torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype) * deg2rad_factor
+        shear_y = torch.as_tensor(params["shear_y"], device=input.device, dtype=input.dtype) * deg2rad_factor
         return get_affine_matrix2d(
             torch.as_tensor(params["translations"], device=input.device, dtype=input.dtype),
             torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
             torch.as_tensor(params["scale"], device=input.device, dtype=input.dtype),
             torch.as_tensor(params["angle"], device=input.device, dtype=input.dtype),
-            torch.deg2rad(torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype)),
-            torch.deg2rad(torch.as_tensor(params["shear_y"], device=input.device, dtype=input.dtype)),
+            shear_x,
+            shear_y,
         )
 
     def apply_transform(
