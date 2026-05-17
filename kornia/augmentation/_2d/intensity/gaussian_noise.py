@@ -82,6 +82,6 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
                 input[0:1] if self.same_on_batch else input, mean=flags["mean"], std=flags["std"]
             )
             if self.same_on_batch:
-                gaussian_noise = gaussian_noise.expand(input.shape).contiguous()
+                gaussian_noise = gaussian_noise.expand(input.shape)
             self._params["gaussian_noise"] = gaussian_noise
         return input + gaussian_noise
