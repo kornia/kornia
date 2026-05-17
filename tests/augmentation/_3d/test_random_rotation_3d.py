@@ -106,11 +106,6 @@ class TestRandomRotation3D(BaseTester):
 
     def test_batch_random_rotation(self, device, dtype):
         # Verifies per-element random rotation invariants on a batch input:
-        #   1. Output shape matches input shape.
-        #   2. With same_on_batch=False, each batch element gets its own (different) transform.
-        #   3. Each transform matrix is a valid rigid 3D transform (rotation block is
-        #      orthogonal with det 1; bottom row is [0,0,0,1]).
-        #   4. Reproducibility: same seed → same outputs.
         # p=1.0 forces every element to be transformed so the assertions don't depend on
         # how the underlying RNG happens to roll the per-element apply mask.
         torch.manual_seed(24)

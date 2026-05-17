@@ -146,7 +146,7 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
         Tensor of shape ``(..., 3, 3)`` containing the matrix inverse for each
         leading-dim slice. Numerically equivalent to ``torch.linalg.inv`` for
         well-conditioned matrices; behavior on singular matrices is undefined
-        (no explicit check — same as ``torch.linalg.inv`` itself).
+        (no explicit check, same as ``torch.linalg.inv`` itself).
     """
     a = input[..., 0, 0]
     b = input[..., 0, 1]

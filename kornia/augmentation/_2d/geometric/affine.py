@@ -126,7 +126,7 @@ class RandomAffine(GeometricAugmentationBase2D):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         # ``torch.deg2rad`` lowers as ``aten::deg2rad`` which the legacy ONNX exporter
-        # does not support at opset 20. Multiply by ``pi/180`` explicitly — same value,
+        # does not support at opset 20. Multiply by ``pi/180`` explicitly same value,
         # but only basic arithmetic ops in the trace.
         deg2rad_factor: float = math.pi / 180.0
         shear_x = torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype) * deg2rad_factor

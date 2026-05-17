@@ -105,8 +105,6 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
         in_tensor = self.transform_tensor(input)
 
-        # Always compute both transform and identity for the full batch, then blend.
-        # This avoids NonZero/index_put dynamic-shape ops and is ONNX-traceable.
         trans_matrix_applied = self.compute_transformation(in_tensor, params=params, flags=flags)
         trans_matrix_identity = self.identity_matrix(in_tensor)
 

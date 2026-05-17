@@ -1123,10 +1123,7 @@ def normal_transform_pixel(
     sx: float = 2.0 / width_denom
     sy: float = 2.0 / height_denom
 
-    # Construct the matrix in one shot (no in-place mutation). The previous
-    # ``tr_mat[0, 0] = ... ; tr_mat[1, 1] = ...`` pattern was lost under
-    # ``torch.jit.trace`` / ``torch.onnx.export``: the trace captured the
-    # un-mutated constant and dropped the scaling, producing garbage warps.
+    # Construct the matrix in one shot (no in-place mutation).
     tr_mat = torch.tensor(
         [[sx, 0.0, -1.0], [0.0, sy, -1.0], [0.0, 0.0, 1.0]],
         device=device,

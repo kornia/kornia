@@ -83,9 +83,6 @@ class Normalize(IntensityAugmentationBase2D):
     ) -> Tensor:
         mean: Tensor = flags["mean"]
         std: Tensor = flags["std"]
-        # During ONNX export the underlying ``normalize`` op enforces ``shape[0] == 1`` on
-        # mean/std (it broadcasts them against (B, C, H*W) after appending a trailing dim).
-        # Reshape (C,) to (1, C) so the user can still pass a flat per-channel tensor.
         if torch.onnx.is_in_onnx_export():
             if mean.dim() == 1:
                 mean = mean.view(1, -1)

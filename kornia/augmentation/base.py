@@ -69,10 +69,9 @@ class _BasicAugmentationBase(nn.Module):
 
     """
 
-    # Whether this augmentation is expected to export cleanly via torch.onnx.export
-    # (legacy TorchScript tracer, opset 20). Subclasses should override to ``False``
-    # if they call into ops that don't lower (e.g. ``torch.histc``,
-    # ``torch.distributions.Beta``) and have not been refactored to a traceable form.
+    # Flag for whether this augmentation supports ONNX export. Override to False in subclasses
+    # that use ops the legacy tracer can't lower (e.g. ``torch.histc``,
+    # ``torch.distributions.Beta``).
     # Users can introspect via ``aug.exportable``; CI iterates the known-exportable
     # subset in ``tests/augmentation/test_onnx_export.py``.
     ONNX_EXPORTABLE = True
@@ -323,12 +322,6 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         self.validate_tensor(in_tensor)
 
-        # Always apply both transforms and blend using torch.where.
-        # For shape-changing augmentations (e.g. RandomCrop, Resize) the two outputs have
-        # different spatial shapes — in that case we cannot blend, so we fall through to the
-        # transformed output. This mirrors the old code's behavior (which only worked when
-        # to_apply.all() for such augmentations) and keeps the common shape-preserving path
-        # ONNX-traceable.
         output_transformed = self.apply_transform(in_tensor, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform(in_tensor, params, flags, transform=transform)
 
@@ -341,9 +334,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:
             # Shape-changing augmentations (e.g. RandomCrop, Resize) cannot be where-blended
             # because the two outputs differ in spatial size. We fall back to a Python branch
-            # on to_apply.any(); this is non-exportable, but matches the old all-or-nothing
-            # behavior for these augmentations and is acceptable since shape-changing augs
-            # are explicitly out-of-scope for ONNX export.
+            # on to_apply.any(); this is non-onnx-exportable.
             output = output_transformed if bool(to_apply.any()) else output_not_transformed
 
         if is_autocast_enabled():
@@ -376,7 +367,6 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         self.validate_tensor(in_tensor)
 
-        # Always apply both transforms and blend using torch.where (shape-permitting).
         output_transformed = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
 
@@ -389,9 +379,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:
             # Shape-changing augmentations (e.g. RandomCrop, Resize) cannot be where-blended
             # because the two outputs differ in spatial size. We fall back to a Python branch
-            # on to_apply.any(); this is non-exportable, but matches the old all-or-nothing
-            # behavior for these augmentations and is acceptable since shape-changing augs
-            # are explicitly out-of-scope for ONNX export.
+            # on to_apply.any(); this is non-onnx-exportable.
             output = output_transformed if bool(to_apply.any()) else output_not_transformed
 
         output = _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
@@ -435,7 +423,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             blended_data = data_transformed if bool(to_apply.any()) else data_not_transformed
 
         # Reuse the not-transformed Boxes container (preserves mode/_N/is_batched/etc.)
-        # and swap in the blended data — same effect as the old index_put on .data.
+        # and swap in the blended data, same effect as the index_put on .data.
         output = output_not_transformed.clone()
         output._data = blended_data
         return output
@@ -508,9 +496,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:
             # Shape-changing augmentations (e.g. RandomCrop, Resize) cannot be where-blended
             # because the two outputs differ in spatial size. We fall back to a Python branch
-            # on to_apply.any(); this is non-exportable, but matches the old all-or-nothing
-            # behavior for these augmentations and is acceptable since shape-changing augs
-            # are explicitly out-of-scope for ONNX export.
+            # on to_apply.any(); this is non-onnx-exportable.
             output = output_transformed if bool(to_apply.any()) else output_not_transformed
 
         return output

@@ -264,9 +264,7 @@ class CommonTests(BaseTester):
         #
         # Two distinct instances are required because `AugmentationSequential(aug, aug)`
         # registers a single child (nn.Module dedupes same-instance children).
-        # We force p=1.0 so both augmentations always fire — without this, the comparison
-        # would be RNG-consumption-dependent (the manual chain and the sequential draw the
-        # same number of random numbers but in different module instances).
+        # We force p=1.0 so both augmentations always fire.
         augmentation_a = self._create_augmentation_from_params(**params, p=1.0)
         augmentation_b = self._create_augmentation_from_params(**params, p=1.0)
 

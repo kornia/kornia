@@ -438,7 +438,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # Strip trailing ``None`` positional args. The legacy torch.onnx.export tracer
         # rebinds keyword-only defaults (``params``/``data_keys``) as positional, so
         # ``forward(x)`` arrives as ``forward(x, None, None)``. Real data inputs are
-        # always tensors / Boxes / Keypoints / dicts — never ``None`` — so this is safe.
+        # always tensors / Boxes / Keypoints / dicts — never ``None``, so this is safe.
         while args and args[-1] is None:
             args = args[:-1]
 

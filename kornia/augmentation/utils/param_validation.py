@@ -39,7 +39,7 @@ def _is_traced_dim(value: Any) -> bool:
 
     Under torch.onnx.export's TorchScript tracer (and torch.fx), accessing
     ``tensor.shape[i]`` can yield a 0-d tensor instead of a Python ``int``. The
-    runtime validators in this module are redundant during tracing — the tensor
+    runtime validators in this module are redundant during tracing, the tensor
     constructors that follow will catch any real shape problem. Treat such
     "traced ints" as opaque-but-valid so the trace can continue.
     """

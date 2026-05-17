@@ -37,7 +37,7 @@ What this file does NOT test:
   different op coverage (notably, ``aten::linalg_solve`` lowers cleanly under
   dynamo but not under the legacy tracer).
 - Augmentations that currently cannot export under the legacy tracer due to
-  missing ONNX op support — see ``XFAIL_OPS`` below.
+  missing ONNX op support, see ``XFAIL_OPS`` below.
 
 Adding an augmentation to ``EXPORTABLE_OPS`` is the way to advertise that it
 cleanly exports today; adding to ``XFAIL_OPS`` marks a known gap with the
@@ -192,20 +192,20 @@ def test_onnx_export_known_blocked(
     """Augmentation cannot export today; pinned so we notice if it starts working."""
     torch.manual_seed(0)
     x = torch.randn(2, 3, 32, 32)
-    with pytest.raises(Exception):  # noqa: B017 — onnx errors are not in a stable hierarchy
+    with pytest.raises(Exception):  # noqa: B017, onnx errors are not in a stable hierarchy
         _try_export(factory(), x)
 
 
 # ----------------------------------------------------------------------------
 # Numerical-equivalence checks (require onnxruntime).
 #
-# Each entry pins a concrete deterministic configuration of the augmentation —
-# fixed angles, fixed brightness, etc. — so comparing eager and ONNX is a
+# Each entry pins a concrete deterministic configuration of the augmentation is
+# fixed angles, fixed brightness, etc. So comparing eager and ONNX is a
 # clean apples-to-apples test of "did the export faithfully capture the
 # computation". Augmentations with random parameter ranges are deliberately
 # excluded from the numerical check because ``torch.onnx.export`` consumes RNG
 # during tracing in ways that don't line up with a separate eager call, even
-# under the same ``torch.manual_seed`` — that mismatch is RNG bookkeeping and
+# under the same ``torch.manual_seed``, that mismatch is RNG bookkeeping and
 # would mask real bugs. The export-success tests above cover the random case.
 # ----------------------------------------------------------------------------
 
@@ -270,7 +270,7 @@ def _affine_with_shear_det() -> torch.nn.Module:
 
 # Augmentations whose exported graph produces numerically equivalent results to
 # eager when configured with deterministic parameters. ``max diff < 1e-3``
-# threshold is conservative — most are float32 precision (< 1e-5).
+# threshold is conservative, most are float32 precision (< 1e-5).
 ONNX_NUMERICAL_EQUIVALENT: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
     # Parameter-free / no random sampling
     ("RandomHorizontalFlip", _hflip_det),
@@ -283,7 +283,7 @@ ONNX_NUMERICAL_EQUIVALENT: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
     ("ColorJiggle", _color_jiggle_det),
     ("RandomGaussianBlur", _gaussian_blur_det),
     ("RandomSolarize", _solarize_det),
-    # Geometric augmentations — exercise the warp_affine / grid_sample path.
+    # Geometric augmentations, exercise the warp_affine / grid_sample path.
     # Previously diverged due to in-place mutation in normal_transform_pixel
     # losing the scale factors under tracing.
     ("RandomRotation", _rotation_det),

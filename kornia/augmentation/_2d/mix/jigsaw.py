@@ -78,7 +78,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
         input = input[to_apply].clone()
 
         b, c, h, w = input.shape
-        # Params are now generated for the full batch (ONNX-friendly contract); slice to subset.
+        # Params are generated for the full batch; slice to subset.
         perm = params["permutation"][to_apply]
         # Note: with a 100x100 image and a grid size of 3x3, it could work if
         #       we make h = piece_size_h * self.flags["grid"][0] with one pixel loss, then resize to 100 x 100.
