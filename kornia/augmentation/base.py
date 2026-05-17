@@ -23,8 +23,6 @@ from torch import nn
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import (
-    _adapted_rsampling,
-    _adapted_sampling,
     _transform_output_shape,
     override_parameters,
 )
@@ -183,11 +181,10 @@ class _BasicAugmentationBase(nn.Module):
                 elem_prob = torch.ones(batch_shape[0], device=self.device, dtype=self.dtype)
             elif p == 0:
                 elem_prob = torch.zeros(batch_shape[0], device=self.device, dtype=self.dtype)
+            elif same_on_batch:
+                elem_prob = (torch.rand(1, device=self.device) < p).to(self.dtype).expand(batch_shape[0])
             else:
-                if same_on_batch:
-                    elem_prob = (torch.rand(1, device=self.device) < p).to(self.dtype).expand(batch_shape[0])
-                else:
-                    elem_prob = (torch.rand(batch_shape[0], device=self.device) < p).to(self.dtype)
+                elem_prob = (torch.rand(batch_shape[0], device=self.device) < p).to(self.dtype)
             batch_prob = batch_prob * elem_prob
         else:
             batch_prob = batch_prob.repeat(batch_shape[0])
@@ -413,10 +410,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             data_transformed = data_transformed.type(input.data.dtype)
             data_not_transformed = data_not_transformed.type(input.data.dtype)
 
-        if (
-            data_transformed.shape == data_not_transformed.shape
-            and data_transformed.shape[0] == to_apply.shape[0]
-        ):
+        if data_transformed.shape == data_not_transformed.shape and data_transformed.shape[0] == to_apply.shape[0]:
             to_apply_expanded = to_apply.view(-1, *([1] * (len(data_transformed.shape) - 1)))
             blended_data = torch.where(to_apply_expanded, data_transformed, data_not_transformed)
         else:
@@ -456,10 +450,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             data_transformed = data_transformed.type(input.data.dtype)
             data_not_transformed = data_not_transformed.type(input.data.dtype)
 
-        if (
-            data_transformed.shape == data_not_transformed.shape
-            and data_transformed.shape[0] == to_apply.shape[0]
-        ):
+        if data_transformed.shape == data_not_transformed.shape and data_transformed.shape[0] == to_apply.shape[0]:
             to_apply_expanded = to_apply.view(-1, *([1] * (len(data_transformed.shape) - 1)))
             blended_data = torch.where(to_apply_expanded, data_transformed, data_not_transformed)
         else:

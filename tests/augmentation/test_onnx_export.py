@@ -186,13 +186,11 @@ def test_onnx_export_exportable(name: str, factory: Callable[[], torch.nn.Module
 
 
 @pytest.mark.parametrize("name,factory,reason", XFAIL_OPS, ids=[n for n, _, _ in XFAIL_OPS])
-def test_onnx_export_known_blocked(
-    name: str, factory: Callable[[], torch.nn.Module], reason: str
-) -> None:
+def test_onnx_export_known_blocked(name: str, factory: Callable[[], torch.nn.Module], reason: str) -> None:
     """Augmentation cannot export today; pinned so we notice if it starts working."""
     torch.manual_seed(0)
     x = torch.randn(2, 3, 32, 32)
-    with pytest.raises(Exception):  # noqa: B017, onnx errors are not in a stable hierarchy
+    with pytest.raises(Exception):
         _try_export(factory(), x)
 
 
@@ -259,9 +257,7 @@ def _rotation_det() -> torch.nn.Module:
 
 
 def _affine_det() -> torch.nn.Module:
-    return K.RandomAffine(
-        degrees=(15.0, 15.0), translate=(0.0, 0.0), scale=(1.0, 1.0), shear=(0.0, 0.0), p=1.0
-    )
+    return K.RandomAffine(degrees=(15.0, 15.0), translate=(0.0, 0.0), scale=(1.0, 1.0), shear=(0.0, 0.0), p=1.0)
 
 
 def _affine_with_shear_det() -> torch.nn.Module:
@@ -298,19 +294,20 @@ def _run_onnx(module: torch.nn.Module, x: torch.Tensor) -> Any:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         torch.onnx.export(
-            module, (x,), buf, opset_version=20, dynamo=False,
-            input_names=["input"], output_names=["output"],
+            module,
+            (x,),
+            buf,
+            opset_version=20,
+            dynamo=False,
+            input_names=["input"],
+            output_names=["output"],
         )
     sess = ort.InferenceSession(buf.getvalue())
     return sess.run(["output"], {"input": x.numpy()})[0]
 
 
-@pytest.mark.parametrize(
-    "name,factory", ONNX_NUMERICAL_EQUIVALENT, ids=[n for n, _ in ONNX_NUMERICAL_EQUIVALENT]
-)
-def test_onnx_export_numerically_matches_eager(
-    name: str, factory: Callable[[], torch.nn.Module]
-) -> None:
+@pytest.mark.parametrize("name,factory", ONNX_NUMERICAL_EQUIVALENT, ids=[n for n, _ in ONNX_NUMERICAL_EQUIVALENT])
+def test_onnx_export_numerically_matches_eager(name: str, factory: Callable[[], torch.nn.Module]) -> None:
     """Exported graph produces the same numbers as eager for the deterministic configuration."""
     torch.manual_seed(0)
     x = torch.randn(2, 3, 32, 32)
