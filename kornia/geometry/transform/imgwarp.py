@@ -359,9 +359,7 @@ def _unit_square_to_quad(points: torch.Tensor) -> torch.Tensor:
     return torch.stack([row0, row1, row2], dim=-2)
 
 
-def _get_perspective_transform_closed_form(
-    points_src: torch.Tensor, points_dst: torch.Tensor
-) -> torch.Tensor:
+def _get_perspective_transform_closed_form(points_src: torch.Tensor, points_dst: torch.Tensor) -> torch.Tensor:
     """ONNX-traceable perspective transform via two unit-square decompositions.
 
     Computes ``H = H_d @ inv(H_s)`` where ``H_s`` maps the unit square to
