@@ -133,11 +133,34 @@ class ColorJitter(IntensityAugmentationBase2D):
             lambda img: self._hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img,
         ]
 
+        # ALWAYS define order safely
+        order = params["order"]
+        if isinstance(order, torch.Tensor):
+            order = order.flatten().tolist()
+
+        # ✅ FIX: same_on_batch
+        if self.same_on_batch and input is not None:
+            single_params = {k: (v[0:1] if isinstance(v, torch.Tensor) else v) for k, v in params.items()}
+
+            order = single_params["order"]
+            if isinstance(order, torch.Tensor):
+                order = order.flatten().tolist()
+
+            jittered = input[0:1]
+
+            for idx in order:
+                idx = int(idx)
+                t = transforms[idx]
+                jittered = t(jittered)
+
+            return jittered.repeat(input.shape[0], 1, 1, 1)
+
+        # default
         jittered = input
-        for idx in params["order"]:
+        for idx in order:
+            idx = int(idx)
             t = transforms[idx]
             jittered = t(jittered)
-
         return jittered
 
     def compile(
