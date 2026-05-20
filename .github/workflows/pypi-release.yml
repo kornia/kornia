@@ -35,6 +35,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'release'
+    permissions:
+      contents: write  # Required to attach assets to the GitHub Release
     steps:
       - uses: actions/download-artifact@v8
         with:
