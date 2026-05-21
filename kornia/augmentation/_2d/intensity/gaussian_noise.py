@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import torch
 
@@ -69,4 +69,3 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         if gaussian_noise.shape[0] != input.shape[0]:
             gaussian_noise = gaussian_noise.expand_as(input)
         return input + gaussian_noise
-
