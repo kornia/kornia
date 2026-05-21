@@ -36,13 +36,13 @@ def box_blur(
     The function smooths an image using the kernel:
 
     .. math::
-        K = \frac{1}{\text{kernel_size}_x * \text{kernel_size}_y}
-        \begin{bmatrix}
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-            \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-        \end{bmatrix}
+        K = rac{1}{	ext{kernel_size}_x * 	ext{kernel_size}_y}
+        egin{bmatrix}
+            1 & 1 & 1 & cdots & 1 & 1 \\
+            1 & 1 & 1 & cdots & 1 & 1 \\
+            dots & dots & dots & ddots & dots & dots \\
+            1 & 1 & 1 & cdots & 1 & 1 \\
+        end{bmatrix}
 
     Args:
         input: the image to blur with shape :math:`(B,C,H,W)`.
@@ -84,13 +84,13 @@ class BoxBlur(nn.Module):
     The function smooths an image using the kernel:
 
     .. math::
-        K = \frac{1}{\text{kernel_size}_x * \text{kernel_size}_y}
-        \begin{bmatrix}
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-            \vdots & \vdots & \vdots & \ddots & \vdots & \vdots \\
-            1 & 1 & 1 & \cdots & 1 & 1 \\
-        \end{bmatrix}
+        K = rac{1}{	ext{kernel_size}_x * 	ext{kernel_size}_y}
+        egin{bmatrix}
+            1 & 1 & 1 & cdots & 1 & 1 \\
+            1 & 1 & 1 & cdots & 1 & 1 \\
+            dots & dots & dots & ddots & dots & dots \\
+            1 & 1 & 1 & cdots & 1 & 1 \\
+        end{bmatrix}
 
     Args:
         kernel_size: the blurring kernel size.
@@ -118,6 +118,7 @@ class BoxBlur(nn.Module):
     def __init__(
         self, kernel_size: tuple[int, int] | int, border_type: str = "reflect", separable: bool = False
     ) -> None:
+        """See :class:`BoxBlur` for details."""
         super().__init__()
         self.kernel_size = kernel_size
         self.border_type = border_type
@@ -134,6 +135,7 @@ class BoxBlur(nn.Module):
             self.kernel: torch.Tensor
 
     def __repr__(self) -> str:
+        """See :class:`BoxBlur` for details."""
         return (
             f"{self.__class__.__name__}"
             f"(kernel_size={self.kernel_size}, "
@@ -142,6 +144,7 @@ class BoxBlur(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """See :class:`BoxBlur` for details."""
         KORNIA_CHECK_IS_TENSOR(input)
         if self.separable:
             return filter2d_separable(input, self.kernel_x, self.kernel_y, self.border_type)
