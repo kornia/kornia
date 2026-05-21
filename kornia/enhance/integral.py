@@ -117,6 +117,17 @@ class IntegralTensor(nn.Module):
         self.dim = dim
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute cumulative sums of the input tensor along configured axes.
+
+        Args:
+            input: Tensor to integrate. The operation supports arbitrary rank,
+                and dimensions are accumulated according to ``self.dim``.
+
+        Returns:
+            A tensor with the same shape as ``input`` containing cumulative
+            sums. If ``self.dim`` is ``None``, integration is applied to the
+            last dimension by :func:`integral_tensor`.
+        """
         return integral_tensor(input, self.dim)
 
 
@@ -148,4 +159,15 @@ class IntegralImage(nn.Module):
     """
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute a 2D integral image by summing over height and width.
+
+        Args:
+            input: Tensor whose last two dimensions represent spatial axes,
+                typically shaped :math:`(*, H, W)`.
+
+        Returns:
+            A tensor of the same shape as ``input`` where each location stores
+            the cumulative sum over the top-left rectangle ending at that
+            location.
+        """
         return integral_image(input)
