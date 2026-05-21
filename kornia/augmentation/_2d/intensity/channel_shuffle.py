@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
+from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 
 
@@ -53,15 +54,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
 
     def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-
-    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
-        B, C, _, _ = shape
-        if self.same_on_batch:
-            # Generate one permutation and repeat it for all batch items
-            channels = torch.rand(1, C).argsort(dim=1).expand(B, -1)
-        else:
-            channels = torch.rand(B, C).argsort(dim=1)
-        return {"channels": channels}
+        self._param_generator = rg.ChannelShuffleGenerator()
 
     def apply_transform(
         self,

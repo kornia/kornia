@@ -19,16 +19,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
+from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-
-
-def _randn_like(input: torch.Tensor, mean: float, std: float) -> torch.Tensor:
-    x = torch.randn_like(input)  # Generating on GPU is fastest with `torch.randn_like(...)`
-    if std != 1.0:  # `if` is cheaper than multiplication
-        x *= std
-    if mean != 0.0:  # `if` is cheaper than addition
-        x += mean
-    return x
 
 
 class RandomGaussianNoise(IntensityAugmentationBase2D):
@@ -63,10 +55,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         self, mean: float = 0.0, std: float = 1.0, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self.flags = {"mean": mean, "std": std}
-
-    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
-        return {}
+        self._param_generator = rg.GaussianNoiseGenerator(mean, std)
 
     def apply_transform(
         self,
@@ -75,13 +64,9 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        if "gaussian_noise" in params:
-            gaussian_noise = params["gaussian_noise"]
-        else:
-            gaussian_noise = _randn_like(
-                input[0:1] if self.same_on_batch else input, mean=flags["mean"], std=flags["std"]
-            )
-            if self.same_on_batch:
-                gaussian_noise = gaussian_noise.expand(input.shape)
-            self._params["gaussian_noise"] = gaussian_noise
+        gaussian_noise = params["gaussian_noise"].to(input)
+        # When same_on_batch=True the generator produces shape (1, C, H, W); expand to full batch.
+        if gaussian_noise.shape[0] != input.shape[0]:
+            gaussian_noise = gaussian_noise.expand_as(input)
         return input + gaussian_noise
+
