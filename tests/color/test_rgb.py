@@ -288,6 +288,22 @@ class TestRgbToRgba(BaseTester):
         fcn = kornia.color.rgba_to_bgr
         self.assert_close(ops(img), fcn(img))
 
+    def test_numerical_bgr(self, device, dtype):
+        # input: B=1, G=0.5, R=0 (BGR)
+        data = torch.tensor([[[1.0]], [[0.5]], [[0.0]]], device=device, dtype=dtype)  # 3x1x1
+        # expected: R=0, G=0.5, B=1, A=1.0 (RGBA)
+        expected = torch.tensor([[[0.0]], [[0.5]], [[1.0]], [[1.0]]], device=device, dtype=dtype)
+        self.assert_close(kornia.color.bgr_to_rgba(data, 1.0), expected)
+
+    def test_numerical_rgba_bgr(self, device, dtype):
+        # input: R=0.2, G=0.4, B=0.6, A=1.0 (RGBA)
+        data = torch.tensor([[[0.2]], [[0.4]], [[0.6]], [[1.0]]], device=device, dtype=dtype)  # 4x1x1
+        # expected: B=0.6, G=0.4, R=0.2 (BGR)
+        # Note: rgba_to_bgr uses rgba_to_rgb internally which does alpha compositing.
+        # With A=1.0, it should just be the RGB channels.
+        expected = torch.tensor([[[0.6]], [[0.4]], [[0.2]]], device=device, dtype=dtype)
+        self.assert_close(kornia.color.rgba_to_bgr(data), expected)
+
 
 class TestLinearRgb(BaseTester):
     def test_smoke(self, device, dtype):

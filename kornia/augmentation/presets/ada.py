@@ -169,6 +169,16 @@ class AdaptiveDiscriminatorAugmentation(AugmentationSequential):
         ratio: Union[torch.Tensor, Tuple[float, float]],
         value: float,
     ) -> Tuple[Union[_AugmentationBase, ImageSequential], ...]:
+        """Return the default augmentation stack used by ADA.
+
+        Args:
+            scale: Erase-area range passed to :class:`RandomErasing`.
+            ratio: Erase-aspect-ratio range passed to :class:`RandomErasing`.
+            value: Fill value used by :class:`RandomErasing`.
+
+        Returns:
+            Tuple of augmentation modules applied inside ADA.
+        """
         # if changed in the future, please change the expected transforms list in test_presets.py
         return (
             RandomHorizontalFlip(p=1),

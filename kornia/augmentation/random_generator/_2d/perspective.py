@@ -21,7 +21,7 @@ import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.augmentation.utils import _adapted_rsampling, _check_positive_int_or_traced, _common_param_check
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["PerspectiveGenerator"]
@@ -77,8 +77,8 @@ class PerspectiveGenerator(RandomGeneratorBase):
 
         _device, _dtype = _extract_device_dtype([self.distortion_scale])
         _common_param_check(batch_size, same_on_batch)
-        if not (isinstance(height, int) and height > 0 and isinstance(width, int) and width > 0):
-            raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
+        _check_positive_int_or_traced(height, "height")
+        _check_positive_int_or_traced(width, "width")
 
         start_points: torch.Tensor = torch.tensor(
             [[[0.0, 0], [width - 1, 0], [width - 1, height - 1], [0, height - 1]]], device=_device, dtype=_dtype

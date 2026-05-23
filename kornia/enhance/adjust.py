@@ -1103,6 +1103,14 @@ class AdjustSaturation(nn.Module):
         self.saturation_factor: Union[float, torch.Tensor] = saturation_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Adjust RGB saturation using the module's configured factor.
+
+        Args:
+            input: Input RGB tensor, typically shaped :math:`(*, 3, H, W)`.
+
+        Returns:
+            Saturation-adjusted tensor with the same shape as ``input``.
+        """
         return adjust_saturation(input, self.saturation_factor)
 
 
@@ -1154,6 +1162,17 @@ class AdjustSaturationWithGraySubtraction(nn.Module):
         self.saturation_factor: Union[float, torch.Tensor] = saturation_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Adjust saturation using gray-subtraction interpolation behavior.
+
+        This forwards to :func:`adjust_saturation_with_gray_subtraction`,
+        which follows PIL-like saturation behavior.
+
+        Args:
+            input: Input image tensor, typically shaped :math:`(*, 3, H, W)`.
+
+        Returns:
+            Saturation-adjusted tensor with the same shape as ``input``.
+        """
         return adjust_saturation_with_gray_subtraction(input, self.saturation_factor)
 
 
@@ -1205,6 +1224,15 @@ class AdjustHue(nn.Module):
         self.hue_factor: Union[float, torch.Tensor] = hue_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Shift image hue by the module's configured hue factor.
+
+        Args:
+            input: Input RGB tensor in the expected image range, usually shaped
+                :math:`(*, 3, H, W)`.
+
+        Returns:
+            Hue-adjusted tensor with the same shape as ``input``.
+        """
         return adjust_hue(input, self.hue_factor)
 
 
@@ -1244,6 +1272,15 @@ class AdjustGamma(nn.Module):
         self.gain: Union[float, torch.Tensor] = gain
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Apply gamma correction using this module's ``gamma`` and ``gain``.
+
+        Args:
+            input: Input tensor to correct, commonly image-shaped
+                :math:`(*, C, H, W)`.
+
+        Returns:
+            Gamma-corrected tensor with the same shape as ``input``.
+        """
         return adjust_gamma(input, self.gamma, self.gain)
 
 
@@ -1282,6 +1319,14 @@ class AdjustContrast(nn.Module):
         self.contrast_factor: Union[float, torch.Tensor] = contrast_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Adjust contrast using the configured contrast factor.
+
+        Args:
+            input: Input tensor to adjust, typically shaped :math:`(*, C, H, W)`.
+
+        Returns:
+            Contrast-adjusted tensor with the same shape as ``input``.
+        """
         return adjust_contrast(input, self.contrast_factor)
 
 
@@ -1321,6 +1366,17 @@ class AdjustContrastWithMeanSubtraction(nn.Module):
         self.contrast_factor: Union[float, torch.Tensor] = contrast_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Adjust contrast with mean-subtraction based interpolation.
+
+        This forwards to :func:`adjust_contrast_with_mean_subtraction`, which
+        applies PIL-like contrast behavior.
+
+        Args:
+            input: Input tensor to adjust, typically shaped :math:`(*, C, H, W)`.
+
+        Returns:
+            Contrast-adjusted tensor with the same shape as ``input``.
+        """
         return adjust_contrast_with_mean_subtraction(input, self.contrast_factor)
 
 
@@ -1358,6 +1414,14 @@ class AdjustBrightness(nn.Module):
         self.brightness_factor: Union[float, torch.Tensor] = brightness_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Adjust image brightness using the configured brightness factor.
+
+        Args:
+            input: Input tensor to adjust, commonly shaped :math:`(*, C, H, W)`.
+
+        Returns:
+            Brightness-adjusted tensor with the same shape as ``input``.
+        """
         return adjust_brightness(input, self.brightness_factor)
 
 
@@ -1391,6 +1455,15 @@ class AdjustSigmoid(nn.Module):
         self.inv: bool = inv
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Apply sigmoid-based intensity remapping to the input image.
+
+        Args:
+            image: Input image tensor to remap, typically shaped
+                :math:`(*, C, H, W)` or :math:`(*, H, W)`.
+
+        Returns:
+            Tensor with sigmoid correction applied, preserving input shape.
+        """
         return adjust_sigmoid(image, cutoff=self.cutoff, gain=self.gain, inv=self.inv)
 
 
@@ -1423,6 +1496,15 @@ class AdjustLog(nn.Module):
         self.clip_output: bool = clip_output
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Apply logarithmic or inverse-logarithmic intensity correction.
+
+        Args:
+            image: Input image tensor to transform, typically shaped
+                :math:`(*, C, H, W)` or :math:`(*, H, W)`.
+
+        Returns:
+            Log-corrected tensor with the same shape as ``image``.
+        """
         return adjust_log(image, gain=self.gain, inv=self.inv, clip_output=self.clip_output)
 
 
@@ -1460,6 +1542,14 @@ class AdjustBrightnessAccumulative(nn.Module):
         self.brightness_factor: Union[float, torch.Tensor] = brightness_factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Adjust brightness with accumulative (PIL-like) behavior.
+
+        Args:
+            input: Input tensor to adjust, commonly shaped :math:`(*, C, H, W)`.
+
+        Returns:
+            Brightness-adjusted tensor with the same shape as ``input``.
+        """
         return adjust_brightness_accumulative(input, self.brightness_factor)
 
 
@@ -1496,4 +1586,13 @@ class Invert(nn.Module):
             self.max_val = max_val
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Invert values using the module's configured maximum reference.
+
+        Args:
+            input: Tensor to invert. Any shape is accepted as long as it is
+                broadcast-compatible with ``self.max_val``.
+
+        Returns:
+            Inverted tensor with the same shape as ``input``.
+        """
         return invert(input, self.max_val)

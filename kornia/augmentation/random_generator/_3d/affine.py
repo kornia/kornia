@@ -20,7 +20,12 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
-from kornia.augmentation.utils import _adapted_rsampling, _singular_range_check, _tuple_range_reader
+from kornia.augmentation.utils import (
+    _adapted_rsampling,
+    _check_positive_int_or_traced,
+    _singular_range_check,
+    _tuple_range_reader,
+)
 from kornia.core.utils import _extract_device_dtype
 
 
@@ -166,15 +171,9 @@ class AffineGenerator3D(RandomGeneratorBase):
         height = batch_shape[-2]
         width = batch_shape[-1]
 
-        if not (
-            isinstance(depth, int)
-            and depth > 0
-            and isinstance(height, int)
-            and height > 0
-            and isinstance(width, int)
-            and width > 0
-        ):
-            raise AssertionError(f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}.")
+        _check_positive_int_or_traced(depth, "depth")
+        _check_positive_int_or_traced(height, "height")
+        _check_positive_int_or_traced(width, "width")
 
         _device, _dtype = _extract_device_dtype([self.degrees, self.translate, self.scale, self.shears])
 

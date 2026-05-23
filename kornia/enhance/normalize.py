@@ -81,6 +81,20 @@ class Normalize(nn.Module):
         self.std = std
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Normalize an input tensor channel-wise with this module's statistics.
+
+        This method is a thin wrapper over :func:`normalize`, reusing the
+        ``mean`` and ``std`` values stored in the module constructor.
+
+        Args:
+            input: Tensor to normalize, typically with shape :math:`(*, C, ...)`,
+                where ``*`` represents optional leading dimensions (for example
+                batch) and ``C`` is the channel dimension.
+
+        Returns:
+            A tensor with the same shape as ``input`` whose channel values are
+            normalized by ``(x - mean) / std``.
+        """
         return normalize(input, self.mean, self.std)
 
     def __repr__(self) -> str:
@@ -194,6 +208,19 @@ class Denormalize(nn.Module):
         self.std = std
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Restore scale/offset from a tensor normalized by mean and std.
+
+        This method delegates to :func:`denormalize` using this module's stored
+        ``mean`` and ``std`` parameters.
+
+        Args:
+            input: Tensor to denormalize, commonly shaped :math:`(*, C, ...)`
+                with channel dimension ``C``.
+
+        Returns:
+            A tensor with the same shape as ``input`` where each channel is
+            transformed by ``x * std + mean``.
+        """
         return denormalize(input, self.mean, self.std)
 
     def __repr__(self) -> str:
