@@ -89,16 +89,34 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
-        output = in_tensor
-        if sum(to_apply) != len(to_apply):
-            output = self.apply_non_transform(in_tensor, params, flags)
-        if sum(to_apply) != 0:
-            applied = self.apply_transform(in_tensor, params, flags)
-            output = self.apply_non_transform(in_tensor, params, flags)
-            output = output.index_put((to_apply,), self.apply_non_transform(applied, params, flags))
+
+        # Compute the non-transform branch first; if no element is to be transformed,
+        # short-circuit (mix transforms like RandomJigsaw subset their input internally
+        # and can't operate on an empty subset).
+        non_applied = self.apply_non_transform(in_tensor, params, flags)
+        if not bool(to_apply.any()):
+            output = non_applied
+            return _transform_output_shape(output, ori_shape) if self.keepdim else output
+
+        # Run the transform branch on the full batch (the random-generator contract is
+        # full-batch sized now), then pass it through ``apply_non_transform`` so any
+        # subclass post-processing (e.g. resize to ``output_size`` in ``RandomMosaic``)
+        # is applied uniformly to both branches.
+        applied = self.apply_transform(in_tensor, params, flags)
+        applied_post = self.apply_non_transform(applied, params, flags)
+
+        if applied_post.shape == non_applied.shape and applied_post.shape[0] == to_apply.shape[0]:
+            to_apply_expanded = to_apply.view(-1, *([1] * (applied_post.dim() - 1)))
+            output = torch.where(to_apply_expanded, applied_post, non_applied)
+        else:
+            # Shape-changing mix augmentations (e.g. RandomMosaic when ``output_size``
+            # differs from the input size) cannot be where-blended. Fall back to the
+            # all-applied branch.
+            output = applied_post
+
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
 

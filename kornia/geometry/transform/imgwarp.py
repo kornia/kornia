@@ -24,7 +24,7 @@ import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like
-from kornia.core.utils import _torch_inverse_cast, _torch_solve_cast
+from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, _torch_solve_cast
 from kornia.geometry.conversions import (
     angle_to_rotation_matrix,
     axis_angle_to_rotation_matrix,
@@ -312,6 +312,67 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
 #         super().__init__()
 
 
+def _unit_square_to_quad(points: torch.Tensor) -> torch.Tensor:
+    """Closed-form perspective matrix mapping the unit square to a quadrilateral.
+
+    Maps the canonical unit-square corners ``[(0,0), (1,0), (1,1), (0,1)]`` to the
+    four points in ``points`` (in the same corner order). Implemented via Heckbert's
+    direct formulation (no linear solve) so it lowers cleanly to ONNX.
+
+    Args:
+        points: ``(B, 4, 2)`` tensor of quadrilateral vertices.
+
+    Returns:
+        ``(B, 3, 3)`` perspective transformation matrix.
+    """
+    x0 = points[..., 0, 0]
+    y0 = points[..., 0, 1]
+    x1 = points[..., 1, 0]
+    y1 = points[..., 1, 1]
+    x2 = points[..., 2, 0]
+    y2 = points[..., 2, 1]
+    x3 = points[..., 3, 0]
+    y3 = points[..., 3, 1]
+
+    dx1 = x1 - x2
+    dx2 = x3 - x2
+    sx = x0 - x1 + x2 - x3
+    dy1 = y1 - y2
+    dy2 = y3 - y2
+    sy = y0 - y1 + y2 - y3
+
+    denom = dx1 * dy2 - dy1 * dx2
+    a31 = (sx * dy2 - sy * dx2) / denom
+    a32 = (dx1 * sy - dy1 * sx) / denom
+    a11 = x1 - x0 + a31 * x1
+    a12 = x3 - x0 + a32 * x3
+    a13 = x0
+    a21 = y1 - y0 + a31 * y1
+    a22 = y3 - y0 + a32 * y3
+    a23 = y0
+
+    one = torch.ones_like(x0)
+
+    row0 = torch.stack([a11, a12, a13], dim=-1)
+    row1 = torch.stack([a21, a22, a23], dim=-1)
+    row2 = torch.stack([a31, a32, one], dim=-1)
+    return torch.stack([row0, row1, row2], dim=-2)
+
+
+def _get_perspective_transform_closed_form(points_src: torch.Tensor, points_dst: torch.Tensor) -> torch.Tensor:
+    """ONNX-traceable perspective transform via two unit-square decompositions.
+
+    Computes ``H = H_d @ inv(H_s)`` where ``H_s`` maps the unit square to
+    ``points_src`` and ``H_d`` maps it to ``points_dst``. Replaces the 8x8
+    ``torch.linalg.solve`` in :func:`get_perspective_transform` with two 3x3
+    Heckbert constructions and one 3x3 inverse — all closed-form ops that the
+    legacy ONNX exporter supports.
+    """
+    h_s = _unit_square_to_quad(points_src)
+    h_d = _unit_square_to_quad(points_dst)
+    return h_d @ _inverse_3x3_closed_form(h_s)
+
+
 def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> torch.Tensor:
     r"""Calculate a perspective transform from four pairs of the corresponding points.
 
@@ -362,6 +423,15 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
     KORNIA_CHECK_SHAPE(points_dst, ["B", "4", "2"])
     KORNIA_CHECK(points_src.shape == points_dst.shape, "Source data shape must match Destination data shape.")
     KORNIA_CHECK(points_src.dtype == points_dst.dtype, "Source data type must match Destination data type.")
+
+    # Under tracing (legacy torch.onnx.export, torch.jit.trace), use the closed-form
+    # Heckbert decomposition: the legacy ONNX tracer does not lower
+    # ``aten::linalg_solve``, but the closed-form path only uses arithmetic ops
+    # + a closed-form 3x3 inverse, both fully supported. ``torch.jit.is_tracing()``
+    # is JIT-script-safe (unlike ``torch.onnx.is_in_onnx_export``, which contains
+    # an ``import`` statement that JIT script cannot compile).
+    if torch.jit.is_tracing():
+        return _get_perspective_transform_closed_form(points_src, points_dst)
 
     # we build matrix A by using only 4 point correspondence. The linear
     # system is solved with the least square method, so here

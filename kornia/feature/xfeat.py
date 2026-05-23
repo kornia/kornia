@@ -365,6 +365,12 @@ class XFeat(nn.Module):
         self, feats1: torch.Tensor, feats2: torch.Tensor, min_cossim: float = 0.82
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Mutual nearest-neighbour matching on L2-normalised descriptor pairs."""
+        # If either descriptor set is empty there are no possible matches; return early
+        # with empty index tensors.
+        if feats1.shape[0] == 0 or feats2.shape[0] == 0:
+            empty = torch.empty(0, dtype=torch.long, device=feats1.device)
+            return empty, empty.clone()
+
         cossim = feats1 @ feats2.t()
         cossim_t = feats2 @ feats1.t()
         _, match12 = cossim.max(dim=1)
