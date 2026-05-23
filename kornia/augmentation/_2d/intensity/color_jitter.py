@@ -116,25 +116,47 @@ class ColorJitter(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+
+        if self.same_on_batch and input is not None:
+            p = {k: (v[0:1] if isinstance(v, torch.Tensor) else v) for k, v in params.items()}
+        else:
+            p = params
+
+        # build transforms using correct params (IMPORTANT)
         transforms = [
             lambda img: (
-                self._brightness_fn(img, params["brightness_factor"])
-                if (params["brightness_factor"] != 0).any()
-                else img
+                self._brightness_fn(img, p["brightness_factor"]) if (p["brightness_factor"] != 0).any() else img
             ),
+            lambda img: self._contrast_fn(img, p["contrast_factor"]) if (p["contrast_factor"] != 1).any() else img,
             lambda img: (
-                self._contrast_fn(img, params["contrast_factor"]) if (params["contrast_factor"] != 1).any() else img
+                self._saturation_fn(img, p["saturation_factor"]) if (p["saturation_factor"] != 1).any() else img
             ),
-            lambda img: (
-                self._saturation_fn(img, params["saturation_factor"])
-                if (params["saturation_factor"] != 1).any()
-                else img
-            ),
-            lambda img: self._hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img,
+            lambda img: self._hue_fn(img, p["hue_factor"] * 2 * pi) if (p["hue_factor"] != 0).any() else img,
         ]
 
+        # SAME ON BATCH PATH
+        if self.same_on_batch and input is not None:
+            jittered = input[0:1]
+
+            order = p["order"]
+            if isinstance(order, torch.Tensor):
+                order = order.flatten().tolist()
+
+            for idx in order:
+                idx = int(idx)
+                t = transforms[idx]
+                jittered = t(jittered)
+
+            return jittered.repeat(input.shape[0], 1, 1, 1)
+
+        # DEFAULT PATH
         jittered = input
-        for idx in params["order"]:
+        order = params["order"]
+        if isinstance(order, torch.Tensor):
+            order = order.flatten().tolist()
+
+        for idx in order:
+            idx = int(idx)
             t = transforms[idx]
             jittered = t(jittered)
 
