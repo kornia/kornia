@@ -227,6 +227,7 @@ def main():
     mix_augmentations_list = {
         "RandomMixUpV2": ((), 2, 20),
         "RandomCutMixV2": ((), 2, 2019),
+        "PatchMix": ((), 2, 2024),
         "TokenMix": ((), 2, 2024),
     }
     # ITERATE OVER THE TRANSFORMS
@@ -239,7 +240,7 @@ def main():
         torch.manual_seed(seed)
         # apply the augmentation to the image and concat
         # TokenMix returns (B, C, H, W); index [0] to get (C, H, W) for cat
-        if aug_name == "TokenMix":
+        if aug_name == "TokenMix" or aug_name == "PatchMix":
             img_aug = aug(img_in)[0]
         else:
             img_aug, _ = aug(img_in, torch.tensor([0, 1]))

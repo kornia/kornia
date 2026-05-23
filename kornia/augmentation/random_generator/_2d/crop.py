@@ -21,7 +21,12 @@ import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
+from kornia.augmentation.utils import (
+    _adapted_rsampling,
+    _check_positive_int_or_traced,
+    _common_param_check,
+    _joint_range_check,
+)
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -310,9 +315,9 @@ def center_crop_generator(
     _common_param_check(batch_size)
     if not isinstance(size, (tuple, list)) or len(size) != 2:
         raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
-    if not (isinstance(height, int) and height > 0 and isinstance(width, int) and width > 0):
-        raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
-    if not (height >= size[0] and width >= size[1]):
+    _check_positive_int_or_traced(height, "height")
+    _check_positive_int_or_traced(width, "width")
+    if isinstance(height, int) and isinstance(width, int) and not (height >= size[0] and width >= size[1]):
         raise AssertionError(f"Crop size must be smaller than input size. Got ({height}, {width}) and {size}.")
 
     # unpack input sizes

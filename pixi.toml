@@ -63,7 +63,7 @@ clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '_
 # ------------------------------------------------------------------------------
 
 [feature.cuda.tasks]
-install = { cmd = "uv sync --extra dev --extra x && uv pip install --reinstall torch torchvision --index pytorch-cu121", description = "Install dev dependencies (CUDA PyTorch)" }
+install = { cmd = "uv sync --extra dev && uv pip install --reinstall torch torchvision --index pytorch-cu121", description = "Install dev dependencies (CUDA PyTorch)" }
 install-docs = { cmd = "uv sync --extra dev --extra docs --extra x && uv pip install --reinstall torch torchvision --index pytorch-cu121", description = "Install dev + docs (CUDA PyTorch)" }
 # CUDA test tasks
 test-cuda = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda" }, description = "Run tests on CUDA" }
