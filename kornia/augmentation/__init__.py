@@ -85,6 +85,7 @@ from kornia.augmentation._2d import (
     RandomVerticalFlip,
     Resize,
     SmallestMaxSize,
+    TokenMix,
 )
 from kornia.augmentation._2d.base import AugmentationBase2D, RigidAffineAugmentationBase2D
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
@@ -200,6 +201,7 @@ __all__ = [
     "RigidAffineAugmentationBase2D",
     "RigidAffineAugmentationBase3D",
     "SmallestMaxSize",
+    "TokenMix",
     "VideoSequential",
     "auto",
     "container",
