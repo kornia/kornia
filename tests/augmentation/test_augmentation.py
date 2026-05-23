@@ -3987,6 +3987,12 @@ class TestRandomChannelShuffle(BaseTester):
         out = aug(img)
         self.assert_close(out, out_expected)
 
+    def test_same_on_batch(self, device, dtype):
+        input_tensor = torch.rand(1, 3, 5, 5, device=device, dtype=dtype).repeat(2, 1, 1, 1)
+        transform = RandomChannelShuffle(p=1.0, same_on_batch=True)
+        output_tensor = transform(input_tensor)
+        self.assert_close(output_tensor[0], output_tensor[1])
+
 
 class TestRandomClahe(BaseTester):
     def test_smoke(self, device, dtype):
@@ -4007,6 +4013,13 @@ class TestRandomGaussianNoise(BaseTester):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomGaussianNoise(p=1.0)
         assert img.shape == aug(img).shape
+
+    def test_same_on_batch(self, device, dtype):
+        input_tensor = torch.rand(1, 1, 5, 5, device=device, dtype=dtype).repeat(2, 1, 1, 1)
+        transform = RandomGaussianNoise(p=1.0, same_on_batch=True)
+        output_tensor = transform(input_tensor)
+        self.assert_close(output_tensor[0], output_tensor[1])
+        assert not torch.allclose(input_tensor, output_tensor)
 
 
 class TestRandomSaltAndPepperNoise(BaseTester):
