@@ -34,6 +34,7 @@ from typing import Any, Optional
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.models.base import ModelBase
 from kornia.models.sam.architecture.common import LayerNorm
 from kornia.models.sam.architecture.image_encoder import ImageEncoderViT
@@ -83,7 +84,7 @@ class SamConfig:
     encoder_global_attn_indexes: Optional[tuple[int, ...]] = None
 
 
-class Sam(ModelBase[SamConfig]):
+class Sam(ONNXExportMixin, ModelBase[SamConfig]):
     """Implement the Segment Anything Model (SAM) wrapper.
 
     This class coordinates the image encoder, prompt encoder, and mask decoder.
@@ -236,6 +237,59 @@ class Sam(ModelBase[SamConfig]):
             model.load_checkpoint(checkpoint)
 
         return model
+
+    def to_onnx(
+        self,
+        onnx_name: Optional[str] = None,
+        pseudo_shape: Optional[list[int]] = None,
+        save: bool = True,
+        **kwargs: Any,
+    ) -> Any:
+        """Export SAM's image encoder to ONNX.
+
+        SAM's full :meth:`forward` signature accepts non-tensor inputs
+        (``batched_prompts: list[dict]``, ``multimask_output: bool``) and returns
+        a Python list of :class:`~kornia.models.structures.SegmentationResults`,
+        which cannot be directly exported via :func:`torch.onnx.export`.
+
+        This override exports only the **image encoder** subgraph
+        (``self.image_encoder``), which is a pure ``(B, 3, H, W) -> (B, C, H', W')``
+        tensor-to-tensor module and fully ONNX-compatible.  The encoder embeddings
+        can then be fed into a separate prompt-encoder / mask-decoder pipeline.
+
+        Args:
+            onnx_name: Path for the saved ``.onnx`` file.  Defaults to
+                ``"Kornia-Sam-ImageEncoder.onnx"``.
+            pseudo_shape: Concrete input shape used to trace the encoder, e.g.
+                ``[1, 3, 1024, 1024]``.  Defaults to ``[1, 3, 1024, 1024]``.
+            save: Whether to write the model to disk.  Default ``True``.
+            **kwargs: Additional keyword arguments forwarded to
+                :func:`torch.onnx.export`.
+
+        Returns:
+            ``onnx.ModelProto`` of the exported image encoder.
+
+        """
+        if onnx_name is None:
+            onnx_name = "Kornia-Sam-ImageEncoder.onnx"
+        if pseudo_shape is None:
+            pseudo_shape = [1, 3, 1024, 1024]
+        kwargs.setdefault("output_names", ["image_embeddings"])
+        kwargs.setdefault(
+            "dynamic_axes",
+            {
+                "input": {0: "batch"},
+                "image_embeddings": {0: "batch"},
+            },
+        )
+        return super().to_onnx(
+            onnx_name=onnx_name,
+            input_shape=[-1, 3, -1, -1],
+            pseudo_shape=pseudo_shape,
+            model=self.image_encoder,
+            save=save,
+            **kwargs,
+        )
 
     @torch.no_grad()
     def forward(

@@ -27,6 +27,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.mixin.onnx import ONNXExportMixin
 
 __all__ = ["DexiNed"]
 
@@ -182,7 +183,7 @@ class DoubleConvBlock(nn.Sequential):
             self.add_module("relu2", nn.ReLU(inplace=True))
 
 
-class DexiNed(nn.Module):
+class DexiNed(ONNXExportMixin, nn.Module):
     r"""Definition of the DXtrem network from :cite:`xsoria2020dexined`.
 
     Return:
