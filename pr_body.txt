@@ -1,0 +1,5 @@
+> Description: This PR introduces Google-style structural docstrings to the kornia.losses.dice module, resolving the missing D101, D102, and D103 Ruff violations.
+
+Related Issue: Fixes #3083
+Verification: 12 passed, 43 warnings (local Windows test-bed).
+AI Disclosure: ?? AI-assisted via GitHub Copilot CLI; verified by Siddharth Jaspal.
