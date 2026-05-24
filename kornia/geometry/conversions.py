@@ -662,6 +662,9 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
     axis_angle[..., 0] += q1 * k
     axis_angle[..., 1] += q2 * k
     axis_angle[..., 2] += q3 * k
+    # Propagate NaN from w-component: if cos_theta is NaN but xyz are zero,
+    # NaN would be silently swallowed through the where/atan2 path above.
+    axis_angle = axis_angle + cos_theta.unsqueeze(-1) * 0.0
     return axis_angle
 
 
