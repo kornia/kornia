@@ -26,6 +26,7 @@ from kornia.augmentation._2d.intensity.color_jitter import ColorJitter
 from kornia.augmentation._2d.intensity.contrast import RandomContrast
 from kornia.augmentation._2d.intensity.denormalize import Denormalize
 from kornia.augmentation._2d.intensity.dissolving import RandomDissolving
+from kornia.augmentation._2d.intensity.edge_aware import EdgeAwareAugmentation
 from kornia.augmentation._2d.intensity.equalize import RandomEqualize
 from kornia.augmentation._2d.intensity.erasing import RandomErasing
 from kornia.augmentation._2d.intensity.gamma import RandomGamma

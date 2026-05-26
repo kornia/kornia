@@ -26,6 +26,7 @@ Intensity
 .. autoclass:: RandomContrast
 .. autoclass:: RandomEqualize
 .. autoclass:: RandomDissolving
+.. autoclass:: EdgeAwareAugmentation
 .. autoclass:: RandomGamma
 .. autoclass:: RandomGaussianBlur
 .. autoclass:: RandomGaussianIllumination
