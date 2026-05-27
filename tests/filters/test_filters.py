@@ -20,7 +20,16 @@ import pytest
 import torch
 
 from kornia.core._compat import torch_version_le
-from kornia.filters import convolve2d, convolve3d, correlate2d, correlate3d, fft_conv, filter2d, filter2d_separable, filter3d
+from kornia.filters import (
+    convolve2d,
+    convolve3d,
+    correlate2d,
+    correlate3d,
+    fft_conv,
+    filter2d,
+    filter2d_separable,
+    filter3d,
+)
 
 from testing.base import BaseTester
 
