@@ -142,6 +142,26 @@ class BoxBlur(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Average each pixel with its local neighborhood.
+
+        The box blur uses a rectangular averaging kernel where every location
+        inside the window has the same weight. It is a simple low-pass filter:
+        high-frequency details are reduced, while broader image structures are
+        preserved. Depending on the module configuration, the kernel is applied
+        either as a full two-dimensional filter or as two separable one-
+        dimensional passes.
+
+        Args:
+            input: Image or feature tensor with shape :math:`(B, C, H, W)`,
+                where :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the height, and :math:`W` is the width.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` containing the locally
+            averaged result. The output keeps the same batch, channel, and
+            spatial layout as ``input``; border pixels are handled according to
+            the configured border mode.
+        """
         KORNIA_CHECK_IS_TENSOR(input)
         if self.separable:
             return filter2d_separable(input, self.kernel_x, self.kernel_y, self.border_type)

@@ -237,6 +237,28 @@ class Canny(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Detect image edges with the Canny pipeline.
+
+        The Canny detector smooths the image, estimates spatial gradients,
+        performs non-maximum suppression, and thresholds candidate edges using
+        the configured low and high thresholds. When hysteresis is enabled,
+        weak edge pixels are kept only when they are connected to strong edge
+        pixels.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the image height, and :math:`W` is the
+                image width. Multi-channel inputs are handled by the underlying
+                functional implementation.
+
+        Returns:
+            Tuple ``(magnitude, edges)``. ``magnitude`` contains the gradient
+            magnitude response for each pixel, and ``edges`` contains the final
+            thresholded edge map. Both tensors follow the layout returned by
+            :func:`canny` and keep the same batch and spatial dimensions as the
+            input.
+        """
         return canny(
             input, self.low_threshold, self.high_threshold, self.kernel_size, self.sigma, self.hysteresis, self.eps
         )
