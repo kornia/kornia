@@ -390,7 +390,7 @@ class PinholeCamera:
         device: Union[str, torch.device, None],
         dtype: torch.dtype,
     ) -> "PinholeCamera":
-        """Construct a batched pinhole camera from scalar parameter tensors.
+        r"""Construct a batched pinhole camera from scalar parameter tensors.
 
         This helper allocates batched :math:`4 \times 4` intrinsic and
         extrinsic matrices, fills focal lengths/principal point/translation,
