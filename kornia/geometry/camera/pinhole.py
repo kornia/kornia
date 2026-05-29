@@ -390,6 +390,30 @@ class PinholeCamera:
         device: Union[str, torch.device, None],
         dtype: torch.dtype,
     ) -> "PinholeCamera":
+        """Construct a batched pinhole camera from scalar parameter tensors.
+
+        This helper allocates batched :math:`4 \times 4` intrinsic and
+        extrinsic matrices, fills focal lengths/principal point/translation,
+        and wraps them into a :class:`PinholeCamera` instance.
+
+        Args:
+            fx: Horizontal focal length per batch element.
+            fy: Vertical focal length per batch element.
+            cx: Principal point x-coordinate per batch element.
+            cy: Principal point y-coordinate per batch element.
+            height: Image height in pixels.
+            width: Image width in pixels.
+            tx: Camera translation along x per batch element.
+            ty: Camera translation along y per batch element.
+            tz: Camera translation along z per batch element.
+            batch_size: Number of cameras in the batch.
+            device: Target device for the created tensors.
+            dtype: Target floating-point dtype for the created tensors.
+
+        Returns:
+            Batched :class:`PinholeCamera` configured from the provided
+            intrinsic and translation parameters.
+        """
         # create the camera matrix
         intrinsics = torch.zeros(batch_size, 4, 4, device=device, dtype=dtype)
         intrinsics[..., 0, 0] += fx

@@ -434,6 +434,21 @@ class CenterCrop2D(nn.Module):
         }
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Crop the central region of each input image to ``self.size``.
+
+        Depending on ``cropping_mode``, the crop is produced either by
+        perspective-resampling (subpixel/interpolated) or by direct slicing.
+
+        Args:
+            input: Image batch with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channels, :math:`H` is
+                source height, and :math:`W` is source width.
+
+        Returns:
+            Center-cropped tensor with shape :math:`(B, C, h, w)`, where
+            :math:`h` and :math:`w` are the requested crop height and width
+            stored in ``self.size``.
+        """
         batch_size = input.shape[0]
 
         dst_h, dst_w = self.size

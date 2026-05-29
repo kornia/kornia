@@ -34,13 +34,29 @@ class BaseModel(nn.Module):
     """Provide an abstract base class for image registration models."""
 
     @abstractmethod
-    def reset_model(self) -> None: ...
+    def reset_model(self) -> None:
+        """Reset learnable registration parameters to the identity transform."""
+        ...
 
     @abstractmethod
-    def forward(self) -> torch.Tensor: ...
+    def forward(self) -> torch.Tensor:
+        """Return the transform that maps source coordinates toward target coordinates.
+
+        Returns:
+            Transform matrix tensor for the current model state. Concrete
+            models return the matrix shape required by their warp function.
+        """
+        ...
 
     @abstractmethod
-    def forward_inverse(self) -> torch.Tensor: ...
+    def forward_inverse(self) -> torch.Tensor:
+        """Return the inverse mapping for the current registration transform.
+
+        Returns:
+            Transform matrix tensor that maps target coordinates back toward
+            source coordinates.
+        """
+        ...
 
 
 class Homography(BaseModel):
