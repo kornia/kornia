@@ -83,6 +83,13 @@ def truncated_gaussian_kernel(x: torch.Tensor, window_radius: float = 1.0) -> to
 
 
 class MIKernel(Enum):
+    """Available kernels for mutual-information density estimation.
+
+    The enum values are callable kernels used to softly assign signal samples
+    to histogram bins. They are used by the entropy-based mutual-information
+    losses to build differentiable joint histograms.
+    """
+
     xu = member(xu_kernel)
     rectangular = member(rectangular_kernel)
     truncated_gaussian = member(truncated_gaussian_kernel)
@@ -194,6 +201,23 @@ class EntropyBasedLossBase(torch.nn.Module):
 
     # TODO: optimize method below, maybe with ihdex coordinates conversion
     def trace_in_ref_mask(self, other_signal, other_mask):
+        """Align another masked signal with the reference mask positions.
+
+        The reference signal can be stored with a mask, while the compared
+        signal may use a different mask over the same flattened coordinate
+        space. This helper restores the compared signal to the original flat
+        shape when needed, then selects the elements that correspond to the
+        stored reference mask.
+
+        Args:
+            other_signal: Flattened signal values after applying ``other_mask``.
+            other_mask: Boolean mask describing which flattened positions are
+                present in ``other_signal``.
+
+        Returns:
+            Signal values traced onto the reference mask used by this loss
+            instance.
+        """
         if other_mask.all():
             return other_signal[..., self.mask]
 
@@ -274,6 +298,14 @@ class EntropyBasedLossBase(torch.nn.Module):
 
 
 class MILossFromRef(EntropyBasedLossBase):
+    """Mutual-information loss against a stored reference signal.
+
+    The reference signal is normalized and stored during initialization by the
+    base class. Calling the module with another signal estimates both marginal
+    entropies and the joint entropy, then returns negative mutual information
+    so it can be minimized as a loss.
+    """
+
     def forward(self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None) -> torch.Tensor:
         """Compute differentiable mutual information for self.signal and other_signal.
 
@@ -296,6 +328,13 @@ class MILossFromRef(EntropyBasedLossBase):
 
 
 class NMILossFromRef(EntropyBasedLossBase):
+    """Normalized mutual-information loss against a stored reference signal.
+
+    This variant divides the sum of marginal entropies by joint entropy before
+    negating the value. It is commonly useful when the amount of overlap or
+    intensity distribution scale differs between compared signals.
+    """
+
     def forward(self, other_signal: torch.Tensor, other_mask: torch.Tensor | None = None) -> torch.Tensor:
         """Compute differentiable normalized mutual information for self.signal and other_signal.
 
@@ -355,6 +394,16 @@ class MILossFromRef2D(MILossFromRef):
 
     @staticmethod
     def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
+        """Flatten the spatial dimensions of a 2D signal batch.
+
+        Args:
+            tensor: Signal tensor with shape :math:`(*, H, W)`, where ``*`` is
+                any leading batch shape.
+
+        Returns:
+            Tensor with shape :math:`(*, H * W)` suitable for histogram-based
+            mutual-information computation.
+        """
         return tensor.reshape(tensor.shape[:-2] + (-1,))
 
     def forward(
@@ -417,6 +466,16 @@ class MILossFromRef3D(MILossFromRef):
 
     @staticmethod
     def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
+        """Flatten the spatial dimensions of a 3D signal batch.
+
+        Args:
+            tensor: Signal tensor with shape :math:`(*, D, H, W)`, where
+                :math:`D` is depth, :math:`H` is height, and :math:`W` is
+                width.
+
+        Returns:
+            Tensor with shape :math:`(*, D * H * W)` for entropy estimation.
+        """
         return tensor.reshape(tensor.shape[:-3] + (-1,))
 
     def forward(
@@ -479,6 +538,15 @@ class NMILossFromRef2D(NMILossFromRef):
 
     @staticmethod
     def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
+        """Flatten the spatial dimensions of a 2D signal batch.
+
+        Args:
+            tensor: Signal tensor with shape :math:`(*, H, W)`.
+
+        Returns:
+            Tensor with shape :math:`(*, H * W)` used by the normalized
+            mutual-information base implementation.
+        """
         return tensor.reshape(tensor.shape[:-2] + (-1,))
 
     def forward(
@@ -541,6 +609,15 @@ class NMILossFromRef3D(NMILossFromRef):
 
     @staticmethod
     def arrange_shape(tensor: torch.Tensor) -> torch.Tensor:
+        """Flatten the spatial dimensions of a 3D signal batch.
+
+        Args:
+            tensor: Signal tensor with shape :math:`(*, D, H, W)`.
+
+        Returns:
+            Tensor with shape :math:`(*, D * H * W)` used by the normalized
+            mutual-information base implementation.
+        """
         return tensor.reshape(tensor.shape[:-3] + (-1,))
 
     def forward(
