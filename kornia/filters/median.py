@@ -98,4 +98,21 @@ class MedianBlur(nn.Module):
         self.kernel_size = kernel_size
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Replace each pixel with the median value in its local window.
+
+        Median filtering is a non-linear smoothing operation. Instead of
+        averaging neighboring values, it sorts the values inside the kernel
+        window and chooses the middle value. This makes it effective for
+        reducing impulse-like noise while preserving sharper boundaries than a
+        simple mean filter.
+
+        Args:
+            input: Image or feature tensor with shape :math:`(B, C, H, W)`,
+                where :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the height, and :math:`W` is the width.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` containing the median-
+            filtered result for each channel independently.
+        """
         return median_blur(input, self.kernel_size)
