@@ -87,6 +87,16 @@ class MKDGradients(nn.Module):
         self.grad = SpatialGradient(mode="diff", order=1, normalized=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Compute gradient magnitude and orientation channels for grayscale patches.
+
+        Args:
+            x: Patch tensor with shape :math:`(B, 1, H, W)`, where ``B`` is batch size,
+                ``1`` is the grayscale channel, and ``H``/``W`` are patch height and width.
+
+        Returns:
+            Tensor with shape :math:`(B, 2, H, W)`. Channel 0 stores gradient magnitude,
+            and channel 1 stores gradient orientation in radians.
+        """
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
         if not len(x.shape) == 4:
@@ -151,6 +161,16 @@ class VonMisesKernel(nn.Module):
         self.register_buffer("weights", weights)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Embed orientation values with the Von Mises kernel basis.
+
+        Args:
+            x: Orientation tensor with shape :math:`(B, 1, H, W)`, where values are
+                angular orientations in radians.
+
+        Returns:
+            Kernel embedding with shape :math:`(B, D, H, W)`, where ``D`` is the
+            number of channels produced by the configured coefficient list.
+        """
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
 
@@ -214,6 +234,16 @@ class EmbedGradients(nn.Module):
         return mags
 
     def forward(self, grads: torch.Tensor) -> torch.Tensor:
+        """Embed gradient magnitude and orientation into kernel descriptor channels.
+
+        Args:
+            grads: Gradient tensor with shape :math:`(B, 2, H, W)`. Channel 0 contains
+                magnitudes, and channel 1 contains orientations.
+
+        Returns:
+            Embedded gradient tensor with shape :math:`(B, D, H, W)`, where ``D`` is
+            the number of channels produced by the orientation kernel.
+        """
         if not isinstance(grads, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(grads)}")
         if not len(grads.shape) == 4:
@@ -342,6 +372,16 @@ class ExplicitSpacialEncoding(nn.Module):
         return emb2, kron[:, 0]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply explicit spatial encoding to embedded patch features.
+
+        Args:
+            x: Feature map with shape :math:`(B, C, H, W)`, where ``C`` must match
+                ``in_dims`` and ``H``/``W`` are expected to match ``fmap_size``.
+
+        Returns:
+            Encoded descriptor tensor with shape :math:`(B, D)`, where ``D`` is the
+            flattened spatial-kernel descriptor dimension.
+        """
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
         if not ((len(x.shape) == 4) | (x.shape[1] == self.in_dims)):
@@ -432,6 +472,13 @@ class Whitening(nn.Module):
             self.load_whitening_parameters(whitening_model)
 
     def load_whitening_parameters(self, whitening_model: Dict[str, Dict[str, torch.Tensor]]) -> None:
+        """Load and adapt whitening statistics for the selected transform.
+
+        Args:
+            whitening_model: Dictionary containing whitening tensors. The expected
+                entries are model variants such as ``"pca"`` or ``"lw"``, each holding
+                ``mean``, ``eigvecs`` (eigenvectors), and ``eigvals`` (eigenvalues).
+        """
         algo = "lw" if self.xform == "lw" else "pca"
         wh_model = whitening_model[algo]
         self.mean.data = wh_model["mean"]
@@ -467,6 +514,16 @@ class Whitening(nn.Module):
         self.evecs.data = self.evecs @ torch.diag(torch.pow(self.evals, m))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Whiten and L2-normalize local descriptors.
+
+        Args:
+            x: Descriptor tensor with shape :math:`(N, D)`, where ``N`` is the number
+                of descriptors and ``D`` is the input descriptor dimension.
+
+        Returns:
+            Whitened descriptor tensor with shape :math:`(N, O)`, where ``O`` is
+            ``output_dims``.
+        """
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(x)}")
         if not len(x.shape) == 2:
@@ -562,6 +619,16 @@ class MKDDescriptor(nn.Module):
         self.eval()
 
     def forward(self, patches: torch.Tensor) -> torch.Tensor:
+        """Compute Multiple Kernel Descriptor (MKD) vectors for image patches.
+
+        Args:
+            patches: Grayscale patch tensor with shape :math:`(B, 1, H, W)`, where
+                ``B`` is the number of patches and ``H``/``W`` are patch dimensions.
+
+        Returns:
+            Descriptor tensor with shape :math:`(B, D)`, where ``D`` is the configured
+            output descriptor dimension after optional whitening.
+        """
         if not isinstance(patches, torch.Tensor):
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(patches)}")
         if not len(patches.shape) == 4:
@@ -634,4 +701,13 @@ class SimpleKD(nn.Module):
         self.features = nn.Sequential(smoothing, gradients, ori, ese, wh)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the example kernel-descriptor pipeline.
+
+        Args:
+            x: Grayscale patch tensor with shape :math:`(B, 1, H, W)`.
+
+        Returns:
+            Descriptor tensor produced by smoothing, gradient extraction, spatial
+            encoding, and whitening.
+        """
         return self.features(x)

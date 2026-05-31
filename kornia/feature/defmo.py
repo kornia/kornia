@@ -100,6 +100,15 @@ class Bottleneck(nn.Module):
         self.stride = stride
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the bottleneck residual block.
+
+        Args:
+            x: Feature tensor with shape :math:`(B, C, H, W)`, where ``B`` is batch
+                size, ``C`` is channel count, and ``H``/``W`` are spatial dimensions.
+
+        Returns:
+            Output feature tensor after the residual branch and identity connection.
+        """
         identity = x
 
         out = self.conv1(x)
@@ -247,6 +256,14 @@ class ResNet(nn.Module):
         return x
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the ResNet backbone and classification head.
+
+        Args:
+            x: Input image or feature tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Tensor with shape :math:`(B, N)`, where ``N`` is ``num_classes``.
+        """
         return self._forward_impl(x)
 
 
@@ -271,6 +288,15 @@ class EncoderDeFMO(nn.Module):
         self.net = nn.Sequential(modelc1, modelc2)
 
     def forward(self, input_data: torch.Tensor) -> torch.Tensor:
+        """Encode blurred-image and background inputs into latent features.
+
+        Args:
+            input_data: Tensor with shape :math:`(B, 6, H, W)`. The 6 channels usually
+                concatenate RGB blurred input and RGB background estimate.
+
+        Returns:
+            Latent feature tensor produced by the modified ResNet encoder.
+        """
         return self.net(input_data)
 
 
@@ -308,6 +334,16 @@ class RenderingDeFMO(nn.Module):
         self.times = torch.linspace(0, 1, self.tsr_steps)
 
     def forward(self, latent: torch.Tensor) -> torch.Tensor:
+        """Render a temporal RGBA sequence from latent DeFMO features.
+
+        Args:
+            latent: Latent feature tensor from :class:`EncoderDeFMO` with shape
+                :math:`(B, C, H, W)`.
+
+        Returns:
+            Tensor with shape :math:`(B, T, 4, H_{out}, W_{out})`, where ``T`` is the
+            number of rendered time steps and 4 represents RGBA channels.
+        """
         times = self.times.to(latent.device).unsqueeze(0).repeat(latent.shape[0], 1)
         renders = []
         for ki in range(times.shape[1]):
@@ -367,6 +403,16 @@ class DeFMO(nn.Module):
         self.eval()
 
     def forward(self, input_data: torch.Tensor) -> torch.Tensor:
+        """Deblur a fast-moving object into a sequence of RGBA sub-frames.
+
+        Args:
+            input_data: Tensor with shape :math:`(B, 6, H, W)` containing the blurred
+                RGB image concatenated with an RGB background estimate.
+
+        Returns:
+            Tensor with shape :math:`(B, T, 4, H, W)`, where ``T`` is the number of
+            temporal sub-frames and 4 stores red, green, blue, and alpha channels.
+        """
         latent = self.encoder(input_data)
         x_out = self.rendering(latent)
         return x_out

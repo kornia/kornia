@@ -85,6 +85,14 @@ class SOLD2_detector(nn.Module):
         self.line_detector = LineSegmentDetectionModule(self.config.line_detector_cfg)
 
     def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Adapt pretrained checkpoint keys to this module implementation.
+
+        Args:
+            state_dict: Checkpoint state dictionary whose keys are adapted to this module layout.
+
+        Returns:
+            State dictionary with checkpoint keys renamed or removed so it can be loaded by the current module.
+        """
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]

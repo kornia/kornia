@@ -103,6 +103,14 @@ class HardNet(nn.Module):
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute HardNet descriptors for normalized 32x32 patches.
+
+        Args:
+            input: Grayscale patch tensor of shape :math:`(B, 1, 32, 32)`.
+
+        Returns:
+            L2-normalized descriptor tensor with shape :math:`(B, 128)`.
+        """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
@@ -175,6 +183,11 @@ class HardNet8(nn.Module):
 
     @staticmethod
     def weights_init(m: object) -> None:
+        """Initialize convolutional layers for HardNet8.
+
+        Args:
+            m: Module instance passed by ``nn.Module.apply``.
+        """
         if isinstance(m, nn.Conv2d):
             nn.init.orthogonal_(m.weight.data, gain=0.6)
             if m.bias is not None:
@@ -194,6 +207,14 @@ class HardNet8(nn.Module):
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute HardNet8 descriptors with PCA projection.
+
+        Args:
+            input: Grayscale patch tensor of shape :math:`(B, 1, 32, 32)`.
+
+        Returns:
+            L2-normalized descriptor tensor after learned PCA projection.
+        """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)

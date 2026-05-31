@@ -458,6 +458,16 @@ class DeformableConv2d(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the module forward pass.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         h, w = x.shape[2:]
         max_offset = max(h, w) / 4.0
         out = self.offset_conv(x)
@@ -529,6 +539,16 @@ class ConvBlock(nn.Module):
         self.bn2 = norm_layer(out_channels)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the module forward pass.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         x = self.gate(self.bn1(self.conv1(x)))
         return self.gate(self.bn2(self.conv2(x)))
 
@@ -571,6 +591,16 @@ class ResBlock(nn.Module):
         self.stride = stride
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the module forward pass.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         identity = x
         out = self.gate(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
