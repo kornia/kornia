@@ -77,6 +77,22 @@ class PyrDown(nn.Module):
         self.factor: float = factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Build the next lower-resolution Gaussian pyramid level.
+
+        The input is smoothed before resizing so high-frequency content is not
+        directly subsampled. This is the standard pyramid-down step used by
+        many multi-scale image algorithms.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channels, :math:`H` is
+                height, and :math:`W` is width.
+
+        Returns:
+            Downsampled tensor from :func:`pyrdown`. The channel and batch
+            dimensions are preserved, while spatial dimensions are reduced
+            according to ``self.factor``.
+        """
         return pyrdown(input, self.border_type, self.align_corners, self.factor)
 
 
@@ -108,6 +124,21 @@ class PyrUp(nn.Module):
         self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Build the next higher-resolution Gaussian pyramid level.
+
+        The operation upsamples the image and applies pyramid smoothing so the
+        enlarged result is spatially consistent with Gaussian pyramid
+        reconstruction.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channels, :math:`H` is
+                height, and :math:`W` is width.
+
+        Returns:
+            Upsampled tensor from :func:`pyrup`, typically with doubled height
+            and width, preserving batch and channel dimensions.
+        """
         return pyrup(input, self.border_type, self.align_corners)
 
 
@@ -213,6 +244,15 @@ class ScalePyramid(nn.Module):
         return F.conv2d(F.pad(tmp, (0, 0, pad, pad), mode="reflect"), k_v, groups=C)
 
     def get_kernel_size(self, sigma: float) -> int:
+        """Choose an odd Gaussian kernel size for a given blur sigma.
+
+        Args:
+            sigma: Gaussian standard deviation measured in pixels.
+
+        Returns:
+            Odd integer kernel size large enough to cover the effective support
+            used by this scale-pyramid implementation.
+        """
         ksize = int(2.0 * 4.0 * sigma + 1.0)
 
         #  matches OpenCV, but may cause padding problem for small images
@@ -224,6 +264,20 @@ class ScalePyramid(nn.Module):
         return ksize
 
     def get_first_level(self, input: torch.Tensor) -> tuple[torch.Tensor, float, float]:
+        """Create the first image level and its scale metadata.
+
+        The method optionally doubles image resolution, then applies initial
+        Gaussian blur so the first level reaches ``self.init_sigma``.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Tuple ``(cur_level, cur_sigma, pixel_distance)``. ``cur_level`` is
+            the first image level, ``cur_sigma`` is its effective blur sigma,
+            and ``pixel_distance`` tells how one pixel in this level maps back
+            to the original input image.
+        """
         pixel_distance = 1.0
         cur_sigma = 0.5
         # Same as in OpenCV up to interpolation difference
@@ -249,6 +303,23 @@ class ScalePyramid(nn.Module):
         return cur_level, cur_sigma, pixel_distance
 
     def forward(self, x: torch.Tensor) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
+        """Construct a Gaussian scale pyramid over several octaves.
+
+        Each octave stores multiple progressively blurred versions of the same
+        image resolution. The next octave starts from a downsampled image, so
+        feature detectors can search both spatial location and scale.
+
+        Args:
+            x: Input image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channels, :math:`H` is
+                height, and :math:`W` is width.
+
+        Returns:
+            Three lists with one entry per octave. ``pyr`` contains stacked
+            image levels, ``sigmas`` contains the absolute blur sigma for each
+            level, and ``pixel_dists`` contains the pixel spacing of each level
+            relative to the original image.
+        """
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
