@@ -136,6 +136,17 @@ class ImageEncoderViT(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Encode an image batch into SAM image embeddings.
+
+        Args:
+            x: Image tensor with shape :math:`(B, C, H, W)`, where :math:`B`
+                is batch size, :math:`C` is channel count, and :math:`H`,
+                :math:`W` are image height and width.
+
+        Returns:
+            Image embedding tensor with shape :math:`(B, C_{out}, H_e, W_e)`
+            after patch embedding, transformer blocks, and the neck.
+        """
         x = self.patch_embed(x)
         if self.pos_embed is not None:
             x = x + self.pos_embed
@@ -196,6 +207,15 @@ class Block(nn.Module):
         self.window_size = window_size
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply one SAM image-encoder transformer block.
+
+        Args:
+            x: Feature tensor with shape :math:`(B, H, W, C)`.
+
+        Returns:
+            Tensor with the same shape as ``x`` after window or global
+            attention, MLP, and residual connections.
+        """
         shortcut = x
         x = self.norm1(x)
         # Window partition
@@ -252,6 +272,15 @@ class Attention(nn.Module):
             self.rel_pos_w = nn.Parameter(torch.zeros(2 * input_size[1] - 1, head_dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply multi-head attention over 2D image tokens.
+
+        Args:
+            x: Token grid with shape :math:`(B, H, W, C)`.
+
+        Returns:
+            Tensor with shape :math:`(B, H, W, C)` after attention, optional
+            decomposed relative positional bias, and output projection.
+        """
         B, H, W, _ = x.shape
         # qkv with shape (3, B, nHead, H * W, C)
         qkv = self.qkv(x).reshape(B, H * W, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
@@ -370,6 +399,16 @@ class PatchEmbed(nn.Module):
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=kernel_size, stride=stride, padding=padding)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Project an image into patch embeddings.
+
+        Args:
+            x: Image tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Patch embedding tensor with shape :math:`(B, H_p, W_p, D)`, where
+            :math:`H_p` and :math:`W_p` are patch-grid dimensions and
+            :math:`D` is embedding dimension.
+        """
         x = self.proj(x)
         # B C H W -> B H W C
         x = x.permute(0, 2, 3, 1)
