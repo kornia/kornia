@@ -150,6 +150,21 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
         options: Optional[dict[Any, Any]] = None,
         disable: bool = False,
     ) -> ModelBase[ModelConfig]:
+        """Compile this model with :func:`torch.compile`.
+
+        Args:
+            fullgraph: Whether Dynamo should require a single full graph.
+            dynamic: Whether dynamic shape tracing is enabled.
+            backend: Compilation backend name passed to :func:`torch.compile`.
+            mode: Optional backend-specific compilation mode.
+            options: Optional backend-specific option dictionary.
+            disable: If ``True``, return an uncompiled model wrapper according
+                to PyTorch's compile semantics.
+
+        Returns:
+            Compiled model object with the same high-level interface as this
+            instance.
+        """
         compiled = torch.compile(
             self, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable
         )

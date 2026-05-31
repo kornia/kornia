@@ -203,6 +203,21 @@ class TransformerDecoderLayer(nn.Module):
         memory_mask: Optional[torch.Tensor] = None,
         query_pos_embed: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Run one RT-DETR transformer decoder layer.
+
+        Args:
+            tgt: Query tensor with shape :math:`(B, N_q, D)`.
+            ref_points: Reference points for deformable cross-attention.
+            memory: Flattened encoder memory tensor.
+            memory_spatial_shapes: Spatial shape for each memory level.
+            memory_level_start_index: Optional start index for each level.
+            attn_mask: Optional self-attention mask.
+            memory_mask: Optional memory mask.
+            query_pos_embed: Optional positional embedding for object queries.
+
+        Returns:
+            Updated query tensor with shape :math:`(B, N_q, D)`.
+        """
         # TODO: rename variables because is confusing
         # self attention
         q = k = tgt + query_pos_embed
@@ -242,6 +257,24 @@ class TransformerDecoder(nn.Module):
         attn_mask: Optional[torch.Tensor] = None,
         memory_mask: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Decode object queries into bounding boxes and class logits.
+
+        Args:
+            tgt: Initial query tensor with shape :math:`(B, N_q, D)`.
+            ref_points_unact: Unactivated reference boxes for the queries.
+            memory: Flattened encoder feature memory.
+            memory_spatial_shapes: Spatial shape for each feature level.
+            memory_level_start_index: Start index for each level in ``memory``.
+            bbox_head: Per-layer box prediction heads.
+            score_head: Per-layer class prediction heads.
+            query_pos_head: Module that maps reference boxes to query position
+                embeddings.
+            attn_mask: Optional query attention mask.
+            memory_mask: Optional encoder memory mask.
+
+        Returns:
+            Tuple ``(boxes, logits)`` stacked from the selected decoder layer.
+        """
         output: torch.Tensor = tgt
         dec_out_bboxes: list[torch.Tensor] = []
         dec_out_logits: list[torch.Tensor] = []
@@ -352,6 +385,16 @@ class RTDETRHead(nn.Module):
         )
 
     def forward(self, feats: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Predict RT-DETR class logits and bounding boxes from neck features.
+
+        Args:
+            feats: Multi-level feature maps from the encoder/neck.
+
+        Returns:
+            Tuple ``(logits, boxes)`` for the final decoder output. ``logits``
+            stores class scores and ``boxes`` stores normalized box
+            coordinates.
+        """
         # input projection and embedding
         memory, spatial_shapes, level_start_index = self._get_encoder_input(feats)
 

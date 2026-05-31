@@ -242,12 +242,29 @@ class DexiNed(ONNXExportMixin, nn.Module):
             self.apply(weight_init)
 
     def load_from_file(self, path_file: str) -> None:
+        """Load pretrained DexiNed weights and switch the module to evaluation mode.
+
+        Args:
+            path_file: URL or local checkpoint path accepted by
+                :func:`torch.hub.load_state_dict_from_url`.
+        """
         # use torch.hub to load pretrained model
         pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
     def get_features(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """Compute the six multi-scale DexiNed side-output edge maps.
+
+        Args:
+            x: Input RGB image tensor with shape :math:`(B, 3, H, W)`, where
+                :math:`B` is batch size, :math:`H` is height, and :math:`W` is
+                width.
+
+        Returns:
+            List of six tensors aligned to the input spatial size. Each tensor
+            is a side-output edge response used by the final fusion block.
+        """
         # Block 1
         block_1 = self.block_1(x)
         block_1_side = self.side_1(block_1)
@@ -294,6 +311,15 @@ class DexiNed(ONNXExportMixin, nn.Module):
         return results
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Predict a fused edge map from an RGB image batch.
+
+        Args:
+            x: Input RGB image tensor with shape :math:`(B, 3, H, W)`.
+
+        Returns:
+            Tensor with shape :math:`(B, 1, H, W)` containing the fused DexiNed
+            edge response.
+        """
         features = self.get_features(x)
 
         # concatenate multiscale outputs

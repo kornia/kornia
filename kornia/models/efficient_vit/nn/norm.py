@@ -32,6 +32,15 @@ class LayerNorm2d(nn.LayerNorm):
     """Apply Layer Normalization over a 4D input tensor (NCHW format)."""
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Normalize an NCHW feature map across channels.
+
+        Args:
+            x: Tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Tensor with the same shape as ``x`` after channel-wise layer
+            normalization and optional affine scaling.
+        """
         out = x - torch.mean(x, dim=1, keepdim=True)
         out = out / torch.sqrt(torch.square(out).mean(dim=1, keepdim=True) + self.eps)
         if self.elementwise_affine:

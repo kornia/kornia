@@ -45,6 +45,15 @@ class MLPBlock(nn.Module):
         self.act = act()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the two-layer MLP block to token embeddings.
+
+        Args:
+            x: Token tensor with last dimension ``embedding_dim``.
+
+        Returns:
+            Tensor with the same shape as ``x`` after hidden projection,
+            activation, and projection back to ``embedding_dim``.
+        """
         return self.lin2(self.act(self.lin1(x)))
 
 
