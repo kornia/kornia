@@ -94,7 +94,16 @@ class Quaternion(nn.Module):
         super().__init__()
         if not isinstance(data, (torch.Tensor, nn.Parameter)):
             raise TypeError(f"Expected torch.Tensor or nn.Parameter, got {type(data)}")
-        # KORNIA_CHECK_SHAPE(data, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
+
+        # Validate quaternion shape (..., 4)
+        if data.ndim == 0:
+            raise ValueError("Quaternion input must have at least 1 dimension with last dimension = 4.")
+
+        if data.shape[-1] != 4:
+            raise ValueError(
+                f"Invalid quaternion shape {tuple(data.shape)}. Expected last dimension to be 4, i.e. (..., 4)."
+            )
+
         self._data = data
 
     def to(self, *args: Any, **kwargs: Any) -> "Quaternion":
