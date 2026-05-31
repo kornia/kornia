@@ -247,6 +247,15 @@ class Boxes:
 
     @property
     def shape(self) -> tuple[int, ...] | Size:
+        """Return the tensor shape used to store the boxes.
+
+        Returns:
+            Shape of :attr:`data`. For unbatched boxes this is usually
+            :math:`(N, 4, 2)`, where :math:`N` is the number of boxes, ``4``
+            is the number of corner vertices, and ``2`` stores ``(x, y)``.
+            For batched boxes the shape is usually :math:`(B, N, 4, 2)`, where
+            :math:`B` is the batch size.
+        """
         return self.data.shape
 
     def get_boxes_shape(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -293,6 +302,25 @@ class Boxes:
         values: torch.Tensor | Boxes,
         inplace: bool = False,
     ) -> Boxes:
+        """Write box coordinates at selected tensor indices.
+
+        This mirrors :meth:`torch.Tensor.index_put_` for the internal
+        quadrilateral tensor. It is useful when a subset of boxes in a batch
+        must be replaced while keeping the :class:`Boxes` wrapper and metadata.
+
+        Args:
+            indices: Index tuple or list accepted by ``Tensor.index_put_``.
+                The indices address entries in the stored tensor, commonly
+                shaped :math:`(B, N, 4, 2)` or :math:`(N, 4, 2)`.
+            values: Replacement coordinates. If a :class:`Boxes` object is
+                passed, its :attr:`data` tensor is used.
+            inplace: If ``True``, update this object and return ``self``. If
+                ``False``, clone the current data first and return a new
+                :class:`Boxes` instance.
+
+        Returns:
+            :class:`Boxes` containing the updated coordinates.
+        """
         if inplace:
             _data = self._data
         else:
@@ -342,6 +370,25 @@ class Boxes:
         botright: Optional[torch.Tensor | tuple[int, int]] = None,
         inplace: bool = False,
     ) -> Boxes:
+        """Clamp every box vertex inside per-image coordinate limits.
+
+        Coordinates below ``topleft`` are raised to the lower bound and
+        coordinates above ``botright`` are lowered to the upper bound. The
+        implementation expects tensor bounds with one ``(x, y)`` pair per batch
+        element.
+
+        Args:
+            topleft: Tensor of shape :math:`(B, 2)` containing the minimum
+                ``x`` and ``y`` coordinate allowed for each batch item.
+            botright: Tensor of shape :math:`(B, 2)` containing the maximum
+                ``x`` and ``y`` coordinate allowed for each batch item.
+            inplace: If ``True``, clamp this object in place. Otherwise, return
+                a new :class:`Boxes` object with clamped data.
+
+        Returns:
+            :class:`Boxes` whose vertex coordinates are restricted to the
+            provided bounds.
+        """
         if not (isinstance(topleft, torch.Tensor) and isinstance(botright, torch.Tensor)):
             raise NotImplementedError
         if inplace:
@@ -399,6 +446,25 @@ class Boxes:
     def filter_boxes_by_area(
         self, min_area: Optional[float] = None, max_area: Optional[float] = None, inplace: bool = False
     ) -> Boxes:
+        """Remove boxes whose polygon area is outside the requested range.
+
+        The box area is computed from its four vertices. Boxes smaller than
+        ``min_area`` or larger than ``max_area`` are not dropped from the
+        tensor; their coordinates are replaced with zeros so the original batch
+        and box dimensions stay unchanged.
+
+        Args:
+            min_area: Optional lower inclusive area threshold. Boxes with area
+                below this value are zeroed.
+            max_area: Optional upper inclusive area threshold. Boxes with area
+                above this value are zeroed.
+            inplace: If ``True``, update this object in place. Otherwise,
+                return a filtered clone.
+
+        Returns:
+            :class:`Boxes` with the same shape as the input container and
+            out-of-range boxes replaced by zero coordinates.
+        """
         area = self.compute_area()
         if inplace:
             _data = self._data
@@ -704,10 +770,25 @@ class Boxes:
 
     @property
     def data(self) -> torch.Tensor:
+        """Return the raw quadrilateral coordinate tensor.
+
+        Returns:
+            Tensor storing four vertices per box in ``(x, y)`` order. The
+            common shapes are :math:`(N, 4, 2)` for unbatched boxes and
+            :math:`(B, N, 4, 2)` for batched boxes, where :math:`B` is batch
+            size and :math:`N` is the number of boxes.
+        """
         return self._data
 
     @property
     def mode(self) -> str:
+        """Return the box format remembered by this container.
+
+        Returns:
+            Mode string used as the default by :meth:`to_tensor`, such as
+            ``"xyxy"``, ``"xywh"``, ``"vertices"``, or their ``"_plus"``
+            variants.
+        """
         return self._mode
 
     @property
@@ -729,6 +810,13 @@ class Boxes:
         return self
 
     def clone(self) -> Boxes:
+        """Create an independent copy of the box container.
+
+        Returns:
+            New :class:`Boxes` object with cloned tensor storage. Metadata such
+            as the current mode, original list lengths, and batched flag is
+            preserved.
+        """
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
         obj._N = self._N
@@ -736,6 +824,14 @@ class Boxes:
         return obj
 
     def type(self, dtype: torch.dtype) -> Boxes:
+        """Cast the stored box coordinates to a new dtype.
+
+        Args:
+            dtype: Target floating-point dtype for the coordinate tensor.
+
+        Returns:
+            ``self`` after converting :attr:`data` in place.
+        """
         self._data = self._data.type(dtype)
         return self
 
@@ -828,6 +924,14 @@ class Boxes3D:
 
     @property
     def shape(self) -> tuple[int, ...] | Size:
+        """Return the tensor shape used to store 3D boxes.
+
+        Returns:
+            Shape of :attr:`data`. For unbatched boxes this is usually
+            :math:`(N, 8, 3)`, where :math:`N` is the number of boxes, ``8`` is
+            the number of cuboid corners, and ``3`` stores ``(x, y, z)``. For
+            batched boxes the shape is usually :math:`(B, N, 8, 3)`.
+        """
         return self.data.shape
 
     def get_boxes_shape(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -1119,10 +1223,22 @@ class Boxes3D:
 
     @property
     def data(self) -> torch.Tensor:
+        """Return the raw 3D corner-coordinate tensor.
+
+        Returns:
+            Tensor containing eight 3D corner coordinates per box, usually
+            shaped :math:`(N, 8, 3)` or :math:`(B, N, 8, 3)`.
+        """
         return self._data
 
     @property
     def mode(self) -> str:
+        """Return the 3D box format remembered by this container.
+
+        Returns:
+            Mode string describing how this container should be interpreted
+            during tensor conversion.
+        """
         return self._mode
 
     @property
