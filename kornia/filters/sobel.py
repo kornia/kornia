@@ -207,6 +207,25 @@ class SpatialGradient(nn.Module):
         return f"{self.__class__.__name__}(order={self.order}, normalized={self.normalized}, mode={self.mode})"
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute horizontal and vertical spatial derivatives.
+
+        The module applies Sobel or difference kernels, depending on
+        ``self.mode``, to estimate image gradients along the width and height
+        axes. First-order derivatives describe local slope; second-order
+        derivatives describe how that slope changes.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the height, and :math:`W` is the width.
+
+        Returns:
+            Gradient tensor from :func:`spatial_gradient`. For first-order
+            derivatives the shape is typically :math:`(B, C, 2, H, W)`, where
+            the derivative axis of size ``2`` stores the response along
+            :math:`x` (width) and :math:`y` (height). Higher orders may expose
+            additional derivative components according to the functional API.
+        """
         return spatial_gradient(input, self.mode, self.order, self.normalized)
 
 
@@ -245,6 +264,24 @@ class SpatialGradient3d(nn.Module):
         return f"{self.__class__.__name__}(order={self.order}, mode={self.mode})"
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute spatial derivatives through depth, height, and width.
+
+        This is the volumetric counterpart of :class:`SpatialGradient`. It
+        estimates changes along the three spatial axes of a five-dimensional
+        tensor, which is useful for 3D images, videos represented as volumes,
+        or feature maps with an explicit depth dimension.
+
+        Args:
+            input: Volume tensor with shape :math:`(B, C, D, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the channel count,
+                :math:`D` is the depth, :math:`H` is the height, and
+                :math:`W` is the width.
+
+        Returns:
+            Derivative tensor from :func:`spatial_gradient3d`. The output keeps
+            the input batch and channel dimensions and includes a derivative
+            axis for the spatial directions requested by ``self.order``.
+        """
         return spatial_gradient3d(input, self.mode, self.order)
 
 
@@ -277,4 +314,22 @@ class Sobel(nn.Module):
         return f"{self.__class__.__name__}(normalized={self.normalized})"
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute the Sobel gradient magnitude for every image channel.
+
+        Sobel filtering estimates horizontal and vertical derivatives and then
+        combines them into a magnitude response. Large values indicate strong
+        local intensity changes, which often correspond to edges or texture
+        boundaries.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the height, and :math:`W` is the width.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` containing the gradient
+            magnitude for each channel. The ``self.eps`` value is used by the
+            underlying function to keep magnitude computation numerically
+            stable near zero.
+        """
         return sobel(input, self.normalized, self.eps)

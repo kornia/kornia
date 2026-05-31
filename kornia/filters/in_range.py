@@ -189,4 +189,22 @@ class InRange(nn.Module):
         self.return_mask = return_mask
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Select values that fall inside the configured inclusive range.
+
+        The stored ``lower`` and ``upper`` bounds are compared against
+        ``input`` channel-wise. Depending on ``self.return_mask``, the module
+        either returns the binary in-range mask itself or uses that mask to keep
+        only values that satisfy the bounds.
+
+        Args:
+            input: Tensor to test against the configured bounds. For images the
+                usual shape is :math:`(B, C, H, W)`, where :math:`B` is the
+                batch size, :math:`C` is the number of channels, :math:`H` is
+                the height, and :math:`W` is the width.
+
+        Returns:
+            If ``self.return_mask`` is ``True``, a mask indicating which
+            entries lie within the inclusive range. Otherwise, a tensor with
+            values outside the range removed according to :func:`in_range`.
+        """
         return in_range(input, self.lower, self.upper, self.return_mask)
