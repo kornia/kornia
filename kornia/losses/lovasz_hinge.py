@@ -154,4 +154,14 @@ class LovaszHingeLoss(nn.Module):
         super().__init__()
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+        """Compute binary Lovasz hinge loss for segmentation logits.
+
+        Args:
+            pred: Binary logit tensor with shape :math:`(B, 1, H, W)`.
+            target: Binary label tensor with shape :math:`(B, H, W)`.
+
+        Returns:
+            Scalar tensor containing the Lovasz hinge surrogate for the
+            intersection-over-union objective.
+        """
         return lovasz_hinge_loss(pred=pred, target=target)

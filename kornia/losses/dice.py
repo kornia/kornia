@@ -194,13 +194,17 @@ class DiceLoss(nn.Module):
         self.ignore_index = ignore_index
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        """Compute Dice loss from logits and integer labels.
+        """Compute Sørensen-Dice loss for segmentation logits and labels.
 
         Args:
-            pred: The input prediction logits with shape :math:`(N, C, H, W)`.
-            target: The ground truth labels with shape :math:`(N, H, W)`.
+            pred: Logit tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is number of classes,
+                :math:`H` is height, and :math:`W` is width.
+            target: Integer target labels with shape :math:`(B, H, W)`.
 
         Returns:
-            The computed Sørensen-Dice loss value.
+            Scalar tensor containing ``1 - Dice`` after applying the configured
+            averaging strategy, class weights, numerical epsilon, and optional
+            ignored label handling.
         """
         return dice_loss(pred, target, self.average, self.eps, self.weight, self.ignore_index)

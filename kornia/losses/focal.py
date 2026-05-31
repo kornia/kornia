@@ -192,6 +192,19 @@ class FocalLoss(nn.Module):
         self.ignore_index: Optional[int] = ignore_index
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Compute multi-class focal loss from class logits.
+
+        Args:
+            pred: Logit tensor with shape :math:`(B, C, *)`, where :math:`B`
+                is batch size, :math:`C` is number of classes, and ``*`` is
+                any number of spatial dimensions.
+            target: Integer class-label tensor with shape :math:`(B, *)`.
+
+        Returns:
+            Focal-loss tensor reduced according to ``self.reduction``. The
+            focusing factor ``self.gamma`` down-weights easy examples, while
+            ``self.alpha`` and ``self.weight`` provide optional class weighting.
+        """
         return focal_loss(pred, target, self.alpha, self.gamma, self.reduction, self.weight, self.ignore_index)
 
 
@@ -368,6 +381,17 @@ class BinaryFocalLossWithLogits(nn.Module):
         self.ignore_index: Optional[int] = ignore_index
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Compute binary focal loss from logits.
+
+        Args:
+            pred: Logit tensor for binary predictions with arbitrary shape.
+            target: Binary target tensor with the same shape as ``pred``.
+
+        Returns:
+            Binary focal-loss tensor reduced according to ``self.reduction``.
+            Positive examples may be reweighted by ``self.pos_weight`` and
+            examples matching ``self.ignore_index`` are ignored when configured.
+        """
         return binary_focal_loss_with_logits(
             pred, target, self.alpha, self.gamma, self.reduction, self.pos_weight, self.weight, self.ignore_index
         )
