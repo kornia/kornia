@@ -183,4 +183,16 @@ class LovaszSoftmaxLoss(nn.Module):
         self.weight = weight
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
+        """Compute multi-class Lovasz-Softmax loss.
+
+        Args:
+            pred: Class logit tensor with shape :math:`(B, C, H, W)`, where
+                :math:`C` is the number of classes.
+            target: Integer class-label tensor with shape :math:`(B, H, W)`.
+
+        Returns:
+            Scalar tensor containing the Lovasz-Softmax surrogate for the
+            mean intersection-over-union objective, using ``self.weight`` when
+            class weights are configured.
+        """
         return lovasz_softmax_loss(pred=pred, target=target, weight=self.weight)

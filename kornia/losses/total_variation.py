@@ -101,4 +101,16 @@ class TotalVariation(nn.Module):
     """
 
     def forward(self, img: torch.Tensor) -> torch.Tensor:
+        """Compute total variation for an image or image batch.
+
+        Args:
+            img: Tensor with shape :math:`(*, H, W)`, where ``*`` represents
+                optional leading dimensions such as batch and channels,
+                :math:`H` is height, and :math:`W` is width.
+
+        Returns:
+            Tensor containing the sum of absolute horizontal and vertical
+            finite differences for each leading element. Lower values indicate
+            spatially smoother images.
+        """
         return total_variation(img)
