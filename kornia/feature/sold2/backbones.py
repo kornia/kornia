@@ -64,6 +64,19 @@ class HourglassBackbone(nn.Module):
         self.net = hg(HourglassConfig(depth, num_stacks, num_blocks, num_classes, input_channel, head=self.head))
 
     def forward(self, input_images: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        This method processes image or feature tensors used by the SOLD2 line detector. Tensor layouts follow `(B, C, H,
+        W)` for feature maps unless the surrounding class documentation states otherwise.
+
+        Args:
+            input_images: Input image batch with shape `(B, C, H, W)`, where `B` is batch size, `C` is channel count,
+                and `H`/`W` are spatial dimensions.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         return self.net(input_images)
 
 
@@ -88,6 +101,19 @@ class MultitaskHead(nn.Module):
         self.heads = nn.ModuleList(heads)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        This method processes image or feature tensors used by the SOLD2 line detector. Tensor layouts follow `(B, C, H,
+        W)` for feature maps unless the surrounding class documentation states otherwise.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         return torch.cat([head(x) for head in self.heads], dim=1)
 
 
@@ -114,6 +140,19 @@ class Bottleneck2D(nn.Module):
         self.stride = stride
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        This method processes image or feature tensors used by the SOLD2 line detector. Tensor layouts follow `(B, C, H,
+        W)` for feature maps unless the surrounding class documentation states otherwise.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         residual = x
 
         out = self.bn1(x)
@@ -186,6 +225,19 @@ class Hourglass(nn.Module):
         return out
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        This method processes image or feature tensors used by the SOLD2 line detector. Tensor layouts follow `(B, C, H,
+        W)` for feature maps unless the surrounding class documentation states otherwise.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         return self._hour_glass_forward(self.depth, x)
 
 
@@ -256,6 +308,19 @@ class HourglassNet(nn.Module):
         return nn.Sequential(conv, bn, self.relu)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        This method processes image or feature tensors used by the SOLD2 line detector. Tensor layouts follow `(B, C, H,
+        W)` for feature maps unless the surrounding class documentation states otherwise.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         out = []
         x = self.conv1(x)
         x = self.bn1(x)
@@ -314,6 +379,18 @@ class SuperpointDecoder(nn.Module):
         self.grid_size = grid_size
 
     def forward(self, input_features: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        This method processes image or feature tensors used by the SOLD2 line detector. Tensor layouts follow `(B, C, H,
+        W)` for feature maps unless the surrounding class documentation states otherwise.
+
+        Args:
+            input_features: Input feature map with shape `(B, C, H, W)`.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         feat = self.relu(self.convPa(input_features))
         semi = self.convPb(feat)
 
@@ -379,6 +456,18 @@ class PixelShuffleDecoder(nn.Module):
 
     def forward(self, input_features: torch.Tensor) -> torch.Tensor:
         # Iterate til output block
+        """Run this SOLD2 backbone component forward.
+
+        This method processes image or feature tensors used by the SOLD2 line detector. Tensor layouts follow `(B, C, H,
+        W)` for feature maps unless the surrounding class documentation states otherwise.
+
+        Args:
+            input_features: Input feature map with shape `(B, C, H, W)`.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         out = input_features
         for block in self.conv_block_lst[:-1]:
             out = block(out)
@@ -409,6 +498,18 @@ class SuperpointDescriptor(nn.Module):
         self.convPb = nn.Conv2d(256, 128, kernel_size=1, stride=1, padding=0)
 
     def forward(self, input_features: torch.Tensor) -> torch.Tensor:
+        """Run this SOLD2 backbone component forward.
+
+        This method processes image or feature tensors used by the SOLD2 line detector. Tensor layouts follow `(B, C, H,
+        W)` for feature maps unless the surrounding class documentation states otherwise.
+
+        Args:
+            input_features: Input feature map with shape `(B, C, H, W)`.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         feat = self.relu(self.convPa(input_features))
         semi = self.convPb(feat)
 
@@ -452,6 +553,19 @@ class SOLD2Net(nn.Module):
 
     def forward(self, input_images: torch.Tensor) -> Dict[str, torch.Tensor]:
         # The backbone
+        """Run this SOLD2 backbone component forward.
+
+        This method processes image or feature tensors used by the SOLD2 line detector. Tensor layouts follow `(B, C, H,
+        W)` for feature maps unless the surrounding class documentation states otherwise.
+
+        Args:
+            input_images: Input image batch with shape `(B, C, H, W)`, where `B` is batch size, `C` is channel count,
+                and `H`/`W` are spatial dimensions.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         features = self.backbone_net(input_images)
 
         # junction decoder

@@ -42,6 +42,21 @@ class VGG19(nn.Module):
         # AMP is intentionally scoped to "cuda" only: float16 autocast on CPU is not
         # supported by PyTorch and a no-op on MPS. Use amp_dtype=torch.float32 on
         # non-CUDA devices to disable AMP entirely.
+        """Run this DeDoDe module forward.
+
+        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
+        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            **kwargs: Additional keyword arguments accepted for compatibility with the shared encoder interface. They
+                are not used by this VGG19 batch-normalized backbone wrapper.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
             feats = []
             sizes = []
@@ -80,6 +95,19 @@ class FrozenDINOv2(nn.Module):
         self.dinov2_vitl14 = [dinov2_vitl14]  # ugly hack to not show parameters to DDP
 
     def forward(self, x: torch.Tensor):  # type: ignore[no-untyped-def]
+        """Run this DeDoDe module forward.
+
+        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
+        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         B, _C, H, W = x.shape
         if self.dinov2_vitl14[0].device != x.device:
             self.dinov2_vitl14[0] = self.dinov2_vitl14[0].to(x.device).to(self.amp_dtype)
@@ -100,6 +128,19 @@ class VGG_DINOv2(nn.Module):
         self.frozen_dinov2 = FrozenDINOv2(**dinov2_kwargs)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Tuple[int, int]]:
+        """Run this DeDoDe module forward.
+
+        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
+        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         feats_vgg, sizes_vgg = self.vgg(x)
         feat_dinov2, size_dinov2 = self.frozen_dinov2(x)
         return feats_vgg + feat_dinov2, sizes_vgg + size_dinov2

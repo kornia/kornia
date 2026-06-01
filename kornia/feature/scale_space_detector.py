@@ -312,6 +312,17 @@ class ScaleSpaceDetector(nn.Module):
     def detect(
         self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Detect local features in an image batch.
+
+        Args:
+            img: Input image tensor with shape `(B, C, H, W)`.
+            num_feats: Number of features requested from the detector.
+            mask: Optional mask tensor used to restrict valid image locations.
+
+        Returns:
+            Tuple containing detection scores and local affine frames. Local affine frames are usually shaped `(B, N, 2,
+            3)`, where `N` is the selected feature count.
+        """
         dev = img.device
         dtype: torch.dtype = img.dtype
         sp, sigmas, _ = self.scale_pyr(img)
@@ -469,6 +480,17 @@ class MultiResolutionDetector(nn.Module):
     def detect_features_on_single_level(
         self, level_img: torch.Tensor, num_kp: int, factor: Tuple[float, float]
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Detect keypoints on one image-pyramid level.
+
+        Args:
+            level_img: Image tensor for a single pyramid level.
+            num_kp: Number of keypoints requested from this pyramid level.
+            factor: Scale factor mapping coordinates from the current pyramid level back to the original image
+                resolution.
+
+        Returns:
+            Tuple containing scores and local affine frames detected at the requested pyramid level.
+        """
         det_map = self.nms(self.remove_borders(self.model(level_img)))
         _, _, _h, w = det_map.shape
         det_flat = det_map.view(-1)  # (H*W,) — B=1, C=1 guaranteed by MultiResolutionDetector
@@ -493,6 +515,16 @@ class MultiResolutionDetector(nn.Module):
 
     def detect(self, img: torch.Tensor, mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         # Compute points per level
+        """Detect local features in an image batch.
+
+        Args:
+            img: Input image tensor with shape `(B, C, H, W)`.
+            mask: Optional mask tensor used to restrict valid image locations.
+
+        Returns:
+            Tuple containing detection scores and local affine frames. Local affine frames are usually shaped `(B, N, 2,
+            3)`, where `N` is the selected feature count.
+        """
         num_features_per_level: List[float] = []
         tmp = 0.0
         factor_points = self.scale_factor_levels**2

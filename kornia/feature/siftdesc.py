@@ -158,12 +158,32 @@ class SIFTDescriptor(nn.Module):
         self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))
 
     def get_pooling_kernel(self) -> torch.Tensor:
+        """Return the spatial pooling kernel used for histogram accumulation.
+
+        Returns:
+            Detached convolution kernel tensor from the pooling layer.
+        """
         return self.pk.weight.detach()
 
     def get_weighting_kernel(self) -> torch.Tensor:
+        """Return the Gaussian weighting kernel used before orientation pooling.
+
+        Returns:
+            Detached Gaussian kernel tensor.
+        """
         return self.gk.detach()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        r"""Compute SIFT descriptors for square grayscale patches.
+
+        Args:
+            input: Patch tensor shaped
+                :math:`(B, 1, \text{patch\_size}, \text{patch\_size})`.
+
+        Returns:
+            Descriptor tensor of size
+            :math:`(B, \text{num\_ang\_bins} \times \text{num\_spatial\_bins}^2)`.
+        """
         KORNIA_CHECK_SHAPE(input, ["B", "1", f"{self.patch_size}", f"{self.patch_size}"])
         B: int = input.shape[0]
         self.pk = self.pk.to(input.dtype).to(input.device)
@@ -306,10 +326,24 @@ class DenseSIFTDescriptor(nn.Module):
         self._pooling_kernel = self._bin_pooling_kernel_weight.detach()
 
     def get_pooling_kernel(self) -> torch.Tensor:
+        """Return the cached pooling kernel for dense SIFT binning.
+
+        Returns:
+            Detached tensor containing pooling weights.
+        """
         # Return the cached detached pooling kernel directly for optimal speed
         return self._pooling_kernel
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute dense SIFT descriptors over a full image grid.
+
+        Args:
+            input: Grayscale image tensor with shape :math:`(B, 1, H, W)`.
+
+        Returns:
+            Dense descriptor map tensor with channel dimension
+            ``num_ang_bins * num_spatial_bins**2``.
+        """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "H", "W"])
 
         _B, _CH, _W, _H = input.size()
