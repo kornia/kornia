@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 from __future__ import annotations
 
 from typing import NamedTuple
@@ -61,13 +78,9 @@ class Qwen3VLPatchEmbed(nn.Module):
 
     def forward(self, hidden_states: Tensor) -> Tensor:
         if hidden_states.dim() != 2:
-            raise ValueError(
-                f"Expected flat patch tensor of shape (N, C*T*P*P); got {tuple(hidden_states.shape)}."
-            )
+            raise ValueError(f"Expected flat patch tensor of shape (N, C*T*P*P); got {tuple(hidden_states.shape)}.")
         target_dtype = self.proj.weight.dtype
-        x = hidden_states.view(
-            -1, self.in_channels, self.temporal_patch_size, self.patch_size, self.patch_size
-        )
+        x = hidden_states.view(-1, self.in_channels, self.temporal_patch_size, self.patch_size, self.patch_size)
         x = self.proj(x.to(target_dtype))
         return x.view(-1, self.hidden_size)
 
@@ -107,9 +120,7 @@ class Qwen3VLAttention(nn.Module):
     def __init__(self, config: Qwen3VLVisionConfig) -> None:
         super().__init__()
         if config.hidden_size % config.num_heads != 0:
-            raise ValueError(
-                f"hidden_size ({config.hidden_size}) must be divisible by num_heads ({config.num_heads})."
-            )
+            raise ValueError(f"hidden_size ({config.hidden_size}) must be divisible by num_heads ({config.num_heads}).")
         self.dim = config.hidden_size
         self.num_heads = config.num_heads
         self.head_dim = self.dim // self.num_heads
@@ -188,7 +199,7 @@ class Qwen3VLPatchMerger(nn.Module):
 
     def __init__(self, config: Qwen3VLVisionConfig, use_postshuffle_norm: bool = False) -> None:
         super().__init__()
-        self.merged_size = config.hidden_size * (config.spatial_merge_size ** 2)
+        self.merged_size = config.hidden_size * (config.spatial_merge_size**2)
         self.use_postshuffle_norm = use_postshuffle_norm
         norm_dim = self.merged_size if use_postshuffle_norm else config.hidden_size
         self.norm = nn.LayerNorm(norm_dim, eps=config.layer_norm_eps)
@@ -235,11 +246,9 @@ class Qwen3VLVisionModel(nn.Module):
 
         self.patch_embed = Qwen3VLPatchEmbed(config)
         self.pos_embed = nn.Embedding(config.num_position_embeddings, config.hidden_size)
-        self.num_grid_per_side = round(config.num_position_embeddings ** 0.5)
+        self.num_grid_per_side = round(config.num_position_embeddings**0.5)
         if self.num_grid_per_side * self.num_grid_per_side != config.num_position_embeddings:
-            raise ValueError(
-                f"num_position_embeddings={config.num_position_embeddings} must be a perfect square."
-            )
+            raise ValueError(f"num_position_embeddings={config.num_position_embeddings} must be a perfect square.")
 
         head_dim = config.hidden_size // config.num_heads
         self.rotary_pos_emb = Qwen3VLRotaryEmbedding(head_dim // 2, theta=config.rope_theta)
@@ -249,9 +258,7 @@ class Qwen3VLVisionModel(nn.Module):
 
         for idx in config.deepstack_visual_indexes:
             if idx < 0 or idx >= config.depth:
-                raise ValueError(
-                    f"deepstack_visual_indexes contain {idx}, out of range for depth={config.depth}."
-                )
+                raise ValueError(f"deepstack_visual_indexes contain {idx}, out of range for depth={config.depth}.")
         self.deepstack_visual_indexes = tuple(config.deepstack_visual_indexes)
         self.deepstack_merger_list = nn.ModuleList(
             [Qwen3VLPatchMerger(config, use_postshuffle_norm=True) for _ in self.deepstack_visual_indexes]

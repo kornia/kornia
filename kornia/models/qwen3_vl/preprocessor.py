@@ -1,3 +1,20 @@
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 from __future__ import annotations
 
 import math
@@ -158,8 +175,7 @@ class Qwen3VLImageProcessor(nn.Module):
             raise ValueError(f"Expected 4D BCHW input; got shape {tuple(images.shape)}.")
         if images.shape[1] != self.config.in_channels:
             raise ValueError(
-                f"Input has {images.shape[1]} channels but processor was configured for "
-                f"{self.config.in_channels}."
+                f"Input has {images.shape[1]} channels but processor was configured for {self.config.in_channels}."
             )
 
         h, w = int(images.shape[-2]), int(images.shape[-1])
@@ -184,9 +200,7 @@ class Qwen3VLImageProcessor(nn.Module):
         grid_h = h // cfg.patch_size
         grid_w = w // cfg.patch_size
         if grid_h * cfg.patch_size != h or grid_w * cfg.patch_size != w:
-            raise ValueError(
-                f"Image size ({h}, {w}) is not divisible by patch_size={cfg.patch_size}."
-            )
+            raise ValueError(f"Image size ({h}, {w}) is not divisible by patch_size={cfg.patch_size}.")
 
         # Add a temporal axis and repeat to fill `temporal_patch_size` frames so each
         # image becomes a single grid_t=1 video chunk.
@@ -197,9 +211,7 @@ class Qwen3VLImageProcessor(nn.Module):
         # then intra-block index, with patch content laid out C, T, P_h, P_w.
         merge = cfg.spatial_merge_size
         if grid_h % merge != 0 or grid_w % merge != 0:
-            raise ValueError(
-                f"Patch grid ({grid_h}, {grid_w}) must be divisible by spatial_merge_size={merge}."
-            )
+            raise ValueError(f"Patch grid ({grid_h}, {grid_w}) must be divisible by spatial_merge_size={merge}.")
         patches = frames.view(
             b,
             grid_t,
