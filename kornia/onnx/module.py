@@ -63,12 +63,43 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
     def create_session(
         self, providers: list[str] | None = None, session_options: Any | None = None
     ) -> ort.InferenceSession:  # type: ignore
+        """Create an ONNX Runtime session for the wrapped model graph.
+
+        Args:
+            providers: Optional ordered list of ONNX Runtime execution providers,
+                such as ``"CUDAExecutionProvider"`` followed by
+                ``"CPUExecutionProvider"``. The first available provider is used
+                according to ONNX Runtime's provider selection rules.
+            session_options: Optional ONNX Runtime session options controlling
+                graph optimization, threading, logging, and other runtime
+                execution settings.
+
+        Returns:
+            ONNX Runtime inference session bound to ``self.op``, the wrapped
+            ONNX model graph.
+        """
         return super()._create_session(self.op, providers, session_options)
 
     def export(self, file_path: str, **kwargs: Any) -> None:
+        """Serialize the wrapped ONNX model graph to disk.
+
+        Args:
+            file_path: Destination path for the exported ``.onnx`` file.
+            kwargs: Additional keyword arguments forwarded to the underlying
+                ONNX export helper.
+        """
         return super()._export(self.op, file_path, **kwargs)
 
     def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
+        """Attach metadata entries to the wrapped ONNX model graph.
+
+        Args:
+            additional_metadata: Optional list of ``(key, value)`` string pairs
+                to store in the ONNX model metadata properties.
+
+        Returns:
+            The wrapped ONNX model graph after metadata has been added.
+        """
         return super()._add_metadata(self.op, additional_metadata)
 
 

@@ -101,15 +101,53 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         return op_list
 
     def combine(self, io_maps: list[tuple[str, str]] | None = None) -> onnx.ModelProto:  # type: ignore
+        """Combine the stored ONNX operators into one executable graph.
+
+        Args:
+            io_maps: Optional list of ``(source_output, target_input)`` name
+                pairs describing how adjacent graphs should be connected. When
+                omitted, the helper assumes the default single input/output
+                names used by the ONNX composition utility.
+
+        Returns:
+            Combined ONNX model graph containing all operators in
+            ``self.operators`` connected in sequence.
+        """
         return super()._combine(*self.operators, io_maps=io_maps)
 
     def create_session(
         self, providers: list[str] | None = None, session_options: Any | None = None
     ) -> ort.InferenceSession:  # type: ignore
+        """Create an ONNX Runtime session for the combined graph.
+
+        Args:
+            providers: Optional ordered list of execution providers used by ONNX
+                Runtime, for example GPU first and CPU as fallback.
+            session_options: Optional ONNX Runtime session options controlling
+                optimization, threading, and runtime behavior.
+
+        Returns:
+            ONNX Runtime inference session for ``self._combined_op``.
+        """
         return super()._create_session(self._combined_op, providers, session_options)
 
     def export(self, file_path: str, **kwargs: Any) -> None:
+        """Serialize the combined ONNX graph to an ``.onnx`` file.
+
+        Args:
+            file_path: Destination path where the composed ONNX graph is saved.
+            kwargs: Additional keyword arguments forwarded to the export helper.
+        """
         return super()._export(self._combined_op, file_path, **kwargs)
 
     def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
+        """Attach metadata entries to the combined ONNX graph.
+
+        Args:
+            additional_metadata: Optional list of ``(key, value)`` pairs to add
+                to the ONNX model metadata properties.
+
+        Returns:
+            Combined ONNX model graph after metadata has been attached.
+        """
         return super()._add_metadata(self._combined_op, additional_metadata)
