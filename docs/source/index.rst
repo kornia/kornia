@@ -154,6 +154,7 @@ Join the community
    models/affnet
    models/sold2
    models/dexined
+   models/qwen3_vl
 
 .. toctree::
    :caption: SUPPORT
