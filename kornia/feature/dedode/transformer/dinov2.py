@@ -56,6 +56,19 @@ class BlockChunk(nn.ModuleList):
     """Implement a container for sequential execution of transformer block chunks."""
 
     def forward(self, x):
+        """Run this DeDoDe module forward.
+
+        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
+        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         for b in self:
             x = b(x)
         return x
@@ -180,14 +193,35 @@ class DinoVisionTransformer(nn.Module):
 
     @property
     def device(self):
+        """Return the device of the stored tensors or module parameters.
+
+        Returns:
+            Device used by the model parameters.
+        """
         return self.cls_token.device
 
     def init_weights(self):
+        """Initialize transformer weights.
+
+        Returns:
+            None. Model weights are initialized in place.
+        """
         trunc_normal_(self.pos_embed, std=0.02)
         nn.init.normal_(self.cls_token, std=1e-6)
         named_apply(init_weights_vit_timm, self)
 
     def interpolate_pos_encoding(self, x, w, h):
+        """Interpolate positional encodings to the current patch grid.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            w: Input value used by this method.
+            h: Input value used by this method.
+
+        Returns:
+            Positional embedding tensor resized to match the current patch grid.
+        """
         previous_dtype = x.dtype
         npatch = x.shape[1] - 1
         N = self.pos_embed.shape[1] - 1
@@ -214,6 +248,16 @@ class DinoVisionTransformer(nn.Module):
         return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1).to(previous_dtype)
 
     def prepare_tokens_with_masks(self, x, masks=None):
+        """Prepare image patch tokens before transformer encoding.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            masks: Input value used by this method.
+
+        Returns:
+            Token sequence prepared with class token, positional embeddings, and optional masks.
+        """
         _B, _nc, w, h = x.shape
         x = self.patch_embed(x)
         if masks is not None:
@@ -225,6 +269,15 @@ class DinoVisionTransformer(nn.Module):
         return x
 
     def forward_features_list(self, x_list, masks_list):
+        """Compute transformer features for a list of image tensors.
+
+        Args:
+            x_list: Input value used by this method.
+            masks_list: Input value used by this method.
+
+        Returns:
+            List of intermediate feature dictionaries, one per input image tensor.
+        """
         x = [self.prepare_tokens_with_masks(x, masks) for x, masks in zip(x_list, masks_list)]
         for blk in self.blocks:
             x = blk(x)
@@ -244,6 +297,16 @@ class DinoVisionTransformer(nn.Module):
         return output
 
     def forward_features(self, x, masks=None):
+        """Compute transformer features for one image tensor.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            masks: Input value used by this method.
+
+        Returns:
+            Feature dictionary produced by the transformer backbone.
+        """
         if isinstance(x, list):
             return self.forward_features_list(x, masks)
 
@@ -294,6 +357,19 @@ class DinoVisionTransformer(nn.Module):
         return_class_token: bool = False,
         norm=True,
     ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor]]]:
+        """Return selected intermediate transformer layer outputs.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            n: Current hourglass recursion depth.
+            reshape: Input value used by this method.
+            return_class_token: Input value used by this method.
+            norm: Input value used by this method.
+
+        Returns:
+            Tuple or list of intermediate transformer layer outputs.
+        """
         if self.chunked_blocks:
             outputs = self._get_intermediate_layers_chunked(x, n)
         else:
@@ -313,6 +389,15 @@ class DinoVisionTransformer(nn.Module):
         return tuple(outputs)
 
     def forward(self, *args, is_training=False, **kwargs):
+        """Run this DeDoDe module forward.
+
+        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
+        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         ret = self.forward_features(*args, **kwargs)
         if is_training:
             return ret

@@ -72,6 +72,14 @@ class TFeat(nn.Module):
         self.eval()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute TFeat descriptors for grayscale 32x32 patches.
+
+        Args:
+            input: Input tensor with shape :math:`(B, 1, 32, 32)`.
+
+        Returns:
+            Descriptor tensor with shape :math:`(B, 128)`.
+        """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x = self.features(input)
         x = x.view(x.size(0), -1)

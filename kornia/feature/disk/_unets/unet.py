@@ -26,6 +26,12 @@ from .blocks import ThinUnetDownBlock, ThinUnetUpBlock
 
 
 class Unet(nn.Module):
+    """U-Net backbone used by DISK to predict dense feature maps.
+
+    The network follows an encoder-decoder layout with skip connections. Input and output tensors use `(B, C, H, W)`,
+    where `B` is batch size, `C` is channel count, and `H`/`W` are spatial dimensions.
+    """
+
     def __init__(
         self, in_features: int = 1, up: Optional[list[int]] = None, down: Optional[list[int]] = None, size: int = 5
     ) -> None:
@@ -59,6 +65,17 @@ class Unet(nn.Module):
             self.n_params += param.numel()
 
     def forward(self, inp: torch.Tensor) -> torch.Tensor:
+        """Run this DISK component forward.
+
+        Feature maps use `(B, C, H, W)`, where `B` is batch size, `C` channels, and `H`/`W` are spatial dimensions.
+
+        Args:
+            inp: Input tensor passed to the module.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         if inp.size(1) != self.in_features:
             fmt = "Expected {} feature channels in input, got {}"
             msg = fmt.format(self.in_features, inp.size(1))

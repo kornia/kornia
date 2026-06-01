@@ -92,6 +92,14 @@ class OnnxLightGlue:
         self.session = ort.InferenceSession(weights, providers=providers)
 
     def __call__(self, data: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
+        """Run the ONNX LightGlue matcher.
+
+        Args:
+            data: Dictionary containing image features, keypoints, descriptors, and image sizes for matching.
+
+        Returns:
+            Dictionary containing ONNX LightGlue matches and matching scores.
+        """
         return self.forward(data)
 
     def forward(self, data: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:

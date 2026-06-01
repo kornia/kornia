@@ -139,6 +139,14 @@ class SOLD2(nn.Module):
         return self.line_matcher(line_seg1, line_seg2, desc1, desc2)
 
     def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Adapt pretrained checkpoint keys to this module implementation.
+
+        Args:
+            state_dict: Checkpoint state dictionary whose keys are adapted to this module layout.
+
+        Returns:
+            State dictionary with checkpoint keys renamed or removed so it can be loaded by the current module.
+        """
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]

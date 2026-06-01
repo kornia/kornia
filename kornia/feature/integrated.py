@@ -391,6 +391,16 @@ class LocalFeatureMatcher(nn.Module):
         return {"lafs": lafs0, "responses": resps0, "descriptors": descs0}
 
     def no_match_output(self, device: Union[str, torch.device, None], dtype: torch.dtype) -> Dict[str, torch.Tensor]:
+        """Create an empty output structure when no correspondences are found.
+
+        Args:
+            device: Device on which empty tensors should be allocated.
+            dtype: Floating-point dtype used for keypoints/LAF/confidence.
+
+        Returns:
+            Dictionary with correctly typed empty tensors for all expected
+            output fields.
+        """
         return {
             "keypoints0": torch.empty(0, 2, device=device, dtype=dtype),
             "keypoints1": torch.empty(0, 2, device=device, dtype=dtype),
