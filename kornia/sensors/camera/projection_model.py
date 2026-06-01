@@ -85,7 +85,42 @@ class OrthographicProjection:
     """
 
     def project(self, points: Vector3) -> Vector2:
+        """Project 3D camera-frame points with an orthographic camera model.
+
+        Orthographic projection keeps the horizontal and vertical coordinates
+        unchanged and discards depth. Unlike perspective projection, objects do
+        not shrink as their ``z`` value increases.
+
+        Args:
+            points: Three-dimensional point container with coordinates
+                ``x``, ``y``, and ``z``. Leading dimensions may represent a
+                batch of points.
+
+        Returns:
+            Two-dimensional point container containing the projected ``x`` and
+            ``y`` coordinates.
+
+        Raises:
+            NotImplementedError: This projection model is declared as an
+                interface placeholder and is not implemented yet.
+        """
         raise NotImplementedError
 
     def unproject(self, points: Vector2, depth: torch.Tensor) -> Vector3:
+        """Lift orthographic image-plane points back into 3D using depth.
+
+        Args:
+            points: Two-dimensional point container with image-plane
+                coordinates ``x`` and ``y``.
+            depth: Tensor containing the target ``z`` coordinate for each
+                unprojected point.
+
+        Returns:
+            Three-dimensional point container with ``x`` and ``y`` copied from
+            ``points`` and ``z`` supplied by ``depth``.
+
+        Raises:
+            NotImplementedError: This projection model is declared as an
+                interface placeholder and is not implemented yet.
+        """
         raise NotImplementedError
