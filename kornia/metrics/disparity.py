@@ -49,9 +49,7 @@ def _check_disparity_inputs(
     return valid_mask.to(torch.bool).broadcast_to(input.shape)
 
 
-def _reduce_disparity_error(
-    error: torch.Tensor, valid_mask: Optional[torch.Tensor], reduction: str
-) -> torch.Tensor:
+def _reduce_disparity_error(error: torch.Tensor, valid_mask: Optional[torch.Tensor], reduction: str) -> torch.Tensor:
     """Reduce a per-pixel error map over the valid pixels according to ``reduction``."""
     if reduction == "mean":
         error = error.mean() if valid_mask is None else error[valid_mask].mean()
