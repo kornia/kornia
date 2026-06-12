@@ -20,11 +20,14 @@ try:
     from enum import Enum, member
 except ImportError:
     from enum import Enum
+
     class member:  # type: ignore
         def __init__(self, value):
             self.value = value
+
         def __call__(self, *args, **kwargs):
             return self.value(*args, **kwargs)
+
 
 from functools import partial
 
