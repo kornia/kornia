@@ -189,8 +189,8 @@ class OnnxLightGlue:
         # The fallback path uses NumPy, which incurs a device-to-host copy and is slower.
         if hasattr(matches, "to_dlpack"):
             outputs = {
-                "matches": dlpack.from_dlpack(matches.to_dlpack()).to(self.device),
-                "scores": dlpack.from_dlpack(mscores.to_dlpack()).to(self.device),
+                "matches": dlpack.from_dlpack(matches.to_dlpack()),
+                "scores": dlpack.from_dlpack(mscores.to_dlpack()),
             }
         else:
             outputs = {
