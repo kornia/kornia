@@ -24,6 +24,7 @@ PSNR, SSIM, and endpoint error.
 from .accuracy import accuracy
 from .average_meter import AverageMeter
 from .confusion_matrix import confusion_matrix
+from .disparity import mean_absolute_disparity_error, mean_bad_pixel_error, root_mean_squared_disparity_error
 from .endpoint_error import AEPE, aepe, average_endpoint_error
 from .mean_average_precision import mean_average_precision
 from .mean_iou import mean_iou, mean_iou_bbox
@@ -40,10 +41,13 @@ __all__ = [
     "aepe",
     "average_endpoint_error",
     "confusion_matrix",
+    "mean_absolute_disparity_error",
     "mean_average_precision",
+    "mean_bad_pixel_error",
     "mean_iou",
     "mean_iou_bbox",
     "psnr",
+    "root_mean_squared_disparity_error",
     "ssim",
     "ssim3d",
 ]
