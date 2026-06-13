@@ -65,6 +65,8 @@ class TestOnnxLightGlue:
 
         assert "matches" in outputs
         assert "scores" in outputs
+        assert outputs["matches"].device.type == model.device.type
+        assert outputs["scores"].device.type == model.device.type
 
     def test_normalize_keypoints(self):
         kpts = torch.randint(0, 100, (1, 5, 2))
