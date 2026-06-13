@@ -17,7 +17,15 @@
 
 import os
 from dataclasses import dataclass, field
-from enum import StrEnum
+
+try:
+    from enum import StrEnum
+except ImportError:
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        pass
+
 
 __all__ = ["InstallationMode", "kornia_config"]
 
