@@ -52,7 +52,6 @@ class TestTFeat(BaseTester):
         self.gradcheck(tfeat, (patches,), eps=1e-2, atol=1e-2)
 
     @pytest.mark.slow
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)

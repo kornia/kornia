@@ -44,7 +44,6 @@ class TestHardNet(BaseTester):
         hardnet = HardNet().to(patches.device, patches.dtype)
         self.gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -73,7 +72,6 @@ class TestHardNet8(BaseTester):
         hardnet = HardNet8().to(patches.device, patches.dtype)
         self.gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)

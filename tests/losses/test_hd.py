@@ -92,7 +92,6 @@ class TestHausdorffLoss(BaseTester):
     @pytest.mark.parametrize(
         "hd,shape", [[kornia.losses.HausdorffERLoss, (5, 5)], [kornia.losses.HausdorffERLoss3D, (5, 5, 5)]]
     )
-    @pytest.mark.grad()
     def test_gradcheck(self, hd, shape, device, dtype):
         num_classes = 3
         logits = torch.rand(2, num_classes, *shape, device=device)

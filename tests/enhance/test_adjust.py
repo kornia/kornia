@@ -46,14 +46,12 @@ class TestInvert(BaseTester):
         out = kornia.enhance.invert(img, torch.tensor(255.0))
         self.assert_close(out, torch.zeros_like(out))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 1, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         max_val = torch.tensor(1.0, device=device, dtype=torch.float64, requires_grad=True)
         self.gradcheck(kornia.enhance.invert, (img, max_val))
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -696,7 +694,6 @@ class TestAdjustSigmoid(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -749,7 +746,6 @@ class TestAdjustLog(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -1031,14 +1027,12 @@ class TestSharpness(BaseTester):
         self.assert_close(TestSharpness.f(inputs, 0.8), expected_08, low_tolerance=True)
         self.assert_close(TestSharpness.f(inputs, torch.tensor([0.8, 1.3])), expected_08_13, low_tolerance=True)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(TestSharpness.f, (inputs, 0.8))
 
     @pytest.mark.skip(reason="union type input")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = TestSharpness.f
         op_script = torch.jit.script(TestSharpness.f)
@@ -1112,7 +1106,6 @@ class TestSolarize(BaseTester):
         # TODO(jian): precision is very bad compared to PIL
         self.assert_close(TestSolarize.f(inputs, 0.5), expected, rtol=1e-2, atol=1e-2)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -1120,7 +1113,6 @@ class TestSolarize(BaseTester):
 
     # TODO: implement me
     @pytest.mark.skip(reason="union type input")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = TestSolarize.f
         op_script = torch.jit.script(op)
@@ -1184,7 +1176,6 @@ class TestPosterize(BaseTester):
         self.assert_close(TestPosterize.f(inputs, 8), inputs)
 
     @pytest.mark.skip(reason="IndexError: tuple index out of range")
-    @pytest.mark.grad()
     def test_gradcheck(self, device):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
@@ -1192,7 +1183,6 @@ class TestPosterize(BaseTester):
 
     # TODO: implement me
     @pytest.mark.skip(reason="union type input")
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = TestPosterize.f
         op_script = torch.jit.script(op)
