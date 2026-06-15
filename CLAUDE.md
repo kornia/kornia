@@ -62,7 +62,7 @@ The library is structured as submodules under `kornia/`:
 - **`kornia/geometry/`** — Geometric transformations (affine, homography, camera models, stereo, 3D). Also core, imported first.
 - **`kornia/augmentation/`** — Augmentation pipeline (`AugmentationSequential`, `RandomAffine`, etc.)
 - **`kornia/color/`** — Color space conversions (RGB, HSV, grayscale, etc.)
-- **`kornia/feature/`** — Feature detection and description (SIFT, HardNet, DISK, DeDoDe, LoFTR, LightGlue, etc.)
+- **`kornia/feature/`** — Feature detection and description (SIFT, HardNet, SANDesc, DISK, DeDoDe, LoFTR, LightGlue, etc.)
 - **`kornia/enhance/`** — Image enhancement (histogram equalization, CLAHE, gamma correction)
 - **`kornia/losses/`** — Loss functions (SSIM, PSNR, Dice, Hausdorff, etc.)
 - **`kornia/models/`** — Pre-trained AI models (YuNet face detection, SAM segmentation, etc.)

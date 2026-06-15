@@ -89,6 +89,7 @@ from .responses import (
     harris_response,
     hessian_response,
 )
+from .sandesc import SANDesc
 from .scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
 from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
@@ -141,6 +142,7 @@ __all__ = [
     "PassLAF",
     "PatchAffineShapeEstimator",
     "PatchDominantGradientOrientation",
+    "SANDesc",
     "SIFTDescriptor",
     "SIFTFeature",
     "SIFTFeatureScaleSpace",
