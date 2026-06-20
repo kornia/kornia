@@ -57,6 +57,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
+    ky, kx = _unpack_2d_ks(kernel_size)
     padding = _compute_zero_padding(kernel_size)
 
     # prepare kernel
@@ -65,7 +66,7 @@ def median_blur(input: torch.Tensor, kernel_size: tuple[int, int] | int) -> torc
 
     # map the local window to single vector
     features: torch.Tensor = F.conv2d(input.reshape(b * c, 1, h, w), kernel, padding=padding, stride=1)
-    features = features.view(b, c, -1, h, w)  # BxCx(K_h * K_w)xHxW
+    features = features.view(b, c, ky * kx, h, w)  # BxCx(K_h * K_w)xHxW
 
     # compute the median along the feature axis
     return features.median(dim=2)[0]
