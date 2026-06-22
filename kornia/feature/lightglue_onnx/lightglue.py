@@ -201,7 +201,7 @@ class OnnxLightGlue:
         ):
             outputs = {
                 "matches": torch.from_dlpack(_m),
-                "scores":  torch.from_dlpack(_s),
+                "scores": torch.from_dlpack(_s),
             }
         else:
             outputs = {
