@@ -20,7 +20,6 @@ from __future__ import annotations
 from typing import ClassVar, Union
 
 import torch
-from torch.utils import dlpack
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
 
@@ -187,10 +186,12 @@ class OnnxLightGlue:
         matches, mscores = binding.get_outputs()
         # Prefer DLPack-based conversion when available for zero-copy transfer between them
         # The fallback path uses NumPy, which incurs a device-to-host copy and is slower.
-        if hasattr(matches, "to_dlpack"):
+        _m = getattr(matches, "_ortvalue", matches)
+        _s = getattr(mscores, "_ortvalue", mscores)
+        if hasattr(_m, "__dlpack__"):
             outputs = {
-                "matches": dlpack.from_dlpack(matches.to_dlpack()),
-                "scores": dlpack.from_dlpack(mscores.to_dlpack()),
+                "matches": torch.from_dlpack(_m),
+                "scores":  torch.from_dlpack(_s),
             }
         else:
             outputs = {
