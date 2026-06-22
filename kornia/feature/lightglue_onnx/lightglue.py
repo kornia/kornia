@@ -196,8 +196,10 @@ class OnnxLightGlue:
         _m = getattr(matches, "_ortvalue", matches)
         _s = getattr(mscores, "_ortvalue", mscores)
         if (
-            hasattr(_m, "__dlpack__") and hasattr(_m, "__dlpack_device__") and
-            hasattr(_s, "__dlpack__") and hasattr(_s, "__dlpack_device__")
+            hasattr(_m, "__dlpack__")
+            and hasattr(_m, "__dlpack_device__")
+            and hasattr(_s, "__dlpack__")
+            and hasattr(_s, "__dlpack_device__")
         ):
             outputs = {
                 "matches": torch.from_dlpack(_m),

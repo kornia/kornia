@@ -78,7 +78,7 @@ class TestOnnxLightGlue:
             assert outputs["matches"].shape[-1] == 2
             assert outputs["scores"].ndim == 1
             assert outputs["matches"].shape[0] == outputs["scores"].shape[0]
-            
+
     def test_normalize_keypoints(self):
         kpts = torch.randint(0, 100, (1, 5, 2))
         size = torch.tensor([[100, 100]])
