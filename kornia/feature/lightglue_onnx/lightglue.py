@@ -191,7 +191,7 @@ class OnnxLightGlue:
         if hasattr(_m, "__dlpack__"):
             outputs = {
                 "matches": torch.from_dlpack(_m),
-                "scores":  torch.from_dlpack(_s),
+                "scores": torch.from_dlpack(_s),
             }
         else:
             outputs = {
