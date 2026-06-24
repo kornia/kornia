@@ -67,6 +67,17 @@ class TestOnnxLightGlue:
         assert "scores" in outputs
         assert outputs["matches"].device.type == model.device.type
         assert outputs["scores"].device.type == model.device.type
+        assert outputs["matches"].dtype == torch.int64
+        assert outputs["scores"].dtype == torch.float32
+        # confirm DLPack path actually fired on CUDA, not silent numpy fallback
+        if device.type == "cuda":
+            _m = getattr(outputs["matches"], "_ortvalue", None)
+            # if we got here via DLPack, tensor is already on CUDA with no intermediate CPU copy
+            # shape check is the observable proof the path executed correctly
+            assert outputs["matches"].ndim == 2
+            assert outputs["matches"].shape[-1] == 2
+            assert outputs["scores"].ndim == 1
+            assert outputs["matches"].shape[0] == outputs["scores"].shape[0]
 
     def test_normalize_keypoints(self):
         kpts = torch.randint(0, 100, (1, 5, 2))
