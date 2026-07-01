@@ -602,8 +602,7 @@ def jpeg_codec_differentiable(
     if jpeg_quality.shape[0] != 1:
         KORNIA_CHECK(
             jpeg_quality.shape[0] == input.shape[0],
-            f"Batch dimensions do not match. "
-            f"Got {input.shape[0]} images and {jpeg_quality.shape[0]} JPEG qualities.",
+            f"Batch dimensions do not match. Got {input.shape[0]} images and {jpeg_quality.shape[0]} JPEG qualities.",
         )
     # keep jpeg_quality same device as input torch.Tensor
     jpeg_quality = jpeg_quality.to(device, dtype)
