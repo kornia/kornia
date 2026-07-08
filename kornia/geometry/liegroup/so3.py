@@ -88,7 +88,7 @@ class So3(nn.Module):
         if isinstance(right, So3):
             return So3(self.q * right.q)
         elif isinstance(right, (torch.Tensor, Vector3)):
-            # KORNIA_CHECK_SHAPE(right, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
+            KORNIA_CHECK_SHAPE(right, ["*", "3"])
             w = torch.zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
             quat = Quaternion(torch.cat((w, right.data), -1))
             out = (self.q * quat * self.q.conj()).vec
@@ -121,7 +121,7 @@ class So3(nn.Module):
                     [1., 0., 0., 0.]])
 
         """
-        # KORNIA_CHECK_SHAPE(v, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(v, ["*", "3"])
         theta = v.norm(dim=-1, keepdim=True)
         theta_half = 0.5 * theta
         w = torch.cos(theta_half)
@@ -170,7 +170,7 @@ class So3(nn.Module):
                      [-1.,  1.,  0.]]])
 
         """
-        # KORNIA_CHECK_SHAPE(v, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(v, ["*", "3"])
         if isinstance(v, torch.Tensor):
             # TODO: Figure out why mypy think `v` can be a Vector3 which didn't allow ellipsis on index
             a, b, c = v[..., 0], v[..., 1], v[..., 2]  # type: ignore[index]
@@ -201,7 +201,7 @@ class So3(nn.Module):
             tensor([[1., 1., 1.]])
 
         """
-        # KORNIA_CHECK_SHAPE(omega, ["B", "3", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(omega, ["*", "3", "3"])
         a, b, c = omega[..., 2, 1], omega[..., 0, 2], omega[..., 1, 0]
         return torch.stack((a, b, c), -1)
 
@@ -270,7 +270,7 @@ class So3(nn.Module):
             tensor([1., 0., 0., 0.])
 
         """
-        # KORNIA_CHECK_SHAPE(wxyz, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(wxyz, ["*", "4"])
         return cls(Quaternion(wxyz))
 
     @classmethod
@@ -393,7 +393,7 @@ class So3(nn.Module):
                     [ 0.5074,  0.3629,  0.5890]])
 
         """
-        # KORNIA_CHECK_SHAPE(vec, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(vec, ["*", "3"])
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
         I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
@@ -429,7 +429,7 @@ class So3(nn.Module):
                     [-0.0141,  0.6236,  0.5890]])
 
         """
-        # KORNIA_CHECK_SHAPE(vec, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(vec, ["*", "3"])
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
         I = torch.eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
