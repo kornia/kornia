@@ -77,7 +77,8 @@ class Se3(nn.Module):
         # KORNIA_CHECK_TYPE(translation, (Vector3, torch.Tensor))
         if not isinstance(translation, (Vector3, torch.Tensor)):
             raise TypeError(f"translation type is {type(translation)}")
-        KORNIA_CHECK_SHAPE(t, ["*", "3"])
+        _t_data = translation.data if isinstance(translation, Vector3) else translation
+        KORNIA_CHECK_SHAPE(_t_data, ["*", "3"])
         self._translation: Vector3 | nn.Parameter
         self._rotation: So3
         if isinstance(translation, torch.Tensor):
@@ -116,7 +117,8 @@ class Se3(nn.Module):
             # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
             return self._mul_se3(right)
         elif isinstance(right, (Vector3, torch.Tensor)):
-            KORNIA_CHECK_SHAPE(right, ["*", "N"])
+            _right_data = right if isinstance(right, torch.Tensor) else right.data
+            KORNIA_CHECK_SHAPE(_right_data, ["*", "N"])
             return so3 * right + t.data
         else:
             raise TypeError(f"Unsupported type: {type(right)}")

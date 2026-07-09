@@ -88,7 +88,8 @@ class So3(nn.Module):
         if isinstance(right, So3):
             return So3(self.q * right.q)
         elif isinstance(right, (torch.Tensor, Vector3)):
-            KORNIA_CHECK_SHAPE(right, ["*", "3"])
+            _right_data = right if isinstance(right, torch.Tensor) else right.data
+            KORNIA_CHECK_SHAPE(_right_data, ["*", "3"])
             w = torch.zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
             quat = Quaternion(torch.cat((w, right.data), -1))
             out = (self.q * quat * self.q.conj()).vec
