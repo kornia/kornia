@@ -15,13 +15,14 @@
 # limitations under the License.
 #
 
-
+import array
 import os
+import sys
 
 import torch
 
 
-def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
+def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor, binary: bool = False) -> None:
     r"""Save to disk a pointcloud in PLY format.
 
     Args:
@@ -29,6 +30,7 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         pointcloud: tensor containing the pointcloud to save.
           The tensor must be in the shape of :math:`(*, 3)` where the last
           component is assumed to be a 3d point coordinate :math:`(X, Y, Z)`.
+        binary: whether to save the pointcloud in binary format.
     """
     if not (isinstance(filename, str) and filename.lower().endswith(".ply")):
         raise TypeError(f"Input filename must be a string with the .ply extension. Got {filename!r}")
@@ -46,12 +48,12 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
     valid_points = xyz[valid_mask]
     valid_count = valid_points.shape[0]
 
-    with open(filename, "w", encoding="utf-8") as f:
-        # Write PLY header
-        f.writelines(
-            [
+    if binary:
+        with open(filename, "wb") as f:
+            # Write PLY header : Binary version
+            header = [
                 "ply\n",
-                "format ascii 1.0\n",
+                "format binary_little_endian 1.0\n",
                 "comment arraiy generated\n",
                 f"element vertex {valid_count}\n",
                 "property double x\n",
@@ -59,22 +61,53 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
                 "property double z\n",
                 "end_header\n",
             ]
-        )
+            f.writelines(s.encode("utf-8") for s in header)
 
-        if valid_count > 0:
-            # Move to CPU, convert to float64 for matching 'double' in header
-            arr = valid_points.detach().cpu().to(torch.float64)
-            # Write each row as space-separated floats
-            for x, y, z in arr.tolist():
-                f.write(f"{x:.9g} {y:.9g} {z:.9g}\n")
+            if valid_count > 0:
+                # Move to CPU, convert to float64 for matching 'double' in header
+                arr = valid_points.detach().cpu().to(torch.float64).reshape(-1)
+
+                # Convert to array.array for efficient byte-level handling
+                data_array = array.array("d", arr.tolist())
+
+                # Ensure little-endian
+                if sys.byteorder == "big":
+                    data_array.byteswap()
+
+                # Write binary data in a single operation for I/O efficiency
+                f.write(data_array.tobytes())
+
+    else:
+        with open(filename, "w", encoding="utf-8") as f:
+            # Write PLY header
+            f.writelines(
+                [
+                    "ply\n",
+                    "format ascii 1.0\n",
+                    "comment arraiy generated\n",
+                    f"element vertex {valid_count}\n",
+                    "property double x\n",
+                    "property double y\n",
+                    "property double z\n",
+                    "end_header\n",
+                ]
+            )
+
+            if valid_count > 0:
+                # Move to CPU, convert to float64 for matching 'double' in header
+                arr = valid_points.detach().cpu().to(torch.float64)
+                # Write each row as space-separated floats
+                for x, y, z in arr.tolist():
+                    f.write(f"{x:.9g} {y:.9g} {z:.9g}\n")
 
 
-def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
+def load_pointcloud_ply(filename: str, header_size: int = 8, binary: bool = False) -> torch.Tensor:
     r"""Load from disk a pointcloud in PLY format.
 
     Args:
         filename: the path to the pointcloud.
         header_size: the number of header lines to skip.
+        binary: whether the input file is in binary format.
 
     Return:
         tensor containing the loaded points with shape :math:`(*, 3)` where
@@ -94,14 +127,24 @@ def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
             f.readline()
         raw_data = f.read()
 
-    # Decode once and split (faster than line-by-line parsing in Python)
-    text = raw_data.decode("utf-8", errors="ignore")
-    parts = text.split()
+    if binary:
+        # One point equals 24 bytes (3 * 8 bytes for double float)
+        if len(raw_data) % 24 != 0:
+            raise ValueError(f"Expected 24 bytes per point, got a total of {len(raw_data)} values.")
 
-    # We only take the first 3 columns per point
-    if len(parts) % 3 != 0:
-        raise ValueError(f"Expected 3 columns per point, got a total of {len(parts)} values.")
+        # Convert directly to float32 tensor in one go
+        tensor = torch.frombuffer(bytearray(raw_data), dtype=torch.float64).reshape(-1, 3).to(torch.float32)
+        return tensor
 
-    # Convert directly to a float32 tensor in one go
-    tensor = torch.tensor(list(map(float, parts[: (len(parts) // 3) * 3])), dtype=torch.float32).view(-1, 3)
-    return tensor
+    else:
+        # Decode once and split (faster than line-by-line parsing in Python)
+        text = raw_data.decode("utf-8", errors="ignore")
+        parts = text.split()
+
+        # We only take the first 3 columns per point
+        if len(parts) % 3 != 0:
+            raise ValueError(f"Expected 3 columns per point, got a total of {len(parts)} values.")
+
+        # Convert directly to a float32 tensor in one go
+        tensor = torch.tensor(list(map(float, parts[: (len(parts) // 3) * 3])), dtype=torch.float32).view(-1, 3)
+        return tensor
