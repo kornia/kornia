@@ -22,6 +22,7 @@ import pytest
 from kornia.models.rt_detr.model import RTDETR, RTDETRConfig
 
 
+@pytest.mark.timeout(120)
 def test_rtdetr_to_onnx(tmp_path):
     """RT-DETR exports to ONNX with correct dual output names."""
     onnx = pytest.importorskip("onnx")

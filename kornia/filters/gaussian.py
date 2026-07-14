@@ -98,9 +98,10 @@ def gaussian_blur2d(
         KORNIA_CHECK_IS_TENSOR(sigma)
         sigma = sigma.to(device=input.device, dtype=input.dtype)
 
-    # Validate sigma values are positive
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
-    KORNIA_CHECK(bool((sigma > 0).all()), f"sigma must be positive, got {sigma}")
+    # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
+    if not torch.compiler.is_compiling():
+        KORNIA_CHECK(bool((sigma > 0).all()), f"sigma must be positive, got {sigma}")
 
     if separable:
         ky, kx = _unpack_2d_ks(kernel_size)
