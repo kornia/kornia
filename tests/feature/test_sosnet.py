@@ -43,7 +43,6 @@ class TestSOSNet(BaseTester):
         sosnet = SOSNet(pretrained=False).to(patches.device, patches.dtype)
         self.gradcheck(sosnet, (patches,), eps=1e-4, atol=1e-4)
 
-    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)

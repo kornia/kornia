@@ -80,7 +80,6 @@ class TestTverskyLoss(BaseTester):
         loss = criterion(logits, labels)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
-    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         num_classes = 3
         alpha, beta = 0.5, 0.5  # for tversky loss
