@@ -291,6 +291,13 @@ class TestAdjustGamma(BaseTester):
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=torch.float)
         self.gradcheck(kornia.enhance.adjust_gamma, (img, 1.0, 2.0))
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.enhance.adjust_gamma
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img, 1.5), op_optimized(img, 1.5))
+
 
 class TestAdjustContrast(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
