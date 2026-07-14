@@ -41,7 +41,7 @@ class AugmentationBase3D(_AugmentationBase):
 
     def validate_tensor(self, input: torch.Tensor) -> None:
         """Check if the input torch.Tensor is formatted as expected."""
-        _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
+        _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
         if len(input.shape) != 5:
             raise RuntimeError(f"Expect (B, C, D, H, W). Got {input.shape}.")
 
@@ -49,7 +49,7 @@ class AugmentationBase3D(_AugmentationBase):
         self, input: torch.Tensor, *, shape: Optional[torch.Tensor] = None, match_channel: bool = True
     ) -> torch.Tensor:
         """Convert any incoming (D, H, W), (C, D, H, W) and (B, C, D, H, W) into (B, C, D, H, W)."""
-        _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
+        _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
         if shape is None:
             return _transform_input3d(input)
         else:
@@ -93,17 +93,19 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
     ) -> torch.Tensor:
         """Generate transformation matrices with the given input and param settings."""
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5
+
         in_tensor = self.transform_tensor(input)
-        if not to_apply.any():
-            trans_matrix = self.identity_matrix(in_tensor)
-        elif to_apply.all():
-            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
+
+        trans_matrix_applied = self.compute_transformation(in_tensor, params=params, flags=flags)
+        trans_matrix_identity = self.identity_matrix(in_tensor)
+
+        if trans_matrix_applied.shape[0] == to_apply.shape[0] == trans_matrix_identity.shape[0]:
+            to_apply_expanded = to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1)))
+            trans_matrix = torch.where(to_apply_expanded, trans_matrix_applied, trans_matrix_identity)
         else:
-            trans_matrix = self.identity_matrix(in_tensor)
-            trans_matrix = trans_matrix.index_put(
-                (to_apply,), self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
-            )
+            trans_matrix = trans_matrix_applied if bool(to_apply.any()) else trans_matrix_identity
+
         return trans_matrix
 
     def inverse_inputs(

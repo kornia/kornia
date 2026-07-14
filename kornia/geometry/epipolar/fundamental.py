@@ -148,13 +148,11 @@ def _normalize_F(F: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
 
 # Reference: Adapted from the 'run_7point' function in opencv
 # https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp
-@torch.jit.script
 def _isclose0(x: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     # torch.isclose(x, 0) but TorchScript/GPU-friendly (no scalar tensor creation)
     return x.abs() <= eps
 
 
-@torch.jit.script
 def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     r"""Compute the fundamental matrix using the 7-point algorithm.
 
@@ -256,7 +254,6 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     return normalize_transformation(fmatrix)
 
 
-@torch.jit.script
 def run_8point(
     points1: torch.Tensor,
     points2: torch.Tensor,

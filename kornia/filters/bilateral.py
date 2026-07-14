@@ -240,6 +240,27 @@ class BilateralBlur(_BilateralBlur):
     """
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Smooth an image while keeping strong intensity edges visible.
+
+        Bilateral filtering combines two weights for every pixel in the local
+        window: a spatial weight based on distance in the image plane and a
+        range weight based on color or intensity similarity. Nearby pixels with
+        similar values contribute strongly, while pixels across an edge are
+        suppressed even if they are spatially close.
+
+        Args:
+            input: Input image tensor with shape :math:`(B, C, H, W)`,
+                where :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the image height, and :math:`W` is the
+                image width.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` containing the
+            edge-preserving smoothed image. The output keeps the same layout,
+            dtype, and device as ``input`` while reducing small local
+            variations according to the configured kernel size and sigma
+            values.
+        """
         return bilateral_blur(
             input, self.kernel_size, self.sigma_color, self.sigma_space, self.border_type, self.color_distance_type
         )
@@ -283,6 +304,29 @@ class JointBilateralBlur(_BilateralBlur):
     """
 
     def forward(self, input: torch.Tensor, guidance: torch.Tensor) -> torch.Tensor:
+        """Smooth an input image using edges measured from a guidance image.
+
+        Joint bilateral filtering is useful when the image being smoothed and
+        the image that should define the edges are different tensors. The
+        spatial kernel is applied around each location of ``input``, but the
+        range similarity term is computed from ``guidance``. This lets a clean
+        or higher-quality reference image preserve boundaries in another
+        signal, such as a depth map, mask, or noisy feature image.
+
+        Args:
+            input: Tensor to smooth with shape :math:`(B, C, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the number of input
+                channels, :math:`H` is the height, and :math:`W` is the width.
+            guidance: Tensor used to compute range weights. Its batch and
+                spatial dimensions must be compatible with ``input``; its
+                channel count may differ when the guidance signal uses a
+                different representation.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` containing the filtered
+            ``input`` values. Edges present in ``guidance`` reduce mixing
+            across boundaries, while smooth regions are averaged more strongly.
+        """
         return joint_bilateral_blur(
             input,
             guidance,

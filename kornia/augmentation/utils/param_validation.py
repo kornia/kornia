@@ -20,8 +20,41 @@ from typing import Any, List, Optional, Tuple, Union
 import torch
 
 
+def _check_positive_int_or_traced(value: Any, name: str) -> None:
+    """Assert ``value`` is a non-negative Python int, or accept it as a traced dim.
+
+    Used by random generators to validate ``height``/``width``/``depth`` derived from
+    ``tensor.shape``. Under tracing those are 0-d tensors; we accept them rather than
+    aborting export, since the surrounding ops will fail loudly if the value is
+    actually invalid.
+    """
+    if _is_traced_dim(value):
+        return
+    if not (isinstance(value, int) and value > 0):
+        raise AssertionError(f"`{name}` must be a positive integer. Got {value}.")
+
+
+def _is_traced_dim(value: Any) -> bool:
+    """Return True if ``value`` looks like a shape dim that came from tensor tracing.
+
+    Under torch.onnx.export's TorchScript tracer (and torch.fx), accessing
+    ``tensor.shape[i]`` can yield a 0-d tensor instead of a Python ``int``. The
+    runtime validators in this module are redundant during tracing, the tensor
+    constructors that follow will catch any real shape problem. Treat such
+    "traced ints" as opaque-but-valid so the trace can continue.
+    """
+    return isinstance(value, torch.Tensor) and value.numel() == 1 and value.dim() <= 1
+
+
 def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None) -> None:
-    """Check valid batch_size and same_on_batch params."""
+    """Check valid batch_size and same_on_batch params.
+
+    Skips the integer-type check when ``batch_size`` is a 0-d / 1-element tensor
+    (the shape of a traced tensor), since static configuration is already
+    validated at module construction time.
+    """
+    if _is_traced_dim(batch_size):
+        return
     if not (isinstance(batch_size, int) and batch_size >= 0):
         raise AssertionError(f"`batch_size` shall be a positive integer. Got {batch_size}.")
     if same_on_batch is not None and not isinstance(same_on_batch, bool):

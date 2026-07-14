@@ -126,4 +126,17 @@ class SSIMLoss(nn.Module):
         self.padding: str = padding
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
+        """Compute SSIM loss between two 2D image tensors.
+
+        Args:
+            img1: First image batch with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channel count,
+                :math:`H` is height, and :math:`W` is width.
+            img2: Second image batch with the same shape as ``img1``.
+
+        Returns:
+            SSIM loss tensor reduced according to ``self.reduction``. The loss
+            is derived from structural similarity, so lower values indicate
+            more similar local luminance, contrast, and structure.
+        """
         return ssim_loss(img1, img2, self.window_size, self.max_val, self.eps, self.reduction, self.padding)

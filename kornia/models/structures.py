@@ -40,6 +40,7 @@ class SegmentationResults:
     logits: torch.Tensor
     scores: torch.Tensor
     mask_threshold: float = 0.0
+    _original_res_logits: Optional[torch.Tensor] = None
 
     @property
     def binary_masks(self) -> torch.Tensor:

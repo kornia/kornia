@@ -206,6 +206,16 @@ class LoFTR(nn.Module):
         return out
 
     def load_state_dict(self, state_dict: dict[str, Any], *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
+        """Load a checkpoint state dictionary into the module.
+
+        Args:
+            state_dict: Checkpoint state dictionary whose keys are adapted to this module layout.
+            *args: Additional positional arguments forwarded to the parent `load_state_dict` implementation.
+            **kwargs: Additional keyword arguments forwarded to the parent `load_state_dict` implementation.
+
+        Returns:
+            Result returned by the parent `load_state_dict` implementation.
+        """
         for k in list(state_dict.keys()):
             if k.startswith("matcher."):
                 state_dict[k.replace("matcher.", "", 1)] = state_dict.pop(k)

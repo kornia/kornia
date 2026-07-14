@@ -73,6 +73,24 @@ class CoFusion(nn.Module):
         self.norm_layer2 = nn.GroupNorm(4, 64)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Fuse side-output edge maps into a single edge response.
+
+        The input contains edge predictions from several depths of the DexiNed
+        network concatenated along the channel dimension. This block predicts
+        attention weights from those stacked responses and uses them to combine
+        the side outputs into one refined edge map.
+
+        Args:
+            x: Concatenated side-output tensor with shape
+                :math:`(B, C_{side}, H, W)`, where :math:`B` is the batch size,
+                :math:`C_{side}` is the number of stacked side-output channels,
+                :math:`H` is the height, and :math:`W` is the width.
+
+        Returns:
+            Tensor with shape :math:`(B, 1, H, W)` containing the fused edge
+            response. Larger values indicate locations that the network
+            considers more likely to be image boundaries.
+        """
         # fusecat = torch.cat(x, dim=1)
         attn = self.relu(self.norm_layer1(self.conv1(x)))
         attn = self.relu(self.norm_layer2(self.conv2(attn)))
@@ -138,6 +156,24 @@ class UpConvBlock(nn.Module):
         self.features = nn.Sequential(*layers)
 
     def make_deconv_layers(self, in_features: int, up_scale: int) -> nn.ModuleList:
+        """Build the transposed-convolution stages used by an upsampling branch.
+
+        Each stage reduces or preserves the feature-channel count and increases
+        the spatial resolution by a factor of two. The final stage emits a
+        single-channel side-output edge map, while intermediate stages use the
+        block's constant feature width.
+
+        Args:
+            in_features: Number of channels in the input feature map entering
+                the first upsampling stage.
+            up_scale: Number of progressive upsampling stages to create. A
+                value of ``0`` means no transposed-convolution stages are added.
+
+        Returns:
+            ``nn.ModuleList`` containing the convolution, activation, and
+            transposed-convolution layers that are later wrapped by
+            ``nn.Sequential`` in ``self.features``.
+        """
         layers = nn.ModuleList([])
         all_pads = [0, 0, 1, 3, 7]
         for i in range(up_scale):
@@ -151,9 +187,45 @@ class UpConvBlock(nn.Module):
         return layers
 
     def compute_out_features(self, idx: int, up_scale: int) -> int:
+        """Return the channel count produced by one upsampling stage.
+
+        DexiNed side branches keep a fixed number of channels in intermediate
+        upsampling stages and collapse to a single edge channel at the end.
+        This helper centralizes that rule while ``make_deconv_layers`` builds
+        the branch.
+
+        Args:
+            idx: Zero-based stage index. ``0`` is the first stage and
+                ``up_scale - 1`` is the final stage.
+            up_scale: Total number of upsampling stages in the branch.
+
+        Returns:
+            ``1`` for the final stage, because the side output is an edge map,
+            otherwise ``self.constant_features`` for intermediate feature maps.
+        """
         return 1 if idx == up_scale - 1 else self.constant_features
 
     def forward(self, x: torch.Tensor, out_shape: list[int]) -> torch.Tensor:
+        """Convert a backbone feature map into an aligned side-output edge map.
+
+        The stored upsampling layers progressively increase the resolution of
+        ``x``. A final bilinear interpolation aligns the branch output exactly
+        to ``out_shape`` so that side outputs from different backbone depths can
+        be concatenated later.
+
+        Args:
+            x: Feature tensor with shape :math:`(B, C, H_{in}, W_{in})`, where
+                :math:`B` is the batch size, :math:`C` is the number of input
+                feature channels, and :math:`H_{in}`, :math:`W_{in}` are the
+                current feature-map height and width.
+            out_shape: Target spatial size ``[H, W]`` used for the final
+                interpolation, where :math:`H` is the desired height and
+                :math:`W` is the desired width.
+
+        Returns:
+            Side-output tensor resized to ``out_shape``, typically with shape
+            :math:`(B, 1, H, W)` for an edge prediction branch.
+        """
         out = self.features(x)
         out = F.interpolate(out, out_shape, mode="bilinear")
         return out
@@ -176,6 +248,23 @@ class SingleConvBlock(nn.Module):
         self.bn = nn.BatchNorm2d(out_features)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Project feature channels with a pointwise convolution.
+
+        A ``1x1`` convolution mixes information across channels without
+        changing the spatial resolution. When ``use_bn`` was enabled during
+        construction, batch normalization is applied after the projection.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C_{in}, H, W)`, where
+                :math:`B` is the batch size, :math:`C_{in}` is the number of
+                input channels, :math:`H` is the height, and :math:`W` is the
+                width.
+
+        Returns:
+            Tensor with shape :math:`(B, C_{out}, H, W)`, where
+            :math:`C_{out}` is the ``out_features`` value configured for this
+            block.
+        """
         x = self.conv(x)
         if self.use_bn:
             x = self.bn(x)
@@ -264,12 +353,42 @@ class DexiNed(nn.Module):
             self.apply(weight_init)
 
     def load_from_file(self, path_file: str) -> None:
+        """Load pretrained DexiNed weights and switch the module to eval mode.
+
+        The checkpoint is loaded on CPU through ``torch.hub`` and then applied
+        with strict key matching. After loading, ``eval()`` is called so layers
+        such as batch normalization use inference behavior.
+
+        Args:
+            path_file: URL or local checkpoint identifier accepted by
+                :func:`torch.hub.load_state_dict_from_url`.
+        """
         # use torch.hub to load pretrained model
         pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
     def get_features(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """Compute the DexiNed side-output edge maps before final fusion.
+
+        The image is processed through the stacked backbone blocks. Each block
+        produces a feature map at a different semantic depth and spatial scale;
+        the corresponding side branch upsamples it back to the original image
+        resolution. The returned list is later concatenated and fused by
+        ``CoFusion``.
+
+        Args:
+            x: Input image tensor with shape :math:`(B, 3, H, W)`, where
+                :math:`B` is the batch size, ``3`` is the RGB channel count,
+                :math:`H` is the image height, and :math:`W` is the image
+                width.
+
+        Returns:
+            List of six tensors, each aligned to the input spatial size. Every
+            tensor represents a side-output edge prediction with batch
+            dimension :math:`B` and spatial dimensions :math:`H` and
+            :math:`W`.
+        """
         # Block 1
         block_1 = self.block_1(x)
         block_1_side = self.side_1(block_1)
@@ -316,6 +435,23 @@ class DexiNed(nn.Module):
         return results
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Predict a fused edge map from an RGB image batch.
+
+        The forward pass collects six multi-scale side outputs, concatenates
+        them along the channel dimension, and applies the fusion block to
+        produce the final edge response. This keeps both low-level edge detail
+        and deeper semantic boundary information in the prediction.
+
+        Args:
+            x: Input image tensor with shape :math:`(B, 3, H, W)`, where
+                :math:`B` is the batch size, ``3`` is the RGB channel count,
+                :math:`H` is the image height, and :math:`W` is the image
+                width.
+
+        Returns:
+            Tensor with shape :math:`(B, 1, H, W)` containing the fused edge
+            probability-style response for each image in the batch.
+        """
         features = self.get_features(x)
 
         # torch.cat multiscale outputs

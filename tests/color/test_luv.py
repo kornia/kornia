@@ -108,7 +108,9 @@ class TestRgbToLuv(BaseTester):
         if dtype == torch.float16:
             pytest.skip("not work for half-precision")
 
-        data = torch.rand(3, 4, 5, device=device, dtype=dtype)
+        # Generate on CPU with a fixed seed so the test is order-independent.
+        torch.manual_seed(0)
+        data = torch.rand(3, 4, 5).to(device=device, dtype=dtype)
         luv = kornia.color.rgb_to_luv
         rgb = kornia.color.luv_to_rgb
 
@@ -225,7 +227,9 @@ class TestLuvToRgb(BaseTester):
         if dtype == torch.float16:
             pytest.skip("not work for half-precision")
 
-        data = torch.rand(3, 4, 5, device=device, dtype=dtype)
+        # Generate on CPU with a fixed seed so the test is order-independent.
+        torch.manual_seed(0)
+        data = torch.rand(3, 4, 5).to(device=device, dtype=dtype)
         luv = kornia.color.rgb_to_luv
         rgb = kornia.color.luv_to_rgb
 

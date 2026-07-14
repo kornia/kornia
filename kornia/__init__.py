@@ -245,4 +245,4 @@ def one_hot(*args: Any, **kwargs: Any) -> Any:
 
 
 # Version variable
-__version__ = "0.8.2"
+__version__ = "0.8.3"

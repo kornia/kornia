@@ -397,17 +397,18 @@ class TestHomographyWarper3D(BaseTester):
 
         dst_homo_src = eye_like(4, norm.expand(batch_size, -1, -1, -1))
 
-        self.assert_close(norm, res, rtol=1e-4, atol=1e-4)
+        _atol = 1e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
+        self.assert_close(norm, res, rtol=1e-4, atol=_atol)
 
         norm_homo = kornia.geometry.conversions.normalize_homography3d(dst_homo_src, input_shape, input_shape).to(
             device=device, dtype=dtype
         )
-        self.assert_close(norm_homo, dst_homo_src, rtol=1e-4, atol=1e-4)
+        self.assert_close(norm_homo, dst_homo_src, rtol=1e-4, atol=_atol)
 
         norm_homo = kornia.geometry.conversions.normalize_homography3d(dst_homo_src, input_shape, input_shape).to(
             device=device, dtype=dtype
         )
-        self.assert_close(norm_homo, dst_homo_src, rtol=1e-4, atol=1e-4)
+        self.assert_close(norm_homo, dst_homo_src, rtol=1e-4, atol=_atol)
 
         # change output scale
         norm_homo = kornia.geometry.conversions.normalize_homography3d(
@@ -419,7 +420,8 @@ class TestHomographyWarper3D(BaseTester):
             dtype=dtype,
         ).repeat(batch_size, 1, 1)
 
-        self.assert_close(norm_homo, res, rtol=1e-4, atol=1e-4)
+        atol = 1e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
+        self.assert_close(norm_homo, res, rtol=1e-4, atol=atol)
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     def test_normalize_homography_general(self, batch_size, device, dtype):

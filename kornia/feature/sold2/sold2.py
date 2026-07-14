@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import warnings
 from typing import Any, Dict, Optional, Tuple, cast
 
 import torch
@@ -63,13 +62,6 @@ class SOLD2(nn.Module):
 
     def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
         if isinstance(config, dict):
-            warnings.warn(
-                "Usage of config as a plain dictionary is deprecated in favor of"
-                " `kornia.features.sold2.structures.DetectorCfg`. The support of plain dictionaries"
-                "as config will be removed in kornia v0.8.0 (December 2024).",
-                category=DeprecationWarning,
-                stacklevel=2,
-            )
             config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
         super().__init__()
         # Initialize some parameters
@@ -147,6 +139,14 @@ class SOLD2(nn.Module):
         return self.line_matcher(line_seg1, line_seg2, desc1, desc2)
 
     def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Adapt pretrained checkpoint keys to this module implementation.
+
+        Args:
+            state_dict: Checkpoint state dictionary whose keys are adapted to this module layout.
+
+        Returns:
+            State dictionary with checkpoint keys renamed or removed so it can be loaded by the current module.
+        """
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]

@@ -28,8 +28,8 @@ from testing.base import BaseTester, assert_close
 
 def test_in_range(device, dtype):
     torch.manual_seed(1)
-    input_tensor = torch.rand(1, 3, 3, 3, device=device)
-    input_tensor = input_tensor.to(dtype=dtype)
+    # Generate on CPU first so the expected mask is device-independent, then move to target device.
+    input_tensor = torch.rand(1, 3, 3, 3).to(dtype=dtype).to(device=device)
     expected = torch.tensor([[[[1.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype)
     lower = (0.2, 0.3, 0.4)
     upper = (0.8, 0.9, 1.0)
@@ -48,8 +48,8 @@ class TestInRange(BaseTester):
 
     def test_smoke(self, device, dtype):
         torch.manual_seed(1)
-        input_tensor = torch.rand(1, 3, 3, 3, device=device)
-        input_tensor = input_tensor.to(dtype=dtype)
+        # Generate on CPU first so the expected mask is device-independent, then move to target device.
+        input_tensor = torch.rand(1, 3, 3, 3).to(dtype=dtype).to(device=device)
         expected = self._get_expected(device=device, dtype=dtype)
         res = InRange(lower=(0.2, 0.3, 0.4), upper=(0.8, 0.9, 1.0), return_mask=True)(input_tensor)
         assert expected.shape == res.shape
@@ -106,6 +106,15 @@ class TestInRange(BaseTester):
             lower = torch.tensor([0.2, 0.2, 0.2])
             upper = torch.tensor([0.6, 0.6, 0.6])
             InRange(lower=lower, upper=upper, return_mask=2)(input_tensor)
+
+    def test_tensor_bounds_return_masked_input(self, device, dtype):
+        # Exercises the Tensor-bounds branch (lines 132-139) with return_mask=False (line 148)
+        inp = torch.ones(1, 3, 4, 4, device=device, dtype=dtype) * 0.5
+        lower = torch.tensor([0.2, 0.2, 0.2], device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        upper = torch.tensor([0.8, 0.8, 0.8], device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        out = in_range(inp, lower, upper, return_mask=False)
+        # All pixels are in range, so output == input
+        self.assert_close(out, inp)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3

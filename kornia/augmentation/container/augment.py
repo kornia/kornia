@@ -285,6 +285,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self.extra_args = extra_args or {DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}}
 
     def clear_state(self) -> None:
+        """Reset cached params and transformation-matrix state."""
         self._reset_transform_matrix_state()
         return super().clear_state()
 
@@ -433,6 +434,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     ) -> Union[DataType, List[DataType], Dict[str, DataType]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         self.clear_state()
+
+        # Strip trailing ``None`` positional args. The legacy torch.onnx.export tracer
+        # rebinds keyword-only defaults (``params``/``data_keys``) as positional, so
+        # ``forward(x)`` arrives as ``forward(x, None, None)``. Real data inputs are
+        # always tensors / Boxes / Keypoints / dicts — never ``None``, so this is safe.
+        while args and args[-1] is None:
+            args = args[:-1]
 
         # Unpack/handle dictionary args
         original_keys = None

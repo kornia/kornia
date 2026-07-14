@@ -80,9 +80,9 @@ class ModelBaseMixin:
         timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
         if isinstance(output, list):
             for i, out in enumerate(output):
-                write_image(out, os.path.join(directory, f"{self.name}_{timestamp}_{i}.png"))
+                write_image(os.path.join(directory, f"{self.name}_{timestamp}_{i}.png"), out)
         else:
-            write_image(output, os.path.join(directory, f"{self.name}_{timestamp}.png"))
+            write_image(os.path.join(directory, f"{self.name}_{timestamp}.png"), output)
         logger.info(f"Outputs are saved in {directory}")
 
     def _save_outputs(
@@ -104,9 +104,9 @@ class ModelBaseMixin:
         timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d_%H%M%S")
         if isinstance(output, list):
             for i, out in enumerate(output):
-                write_image(out, os.path.join(directory, f"{self.name}{suffix}_{timestamp}_{i}.png"))
+                write_image(os.path.join(directory, f"{self.name}{suffix}_{timestamp}_{i}.png"), out)
         else:
-            write_image(output, os.path.join(directory, f"{self.name}{suffix}_{timestamp}.png"))
+            write_image(os.path.join(directory, f"{self.name}{suffix}_{timestamp}.png"), output)
         logger.info(f"Outputs are saved in {directory}")
 
 
@@ -150,6 +150,21 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
         options: Optional[dict[Any, Any]] = None,
         disable: bool = False,
     ) -> ModelBase[ModelConfig]:
+        """Compile this model with :func:`torch.compile`.
+
+        Args:
+            fullgraph: Whether Dynamo should require a single full graph.
+            dynamic: Whether dynamic shape tracing is enabled.
+            backend: Compilation backend name passed to :func:`torch.compile`.
+            mode: Optional backend-specific compilation mode.
+            options: Optional backend-specific option dictionary.
+            disable: If ``True``, return an uncompiled model wrapper according
+                to PyTorch's compile semantics.
+
+        Returns:
+            Compiled model object with the same high-level interface as this
+            instance.
+        """
         compiled = torch.compile(
             self, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable
         )

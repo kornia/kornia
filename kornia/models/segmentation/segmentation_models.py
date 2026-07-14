@@ -89,6 +89,17 @@ class SegmentationModelsBuilder:
 
     @staticmethod
     def get_preprocessing_pipeline(preproc_params: dict[str, Any]) -> kornia.augmentation.container.ImageSequential:
+        """Build the preprocessing pipeline expected by a segmentation model.
+
+        Args:
+            preproc_params: Dictionary from the segmentation-model metadata.
+                It must describe the input color space, value range, mean, and
+                standard deviation used by the pretrained encoder.
+
+        Returns:
+            :class:`~kornia.augmentation.container.ImageSequential` containing
+            ONNX-friendly color conversion, rescaling, and normalization steps.
+        """
         # Ensure the color space transformation is ONNX-friendly
         proc_sequence: list[nn.Module] = []
         input_space = preproc_params["input_space"]

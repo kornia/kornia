@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 import kornia
@@ -137,3 +138,14 @@ class TestConfusionMatrix(BaseTester):
             [[[0, 0, 4, 4], [0, 0, 0, 0], [0, 0, 4, 0], [0, 0, 0, 4]]], device=device, dtype=torch.float32
         )
         self.assert_close(conf_mat, conf_mat_real)
+
+    def test_exception_shape_mismatch(self, device, dtype):
+        pred = torch.zeros(1, 4, dtype=torch.long, device=device)
+        target = torch.zeros(1, 5, dtype=torch.long, device=device)
+        with pytest.raises(ValueError, match="same shape"):
+            kornia.metrics.confusion_matrix(pred, target, num_classes=2)
+
+    def test_exception_num_classes_too_small(self, device, dtype):
+        pred = torch.zeros(1, 4, dtype=torch.long, device=device)
+        with pytest.raises(ValueError, match="bigger than two"):
+            kornia.metrics.confusion_matrix(pred, pred, num_classes=1)

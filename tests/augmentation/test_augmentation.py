@@ -132,21 +132,20 @@ class CommonTests(BaseTester):
     def test_random_p_0(self):
         self._test_random_p_0_implementation(params=self._default_param_set)
 
-    def test_random_p_1(self):
-        raise NotImplementedError("Implement a stupid routine.")
+    @pytest.mark.skip(reason="Not implemented in base class")
+    def test_random_p_1(self): ...
 
     def test_inverse_coordinate_check(self):
         self._test_inverse_coordinate_check_implementation(params=self._default_param_set)
 
-    def test_exception(self):
-        raise NotImplementedError("Implement a stupid routine.")
+    @pytest.mark.skip(reason="Not implemented in base class")
+    def test_exception(self): ...
 
-    def test_batch(self):
-        raise NotImplementedError("Implement a stupid routine.")
+    @pytest.mark.skip(reason="Not implemented in base class")
+    def test_batch(self): ...
 
     @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self):
-        raise NotImplementedError("Implement a stupid routine.")
+    def test_jit(self): ...
 
     def test_module(self):
         self._test_module_implementation(params=self._default_param_set)
@@ -185,25 +184,21 @@ class CommonTests(BaseTester):
         generated_params = augmentation.forward_parameters(batch_shape)
         assert isinstance(generated_params, dict)
 
-        # compute_transformation can be called and returns the correct shaped transformation matrix
-        to_apply = generated_params["batch_prob"] > 0.5
-        expected_transformation_shape = torch.Size((to_apply.sum(), 3, 3))
+        # compute_transformation now operates on the full batch (ONNX-friendly contract)
+        # and returns a (B, 3, 3) transform matrix.
+        expected_transformation_shape = torch.Size((batch_shape[0], 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
-        transformation = augmentation.compute_transformation(test_input[to_apply], generated_params, augmentation.flags)
+        transformation = augmentation.compute_transformation(test_input, generated_params, augmentation.flags)
         assert transformation.shape == expected_transformation_shape
 
-        # apply_transform can be called and returns the correct batch sized output
-        if to_apply.sum() != 0:
-            output = augmentation.apply_transform(
-                test_input[to_apply],
-                generated_params,
-                augmentation.flags,
-                transformation,
-            )
-            assert output.shape[0] == to_apply.sum()
-        else:
-            # Re-generate parameters if 0 batch size
-            self._test_smoke_implementation(params)
+        # apply_transform can be called on the full batch and returns full-batch output
+        output = augmentation.apply_transform(
+            test_input,
+            generated_params,
+            augmentation.flags,
+            transformation,
+        )
+        assert output.shape[0] == batch_shape[0]
 
     def _test_smoke_call_implementation(self, params):
         batch_shape = (4, 3, 5, 6)
@@ -263,26 +258,34 @@ class CommonTests(BaseTester):
             self.assert_close(transform, expected_transformation, low_tolerance=True)
 
     def _test_module_implementation(self, params):
-        augmentation = self._create_augmentation_from_params(**params, p=0.5)
+        # Verifies the composition invariant of AugmentationSequential:
+        #   Sequential(aug_a, aug_b)(x) == aug_b(aug_a(x))
+        # and the transform matrix is the product of the individual matrices.
+        #
+        # Two distinct instances are required because `AugmentationSequential(aug, aug)`
+        # registers a single child (nn.Module dedupes same-instance children).
+        # We force p=1.0 so both augmentations always fire.
+        augmentation_a = self._create_augmentation_from_params(**params, p=1.0)
+        augmentation_b = self._create_augmentation_from_params(**params, p=1.0)
 
-        augmentation_sequence = AugmentationSequential(augmentation, augmentation)
+        augmentation_sequence = AugmentationSequential(augmentation_a, augmentation_b)
 
-        input_tensor = torch.rand(3, 5, 5, device=self.device, dtype=self.dtype)  # 3 x 5 x 5
+        input_tensor = torch.rand(2, 3, 5, 5, device=self.device, dtype=self.dtype)
 
         torch.manual_seed(42)
-        out1 = augmentation(input_tensor)
-        transform1 = augmentation.transform_matrix
-        out2 = augmentation(out1)
-        transform = augmentation.transform_matrix @ transform1
+        out_manual_a = augmentation_a(input_tensor)
+        transform_a = augmentation_a.transform_matrix
+        out_manual = augmentation_b(out_manual_a)
+        transform_manual = augmentation_b.transform_matrix @ transform_a
 
         torch.manual_seed(42)
         out_sequence = augmentation_sequence(input_tensor)
         transform_sequence = augmentation_sequence.transform_matrix
 
-        assert out1.shape == out_sequence.shape
-        assert transform.shape == transform_sequence.shape
-        self.assert_close(out2, out_sequence, low_tolerance=True)
-        self.assert_close(transform, transform_sequence, low_tolerance=True)
+        assert out_manual.shape == out_sequence.shape
+        assert transform_manual.shape == transform_sequence.shape
+        self.assert_close(out_manual, out_sequence, low_tolerance=True)
+        self.assert_close(transform_manual, transform_sequence, low_tolerance=True)
 
     def _test_inverse_coordinate_check_implementation(self, params):
         torch.manual_seed(42)
@@ -3984,6 +3987,12 @@ class TestRandomChannelShuffle(BaseTester):
         out = aug(img)
         self.assert_close(out, out_expected)
 
+    def test_same_on_batch(self, device, dtype):
+        input_tensor = torch.rand(1, 3, 5, 5, device=device, dtype=dtype).repeat(2, 1, 1, 1)
+        transform = RandomChannelShuffle(p=1.0, same_on_batch=True)
+        output_tensor = transform(input_tensor)
+        self.assert_close(output_tensor[0], output_tensor[1])
+
 
 class TestRandomClahe(BaseTester):
     def test_smoke(self, device, dtype):
@@ -4004,6 +4013,13 @@ class TestRandomGaussianNoise(BaseTester):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomGaussianNoise(p=1.0)
         assert img.shape == aug(img).shape
+
+    def test_same_on_batch(self, device, dtype):
+        input_tensor = torch.rand(1, 1, 5, 5, device=device, dtype=dtype).repeat(2, 1, 1, 1)
+        transform = RandomGaussianNoise(p=1.0, same_on_batch=True)
+        output_tensor = transform(input_tensor)
+        self.assert_close(output_tensor[0], output_tensor[1])
+        assert not torch.allclose(input_tensor, output_tensor)
 
 
 class TestRandomSaltAndPepperNoise(BaseTester):
@@ -4896,6 +4912,8 @@ class TestRandomRGBShift(BaseTester):
         assert out.shape == (2, 3, 4, 5)
 
     def test_random_rgb_shift(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         input = torch.tensor(
             [
@@ -4918,6 +4936,8 @@ class TestRandomRGBShift(BaseTester):
         self.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)
 
     def test_random_rgb_shift_same_batch(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("Random parameters are device-dependent; expected values were computed on CPU")
         torch.manual_seed(0)
         input = torch.tensor(
             [
@@ -5229,7 +5249,7 @@ class TestRandomJPEG(BaseTester):
         img_jpeg = aug(img)
         (img_jpeg - torch.zeros_like(img_jpeg)).abs().sum().backward()
         # Numbers generated based on reference implementation
-        img_jpeg_mean_grad_ref = torch.tensor([0.1919])
+        img_jpeg_mean_grad_ref = torch.tensor([0.1919], device=device)
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
 
@@ -5302,3 +5322,24 @@ class TestRandomThinPlateSpline(CommonTests):
         diffs = [(params["dst"][0] - params["dst"][j]).abs().sum().item() for j in range(1, 4)]
 
         assert any(d > 0 for d in diffs)
+
+    @pytest.mark.slow
+    def _test_gradcheck_implementation(self, params):
+        # RandomThinPlateSpline generates fresh random control points on every forward call,
+        # which makes the standard gradcheck non-deterministic (numerical Jacobian sees a
+        # different warp each perturbation step).  Fix the params from a single forward pass
+        # so that gradcheck only tests gradient flow through the deterministic warp path.
+        # fork_rng saves/restores CPU RNG state so this seed doesn't affect other tests.
+        # (generate_parameters uses rsample on CPU then .to(device), so CPU RNG governs both
+        # input_tensor and the TPS control-point sampling.)
+        aug = self._create_augmentation_from_params(**params, p=1.0)
+        with torch.random.fork_rng():
+            torch.manual_seed(0)
+            input_tensor = torch.rand((1, 3, 5, 5), device=self.device, dtype=self.dtype)
+            _ = aug(input_tensor)
+            fixed_params = aug._params
+
+        def forward_with_fixed_params(x: torch.Tensor) -> torch.Tensor:
+            return aug(x, params=fixed_params)
+
+        self.gradcheck(forward_with_fixed_params, (input_tensor,))

@@ -129,4 +129,15 @@ class CauchyLoss(nn.Module):
         self.reduction = reduction
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
+        """Compute the Cauchy robust regression loss.
+
+        Args:
+            img1: Predicted tensor with arbitrary shape.
+            img2: Target tensor with the same shape as ``img1``.
+
+        Returns:
+            Loss tensor reduced according to ``self.reduction``. The Cauchy
+            penalty grows more slowly than squared error for large residuals,
+            making it less sensitive to outliers.
+        """
         return cauchy_loss(img1=img1, img2=img2, reduction=self.reduction)

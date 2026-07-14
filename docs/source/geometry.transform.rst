@@ -41,7 +41,6 @@ Image 2d transforms
 .. autofunction:: pyrup
 .. autofunction:: build_pyramid
 .. autofunction:: build_laplacian_pyramid
-.. autofunction:: upscale_double
 
 Matrix transformations
 ----------------------

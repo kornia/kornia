@@ -241,6 +241,42 @@ class TestRotationMatrixToQuaternion(BaseTester):
         torch.set_printoptions(precision=10)
         self.assert_close(quaternion_true, quaternion, atol=atol, rtol=rtol)
 
+    def test_cond1_180_rot_x(self, device, dtype, atol, rtol):
+        # 180° rotation around X: trace < 0, m00 > m11 and m00 > m22 → activates cond_1 branch.
+        # R_x(π) = diag(1, -1, -1); expected quaternion (w,x,y,z) = (0, 1, 0, 0).
+        eps = torch.finfo(dtype).eps
+        matrix = torch.tensor(((1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0)), device=device, dtype=dtype)
+        expected = torch.tensor((0.0, 1.0, 0.0, 0.0), device=device, dtype=dtype)
+        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix, eps=eps)
+        self.assert_close(quaternion.abs(), expected.abs(), atol=atol, rtol=rtol)
+        # Round-trip: convert back and verify the rotation matrix is recovered.
+        mat_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
+        self.assert_close(mat_back, matrix, atol=atol, rtol=rtol)
+
+    def test_cond2_180_rot_y(self, device, dtype, atol, rtol):
+        # 180° rotation around Y: trace < 0, m11 > m22 and m00 not dominant → activates cond_2 branch.
+        # R_y(π) = diag(-1, 1, -1); expected quaternion (w,x,y,z) = (0, 0, 1, 0).
+        eps = torch.finfo(dtype).eps
+        matrix = torch.tensor(((-1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, -1.0)), device=device, dtype=dtype)
+        expected = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
+        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix, eps=eps)
+        self.assert_close(quaternion.abs(), expected.abs(), atol=atol, rtol=rtol)
+        mat_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
+        self.assert_close(mat_back, matrix, atol=atol, rtol=rtol)
+
+    def test_all_four_branches_in_batch(self, device, dtype, atol, rtol):
+        # Batch of 4 rotation matrices that each activate a different internal branch.
+        # Verify consistency via round-trip: R → q → R must recover the original rotation.
+        eps = torch.finfo(dtype).eps
+        identity = torch.eye(3, device=device, dtype=dtype)  # trace > 0 → trace_positive_cond
+        rot_x_180 = torch.tensor(((1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0)), device=device, dtype=dtype)
+        rot_y_180 = torch.tensor(((-1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, -1.0)), device=device, dtype=dtype)
+        rot_z_180 = torch.tensor(((-1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, 1.0)), device=device, dtype=dtype)
+        batch = torch.stack([identity, rot_x_180, rot_y_180, rot_z_180])  # (4, 3, 3)
+        quaternions = kornia.geometry.conversions.rotation_matrix_to_quaternion(batch, eps=eps)
+        mats_back = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternions)
+        self.assert_close(mats_back, batch, atol=atol, rtol=rtol)
+
     def test_gradcheck(self, device):
         dtype = torch.float64
         eps = torch.finfo(dtype).eps

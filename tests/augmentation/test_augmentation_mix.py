@@ -615,6 +615,8 @@ class TestRandomTransplantation(BaseTester):
         self.gradcheck(RandomTransplantation(p=1.0), (image, mask))
 
     def test_exception(self, device, dtype):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         torch.manual_seed(22)
         image = torch.rand(1, 3, 2, 2, device=device, dtype=torch.float64)
         mask = torch.randint(0, 2, (1, 2, 2), device=device, dtype=torch.float64)

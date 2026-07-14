@@ -65,6 +65,21 @@ class HFONNXComunnityModelLoader:
     def load_model(
         self, download: bool = True, io_name_mapping: Optional[dict[str, str]] = None, **kwargs: Any
     ) -> onnx.ModelProto:  # type:ignore
+        """Load the ONNX model file from the configured onnx-community repository.
+
+        Args:
+            download: Whether to download the remote ONNX file when it is not already
+                available in the local cache directory.
+            io_name_mapping: Optional mapping used to rename ONNX graph input and
+                output names after loading. This is useful when composing the model
+                with Kornia pre-processing or post-processing graphs that expect
+                specific tensor names.
+            kwargs: Additional keyword arguments forwarded to :class:`ONNXLoader`.
+
+        Returns:
+            The loaded ONNX model graph. If ``io_name_mapping`` is provided, the graph
+            is returned after its input and output names have been converted.
+        """
         onnx_model = ONNXLoader.load_model(
             self.model_url, download=download, with_data=self.with_data, cache_dir=self.cache_dir, **kwargs
         )
@@ -77,6 +92,17 @@ class HFONNXComunnityModelLoader:
     def load_preprocessing(
         self,
     ) -> ImageSequential:
+        """Load the preprocessing pipeline described by the remote processor config.
+
+        The Hugging Face onnx-community repositories store image preprocessing
+        settings in ``preprocessor_config.json``. This method reads that JSON file and
+        converts the supported operations, such as resize, rescale, and normalize, into
+        a Kornia :class:`~kornia.core.ImageSequential` module.
+
+        Returns:
+            Sequential Kornia image preprocessing module built from the repository
+            configuration.
+        """
         json_req = ONNXLoader.load_config(self.config_url)
         return PreprocessingLoader.from_json(json_req)
 
@@ -95,6 +121,24 @@ class HFONNXComunnityModelLoader:
 
 
 class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
+    """ONNX model wrapper for Kornia pipelines loaded from onnx-community repositories.
+
+    The wrapper combines an optional preprocessing graph, the core ONNX model, and an
+    optional postprocessing graph into a single :class:`ONNXSequential` module. It also
+    keeps references to the individual components so callers can export either the
+    complete pipeline or only the model graph.
+
+    Args:
+        model: Main ONNX model graph.
+        pre_processor: Optional ONNX graph executed before ``model``.
+        post_processor: Optional ONNX graph executed after ``model``.
+        name: Optional human-readable model name used for export filenames.
+        auto_ir_version_conversion: Whether to allow automatic ONNX IR version
+            conversion when composing the sequence.
+        io_maps: Optional list of input/output name mappings used when connecting the
+            ONNX graphs together.
+    """
+
     name: str = "onnx_community_model"
 
     def __init__(

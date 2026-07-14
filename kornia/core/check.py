@@ -693,7 +693,7 @@ def KORNIA_CHECK_IS_IMAGE(x: torch.Tensor, msg: Optional[str] = None, raises: bo
 
     amin, amax = torch.aminmax(x)
 
-    if x.dtype in (float16, float32, float64):
+    if x.dtype in (torch.bfloat16, float16, float32, float64):
         invalid = (amin < 0) | (amax > 1)
     else:
         max_int_value = (1 << bits) - 1

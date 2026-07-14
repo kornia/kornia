@@ -60,6 +60,27 @@ class CachedDownloader:
 
     @classmethod
     def download_to_cache(cls, url: str, name: str, download: bool = True, **kwargs: Any) -> str:
+        """Resolve a remote file into Kornia's local cache and download it when needed.
+
+        Args:
+            url: HTTP or HTTPS URL of the file to cache.
+            name: Logical model or operator name used to construct the cache
+                path. Directory components in ``name`` are preserved under the
+                cache directory.
+            download: If ``True``, download the file when it is not already
+                present in the cache. If ``False``, require the cached file to
+                exist.
+            kwargs: Optional cache parameters. Supported keys include
+                ``cache_dir`` for overriding the default cache root and
+                ``suffix`` for appending a filename suffix when needed.
+
+        Returns:
+            Local filesystem path to the cached file.
+
+        Raises:
+            ValueError: If ``url`` is not an HTTP or HTTPS URL, or if download is
+                disabled and the file is missing.
+        """
         if url.startswith(("http:", "https:")):
             cache_dir = kwargs.get("cache_dir", None)
             suffix = kwargs.get("suffix", None)

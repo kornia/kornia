@@ -186,6 +186,19 @@ class TwoWayAttentionBlock(nn.Module):
     def forward(
         self, queries: torch.Tensor, keys: torch.Tensor, query_pe: torch.Tensor, key_pe: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Run one two-way transformer block for prompt and image tokens.
+
+        Args:
+            queries: Prompt token tensor with shape :math:`(B, N_q, D)`.
+            keys: Image token tensor with shape :math:`(B, N_k, D)`.
+            query_pe: Positional encoding for ``queries`` with the same shape.
+            key_pe: Positional encoding for ``keys`` with the same shape.
+
+        Returns:
+            Tuple ``(queries, keys)`` after prompt self-attention,
+            prompt-to-image cross-attention, MLP update, and image-to-prompt
+            cross-attention.
+        """
         # Self attention block
         if self.skip_first_layer_pe:
             queries = self.self_attn(q=queries, k=queries, v=queries)
@@ -243,6 +256,17 @@ class Attention(nn.Module):
         return x.reshape(b, n_tokens, n_heads * c_per_head)  # B x N_tokens x C
 
     def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        """Apply scaled dot-product attention to query, key, and value tokens.
+
+        Args:
+            q: Query tensor with shape :math:`(B, N_q, D)`.
+            k: Key tensor with shape :math:`(B, N_k, D)`.
+            v: Value tensor with shape :math:`(B, N_k, D)`.
+
+        Returns:
+            Tensor with shape :math:`(B, N_q, D)` after multi-head attention
+            and output projection.
+        """
         # Input projections
         q = self.q_proj(q)
         k = self.k_proj(k)

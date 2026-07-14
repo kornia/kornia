@@ -282,6 +282,23 @@ class TestNormalizeLAF(BaseTester):
         img = torch.rand(5, 3, 10, 10)
         assert inp.shape == kornia.feature.normalize_laf(inp, img).shape
 
+    def test_roundtrip_non_square_wide(self, device, dtype):
+        # Wide image (W >> H): x/y coords are normalized differently from scale components.
+        # The normalize→denormalize round-trip must be exact.
+        laf = torch.tensor([[10.0, 0.0, 160.0], [0.0, 10.0, 60.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+        img = torch.zeros(1, 1, 120, 320, device=device, dtype=dtype)
+        laf_norm = kornia.feature.normalize_laf(laf, img)
+        laf_back = kornia.feature.denormalize_laf(laf_norm, img)
+        self.assert_close(laf_back, laf)
+
+    def test_roundtrip_non_square_tall(self, device, dtype):
+        # Tall image (H >> W): verify round-trip in the opposite aspect ratio.
+        laf = torch.tensor([[5.0, 0.0, 40.0], [0.0, 5.0, 100.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+        img = torch.zeros(1, 1, 240, 80, device=device, dtype=dtype)
+        laf_norm = kornia.feature.normalize_laf(laf, img)
+        laf_back = kornia.feature.denormalize_laf(laf_norm, img)
+        self.assert_close(laf_back, laf)
+
     def test_conversion(self, device):
         w, h = 9, 5
         laf = torch.tensor([[1, 0, 1], [0, 1, 1]]).float()
@@ -460,6 +477,28 @@ class TestExtractPatchesPyr(BaseTester):
 
         patch = kornia.feature.extract_patches_from_pyramid(img, laf, 4, 1.0)
         self.assert_close(img, patch[0])
+
+    def test_small_image_single_level(self, device, dtype):
+        # When min(H, W) < 2 * PS, the pyramid cannot descend beyond level 0.
+        # All patches must still have the correct shape and non-zero content.
+        PS = 16
+        img = torch.rand(1, 1, 24, 24, device=device, dtype=dtype)  # 24 < 2*16=32 → only level 0
+        laf = torch.tensor([[6.0, 0.0, 12.0], [0.0, 6.0, 12.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+        patches = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
+        assert patches.shape == (1, 1, 1, PS, PS)
+        assert patches.abs().sum().item() > 0
+
+    def test_multi_level_uses_correct_pyramid_level(self, device, dtype):
+        # Two LAFs with very different scales should be extracted from different pyramid levels.
+        # We verify the output shape and that the function runs without errors.
+        PS = 8
+        img = torch.rand(1, 1, 128, 128, device=device, dtype=dtype)
+        # Small-scale LAF (extracted at level 0) and large-scale LAF (extracted at higher level).
+        laf_small = torch.tensor([[2.0, 0.0, 64.0], [0.0, 2.0, 64.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+        laf_large = torch.tensor([[32.0, 0.0, 64.0], [0.0, 32.0, 64.0]], device=device, dtype=dtype).view(1, 1, 2, 3)
+        laf_both = torch.cat([laf_small, laf_large], dim=1)
+        patches = kornia.feature.extract_patches_from_pyramid(img, laf_both, PS)
+        assert patches.shape == (1, 2, 1, PS, PS)
 
     def test_gradcheck(self, device):
         nlaf = torch.tensor([[0.1, 0.001, 0.5], [0, 0.1, 0.5]], device=device, dtype=torch.float64)

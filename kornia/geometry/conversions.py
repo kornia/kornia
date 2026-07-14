@@ -1116,14 +1116,19 @@ def normal_transform_pixel(
         normalized transform with shape :math:`(1, 3, 3)`.
 
     """
-    tr_mat = torch.tensor([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)  # 3x3
-
     # prevent divide by zero bugs
     width_denom: float = eps if width == 1 else width - 1.0
     height_denom: float = eps if height == 1 else height - 1.0
 
-    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width_denom
-    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height_denom
+    sx: float = 2.0 / width_denom
+    sy: float = 2.0 / height_denom
+
+    # Construct the matrix in one shot (no in-place mutation).
+    tr_mat = torch.tensor(
+        [[sx, 0.0, -1.0], [0.0, sy, -1.0], [0.0, 0.0, 1.0]],
+        device=device,
+        dtype=dtype,
+    )  # 3x3
 
     return tr_mat.unsqueeze(0)  # 1x3x3
 
@@ -1299,24 +1304,11 @@ def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matri
     # u = fx * X + cx
     # v = fy * Y + cy
 
-    # unpack coordinates
-    x_coord: torch.Tensor = point_2d_norm[..., 0]
-    y_coord: torch.Tensor = point_2d_norm[..., 1]
-
-    # unpack intrinsics
-    fx: torch.Tensor = camera_matrix[..., 0, 0]
-    fy: torch.Tensor = camera_matrix[..., 1, 1]
-    cx: torch.Tensor = camera_matrix[..., 0, 2]
-    cy: torch.Tensor = camera_matrix[..., 1, 2]
-
-    if len(cx.shape) < len(x_coord.shape):  # broadcast intrinsics
-        cx, cy, fx, fy = cx.unsqueeze(-1), cy.unsqueeze(-1), fx.unsqueeze(-1), fy.unsqueeze(-1)
-
-    # apply intrinsics ans return
-    u_coord: torch.Tensor = x_coord * fx + cx
-    v_coord: torch.Tensor = y_coord * fy + cy
-
-    return torch.stack([u_coord, v_coord], dim=-1)
+    fxfy = camera_matrix[..., :2, :2].diagonal(dim1=-2, dim2=-1)  # (*, 2)
+    cxcy = camera_matrix[..., :2, 2]  # (*, 2)
+    if len(cxcy.shape) < len(point_2d_norm.shape):
+        fxfy, cxcy = fxfy.unsqueeze(-2), cxcy.unsqueeze(-2)
+    return point_2d_norm * fxfy + cxcy
 
 
 def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:

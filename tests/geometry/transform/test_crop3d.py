@@ -326,3 +326,24 @@ class TestCropByBoxes3D(BaseTester):
         self.gradcheck(
             kornia.geometry.transform.crop_by_boxes3d, (inp, src_box, dst_box), requires_grad=(True, False, False)
         )
+
+
+class TestCrop3DSizeValidation:
+    """Tests that 3D crop functions properly reject invalid size arguments."""
+
+    def test_crop_and_resize3d_rejects_wrong_length(self, device, dtype):
+        inp = torch.rand(1, 1, 4, 4, 4, device=device, dtype=dtype)
+        boxes = torch.rand(1, 8, 3, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="tuple/list of length 3"):
+            kornia.geometry.transform.crop_and_resize3d(inp, boxes, (2, 2))
+
+    def test_crop_and_resize3d_rejects_non_tuple(self, device, dtype):
+        inp = torch.rand(1, 1, 4, 4, 4, device=device, dtype=dtype)
+        boxes = torch.rand(1, 8, 3, device=device, dtype=dtype)
+        with pytest.raises((ValueError, TypeError)):
+            kornia.geometry.transform.crop_and_resize3d(inp, boxes, 2)
+
+    def test_center_crop3d_rejects_wrong_length(self, device, dtype):
+        inp = torch.rand(1, 1, 4, 4, 4, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="tuple/list of length 3"):
+            kornia.geometry.transform.center_crop3d(inp, (2, 2))

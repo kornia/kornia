@@ -63,24 +63,76 @@ class Hyperplane(nn.Module):
 
     @property
     def normal(self) -> Vector3:
+        """Return the vector perpendicular to the hyperplane.
+
+        Returns:
+            :class:`~kornia.geometry.vector.Vector3` storing the normal
+            direction. For a 3D plane this is the vector :math:`n` in
+            :math:`n^T x + d = 0`.
+        """
         return self._n
 
     @property
     def offset(self) -> Scalar:
+        """Return the scalar offset in the implicit plane equation.
+
+        Returns:
+            :class:`~kornia.geometry.vector.Scalar` containing the ``d`` term
+            in :math:`n^T x + d = 0`. The value controls where the plane sits
+            relative to the origin for the stored normal direction.
+        """
         return self._d
 
     def abs_distance(self, p: Vector3) -> Scalar:
+        """Compute unsigned distances from points to the hyperplane.
+
+        Args:
+            p: Point or batch of points wrapped as
+                :class:`~kornia.geometry.vector.Vector3`. The last coordinate
+                dimension represents ``(x, y, z)``.
+
+        Returns:
+            :class:`~kornia.geometry.vector.Scalar` with non-negative distance
+            values. Leading batch dimensions follow the broadcasted point and
+            plane inputs.
+        """
         return Scalar(self.signed_distance(p).abs())
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L145
     # TODO: tests
     def signed_distance(self, p: Vector3) -> Scalar:
+        """Compute signed distances from points to the hyperplane.
+
+        The sign is determined by the stored normal vector. Points in the
+        normal direction have positive values; points on the opposite side have
+        negative values; points on the plane evaluate to zero.
+
+        Args:
+            p: Point or batch of points as
+                :class:`~kornia.geometry.vector.Vector3`, or a compatible
+                tensor-like vector accepted by the dot-product routine.
+
+        Returns:
+            :class:`~kornia.geometry.vector.Scalar` containing signed distance
+            values for each input point.
+        """
         KORNIA_CHECK(isinstance(p, Vector3 | torch.Tensor))
         return self.normal.dot(p) + self.offset
 
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
     # TODO: tests
     def projection(self, p: Vector3) -> Vector3:
+        """Project points onto the hyperplane along the normal direction.
+
+        Args:
+            p: Point or batch of points wrapped as
+                :class:`~kornia.geometry.vector.Vector3`.
+
+        Returns:
+            :class:`~kornia.geometry.vector.Vector3` containing the closest
+            point on the hyperplane for each input point, preserving leading
+            batch dimensions.
+        """
         dist = self.signed_distance(p)
         if len(dist.shape) != len(self.normal):
             # non batched plane project a batch of points
@@ -92,12 +144,36 @@ class Hyperplane(nn.Module):
 
     @classmethod
     def from_vector(self, n: Vector3, e: Vector3) -> "Hyperplane":
+        """Create a hyperplane from a normal and one point on the plane.
+
+        Args:
+            n: Normal vector :math:`n` defining the plane orientation.
+            e: Point :math:`e` that lies on the target plane.
+
+        Returns:
+            :class:`Hyperplane` whose offset is chosen so that
+            :math:`n^T e + d = 0`.
+        """
         normal: Vector3 = n
         offset = -normal.dot(e)
         return Hyperplane(normal, Scalar(offset))
 
     @classmethod
     def through(cls, p0: torch.Tensor, p1: torch.Tensor, p2: Optional[torch.Tensor] = None) -> "Hyperplane":
+        """Construct a line-like 2D hyperplane or a 3D plane through points.
+
+        Args:
+            p0: First point tensor, shaped ``(..., 2)`` for the 2D case or
+                ``(..., 3)`` for the 3D case.
+            p1: Second point tensor with the same shape as ``p0``.
+            p2: Optional third point tensor. If omitted, the method builds the
+                2D line representation from ``p0`` and ``p1``. If provided, it
+                builds the 3D plane passing through all three points.
+
+        Returns:
+            :class:`Hyperplane` with a normal and offset determined by the
+            provided point set.
+        """
         # 2d case
         if p2 is None:
             # TODO: improve tests

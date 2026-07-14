@@ -75,6 +75,23 @@ class MotionBlur(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Blur an image along a configured two-dimensional motion direction.
+
+        The motion-blur kernel simulates linear camera or object movement in
+        the image plane. ``self.angle`` controls the direction of the blur, and
+        ``self.direction`` controls whether the kernel is centered, forward-
+        biased, or backward-biased along that line.
+
+        Args:
+            x: Image tensor with shape :math:`(B, C, H, W)`, where :math:`B`
+                is the batch size, :math:`C` is the number of channels,
+                :math:`H` is the height, and :math:`W` is the width.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` containing the directional
+            blur response. The output uses the same batch, channel, and spatial
+            layout as ``x``.
+        """
         return motion_blur(x, self.kernel_size, self.angle, self.direction, self.border_type)
 
 
@@ -140,6 +157,22 @@ class MotionBlur3D(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Blur a volume along a configured three-dimensional motion direction.
+
+        This module extends motion blur from images to volumetric tensors. The
+        configured kernel is applied through depth, height, and width so that
+        movement can be modeled in three spatial dimensions.
+
+        Args:
+            x: Volume tensor with shape :math:`(B, C, D, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the channel count,
+                :math:`D` is the depth, :math:`H` is the height, and
+                :math:`W` is the width.
+
+        Returns:
+            Tensor with shape :math:`(B, C, D, H, W)` containing the blurred
+            volume. The output keeps the same dimensional order as ``x``.
+        """
         return motion_blur3d(x, self.kernel_size, self.angle, self.direction, self.border_type)
 
 

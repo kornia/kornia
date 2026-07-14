@@ -169,6 +169,24 @@ class GaussianBlur2d(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Blur an image with a Gaussian low-pass filter.
+
+        Gaussian blur computes a weighted local average where pixels near the
+        center of the kernel have larger weights than pixels farther away. The
+        configured standard deviation, ``sigma``, controls how quickly those
+        weights decay with distance, and the kernel size controls the support
+        of the approximation.
+
+        Args:
+            input: Image or feature tensor with shape :math:`(B, C, H, W)`,
+                where :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the height, and :math:`W` is the width.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` containing the smoothed
+            result. The output keeps the same channel layout as ``input`` while
+            reducing high-frequency noise and fine texture.
+        """
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type, self.separable)
 
 

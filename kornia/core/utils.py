@@ -131,14 +131,71 @@ def _normalize_to_float32_or_float64(dtype: torch.dtype) -> torch.dtype:
     return dtype if dtype in (torch.float32, torch.float64) else torch.float32
 
 
+def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
+    """Closed-form inverse for batched 3x3 matrices.
+
+    Used as an ONNX-traceable fallback to ``torch.linalg.inv``: the legacy ONNX
+    exporter does not lower ``aten::linalg_inv`` (as of opset 17). Computed via
+    the adjugate / determinant formula, which is composed entirely of basic
+    arithmetic ops that all standard ONNX opsets support.
+
+    Args:
+        input: Tensor of shape ``(..., 3, 3)``.
+
+    Returns:
+        Tensor of shape ``(..., 3, 3)`` containing the matrix inverse for each
+        leading-dim slice. Numerically equivalent to ``torch.linalg.inv`` for
+        well-conditioned matrices; behavior on singular matrices is undefined
+        (no explicit check, same as ``torch.linalg.inv`` itself).
+    """
+    a = input[..., 0, 0]
+    b = input[..., 0, 1]
+    c = input[..., 0, 2]
+    d = input[..., 1, 0]
+    e = input[..., 1, 1]
+    f = input[..., 1, 2]
+    g = input[..., 2, 0]
+    h = input[..., 2, 1]
+    i = input[..., 2, 2]
+
+    # Cofactors (signed minors).
+    c00 = e * i - f * h
+    c01 = -(d * i - f * g)
+    c02 = d * h - e * g
+    c10 = -(b * i - c * h)
+    c11 = a * i - c * g
+    c12 = -(a * h - b * g)
+    c20 = b * f - c * e
+    c21 = -(a * f - c * d)
+    c22 = a * e - b * d
+
+    det = a * c00 + b * c01 + c * c02
+
+    # Adjugate is the transpose of the cofactor matrix.
+    row0 = torch.stack([c00, c10, c20], dim=-1)
+    row1 = torch.stack([c01, c11, c21], dim=-1)
+    row2 = torch.stack([c02, c12, c22], dim=-1)
+    adj = torch.stack([row0, row1, row2], dim=-2)
+
+    return adj / det[..., None, None]
+
+
 def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     """Make torch.inverse work with other than fp32/64.
 
     The function torch.inverse is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
+
+    During tracing (``torch.jit.trace`` and legacy ``torch.onnx.export``) on 3x3
+    matrices, falls back to a closed-form inverse so the resulting graph does not
+    include ``aten::linalg_inv`` (unsupported by the legacy ONNX exporter at
+    opset 20). ``torch.jit.is_tracing()`` is JIT-script-safe (unlike
+    ``torch.onnx.is_in_onnx_export``, which contains an ``import`` statement).
     """
     KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
     dtype = _normalize_to_float32_or_float64(input.dtype)
+    if torch.jit.is_tracing() and input.shape[-2:] == (3, 3):
+        return _inverse_3x3_closed_form(input.to(dtype)).to(input.dtype)
     return torch.linalg.inv(input.to(dtype)).to(input.dtype)
 
 
@@ -161,8 +218,15 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     input data type to fp32, apply torch.svd, and cast back to the input dtype.
 
     NOTE: in torch 1.8.1 this function is recommended to use as torch.linalg.svd
+
+    For numerical stability, fp32 inputs are promoted to fp64 (except on MPS where fp64 is unsupported).
     """
-    dtype = _normalize_to_float32_or_float64(input.dtype)
+    if is_mps_tensor_safe(input):
+        dtype = torch.float32
+    elif input.dtype == torch.float32:
+        dtype = torch.float64
+    else:
+        dtype = _normalize_to_float32_or_float64(input.dtype)
 
     out1, out2, out3H = torch.linalg.svd(input.to(dtype))
     # Since kornia requires torch>=2.0.0, we can always use .mH
