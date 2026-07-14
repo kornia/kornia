@@ -1,7 +1,3 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "kornia"
 description = "Open Source Differentiable Computer Vision Library for PyTorch"
@@ -79,6 +75,101 @@ docs = [
   "sphinxcontrib-youtube",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.codeflash]
+module-root = "kornia"
+tests-root = "tests"
+test-framework = "pytest"
+ignore-paths = []
+formatter-cmds = ["disabled"]
+
+# =============================================================================
+# uv configuration
+# =============================================================================
+# PyTorch: Use standard PyPI version (simpler, more compatible)
+# For CUDA: pixi run -e cuda install (uses reinstall workaround)
+# Note: uv doesn't support per-environment sources
+
+# torch is installed from standard PyPI (no custom index needed)
+
+[tool.codespell]
+ignore-words-list = "ans,hist,laf,cofusion"
+skip = "*.bib,*.ipynb"
+
+[tool.coverage.run]
+branch = true
+source = ["kornia/"]
+omit = [
+  "*/__main__.py",
+  "*/setup.py",
+  "kornia/models/sam/*",
+  "kornia/models/sam3/*",
+  "kornia/models/siglip2/*",
+  "kornia/models/paligemma/*",
+  "kornia/models/kimi_vl/*",
+  "kornia/models/qwen25/*",
+  "kornia/models/smolvlm2/*",
+  "kornia/models/efficient_vit/*",
+  "kornia/models/rt_detr/*",
+  "kornia/models/depth_estimation/*",
+  "kornia/models/_hf_models/*",
+  "kornia/models/processors/*",
+  "kornia/models/vit.py",
+  "kornia/models/vit_mobile.py",
+  "kornia/models/tiny_vit.py",
+  # Feature model building blocks (vendored architectures)
+  "kornia/feature/adalam/*",
+  "kornia/feature/dedode/transformer/*",
+  "kornia/feature/dedode/dedode_models.py",
+  "kornia/feature/dedode/vgg.py",
+  "kornia/feature/loftr/loftr_module/*",
+  "kornia/feature/loftr/backbone/*",
+  "kornia/feature/loftr/utils/*",
+  "kornia/feature/sold2/backbones.py",
+  "kornia/feature/sold2/sold2_detector.py",
+  "kornia/feature/lightglue.py",
+  "kornia/feature/lightglue_onnx/*",
+  "kornia/feature/aliked/deform_conv2d.py",
+  "kornia/feature/disk/_unets/*",
+  "kornia/feature/defmo.py",
+  # DexiNed vendored architecture (building blocks only; high-level API in kornia/contrib/edge_detection.py is kept)
+  "kornia/filters/dexined.py",
+  "kornia/models/dexined.py",
+  # HuggingFace diffusers wrapper — requires diffusers as optional dep, not unit-testable as a filter
+  "kornia/filters/dissolving.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 84
+exclude_lines = [
+  # Based into the covdefaults plugin config
+  # a more strict default pragma
+  '\# pragma: no cover\b',
+  # allow defensive code
+  '^\s*raise AssertionError\b',
+  '^\s*raise NotImplementedError\b',
+  '^\s*return NotImplemented\b',
+  '^\s*raise$',
+  # typing-related code
+  '^\s*if (False|TYPE_CHECKING):',
+  ': \.\.\.(\s*#.*)?$',
+  '^ +\.\.\.$',
+  # ----------------------------
+  "def __repr__",
+  "if __name__ == .__main__.:",
+  "if 0:",
+  "if self.debug:",
+]
+partial_branches = [
+  # a more strict default pragma
+  '\# pragma: no cover\b',
+]
+
 [tool.hatch.version]
 path = "kornia/__init__.py"
 
@@ -89,9 +180,27 @@ exclude = ["**/*.md"]  # Exclude markdown files from wheel
 [tool.hatch.build.targets.sdist]
 include = ["kornia/", "LICENSE", "README.md"]
 
-[tool.codespell]
-ignore-words-list = "ans,hist,laf,cofusion"
-skip = "*.bib,*.ipynb"
+[tool.pydocstyle]
+match = '.*\.py'
+
+[tool.pytest.ini_options]
+addopts = "--color=yes -v"
+filterwarnings = [
+  "ignore::DeprecationWarning:onnxscript.converter",
+]
+markers = [
+  "grad: mark a test as gradcheck test",
+  "jit: mark a test as torchscript test",
+  "nn: mark a test as module test",
+  "slow: mark test as slow to run",
+  "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul precision; xfail by default, run with --tf32 to activate",
+]
+testpaths = ["tests"]
+# Test configuration via environment variables:
+# KORNIA_TEST_DEVICE: cpu, cuda, mps (default: cpu)
+# KORNIA_TEST_DTYPE: float32, float64, float16, bfloat16 (default: float32)
+# KORNIA_TEST_OPTIMIZER: inductor, jit, etc. (default: inductor)
+# KORNIA_TEST_RUNSLOW: true/false (default: false)
 
 [tool.ruff]
 target-version = "py311"
@@ -238,125 +347,6 @@ max-statements = 64  # Recommended: 50
   "D",  # Don't enforce documentation rules
 ]  # allow assert, random, ignore BLE, mutable class attr
 
-[tool.pytest.ini_options]
-addopts = "--color=yes -v"
-testpaths = ["tests"]
-markers = [
-  "grad: mark a test as gradcheck test",
-  "jit: mark a test as torchscript test",
-  "nn: mark a test as module test",
-  "slow: mark test as slow to run",
-  "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul precision; xfail by default, run with --tf32 to activate",
-]
-filterwarnings = [
-  "ignore::DeprecationWarning:onnxscript.converter",
-]
-# Test configuration via environment variables:
-# KORNIA_TEST_DEVICE: cpu, cuda, mps (default: cpu)
-# KORNIA_TEST_DTYPE: float32, float64, float16, bfloat16 (default: float32)
-# KORNIA_TEST_OPTIMIZER: inductor, jit, etc. (default: inductor)
-# KORNIA_TEST_RUNSLOW: true/false (default: false)
-
-[tool.coverage.run]
-branch = true
-source = ["kornia/"]
-omit = [
-  "*/__main__.py",
-  "*/setup.py",
-  "kornia/models/sam/*",
-  "kornia/models/sam3/*",
-  "kornia/models/siglip2/*",
-  "kornia/models/paligemma/*",
-  "kornia/models/kimi_vl/*",
-  "kornia/models/qwen25/*",
-  "kornia/models/smolvlm2/*",
-  "kornia/models/efficient_vit/*",
-  "kornia/models/rt_detr/*",
-  "kornia/models/depth_estimation/*",
-  "kornia/models/_hf_models/*",
-  "kornia/models/processors/*",
-  "kornia/models/vit.py",
-  "kornia/models/vit_mobile.py",
-  "kornia/models/tiny_vit.py",
-  # Feature model building blocks (vendored architectures)
-  "kornia/feature/adalam/*",
-  "kornia/feature/dedode/transformer/*",
-  "kornia/feature/dedode/dedode_models.py",
-  "kornia/feature/dedode/vgg.py",
-  "kornia/feature/loftr/loftr_module/*",
-  "kornia/feature/loftr/backbone/*",
-  "kornia/feature/loftr/utils/*",
-  "kornia/feature/sold2/backbones.py",
-  "kornia/feature/sold2/sold2_detector.py",
-  "kornia/feature/lightglue.py",
-  "kornia/feature/lightglue_onnx/*",
-  "kornia/feature/aliked/deform_conv2d.py",
-  "kornia/feature/disk/_unets/*",
-  "kornia/feature/defmo.py",
-  # DexiNed vendored architecture (building blocks only; high-level API in kornia/contrib/edge_detection.py is kept)
-  "kornia/filters/dexined.py",
-  "kornia/models/dexined.py",
-  # HuggingFace diffusers wrapper — requires diffusers as optional dep, not unit-testable as a filter
-  "kornia/filters/dissolving.py",
-]
-
-[tool.coverage.report]
-show_missing = true
-skip_covered = true
-fail_under = 84
-exclude_lines = [
-  # Based into the covdefaults plugin config
-  # a more strict default pragma
-  '\# pragma: no cover\b',
-  # allow defensive code
-  '^\s*raise AssertionError\b',
-  '^\s*raise NotImplementedError\b',
-  '^\s*return NotImplemented\b',
-  '^\s*raise$',
-  # typing-related code
-  '^\s*if (False|TYPE_CHECKING):',
-  ': \.\.\.(\s*#.*)?$',
-  '^ +\.\.\.$',
-  # ----------------------------
-  "def __repr__",
-  "if __name__ == .__main__.:",
-  "if 0:",
-  "if self.debug:",
-]
-partial_branches = [
-  # a more strict default pragma
-  '\# pragma: no cover\b',
-]
-
-[tool.pydocstyle]
-match = '.*\.py'
-
-[tool.codeflash]
-module-root = "kornia"
-tests-root = "tests"
-test-framework = "pytest"
-ignore-paths = []
-formatter-cmds = ["disabled"]
-
-# =============================================================================
-# uv configuration
-# =============================================================================
-# PyTorch: Use standard PyPI version (simpler, more compatible)
-# For CUDA: pixi run -e cuda install (uses reinstall workaround)
-# Note: uv doesn't support per-environment sources
-
-# torch is installed from standard PyPI (no custom index needed)
-
-[[tool.uv.index]]
-name = "pytorch-cu121"
-url = "https://download.pytorch.org/whl/cu121"
-explicit = true
-
-[[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
-explicit = true
-
 [tool.ty.src]
 include = ["kornia"]
 exclude = ["tests", "docs", "conftest.py"]
@@ -390,3 +380,13 @@ not-iterable = "ignore"
 invalid-assignment = "ignore"
 # Silenced because KORNIA_UNWRAP intentionally uses cast for type narrowing
 redundant-cast = "ignore"
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
