@@ -224,7 +224,12 @@ def main():
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
-    mix_augmentations_list = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019), "PatchMix": ((), 2, 2024)}
+    mix_augmentations_list = {
+        "RandomMixUpV2": ((), 2, 20),
+        "RandomCutMixV2": ((), 2, 2019),
+        "PatchMix": ((), 2, 2024),
+        "TokenMix": ((), 2, 2024),
+    }
     # ITERATE OVER THE TRANSFORMS
     for aug_name, (args, _, seed) in mix_augmentations_list.items():
         img_in = torch.cat([img1, img2])
@@ -234,8 +239,8 @@ def main():
         # set seed
         torch.manual_seed(seed)
         # apply the augmentation to the image and concat
-        # PatchMix returns (B, C, H, W); index [0] to get (C, H, W) for cat
-        if aug_name == "PatchMix":
+        # TokenMix returns (B, C, H, W); index [0] to get (C, H, W) for cat
+        if aug_name == "TokenMix" or aug_name == "PatchMix":
             img_aug = aug(img_in)[0]
         else:
             img_aug, _ = aug(img_in, torch.tensor([0, 1]))
