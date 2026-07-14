@@ -133,7 +133,7 @@ def load_pointcloud_ply(filename: str, header_size: int = 8, binary: bool = Fals
             raise ValueError(f"Expected 24 bytes per point, got a total of {len(raw_data)} values.")
 
         # Convert directly to float32 tensor in one go
-        tensor = torch.frombuffer(bytearray(raw_data), dtype=torch.float64).reshape(-1, 3).to(torch.float32)
+        tensor = torch.frombuffer(bytearray(raw_data), dtype=torch.float64).reshape(-1, 3).to(torch.float32).clone()
         return tensor
 
     else:
