@@ -45,10 +45,20 @@ class DISKFeatures:
 
     @property
     def n(self) -> int:
+        """Return the number of stored keypoints.
+
+        Returns:
+            Number of detected DISK keypoints stored in this feature container.
+        """
         return self.keypoints.shape[0]
 
     @property
     def device(self) -> Union[str, torch.device, None]:
+        """Return the device of the stored tensors or module parameters.
+
+        Returns:
+            Device used by the model parameters.
+        """
         return self.keypoints.device
 
     @property
@@ -98,4 +108,4 @@ class Keypoints:
         desc = descriptors[:, y, x].T
         desc = F.normalize(desc, dim=-1)
 
-        return DISKFeatures(self.xys.to(dtype), desc, self.detection_logp)
+        return DISKFeatures(self.xys.to(dtype), desc, self.detection_logp.to(dtype))

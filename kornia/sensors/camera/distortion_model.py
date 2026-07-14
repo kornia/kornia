@@ -89,9 +89,42 @@ class BrownConradyTransform:
     """
 
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
+        """Apply Brown-Conrady lens distortion to ideal normalized points.
+
+        Args:
+            params: Distortion parameter tensor, typically containing radial
+                coefficients such as ``k1``, ``k2``, ``k3`` and tangential
+                coefficients such as ``p1`` and ``p2``.
+            points: Ideal two-dimensional normalized points before lens
+                distortion. Leading dimensions may represent a batch.
+
+        Returns:
+            Distorted two-dimensional points in the same coordinate convention.
+
+        Raises:
+            NotImplementedError: The Brown-Conrady transform interface is
+                declared here, but the concrete computation is not implemented.
+        """
         raise NotImplementedError
 
     def undistort(self, params: torch.Tensor, points: Vector2) -> Vector2:
+        """Remove Brown-Conrady lens distortion from observed points.
+
+        Args:
+            params: Distortion parameter tensor matching the coefficients used
+                by :meth:`distort`.
+            points: Distorted two-dimensional points, usually measured in the
+                normalized image plane.
+
+        Returns:
+            Undistorted two-dimensional points that approximate the ideal
+            pinhole projection.
+
+        Raises:
+            NotImplementedError: The Brown-Conrady inverse transform interface
+                is declared here, but the concrete computation is not
+                implemented.
+        """
         raise NotImplementedError
 
 
@@ -103,7 +136,36 @@ class KannalaBrandtK3Transform:
     """
 
     def distort(self, params: torch.Tensor, points: Vector2) -> Vector2:
+        """Apply Kannala-Brandt K3 fisheye distortion to normalized points.
+
+        Args:
+            params: Fisheye distortion coefficients for the K3 polynomial model.
+            points: Ideal two-dimensional normalized points before fisheye
+                distortion is applied.
+
+        Returns:
+            Distorted two-dimensional points following the K3 fisheye model.
+
+        Raises:
+            NotImplementedError: The K3 distortion interface is declared here,
+                but the concrete computation is not implemented.
+        """
         raise NotImplementedError
 
     def undistort(self, params: torch.Tensor, points: Vector2) -> Vector2:
+        """Remove Kannala-Brandt K3 fisheye distortion from observed points.
+
+        Args:
+            params: Fisheye distortion coefficients matching the K3 model used
+                for distortion.
+            points: Distorted two-dimensional fisheye points.
+
+        Returns:
+            Undistorted normalized points that approximate ideal pinhole
+            coordinates.
+
+        Raises:
+            NotImplementedError: The K3 inverse distortion interface is
+                declared here, but the concrete computation is not implemented.
+        """
         raise NotImplementedError

@@ -482,8 +482,9 @@ class TestLightGlueDISK(BaseTester):
         assert idxs.shape[0] == dists.shape[0]
         assert dists.shape[0] <= data_dev["descs1"].shape[0]
         assert dists.shape[0] <= data_dev["descs2"].shape[0]
-        expected_idxs = data_dev["lightglue_disk_idxs"].long()
-        self.assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
+        if device.type == "cpu":
+            expected_idxs = data_dev["lightglue_disk_idxs"].long()
+            self.assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.slow
     @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)

@@ -21,7 +21,7 @@ import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.augmentation.utils import _adapted_rsampling, _check_positive_int_or_traced, _common_param_check
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator3d
 
@@ -161,7 +161,7 @@ def center_crop_generator3d(
     height: int,
     width: int,
     size: Tuple[int, int, int],
-    device: Optional[Union[str, torch.device, None]] = None,
+    device: Union[None, str, torch.device] = None,
 ) -> Dict[str, torch.Tensor]:
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
 
@@ -184,18 +184,17 @@ def center_crop_generator3d(
     """
     if device is None:
         device = torch.device("cpu")
-    if not isinstance(size, (tuple, list)) and len(size) == 3:
+    if not isinstance(size, (tuple, list)) or len(size) != 3:
         raise ValueError(f"Input size must be a tuple/list of length 3. Got {size}")
-    if not (
+    _check_positive_int_or_traced(depth, "depth")
+    _check_positive_int_or_traced(height, "height")
+    _check_positive_int_or_traced(width, "width")
+    if (
         isinstance(depth, int)
-        and depth > 0
         and isinstance(height, int)
-        and height > 0
         and isinstance(width, int)
-        and width > 0
+        and not (depth >= size[0] and height >= size[1] and width >= size[2])
     ):
-        raise AssertionError(f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}.")
-    if not (depth >= size[0] and height >= size[1] and width >= size[2]):
         raise AssertionError(f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {size}.")
 
     if batch_size == 0:

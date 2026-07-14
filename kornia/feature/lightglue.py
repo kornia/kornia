@@ -44,7 +44,14 @@ def math_clamp(x, min_, max_):  # type: ignore
     return min(max(x, min_), max_)
 
 
-@torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
+AMP_CUSTOM_FWD_F32 = (
+    torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
+    if hasattr(torch, "amp") and hasattr(torch.amp, "custom_fwd")
+    else torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
+)
+
+
+@AMP_CUSTOM_FWD_F32
 def normalize_keypoints(kpts: torch.Tensor, size: torch.Tensor) -> torch.Tensor:
     """Normalize torch.Tensor of keypoints."""
     if isinstance(size, torch.Size):
@@ -151,6 +158,21 @@ class Attention(nn.Module):
     def forward(
         self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        """Apply multi-head attention to query, key, and value tensors.
+
+        Args:
+            q: Query tensor with shape :math:`(B, H, N_q, D_h)`, where ``B`` is batch size,
+                ``H`` is the number of attention heads, ``N_q`` is the number of query tokens,
+                and ``D_h`` is the per-head descriptor dimension.
+            k: Key tensor with shape :math:`(B, H, N_k, D_h)`, where ``N_k`` is the number
+                of key tokens.
+            v: Value tensor with shape :math:`(B, H, N_k, D_h)`.
+            mask: Optional boolean attention mask. ``True`` entries mark token pairs that
+                are allowed to attend to each other.
+
+        Returns:
+            Attention output with shape :math:`(B, H, N_q, D_h)`.
+        """
         if self.enable_flash and q.device.type == "cuda":
             # use torch 2.0 scaled_dot_product_attention with flash
             if self.has_sdp:
@@ -207,6 +229,18 @@ class SelfBlock(nn.Module):
         encoding: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Update descriptors from one image using self-attention.
+
+        Args:
+            x: Descriptor tensor with shape :math:`(B, N, D)`, where ``B`` is batch size,
+                ``N`` is the number of local features, and ``D`` is descriptor dimension.
+            encoding: Positional encoding tensor aligned with ``x`` and used for rotary
+                position embedding inside attention.
+            mask: Optional boolean mask limiting which descriptors may attend to each other.
+
+        Returns:
+            Updated descriptor tensor with the same shape as ``x``.
+        """
         qkv = self.Wqkv(x)
         qkv = qkv.unflatten(-1, (self.num_heads, -1, 3)).transpose(1, 2)
         q, k, v = qkv[..., 0], qkv[..., 1], qkv[..., 2]
@@ -248,11 +282,34 @@ class CrossBlock(nn.Module):
             self.flash = None  # type: ignore
 
     def map_(self, func: Callable, x0: torch.Tensor, x1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:  # type: ignore
+        """Apply the same function to descriptor tensors from both images.
+
+        Args:
+            func: Callable applied independently to ``x0`` and ``x1``.
+            x0: Descriptor tensor for the first image.
+            x1: Descriptor tensor for the second image.
+
+        Returns:
+            A tuple containing ``func(x0)`` and ``func(x1)``.
+        """
         return func(x0), func(x1)
 
     def forward(
         self, x0: torch.Tensor, x1: torch.Tensor, mask: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Exchange information between two images using cross-attention.
+
+        Args:
+            x0: Descriptor tensor from the first image with shape :math:`(B, M, D)`,
+                where ``M`` is the number of local features in image 0.
+            x1: Descriptor tensor from the second image with shape :math:`(B, N, D)`,
+                where ``N`` is the number of local features in image 1.
+            mask: Optional boolean mask with shape :math:`(B, H, M, N)` or a broadcastable
+                equivalent, marking valid descriptor pairs.
+
+        Returns:
+            A tuple ``(x0_out, x1_out)`` with updated descriptors for both images.
+        """
         qk0, qk1 = self.map_(self.to_qk, x0, x1)
         v0, v1 = self.map_(self.to_v, x0, x1)
         qk0, qk1, v0, v1 = (t.unflatten(-1, (self.heads, -1)).transpose(1, 2) for t in (qk0, qk1, v0, v1))
@@ -298,6 +355,19 @@ class TransformerLayer(nn.Module):
         mask0: Optional[torch.Tensor] = None,
         mask1: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Run one LightGlue transformer layer over two descriptor sets.
+
+        Args:
+            desc0: Descriptor tensor from image 0 with shape :math:`(B, M, D)`.
+            desc1: Descriptor tensor from image 1 with shape :math:`(B, N, D)`.
+            encoding0: Positional encoding for ``desc0``.
+            encoding1: Positional encoding for ``desc1``.
+            mask0: Optional validity mask for descriptors in image 0.
+            mask1: Optional validity mask for descriptors in image 1.
+
+        Returns:
+            A tuple containing updated descriptor tensors for image 0 and image 1.
+        """
         if mask0 is not None and mask1 is not None:
             return self.masked_forward(desc0, desc1, encoding0, encoding1, mask0, mask1)
         else:
@@ -315,6 +385,19 @@ class TransformerLayer(nn.Module):
         mask0: torch.Tensor,
         mask1: torch.Tensor,
     ) -> torch.Tensor:
+        """Run the transformer layer with explicit descriptor validity masks.
+
+        Args:
+            desc0: Descriptor tensor from image 0 with shape :math:`(B, M, D)`.
+            desc1: Descriptor tensor from image 1 with shape :math:`(B, N, D)`.
+            encoding0: Positional encoding for image 0 descriptors.
+            encoding1: Positional encoding for image 1 descriptors.
+            mask0: Boolean mask for valid image 0 descriptors.
+            mask1: Boolean mask for valid image 1 descriptors.
+
+        Returns:
+            A tuple with masked self-attention and cross-attention updates for both images.
+        """
         mask = mask0 & mask1.transpose(-1, -2)
         mask0 = mask0 & mask0.transpose(-1, -2)
         mask1 = mask1 & mask1.transpose(-1, -2)
@@ -361,6 +444,15 @@ class MatchAssignment(nn.Module):
         return scores, sim
 
     def get_matchability(self, desc: torch.Tensor) -> torch.Tensor:
+        """Estimate how likely each descriptor is to obtain a valid match.
+
+        Args:
+            desc: Descriptor tensor with shape :math:`(B, N, D)`, where ``N`` is the
+                number of local features.
+
+        Returns:
+            Matchability probabilities with shape :math:`(B, N)`.
+        """
         return torch.sigmoid(self.matchability(desc)).squeeze(-1)
 
 
@@ -445,6 +537,20 @@ class LightGlue(nn.Module):
             "weights": "aliked_lightglue",
             "input_dim": 128,
         },
+        "raco-aliked": {
+            "weights": "raco_aliked_lightglue",
+            "input_dim": 128,
+        },
+        "xfeat": {
+            "weights": "xfeat_lighterglue",
+            "input_dim": 64,
+            "descriptor_dim": 96,
+            "n_layers": 6,
+            "num_heads": 1,
+            "depth_confidence": -1,
+            "width_confidence": 0.95,
+            "filter_threshold": 0.1,
+        },
         "sift": {
             "weights": "sift_lightglue",
             "input_dim": 128,
@@ -518,14 +624,20 @@ class LightGlue(nn.Module):
             elif features in ["dedodeg"]:
                 fname = "dedodeg_lightglue.pth"
                 url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth"
+            elif features == "xfeat":
+                fname = "xfeat-lighterglue.pt"
+                url = "https://github.com/verlab/accelerated_features/raw/main/weights/xfeat-lighterglue.pt"
             else:
-                url = self.url.format(self.version, features)
+                url = self.url.format(self.version, features.replace("-", "_"))
             state_dict = torch.hub.load_state_dict_from_url(url, file_name=fname)
         elif conf.weights is not None:
             path = Path(__file__).parent
             path = path / f"weights/{self.conf.weights}.pth"
             state_dict = torch.load(str(path), map_location="cpu")
         if state_dict:
+            # xfeat-lighterglue weights are nested under a 'matcher.' prefix
+            prefix = "matcher."
+            state_dict = {k[len(prefix) :] if k.startswith(prefix) else k: v for k, v in state_dict.items()}
             # rename old state dict entries
             for i in range(self.conf.n_layers):
                 pattern = f"self_attn.{i}", f"transformers.{i}.self_attn"
@@ -540,12 +652,25 @@ class LightGlue(nn.Module):
     def compile(
         self, mode: str = "reduce-overhead", static_lengths: Sequence[int] = (256, 512, 768, 1024, 1280, 1536)
     ) -> None:
+        """Compile masked transformer layers with ``torch.compile``.
+
+        Args:
+            mode: Compilation mode forwarded to ``torch.compile``.
+            static_lengths: Descriptor sequence lengths prepared for compiled execution.
+                These lengths represent possible numbers of local features.
+        """
         if self.conf.width_confidence != -1:
             warnings.warn(
                 "Point pruning is partially disabled for compiled forward.",
                 stacklevel=2,
             )
 
+        if (
+            hasattr(torch, "_inductor")
+            and hasattr(torch._inductor, "cudagraph_mark_step_begin")
+            and torch.cuda.is_available()
+        ):
+            torch._inductor.cudagraph_mark_step_begin()
         for i in range(self.conf.n_layers):
             self.transformers[i].masked_forward = torch.compile(  # type: ignore[assignment]
                 self.transformers[i].masked_forward, mode=mode, fullgraph=True
@@ -624,6 +749,26 @@ class LightGlue(nn.Module):
         desc0 = data0["descriptors"].detach().contiguous()
         desc1 = data1["descriptors"].detach().contiguous()
 
+        # Guard against empty-descriptors after pruning
+        if desc0.shape[1] == 0 or desc1.shape[1] == 0:
+            empty_m0 = torch.full((b, m), -1, device=device, dtype=torch.long)
+            empty_m1 = torch.full((b, n), -1, device=device, dtype=torch.long)
+            empty_s0 = torch.zeros((b, m), device=device)
+            empty_s1 = torch.zeros((b, n), device=device)
+
+            return {
+                "log_assignment": torch.empty((b, 1, 1), device=device),
+                "matches0": empty_m0,
+                "matches1": empty_m1,
+                "matching_scores0": empty_s0,
+                "matching_scores1": empty_s1,
+                "stop": 0,
+                "matches": [torch.empty((0, 2), device=device, dtype=torch.long) for _ in range(b)],
+                "scores": [torch.empty((0,), device=device) for _ in range(b)],
+                "prune0": torch.ones_like(empty_s0) * self.conf.n_layers,
+                "prune1": torch.ones_like(empty_s1) * self.conf.n_layers,
+            }
+
         KORNIA_CHECK(desc0.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
         KORNIA_CHECK(desc1.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
 
@@ -684,8 +829,31 @@ class LightGlue(nn.Module):
                 prune1[:, ind1] += 1
 
         desc0, desc1 = desc0[..., :m, :], desc1[..., :n, :]
+
+        # If adaptive width pruning removed all keypoints from either side,
+        # return empty matches instead of crashing in filter_matches (see #3564).
+        if desc0.shape[-2] == 0 or desc1.shape[-2] == 0:
+            matches = [torch.zeros((0, 2), dtype=torch.long, device=device) for _ in range(b)]
+            mscores = [torch.zeros(0, device=device) for _ in range(b)]
+            m0_ = torch.full((b, m), -1, device=device, dtype=torch.long)
+            m1_ = torch.full((b, n), -1, device=device, dtype=torch.long)
+            mscores0_ = torch.zeros((b, m), device=device)
+            mscores1_ = torch.zeros((b, n), device=device)
+            return {
+                "matches": matches,
+                "scores": mscores,
+                "matching_scores0": mscores0_,
+                "matching_scores1": mscores1_,
+                "matches0": m0_,
+                "matches1": m1_,
+                "stop": i + 1,
+                "prune0": prune0 if do_point_pruning else torch.ones_like(torch.arange(m, device=device)[None]),
+                "prune1": prune1 if do_point_pruning else torch.ones_like(torch.arange(n, device=device)[None]),
+            }
+
         scores, _ = self.log_assignment[i](desc0, desc1)
         m0, m1, mscores0, mscores1 = filter_matches(scores, self.conf.filter_threshold)
+
         matches, mscores = [], []
         for k in range(b):
             valid = m0[k] > -1
@@ -753,6 +921,15 @@ class LightGlue(nn.Module):
         return ratio_confident > self.conf.depth_confidence
 
     def pruning_min_kpts(self, device: torch.device) -> int:
+        """Return the minimum keypoint count needed before pruning is enabled.
+
+        Args:
+            device: Torch device on which descriptors are processed.
+
+        Returns:
+            Minimum number of keypoints required for width pruning on that device.
+            A negative value disables pruning for the device.
+        """
         if self.conf.flash and FLASH_AVAILABLE and device.type == "cuda":
             return self.pruning_keypoint_thresholds["flash"]
         else:

@@ -319,3 +319,52 @@ class TestRansacMethods:
         x2 = RANSAC.max_samples_by_conf(n_inl=500, num_tc=1000, sample_size=4, conf=conf)
         x3 = RANSAC.max_samples_by_conf(n_inl=800, num_tc=1000, sample_size=4, conf=conf)
         assert x1 > x2 > x3  # More inliers = fewer samples needed
+
+
+class TestRANSACSeed:
+    def test_same_seed_reproducible(self, device, dtype):
+        """Same seed should produce identical results across two calls."""
+        torch.manual_seed(42)
+        points1 = torch.rand(20, 2, device=device, dtype=dtype)
+        points2 = torch.rand(20, 2, device=device, dtype=dtype)
+
+        ransac = RANSAC("homography", inl_th=2.0, max_iter=5, seed=123).to(device=device, dtype=dtype)
+        H1, inliers1 = ransac(points1, points2)
+        H2, inliers2 = ransac(points1, points2)
+
+        assert torch.allclose(H1, H2)
+        assert torch.equal(inliers1, inliers2)
+
+    def test_different_seeds_differ(self, device, dtype):
+        """Different seeds should (very likely) produce different results."""
+        torch.manual_seed(42)
+        points1 = torch.rand(20, 2, device=device, dtype=dtype)
+        points2 = torch.rand(20, 2, device=device, dtype=dtype)
+
+        ransac_a = RANSAC("homography", inl_th=2.0, max_iter=5, seed=1).to(device=device, dtype=dtype)
+        ransac_b = RANSAC("homography", inl_th=2.0, max_iter=5, seed=2).to(device=device, dtype=dtype)
+
+        H_a, _ = ransac_a(points1, points2)
+        H_b, _ = ransac_b(points1, points2)
+
+        assert not torch.allclose(H_a, H_b)
+
+    def test_no_seed_differs_from_seeded(self, device, dtype):
+        """Without a seed, repeated calls should not be forced to be identical to a seeded call."""
+        torch.manual_seed(0)
+        points1 = torch.rand(20, 2, device=device, dtype=dtype)
+        points2 = torch.rand(20, 2, device=device, dtype=dtype)
+
+        ransac_seeded = RANSAC("homography", inl_th=2.0, max_iter=5, seed=42).to(device=device, dtype=dtype)
+        H_s1, _ = ransac_seeded(points1, points2)
+        H_s2, _ = ransac_seeded(points1, points2)
+        # Seeded should be reproducible
+        assert torch.allclose(H_s1, H_s2)
+
+    def test_seed_stored_as_attribute(self, device, dtype):
+        ransac = RANSAC("homography", seed=7)
+        assert ransac.seed == 7
+
+    def test_none_seed_stored(self, device, dtype):
+        ransac = RANSAC("homography")
+        assert ransac.seed is None

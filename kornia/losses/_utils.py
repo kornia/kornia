@@ -25,6 +25,24 @@ import torch
 def mask_ignore_pixels(
     target: torch.Tensor, ignore_index: Optional[int]
 ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+    """Replace ignored target labels with a valid class and return their mask.
+
+    Loss functions often need class indices to stay inside the valid class
+    range before one-hot encoding or gathering. This helper keeps valid labels
+    unchanged, maps ignored positions to class ``0`` temporarily, and returns a
+    mask so callers can remove those positions from the final loss.
+
+    Args:
+        target: Target label tensor with arbitrary shape.
+        ignore_index: Label value that should be ignored. If ``None``, no
+            masking is applied.
+
+    Returns:
+        Tuple ``(target, target_mask)``. ``target`` is either the original
+        tensor or a copy where ignored labels were replaced by zero.
+        ``target_mask`` is ``None`` when no ignored pixels are present;
+        otherwise it is a boolean tensor with ``True`` at valid positions.
+    """
     if ignore_index is None:
         return target, None
 

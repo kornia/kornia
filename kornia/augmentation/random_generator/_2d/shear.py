@@ -20,7 +20,13 @@ from typing import Dict, Tuple, Union
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
+from kornia.augmentation.utils import (
+    _adapted_rsampling,
+    _check_positive_int_or_traced,
+    _common_param_check,
+    _joint_range_check,
+    _range_bound,
+)
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["ShearGenerator"]
@@ -95,8 +101,8 @@ class ShearGenerator(RandomGeneratorBase):
 
         _device, _dtype = _extract_device_dtype([self.shear])
         _common_param_check(batch_size, same_on_batch)
-        if not (isinstance(width, (int,)) and isinstance(height, (int,)) and width > 0 and height > 0):
-            raise AssertionError(f"`width` and `height` must be positive integers. Got {width}, {height}.")
+        _check_positive_int_or_traced(width, "width")
+        _check_positive_int_or_traced(height, "height")
 
         center: torch.Tensor = torch.tensor([width, height], device=_device, dtype=_dtype).view(1, 2) / 2.0 - 0.5
         center = center.expand(batch_size, -1)

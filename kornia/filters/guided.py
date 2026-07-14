@@ -228,4 +228,26 @@ class GuidedBlur(nn.Module):
         )
 
     def forward(self, guidance: torch.Tensor, input: torch.Tensor) -> torch.Tensor:
+        """Filter an input tensor with local linear guidance.
+
+        Guided filtering assumes that, inside each local window, the output can
+        be represented as a linear transform of the ``guidance`` image. This
+        makes the filter useful for edge-aware smoothing: flat regions are
+        averaged, while strong structures in the guidance tensor are preserved
+        in the filtered result.
+
+        Args:
+            guidance: Guidance tensor with shape :math:`(B, C_g, H, W)`, where
+                :math:`B` is the batch size, :math:`C_g` is the number of
+                guidance channels, :math:`H` is the height, and :math:`W` is
+                the width.
+            input: Tensor to filter with shape :math:`(B, C_i, H, W)`, where
+                :math:`C_i` is the number of channels in the signal being
+                smoothed. Its batch and spatial dimensions must be compatible
+                with ``guidance``.
+
+        Returns:
+            Tensor with shape :math:`(B, C_i, H, W)` containing the
+            edge-aware filtered version of ``input``.
+        """
         return guided_blur(guidance, input, self.kernel_size, self.eps, self.border_type, self.subsample)

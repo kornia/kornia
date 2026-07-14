@@ -121,4 +121,18 @@ class AddWeighted(nn.Module):
         self.gamma = gamma
 
     def forward(self, src1: torch.Tensor, src2: torch.Tensor) -> torch.Tensor:
+        """Compute a weighted sum of two tensors with a scalar bias term.
+
+        This method is a module wrapper around :func:`add_weighted`, using the
+        ``alpha``, ``beta``, and ``gamma`` values defined at initialization.
+
+        Args:
+            src1: First input tensor.
+            src2: Second input tensor. It must have the same shape as ``src1``.
+
+        Returns:
+            A tensor with the same shape as the inputs, computed as
+            ``src1 * alpha + src2 * beta + gamma`` with broadcasting applied
+            where supported by :func:`add_weighted`.
+        """
         return add_weighted(src1, self.alpha, src2, self.beta, self.gamma)

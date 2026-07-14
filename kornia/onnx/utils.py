@@ -192,12 +192,14 @@ def io_name_conversion(
     # Convert intermediate nodes
     for i in range(len(onnx_model.graph.node)):
         for j in range(len(onnx_model.graph.node[i].input)):
-            if onnx_model.graph.node[i].input[j] in io_name_mapping:
-                onnx_model.graph.node[i].input[j] = io_name_mapping[in_name]
+            node_in_name = onnx_model.graph.node[i].input[j]
+            if node_in_name in io_name_mapping:
+                onnx_model.graph.node[i].input[j] = io_name_mapping[node_in_name]
 
-    for j in range(len(onnx_model.graph.node[i].output)):
-        if onnx_model.graph.node[i].output[j] in io_name_mapping:
-            onnx_model.graph.node[i].output[j] = io_name_mapping[out_name]
+        for j in range(len(onnx_model.graph.node[i].output)):
+            node_out_name = onnx_model.graph.node[i].output[j]
+            if node_out_name in io_name_mapping:
+                onnx_model.graph.node[i].output[j] = io_name_mapping[node_out_name]
 
     return onnx_model
 

@@ -44,8 +44,7 @@ def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> 
     scale = (points - x_mean).norm(dim=-1, p=2).mean(dim=-1)  # B
 
     D_int = points.shape[-1]
-    D_float = torch.tensor(points.shape[-1], dtype=torch.float64, device=points.device)
-    scale = torch.sqrt(D_float) / (scale + eps)  # B
+    scale = (D_int**0.5) / (scale + eps)  # B
     transform = eye_like(D_int + 1, points)  # (B, D+1, D+1)
 
     idxs = torch.arange(D_int, dtype=torch.int64, device=points.device)

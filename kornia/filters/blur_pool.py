@@ -75,6 +75,24 @@ class BlurPool2D(nn.Module):
         self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Downsample a feature map after applying an anti-aliasing blur.
+
+        Blur pooling first smooths the input with a normalized Pascal kernel
+        and then samples it with the configured stride. The blur step reduces
+        aliasing artifacts that can appear when high-frequency image or feature
+        content is subsampled directly.
+
+        Args:
+            input: Feature map tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the input height, and :math:`W` is the
+                input width.
+
+        Returns:
+            Downsampled tensor with shape :math:`(B, C, H_{out}, W_{out})`.
+            :math:`H_{out}` and :math:`W_{out}` are determined by the kernel
+            size, padding used inside the helper, and ``self.stride``.
+        """
         self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _blur_pool_by_kernel2d(input, self.kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
 
@@ -125,6 +143,23 @@ class MaxBlurPool2D(nn.Module):
         self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Apply max pooling and then anti-aliased blur downsampling.
+
+        This layer keeps the local peak response with max pooling before
+        applying the blur-pool downsampling step. It is useful in convolutional
+        networks where pooling should remain less sensitive to small spatial
+        shifts while still reducing the feature resolution.
+
+        Args:
+            input: Feature map tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the channel count,
+                :math:`H` is the height, and :math:`W` is the width.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H_{out}, W_{out})` after max
+            pooling and blur pooling. The spatial output sizes depend on the
+            configured max-pool size, stride, blur kernel, and ``ceil_mode``.
+        """
         self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
             input, self.kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode
@@ -152,6 +187,28 @@ class EdgeAwareBlurPool2D(nn.Module):
         self.edge_dilation_kernel_size = edge_dilation_kernel_size
 
     def forward(self, input: torch.Tensor, epsilon: float = 1e-6) -> torch.Tensor:
+        """Downsample while adapting the blur near image or feature edges.
+
+        Edge-aware blur pooling estimates where strong local changes occur and
+        uses that information to avoid over-smoothing across boundaries before
+        reducing the spatial resolution. The operation is designed for feature
+        maps where edges should remain sharp after downsampling.
+
+        Args:
+            input: Feature map tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the input height, and :math:`W` is the
+                input width.
+            epsilon: Small positive value used to keep edge-aware divisions
+                numerically stable when local normalization terms are close to
+                zero.
+
+        Returns:
+            Edge-aware downsampled tensor with shape
+            :math:`(B, C, H_{out}, W_{out})`. The output preserves channel
+            order while reducing the spatial dimensions according to the
+            configured pooling parameters.
+        """
         return edge_aware_blur_pool2d(
             input, self.kernel_size, self.edge_threshold, self.edge_dilation_kernel_size, epsilon
         )

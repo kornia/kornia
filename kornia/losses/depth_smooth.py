@@ -119,4 +119,16 @@ class InverseDepthSmoothnessLoss(nn.Module):
     """
 
     def forward(self, idepth: torch.Tensor, image: torch.Tensor) -> torch.Tensor:
+        """Compute image-aware smoothness regularization for inverse depth.
+
+        Args:
+            idepth: Inverse-depth tensor with shape :math:`(B, 1, H, W)`.
+            image: RGB image tensor with shape :math:`(B, 3, H, W)` used to
+                reduce the smoothness penalty across visible image edges.
+
+        Returns:
+            Scalar tensor containing the edge-aware smoothness loss. Smoothness
+            is encouraged in flat image regions and relaxed near strong image
+            gradients.
+        """
         return inverse_depth_smoothness_loss(idepth, image)

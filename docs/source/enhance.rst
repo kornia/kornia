@@ -32,7 +32,7 @@ Interactive Demo
 
     <gradio-app src="kornia/kornia-image-enhancement"></gradio-app>
 
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`_.
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`__.
 
 Equalization
 ------------
@@ -47,7 +47,7 @@ Interactive Demo
 
     <gradio-app src="Iamabhipandat/kornia-image-equalization"></gradio-app>
 
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/Iamabhipandat/kornia-image-equalization>`_.
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/Iamabhipandat/kornia-image-equalization>`__.
 
 
 .. autofunction:: histogram

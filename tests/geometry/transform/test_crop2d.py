@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 import kornia
@@ -301,3 +302,27 @@ class TestCropByIndices(BaseTester):
         actual = op_script(img, torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]]))
         expected = op(img, torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]]))
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
+
+
+class TestCropSizeValidation:
+    """Tests that crop functions properly reject invalid size arguments."""
+
+    def test_crop_and_resize_rejects_wrong_length(self, device, dtype):
+        inp = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
+        boxes = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="tuple/list of length 2"):
+            kornia.geometry.transform.crop_and_resize(inp, boxes, (2, 2, 2))
+
+    def test_crop_and_resize_rejects_non_tuple(self, device, dtype):
+        inp = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
+        boxes = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)
+        # Passing an int instead of a tuple can raise either ValueError (from an
+        # explicit validation check) or TypeError (from calling len() on an int),
+        # depending on which code path runs first inside crop_and_resize.
+        with pytest.raises((ValueError, TypeError)):
+            kornia.geometry.transform.crop_and_resize(inp, boxes, 2)
+
+    def test_center_crop_rejects_wrong_length(self, device, dtype):
+        inp = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
+        with pytest.raises(ValueError, match="tuple/list of length 2"):
+            kornia.geometry.transform.center_crop(inp, (2, 2, 2))

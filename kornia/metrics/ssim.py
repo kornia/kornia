@@ -185,4 +185,14 @@ class SSIM(nn.Module):
         self.padding = padding
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
+        """Compute a 2D SSIM map between two image batches.
+
+        Args:
+            img1: First image tensor with shape :math:`(B, C, H, W)`.
+            img2: Second image tensor with the same shape as ``img1``.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` containing local structural
+            similarity values for each channel and spatial location.
+        """
         return ssim(img1, img2, self.window_size, self.max_val, self.eps, self.padding)

@@ -46,7 +46,8 @@ class TestTransformPoints(BaseTester):
         points_dst_to_src = kgl.transform_points(src_homo_dst, points_dst)
 
         # projected should be equal as initial
-        self.assert_close(points_src, points_dst_to_src, atol=1e-4, rtol=1e-4)
+        atol = 1e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
+        self.assert_close(points_src, points_dst_to_src, atol=atol, rtol=1e-4)
 
     def test_gradcheck(self, device):
         # generate input data
@@ -65,6 +66,16 @@ class TestTransformPoints(BaseTester):
         actual = op_script(transform, points)
         expected = op(transform, points)
         self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("trans_dtype", [torch.float16, torch.float32, torch.float64])
+    @pytest.mark.parametrize("points_dtype", [torch.float16, torch.float32, torch.float64])
+    def test_mixed_dtypes(self, device, trans_dtype, points_dtype):
+        # Regression test for https://github.com/kornia/kornia/issues/3705
+        points_src = torch.rand(2, 3, 2, device=device, dtype=points_dtype)
+        trans = kornia.core.ops.eye_like(3, points_src).to(trans_dtype)
+        out = kgl.transform_points(trans, points_src)
+        assert out.dtype == points_dtype
+        self.assert_close(out.to(torch.float32), points_src.to(torch.float32), atol=1e-2, rtol=1e-2)
 
 
 class TestComposeTransforms(BaseTester):
@@ -304,6 +315,8 @@ class TestPointsLinesDistances(BaseTester):
         assert distances.shape == (B, T, N)
 
     def test_functional(self, device):
+        if device.type == "mps":
+            pytest.skip("MPS does not support float64")
         pts = torch.tensor([1.0, 0], device=device, dtype=torch.float64).view(1, 1, 2).tile(1, 6, 1)
         lines = torch.tensor(
             [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]],

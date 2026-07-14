@@ -168,7 +168,7 @@ html_theme = "furo"
 # documentation.
 #
 # TODO(jian): make to work with https://docs.kornia.org
-html_baseurl = "https://kornia.readthedocs.io"
+html_baseurl = "https://kornia.readthedocs.io/en/latest/"
 
 # Changing sidebar title to Kornia
 html_title = "Kornia"

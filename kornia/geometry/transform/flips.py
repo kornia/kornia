@@ -47,6 +47,17 @@ class Vflip(nn.Module):
     """
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Flip the image content along the vertical image axis.
+
+        Args:
+            input: Tensor containing one image or a batch of images, typically
+                shaped :math:`(*, C, H, W)`, where :math:`H` is height and
+                :math:`W` is width.
+
+        Returns:
+            Tensor with the same shape as ``input`` whose rows are reversed
+            from top to bottom.
+        """
         return vflip(input)
 
     def __repr__(self) -> str:
@@ -79,6 +90,17 @@ class Hflip(nn.Module):
     """
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Flip the image content along the horizontal image axis.
+
+        Args:
+            input: Tensor containing one image or a batch of images, typically
+                shaped :math:`(*, C, H, W)`, where :math:`H` is height and
+                :math:`W` is width.
+
+        Returns:
+            Tensor with the same shape as ``input`` whose columns are reversed
+            from left to right.
+        """
         return hflip(input)
 
     def __repr__(self) -> str:
@@ -108,6 +130,17 @@ class Rot180(nn.Module):
     """
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Rotate image content by 180 degrees without changing tensor shape.
+
+        Args:
+            input: Tensor containing one image or a batch of images, typically
+                shaped :math:`(*, C, H, W)`, where :math:`H` is height and
+                :math:`W` is width.
+
+        Returns:
+            Tensor with the same shape as ``input`` and both spatial axes
+            reversed.
+        """
         return rot180(input)
 
     def __repr__(self) -> str:

@@ -49,6 +49,15 @@ class RepVggBlock(nn.Module):
         self.conv: Optional[nn.Conv2d] = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the RepVGG block in training or fused deployment form.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Feature map after either the fused convolution or the summed
+            ``3x3`` and ``1x1`` branches followed by SiLU activation.
+        """
         if self.conv is not None:
             out = self.act(self.conv(x))
         else:
@@ -57,6 +66,12 @@ class RepVggBlock(nn.Module):
 
     @torch.no_grad()
     def optimize_for_deployment(self) -> None:
+        """Fuse convolution and batch-normalization branches for inference.
+
+        The method replaces the parallel training-time branches with a single
+        equivalent ``3x3`` convolution stored in ``self.conv``.
+        """
+
         def _fuse_conv_bn_weights(m: ConvNormAct) -> tuple[nn.Parameter, nn.Parameter]:
             if m.norm.running_mean is None or m.norm.running_var is None:
                 raise ValueError
@@ -104,6 +119,15 @@ class CSPRepLayer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Fuse cross-stage partial RepVGG features.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Feature map after one branch passes through RepVGG bottlenecks and
+            is added to the shortcut branch, then projected to output channels.
+        """
         return self.conv3(self.bottlenecks(self.conv1(x)) + self.conv2(x))
 
 
@@ -134,6 +158,15 @@ class AIFI(nn.Module):
         self.act = nn.GELU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply all-scale feature interaction to one feature map.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` after positional
+            self-attention and feed-forward refinement.
+        """
         # using post-norm
         N, C, H, W = x.shape
         x = x.permute(2, 3, 0, 1).flatten(0, 1)  # (N, C, H, W) -> (H * W, N, C)
@@ -150,6 +183,15 @@ class AIFI(nn.Module):
         return x
 
     def ffn(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the feed-forward sublayer used inside AIFI.
+
+        Args:
+            x: Token tensor with last dimension equal to the embedding size.
+
+        Returns:
+            Tensor with the same shape as ``x`` after linear expansion,
+            activation, dropout, and projection.
+        """
         return self.linear2(self.dropout(self.act(self.linear1(x))))
 
     # TODO: make this into a reusable function
@@ -209,6 +251,14 @@ class TransformerEncoder(nn.Module):
     def forward(
         self, src: torch.Tensor
     ) -> torch.Tensor:  # NOTE: Missing src_mask: torch.Tensor = None, pos_embed: torch.Tensor = None
+        """Apply the stacked transformer encoder layers.
+
+        Args:
+            src: Source feature tensor passed through each encoder layer.
+
+        Returns:
+            Tensor after all cloned encoder layers have been applied.
+        """
         output = src
         for layer in self.layers:
             output = layer(output)
@@ -240,6 +290,15 @@ class CCFM(nn.Module):
             self.pan_blocks.append(CSPRepLayer(hidden_dim * 2, hidden_dim, 3, expansion))
 
     def forward(self, fmaps: list[torch.Tensor]) -> list[torch.Tensor]:
+        """Fuse multi-scale feature maps with FPN and PAN paths.
+
+        Args:
+            fmaps: Feature maps ordered from high resolution to low resolution.
+
+        Returns:
+            List of fused feature maps ordered from high resolution to low
+            resolution after top-down and bottom-up mixing.
+        """
         # fmaps is ordered from hi-res to low-res
         fmaps = list(fmaps)  # shallow clone
 
@@ -286,6 +345,16 @@ class HybridEncoder(nn.Module):
         self.ccfm = CCFM(len(in_channels), hidden_dim, expansion)
 
     def forward(self, fmaps: list[torch.Tensor]) -> list[torch.Tensor]:
+        """Project and fuse backbone feature maps for RT-DETR.
+
+        Args:
+            fmaps: List of backbone feature maps with decreasing spatial
+                resolution.
+
+        Returns:
+            List of encoded and cross-scale fused feature maps used by the
+            RT-DETR detection head.
+        """
         projected_maps = [proj(fmap) for proj, fmap in zip(self.input_proj, fmaps)]
         projected_maps[-1] = self.encoder(projected_maps[-1])
         new_fmaps = self.ccfm(projected_maps)

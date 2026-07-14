@@ -130,9 +130,7 @@ class ColorJitter(IntensityAugmentationBase2D):
                 if (params["saturation_factor"] != 1).any()
                 else img
             ),
-            lambda img: (
-                self._hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img
-            ),
+            lambda img: self._hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img,
         ]
 
         jittered = input

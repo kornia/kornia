@@ -17,12 +17,12 @@
 
 import os
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 __all__ = ["InstallationMode", "kornia_config"]
 
 
-class InstallationMode(str, Enum):
+class InstallationMode(StrEnum):
     """Represent the installation mode for external dependencies."""
 
     # Ask the user if to install the dependencies

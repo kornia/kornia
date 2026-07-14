@@ -109,6 +109,17 @@ class YuNet(nn.Module):
         self.eval()
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+        """Run YuNet face detection heads over an input image batch.
+
+        Args:
+            x: Image tensor with shape :math:`(B, C, H, W)`, where :math:`B` is
+                batch size, :math:`C` is channel count, :math:`H` is height,
+                and :math:`W` is width.
+
+        Returns:
+            Dictionary containing head outputs for locations, confidences, and
+            landmarks at the configured detection scales.
+        """
         detection_sources, head_list = [], []
 
         x = self.model0(x)

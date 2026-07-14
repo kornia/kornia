@@ -83,6 +83,15 @@ class SOSNet(nn.Module):
         self.eval()
 
     def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
+        """Compute SOSNet descriptors for grayscale 32x32 patches.
+
+        Args:
+            input: Input tensor with shape :math:`(B, 1, 32, 32)`.
+            eps: Small constant added before normalization for stability.
+
+        Returns:
+            Descriptor tensor with shape :math:`(B, 128)`.
+        """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         descr = self.desc_norm(self.layers(input) + eps)
         descr = descr.view(descr.size(0), -1)

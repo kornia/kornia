@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import warnings
 from typing import Optional, Tuple, Union
 
 import torch
@@ -24,7 +23,6 @@ from torch import nn
 from kornia.core.ops import eye_like
 from kornia.core.utils import _extract_device_dtype
 from kornia.filters import gaussian_blur2d
-from kornia.image.utils import perform_keep_shape_image
 
 from .imgwarp import get_affine_matrix2d, get_projective_transform, get_rotation_matrix2d, warp_affine, warp_affine3d
 
@@ -550,7 +548,6 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
     return int(side_size / aspect_ratio), side_size
 
 
-@perform_keep_shape_image
 def resize(
     input: torch.Tensor,
     size: Union[int, Tuple[int, int]],
@@ -594,45 +591,45 @@ def resize(
     if len(input.shape) < 2:
         raise ValueError(f"Input tensor must have at least two dimensions. Got {len(input.shape)}")
 
-    input_size = h, w = input.shape[-2:]
+    original_shape = input.shape
+    h, w = input.shape[-2:]
     if isinstance(size, int):
-        if torch.onnx.is_in_onnx_export():
-            warnings.warn(
-                "Please pass the size with a tuple when exporting to ONNX to correct the tracing.", stacklevel=1
-            )
         aspect_ratio = w / h
         size = _side_to_image_size(size, aspect_ratio, side)
-
-    # Skip this dangerous if-else when converting to ONNX.
-    if not torch.onnx.is_in_onnx_export():
-        if size == input_size:
-            return input
+    if len(original_shape) == 2:
+        # (H, W) -> (1, 1, H, W)
+        input = input.unsqueeze(0).unsqueeze(0)
+    elif len(original_shape) == 3:
+        # (C, H, W) -> (1, C, H, W)
+        input = input.unsqueeze(0)
+    elif len(original_shape) > 4:
+        # Flatten all leading dims: (*, C, H, W) -> (B, C, H, W)
+        batch_size = 1
+        for d in original_shape[:-3]:
+            batch_size *= d
+        input = input.reshape(batch_size, *original_shape[-3:])
 
     factors = (h / size[0], w / size[1])
-
-    # We do bluring only for downscaling
     antialias = antialias and (max(factors) > 1)
 
     if antialias:
-        # First, we have to determine sigma
-        # Taken from skimage: https://github.com/scikit-image/scikit-image/blob/v0.19.2/skimage/transform/_warps.py#L171
         sigmas = (max((factors[0] - 1.0) / 2.0, 0.001), max((factors[1] - 1.0) / 2.0, 0.001))
 
-        # Now kernel size. Good results are for 3 sigma, but that is kind of slow. Pillow uses 1 sigma
-        # https://github.com/python-pillow/Pillow/blob/master/src/libImaging/Resample.c#L206
-        # But they do it in the 2 passes, which gives better results. Let's try 2 sigmas for now
         ks = int(max(2.0 * 2 * sigmas[0], 3)), int(max(2.0 * 2 * sigmas[1], 3))
 
-        # Make sure it is odd
-        if (ks[0] % 2) == 0:
-            ks = ks[0] + 1, ks[1]
-
-        if (ks[1] % 2) == 0:
-            ks = ks[0], ks[1] + 1
+        ks = (ks[0] if ks[0] % 2 else ks[0] + 1, ks[1] if ks[1] % 2 else ks[1] + 1)
 
         input = gaussian_blur2d(input, ks, sigmas)
 
     output = torch.nn.functional.interpolate(input, size=size, mode=interpolation, align_corners=align_corners)
+
+    if len(original_shape) == 2:
+        output = output[0, 0]
+    elif len(original_shape) == 3:
+        output = output[0]
+    elif len(original_shape) > 4:
+        output = output.reshape(*original_shape[:-2], size[0], size[1])
+
     return output
 
 
@@ -760,6 +757,19 @@ class Resize(nn.Module):
         self.antialias: bool = antialias
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Resize the spatial dimensions of an image or feature tensor.
+
+        Args:
+            input: Tensor with image-like layout :math:`(*, C, H, W)`, where
+                ``*`` represents optional leading batch dimensions,
+                :math:`C` is channels, :math:`H` is height, and :math:`W` is
+                width.
+
+        Returns:
+            Resized tensor produced by :func:`resize`. The output keeps the
+            same leading and channel dimensions as ``input``; the height and
+            width are determined by ``self.size`` and ``self.side``.
+        """
         return resize(
             input,
             self.size,
@@ -854,6 +864,21 @@ class Affine(nn.Module):
         self.align_corners = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Warp the input with the affine transform configured in this module.
+
+        The transform matrix is built from this module's stored angle,
+        translation, scale, optional shear, and center. The resulting matrix is
+        passed to :func:`affine` for sampling.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channel count,
+                :math:`H` is height, and :math:`W` is width.
+
+        Returns:
+            Affine-warped tensor with shape :math:`(B, C, H, W)`. Values
+            sampled outside the input image are handled by ``self.padding_mode``.
+        """
         if self.shear is None:
             sx = sy = None
         else:
@@ -907,6 +932,17 @@ class Rescale(nn.Module):
         self.antialias: bool = antialias
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Resize spatial dimensions by the stored scale factor.
+
+        Args:
+            input: Tensor with shape :math:`(*, C, H, W)`, where ``*`` is any
+                leading batch shape, :math:`C` is channels, :math:`H` is
+                height, and :math:`W` is width.
+
+        Returns:
+            Tensor with the same leading and channel dimensions as ``input``.
+            The output height and width are computed from ``self.factor``.
+        """
         return rescale(
             input, self.factor, self.interpolation, align_corners=self.align_corners, antialias=self.antialias
         )
@@ -955,6 +991,18 @@ class Rotate(nn.Module):
         self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Rotate an image batch around the configured center.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channels, :math:`H` is
+                height, and :math:`W` is width.
+
+        Returns:
+            Rotated tensor with shape :math:`(B, C, H, W)`. The image extent is
+            kept fixed; newly exposed pixels are filled according to
+            ``self.padding_mode``.
+        """
         return rotate(input, self.angle, self.center, self.mode, self.padding_mode, self.align_corners)
 
 
@@ -997,6 +1045,17 @@ class Translate(nn.Module):
         self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Shift an image batch by the stored pixel translation.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channels, :math:`H` is
+                height, and :math:`W` is width.
+
+        Returns:
+            Translated tensor with shape :math:`(B, C, H, W)`. Translation is
+            measured in pixels along the x and y image axes.
+        """
         return translate(input, self.translation, self.mode, self.padding_mode, self.align_corners)
 
 
@@ -1045,6 +1104,17 @@ class Scale(nn.Module):
         self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Scale an image batch around the configured center point.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channels, :math:`H` is
+                height, and :math:`W` is width.
+
+        Returns:
+            Scaled tensor with the same shape as ``input``. The sampling grid
+            is built from ``self.scale_factor`` and ``self.center``.
+        """
         return scale(input, self.scale_factor, self.center, self.mode, self.padding_mode, self.align_corners)
 
 
@@ -1083,4 +1153,16 @@ class Shear(nn.Module):
         self.align_corners: bool = align_corners
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Skew an image batch with the configured x/y shear factors.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channels, :math:`H` is
+                height, and :math:`W` is width.
+
+        Returns:
+            Sheared tensor with shape :math:`(B, C, H, W)`. The output image
+            size is unchanged; pixels outside the sampled area use the
+            configured padding mode.
+        """
         return shear(input, self.shear, self.mode, self.padding_mode, self.align_corners)

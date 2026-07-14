@@ -40,6 +40,15 @@ class Qwen2VLPatchMerger(Module):
         self.ln_q = nn.LayerNorm(dim, eps=1e-6)
 
     def forward(self, x: Tensor) -> Tensor:
+        """Convert an image batch into Qwen2-VL patch tokens.
+
+        Args:
+            x: Image tensor with shape :math:`(B, 3, H, W)`.
+
+        Returns:
+            Token tensor with shape :math:`(B, N, D)`, where :math:`N` is the
+            number of extracted patches and :math:`D` is ``dim``.
+        """
         x = self.conv(x)
         x = x.flatten(2)
         x = x.transpose(1, 2)
@@ -69,6 +78,16 @@ class Qwen2VLRotaryEmbedding(Module):
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
     def forward(self, x: Tensor, cu_seqlens: Optional[Tensor] = None) -> Tensor:
+        """Return rotary-position input unchanged for this lightweight module.
+
+        Args:
+            x: Token tensor that would receive rotary position information.
+            cu_seqlens: Optional cumulative sequence lengths kept for API
+                compatibility with Qwen2-VL implementations.
+
+        Returns:
+            The input tensor ``x`` unchanged.
+        """
         return x
 
 
@@ -90,6 +109,18 @@ class Qwen2VLVisionAttention(Module):
         self.proj = nn.Linear(dim, dim, bias=True)
 
     def forward(self, x: Tensor, cu_seqlens: Optional[Tensor] = None, rot_pos_emb: Optional[Tensor] = None) -> Tensor:
+        """Apply multi-head self-attention to vision tokens.
+
+        Args:
+            x: Token tensor with shape :math:`(B, N, D)`.
+            cu_seqlens: Optional cumulative sequence lengths kept for API
+                compatibility.
+            rot_pos_emb: Optional rotary positional embedding tensor.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` after attention and output
+            projection.
+        """
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
@@ -119,6 +150,15 @@ class Qwen2VLMLP(Module):
         self.fc2 = nn.Linear(hidden_dim, dim)
 
     def forward(self, x: Tensor) -> Tensor:
+        """Apply the Qwen2-VL vision feed-forward network.
+
+        Args:
+            x: Token tensor with shape :math:`(B, N, D)`.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` after expansion, GELU
+            activation, and projection.
+        """
         return self.fc2(self.act(self.fc1(x)))
 
 
@@ -143,6 +183,17 @@ class Qwen2VLVisionBlock(Module):
         self.mlp = Qwen2VLMLP(dim, int(dim * mlp_ratio))
 
     def forward(self, x: Tensor, rot_pos_emb: Optional[Tensor] = None) -> Tensor:
+        """Run one Qwen2-VL vision transformer block.
+
+        Args:
+            x: Vision token tensor with shape :math:`(B, N, D)`.
+            rot_pos_emb: Optional rotary positional embedding passed to the
+                attention layer.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` after attention, MLP, and
+            residual connections.
+        """
         x = x + self.attn(self.norm1(x), rot_pos_emb=rot_pos_emb)
         x = x + self.mlp(self.norm2(x))
         return x
@@ -177,6 +228,15 @@ class Qwen2VLVisionTransformer(Module):
         self.rotary_pos_emb = Qwen2VLRotaryEmbedding(embed_dim // num_heads)
 
     def forward(self, x: Tensor) -> Tensor:
+        """Encode an image batch into Qwen2-VL vision tokens.
+
+        Args:
+            x: Image tensor with shape :math:`(B, 3, H, W)`.
+
+        Returns:
+            Token tensor with shape :math:`(B, N, D)` after patch embedding and
+            the configured stack of vision transformer blocks.
+        """
         x = self.patch_embed(x)
         rot_pos_emb = self.rotary_pos_emb(x)
         for block in self.blocks:

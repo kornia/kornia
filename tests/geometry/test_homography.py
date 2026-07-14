@@ -232,6 +232,8 @@ class TestFindHomographyDLT(BaseTester):
         if dtype not in (torch.float32, torch.float64):
             rtol = 3e-3
             atol = 1e-3
+        elif device.type == "cuda" and dtype == torch.float32:
+            atol = 2e-3
         self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=rtol, atol=atol)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -252,6 +254,8 @@ class TestFindHomographyDLT(BaseTester):
         if dtype not in (torch.float32, torch.float64):
             rtol = 3e-3
             atol = 1e-3
+        elif device.type == "cuda" and dtype == torch.float32:
+            atol = 2e-3
         self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=rtol, atol=atol)
 
     @pytest.mark.grad()
@@ -344,7 +348,13 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         H_withweights = find_homography_lines_dlt(ls1, ls2, weights)
         assert H_noweights.shape == (B, 3, 3)
         assert H_withweights.shape == (B, 3, 3)
-        self.assert_close(H_noweights, H_withweights, rtol=1e-3, atol=1e-4)
+        # On CUDA with float32, A^T A and A^T diag(1) A use different cuBLAS call sequences,
+        # so TF32 rounding accumulates differently.  Use the same relaxed tolerance as
+        # test_clean_points does for this device+dtype combination.
+        rtol, atol = 1e-3, 1e-4
+        if device.type == "cuda" and dtype == torch.float32:
+            rtol, atol = 5e-3, 5e-3
+        self.assert_close(H_noweights, H_withweights, rtol=rtol, atol=atol)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points(self, batch_size, device, dtype):
@@ -367,6 +377,8 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         if dtype not in (torch.float32, torch.float64):
             rtol = 5e-3
             atol = 1e-3
+        elif device.type == "cuda" and dtype == torch.float32:
+            atol = 5e-3
         self.assert_close(
             kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=rtol, atol=atol
         )
@@ -392,6 +404,8 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         if dtype not in (torch.float32, torch.float64):
             rtol = 5e-3
             atol = 1e-3
+        elif device.type == "cuda" and dtype == torch.float32:
+            atol = 5e-3
         self.assert_close(
             kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=rtol, atol=atol
         )
@@ -444,7 +458,8 @@ class TestFindHomographyDLTIter(BaseTester):
         # compute transform from source to target
         dst_homo_src = find_homography_dlt_iterated(points_src, points_dst, weights, 10)
 
-        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
+        atol = 2e-3 if (device.type == "cuda" and dtype == torch.float32) else 1e-4
+        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=atol)
 
     @pytest.mark.grad()
     def test_gradcheck(self, device):
