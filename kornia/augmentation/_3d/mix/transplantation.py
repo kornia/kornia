@@ -27,5 +27,3 @@ class RandomTransplantation3D(RandomTransplantation, AugmentationBase3D):  # typ
     3D version of the :class:`kornia.augmentation.RandomTransplantation` augmentation intended to be used with
     :class:`kornia.augmentation.AugmentationSequential`. The interface is identical to the 2D version.
     """
-
-    pass
