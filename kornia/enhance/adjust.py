@@ -369,7 +369,9 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    KORNIA_CHECK(any(factor >= 0), "Contrast factor must be positive.")
+    # `bool(tensor)` is untraceable by dynamo; skip the data-dependent validation under compile.
+    if not torch.compiler.is_compiling():
+        KORNIA_CHECK(bool((factor >= 0).all()), "Contrast factor must be positive.")
 
     # Apply contrast factor to each channel
     img_adjust: torch.Tensor = image * factor
