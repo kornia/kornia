@@ -313,7 +313,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5
+        to_apply = torch.atleast_1d(batch_prob > 0.5)
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
 
@@ -356,7 +356,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5
+        to_apply = torch.atleast_1d(batch_prob > 0.5)
         ori_shape = input.shape
 
         shape = params["forward_input_shape"]
@@ -398,7 +398,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5
+        to_apply = torch.atleast_1d(batch_prob > 0.5)
 
         output_transformed = self.apply_transform_box(input, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_box(input, params, flags, transform=transform)
@@ -438,7 +438,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5
+        to_apply = torch.atleast_1d(batch_prob > 0.5)
 
         output_transformed = self.apply_transform_keypoint(input, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
@@ -473,7 +473,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5
+        to_apply = torch.atleast_1d(batch_prob > 0.5)
 
         output_transformed = self.apply_transform_class(input, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_class(input, params, flags, transform=transform)

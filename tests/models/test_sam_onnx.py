@@ -27,6 +27,7 @@ def test_sam_has_to_onnx():
     assert hasattr(Sam, "to_onnx")
 
 
+@pytest.mark.timeout(120)
 def test_sam_encoder_to_onnx(tmp_path):
     """Sam.to_onnx() exports the image encoder subgraph with correct output name."""
     onnx = pytest.importorskip("onnx")

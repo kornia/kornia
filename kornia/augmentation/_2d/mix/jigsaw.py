@@ -72,14 +72,10 @@ class RandomJigsaw(MixAugmentationBaseV2):
     def apply_transform(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> torch.Tensor:
-        # different from the Base class routine. This function will not refer to any non-transformation images.
-        batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        input = input[to_apply].clone()
-
+        # Operate on the full batch: params are full-batch sized and the base class
+        # where-blends this result with the non-transformed branch per `batch_prob`.
         b, c, h, w = input.shape
-        # Params are generated for the full batch; slice to subset.
-        perm = params["permutation"][to_apply]
+        perm = params["permutation"]
         # Note: with a 100x100 image and a grid size of 3x3, it could work if
         #       we make h = piece_size_h * self.flags["grid"][0] with one pixel loss, then resize to 100 x 100.
         #       Probably worth to check if we should tolerate such "errorness" or to raise it as an error.
