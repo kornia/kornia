@@ -303,6 +303,20 @@ class TestCropByIndices(BaseTester):
         expected = op(img, torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]]))
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
+    def test_crop_by_indices_variable_sizes_exception(self, device, dtype):
+        img = torch.rand(2, 3, 20, 20, device=device, dtype=dtype)
+        src_box = torch.tensor(
+            [
+                [[0, 0], [4, 0], [4, 4], [0, 4]],  # 5x5 box
+                [[0, 0], [9, 0], [9, 9], [0, 9]],  # 10x10 box
+            ],
+            dtype=dtype,
+            device=device,
+        )
+
+        with pytest.raises(ValueError, match="All boxes in the batch must have the same height and width"):
+            kornia.geometry.transform.crop_by_indices(img, src_box, size=None)
+
 
 class TestCropSizeValidation:
     """Tests that crop functions properly reject invalid size arguments."""

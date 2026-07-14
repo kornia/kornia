@@ -370,7 +370,12 @@ def crop_by_indices(
 
     if size is None:
         h, w = infer_bbox_shape(src)
-        size = h.unique(sorted=False), w.unique(sorted=False)
+        if B > 0 and not ((h == h[0]).all() and (w == w[0]).all()):
+            raise ValueError(
+                "All boxes in the batch must have the same height and width when `size` is None. "
+                "Please pass `size` explicitly when box dimensions vary across the batch."
+            )
+        size = (int(h[0].item()), int(w[0].item())) if B > 0 else (0, 0)
     out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype)
     # Find out the cropped shapes that need to be resized.
     for i, _ in enumerate(out):
