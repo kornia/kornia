@@ -52,6 +52,7 @@ class TestObjectDetector(BaseTester):
             assert torch.all(dets[:, 1] >= 0.3)
 
     @pytest.mark.slow
+    @pytest.mark.timeout(120)
     @pytest.mark.skipif(torch_version_lt(2, 0, 0), reason="Unsupported ONNX opset version: 16")
     @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))
     def test_onnx(self, device, dtype, tmp_path: Path, variant: str):
