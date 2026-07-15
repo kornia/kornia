@@ -1061,6 +1061,15 @@ class TestSharpness(BaseTester):
         actual = op_script(img, 0.8)
         self.assert_close(actual, expected)
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        img = torch.rand(3, 3, 5, 5, device=device, dtype=dtype)
+        op = kornia.enhance.sharpness
+        op_optimized = torch_optimizer(op)
+        # scalar factor (whole batch) and per-sample factor
+        self.assert_close(op(img, 0.5), op_optimized(img, 0.5))
+        factor = torch.tensor([0.3, 0.7, 1.5], device=device, dtype=dtype)
+        self.assert_close(op(img, factor), op_optimized(img, factor))
+
 
 @pytest.mark.skipif(kornia.core.utils.xla_is_available(), reason="issues with xla device")
 class TestSolarize(BaseTester):
@@ -1145,12 +1154,23 @@ class TestSolarize(BaseTester):
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         img = torch.rand(3, 3, 5, 5, device=device, dtype=dtype)
-        op = kornia.enhance.sharpness
+        op = kornia.enhance.solarize
         op_optimized = torch_optimizer(op)
-        # scalar factor (whole batch) and per-sample factor
-        self.assert_close(op(img, 0.5), op_optimized(img, 0.5))
-        factor = torch.tensor([0.3, 0.7, 1.5], device=device, dtype=dtype)
-        self.assert_close(op(img, factor), op_optimized(img, factor))
+        # scalar threshold/addition (whole batch)
+        self.assert_close(op(img, 0.5, 0.1), op_optimized(img, 0.5, 0.1))
+        # per-sample 1-d threshold/addition — the batch-wise path that must stay fullgraph-safe
+        thresholds = torch.tensor([0.3, 0.6, 0.8], device=device, dtype=dtype)
+        additions = torch.tensor([-0.2, 0.0, 0.2], device=device, dtype=dtype)
+        self.assert_close(op(img, thresholds, additions), op_optimized(img, thresholds, additions))
+
+    def test_dynamo_fullgraph(self, device, dtype):
+        img = torch.rand(3, 3, 5, 5, device=device, dtype=dtype)
+        thresholds = torch.tensor([0.3, 0.6, 0.8], device=device, dtype=dtype)
+        additions = torch.tensor([-0.2, 0.0, 0.2], device=device, dtype=dtype)
+        expected = kornia.enhance.solarize(img, thresholds, additions)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.enhance.solarize, fullgraph=True)
+        self.assert_close(compiled(img, thresholds, additions), expected)
 
 
 class TestPosterize(BaseTester):
