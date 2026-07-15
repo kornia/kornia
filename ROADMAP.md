@@ -78,6 +78,20 @@ classical-CV gaps and hardening the model zoo.
   1.56k vs 0.62k, Rotation 4.6k vs 2.2k img/s) and 2–28x faster than the equivalent
   PyTorch path, so the remaining work is API surface (dispatch, dtype/layout bridging,
   parity tests), not raw speed. Prototyping the dispatch hook is the first step.
+- **GPU augmentation leadership — kill wrapper overhead, then Triton the kernel-bound
+  minority.** GPU profiling shows kornia's deficit vs torchvision on cheap augmentations is
+  *not* the kernels: for `RandomHorizontalFlip` the raw flip is ~22% of the module forward and
+  the other ~78% is per-call orchestration in the augmentation base (transform-matrix build,
+  the `where`-blend, dtype/shape bookkeeping) that torchvision skips. The highest-leverage work
+  is therefore a leaner, fully-compilable base `forward` (a fast path that skips
+  `compute_transformation` for non-affine ops) plus CUDA-graph capture — one fix that lifts
+  every augmentation. `torch.compile` alone helps (ColorJitter's fused pointwise chain already
+  beats torchvision v2 at 1.86×) but cannot erase overhead that lives outside the graph.
+  Hand-written **Triton** kernels are reserved for the genuinely kernel-bound ops `inductor`
+  cannot fuse or beat: the fused warp sampler (`warp_affine`/`warp_perspective`/`grid_sample`/
+  `remap` — highest fan-out, all geometric augs route through it), `median_blur`,
+  `equalize`/histogram, bilateral/guided filters, and morphology. Pointwise ops stay on
+  `inductor` — a Triton rewrite there only re-derives what the compiler already emits.
 - **VLM / VLA focus.** Complete and test the native-PyTorch model integrations that are the
   project's current priority: e.g. SmolVLM2
   ([#3455](https://github.com/kornia/kornia/issues/3455),
