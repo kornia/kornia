@@ -224,7 +224,10 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
                  [0., 0., 0., 0., 0.]]])
 
     """
-    validate_bbox(boxes)
+    # NOTE: `validate_bbox`'s boolean result was previously computed here and discarded — it
+    # never raised, so it performed no validation while adding a data-dependent graph break
+    # (`torch.any(...)` -> Python `if`) that blocked torch.compile fullgraph (e.g. RandomErasing,
+    # which builds its mask through this function). Dropped; behaviour is byte-identical.
     # zero padding the surroundings
     yy = torch.arange(height, device=boxes.device, dtype=boxes.dtype).view(height, 1)
     xx = torch.arange(width, device=boxes.device, dtype=boxes.dtype).view(1, width)
