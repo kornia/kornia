@@ -323,19 +323,26 @@ class _AugmentationBase(_BasicAugmentationBase):
         self.validate_tensor(in_tensor)
 
         output_transformed = self.apply_transform(in_tensor, params, flags, transform=transform)
-        output_not_transformed = self.apply_non_transform(in_tensor, params, flags, transform=transform)
 
-        if (
-            output_transformed.shape == output_not_transformed.shape
-            and output_transformed.shape[0] == to_apply.shape[0]
-        ):
-            to_apply_expanded = to_apply.view(-1, *([1] * (len(output_transformed.shape) - 1)))
-            output = torch.where(to_apply_expanded, output_transformed, output_not_transformed)
+        if self.p == 1.0 and self.p_batch == 1.0:
+            # Always applied (static probabilities): the output is unconditionally the
+            # transformed one. Skip the non-transform branch and the blend entirely — this
+            # also makes shape-changing augmentations (e.g. Resize) fullgraph-compilable,
+            # since the data-dependent shape comparison / `to_apply.any()` fallback is avoided.
+            output = output_transformed
         else:
-            # Shape-changing augmentations (e.g. RandomCrop, Resize) cannot be where-blended
-            # because the two outputs differ in spatial size. We fall back to a Python branch
-            # on to_apply.any(); this is non-onnx-exportable.
-            output = output_transformed if bool(to_apply.any()) else output_not_transformed
+            output_not_transformed = self.apply_non_transform(in_tensor, params, flags, transform=transform)
+            if (
+                output_transformed.shape == output_not_transformed.shape
+                and output_transformed.shape[0] == to_apply.shape[0]
+            ):
+                to_apply_expanded = to_apply.view(-1, *([1] * (len(output_transformed.shape) - 1)))
+                output = torch.where(to_apply_expanded, output_transformed, output_not_transformed)
+            else:
+                # Shape-changing augmentations (e.g. RandomCrop, Resize) cannot be where-blended
+                # because the two outputs differ in spatial size. We fall back to a Python branch
+                # on to_apply.any(); this is non-onnx-exportable.
+                output = output_transformed if bool(to_apply.any()) else output_not_transformed
 
         if is_autocast_enabled():
             output = output.type(input.dtype)

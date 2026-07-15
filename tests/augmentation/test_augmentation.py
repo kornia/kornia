@@ -4650,6 +4650,15 @@ class TestResize:
         assert out.shape == (1, 1, 4, 5)
         assert aug.inverse(out).shape == (1, 1, 4, 6)
 
+    def test_dynamo(self, device, dtype):
+        # A tuple output size resizes the whole batch in one call (no per-sample crop loop),
+        # so Resize is torch.compile fullgraph-safe and matches eager.
+        img = torch.rand(3, 3, 20, 24, device=device, dtype=dtype)
+        aug = Resize(size=(16, 16))
+        torch._dynamo.reset()
+        compiled = torch.compile(aug, fullgraph=True)
+        torch.testing.assert_close(aug(img), compiled(img), rtol=1e-4, atol=1e-4)
+
 
 class TestSmallestMaxSize:
     def test_smoke(self, device, dtype):
