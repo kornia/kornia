@@ -80,25 +80,24 @@ class Resize(GeometricAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        B, C, _, _ = input.shape
-        out_size = tuple(params["output_size"][0].tolist())
-        out = torch.empty(B, C, *out_size, device=input.device, dtype=input.dtype)
-
-        for i in range(B):
-            x1 = int(params["src"][i, 0, 0])
-            x2 = int(params["src"][i, 1, 0]) + 1
-            y1 = int(params["src"][i, 0, 1])
-            y2 = int(params["src"][i, 3, 1]) + 1
-            out[i] = resize(
-                input[i : i + 1, :, y1:y2, x1:x2],
-                out_size,
-                interpolation=flags["resample"].name.lower(),
-                align_corners=(
-                    flags["align_corners"] if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC] else None
-                ),
-                antialias=flags["antialias"],
-            )
-        return out
+        # The generator always sets `src` to the full input box, so the per-sample crop is a
+        # no-op and this reduces to a single batched resize of the whole input to `output_size`.
+        # Using the static `flags["size"]` for a tuple size keeps this torch.compile
+        # fullgraph-safe (an int side depends on the input aspect ratio, so it falls back to the
+        # data-dependent `output_size` param).
+        if isinstance(flags["size"], (tuple, list)):
+            out_size: Tuple[int, int] = (int(flags["size"][0]), int(flags["size"][1]))
+        else:
+            out_size = tuple(params["output_size"][0].tolist())
+        return resize(
+            input,
+            out_size,
+            interpolation=flags["resample"].name.lower(),
+            align_corners=(
+                flags["align_corners"] if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC] else None
+            ),
+            antialias=flags["antialias"],
+        )
 
     def inverse_transform(
         self,
