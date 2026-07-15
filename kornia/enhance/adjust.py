@@ -792,13 +792,13 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         return (input * 255).to(torch.uint8) / (2**shift).to(input.dtype) / 255.0
 
     def _posterize_one(input: torch.Tensor, bits: torch.Tensor) -> torch.Tensor:
-        # Single bits value condition
-        if bits == 0:
-            return torch.zeros_like(input)
-        if bits == 8:
-            return input.clone()
-        bits = 8 - bits
-        return _left_shift(_right_shift(input, bits), bits)
+        # Branchless for torch.compile: the bits==0 / bits==8 special cases guard a uint8
+        # overflow in the shift math, so compute the shift unconditionally and select with
+        # torch.where (verified numerically identical to the branched version for bits 0..8).
+        shift = 8 - bits
+        shifted = _left_shift(_right_shift(input, shift), shift)
+        out = torch.where(bits == 0, torch.zeros_like(input), shifted)
+        return torch.where(bits == 8, input, out)
 
     if len(bits.shape) == 0 or (len(bits.shape) == 1 and len(bits) == 1):
         return _posterize_one(input, bits)
