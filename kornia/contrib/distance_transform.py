@@ -49,12 +49,9 @@ def _distance_transform_2d_impl(image: torch.Tensor, kernel_size: int, h: float)
         cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
 
         mask = cdt > 0
-        # Early exit is a pure optimization: once no pixels remain, the remaining
-        # iterations are no-ops (out += 0*mask, where(False,...) leaves boundary). Skip
-        # the data-dependent break under compile so the graph stays static/fullgraph-safe.
-        if not torch.compiler.is_compiling() and not mask.any():
-            break
-
+        # No data-dependent early-out: the loop bound (n_iters) is fixed, and once no pixels
+        # remain the remaining iterations are exact no-ops (out += 0*mask, where(False,...)
+        # leaves boundary unchanged). Running them all keeps the op fullgraph-compilable.
         offset: int = i * k_half
         out = out + (offset + cdt) * mask.to(dtype=out.dtype)
         boundary = torch.where(mask, signal_ones, boundary)
@@ -83,12 +80,9 @@ def _distance_transform_3d_impl(image: torch.Tensor, kernel_size: int, h: float)
         cdt = torch.nan_to_num(cdt, nan=0.0, posinf=0.0, neginf=0.0)
 
         mask = cdt > 0
-        # Early exit is a pure optimization: once no pixels remain, the remaining
-        # iterations are no-ops (out += 0*mask, where(False,...) leaves boundary). Skip
-        # the data-dependent break under compile so the graph stays static/fullgraph-safe.
-        if not torch.compiler.is_compiling() and not mask.any():
-            break
-
+        # No data-dependent early-out: the loop bound (n_iters) is fixed, and once no pixels
+        # remain the remaining iterations are exact no-ops (out += 0*mask, where(False,...)
+        # leaves boundary unchanged). Running them all keeps the op fullgraph-compilable.
         offset: int = i * k_half
         out = out + (offset + cdt) * mask.to(dtype=out.dtype)
         boundary = torch.where(mask, signal_ones, boundary)
