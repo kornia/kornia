@@ -106,6 +106,17 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         in_tensor = self.transform_tensor(input)
 
         trans_matrix_applied = self.compute_transformation(in_tensor, params=params, flags=flags)
+
+        if self.p == 1.0 and self.p_batch == 1.0:
+            # Always applied (static probabilities): the blend selects the computed matrix
+            # everywhere, so it equals `trans_matrix_applied`. Skip building the identity and
+            # the `where` — this is a hot per-call cost (~40% of a flip's forward is the matrix
+            # path) that the image output never needs. Mirrors the `transform_inputs` fast path.
+            trans_matrix = trans_matrix_applied
+            if is_autocast_enabled():
+                trans_matrix = trans_matrix.type(input.dtype)
+            return trans_matrix
+
         trans_matrix_identity = self.identity_matrix(in_tensor)
 
         if is_autocast_enabled():
