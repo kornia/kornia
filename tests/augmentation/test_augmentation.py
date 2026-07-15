@@ -881,6 +881,15 @@ class TestRandomHorizontalFlip(BaseTester):
         repr = "RandomHorizontalFlip(p=0.5, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        torch.manual_seed(0)
+        input = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        op = RandomHorizontalFlip(p=1.0)
+        params = op.forward_parameters(input.shape)
+        expected = op(input, params=params)
+        compiled = torch.compile(op, fullgraph=True)
+        self.assert_close(compiled(input, params=params), expected)
+
     def test_random_hflip(self, device, dtype):
         f = RandomHorizontalFlip(p=1.0, keepdim=True)
         f1 = RandomHorizontalFlip(p=0.0, keepdim=True)
@@ -1059,6 +1068,15 @@ class TestRandomVerticalFlip(BaseTester):
         f = RandomVerticalFlip(p=0.5)
         repr = "RandomVerticalFlip(p=0.5, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        torch.manual_seed(0)
+        input = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        op = RandomVerticalFlip(p=1.0)
+        params = op.forward_parameters(input.shape)
+        expected = op(input, params=params)
+        compiled = torch.compile(op, fullgraph=True)
+        self.assert_close(compiled(input, params=params), expected)
 
     def test_random_vflip(self, device, dtype):
         f = RandomVerticalFlip(p=1.0)
