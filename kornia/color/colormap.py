@@ -238,7 +238,13 @@ def apply_colormap(input_tensor: torch.Tensor, colormap: ColorMap) -> torch.Tens
 
     B, C, H, W = input_tensor.shape
     input_tensor = input_tensor.reshape(B, C, -1)
-    max_value = 1.0 if input_tensor.max() <= 1.0 else 255.0
+    # torch.where instead of a Python ternary on input_tensor.max() so the op is
+    # torch.compile fullgraph-safe (branching on a tensor value breaks the graph).
+    max_value = torch.where(
+        input_tensor.max() <= 1.0,
+        torch.tensor(1.0, device=input_tensor.device, dtype=torch.float),
+        torch.tensor(255.0, device=input_tensor.device, dtype=torch.float),
+    )
     input_tensor = input_tensor.float().div_(max_value)
 
     colors = colormap.colors.permute(1, 0)
