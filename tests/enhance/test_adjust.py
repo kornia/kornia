@@ -1143,6 +1143,15 @@ class TestSolarize(BaseTester):
         actual = op_script(img, 0.8)
         self.assert_close(actual, expected)
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        img = torch.rand(3, 3, 5, 5, device=device, dtype=dtype)
+        op = kornia.enhance.sharpness
+        op_optimized = torch_optimizer(op)
+        # scalar factor (whole batch) and per-sample factor
+        self.assert_close(op(img, 0.5), op_optimized(img, 0.5))
+        factor = torch.tensor([0.3, 0.7, 1.5], device=device, dtype=dtype)
+        self.assert_close(op(img, factor), op_optimized(img, factor))
+
 
 class TestPosterize(BaseTester):
     f = kornia.enhance.posterize
