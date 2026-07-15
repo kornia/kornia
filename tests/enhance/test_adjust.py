@@ -1207,3 +1207,9 @@ class TestPosterize(BaseTester):
         expected = op(img, 8)
         actual = op_script(img, 8)
         self.assert_close(actual, expected)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        op = kornia.enhance.posterize
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img, 3), op_optimized(img, 3))
