@@ -292,11 +292,13 @@ def adjust_gamma(
     gamma = gamma.to(input.device).to(input.dtype)
     gain = gain.to(input.device).to(input.dtype)
 
-    if (gamma < 0.0).any():
-        raise ValueError(f"Gamma must be non-negative. Got {gamma}")
+    # `bool(tensor)` is untraceable by dynamo; skip the data-dependent validation under compile.
+    if not torch.compiler.is_compiling():
+        if (gamma < 0.0).any():
+            raise ValueError(f"Gamma must be non-negative. Got {gamma}")
 
-    if (gain < 0.0).any():
-        raise ValueError(f"Gain must be non-negative. Got {gain}")
+        if (gain < 0.0).any():
+            raise ValueError(f"Gain must be non-negative. Got {gain}")
 
     for _ in range(len(input.shape) - len(gamma.shape)):
         gamma = torch.unsqueeze(gamma, dim=-1)
