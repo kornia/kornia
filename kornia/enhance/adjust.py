@@ -660,9 +660,10 @@ def _solarize(input: torch.Tensor, thresholds: Union[float, torch.Tensor] = 0.5)
     if isinstance(thresholds, torch.Tensor) and len(thresholds.shape) != 0:
         if not (input.size(0) == len(thresholds) and len(thresholds.shape) == 1):
             raise AssertionError(f"thresholds must be a 1-d vector of shape ({input.size(0)},). Got {thresholds}")
-        # TODO: I am not happy about this line, but no easy to do batch-wise operation
+        # Reshape the per-sample threshold to broadcast over (C, H, W) rather than iterating the
+        # tensor (`for x in thresholds` breaks torch.compile); the `where` below broadcasts identically.
         thresholds = thresholds.to(input.device).to(input.dtype)
-        thresholds = torch.stack([x.expand(*input.shape[-3:]) for x in thresholds])
+        thresholds = thresholds.view([-1] + [1] * (input.ndim - 1))
 
     return torch.where(input < thresholds, input, 1.0 - input)
 
@@ -721,15 +722,20 @@ def solarize(
         if isinstance(additions, float):
             additions = torch.as_tensor(additions)
 
-        if not torch.all((additions < 0.5) * (additions > -0.5)):
-            raise AssertionError(f"The value of 'addition' is between -0.5 and 0.5. Got {additions}.")
+        # `torch._assert_async` keeps this a single traceable path (no Python-level branch on a
+        # tensor value), so `solarize` stays torch.compile fullgraph-safe while still validating.
+        torch._assert_async(
+            ((additions < 0.5) & (additions > -0.5)).all(),
+            "The value of 'addition' is between -0.5 and 0.5.",
+        )
 
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
             if not (input.size(0) == len(additions) and len(additions.shape) == 1):
                 raise AssertionError(f"additions must be a 1-d vector of shape ({input.size(0)},). Got {additions}")
-            # TODO: I am not happy about this line, but no easy to do batch-wise operation
+            # Broadcast the per-sample scalar over (C, H, W) by reshaping instead of iterating the
+            # tensor (`for x in additions` breaks the graph); numerically identical.
             additions = additions.to(input.device).to(input.dtype)
-            additions = torch.stack([x.expand(*input.shape[-3:]) for x in additions])
+            additions = additions.view([-1] + [1] * (input.ndim - 1))
         input = input + additions
         input = input.clamp(0.0, 1.0)
 
