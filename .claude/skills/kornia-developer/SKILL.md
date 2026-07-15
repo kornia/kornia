@@ -1,9 +1,11 @@
 ---
-name: compile-optimize
-description: Use when making a kornia op torch.compile / dynamo compatible, fixing a graph break, or optimizing a function for speed. Codifies the compile-first workflow — genuine fullgraph fixes (no is_compiling hacks), fullgraph==eager verification, and a required before/after benchmark.
+name: kornia-developer
+description: Use when developing on kornia — making an op torch.compile / dynamo compatible, fixing a graph break, or optimizing for speed. Codifies the compile-first workflow — genuine fullgraph fixes (no is_compiling hacks), byte-to-byte eager preservation, cross-library benchmarking toward the 10x-vs-albumentations moonshot.
 ---
 
-# Compile-first optimization (kornia)
+# kornia-developer: compile-first optimization
+
+Make a kornia function genuinely `torch.compile(fullgraph=True)`-compatible and measurably faster. This is a **rigid** workflow — follow every step.
 
 Make a kornia function genuinely `torch.compile(fullgraph=True)`-compatible and measurably faster. This is a **rigid** workflow — follow every step.
 
@@ -30,11 +32,14 @@ The fix must run the **same code path** in eager and compile.
 
    If none apply (unbounded `while`, `.item()`-driven shapes, random-permutation dispatch, dynamic-shape `nonzero`/`unique`), it needs a **redesign or a maintainer decision** — do not force a hack. Document it and stop.
 
-3. **Verify genuine fullgraph == eager.** Same path, matching output:
+3. **Verify genuine fullgraph == eager, and byte-to-byte eager preservation.** Two separate checks:
+   - Compiled matches eager on the same path: `torch.allclose(torch.compile(fn, fullgraph=True)(x), fn(x), atol=1e-5)`.
+   - **The fix must not change eager output at all.** Save the op's output on `main` and on your branch under the same seed and assert **byte-identical** — `torch.equal(old, new)`, not `allclose`. This is the contract: a compile refactor is only acceptable if existing users get **exactly** the same numbers. If it can't be byte-identical (e.g. a genuinely new opt-in mode), gate the change behind a new argument and leave the default path byte-identical.
    ```python
-   c = torch.compile(fn, fullgraph=True); torch.allclose(c(x), fn(x), atol=1e-5)
+   # on main:   torch.manual_seed(0); torch.save(fn(x), "old.pt")
+   # on branch: torch.manual_seed(0); assert torch.equal(fn(x), torch.load("old.pt", weights_only=True))
    ```
-   For branchless rewrites of edge-cased logic, verify **exhaustively** across the edge inputs (e.g. every `bits` 0..8), not one sample.
+   For branchless rewrites of edge-cased logic, verify **exhaustively** across the edge inputs (e.g. every `bits` 0..8), not one sample. For anything touching RNG (augmentation base, generators), a shifted draw order breaks byte-identity — check the whole module suite passes unchanged as corroboration.
 
 4. **Benchmark before/after — REQUIRED for every touched function.** A compile fix that doesn't speed anything up (or regresses eager) must be justified.
    ```python
@@ -45,6 +50,10 @@ The fix must run the **same code path** in eager and compile.
    comp  = us(c, *args)
    ```
    Record eager µs, compiled µs, speedup at a realistic size (e.g. `(8,3,128,128)`). Also confirm the rewrite didn't **regress eager** (branchless "compute both branches" and deleted early-exits can add eager work — measure it). Put the numbers in the PR.
+
+   **Also benchmark against the other libraries** — kornia's numbers are meaningless in isolation. For any op with an equivalent in **torchvision v2** and/or **albumentations**, add a like-for-like throughput row (see `benchmarks/augmentation/cross_library.py`). Report kornia eager, kornia compiled, torchvision, albumentations, on CPU and — when a GPU is present — GPU-batched. Read them honestly: albumentations wins CPU/uint8/single-image; torchvision v2 wins raw tensor throughput; kornia's regime is GPU-batched + differentiable + compiled.
+
+   **The moonshot is 10× vs albumentations** for the augmentation package — frame every perf fix against that target. Today kornia trails on CPU; the levers that close then invert the gap: (a) `torch.compile` (the fix you just made — ~2–3×), (b) a **uint8 fast path** (albumentations' whole edge is uint8 + OpenCV; kornia upcasts to float32), (c) pushing the hot op into **`kornia-rs`** (the Rust backend albumentations can't match). A compile fix that only reaches parity is a step toward 10×, not the destination — say in the PR which lever is still on the table.
 
 5. **Lock it in.** Add/confirm a `test_dynamo` for the op (pattern: build op → `op_optimized = torch_optimizer(op)` → `assert_close`). Note: dynamo tests only run when `KORNIA_TEST_OPTIMIZER=inductor` is set — normal PR CI does not run them, so verify locally.
 
