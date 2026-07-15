@@ -208,7 +208,7 @@ class SIFTDescriptor(nn.Module):
         ang_bins = torch.cat(
             [
                 self.pk((bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big)
-                for i in range(0, self.num_ang_bins)
+                for i in range(self.num_ang_bins)
             ],
             1,
         )
@@ -368,7 +368,7 @@ class DenseSIFTDescriptor(nn.Module):
                 self.bin_pooling_kernel(
                     (bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big
                 )
-                for i in range(0, self.num_ang_bins)
+                for i in range(self.num_ang_bins)
             ],
             1,
         )
