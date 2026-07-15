@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+from collections.abc import Sequence
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -94,6 +95,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
+        order: Optional[Sequence[int]] = None,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
@@ -102,6 +104,18 @@ class ColorJitter(IntensityAugmentationBase2D):
         self.saturation = saturation
         self.hue = hue
         self._param_generator = rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
+
+        # A fixed application order (a permutation/subset of 0..3 for brightness, contrast,
+        # saturation, hue) makes apply_transform a static Python loop instead of iterating the
+        # random `order` tensor, so it becomes torch.compile fullgraph-safe. Default (None)
+        # keeps the original random per-call order.
+        if order is not None:
+            order = tuple(int(i) for i in order)
+            if not set(order) <= {0, 1, 2, 3}:
+                raise ValueError(
+                    f"`order` entries must be in 0..3 (brightness, contrast, saturation, hue). Got {order}"
+                )
+        self._fixed_order: Optional[Tuple[int, ...]] = order
 
         # native functions
         self._brightness_fn = adjust_brightness_accumulative
@@ -116,27 +130,31 @@ class ColorJitter(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        # torch.where (compute-then-select) rather than a Python `if ... .any() else img`:
+        # numerically identical (the op runs on the whole batch or not at all, exactly as the
+        # guard decided) but without a data-dependent branch, so it stays fullgraph-compilable.
         transforms = [
-            lambda img: (
-                self._brightness_fn(img, params["brightness_factor"])
-                if (params["brightness_factor"] != 0).any()
-                else img
+            lambda img: torch.where(
+                (params["brightness_factor"] != 0).any(), self._brightness_fn(img, params["brightness_factor"]), img
             ),
-            lambda img: (
-                self._contrast_fn(img, params["contrast_factor"]) if (params["contrast_factor"] != 1).any() else img
+            lambda img: torch.where(
+                (params["contrast_factor"] != 1).any(), self._contrast_fn(img, params["contrast_factor"]), img
             ),
-            lambda img: (
-                self._saturation_fn(img, params["saturation_factor"])
-                if (params["saturation_factor"] != 1).any()
-                else img
+            lambda img: torch.where(
+                (params["saturation_factor"] != 1).any(), self._saturation_fn(img, params["saturation_factor"]), img
             ),
-            lambda img: self._hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img,
+            lambda img: torch.where(
+                (params["hue_factor"] != 0).any(), self._hue_fn(img, params["hue_factor"] * 2 * pi), img
+            ),
         ]
 
+        # A fixed order is a static Python sequence (fullgraph); otherwise iterate the random
+        # per-call `order` tensor (inherently data-dependent, not fullgraph-compilable).
+        order: Sequence[int] = self._fixed_order if self._fixed_order is not None else params["order"]
+
         jittered = input
-        for idx in params["order"]:
-            t = transforms[idx]
-            jittered = t(jittered)
+        for idx in order:
+            jittered = transforms[idx](jittered)
 
         return jittered
 
