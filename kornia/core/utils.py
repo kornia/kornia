@@ -113,7 +113,10 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
                     expected_device=device,
                 )
     if device is None:
-        device = torch.get_default_device()
+        # `torch.empty(0).device` reads the current default device and, unlike
+        # `torch.get_default_device()`, is traceable by dynamo — so this helper stays
+        # fullgraph-compilable even when a caller can't prove a tensor is in the list.
+        device = torch.empty(0).device
     if dtype is None:
         dtype = torch.get_default_dtype()
     return (device, dtype)
