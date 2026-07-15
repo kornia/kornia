@@ -292,13 +292,10 @@ def adjust_gamma(
     gamma = gamma.to(input.device).to(input.dtype)
     gain = gain.to(input.device).to(input.dtype)
 
-    # `bool(tensor)` is untraceable by dynamo; skip the data-dependent validation under compile.
-    if not torch.compiler.is_compiling():
-        if (gamma < 0.0).any():
-            raise ValueError(f"Gamma must be non-negative. Got {gamma}")
-
-        if (gain < 0.0).any():
-            raise ValueError(f"Gain must be non-negative. Got {gain}")
+    # torch._assert_async keeps the value check while staying fullgraph-compilable (a Python
+    # `if tensor: raise` would break the graph).
+    torch._assert_async((gamma >= 0.0).all(), "Gamma must be non-negative.")
+    torch._assert_async((gain >= 0.0).all(), "Gain must be non-negative.")
 
     for _ in range(len(input.shape) - len(gamma.shape)):
         gamma = torch.unsqueeze(gamma, dim=-1)
@@ -371,9 +368,8 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    # `bool(tensor)` is untraceable by dynamo; skip the data-dependent validation under compile.
-    if not torch.compiler.is_compiling():
-        KORNIA_CHECK(bool((factor >= 0).all()), "Contrast factor must be positive.")
+    # torch._assert_async keeps the value check while staying fullgraph-compilable.
+    torch._assert_async((factor >= 0).all(), "Contrast factor must be positive.")
 
     # Apply contrast factor to each channel
     img_adjust: torch.Tensor = image * factor
