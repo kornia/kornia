@@ -34,8 +34,6 @@ __all__ = [
 class BaseError(Exception):
     """Base exception class for all Kornia errors."""
 
-    pass
-
 
 class ShapeError(BaseError):
     """Raised when tensor shape validation fails.
@@ -119,5 +117,3 @@ class DeviceError(BaseError):
 
 class ImageError(BaseError):
     """Raised when image-specific validation fails."""
-
-    pass

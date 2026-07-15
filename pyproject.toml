@@ -226,6 +226,7 @@ select = [
   "ICN",  # flake8-import-conventions
   "INT",  # flake8-gettext
   "NPY",  # NumPy-specific rules
+  "PIE",  # flake8-pie
   "PL",  # Pylint
   "PYI",  # flake8-pyi
   "RSE",  # flake8-raise
@@ -257,7 +258,6 @@ select = [
   # "PD",   # pandas-vet
   # "PERF", # Perflint
   # "PGH",  # pygrep-hooks
-  # "PIE",  # flake8-pie
   # "PT",   # flake8-pytest-style
   # "PTH",  # flake8-use-pathlib
   # "Q",    # flake8-quotes
@@ -276,6 +276,7 @@ ignore = [
   "PLC0415",  # `import` should be at the top-level of a file
   "PLW2901",  # Allow overwritten values on loops
   "PLW1641",  # Object does not implement `__hash__` method
+  "PIE796",  # Enums intentionally use duplicate values as aliases (e.g. DataKey.IMAGE/INPUT)
   "UP007",  # Prefer Optional[], Union[] over | due to torch jit scripting
   "UP006",  # Prefer List[], over list due to torch jit scripting
   "UP035",  # Ignore deprecated typing because of jit scripting

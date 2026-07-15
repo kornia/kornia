@@ -1646,6 +1646,23 @@ class TestColorJitter(BaseTester):
         )
         assert str(f) == repr
 
+    def test_fixed_order(self, device, dtype):
+        # A fixed `order` applies the same adjustments deterministically; invalid entries raise.
+        img = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        out = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(img)
+        assert out.shape == img.shape
+        with pytest.raises(ValueError):
+            ColorJitter(0.2, 0.2, 0.2, 0.1, order=(0, 1, 9))
+
+    def test_dynamo_fixed_order(self, device, dtype, torch_optimizer):
+        # A fixed `order` avoids iterating the random order tensor, so it is fullgraph-safe.
+        # Replay the sampled params so the (random) eager and compiled runs are comparable.
+        img = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))
+        eager = op(img)
+        op_optimized = torch_optimizer(op)
+        self.assert_close(eager, op_optimized(img, params=op._params))
+
     def test_color_jitter(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip("not work for half-precision")
