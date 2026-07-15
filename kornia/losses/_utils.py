@@ -48,7 +48,10 @@ def mask_ignore_pixels(
 
     target_mask = target != ignore_index
 
-    if target_mask.all():
+    # Data-dependent early-out (skip masking when nothing is ignored). Guard it under
+    # torch.compile: returning the all-True mask instead of None just makes callers apply
+    # a no-op mask, which keeps the result identical while staying fullgraph-safe.
+    if not torch.compiler.is_compiling() and target_mask.all():
         return target, None
 
     # map invalid pixels to a valid class (0)
