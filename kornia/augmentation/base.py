@@ -175,8 +175,25 @@ class _BasicAugmentationBase(nn.Module):
         else:
             batch_prob = (torch.rand(1, device=self.device) < p_batch).to(self.dtype)
 
-        if batch_prob.sum() == 1:
-            elem_prob: torch.Tensor
+        elem_prob: torch.Tensor
+        if not torch.compiler.is_compiling():
+            # Eager keeps the exact original control flow so RNG draws are unchanged.
+            if batch_prob.sum() == 1:
+                if p == 1:
+                    elem_prob = torch.ones(batch_shape[0], device=self.device, dtype=self.dtype)
+                elif p == 0:
+                    elem_prob = torch.zeros(batch_shape[0], device=self.device, dtype=self.dtype)
+                elif same_on_batch:
+                    elem_prob = (torch.rand(1, device=self.device) < p).to(self.dtype).expand(batch_shape[0])
+                else:
+                    elem_prob = (torch.rand(batch_shape[0], device=self.device) < p).to(self.dtype)
+                batch_prob = batch_prob * elem_prob
+            else:
+                batch_prob = batch_prob.repeat(batch_shape[0])
+        else:
+            # Compile: branchless equivalent of the `batch_prob.sum() == 1` gate. batch_prob
+            # is (1,) in {0, 1}; multiplying by the per-sample gate yields zeros for a
+            # deselected batch and elem_prob for a selected one, avoiding the graph break.
             if p == 1:
                 elem_prob = torch.ones(batch_shape[0], device=self.device, dtype=self.dtype)
             elif p == 0:
@@ -186,8 +203,6 @@ class _BasicAugmentationBase(nn.Module):
             else:
                 elem_prob = (torch.rand(batch_shape[0], device=self.device) < p).to(self.dtype)
             batch_prob = batch_prob * elem_prob
-        else:
-            batch_prob = batch_prob.repeat(batch_shape[0])
 
         if len(batch_prob.shape) == 2:
             return batch_prob[..., 0]
