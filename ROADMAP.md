@@ -29,7 +29,11 @@ is that the first two are largely **the same body of work**:
    the compile/export work produces — is what fuses under `inductor` and what a native
    `kornia-rs` kernel can accelerate. Our differentiator is GPU-batched, on-device,
    differentiable augmentation; our goal is to make that regime dramatically faster and
-   to measure it honestly against alternatives.
+   to measure it honestly against alternatives. For the non-differentiable CPU/`uint8`
+   regime — where users today reach for albumentations — an opt-in `kornia-rs` backend is
+   the path to a step-change: local benchmarks already show `kornia-rs` beating
+   albumentations by 1.3–2.5x on common ops, so the moonshot there is an API-integration
+   problem, not a kernel-performance one.
 
 A fourth theme, **breadth**, runs in parallel and is largely community-driven: closing
 classical-CV gaps and hardening the model zoo.
@@ -65,6 +69,15 @@ classical-CV gaps and hardening the model zoo.
   ops (warps, blurs, color conversions) toward native `kornia-rs` kernels. Land a
   cross-library benchmark harness (CPU and GPU-batched) so performance claims are
   reproducible.
+- **A `kornia-rs` augmentation backend (opt-in).** Add a backend selector (e.g.
+  `backend="rust"`) that routes non-differentiable, CPU, `uint8` augmentation through
+  `kornia-rs` (`kornia_rs.imgproc` / `kornia_rs.augmentations`), while the PyTorch path
+  stays the default for GPU-batched, differentiable, and float workloads. This is the
+  concrete route to a 10x-vs-albumentations target on CPU: local benchmarks at 256² show
+  `kornia-rs` already ahead of albumentations (e.g. HFlip 13.4k vs 10.5k, ColorJitter
+  1.56k vs 0.62k, Rotation 4.6k vs 2.2k img/s) and 2–28x faster than the equivalent
+  PyTorch path, so the remaining work is API surface (dispatch, dtype/layout bridging,
+  parity tests), not raw speed. Prototyping the dispatch hook is the first step.
 - **VLM / VLA focus.** Complete and test the native-PyTorch model integrations that are the
   project's current priority: e.g. SmolVLM2
   ([#3455](https://github.com/kornia/kornia/issues/3455),
