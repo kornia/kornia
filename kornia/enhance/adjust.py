@@ -877,39 +877,14 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     padded_degenerate = F.pad(degenerate, [1, 1, 1, 1])
     result = torch.where(padded_mask == 1, padded_degenerate, input)
 
-    if len(factor.size()) == 0:
-        return _blend_one(result, input, factor)
-    return torch.stack([_blend_one(result[i], input[i], factor[i]) for i in range(len(factor))])
-
-
-def _blend_one(input1: torch.Tensor, input2: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
-    r"""Blend two images into one.
-
-    Args:
-        input1: image torch.Tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
-        input2: image torch.Tensor with shapes like :math:`(H, W)` or :math:`(D, H, W)`.
-        factor: factor 0-dim torch.Tensor.
-
-    Returns:
-        : image torch.Tensor with the batch in the zero position.
-
-    """
-    if not isinstance(input1, torch.Tensor):
-        raise AssertionError(f"`input1` must be a torch.Tensor. Got {input1}.")
-    if not isinstance(input2, torch.Tensor):
-        raise AssertionError(f"`input1` must be a torch.Tensor. Got {input2}.")
-
-    if isinstance(factor, torch.Tensor) and len(factor.size()) != 0:
-        raise AssertionError(f"Factor shall be a float or single element torch.Tensor. Got {factor}.")
-    if factor == 0.0:
-        return input1
-    if factor == 1.0:
-        return input2
-    diff = (input2 - input1) * factor
-    res = input1 + diff
-    if factor > 0.0 and factor < 1.0:
-        return res
-    return torch.clamp(res, 0, 1)
+    # Blend the sharpened result with the input. factor may be 0-dim (whole batch) or
+    # 1-d (per-sample); reshape to broadcast, then blend branchlessly so the op stays
+    # torch.compile fullgraph-safe (no per-sample Python loop, no factor==0/1 branches).
+    # Equivalent to the old _blend_one: clamp is a no-op for factor in [0, 1] and only
+    # bites for extrapolation, matching the previous behavior.
+    if len(factor.size()) != 0:
+        factor = factor.view(-1, *([1] * (result.dim() - 1)))
+    return torch.clamp(result + (input - result) * factor, 0.0, 1.0)
 
 
 def _build_lut(histo: torch.Tensor, step: torch.Tensor) -> torch.Tensor:
