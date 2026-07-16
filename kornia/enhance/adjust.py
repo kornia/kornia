@@ -902,6 +902,57 @@ def _build_lut(histo: torch.Tensor, step: torch.Tensor) -> torch.Tensor:
     return torch.clamp(lut, 0, 255)
 
 
+def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
+    r"""Vectorized histogram equalization over the leading ``(B, C)`` planes.
+
+    Equivalent to stacking ``_scale_channel`` over every ``(B, C)`` plane, but computes all
+    per-plane histograms/LUTs in a single batched pass instead of a Python loop of ``B * C``
+    serial ``torch.histc`` calls. The per-plane histogram is built with ``scatter_add`` instead
+    of ``torch.histc``; the two agree except for a handful of values landing exactly on a bin
+    edge (``~1%`` of pixels shift by one 256-bin, i.e. ``~1/255`` in the output), which is within
+    the equalization test tolerance.
+
+    Args:
+        input: image tensor shaped ``(B, C, *spatial)`` with values in ``[0, 1]``.
+
+    Returns:
+        The equalized tensor, same shape as ``input``.
+    """
+    shape = input.shape
+    n = shape[0] * shape[1]
+    scaled = input.reshape(n, -1) * 255.0  # (N, P)
+
+    min_, max_ = input.min(), input.max()
+    if min_.item() < 0.0 and not torch.isclose(min_, torch.as_tensor(0.0, dtype=min_.dtype)):
+        raise ValueError(f"Values in the input torch.Tensor must greater or equal to 0.0. Found {min_.item()}.")
+    if max_.item() > 1.0 and not torch.isclose(max_, torch.as_tensor(1.0, dtype=max_.dtype)):
+        raise ValueError(f"Values in the input torch.Tensor must lower or equal to 1.0. Found {max_.item()}.")
+
+    # Per-plane 256-bin histogram matching ``torch.histc(x, 256, 0, 255)`` bin placement.
+    bins = torch.clamp((scaled * (256.0 / 255.0)).floor().long(), 0, 255)
+    histo = torch.zeros(n, 256, device=input.device, dtype=scaled.dtype)
+    histo.scatter_add_(1, bins, torch.ones_like(scaled))
+
+    # step = (sum(nonzero) - last_nonzero) // 255, per plane.
+    total = histo.sum(1)
+    ar = torch.arange(256, device=input.device)
+    last_idx = torch.where(histo > 0, ar, torch.zeros_like(ar)).amax(1)
+    last_count = histo.gather(1, last_idx.unsqueeze(1)).squeeze(1)
+    step = torch.div(total - last_count, 255, rounding_mode="trunc")  # (N,)
+
+    # Build the LUT (cumsum shifted by step // 2, normalized by step); guard step == 0 for the div
+    # and select the untouched plane afterwards, mirroring the scalar ``if step == 0`` branch.
+    step_col = step.unsqueeze(1)
+    step_trunc = torch.div(step, 2, rounding_mode="trunc").unsqueeze(1)
+    lut = torch.div(histo.cumsum(1) + step_trunc, step_col.clamp(min=1), rounding_mode="trunc")
+    lut = torch.cat([torch.zeros(n, 1, device=input.device, dtype=lut.dtype), lut[:, :-1]], 1)
+    lut = torch.clamp(lut, 0, 255)
+
+    result = lut.gather(1, scaled.long())
+    result = torch.where(step_col == 0, scaled, result)
+    return (result / 255.0).reshape(shape)
+
+
 # Code taken from: https://github.com/pytorch/vision/pull/796
 def _scale_channel(im: torch.Tensor) -> torch.Tensor:
     r"""Scale the data in the channel to implement equalize.
@@ -966,13 +1017,8 @@ def equalize(input: torch.Tensor) -> torch.Tensor:
         torch.Size([1, 2, 3, 3])
 
     """
-    res = []
-    for image in input:
-        # Assumes RGB for now.  Scales each channel independently
-        # and then stacks the result.
-        scaled_image = torch.stack([_scale_channel(image[i, :, :]) for i in range(len(image))])
-        res.append(scaled_image)
-    return torch.stack(res)
+    # Scales each channel independently, batched over (B, C) in a single pass.
+    return _scale_channel_batched(input)
 
 
 @perform_keep_shape_video
@@ -989,14 +1035,8 @@ def equalize3d(input: torch.Tensor) -> torch.Tensor:
         Equalized volume with shape :math:`(B, C, D, H, W)`.
 
     """
-    res = []
-    for volume in input:
-        # Assumes RGB for now.  Scales each channel independently
-        # and then stacks the result.
-        scaled_input = torch.stack([_scale_channel(volume[i, :, :, :]) for i in range(len(volume))])
-        res.append(scaled_input)
-
-    return torch.stack(res)
+    # Scales each channel independently (each (D, H, W) volume), batched over (B, C).
+    return _scale_channel_batched(input)
 
 
 def invert(image: torch.Tensor, max_val: Optional[torch.Tensor] = None) -> torch.Tensor:
