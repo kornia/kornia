@@ -38,6 +38,11 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
 
     """
 
+    # Intensity augmentations are pointwise: apply_transform ignores the transform matrix and
+    # the matrix is always identity (mask/boxes/keypoints pass through). Defer building it until
+    # `.transform_matrix` is read, saving an eye_like + blend on every forward.
+    _compute_matrix_lazily = True
+
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 

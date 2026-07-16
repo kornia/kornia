@@ -317,8 +317,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 if recompute:
                     flags = override_parameters(module.flags, extra_args, in_place=False)
                     mat = module.generate_transformation_matrix(input, param.data, flags)
-                elif module._transform_matrix is not None:
-                    mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
+                elif module.transform_matrix is not None:
+                    mat = torch.as_tensor(module.transform_matrix, device=input.device, dtype=input.dtype)
                 else:
                     raise RuntimeError(f"{module}._transform_matrix is None while `recompute=False`.")
                 res_mat = mat if res_mat is None else mat @ res_mat

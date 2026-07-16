@@ -102,7 +102,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
                 if recompute:
                     flags = override_parameters(module.op.flags, extra_args, in_place=False)
                     mat = module.op.generate_transformation_matrix(input, param.data, flags)
-                elif module.op._transform_matrix is not None:
+                elif module.op.transform_matrix is not None:
                     mat = torch.as_tensor(module.transform_matrix, device=input.device, dtype=input.dtype)
                 else:
                     raise RuntimeError(f"{module}.transform_matrix is None while `recompute=False`.")
