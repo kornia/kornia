@@ -31,8 +31,15 @@ Run all GPU numbers locally (`--device cuda`); on some edge wheels (e.g. Jetson)
 ops can't ``torch.compile`` on GPU — those show ``—`` in the compiled column, which is a wheel
 limitation, not an op bug.
 
+**On GPU, use a realistic size** (e.g. ``--batch 64 --size 224``). The default ``16 x 64x64`` is
+fine on CPU (it exposes algorithmic cost) but is *too small on GPU*: a cheap op then runs faster
+than the fixed compile/launch overhead, so ``torch.compile`` looks like a regression when it is
+not. Example — ``RandomSaltAndPepperNoise`` reads as 0.42x compiled at ``16 x 64x64`` but is
+**2.7x faster** compiled at ``64 x 224x224``. Trust the large-size numbers for the GPU verdict.
+
 Usage:
     python benchmarks/augmentation/per_op.py [--device cpu] [--batch 16] [--size 64]
+    python benchmarks/augmentation/per_op.py --device cuda --batch 64 --size 224
 """
 
 from __future__ import annotations
