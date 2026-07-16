@@ -2975,6 +2975,15 @@ class TestRandomGrayscale(BaseTester):
 
 
 class TestCenterCrop(BaseTester):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # slice cropping mode: a static-size centered crop is fullgraph-safe and matches eager.
+        input = torch.rand(2, 3, 20, 24, device=device, dtype=dtype)
+        op = CenterCrop((16, 10))
+        params = op.forward_parameters(input.shape)
+        expected = op(input, params=params)
+        compiled = torch.compile(op, fullgraph=True)
+        self.assert_close(compiled(input, params=params), expected)
+
     def test_no_transform(self, device, dtype):
         inp = torch.rand(1, 2, 4, 4, device=device, dtype=dtype)
         out = CenterCrop(2)(inp)
