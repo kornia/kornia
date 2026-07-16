@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Checkout kornia
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Config Python ${{ matrix.python-version }}
         uses: actions/setup-python@v6
