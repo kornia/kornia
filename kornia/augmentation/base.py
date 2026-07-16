@@ -315,8 +315,6 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params["batch_prob"]
-        to_apply = torch.atleast_1d(batch_prob > 0.5)
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
 
@@ -329,8 +327,11 @@ class _AugmentationBase(_BasicAugmentationBase):
             # transformed one. Skip the non-transform branch and the blend entirely — this
             # also makes shape-changing augmentations (e.g. Resize) fullgraph-compilable,
             # since the data-dependent shape comparison / `to_apply.any()` fallback is avoided.
+            # (The `to_apply` gate is only needed on the p < 1 path below, so it is not computed
+            # here.)
             output = output_transformed
         else:
+            to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
             output_not_transformed = self.apply_non_transform(in_tensor, params, flags, transform=transform)
             if (
                 output_transformed.shape == output_not_transformed.shape
@@ -347,10 +348,9 @@ class _AugmentationBase(_BasicAugmentationBase):
         if is_autocast_enabled():
             output = output.type(input.dtype)
 
+        # `_transform_output_shape` only reshapes (preserves dtype), so no second autocast cast is
+        # needed after it — the cast above already restored `input.dtype`.
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
-
-        if is_autocast_enabled():
-            output = output.type(input.dtype)
         return output
 
     def transform_masks(
