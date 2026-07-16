@@ -60,6 +60,10 @@ class Resize(GeometricAugmentationBase2D):
             "antialias": antialias,
         }
 
+    # apply_transform does a batched resize and ignores the transform matrix, so defer the
+    # matrix build (which needs a linalg solve) until `.transform_matrix` is read.
+    _compute_matrix_lazily = True
+
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:

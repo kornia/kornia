@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from torch import float16, float32, float64
@@ -81,10 +81,19 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
     """
 
-    _transform_matrix: Optional[torch.Tensor]
+    _transform_matrix: Optional[torch.Tensor] = None
+    # Set True on subclasses whose ``apply_transform`` ignores the transform matrix (e.g. flips):
+    # the image output never reads it, so building it every forward is pure overhead. When True,
+    # ``apply_func`` defers the matrix and ``transform_matrix`` computes it on first access.
+    _compute_matrix_lazily: bool = False
+    _lazy_matrix_args: Optional[Tuple[torch.Tensor, Dict[str, torch.Tensor], Dict[str, Any]]] = None
 
     @property
     def transform_matrix(self) -> Optional[torch.Tensor]:
+        if self._transform_matrix is None and self._lazy_matrix_args is not None:
+            in_tensor, params, flags = self._lazy_matrix_args
+            self._transform_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
+            self._lazy_matrix_args = None
         return self._transform_matrix
 
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
@@ -184,8 +193,17 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         if flags is None:
             flags = self.flags
 
+        if self._compute_matrix_lazily:
+            # apply_transform ignores the matrix for these ops, so don't build it here; defer to
+            # the first `.transform_matrix` access (e.g. AugmentationSequential propagating to
+            # boxes/keypoints/masks). A standalone flip that never reads the matrix skips it.
+            self._transform_matrix = None
+            self._lazy_matrix_args = (in_tensor, params, flags)
+            return self.transform_inputs(in_tensor, params, flags, None)
+
         trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
         output = self.transform_inputs(in_tensor, params, flags, trans_matrix)
         self._transform_matrix = trans_matrix
+        self._lazy_matrix_args = None
 
         return output
