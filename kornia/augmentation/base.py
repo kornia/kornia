@@ -111,6 +111,19 @@ class _BasicAugmentationBase(nn.Module):
         self.set_rng_device_and_dtype(device, dtype)
         return super().to(*args, **kwargs)
 
+    def _apply(self, fn: Callable[[torch.Tensor], torch.Tensor], *args: Any, **kwargs: Any) -> "_BasicAugmentationBase":
+        # nn.Module.to/.cuda/.cpu/.half move children by recursing through `_apply`, not `.to`,
+        # so a container like `AugmentationSequential(...).to("cuda")` never triggers our `to`
+        # override and leaves parameter sampling on CPU — every forward then generates on the
+        # host and copies to the device (measured ~5x slower on GPU pipelines). Mirror the device
+        # and dtype of the moved tensors onto the random generator so container moves behave like
+        # a direct `.to` on the augmentation.
+        out = super()._apply(fn, *args, **kwargs)
+        probe = fn(torch.zeros((), device=self.device, dtype=self.dtype))
+        dtype = probe.dtype if probe.is_floating_point() else self.dtype
+        self.set_rng_device_and_dtype(probe.device, dtype)
+        return out
+
     def __repr__(self) -> str:
         txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
         if isinstance(self._param_generator, RandomGeneratorBase):
