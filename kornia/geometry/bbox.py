@@ -368,16 +368,22 @@ def bbox_generator(
             f"`width`({width.device}), `height`({height.device})."
         )
 
-    bbox = torch.tensor([[[0, 0], [0, 0], [0, 0], [0, 0]]], device=x_start.device, dtype=x_start.dtype).repeat(
-        1 if x_start.dim() == 0 else len(x_start), 1, 1
+    # Build the four corners (TL, TR, BR, BL) directly by stacking instead of allocating a zero
+    # tensor and mutating it with six indexed in-place adds (each of which is a separate kernel /
+    # copy). `.view(-1)` treats a scalar input as batch-1, matching the previous ``repeat`` shape.
+    x0 = x_start.view(-1)
+    y0 = y_start.view(-1)
+    x1 = x0 + width.view(-1) - 1
+    y1 = y0 + height.view(-1) - 1
+    bbox = torch.stack(
+        [
+            torch.stack([x0, y0], dim=-1),
+            torch.stack([x1, y0], dim=-1),
+            torch.stack([x1, y1], dim=-1),
+            torch.stack([x0, y1], dim=-1),
+        ],
+        dim=-2,
     )
-
-    bbox[:, :, 0] += x_start.view(-1, 1)
-    bbox[:, :, 1] += y_start.view(-1, 1)
-    bbox[:, 1, 0] += width - 1
-    bbox[:, 2, 0] += width - 1
-    bbox[:, 2, 1] += height - 1
-    bbox[:, 3, 1] += height - 1
 
     return bbox
 
