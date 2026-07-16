@@ -7,7 +7,13 @@ description: Use when developing on kornia — making an op torch.compile / dyna
 
 Make a kornia function genuinely `torch.compile(fullgraph=True)`-compatible and measurably faster. This is a **rigid** workflow — follow every step.
 
-Make a kornia function genuinely `torch.compile(fullgraph=True)`-compatible and measurably faster. This is a **rigid** workflow — follow every step.
+## First principle: foundation, not green tests
+
+The goal is a function that is *genuinely* fullgraph and *genuinely* faster — not a test that happens to pass. A green test is evidence, never the objective. Every step below exists to make the underlying claim true; if you find yourself tuning a test to go green without understanding *why* the code now works, stop — you are building on sand. Concrete traps this workflow has hit:
+
+- **A test can pass while never exercising the claim.** Compiling `op(x, params=pregenerated_params)` skips `forward_parameters`, so a "fullgraph" dynamo test that passes pre-generated params **never traced the parameter-generation path**. Test the real user path (`op(x)`), not a shortcut that dodges the code you're claiming to fix.
+- **"Works on my machine" is not "works."** `int(tensor)` constant-folds under dynamo on some torch versions (e.g. 2.10) and lowers to a graph-breaking `.item()` on others (e.g. 2.9.1). A fullgraph claim verified only on the local torch is worthless if CI runs a different one. Verify on the **CI torch version** (the PR dynamo job is the source of truth), and prefer fixes that are version-independent by construction — build tensors from tensors (`torch.stack` of scalar `0`/`1`), never `int(tensor)` or `torch.tensor([[... python int ...]])`.
+- **Understand *why* a branch is dead before deleting it.** `tensor == torch.Size(...)` doesn't broadcast — it falls back to identity `==` and is silently *always* `False`. Code can "work" with a branch that never runs. Diagnose the mechanism; don't pattern-match a fix.
 
 ## The non-negotiable rule: no `is_compiling()` hacks
 
@@ -41,21 +47,25 @@ The fix must run the **same code path** in eager and compile.
    ```
    For branchless rewrites of edge-cased logic, verify **exhaustively** across the edge inputs (e.g. every `bits` 0..8), not one sample. For anything touching RNG (augmentation base, generators), a shifted draw order breaks byte-identity — check the whole module suite passes unchanged as corroboration.
 
-4. **Benchmark before/after — REQUIRED for every touched function.** A compile fix that doesn't speed anything up (or regresses eager) must be justified.
+4. **Benchmark before/after — REQUIRED for every touched function.** A compile fix that doesn't speed anything up (or regresses eager) must be justified. Benchmarking is an experiment, not a vibe — hold it to experimental standards:
    ```python
    import torch.utils.benchmark as bench
    def us(f,*a): return bench.Timer(stmt="f(*a)",globals={"f":f,"a":a}).blocked_autorange(min_run_time=1.0).median*1e6
    eager = us(fn, *args)
-   c = torch.compile(fn, fullgraph=True); c(*args)  # warmup
+   c = torch.compile(fn, fullgraph=True); c(*args)  # warmup — compile + allocator + cudnn autotune all happen on the first call
    comp  = us(c, *args)
    ```
-   Record eager µs, compiled µs, speedup at a realistic size (e.g. `(8,3,128,128)`). Also confirm the rewrite didn't **regress eager** (branchless "compute both branches" and deleted early-exits can add eager work — measure it). Put the numbers in the PR.
+   Methodology that makes the number trustworthy — deviate and the comparison is noise:
+   - **Warm up** before timing (first call pays compilation / autotune / lazy-init). **Never** time a single call — use `blocked_autorange` (statistical, median of many) so you report signal, not scheduler jitter.
+   - **Same machine, same process, back-to-back** for before/after. Never compare a number from one box to a number from another. `torch.utils.benchmark` handles CUDA synchronization; a hand-rolled `time.time()` around a CUDA call measures launch latency, not work.
+   - **Realistic shape + batch** (e.g. `(32,3,256,256)` for augmentation) — a `(1,3,8,8)` toy inflates Python overhead and hides kernel cost. Record **hardware, torch version, commit, date** with the numbers (edge silicon like Jetson is *directional*; headline GPU-leadership claims need a datacenter GPU).
+   - Confirm the rewrite didn't **regress eager** (branchless "compute both branches" and deleted early-exits add eager work — measure it). Put the before/after table in the PR.
 
-   **Also benchmark against the other libraries** — kornia's numbers are meaningless in isolation. For any op with an equivalent in **torchvision v2** and/or **albumentations**, add a like-for-like throughput row (see `benchmarks/augmentation/cross_library.py`). Report kornia eager, kornia compiled, torchvision, albumentations, on CPU and — when a GPU is present — GPU-batched. Read them honestly: albumentations wins CPU/uint8/single-image; torchvision v2 wins raw tensor throughput; kornia's regime is GPU-batched + differentiable + compiled.
+   **Benchmark against every other library — kornia's numbers are meaningless in isolation.** Use the harnesses, don't hand-roll: `benchmarks/augmentation/all_libraries.py` (kornia eager+compiled vs torchvision v2, albumentations, OpenCV, PIL, **kornia-rs**), `cross_library.py` (focused three-way), `pipeline.py` (end-to-end). Read `benchmarks/augmentation/README.md` first — it documents the regimes and the standing improvement list, and it is where durable results and the honest interpretation live (update it when you move a number). Read the columns honestly and state the regime: **OpenCV / kornia-rs win CPU/uint8/single-image**, **torchvision v2 wins raw float-tensor throughput**, **kornia's regime is GPU-batched + differentiable + compiled** — the only one where differentiable, on-device augmentation exists at all.
 
    **The moonshot is 10× vs albumentations** for the augmentation package — frame every perf fix against that target. Today kornia trails on CPU; the levers that close then invert the gap: (a) `torch.compile` (the fix you just made — ~2–3×), (b) a **uint8 fast path** (albumentations' whole edge is uint8 + OpenCV; kornia upcasts to float32), (c) pushing the hot op into **`kornia-rs`** (the Rust backend albumentations can't match). A compile fix that only reaches parity is a step toward 10×, not the destination — say in the PR which lever is still on the table.
 
-5. **Lock it in.** Add/confirm a `test_dynamo` for the op (pattern: build op → `op_optimized = torch_optimizer(op)` → `assert_close`). Note: dynamo tests only run when `KORNIA_TEST_OPTIMIZER=inductor` is set — normal PR CI does not run them, so verify locally.
+5. **Lock it in.** Add/confirm a `test_dynamo` for the op that exercises the **real path** — compile the full forward (`torch.compile(op, fullgraph=True)(x)` with no pre-generated `params`), not just `apply_transform` with params fed in, so parameter generation is covered too. A PR-time `dynamo` CI job now runs the compile-clean core under `inductor` on the CI torch version (`.github/workflows/pr_test_cpu.yml`), so a fullgraph regression is caught at PR time on the *real* torch — but locally you must still run with `KORNIA_TEST_OPTIMIZER=inductor` (the default matrix sets it empty and deselects these tests). If you add an op to a scoped-core dir, the CI job will exercise it; confirm it passes there, not only on your local torch.
 
 6. **Verify the suite is unchanged.** Run the op's full test file with `--dtype=float32`. For shared helpers or the augmentation base, run the whole module suite — a branchless rewrite can shift RNG *consumption* (e.g. always drawing a sample that used to be conditional); the suite passing unchanged is the proof no seeded test depends on it.
 
