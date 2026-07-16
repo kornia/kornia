@@ -133,7 +133,11 @@ def warp_perspective(
     # we F.normalize the 3x3 transformation matrix and convert to 3x4
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M, (H, W), (h_out, w_out))  # Bx3x3
 
-    src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)  # Bx3x3
+    # Closed-form 3x3 inverse (pure arithmetic) instead of ``torch.linalg.inv``: numerically
+    # equivalent for these well-conditioned transforms, and it runs where the LAPACK/cusolver
+    # backend is unavailable (e.g. the Jetson wheel, where ``linalg.inv`` dlopen-fails and would
+    # otherwise crash every warp on GPU).
+    src_norm_trans_dst_norm = _inverse_3x3_closed_form(dst_norm_trans_src_norm)  # Bx3x3
 
     # this piece of code substitutes F.affine_grid since it does not support 3x3
     grid = (
@@ -213,7 +217,9 @@ def warp_affine(
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M_3x3, (H, W), dsize)
 
-    src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)
+    # Closed-form 3x3 inverse (see warp_perspective) — cusolver-free, so affine warps run on the
+    # Jetson wheel where ``torch.linalg.inv`` dlopen-fails.
+    src_norm_trans_dst_norm = _inverse_3x3_closed_form(dst_norm_trans_src_norm)
 
     grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :], [B, C, dsize[0], dsize[1]], align_corners=align_corners)
 
