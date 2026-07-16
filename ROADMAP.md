@@ -56,19 +56,29 @@ classical-CV gaps and hardening the model zoo.
 
 ## Medium term — ~6 months
 
-- **The compile / export spine.** Extend the `torch.where` static-shape approach to the
-  shape-changing augmentations (crop, resize, mosaic) — currently the shared blocker for
-  both `torch.compile` and ONNX. Sweep the `torch.compiler.is_compiling()` guard across
-  value-dependent checks in the numeric core. Solve multi-output ONNX export generically
-  so tuple-returning modules (e.g. `Canny`, YUV conversions) are no longer blocked, and
-  converge on a single modern ONNX opset.
-- **Turn on dynamo tests in CI** for the compile-clean core so it stays a defended floor,
-  and publish an ONNX export conformance matrix (exportable / numerically-verified /
-  blocked-with-reason) for the public API.
+- **The compile / export spine.** *In progress — much of the augmentation surface now
+  compiles fullgraph.* The stochastic-apply path, the `_extract_device_dtype`/version-check
+  helpers, the transform-matrix blend, and the shape-changing crops (`Resize`, `CenterCrop`)
+  have all landed as genuine single-path fixes; common intensity ops (color jitter, solarize,
+  brightness/contrast, erasing, flips) are fullgraph on the CI torch. Remaining: the
+  data-dependent tail — random-coordinate `RandomCrop`/`crop_by_indices`, histogram-based
+  `equalize`, and random-permutation dispatch — which need redesign, not guards. On the export
+  side: solve multi-output ONNX export generically so tuple-returning modules (e.g. `Canny`,
+  YUV conversions) are no longer blocked, and converge on a single modern ONNX opset.
+- **Dynamo tests in CI — landed for the compile-clean core.** A PR-time `dynamo` job now runs
+  the compile-clean augmentation/enhance/filter/color/loss/morphology tests under `inductor` on
+  the CI torch version, so a fullgraph regression is caught at PR time (it immediately caught a
+  version-dependent flip break that local-only testing had masked). Still to do: publish an ONNX
+  export conformance matrix (exportable / numerically-verified / blocked-with-reason) for the
+  public API, and widen the dynamo job beyond the core once model/feature paths are vetted.
 - **Augmentation performance.** Introduce a `uint8` fast path and begin moving the hottest
-  ops (warps, blurs, color conversions) toward native `kornia-rs` kernels. Land a
-  cross-library benchmark harness (CPU and GPU-batched) so performance claims are
-  reproducible.
+  ops (warps, blurs, color conversions) toward native `kornia-rs` kernels. *The cross-library
+  benchmark harness has landed* — `benchmarks/augmentation/{cross_library,pipeline,all_libraries}.py`
+  plus a documented `README.md` measure kornia (eager + compiled) against torchvision v2,
+  albumentations, OpenCV, PIL and kornia-rs on CPU and GPU, with an honest per-regime reading
+  and a standing improvement list. Early findings: `torch.compile` gives kornia 2–4× on pointwise
+  ops and a compiled pipeline already beats torchvision v2 / reaches albumentations parity on CPU;
+  kornia-rs is the fastest CPU/`uint8` backend on most ops (motivating the backend item below).
 - **A `kornia-rs` augmentation backend (opt-in).** Add a backend selector (e.g.
   `backend="rust"`) that routes non-differentiable, CPU, `uint8` augmentation through
   `kornia-rs` (`kornia_rs.imgproc` / `kornia_rs.augmentations`), while the PyTorch path
