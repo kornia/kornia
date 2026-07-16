@@ -889,6 +889,10 @@ class TestRandomHorizontalFlip(BaseTester):
         expected = op(input, params=params)
         compiled = torch.compile(op, fullgraph=True)
         self.assert_close(compiled(input, params=params), expected)
+        # Also compile the full forward (parameters generated internally) so the
+        # parameter-generation path is fullgraph too, not just apply_transform.
+        torch._dynamo.reset()
+        assert torch.compile(RandomHorizontalFlip(p=1.0), fullgraph=True)(input).shape == input.shape
 
     def test_random_hflip(self, device, dtype):
         f = RandomHorizontalFlip(p=1.0, keepdim=True)
@@ -1077,6 +1081,10 @@ class TestRandomVerticalFlip(BaseTester):
         expected = op(input, params=params)
         compiled = torch.compile(op, fullgraph=True)
         self.assert_close(compiled(input, params=params), expected)
+        # Also compile the full forward (parameters generated internally) so the
+        # parameter-generation path is fullgraph too, not just apply_transform.
+        torch._dynamo.reset()
+        assert torch.compile(RandomVerticalFlip(p=1.0), fullgraph=True)(input).shape == input.shape
 
     def test_random_vflip(self, device, dtype):
         f = RandomVerticalFlip(p=1.0)
