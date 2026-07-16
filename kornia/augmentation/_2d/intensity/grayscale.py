@@ -17,7 +17,6 @@
 
 from typing import Any, Dict, Optional
 
-import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -78,7 +77,8 @@ class RandomGrayscale(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        # Make sure it returns (*, 3, H, W)
-        grayscale = torch.ones_like(input)
-        grayscale[:] = rgb_to_grayscale(input, rgb_weights=self.rgb_weights)
-        return grayscale
+        # Return (*, 3, H, W) by repeating the single grayscale channel — a contiguous copy,
+        # like the old code, but without its wasted `ones_like` allocation+fill (which was
+        # immediately overwritten).
+        gray = rgb_to_grayscale(input, rgb_weights=self.rgb_weights)
+        return gray.repeat(*([1] * (input.ndim - 3)), 3, 1, 1)
