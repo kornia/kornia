@@ -73,9 +73,31 @@ What this particular slice shows (CPU):
   Grayscale 7.7k → 32.3k (4.2×), closing or beating the torchvision gap. It does **not** help
   conv-bound ops on CPU (GaussianBlur regresses — the compile/launch overhead exceeds the tiny
   kernel).
-- The **GPU** rows (run with `--device cuda`) are where kornia's batched float path is meant to
-  win; record them on a datacenter GPU for headline numbers. See the GPU analysis referenced
-  below for the wrapper-overhead findings that currently cap the GPU throughput of cheap ops.
+GPU (NVIDIA Jetson Orin, torch 2.10, `--device cuda`, batch 32, 256×256, img/s). The `uint8`
+single-image backends are CPU-only and repeated for reference:
+
+| op | kornia (eager) | kornia (compiled) | torchvision v2 | OpenCV | kornia-rs |
+| --- | --: | --: | --: | --: | --: |
+| HorizontalFlip | 11458 | ✗ | **52120** | 22134 | 32284 |
+| VerticalFlip | 10599 | ✗ | **50601** | 22683 | 29592 |
+| Resize (½) | ✗ nan | ✗ | 26149 | 21145 | **40773** |
+| GaussianBlur | 474 | 1042 | **6904** | 8342 | 19336 |
+| Brightness | 6538 | 12284 | **29785** | 4044 | 9621 |
+| Grayscale | 19062 | 24777 | **42555** | 18211 | 4698 |
+
+What the GPU rows show — **read the Jetson caveats, do not treat them as a datacenter result**:
+
+- `✗` in the compiled column is a **Jetson-wheel limitation**, not a kornia bug: `torch.compile`
+  on the Orin's torch 2.10 CUDA build errors (`CUDA driver error: invalid argument`) for several
+  ops, so the compiled row is unavailable. `Resize`'s eager `nan` is the same story — the Orin
+  wheel's `cusolver` is broken, so the `get_perspective_transform` linear solve fails on-device.
+  On a normal (datacenter) CUDA wheel both work; the Orin simply *understates* kornia here.
+- Where compile **is** available on-device (Brightness, GaussianBlur, Grayscale) it gives the
+  expected 2–4× over eager, and torchvision v2 leads the batched float throughput — consistent
+  with the wrapper-overhead finding (≈78% of a cheap-op GPU forward is base-class orchestration,
+  not the kernel; see the improvement list below).
+- **This box's Orin is the standard GPU-bench target for this project** — run all GPU numbers
+  here with `--device cuda`, and report the two caveats above rather than omitting the rows.
 
 ## Known improvement opportunities (the "improve later" list)
 
