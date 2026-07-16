@@ -73,6 +73,10 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
 
     """
 
+    # apply_transform is a pure flip that ignores the transform matrix, so defer building
+    # it until `.transform_matrix` is read (see RigidAffineAugmentationBase2D).
+    _compute_matrix_lazily = True
+
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
