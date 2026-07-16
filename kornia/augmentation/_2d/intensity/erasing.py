@@ -93,7 +93,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        _, c, h, w = input.size()
+        _, _, h, w = input.size()
         # Broadcast the per-sample fill value (B, 1, 1, 1) and the single-channel mask (B, 1, H, W)
         # directly in `torch.where` instead of `repeat`-materializing both to full (B, C, H, W).
         # `where` broadcasts to the input shape, so the result is identical while allocating two
@@ -112,7 +112,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        _, c, h, w = input.size()
+        _, _, h, w = input.size()
 
         # Erase the corresponding areas on masks (fill with zeros). Broadcast a scalar zero and the
         # single-channel mask (B, 1, H, W) in `torch.where` rather than `repeat`-materializing full
