@@ -22,7 +22,6 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.core.ops import eye_like
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
 
 
@@ -64,9 +63,12 @@ class Resize(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
-        if params["output_size"] == input.shape[-2:]:
-            return eye_like(3, input)
-
+        # NOTE: a former `if params["output_size"] == input.shape[-2:]: return eye_like(...)`
+        # short-circuit was dead code — comparing a tensor to a ``torch.Size`` falls back to
+        # identity ``==`` and is *always* Python ``False``, so the branch never ran. It also
+        # graph-broke torch.compile (a Python ``if`` on a would-be tensor). Dropped; the
+        # perspective transform below already yields identity when src == dst, so behaviour is
+        # byte-identical.
         transform: torch.Tensor = torch.as_tensor(
             get_perspective_transform(params["src"], params["dst"]), dtype=input.dtype, device=input.device
         )
