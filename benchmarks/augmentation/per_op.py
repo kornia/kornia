@@ -132,24 +132,28 @@ def main() -> None:
             op = factory().to(dev)
             params = op.forward_parameters(x.shape)
             op(x, params=params)  # warmup
-            te = _us(lambda op=op, params=params: op(x, params=params))
+            eager_us = _us(lambda op=op, params=params: op(x, params=params))
         except Exception as e:
             print(f"{name:<16}{'—':>10}{'—':>10}{'—':>9}  skip: {str(e).splitlines()[0][:24]}")
             continue
-        tc, mode = float("nan"), "—"
+        comp_us, mode = float("nan"), "—"
         for fullgraph in (True, False):
             try:
                 torch._dynamo.reset()
                 compiled = torch.compile(op, fullgraph=fullgraph)
                 compiled(x, params=params)
-                tc = _us(lambda compiled=compiled, params=params: compiled(x, params=params))
+                comp_us = _us(lambda compiled=compiled, params=params: compiled(x, params=params))
                 mode = "fg" if fullgraph else "gb"
                 break
             except Exception:  # noqa: S112 - benchmark: an op that won't compile is just skipped
                 continue
-        sp = te / tc if te and tc and not math.isnan(te) and not math.isnan(tc) else float("nan")
-        rows.append((name, thr(te), thr(tc), sp, mode))
-        print(f"{name:<16}{thr(te):>10.0f}{thr(tc):>10.0f}{sp:>8.2f}x  {mode}")
+        sp = (
+            eager_us / comp_us
+            if eager_us and comp_us and not math.isnan(eager_us) and not math.isnan(comp_us)
+            else float("nan")
+        )
+        rows.append((name, thr(eager_us), thr(comp_us), sp, mode))
+        print(f"{name:<16}{thr(eager_us):>10.0f}{thr(comp_us):>10.0f}{sp:>8.2f}x  {mode}")
 
     print("-" * 56)
     print("\nSlowest eager (improvement targets):")
