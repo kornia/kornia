@@ -94,12 +94,28 @@ class RandomErasing(IntensityAugmentationBase2D):
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         _, _, h, w = input.size()
+        values = params["values"].view(-1, 1, 1, 1).to(input)
+
+        if self.same_on_batch:
+            # Every sample shares one rectangle, so write that single region directly instead of
+            # building a full-image mask and `where`-blending the whole tensor. Equivalent to the
+            # masked path (the mask covers [x, x+width) x [y, y+height), clipped to the image), but
+            # touches only the erased box — much cheaper for a batch (matches torchvision's slice).
+            # Read the four shared box coords in a single device sync (one ``tolist``) rather than
+            # four separate ``int(...)`` calls.
+            xs, ys, box_w, box_h = (
+                torch.stack([params["xs"][0], params["ys"][0], params["widths"][0], params["heights"][0]])
+                .long()
+                .tolist()
+            )
+            transformed = input.clone()
+            transformed[:, :, ys : ys + box_h, xs : xs + box_w] = values
+            return transformed
+
         # Broadcast the per-sample fill value (B, 1, 1, 1) and the single-channel mask (B, 1, H, W)
         # directly in `torch.where` instead of `repeat`-materializing both to full (B, C, H, W).
         # `where` broadcasts to the input shape, so the result is identical while allocating two
         # small tensors instead of two image-sized ones.
-        values = params["values"].view(-1, 1, 1, 1).to(input)
-
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
         mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input)  # (B, 1, H, W)
         transformed = torch.where(mask == 1.0, values, input)
