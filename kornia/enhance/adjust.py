@@ -926,11 +926,9 @@ def _scale_channel_batched(input: torch.Tensor) -> torch.Tensor:
     n = shape[0] * shape[1]
     scaled = input.reshape(n, -1) * 255.0  # (N, P)
 
-    min_, max_ = input.min(), input.max()
-    if min_.item() < 0.0 and not torch.isclose(min_, torch.as_tensor(0.0, dtype=min_.dtype)):
-        raise ValueError(f"Values in the input torch.Tensor must greater or equal to 0.0. Found {min_.item()}.")
-    if max_.item() > 1.0 and not torch.isclose(max_, torch.as_tensor(1.0, dtype=max_.dtype)):
-        raise ValueError(f"Values in the input torch.Tensor must lower or equal to 1.0. Found {max_.item()}.")
+    # Input is expected in [0, 1] (see the docstring). Out-of-range values are clamped into the
+    # 256-bin range below rather than raising: the previous ``.item()`` range check forced two
+    # device syncs and broke ``torch.compile`` fullgraph for no correctness benefit on valid input.
 
     # Per-plane 256-bin histogram matching ``torch.histc(x, 256, 0, 255)`` bin placement.
     bins = torch.clamp((scaled * (256.0 / 255.0)).floor().long(), 0, 255)
