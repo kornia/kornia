@@ -316,6 +316,22 @@ class _AugmentationBase(_BasicAugmentationBase):
         # where batch_prob == False.
         return input
 
+    @staticmethod
+    def _blend_by_prob(
+        transformed: torch.Tensor, not_transformed: torch.Tensor, to_apply: torch.Tensor
+    ) -> torch.Tensor:
+        """Select transformed vs non-transformed samples element-wise by ``to_apply``.
+
+        When the two branches share a shape this is a ``torch.where`` blend (onnx- and
+        fullgraph-friendly). Shape-changing augmentations (e.g. crop/resize) whose branches
+        differ in spatial size fall back to a Python branch on ``to_apply.any()``, which is
+        not onnx-exportable.
+        """
+        if transformed.shape == not_transformed.shape and transformed.shape[0] == to_apply.shape[0]:
+            to_apply_expanded = to_apply.view(-1, *([1] * (len(transformed.shape) - 1)))
+            return torch.where(to_apply_expanded, transformed, not_transformed)
+        return transformed if bool(to_apply.any()) else not_transformed
+
     def transform_inputs(
         self,
         input: torch.Tensor,
@@ -346,17 +362,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:
             to_apply = torch.atleast_1d(params["batch_prob"] > 0.5)
             output_not_transformed = self.apply_non_transform(in_tensor, params, flags, transform=transform)
-            if (
-                output_transformed.shape == output_not_transformed.shape
-                and output_transformed.shape[0] == to_apply.shape[0]
-            ):
-                to_apply_expanded = to_apply.view(-1, *([1] * (len(output_transformed.shape) - 1)))
-                output = torch.where(to_apply_expanded, output_transformed, output_not_transformed)
-            else:
-                # Shape-changing augmentations (e.g. RandomCrop, Resize) cannot be where-blended
-                # because the two outputs differ in spatial size. We fall back to a Python branch
-                # on to_apply.any(); this is non-onnx-exportable.
-                output = output_transformed if bool(to_apply.any()) else output_not_transformed
+            output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
         if is_autocast_enabled():
             output = output.type(input.dtype)
@@ -390,17 +396,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         output_transformed = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
 
-        if (
-            output_transformed.shape == output_not_transformed.shape
-            and output_transformed.shape[0] == to_apply.shape[0]
-        ):
-            to_apply_expanded = to_apply.view(-1, *([1] * (len(output_transformed.shape) - 1)))
-            output = torch.where(to_apply_expanded, output_transformed, output_not_transformed)
-        else:
-            # Shape-changing augmentations (e.g. RandomCrop, Resize) cannot be where-blended
-            # because the two outputs differ in spatial size. We fall back to a Python branch
-            # on to_apply.any(); this is non-onnx-exportable.
-            output = output_transformed if bool(to_apply.any()) else output_not_transformed
+        output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
         output = _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
         return output
@@ -433,11 +429,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             data_transformed = data_transformed.type(input.data.dtype)
             data_not_transformed = data_not_transformed.type(input.data.dtype)
 
-        if data_transformed.shape == data_not_transformed.shape and data_transformed.shape[0] == to_apply.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (len(data_transformed.shape) - 1)))
-            blended_data = torch.where(to_apply_expanded, data_transformed, data_not_transformed)
-        else:
-            blended_data = data_transformed if bool(to_apply.any()) else data_not_transformed
+        blended_data = self._blend_by_prob(data_transformed, data_not_transformed, to_apply)
 
         # Reuse the not-transformed Boxes container (preserves mode/_N/is_batched/etc.)
         # and swap in the blended data, same effect as the index_put on .data.
@@ -473,11 +465,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             data_transformed = data_transformed.type(input.data.dtype)
             data_not_transformed = data_not_transformed.type(input.data.dtype)
 
-        if data_transformed.shape == data_not_transformed.shape and data_transformed.shape[0] == to_apply.shape[0]:
-            to_apply_expanded = to_apply.view(-1, *([1] * (len(data_transformed.shape) - 1)))
-            blended_data = torch.where(to_apply_expanded, data_transformed, data_not_transformed)
-        else:
-            blended_data = data_transformed if bool(to_apply.any()) else data_not_transformed
+        blended_data = self._blend_by_prob(data_transformed, data_not_transformed, to_apply)
 
         output = output_not_transformed.clone()
         output._data = blended_data
@@ -501,17 +489,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         output_transformed = self.apply_transform_class(input, params, flags, transform=transform)
         output_not_transformed = self.apply_non_transform_class(input, params, flags, transform=transform)
 
-        if (
-            output_transformed.shape == output_not_transformed.shape
-            and output_transformed.shape[0] == to_apply.shape[0]
-        ):
-            to_apply_expanded = to_apply.view(-1, *([1] * (len(output_transformed.shape) - 1)))
-            output = torch.where(to_apply_expanded, output_transformed, output_not_transformed)
-        else:
-            # Shape-changing augmentations (e.g. RandomCrop, Resize) cannot be where-blended
-            # because the two outputs differ in spatial size. We fall back to a Python branch
-            # on to_apply.any(); this is non-onnx-exportable.
-            output = output_transformed if bool(to_apply.any()) else output_not_transformed
+        output = self._blend_by_prob(output_transformed, output_not_transformed, to_apply)
 
         return output
 
