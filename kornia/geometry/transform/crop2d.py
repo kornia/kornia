@@ -360,12 +360,7 @@ def crop_by_indices(
     # every loop iteration — the coordinates index Python-level slicing, so they must be host ints.
     x1l, x2l, y1l, y2l = torch.stack([x1, x2, y1, y2], dim=0).tolist()
 
-    if (
-        x1l.count(x1l[0]) == B
-        and x2l.count(x2l[0]) == B
-        and y1l.count(y1l[0]) == B
-        and y2l.count(y2l[0]) == B
-    ):
+    if x1l.count(x1l[0]) == B and x2l.count(x2l[0]) == B and y1l.count(y1l[0]) == B and y2l.count(y2l[0]) == B:
         out = input_tensor[..., y1l[0] : y2l[0], x1l[0] : x2l[0]]
         if size is not None and out.shape[-2:] != size:
             return resize(
