@@ -355,6 +355,11 @@ class TestRandomEqualizeAlternative(CommonTests):
     def param_set(self, request):
         return request.param
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # Guards the batched-histogram fullgraph path (#3841): the full forward, including
+        # parameter generation, must compile without a graph break — not just apply_transform.
+        _assert_dynamo_fullgraph(lambda: RandomEqualize(p=1.0), self, device, dtype)
+
     def test_random_p_1(self):
         input_tensor = torch.arange(20.0, device=self.device, dtype=self.dtype) / 20
         input_tensor = input_tensor.repeat(1, 2, 20, 1)
