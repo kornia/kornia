@@ -151,6 +151,22 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
         well-conditioned matrices; behavior on singular matrices is undefined
         (no explicit check, same as ``torch.linalg.inv`` itself).
     """
+    if not torch.jit.is_tracing():
+        # inv(M) = adj(M) / det, and for a 3x3 the adjugate rows are cross products of the
+        # columns: with columns (a, b, c), the inverse rows are (b x c, c x a, a x b) / det,
+        # det = a . (b x c). Three fused ``cross`` ops instead of nine scalar cofactor
+        # expressions and four stacks — far fewer kernel launches (dominant on small matrices).
+        col_a = input[..., :, 0]
+        col_b = input[..., :, 1]
+        col_c = input[..., :, 2]
+        row0 = torch.linalg.cross(col_b, col_c, dim=-1)
+        row1 = torch.linalg.cross(col_c, col_a, dim=-1)
+        row2 = torch.linalg.cross(col_a, col_b, dim=-1)
+        det = (col_a * row0).sum(-1)
+        return torch.stack([row0, row1, row2], dim=-2) / det[..., None, None]
+
+    # Under tracing (legacy ONNX / jit.trace) stick to the plain scalar adjugate: it lowers to
+    # basic arithmetic that every opset supports, whereas ``cross`` may not.
     a = input[..., 0, 0]
     b = input[..., 0, 1]
     c = input[..., 0, 2]
