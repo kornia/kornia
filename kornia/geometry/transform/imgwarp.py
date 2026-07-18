@@ -144,13 +144,17 @@ def warp_perspective(
     # otherwise crash every warp on GPU).
     src_norm_trans_dst_norm = _inverse_3x3_closed_form(dst_norm_trans_src_norm)  # Bx3x3
 
-    # this piece of code substitutes F.affine_grid since it does not support 3x3
-    grid = (
-        create_meshgrid(h_out, w_out, normalized_coordinates=True, device=src.device)
-        .to(src.dtype)
-        .expand(B, h_out, w_out, 2)
-    )
-    grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
+    # Substitutes F.affine_grid (which only handles the affine 2x3 case) by applying the full 3x3
+    # projective transform to every grid point directly. Inlined rather than routed through
+    # ``transform_points`` to avoid its ``repeat_interleave`` of the matrix to ``B * H`` copies and
+    # the homogeneous round-trip — a per-point projective map is just three broadcasts and a divide.
+    grid = create_meshgrid(h_out, w_out, normalized_coordinates=True, device=src.device).to(src.dtype)
+    gx0, gy0 = grid[..., 0], grid[..., 1]  # (1, H, W)
+    m = src_norm_trans_dst_norm  # (B, 3, 3)
+    denom = m[:, 2, 0, None, None] * gx0 + m[:, 2, 1, None, None] * gy0 + m[:, 2, 2, None, None]
+    gx = (m[:, 0, 0, None, None] * gx0 + m[:, 0, 1, None, None] * gy0 + m[:, 0, 2, None, None]) / denom
+    gy = (m[:, 1, 0, None, None] * gx0 + m[:, 1, 1, None, None] * gy0 + m[:, 1, 2, None, None]) / denom
+    grid = torch.stack([gx, gy], dim=-1)  # (B, H, W, 2)
 
     if padding_mode == "fill":
         return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
