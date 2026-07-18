@@ -145,16 +145,21 @@ def warp_perspective(
     src_norm_trans_dst_norm = _inverse_3x3_closed_form(dst_norm_trans_src_norm)  # Bx3x3
 
     # Substitutes F.affine_grid (which only handles the affine 2x3 case) by applying the full 3x3
-    # projective transform to every grid point directly. Inlined rather than routed through
-    # ``transform_points`` to avoid its ``repeat_interleave`` of the matrix to ``B * H`` copies and
-    # the homogeneous round-trip — a per-point projective map is just three broadcasts and a divide.
+    # projective transform to every grid point directly.
     grid = create_meshgrid(h_out, w_out, normalized_coordinates=True, device=src.device).to(src.dtype)
-    gx0, gy0 = grid[..., 0], grid[..., 1]  # (1, H, W)
-    m = src_norm_trans_dst_norm  # (B, 3, 3)
-    denom = m[:, 2, 0, None, None] * gx0 + m[:, 2, 1, None, None] * gy0 + m[:, 2, 2, None, None]
-    gx = (m[:, 0, 0, None, None] * gx0 + m[:, 0, 1, None, None] * gy0 + m[:, 0, 2, None, None]) / denom
-    gy = (m[:, 1, 0, None, None] * gx0 + m[:, 1, 1, None, None] * gy0 + m[:, 1, 2, None, None]) / denom
-    grid = torch.stack([gx, gy], dim=-1)  # (B, H, W, 2)
+    if torch.jit.is_tracing():
+        # Under tracing/ONNX use the reference transform_points path (its op set exports cleanly).
+        grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid.expand(B, h_out, w_out, 2))
+    else:
+        # Eager fast path: inline the per-point projective map (three broadcasts and a divide),
+        # avoiding transform_points' repeat_interleave of the matrix to B*H copies + homogeneous
+        # round-trip.
+        gx0, gy0 = grid[..., 0], grid[..., 1]  # (1, H, W)
+        m = src_norm_trans_dst_norm  # (B, 3, 3)
+        denom = m[:, 2, 0, None, None] * gx0 + m[:, 2, 1, None, None] * gy0 + m[:, 2, 2, None, None]
+        gx = (m[:, 0, 0, None, None] * gx0 + m[:, 0, 1, None, None] * gy0 + m[:, 0, 2, None, None]) / denom
+        gy = (m[:, 1, 0, None, None] * gx0 + m[:, 1, 1, None, None] * gy0 + m[:, 1, 2, None, None]) / denom
+        grid = torch.stack([gx, gy], dim=-1)  # (B, H, W, 2)
 
     if padding_mode == "fill":
         return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
@@ -235,23 +240,28 @@ def warp_affine(
     # batch of images (``M`` is ``1x2x3`` with ``src`` ``BxCxHxW``), build one grid and expand it
     # (a stride-0 view, no copy) instead of materializing B identical grids — this is what makes a
     # batch-shared warp as cheap as torchvision's. When ``B_M == B`` (per-sample) nothing changes.
-    # Build the sampling grid by applying the affine matrix to a base grid directly, instead of
-    # F.affine_grid — three broadcast multiply-adds per axis are markedly cheaper on launch-bound
-    # hardware. The base grid reproduces F.affine_grid's convention for the requested
-    # ``align_corners`` (pixel corners at +/-1 vs pixel centers). A shared (1x2x3) matrix
-    # broadcasts across the image batch for free (stride-0 expand).
-    h_out, w_out = dsize
-    if align_corners:
-        xs = torch.linspace(-1.0, 1.0, w_out, device=src.device, dtype=src.dtype)
-        ys = torch.linspace(-1.0, 1.0, h_out, device=src.device, dtype=src.dtype)
+    if torch.jit.is_tracing():
+        # Under tracing/ONNX use F.affine_grid (a single op the exporter lowers cleanly).
+        grid = F.affine_grid(
+            src_norm_trans_dst_norm[:, :2, :], [B_M, C, dsize[0], dsize[1]], align_corners=align_corners
+        )
     else:
-        xs = torch.linspace(-1.0 + 1.0 / w_out, 1.0 - 1.0 / w_out, w_out, device=src.device, dtype=src.dtype)
-        ys = torch.linspace(-1.0 + 1.0 / h_out, 1.0 - 1.0 / h_out, h_out, device=src.device, dtype=src.dtype)
-    base_y, base_x = torch.meshgrid(ys, xs, indexing="ij")  # (H, W)
-    m = src_norm_trans_dst_norm  # (B_M, 3, 3); affine, so the bottom row is [0, 0, 1]
-    gx = m[:, 0, 0, None, None] * base_x + m[:, 0, 1, None, None] * base_y + m[:, 0, 2, None, None]
-    gy = m[:, 1, 0, None, None] * base_x + m[:, 1, 1, None, None] * base_y + m[:, 1, 2, None, None]
-    grid = torch.stack([gx, gy], dim=-1)  # (B_M, H, W, 2)
+        # Eager fast path: apply the affine matrix to a base grid directly instead of F.affine_grid
+        # — three broadcast multiply-adds per axis, markedly cheaper on launch-bound hardware. The
+        # base grid reproduces F.affine_grid's convention for the requested ``align_corners`` (pixel
+        # corners at +/-1 vs pixel centers). A shared (1x2x3) matrix broadcasts across the batch.
+        h_out, w_out = dsize
+        if align_corners:
+            xs = torch.linspace(-1.0, 1.0, w_out, device=src.device, dtype=src.dtype)
+            ys = torch.linspace(-1.0, 1.0, h_out, device=src.device, dtype=src.dtype)
+        else:
+            xs = torch.linspace(-1.0 + 1.0 / w_out, 1.0 - 1.0 / w_out, w_out, device=src.device, dtype=src.dtype)
+            ys = torch.linspace(-1.0 + 1.0 / h_out, 1.0 - 1.0 / h_out, h_out, device=src.device, dtype=src.dtype)
+        base_y, base_x = torch.meshgrid(ys, xs, indexing="ij")  # (H, W)
+        m = src_norm_trans_dst_norm  # (B_M, 3, 3); affine, so the bottom row is [0, 0, 1]
+        gx = m[:, 0, 0, None, None] * base_x + m[:, 0, 1, None, None] * base_y + m[:, 0, 2, None, None]
+        gy = m[:, 1, 0, None, None] * base_x + m[:, 1, 1, None, None] * base_y + m[:, 1, 2, None, None]
+        grid = torch.stack([gx, gy], dim=-1)  # (B_M, H, W, 2)
     if B_M == 1 and B > 1:
         grid = grid.expand(B, -1, -1, -1)
 
