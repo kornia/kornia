@@ -855,6 +855,10 @@ def sharpness(input: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.
     """
     if not isinstance(factor, torch.Tensor):
         factor = torch.as_tensor(factor, device=input.device, dtype=input.dtype)
+    else:
+        # Match the input's device/dtype (as adjust_brightness/contrast do). Augmentation
+        # generators may sample the factor on a different device (e.g. CPU) than the image.
+        factor = factor.to(device=input.device, dtype=input.dtype)
 
     if len(factor.size()) != 0 and factor.shape != torch.Size([input.size(0)]):
         raise AssertionError(
