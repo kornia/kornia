@@ -46,12 +46,6 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
-    def apply_non_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
-        # For the images where batch_prob == False.
-        return input
-
     def apply_non_transform_mask(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
@@ -72,19 +66,9 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
     ) -> Boxes:
         return input
 
-    def apply_non_transform_keypoint(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Keypoints:
-        return input
-
     def apply_transform_keypoint(
         self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Keypoints:
-        return input
-
-    def apply_non_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
         return input
 
     def apply_transform_class(
