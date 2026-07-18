@@ -86,6 +86,26 @@ from testing.base import BaseTester
 from testing.overwrite import default_with_one_parameter_changed
 
 
+def _assert_dynamo_fullgraph(make_op, tester, device, dtype, shape=(2, 3, 8, 8)):
+    """Compile an augmentation two ways and assert both are fullgraph and match eager.
+
+    ``make_op`` is a zero-arg factory: compiling the *full* forward needs a fresh module so the
+    parameter-generation path is traced rather than replayed. The first check feeds pre-sampled
+    ``params`` (exercises ``apply_transform`` under compile, as the per-op ``test_dynamo`` tests
+    historically did); the second compiles ``op(input)`` with no ``params`` so that
+    ``forward_parameters`` is captured inside the graph too — a path the ``params=`` form skips.
+    """
+    torch.manual_seed(0)
+    input = torch.rand(*shape, device=device, dtype=dtype)
+    op = make_op()
+    params = op.forward_parameters(input.shape)
+    expected = op(input, params=params)
+    torch._dynamo.reset()
+    tester.assert_close(torch.compile(op, fullgraph=True)(input, params=params), expected)
+    torch._dynamo.reset()
+    assert torch.compile(make_op(), fullgraph=True)(input).shape == input.shape
+
+
 @pytest.mark.usefixtures("device", "dtype")
 class CommonTests(BaseTester):
     # TODO same_on_batch tests?
@@ -1688,6 +1708,10 @@ class TestColorJitter(BaseTester):
         eager = op(img)
         op_optimized = torch_optimizer(op)
         self.assert_close(eager, op_optimized(img, params=op._params))
+        # Full forward (no params): the parameter-generation path must be fullgraph too.
+        torch._dynamo.reset()
+        fresh = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))
+        assert torch.compile(fresh, fullgraph=True)(img).shape == img.shape
 
     def test_color_jitter(self, device, dtype):
         if dtype == torch.float16:
@@ -2094,6 +2118,9 @@ class TestColorJitter(BaseTester):
 
 
 class TestRandomBrightness(BaseTester):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        _assert_dynamo_fullgraph(lambda: RandomBrightness((0.8, 1.2), p=1.0), self, device, dtype)
+
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomBrightness(brightness=(0.5, 1.5))
@@ -2205,6 +2232,9 @@ class TestRandomBrightness(BaseTester):
 
 
 class TestRandomContrast(BaseTester):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        _assert_dynamo_fullgraph(lambda: RandomContrast((0.8, 1.2), p=1.0), self, device, dtype)
+
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomContrast(contrast=(0.7, 1.3))
@@ -4022,6 +4052,9 @@ class TestRandomGaussianBlur(BaseTester):
 
 
 class TestRandomInvert(BaseTester):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        _assert_dynamo_fullgraph(lambda: RandomInvert(p=1.0), self, device, dtype)
+
     def test_smoke(self, device, dtype):
         img = torch.ones(1, 3, 4, 5, device=device, dtype=dtype)
         self.assert_close(RandomInvert(p=1.0)(img), torch.zeros_like(img))
@@ -4069,6 +4102,9 @@ class TestRandomClahe(BaseTester):
 
 
 class TestRandomGaussianNoise(BaseTester):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        _assert_dynamo_fullgraph(lambda: RandomGaussianNoise(p=1.0), self, device, dtype)
+
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
