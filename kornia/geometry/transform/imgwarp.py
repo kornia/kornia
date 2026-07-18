@@ -235,7 +235,23 @@ def warp_affine(
     # batch of images (``M`` is ``1x2x3`` with ``src`` ``BxCxHxW``), build one grid and expand it
     # (a stride-0 view, no copy) instead of materializing B identical grids — this is what makes a
     # batch-shared warp as cheap as torchvision's. When ``B_M == B`` (per-sample) nothing changes.
-    grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :], [B_M, C, dsize[0], dsize[1]], align_corners=align_corners)
+    # Build the sampling grid by applying the affine matrix to a base grid directly, instead of
+    # F.affine_grid — three broadcast multiply-adds per axis are markedly cheaper on launch-bound
+    # hardware. The base grid reproduces F.affine_grid's convention for the requested
+    # ``align_corners`` (pixel corners at +/-1 vs pixel centers). A shared (1x2x3) matrix
+    # broadcasts across the image batch for free (stride-0 expand).
+    h_out, w_out = dsize
+    if align_corners:
+        xs = torch.linspace(-1.0, 1.0, w_out, device=src.device, dtype=src.dtype)
+        ys = torch.linspace(-1.0, 1.0, h_out, device=src.device, dtype=src.dtype)
+    else:
+        xs = torch.linspace(-1.0 + 1.0 / w_out, 1.0 - 1.0 / w_out, w_out, device=src.device, dtype=src.dtype)
+        ys = torch.linspace(-1.0 + 1.0 / h_out, 1.0 - 1.0 / h_out, h_out, device=src.device, dtype=src.dtype)
+    base_y, base_x = torch.meshgrid(ys, xs, indexing="ij")  # (H, W)
+    m = src_norm_trans_dst_norm  # (B_M, 3, 3); affine, so the bottom row is [0, 0, 1]
+    gx = m[:, 0, 0, None, None] * base_x + m[:, 0, 1, None, None] * base_y + m[:, 0, 2, None, None]
+    gy = m[:, 1, 0, None, None] * base_x + m[:, 1, 1, None, None] * base_y + m[:, 1, 2, None, None]
+    grid = torch.stack([gx, gy], dim=-1)  # (B_M, H, W, 2)
     if B_M == 1 and B > 1:
         grid = grid.expand(B, -1, -1, -1)
 
