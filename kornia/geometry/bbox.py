@@ -235,7 +235,12 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     y_min = boxes[:, 0, 1].view(-1, 1, 1)
     x_max = boxes[:, 2, 0].view(-1, 1, 1)
     y_max = boxes[:, 2, 1].view(-1, 1, 1)
-    mask = (xx >= x_min) & (xx <= x_max) & (yy >= y_min) & (yy <= y_max)
+    # Reduce along each axis first (cheap ``(B, 1, W)`` and ``(B, H, 1)`` ands), then combine once.
+    # The previous ``a & b & c & d`` chained two full ``(B, H, W)`` ands; this does a single one —
+    # byte-identical result, half the full-grid work (the dominant cost when masking large images).
+    x_in = (xx >= x_min) & (xx <= x_max)
+    y_in = (yy >= y_min) & (yy <= y_max)
+    mask = x_in & y_in
     return mask.to(boxes.dtype)
 
 
