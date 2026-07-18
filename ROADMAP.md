@@ -79,6 +79,15 @@ classical-CV gaps and hardening the model zoo.
   and a standing improvement list. Early findings: `torch.compile` gives kornia 2–4× on pointwise
   ops and a compiled pipeline already beats torchvision v2 / reaches albumentations parity on CPU;
   kornia-rs is the fastest CPU/`uint8` backend on most ops (motivating the backend item below).
+  *GPU headline (measured on a Jetson Orin, `pipeline.py`, batch 32, 224², a 6-op pipeline
+  including `ColorJitter`): the compiled kornia pipeline runs at **2669 img/s vs torchvision
+  v2's 1536 (~1.7× faster) — while staying end-to-end differentiable**, the regime no other
+  library competes in.* This depended on a device-propagation fix: `nn.Module.to()/.cuda()`
+  move children through `_apply`, bypassing the augmentation's `to()` override, so building a
+  pipeline the recommended way left random-parameter sampling on the CPU (host-bound, ~171
+  img/s eager, and `torch.compile` could not fuse across the per-forward host work). Moving
+  parameter generation onto the module's device (~903 img/s eager) is what lets `inductor`
+  fuse the whole pipeline.
 - **A `kornia-rs` augmentation backend (opt-in).** Add a backend selector (e.g.
   `backend="rust"`) that routes non-differentiable, CPU, `uint8` augmentation through
   `kornia-rs` (`kornia_rs.imgproc` / `kornia_rs.augmentations`), while the PyTorch path
