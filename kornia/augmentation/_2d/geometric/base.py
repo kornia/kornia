@@ -136,16 +136,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
         return output
 
-    def apply_non_transform_box(
-        self,
-        input: Boxes,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-    ) -> Boxes:
-        """Process boxes corresponding to the inputs that are no transformation applied."""
-        return input
-
     def apply_transform_box(
         self,
         input: Boxes,
@@ -161,16 +151,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         input = self.apply_non_transform_box(input, params, flags, transform)
         return input.transform_boxes_(transform)
 
-    def apply_non_transform_keypoint(
-        self,
-        input: Keypoints,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-    ) -> Keypoints:
-        """Process keypoints corresponding to the inputs that are no transformation applied."""
-        return input
-
     def apply_transform_keypoint(
         self,
         input: Keypoints,
@@ -185,16 +165,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             transform = self.transform_matrix
         input = self.apply_non_transform_keypoint(input, params, flags, transform)
         return input.transform_keypoints_(transform)
-
-    def apply_non_transform_class(
-        self,
-        input: torch.Tensor,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        """Process class tags corresponding to the inputs that are no transformation applied."""
-        return input
 
     def apply_transform_class(
         self,
