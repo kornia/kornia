@@ -355,14 +355,13 @@ def crop_by_indices(
     y1 = src[:, 0, 1]
     y2 = src[:, 3, 1] + 1
 
-    if (
-        len(x1.unique(sorted=False))
-        == len(x2.unique(sorted=False))
-        == len(y1.unique(sorted=False))
-        == len(y2.unique(sorted=False))
-        == 1
-    ):
-        out = input_tensor[..., int(y1[0]) : int(y2[0]), int(x1[0]) : int(x2[0])]
+    # Move the four coordinate columns to Python in a single device sync (one ``tolist`` over a
+    # stacked tensor) instead of a ``unique`` per column plus a device-to-host ``int(...)`` inside
+    # every loop iteration — the coordinates index Python-level slicing, so they must be host ints.
+    x1l, x2l, y1l, y2l = torch.stack([x1, x2, y1, y2], dim=0).tolist()
+
+    if x1l.count(x1l[0]) == B and x2l.count(x2l[0]) == B and y1l.count(y1l[0]) == B and y2l.count(y2l[0]) == B:
+        out = input_tensor[..., y1l[0] : y2l[0], x1l[0] : x2l[0]]
         if size is not None and out.shape[-2:] != size:
             return resize(
                 out, size, interpolation=interpolation, align_corners=align_corners, side="short", antialias=antialias
@@ -373,8 +372,8 @@ def crop_by_indices(
         size = h.unique(sorted=False), w.unique(sorted=False)
     out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype)
     # Find out the cropped shapes that need to be resized.
-    for i, _ in enumerate(out):
-        _out = input_tensor[i : i + 1, :, int(y1[i]) : int(y2[i]), int(x1[i]) : int(x2[i])]
+    for i in range(B):
+        _out = input_tensor[i : i + 1, :, y1l[i] : y2l[i], x1l[i] : x2l[i]]
         if _out.shape[-2:] != size:
             if shape_compensation == "resize":
                 out[i] = resize(
