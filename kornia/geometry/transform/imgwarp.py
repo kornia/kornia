@@ -24,7 +24,12 @@ import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like
-from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast, _torch_solve_cast
+from kornia.core.utils import (
+    _inverse_3x3_closed_form,
+    _normalize_to_float32_or_float64,
+    _torch_inverse_cast,
+    _torch_solve_cast,
+)
 from kornia.geometry.conversions import (
     angle_to_rotation_matrix,
     axis_angle_to_rotation_matrix,
@@ -373,17 +378,24 @@ def _unit_square_to_quad(points: torch.Tensor) -> torch.Tensor:
 
 
 def _get_perspective_transform_closed_form(points_src: torch.Tensor, points_dst: torch.Tensor) -> torch.Tensor:
-    """ONNX-traceable perspective transform via two unit-square decompositions.
+    """Perspective transform via two unit-square (Heckbert) decompositions.
 
     Computes ``H = H_d @ inv(H_s)`` where ``H_s`` maps the unit square to
-    ``points_src`` and ``H_d`` maps it to ``points_dst``. Replaces the 8x8
-    ``torch.linalg.solve`` in :func:`get_perspective_transform` with two 3x3
-    Heckbert constructions and one 3x3 inverse — all closed-form ops that the
-    legacy ONNX exporter supports.
+    ``points_src`` and ``H_d`` maps it to ``points_dst``, so ``H`` maps
+    ``points_src`` onto ``points_dst`` directly. Uses only arithmetic and a
+    closed-form 3x3 inverse — no ``torch.linalg.solve`` — so it needs no
+    LAPACK/cusolver backend (runs on the Jetson wheel) and traces cleanly for
+    ONNX. The result is normalized to ``H[2, 2] == 1`` to match the DLT
+    convention. Computed in float32/float64 for numerical stability, then cast
+    back to the input dtype.
     """
-    h_s = _unit_square_to_quad(points_src)
-    h_d = _unit_square_to_quad(points_dst)
-    return h_d @ _inverse_3x3_closed_form(h_s)
+    dtype = points_src.dtype
+    work_dtype = _normalize_to_float32_or_float64(dtype)
+    h_s = _unit_square_to_quad(points_src.to(work_dtype))
+    h_d = _unit_square_to_quad(points_dst.to(work_dtype))
+    transform = h_d @ _inverse_3x3_closed_form(h_s)
+    transform = transform / transform[..., 2:3, 2:3]
+    return transform.to(dtype)
 
 
 def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> torch.Tensor:
@@ -437,47 +449,11 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
     KORNIA_CHECK(points_src.shape == points_dst.shape, "Source data shape must match Destination data shape.")
     KORNIA_CHECK(points_src.dtype == points_dst.dtype, "Source data type must match Destination data type.")
 
-    # Under tracing (legacy torch.onnx.export, torch.jit.trace), use the closed-form
-    # Heckbert decomposition: the legacy ONNX tracer does not lower
-    # ``aten::linalg_solve``, but the closed-form path only uses arithmetic ops
-    # + a closed-form 3x3 inverse, both fully supported. ``torch.jit.is_tracing()``
-    # is JIT-script-safe (unlike ``torch.onnx.is_in_onnx_export``, which contains
-    # an ``import`` statement that JIT script cannot compile).
-    if torch.jit.is_tracing():
-        return _get_perspective_transform_closed_form(points_src, points_dst)
-
-    # we build matrix A by using only 4 point correspondence. The linear
-    # system is solved with the least square method, so here
-    # we could even pass more correspondence
-
-    # create the lhs torch.Tensor with shape # Bx8x8
-    B: int = points_src.shape[0]  # batch_size
-
-    A = torch.empty(B, 8, 8, device=points_src.device, dtype=points_src.dtype)
-
-    # we need to perform in batch
-    _zeros = torch.zeros(B, device=points_src.device, dtype=points_src.dtype)
-    _ones = torch.ones(B, device=points_src.device, dtype=points_src.dtype)
-
-    for i in range(4):
-        x1, y1 = points_src[..., i, 0], points_src[..., i, 1]  # Bx4
-        x2, y2 = points_dst[..., i, 0], points_dst[..., i, 1]  # Bx4
-
-        A[:, 2 * i] = torch.stack([x1, y1, _ones, _zeros, _zeros, _zeros, -x1 * x2, -y1 * x2], -1)
-        A[:, 2 * i + 1] = torch.stack([_zeros, _zeros, _zeros, x1, y1, _ones, -x1 * y2, -y1 * y2], -1)
-
-    # the rhs torch.Tensor
-    b = points_dst.view(-1, 8, 1)
-
-    # solve the system Ax = b
-    X: torch.Tensor = _torch_solve_cast(A, b)
-
-    # create variable to return the Bx3x3 transform
-    M = torch.empty(B, 9, device=points_src.device, dtype=points_src.dtype)
-    M[..., :8] = X[..., 0]  # Bx8
-    M[..., -1].fill_(1)
-
-    return M.view(-1, 3, 3)  # Bx3x3
+    # Solve via two closed-form unit-square (Heckbert) decompositions rather than an 8x8
+    # ``torch.linalg.solve``. Both yield the perspective transform mapping ``points_src`` onto
+    # ``points_dst``; the closed form additionally needs no LAPACK/cusolver backend (so it runs on
+    # the Jetson wheel, where ``linalg.solve`` dlopen-fails) and traces cleanly for ONNX.
+    return _get_perspective_transform_closed_form(points_src, points_dst)
 
 
 # TODO: move to kornia.geometry.affine
