@@ -25,7 +25,7 @@ import torch.nn.functional as F
 from kornia.constants import pi
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _torch_inverse_cast
+from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast
 
 __all__ = [
     "ARKitQTVecs_to_ColmapQTVecs",
@@ -1088,7 +1088,9 @@ def normalize_homography(
     # compute the transformation pixel/norm for src/dst
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
 
-    src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
+    # Closed-form 3x3 inverse of the (well-conditioned) pixel-normalization matrix: cusolver-free,
+    # so homography normalization runs on the Jetson wheel where ``torch.linalg.inv`` dlopen-fails.
+    src_pix_trans_src_norm = _inverse_3x3_closed_form(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
 
     # compute chain transformations
