@@ -32,6 +32,9 @@ from kornia.geometry.keypoints import Keypoints
 
 TensorWithTransformMat = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
 
+# Sentinel for ``_commit_state`` fields: distinguishes "not provided" from an explicit ``None``.
+_UNSET: Any = object()
+
 
 # Trick mypy into not applying contravariance rules to inputs by defining
 # forward as a value, rather than a function.  See also
@@ -209,6 +212,31 @@ class _BasicAugmentationBase(nn.Module):
             return batch_prob[..., 0]
         return batch_prob
 
+    def _commit_state(
+        self,
+        *,
+        params: Any = _UNSET,
+        transform_matrix: Any = _UNSET,
+        lazy_matrix_args: Any = _UNSET,
+    ) -> None:
+        """Record per-call state on ``self`` for post-call retrieval.
+
+        Covers ``._params`` (and, on the rigid/affine subclass, ``.transform_matrix`` /
+        ``_lazy_matrix_args``). This is the single writer of that state. It is skipped inside a
+        ``torch.export`` capture, which rejects attribute mutation in ``forward``; the captured
+        image output is unchanged — only reading the state back afterwards (meaningless in an
+        exported graph) is skipped. Each field is written only when explicitly passed (``None`` is
+        a valid value, hence the ``_UNSET`` sentinel).
+        """
+        if is_exporting():
+            return
+        if params is not _UNSET:
+            self._params = params
+        if transform_matrix is not _UNSET:
+            self._transform_matrix = transform_matrix
+        if lazy_matrix_args is not _UNSET:
+            self._lazy_matrix_args = lazy_matrix_args
+
     def _process_kwargs_to_params_and_flags(
         self,
         params: Optional[Dict[str, torch.Tensor]] = None,
@@ -223,11 +251,9 @@ class _BasicAugmentationBase(nn.Module):
 
         if save_kwargs:
             params = override_parameters(params, kwargs, in_place=True)
-            if not is_exporting():
-                self._params = params
+            self._commit_state(params=params)
         else:
-            if not is_exporting():
-                self._params = params
+            self._commit_state(params=params)
             params = override_parameters(params, kwargs, in_place=False)
 
         flags = override_parameters(flags, kwargs, in_place=False)
