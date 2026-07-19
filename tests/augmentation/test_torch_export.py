@@ -86,3 +86,36 @@ def test_torch_export_deterministic(name: str, factory: Callable[[], torch.nn.Mo
     out = exported.module()(x)
     assert out.shape == eager.shape, f"{name}: shape {out.shape} vs {eager.shape}"
     torch.testing.assert_close(out, eager, atol=1e-5, rtol=1e-5)
+
+
+def _seq_pointwise() -> torch.nn.Module:
+    return K.AugmentationSequential(_normalize(), K.RandomBrightness((1.2, 1.2), p=1.0), data_keys=["input"])
+
+
+def _seq_resize() -> torch.nn.Module:
+    return K.AugmentationSequential(_normalize(), K.Resize((16, 16)), data_keys=["input"])
+
+
+def _seq_crop_pad() -> torch.nn.Module:
+    return K.AugmentationSequential(_normalize(), K.CenterCrop(20), K.PadTo((24, 24)), data_keys=["input"])
+
+
+TORCH_EXPORT_CONTAINERS: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
+    ("Seq[Norm,Bright]", _seq_pointwise),
+    ("Seq[Norm,Resize]", _seq_resize),
+    ("Seq[Norm,CenterCrop,PadTo]", _seq_crop_pad),
+]
+
+
+@pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
+@pytest.mark.parametrize("name,factory", TORCH_EXPORT_CONTAINERS, ids=[n for n, _ in TORCH_EXPORT_CONTAINERS])
+def test_torch_export_container(name: str, factory: Callable[[], torch.nn.Module]) -> None:
+    """A deterministic ``AugmentationSequential`` pipeline captures via ``torch.export`` and matches eager."""
+    torch.manual_seed(0)
+    x = torch.randn(1, 3, 32, 32)
+    seq = factory()
+    eager = seq(x)
+    exported = torch.export.export(seq, (x,))
+    out = exported.module()(x)
+    assert out.shape == eager.shape, f"{name}: shape {out.shape} vs {eager.shape}"
+    torch.testing.assert_close(out, eager, atol=1e-5, rtol=1e-5)

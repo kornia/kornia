@@ -26,6 +26,7 @@ from kornia.augmentation.utils import override_parameters
 from kornia.core import ImageModule
 from kornia.core.mixin.image_module import ImageModuleMixIn
 from kornia.core.ops import eye_like
+from kornia.core.utils import is_exporting
 
 from .base import ImageSequentialBase
 from .params import ParamItem
@@ -416,15 +417,20 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
 
     # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:
+        # Under ``torch.export`` the sampled ``output_size`` is an unbacked tensor, so the tracked
+        # shape can't be turned into a static ``torch.Size``. Skip the shape-tracking entirely:
+        # it only feeds parameter generation for *subsequent* children, and export runs on concrete
+        # tensors, so a shape-changing transform followed by nothing shape-dependent is unaffected.
+        if is_exporting():
+            return batch_shape
         # Inline check for common PyTorch float torch.Tensor case
         batch_prob = data.get("batch_prob", None)
-        if batch_prob is not None:
-            # Avoid repeated indexing, always fetch scalar efficiently
-            prob = batch_prob.item() if batch_prob.numel() == 1 else batch_prob[0].item()
-            if prob <= 0.5:
-                return batch_shape
-        else:
+        if batch_prob is None:
             # batch_prob missing, fallback do not update shape
+            return batch_shape
+        # Avoid repeated indexing, always fetch scalar efficiently
+        prob = batch_prob.item() if batch_prob.numel() == 1 else batch_prob[0].item()
+        if prob <= 0.5:
             return batch_shape
         # Mutate only last two dims
         new_batch_shape = list(batch_shape)
