@@ -100,10 +100,18 @@ def _seq_crop_pad() -> torch.nn.Module:
     return K.AugmentationSequential(_normalize(), K.CenterCrop(20), K.PadTo((24, 24)), data_keys=["input"])
 
 
+def _seq_resize_then_resample_crop() -> torch.nn.Module:
+    # A resample-mode crop bakes its geometry from the *tracked* batch shape at parameter-generation
+    # time, so a preceding size change must update that shape under export — otherwise the crop uses
+    # the stale pre-resize shape and the exported output silently diverges from eager.
+    return K.AugmentationSequential(K.Resize((16, 16)), K.CenterCrop(8, cropping_mode="resample"), data_keys=["input"])
+
+
 TORCH_EXPORT_CONTAINERS: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
     ("Seq[Norm,Bright]", _seq_pointwise),
     ("Seq[Norm,Resize]", _seq_resize),
     ("Seq[Norm,CenterCrop,PadTo]", _seq_crop_pad),
+    ("Seq[Resize,CenterCrop-resample]", _seq_resize_then_resample_crop),
 ]
 
 

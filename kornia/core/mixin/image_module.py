@@ -25,6 +25,7 @@ import torch
 
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
+from kornia.core.utils import is_exporting
 
 
 class ImageModuleMixIn:
@@ -198,6 +199,16 @@ class ImageModuleMixIn:
         if isinstance(output_image, list | tuple):
             return type(output_image)([self._detach_tensor_to_cpu(out) for out in output_image])  # type: ignore
         raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
+
+    def _store_output_image(self, output_image: Any, output_type: str) -> None:
+        """Cache the forward output for the ``.plot()`` / ``.show()`` helpers.
+
+        Skipped inside a ``torch.export`` capture: caching mutates module state in ``forward``,
+        which ``torch.export`` (torch <= 2.9) rejects. The captured output is unaffected.
+        """
+        if is_exporting():
+            return
+        self._output_image = self._detach_tensor_to_cpu(output_image) if output_type == "pt" else output_image
 
     def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:
         """Return PIL images.

@@ -274,7 +274,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 param = ParamItem(name, mod_param)
             else:
                 param = ParamItem(name, None)
-            batch_shape = _get_new_batch_shape(param, batch_shape)
+            batch_shape = _get_new_batch_shape(param, batch_shape, module)
             params.append(param)
         return params
 
@@ -398,7 +398,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         return _output_image
 
 
-def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Size:
+def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Optional[nn.Module] = None) -> torch.Size:
     """Get the new batch shape if the augmentation changes the image size.
 
     Note:
@@ -417,12 +417,18 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
 
     # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:
-        # Under ``torch.export`` the sampled ``output_size`` is an unbacked tensor, so the tracked
-        # shape can't be turned into a static ``torch.Size``. Skip the shape-tracking entirely:
-        # it only feeds parameter generation for *subsequent* children, and export runs on concrete
-        # tensors, so a shape-changing transform followed by nothing shape-dependent is unaffected.
         if is_exporting():
-            return batch_shape
+            # The sampled ``output_size`` is an unbacked tensor under export (no python int for
+            # ``torch.Size``). Use the module's static ``flags["size"]`` — known at construction —
+            # so the tracked shape stays correct for a *subsequent* shape-dependent child (e.g. a
+            # resample-mode crop after a resize). Fall back to leaving the shape unchanged when the
+            # size isn't statically available.
+            size = getattr(module, "flags", {}).get("size") if module is not None else None
+            if size is None:
+                return batch_shape
+            new_batch_shape = list(batch_shape)
+            new_batch_shape[-2:] = size
+            return torch.Size(new_batch_shape)
         # Inline check for common PyTorch float torch.Tensor case
         batch_prob = data.get("batch_prob", None)
         if batch_prob is None:
