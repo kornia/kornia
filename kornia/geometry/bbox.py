@@ -138,7 +138,6 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         (tensor([2., 2.]), tensor([2., 3.]))
 
     """
-    validate_bbox(boxes)
     width: torch.Tensor = boxes[:, 1, 0] - boxes[:, 0, 0] + 1
     height: torch.Tensor = boxes[:, 2, 1] - boxes[:, 0, 1] + 1
     return height, width

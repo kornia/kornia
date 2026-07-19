@@ -23,7 +23,7 @@ from torch import nn
 
 from kornia.constants import Resample
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.geometry.bbox import infer_bbox_shape, validate_bbox
+from kornia.geometry.bbox import infer_bbox_shape
 
 from .affwarp import resize
 from .imgwarp import get_perspective_transform, warp_affine
@@ -250,10 +250,6 @@ def crop_by_boxes(
         RuntimeError: solve_cpu: For batch 0: U(2,2) is zero, singular U.
 
     """
-    if validate_boxes:
-        validate_bbox(src_box)
-        validate_bbox(dst_box)
-
     if len(input_tensor.shape) != 4:
         raise AssertionError(f"Only torch.Tensor with shape (B, C, H, W) supported. Got {input_tensor.shape}.")
 
