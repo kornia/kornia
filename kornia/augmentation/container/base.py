@@ -24,6 +24,7 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -91,6 +92,8 @@ class BasicSequentialBase(nn.Sequential):
 
     def clear_state(self) -> None:
         """Reset self._params state to None."""
+        if is_exporting():
+            return
         self._params = None
 
     # TODO: Implement this for all submodules.
@@ -452,7 +455,8 @@ class ImageSequentialBase(SequentialBase):
 
         input = self.transform_inputs(input, params=params, extra_args=extra_args)
 
-        self._params = params
+        if not is_exporting():
+            self._params = params
         return input
 
 
@@ -501,11 +505,15 @@ class TransformMatrixMinIn:
             )
 
     def _update_transform_matrix(self, transform_matrix: Optional[torch.Tensor]) -> None:
+        if is_exporting():
+            return
         if self._transform_matrix is None:
             self._transform_matrix = transform_matrix
         else:
             self._transform_matrix = transform_matrix @ self._transform_matrix
 
     def _reset_transform_matrix_state(self) -> None:
+        if is_exporting():
+            return
         self._transform_matrix = None
         self._transform_matrices = []
