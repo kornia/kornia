@@ -57,7 +57,50 @@ For `IntensityAugmentationBase2D`, the user only needs to override `apply_transf
 
    .. automethod:: apply_transform
 
-A minimal example to create your own rigid geometric augmentations with the following snippet:
+The most common case is a pixel-wise augmentation with a random per-sample parameter. Subclass
+`IntensityAugmentationBase2D`, declare a parameter generator in ``__init__``, and read the sampled
+value in `apply_transform`:
+
+.. code-block:: python
+
+   from typing import Any, Dict, Optional
+
+   import torch
+   from torch import Tensor
+
+   from kornia.augmentation import IntensityAugmentationBase2D
+   from kornia.augmentation import random_generator as rg
+
+
+   class RandomAddValue(IntensityAugmentationBase2D):
+       """Add a per-sample value drawn uniformly from ``add_range``."""
+
+       def __init__(self, add_range=(0.0, 0.2), same_on_batch=False, p=1.0, keepdim=False):
+           super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+           # A PlainUniformGenerator sampler is a 4-tuple ``(range, name, center, bound)``:
+           # sample a value inside ``range`` and expose it as ``params[name]``. ``center`` and
+           # ``bound`` (``None`` here) are optional constraints for centred/bounded ranges.
+           self._param_generator = rg.PlainUniformGenerator((add_range, "add", None, None))
+
+       def apply_transform(
+           self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any],
+           transform: Optional[Tensor] = None,
+       ) -> Tensor:
+           # ``params["add"]`` has shape ``(B,)`` — reshape to broadcast over C, H, W.
+           add = params["add"].to(input).view(-1, 1, 1, 1)
+           return input + add
+
+   aug = RandomAddValue((0.0, 0.2), p=1.0)
+   out = aug(torch.rand(4, 3, 32, 32))                       # a different value per sample
+   again = aug(torch.rand(4, 3, 32, 32), params=aug._params)  # reproduce with the stored params
+
+Static (non-random) configuration goes in ``self.flags`` (a plain dict), read from the ``flags``
+argument of `apply_transform`. A custom augmentation works standalone and inside
+`AugmentationSequential` with no extra wiring.
+
+For a rigid **geometric** augmentation, also implement `compute_transformation` to return the
+``(B, 3, 3)`` transform matrix — kornia then applies it, inverts it, and propagates it to masks,
+boxes and keypoints:
 
 
 .. code-block:: python
@@ -81,15 +124,15 @@ A minimal example to create your own rigid geometric augmentations with the foll
          super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
          self._param_generator = rg.PlainUniformGenerator((factor, "factor", None, None))
 
-      def compute_transformation(self, input, params):
-         # a simple identity transformation example
-         factor = params["factor"].to(input) * 0. + 1
-         return K.eyelike(input, 3) * factor
+      def compute_transformation(self, input, params, flags):
+         # return the (B, 3, 3) transform matrix for this augmentation
+         # (identity shown for brevity; kornia applies, inverts and propagates it)
+         return K.eye_like(3, input)
 
       def apply_transform(
          self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
       ) -> Tensor:
-         factor = params["factor"].to(input)
+         factor = params["factor"].to(input).view(-1, 1, 1, 1)
          return input * factor
 
 
