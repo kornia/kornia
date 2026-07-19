@@ -2768,6 +2768,22 @@ class TestRandomGamma(BaseTester):
 
 
 class TestRandomGrayscale(BaseTester):
+    def test_multispectral(self, device, dtype):
+        # Non-RGB channel counts (e.g. satellite imagery) grayscale to the weighted average
+        # across all bands, broadcast back to the input channel count.
+        x = torch.rand(2, 7, 8, 8, device=device, dtype=dtype)
+        out = RandomGrayscale(p=1.0)(x)
+        assert out.shape == x.shape
+        expected = x.mean(dim=1, keepdim=True).expand(-1, 7, -1, -1)  # equal weights by default
+        self.assert_close(out, expected)
+        # every output band is identical (a true grayscale)
+        self.assert_close(out[:, 0], out[:, 3])
+        # custom per-band weights are honoured; a wrong length is rejected
+        weights = torch.full((7,), 1.0 / 7, device=device, dtype=dtype)
+        self.assert_close(RandomGrayscale(rgb_weights=weights, p=1.0)(x), expected)
+        with pytest.raises(Exception):
+            RandomGrayscale(rgb_weights=torch.ones(4, device=device, dtype=dtype), p=1.0)(x)
+
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
