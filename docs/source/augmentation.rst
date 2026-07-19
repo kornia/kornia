@@ -59,6 +59,37 @@ option (torchvision v2 is not differentiable; albumentations is CPU/``uint8``/si
 their regime, not kornia's. See ``benchmarks/augmentation/README.md`` for the per-regime breakdown.
 
 
+Deployment: torch.export, torch.compile, ONNX
+---------------------------------------------
+
+Kornia augmentations are plain ``nn.Module`` s and are exportable for deployment:
+
+- **torch.export.** Deterministic transforms — ``Normalize``, ``Denormalize``, ``Resize``,
+  ``CenterCrop``, ``PadTo`` — and an ``AugmentationSequential`` pipeline of them capture cleanly
+  and match eager, so a model can be shipped together with its preprocessing as one program:
+
+  .. code-block:: python
+
+     import torch, kornia.augmentation as K
+
+     tf = K.AugmentationSequential(
+         K.Normalize(mean=torch.zeros(3), std=torch.ones(3)),
+         K.Resize((224, 224)),
+         data_keys=["input"],
+     )
+     exported = torch.export.export(tf, (torch.rand(1, 3, 256, 256),))
+
+  The per-call state kept on the module for eager retrieval (``._params``, ``.transform_matrix``)
+  is skipped during an export capture; the captured output is unchanged. Random augmentations and
+  bounding-box/keypoint propagation through an exported graph are not covered.
+
+- **torch.compile.** Most augmentations run fullgraph (0 graph breaks); a compiled
+  ``AugmentationSequential`` fuses the pointwise chain end to end. See the per-op ``test_dynamo``
+  tests for the compile-clean set.
+
+- **ONNX.** Export a pipeline with :class:`kornia.onnx.ONNXSequential`; pre-built ONNX models are
+  published under the ``kornia/ONNX_models`` Hugging Face repo.
+
 .. currentmodule:: kornia.augmentation
 
 .. toctree::
