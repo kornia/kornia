@@ -15,6 +15,29 @@ location of image pixels and `IntensityAugmentationBase2D` that preserves the pi
 generic `AugmentationBase2D` that allows higher freedom for customized augmentation design.
 
 
+The Base-Class Hierarchy
+------------------------
+
+The bases form a chain, each layer adding one concern and shared by several subclasses — so pick the
+*shallowest* base that already does what you need:
+
+.. code-block:: text
+
+   nn.Module
+   └─ _BasicAugmentationBase          parameter sampling + the forward skeleton
+      ├─ _AugmentationBase            dispatch to image / mask / box / keypoint / class data keys
+      │  ├─ AugmentationBase2D        2D tensor validation  (subclass for a fully custom 2D op)
+      │  │  └─ RigidAffineAugmentationBase2D     transform-matrix machinery
+      │  │     ├─ IntensityAugmentationBase2D    pointwise ops — override apply_transform
+      │  │     └─ GeometricAugmentationBase2D    warp ops — also override compute_transformation
+      │  └─ AugmentationBase3D … (the 3D mirror of the 2D chain)
+      └─ MixAugmentationBaseV2        mix ops (MixUp / CutMix) — bypass the per-key dispatch
+
+Each level is a distinct, reused axis (sampling, data-key dispatch, 2D vs 3D, rigid-matrix vs free-form,
+intensity vs geometric); the four ``*Base2D`` classes are public API that external code subclasses.
+For a custom augmentation, subclass ``IntensityAugmentationBase2D`` or ``GeometricAugmentationBase2D``.
+
+
 The Predefined Augmentation Routine
 -----------------------------------
 
