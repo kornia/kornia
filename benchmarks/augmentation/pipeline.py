@@ -115,14 +115,16 @@ def main() -> None:
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--compile", action="store_true", help="also time the torch.compile'd kornia pipeline")
+    parser.add_argument("--half", action="store_true", help="run in float16 (the AMP training regime)")
     args = parser.parse_args()
 
     torch.set_num_threads(args.threads)
     device = torch.device(args.device)
     b, h, w = args.batch, args.size, args.size
+    dtype = torch.float16 if args.half else torch.float32
 
     rng = np.random.default_rng(0)
-    batch_f = torch.rand(b, 3, h, w, device=device)
+    batch_f = torch.rand(b, 3, h, w, device=device, dtype=dtype)
     batch_u8 = [(rng.random((h, w, 3)) * 255).astype(np.uint8) for _ in range(b)]
 
     def thr(t: float) -> float:
@@ -131,12 +133,16 @@ def main() -> None:
     print(f"# pipeline benchmark — commit {_git_commit()} — {platform.platform()}")
     if device.type == "cuda":
         print(f"# CUDA device: {torch.cuda.get_device_name(0)}")
-    print(f"batch={b}, {h}x{w}, device={device}, threads={args.threads} — throughput img/s (higher is better)")
+    dtype_name = "float16" if args.half else "float32"
+    print(
+        f"batch={b}, {h}x{w}, device={device}, dtype={dtype_name}, "
+        f"threads={args.threads} — throughput img/s (higher is better)"
+    )
     print("-" * 84)
 
     results: dict[str, float] = {}
 
-    kornia_pipe = build_kornia(device)
+    kornia_pipe = build_kornia(device).to(dtype)
     results["kornia (eager)"] = thr(_throughput_us(lambda: kornia_pipe(batch_f)))
 
     if args.compile:
