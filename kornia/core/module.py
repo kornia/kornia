@@ -23,7 +23,6 @@ from torch import nn
 
 from .mixin.image_module import ImageModuleMixIn
 from .mixin.onnx import ONNXExportMixin
-from .utils import is_exporting
 
 
 class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
@@ -94,13 +93,7 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
                 input_names_to_handle=input_names_to_handle, output_type=output_type
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            if not is_exporting():
-                # ``_output_image`` is an eager-only cache for ``.plot()``; storing it mutates
-                # module state, which ``torch.export`` (torch <= 2.9) rejects inside ``forward``.
-                if output_type == "pt":
-                    self._output_image = self._detach_tensor_to_cpu(_output_image)
-                else:
-                    self._output_image = _output_image
+            self._store_output_image(_output_image, output_type)
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image
@@ -174,13 +167,7 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
                 input_names_to_handle=input_names_to_handle, output_type=output_type
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            if not is_exporting():
-                # ``_output_image`` is an eager-only cache for ``.plot()``; storing it mutates
-                # module state, which ``torch.export`` (torch <= 2.9) rejects inside ``forward``.
-                if output_type == "pt":
-                    self._output_image = self._detach_tensor_to_cpu(_output_image)
-                else:
-                    self._output_image = _output_image
+            self._store_output_image(_output_image, output_type)
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image

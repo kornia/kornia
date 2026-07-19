@@ -281,8 +281,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             # NOTE: only for images are supported for 3D.
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
-        if not is_exporting():
-            self._transform_matrix = None
+        self._transform_matrix = None
         self.extra_args = extra_args or {DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}}
 
     def clear_state(self) -> None:
@@ -539,11 +538,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 if len(data_keys) > 1 and DataKey.INPUT in data_keys:
                     idx = data_keys.index(DataKey.INPUT)
                     if output_type == "pt":
+                        # ``self._output_image`` already holds ``_output_image`` here, so the old
+                        # per-key rebind was a no-op; just store the whole output.
                         self._output_image = _output_image
-                        if isinstance(_output_image, dict):
-                            self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
-                        else:
-                            self._output_image[idx] = _output_image[idx]
                     elif isinstance(_output_image, dict):
                         self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
                     else:
