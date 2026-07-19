@@ -17,10 +17,12 @@
 
 from typing import Any, Dict, Optional
 
+import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.color import rgb_to_grayscale
+from kornia.core.check import KORNIA_CHECK
 
 
 class RandomGrayscale(IntensityAugmentationBase2D):
@@ -28,9 +30,15 @@ class RandomGrayscale(IntensityAugmentationBase2D):
 
     .. image:: _static/img/RandomGrayscale.png
 
+    Works for multispectral imagery too (e.g. satellite data with 4-13+ bands): for a non-RGB
+    channel count the grayscale is the weighted average across *all* channels, broadcast back to
+    the input channel count. This makes the augmentation usable outside the 3-channel RGB regime.
+
     Args:
-        rgb_weights: Weights that will be applied on each channel (RGB).
-            The sum of the weights should add up to one.
+        rgb_weights: Per-channel weights applied when reducing to grayscale — one weight per input
+            channel (three, for the usual RGB case). If ``None``, RGB inputs use the standard
+            luminance weights and multispectral inputs weight every band equally. The weights
+            should sum to one.
         p: probability of the image to be transformed to grayscale.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -41,7 +49,8 @@ class RandomGrayscale(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        This function internally uses :func:`kornia.color.rgb_to_grayscale`.
+        For 3-channel RGB inputs this uses :func:`kornia.color.rgb_to_grayscale`; multispectral
+        inputs use a weighted channel average.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -77,8 +86,23 @@ class RandomGrayscale(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        # Return (*, 3, H, W) by repeating the single grayscale channel — a contiguous copy,
-        # like the old code, but without its wasted `ones_like` allocation+fill (which was
-        # immediately overwritten).
-        gray = rgb_to_grayscale(input, rgb_weights=self.rgb_weights)
-        return gray.repeat(*([1] * (input.ndim - 3)), 3, 1, 1)
+        num_channels = input.shape[-3]
+        lead = (1,) * (input.ndim - 3)  # leading (batch) dims to broadcast/repeat over
+        if num_channels == 3:
+            # RGB luminance path — byte-identical to the previous behaviour.
+            gray = rgb_to_grayscale(input, rgb_weights=self.rgb_weights)
+        else:
+            # Multispectral (e.g. satellite, 4-13+ bands): weighted average over all channels,
+            # using ``rgb_weights`` (one per channel) or equal weights when unset.
+            weights = self.rgb_weights
+            if weights is None:
+                weights = torch.full((num_channels,), 1.0 / num_channels, device=input.device, dtype=input.dtype)
+            else:
+                KORNIA_CHECK(
+                    weights.numel() == num_channels,
+                    f"rgb_weights needs one weight per channel: got {weights.numel()} for {num_channels}.",
+                )
+                weights = weights.to(input)
+            gray = (input * weights.view(*lead, num_channels, 1, 1)).sum(-3, keepdim=True)
+        # Broadcast the single grayscale channel back to the input channel count (a contiguous copy).
+        return gray.repeat(*lead, num_channels, 1, 1)
