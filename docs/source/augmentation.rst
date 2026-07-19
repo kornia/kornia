@@ -17,6 +17,13 @@ itself, or to be applied to additional metadata such as the label images for sem
 in bounding boxes or landmark keypoints for object detection tasks. It gives the user the flexibility to
 perform complex data augmentations pipelines.
 
+.. note::
+   **Input format.** Kornia augmentations expect **float tensors with values in** ``[0, 1]`` and shape
+   ``(B, C, H, W)`` — the same format produced by ``torchvision.transforms.v2.ToDtype(torch.float32, scale=True)``
+   (or the legacy ``ToTensor``). A ``uint8`` tensor raises a clear error, but a **float tensor already in the**
+   ``[0, 255]`` **range does not raise** — it is silently treated as ``[0, 1]`` and the output clips at ``1.0``,
+   which shows up later as degraded model accuracy rather than an exception. Scale first, e.g. ``img.float() / 255``.
+
 Interactive Demo
 ~~~~~~~~~~~~~~~~
 .. raw:: html
@@ -32,38 +39,24 @@ Interactive Demo
 Benchmark
 ---------
 
-.. table:: Here is a benchmark performed on `Google Colab <https://colab.research.google.com/drive/1b-HpK4EsZR8uolztgH4roNBLaDwcMULx?usp=sharing>`_
-   K80 GPU with different libraries and batch sizes. This benchmark shows
-   strong GPU augmentation speed acceleration brought by Kornia data augmentations. The image size is fixed to 224x224 and the
-   unit is milliseconds (ms).
+Kornia is **GPU-batched and differentiable** — that is the regime it is built to lead, and it is
+not the regime the other libraries target. A fair comparison holds the batch size and device fixed
+across libraries; comparing kornia at a large batch against a single-image library is not meaningful.
 
-   +--------------------------------+-----------------+-----------------+-----------------------------------------------------+
-   |           Libraries            |   TorchVision   | Albumentations  |                 Kornia (GPU)                        |
-   +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
-   |          Batch Size            |       1         |        1        |        1        |        32       |        128      |
-   +================================+=================+=================+=================+=================+=================+
-   |      RandomPerspective         |     4.88±1.82   |    4.68±3.60    |   4.74±2.84     |   0.37±2.67     |   0.20±27.00    |
-   +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
-   |          ColorJiggle           |     4.40±2.88   |    3.58±3.66    |   4.14±3.85     |   0.90±24.68    |   0.83±12.96    |
-   +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
-   |        RandomAffine            |     3.12±5.80   |    2.43±7.11    |   3.01±7.80     |   0.30±4.39     |   0.18±6.30     |
-   +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
-   |      RandomVerticalFlip        |     0.32±0.08   |    0.34±0.16    |   0.35±0.82     |   0.02±0.13     |   0.01±0.35     |
-   +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
-   |      RandomHorizontalFlip      |     0.32±0.08   |    0.34±0.18    |   0.31±0.59     |   0.01±0.26     |   0.01±0.37     |
-   +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
-   |           RandomRotate         |     1.82±4.70   |    1.59±4.33    |   1.58±4.44     |   0.25±2.09     |   0.17±5.69     |
-   +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
-   |           RandomCrop           |     4.09±3.41   |    4.03±4.94    |   3.84±3.07     |   0.16±1.17     |   0.08±9.42     |
-   +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
-   |           RandomErasing        |     2.31±1.47   |    1.89±1.08    |   2.32±3.31     |   0.44±2.82     |   0.57±9.74     |
-   +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
-   |          RandomGrayscale       |     0.41±0.18   |    0.43±0.60    |   0.45±1.20     |   0.03±0.11     |   0.03±7.10     |
-   +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
-   |         RandomResizedCrop      |     4.23±2.86   |    3.80±3.61    |   4.07±2.67     |   0.23±5.27     |   0.13±8.04     |
-   +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
-   |         CenterCrop             |     2.93±1.29   |    2.81±1.38    |   2.88±2.34     |   0.13±2.20     |   0.07±9.41     |
-   +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
+Reproducible, honestly-framed benchmarks live under
+`benchmarks/augmentation/ <https://github.com/kornia/kornia/tree/main/benchmarks/augmentation>`_ and
+print their git commit, platform, and device so results are auditable:
+
+- ``vs_torchvision.py`` — per-op kornia (eager / ``torch.compile``) vs torchvision v2, with a
+  ``best/tv`` ratio and verdict per op.
+- ``all_libraries.py`` — per-op across kornia, torchvision, albumentations, OpenCV, PIL, kornia-rs.
+- ``pipeline.py`` — end-to-end multi-op pipeline throughput (the shape a training loop runs),
+  including a compiled and an ``--half`` (fp16/AMP) path.
+
+Reading them honestly: on a **GPU-batched, differentiable, compiled** pipeline kornia is the fastest
+option (torchvision v2 is not differentiable; albumentations is CPU/``uint8``/single-image). On
+**CPU single-image** throughput, SIMD/NumPy libraries such as albumentations are faster — that is
+their regime, not kornia's. See ``benchmarks/augmentation/README.md`` for the per-regime breakdown.
 
 
 .. currentmodule:: kornia.augmentation

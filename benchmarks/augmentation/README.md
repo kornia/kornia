@@ -8,9 +8,10 @@ each performance regime measurable and gives future work a concrete target to im
 
 | Script | What it measures |
 | --- | --- |
+| [`vs_torchvision.py`](vs_torchvision.py) | Per-op kornia (eager + `torch.compile`) vs torchvision v2, with a `best/tv` ratio and win/lose verdict per op. |
 | [`all_libraries.py`](all_libraries.py) | Per-op throughput across **all** libraries (kornia eager + compiled, torchvision v2, albumentations, OpenCV, PIL, kornia-rs). |
 | [`cross_library.py`](cross_library.py) | A focused per-op comparison of kornia vs torchvision v2 vs albumentations. |
-| [`pipeline.py`](pipeline.py) | End-to-end **multi-op pipeline** throughput (the shape a training loop runs). |
+| [`pipeline.py`](pipeline.py) | End-to-end **multi-op pipeline** throughput (the shape a training loop runs); supports `--compile` and `--half` (fp16/AMP). |
 
 Run:
 
