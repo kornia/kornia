@@ -355,6 +355,20 @@ def is_autocast_enabled(both: bool = True) -> bool:
     return torch.is_autocast_enabled()
 
 
+# ``torch.compiler.is_exporting`` is absent on very old torch; resolve it once at import.
+_torch_is_exporting = getattr(torch.compiler, "is_exporting", None)
+
+
+def is_exporting() -> bool:
+    """Whether execution is inside a ``torch.export`` capture.
+
+    Used to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that
+    ``torch.export`` on torch <= 2.9 rejects, without changing the captured output. Returns
+    ``False`` on torch versions where ``torch.compiler.is_exporting`` is unavailable.
+    """
+    return bool(_torch_is_exporting()) if _torch_is_exporting is not None else False
+
+
 def dataclass_to_dict(obj: Any) -> Any:
     """Recursively convert dataclass instances to dictionaries."""
     if is_dataclass(obj) and not isinstance(obj, type):

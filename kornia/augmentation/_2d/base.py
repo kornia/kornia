@@ -23,7 +23,7 @@ from torch import float16, float32, float64
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_input_by_shape, _validate_input_dtype
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_autocast_enabled
+from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -197,13 +197,15 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
             # apply_transform ignores the matrix for these ops, so don't build it here; defer to
             # the first `.transform_matrix` access (e.g. AugmentationSequential propagating to
             # boxes/keypoints/masks). A standalone flip that never reads the matrix skips it.
-            self._transform_matrix = None
-            self._lazy_matrix_args = (in_tensor, params, flags)
+            if not is_exporting():
+                self._transform_matrix = None
+                self._lazy_matrix_args = (in_tensor, params, flags)
             return self.transform_inputs(in_tensor, params, flags, None)
 
         trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
         output = self.transform_inputs(in_tensor, params, flags, trans_matrix)
-        self._transform_matrix = trans_matrix
-        self._lazy_matrix_args = None
+        if not is_exporting():
+            self._transform_matrix = trans_matrix
+            self._lazy_matrix_args = None
 
         return output

@@ -22,17 +22,16 @@ with its preprocessing (Normalize / Resize / CenterCrop / Pad) as a single expor
 TorchGeo migrated its inference-time transforms off kornia onto ``torchvision.transforms.v2``
 citing exactly this gap ("kornia augmentations can't be torch.exported").
 
-Status: this does **not** work yet on the torch versions kornia's CI runs (<= 2.9). The
-augmentation base ``forward`` assigns state on ``self`` (``self._params``, and the lazy
-``_transform_matrix`` / ``_lazy_matrix_args``), and ``torch.export`` on torch <= 2.9 rejects
-modules that create/mutate attributes in ``forward`` ("attrs were created in model.forward",
-then a pytree "Node arity mismatch"). torch 2.10 relaxes the first restriction (export then only
-*warns*), so this can pass locally on a newer wheel while failing in CI — hence the ``xfail``
-below. A real fix means making the deterministic ``forward`` path export-clean (no per-call state
-assignment). When that lands, this flips to ``xpass`` and the ``xfail`` should be removed.
+The augmentation base ``forward`` stashes per-call state on ``self`` (``_params`` and the lazy
+transform matrix), which ``torch.export`` on torch <= 2.9 rejects ("attrs created in forward" /
+pytree "Node arity mismatch"). Those side effects are now skipped under ``torch.export`` (the
+captured image output is unchanged), so the deterministic transforms export cleanly and
+numerically match eager. This pins that so it does not regress.
 
-Only *deterministic* transforms are covered — random augmentations sample parameters during
-capture in ways that don't line up with a separate eager call, which is RNG bookkeeping.
+Only *deterministic single* transforms are covered — random augmentations sample parameters
+during capture in ways that don't line up with a separate eager call (RNG bookkeeping), and
+``AugmentationSequential`` containers still stash their own per-call state and are not export-clean
+yet.
 """
 
 from __future__ import annotations
@@ -74,11 +73,6 @@ TORCH_EXPORT_DETERMINISTIC: list[Tuple[str, Callable[[], torch.nn.Module]]] = [
 ]
 
 
-@pytest.mark.xfail(
-    reason="augmentation forward assigns state on self; torch.export rejects this on torch<=2.9 "
-    "(CI). Passes on torch>=2.10. Remove this mark once forward is export-clean.",
-    strict=False,
-)
 @pytest.mark.skipif(not hasattr(torch, "export"), reason="torch.export requires torch>=2.1")
 @pytest.mark.parametrize("name,factory", TORCH_EXPORT_DETERMINISTIC, ids=[n for n, _ in TORCH_EXPORT_DETERMINISTIC])
 def test_torch_export_deterministic(name: str, factory: Callable[[], torch.nn.Module]) -> None:

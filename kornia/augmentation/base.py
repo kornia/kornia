@@ -26,7 +26,7 @@ from kornia.augmentation.utils import (
     _transform_output_shape,
     override_parameters,
 )
-from kornia.core.utils import is_autocast_enabled
+from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -223,9 +223,11 @@ class _BasicAugmentationBase(nn.Module):
 
         if save_kwargs:
             params = override_parameters(params, kwargs, in_place=True)
-            self._params = params
+            if not is_exporting():
+                self._params = params
         else:
-            self._params = params
+            if not is_exporting():
+                self._params = params
             params = override_parameters(params, kwargs, in_place=False)
 
         flags = override_parameters(flags, kwargs, in_place=False)
