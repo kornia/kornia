@@ -26,7 +26,7 @@ from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmenta
 from kornia.augmentation.base import _AugmentationBase
 from kornia.constants import DataKey, Resample
 from kornia.core.ops import eye_like
-from kornia.core.utils import is_autocast_enabled
+from kornia.core.utils import is_autocast_enabled, is_exporting
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 
@@ -281,7 +281,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             # NOTE: only for images are supported for 3D.
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
-        self._transform_matrix = None
+        if not is_exporting():
+            self._transform_matrix = None
         self.extra_args = extra_args or {DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}}
 
     def clear_state(self) -> None:
@@ -290,7 +291,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         return super().clear_state()
 
     def _update_transform_matrix_for_valid_op(self, module: nn.Module) -> None:
-        self._transform_matrices.append(module.transform_matrix)
+        if not is_exporting():
+            self._transform_matrices.append(module.transform_matrix)
 
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
         """Return identity matrix."""
@@ -367,7 +369,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
                 arg = cast(torch.Tensor, arg)
-                self.input_dtype = arg.dtype
+                if not is_exporting():
+                    self.input_dtype = arg.dtype
                 inp.append(arg)
             elif DataKey.get(dcate) in _MSK_OPTIONS:
                 if isinstance(inp, list):
@@ -483,7 +486,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # Restore it back
         self.transform_op.data_keys = self.data_keys
 
-        self._params = params
+        if not is_exporting():
+            self._params = params
 
         if isinstance(original_keys, tuple):
             result = {k: v for v, k in zip(outputs, original_keys)}
@@ -531,21 +535,21 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 in_data_keys = kwargs.get("data_keys", self.data_keys)
             data_keys = self.transform_op.preproc_datakeys(in_data_keys)
 
-            if len(data_keys) > 1 and DataKey.INPUT in data_keys:
-                # NOTE: we may update it later for more supports of drawing boxes, etc.
-                idx = data_keys.index(DataKey.INPUT)
-                if output_type == "pt":
-                    self._output_image = _output_image
-                    if isinstance(_output_image, dict):
+            if not is_exporting():
+                if len(data_keys) > 1 and DataKey.INPUT in data_keys:
+                    idx = data_keys.index(DataKey.INPUT)
+                    if output_type == "pt":
+                        self._output_image = _output_image
+                        if isinstance(_output_image, dict):
+                            self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
+                        else:
+                            self._output_image[idx] = _output_image[idx]
+                    elif isinstance(_output_image, dict):
                         self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
                     else:
                         self._output_image[idx] = _output_image[idx]
-                elif isinstance(_output_image, dict):
-                    self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
                 else:
-                    self._output_image[idx] = _output_image[idx]
-            else:
-                self._output_image = _output_image
+                    self._output_image = _output_image
         else:
             _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image
