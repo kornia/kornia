@@ -92,6 +92,24 @@ class TestConnectedComponents(BaseTester):
 
         out = kornia.contrib.connected_components(img, num_iterations=10)
         self.assert_close(out, expected)
+        
+    def test_float16_precision_no_collision(self, device):
+        """Regression test for a silent correctness bug: label IDs used to be
+        generated using the input image's own dtype via torch.arange(...,
+        dtype=image.dtype). float16 can only represent integers exactly up to
+        2**11 = 2048, so on any image larger than that, two genuinely
+        disconnected components could receive colliding IDs and end up with
+        the same final label, with no error or warning."""
+        W, H = 8, 3000  # H * W = 24000 pixels, well past float16's exact-integer limit
+        img = torch.zeros(1, 1, H, W, device=device)
+        img[0, 0, 2051, 0] = 1.0  # component A
+        img[0, 0, 2053, 0] = 1.0  # component B, 2 rows away -> not connected
+
+        out = kornia.contrib.connected_components(img.to(torch.float16), num_iterations=150)
+
+        label_a = out[0, 0, 2051, 0]
+        label_b = out[0, 0, 2053, 0]
+        assert label_a != label_b, "two disconnected components must not share a label"
 
     def test_gradcheck(self, device):
         B, C, H, W = 2, 1, 4, 4
