@@ -19,6 +19,35 @@ import pytest
 import torch
 
 from kornia.feature.dedode import DeDoDe
+from kornia.feature.dedode.transformer.layers.block import Block
+
+
+class TestDeDoDeBlock:
+    def test_drop_path2_applied_to_ffn_residual(self, device, dtype):
+        # Regression test: `Block.forward` must route the attention residual through
+        # `drop_path1` and the FFN residual through `drop_path2`. A prior copy-paste
+        # bug applied `drop_path1` to both, silently ignoring `drop_path2`.
+        block = Block(dim=8, num_heads=2, drop_path=0.05).to(device, dtype)
+        block.train()
+
+        calls = {"drop_path1": 0, "drop_path2": 0}
+        orig_dp1, orig_dp2 = block.drop_path1.forward, block.drop_path2.forward
+
+        def spy_dp1(x):
+            calls["drop_path1"] += 1
+            return orig_dp1(x)
+
+        def spy_dp2(x):
+            calls["drop_path2"] += 1
+            return orig_dp2(x)
+
+        block.drop_path1.forward = spy_dp1
+        block.drop_path2.forward = spy_dp2
+
+        x = torch.randn(2, 4, 8, device=device, dtype=dtype)
+        block(x)
+
+        assert calls == {"drop_path1": 1, "drop_path2": 1}
 
 
 @pytest.mark.skip(reason="DeDoDe is ummaintained")
