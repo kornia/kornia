@@ -92,7 +92,7 @@ class TestConnectedComponents(BaseTester):
 
         out = kornia.contrib.connected_components(img, num_iterations=10)
         self.assert_close(out, expected)
-        
+
     def test_float16_precision_no_collision(self, device):
         """Regression test for a silent correctness bug: label IDs used to be
         generated using the input image's own dtype via torch.arange(...,
