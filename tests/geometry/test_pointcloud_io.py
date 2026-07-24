@@ -97,3 +97,16 @@ class TestSaveLoadPointCloud(BaseTester):
 
         if os.path.exists(filename):
             os.remove(filename)
+
+    def test_save_pointcloud_binary(self):
+        height, width = 10, 8
+        xyz_save = torch.rand(height, width, 3)
+
+        filename = "pointcloud.ply"
+        kornia.geometry.save_pointcloud_ply(filename, xyz_save, True)
+
+        xyz_load = kornia.geometry.load_pointcloud_ply(filename, binary=True)
+        self.assert_close(xyz_save.reshape(-1, 3), xyz_load)
+
+        if os.path.exists(filename):
+            os.remove(filename)
