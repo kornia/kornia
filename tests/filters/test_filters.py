@@ -1113,13 +1113,13 @@ class TestFilter2D_fftconv(BaseTester):
         self.assert_close(actual, expected)
 
 
-class TestCorrelate2d:
+class TestCorrelate2d(BaseTester):
     def test_equivalent_to_filter2d_corr(self, device, dtype):
         inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
         expected = filter2d(inp, kernel, behaviour="corr")
         result = correlate2d(inp, kernel)
-        assert torch.allclose(result, expected)
+        self.assert_close(result, expected)
 
     @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("padding", ["same", "valid"])
@@ -1130,13 +1130,13 @@ class TestCorrelate2d:
         assert isinstance(out, torch.Tensor)
 
 
-class TestConvolve2d:
+class TestConvolve2d(BaseTester):
     def test_equivalent_to_filter2d_conv(self, device, dtype):
         inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
         expected = filter2d(inp, kernel, behaviour="conv")
         result = convolve2d(inp, kernel)
-        assert torch.allclose(result, expected)
+        self.assert_close(result, expected)
 
     def test_differs_from_correlate_asymmetric_kernel(self, device, dtype):
         inp = torch.rand(1, 1, 7, 8, device=device, dtype=dtype)
@@ -1147,19 +1147,19 @@ class TestConvolve2d:
         assert not torch.allclose(corr, conv)
 
 
-class TestCorrelate3d:
+class TestCorrelate3d(BaseTester):
     def test_equivalent_to_filter3d_corr(self, device, dtype):
         inp = torch.rand(1, 1, 5, 7, 8, device=device, dtype=dtype)
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
         expected = filter3d(inp, kernel, behaviour="corr")
         result = correlate3d(inp, kernel)
-        assert torch.allclose(result, expected)
+        self.assert_close(result, expected)
 
 
-class TestConvolve3d:
+class TestConvolve3d(BaseTester):
     def test_equivalent_to_filter3d_conv(self, device, dtype):
         inp = torch.rand(1, 1, 5, 7, 8, device=device, dtype=dtype)
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
         expected = filter3d(inp, kernel, behaviour="conv")
         result = convolve3d(inp, kernel)
-        assert torch.allclose(result, expected)
+        self.assert_close(result, expected)
