@@ -21,6 +21,8 @@ import torch
 from kornia.core._compat import torch_version_le
 from kornia.filters.dissolving import StableDiffusionDissolving
 
+from testing.base import BaseTester
+
 WEIGHTS_CACHE_DIR = "weights/"
 
 
@@ -29,7 +31,7 @@ WEIGHTS_CACHE_DIR = "weights/"
     torch_version_le(2, 0, 1),
     reason="Skipped for torch versions <= 2.0.1: transformers clip model needs distributed tensor.",
 )
-class TestStableDiffusionDissolving:
+class TestStableDiffusionDissolving(BaseTester):
     @pytest.fixture(scope="class")
     def sdm_2_1(self):
         return StableDiffusionDissolving(version="1.5", cache_dir=WEIGHTS_CACHE_DIR)
@@ -42,18 +44,22 @@ class TestStableDiffusionDissolving:
     def test_init(self, sdm_2_1):
         assert isinstance(sdm_2_1, StableDiffusionDissolving), "Initialization failed"
 
-    def test_encode_tensor_to_latent(self, sdm_2_1, dummy_image):
+    def test_encode_tensor_to_latent(self, sdm_2_1, dummy_image, device, dtype):
+        dummy_image = dummy_image.to(device, dtype)
+        # Note: the model internally converts latents to its own dtype, so we don't strictly check output dtype match
         latents = sdm_2_1.model.encode_tensor_to_latent(dummy_image)
         assert isinstance(latents, torch.Tensor), "Latent encoding failed"
         assert latents.shape == (1, 4, 8, 8), "Latent shape mismatch"
 
-    def test_decode_tensor_to_latent(self, sdm_2_1, dummy_image):
+    def test_decode_tensor_to_latent(self, sdm_2_1, dummy_image, device, dtype):
+        dummy_image = dummy_image.to(device, dtype)
         latents = sdm_2_1.model.encode_tensor_to_latent(dummy_image)
         reconstructed_image = sdm_2_1.model.decode_tensor_to_latent(latents)
         assert isinstance(reconstructed_image, torch.Tensor), "Latent decoding failed"
         assert reconstructed_image.shape == dummy_image.shape, "Reconstructed image shape mismatch"
 
-    def test_dissolve(self, sdm_2_1, dummy_image):
+    def test_dissolve(self, sdm_2_1, dummy_image, device, dtype):
+        dummy_image = dummy_image.to(device, dtype)
         step_number = 500  # Test with a middle step
         dissolved_image = sdm_2_1(dummy_image, step_number)
         assert isinstance(dissolved_image, torch.Tensor), "Dissolve failed"
