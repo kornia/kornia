@@ -102,11 +102,31 @@ class TestSaveLoadPointCloud(BaseTester):
         height, width = 10, 8
         xyz_save = torch.rand(height, width, 3)
 
-        filename = "pointcloud.ply"
-        kornia.geometry.save_pointcloud_ply(filename, xyz_save, True)
+        filename = "pointcloud_binary.ply"
+        kornia.geometry.save_pointcloud_ply_binary(filename, xyz_save)
 
-        xyz_load = kornia.geometry.load_pointcloud_ply(filename, binary=True)
+        xyz_load = kornia.geometry.load_pointcloud_ply_binary(filename)
         self.assert_close(xyz_save.reshape(-1, 3), xyz_load)
+
+        if os.path.exists(filename):
+            os.remove(filename)
+
+    def test_save_pointcloud_binary_with_nan_inf(self):
+        xyz_save = torch.rand(5, 3)
+        xyz_save[0, :] = float("nan")
+        xyz_save[1, 0] = float("inf")
+        filename = "pointcloud_binary_nan_inf.ply"
+        kornia.geometry.save_pointcloud_ply_binary(filename, xyz_save)
+        xyz_load = kornia.geometry.load_pointcloud_ply_binary(filename)
+        expected = xyz_save[torch.isfinite(xyz_save).any(dim=1)]
+
+        # Use numpy to compare with NaNs considered equal
+        np.testing.assert_allclose(
+            expected.detach().cpu().numpy(),
+            xyz_load.detach().cpu().numpy(),
+            atol=1e-9,
+            equal_nan=True,
+        )
 
         if os.path.exists(filename):
             os.remove(filename)
