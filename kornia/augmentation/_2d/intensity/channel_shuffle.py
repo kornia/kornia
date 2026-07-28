@@ -63,7 +63,8 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        out = torch.empty_like(input)
-        for i in range(out.shape[0]):
-            out[i] = input[i, params["channels"][i]]
-        return out
+        # Gather the per-sample channel permutation in one vectorised advanced-index instead of
+        # a Python loop over the batch (which launched a kernel per sample and blocked
+        # torch.compile). `channels` is (B, C); indexing input[(B,1), (B,C)] gives (B, C, H, W).
+        batch_index = torch.arange(input.shape[0], device=input.device).view(-1, 1)
+        return input[batch_index, params["channels"]]

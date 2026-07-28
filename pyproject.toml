@@ -1,7 +1,3 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "kornia"
 description = "Open Source Differentiable Computer Vision Library for PyTorch"
@@ -79,183 +75,29 @@ docs = [
   "sphinxcontrib-youtube",
 ]
 
-[tool.hatch.version]
-path = "kornia/__init__.py"
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["kornia"]
-exclude = ["**/*.md"]  # Exclude markdown files from wheel
+[tool.codeflash]
+module-root = "kornia"
+tests-root = "tests"
+test-framework = "pytest"
+ignore-paths = []
+formatter-cmds = ["disabled"]
 
-[tool.hatch.build.targets.sdist]
-include = ["kornia/", "LICENSE", "README.md"]
+# =============================================================================
+# uv configuration
+# =============================================================================
+# PyTorch: Use standard PyPI version (simpler, more compatible)
+# For CUDA: pixi run -e cuda install (uses reinstall workaround)
+# Note: uv doesn't support per-environment sources
+
+# torch is installed from standard PyPI (no custom index needed)
 
 [tool.codespell]
 ignore-words-list = "ans,hist,laf,cofusion"
 skip = "*.bib,*.ipynb"
-
-[tool.ruff]
-target-version = "py311"
-line-length = 120
-
-[tool.ruff.format]
-skip-magic-trailing-comma = false
-
-[tool.ruff.lint]
-select = [
-  "AIR",  # Airflow
-  "ASYNC",  # flake8-async
-  "B",  # flake8-bugbear
-  "BLE",  # flake8-blind-except
-  "C4",  # flake8-comprehensions
-  "C90",  # McCabe cyclomatic complexity
-  # "CPY",    # Copyright-related rules
-  "DTZ",  # flake8-datetimez
-  "E",  # pycodestyle
-  "F",  # Pyflakes
-  "FLY",  # flynt
-  "I",  # isort
-  "ICN",  # flake8-import-conventions
-  "INT",  # flake8-gettext
-  "NPY",  # NumPy-specific rules
-  "PL",  # Pylint
-  "PYI",  # flake8-pyi
-  "RSE",  # flake8-raise
-  "RUF",  # Ruff-specific rules
-  "S",  # flake8-bandit
-  "SLOT",  # flake8-slots
-  "T10",  # flake8-debugger
-  "TID",  # flake8-tidy-imports
-  "UP",  # pyupgrade
-  "W",  # pycodestyle
-  "YTT",  # flake8-2020
-  # "A",    # flake8-builtins
-  # "ANN",  # flake8-annotations
-  # "ARG",  # flake8-unused-arguments
-  # "COM",  # flake8-commas
-  "D",  # pydocstyle
-  "D400",  # missing-trailing-period
-  # "DJ",   # flake8-django
-  # "EM",   # flake8-errmsg
-  # "ERA",  # eradicate
-  # "EXE",  # flake8-executable
-  # "FA",   # flake8-future-annotations
-  # "FBT",  # flake8-boolean-trap
-  # "FIX",  # flake8-fixme
-  # "G",    # flake8-logging-format
-  # "INP",  # flake8-no-pep420
-  # "ISC",  # flake8-implicit-str-concat
-  # "N",    # pep8-naming
-  # "PD",   # pandas-vet
-  # "PERF", # Perflint
-  # "PGH",  # pygrep-hooks
-  # "PIE",  # flake8-pie
-  # "PT",   # flake8-pytest-style
-  # "PTH",  # flake8-use-pathlib
-  # "Q",    # flake8-quotes
-  # "RET",  # flake8-return
-  # "SIM",  # flake8-simplify
-  # "SLF",  # flake8-self
-  # "T20",  # flake8-print
-  # "TCH",  # flake8-type-checking
-  # "TD",   # flake8-todos
-  # "TRY",  # tryceratops
-]
-ignore = [
-  "B905",  # `zip()` without explicit `strict=` - too many to fix, not a bug
-  "RUF007",  # Prefer `itertools.pairwise()` over `zip()` - style preference
-  "PLR0915",  # Allow condition check in list comprehension
-  "PLC0415",  # `import` should be at the top-level of a file
-  "PLW2901",  # Allow overwritten values on loops
-  "PLW1641",  # Object does not implement `__hash__` method
-  "UP007",  # Prefer Optional[], Union[] over | due to torch jit scripting
-  "UP006",  # Prefer List[], over list due to torch jit scripting
-  "UP035",  # Ignore deprecated typing because of jit scripting
-  "UP045",  # Use `X | None` for type annotations
-  "RUF005",  # Consider `(*points_in_cam_canonical.shape[:-1], 1)` instead of concatenation. Note: breaks JIT.
-  "D100",  # Allow Undocumented public module
-  "D101",  # TODO: Undocumented public class
-  "D102",  # TODO: Undocumented public method
-  "D104",  # TODO: Undocumented public package
-  "D105",  # Allow Undocumented magic method
-  "D107",  # TODO: Undocumented public init
-]
-
-[tool.ruff.lint.pydocstyle]
-convention = "google"
-
-[tool.ruff.lint.isort]
-forced-separate = ["testing", "tests"]
-known-first-party = ["kornia"]
-split-on-trailing-comma = true
-
-[tool.ruff.lint.mccabe]
-max-complexity = 20
-
-[tool.ruff.lint.pylint]
-allow-magic-value-types = ["bytes", "float", "int", "str"]
-max-args = 30  # Recommended: 5
-max-branches = 21  # Recommended: 12
-max-returns = 13  # Recommended: 6
-max-statements = 64  # Recommended: 50
-
-[tool.ruff.lint.per-file-ignores]
-"*/__init__.py" = ["F401", "F403"]  # Allow unused imports and star imports
-"benchmarks/*" = [
-  "BLE",
-  "RUF005",
-  "RUF012",
-  "S101",
-  "S311",
-  "S603",
-  "D",
-]  # allow assert, random, subprocess calls, ignore BLE, mutable class attr
-"docs/*" = [
-  "PLR0912",
-  "PLR0915",
-  "S101",
-  "D",
-]  # allow assert, ignore max branches and statements
-"docs/generate_examples.py" = ["C901"]  # Allow too complex function
-"kornia/__init__.py" = ["I001"]  # Allow unsorted imports
-"kornia/feature/dedode/*" = [
-  "C408",
-  "F401",
-  "F841",
-  "FLY002",
-  "PLR1714",
-]  # allow DINOv2 things
-"testing/*" = [
-  "S101",  # allow assert
-  "D",  # Don't enforce documentation rules
-]
-"tests/*" = [
-  "BLE",
-  "RUF005",
-  "RUF012",
-  "S101",
-  "S311",
-  "B017",  # Check for Exception since KORNIA_CHECK raises it
-  "D",  # Don't enforce documentation rules
-]  # allow assert, random, ignore BLE, mutable class attr
-
-[tool.pytest.ini_options]
-addopts = "--color=yes -v"
-testpaths = ["tests"]
-markers = [
-  "grad: mark a test as gradcheck test",
-  "jit: mark a test as torchscript test",
-  "nn: mark a test as module test",
-  "slow: mark test as slow to run",
-  "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul precision; xfail by default, run with --tf32 to activate",
-]
-filterwarnings = [
-  "ignore::DeprecationWarning:onnxscript.converter",
-]
-# Test configuration via environment variables:
-# KORNIA_TEST_DEVICE: cpu, cuda, mps (default: cpu)
-# KORNIA_TEST_DTYPE: float32, float64, float16, bfloat16 (default: float32)
-# KORNIA_TEST_OPTIMIZER: inductor, jit, etc. (default: inductor)
-# KORNIA_TEST_RUNSLOW: true/false (default: false)
 
 [tool.coverage.run]
 branch = true
@@ -328,34 +170,183 @@ partial_branches = [
   '\# pragma: no cover\b',
 ]
 
+[tool.hatch.version]
+path = "kornia/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["kornia"]
+exclude = ["**/*.md"]  # Exclude markdown files from wheel
+
+[tool.hatch.build.targets.sdist]
+include = ["kornia/", "LICENSE", "README.md"]
+
 [tool.pydocstyle]
 match = '.*\.py'
 
-[tool.codeflash]
-module-root = "kornia"
-tests-root = "tests"
-test-framework = "pytest"
-ignore-paths = []
-formatter-cmds = ["disabled"]
+[tool.pytest.ini_options]
+addopts = "--color=yes -v"
+filterwarnings = [
+  "ignore::DeprecationWarning:onnxscript.converter",
+]
+markers = [
+  "grad: mark a test as gradcheck test",
+  "jit: mark a test as torchscript test",
+  "nn: mark a test as module test",
+  "slow: mark test as slow to run",
+  "tf32: mark a test as sensitive to TF32 (TensorFloat-32) CUDA matmul precision; xfail by default, run with --tf32 to activate",
+]
+testpaths = ["tests"]
+# Test configuration via environment variables:
+# KORNIA_TEST_DEVICE: cpu, cuda, mps (default: cpu)
+# KORNIA_TEST_DTYPE: float32, float64, float16, bfloat16 (default: float32)
+# KORNIA_TEST_OPTIMIZER: inductor, jit, etc. (default: inductor)
+# KORNIA_TEST_RUNSLOW: true/false (default: false)
 
-# =============================================================================
-# uv configuration
-# =============================================================================
-# PyTorch: Use standard PyPI version (simpler, more compatible)
-# For CUDA: pixi run -e cuda install (uses reinstall workaround)
-# Note: uv doesn't support per-environment sources
+[tool.ruff]
+target-version = "py311"
+line-length = 120
 
-# torch is installed from standard PyPI (no custom index needed)
+[tool.ruff.format]
+skip-magic-trailing-comma = false
 
-[[tool.uv.index]]
-name = "pytorch-cu121"
-url = "https://download.pytorch.org/whl/cu121"
-explicit = true
+[tool.ruff.lint]
+select = [
+  "AIR",  # Airflow
+  "ASYNC",  # flake8-async
+  "B",  # flake8-bugbear
+  "BLE",  # flake8-blind-except
+  "C4",  # flake8-comprehensions
+  "C90",  # McCabe cyclomatic complexity
+  # "CPY",    # Copyright-related rules
+  "DTZ",  # flake8-datetimez
+  "E",  # pycodestyle
+  "F",  # Pyflakes
+  "FLY",  # flynt
+  "I",  # isort
+  "ICN",  # flake8-import-conventions
+  "INT",  # flake8-gettext
+  "NPY",  # NumPy-specific rules
+  "PIE",  # flake8-pie
+  "PL",  # Pylint
+  "PYI",  # flake8-pyi
+  "RSE",  # flake8-raise
+  "RUF",  # Ruff-specific rules
+  "S",  # flake8-bandit
+  "SLOT",  # flake8-slots
+  "T10",  # flake8-debugger
+  "TID",  # flake8-tidy-imports
+  "UP",  # pyupgrade
+  "W",  # pycodestyle
+  "YTT",  # flake8-2020
+  # "A",    # flake8-builtins
+  # "ANN",  # flake8-annotations
+  # "ARG",  # flake8-unused-arguments
+  # "COM",  # flake8-commas
+  "D",  # pydocstyle
+  "D400",  # missing-trailing-period
+  # "DJ",   # flake8-django
+  # "EM",   # flake8-errmsg
+  # "ERA",  # eradicate
+  # "EXE",  # flake8-executable
+  # "FA",   # flake8-future-annotations
+  # "FBT",  # flake8-boolean-trap
+  # "FIX",  # flake8-fixme
+  # "G",    # flake8-logging-format
+  # "INP",  # flake8-no-pep420
+  # "ISC",  # flake8-implicit-str-concat
+  # "N",    # pep8-naming
+  # "PD",   # pandas-vet
+  # "PERF", # Perflint
+  # "PGH",  # pygrep-hooks
+  # "PT",   # flake8-pytest-style
+  # "PTH",  # flake8-use-pathlib
+  # "Q",    # flake8-quotes
+  # "RET",  # flake8-return
+  # "SIM",  # flake8-simplify
+  # "SLF",  # flake8-self
+  # "T20",  # flake8-print
+  # "TCH",  # flake8-type-checking
+  # "TD",   # flake8-todos
+  # "TRY",  # tryceratops
+]
+ignore = [
+  "B905",  # `zip()` without explicit `strict=` - too many to fix, not a bug
+  "RUF007",  # Prefer `itertools.pairwise()` over `zip()` - style preference
+  "PLR0915",  # Allow condition check in list comprehension
+  "PLC0415",  # `import` should be at the top-level of a file
+  "PLW2901",  # Allow overwritten values on loops
+  "PLW1641",  # Object does not implement `__hash__` method
+  "PIE796",  # Enums intentionally use duplicate values as aliases (e.g. DataKey.IMAGE/INPUT)
+  "UP007",  # Prefer Optional[], Union[] over | due to torch jit scripting
+  "UP006",  # Prefer List[], over list due to torch jit scripting
+  "UP035",  # Ignore deprecated typing because of jit scripting
+  "UP045",  # Use `X | None` for type annotations
+  "RUF005",  # Consider `(*points_in_cam_canonical.shape[:-1], 1)` instead of concatenation. Note: breaks JIT.
+  "D100",  # Allow Undocumented public module
+  "D101",  # TODO: Undocumented public class
+  "D102",  # TODO: Undocumented public method
+  "D104",  # TODO: Undocumented public package
+  "D105",  # Allow Undocumented magic method
+  "D107",  # TODO: Undocumented public init
+]
 
-[[tool.uv.index]]
-name = "pytorch-cu124"
-url = "https://download.pytorch.org/whl/cu124"
-explicit = true
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+forced-separate = ["testing", "tests"]
+known-first-party = ["kornia"]
+split-on-trailing-comma = true
+
+[tool.ruff.lint.mccabe]
+max-complexity = 20
+
+[tool.ruff.lint.pylint]
+allow-magic-value-types = ["bytes", "float", "int", "str"]
+max-args = 30  # Recommended: 5
+max-branches = 21  # Recommended: 12
+max-returns = 13  # Recommended: 6
+max-statements = 64  # Recommended: 50
+
+[tool.ruff.lint.per-file-ignores]
+"*/__init__.py" = ["F401", "F403"]  # Allow unused imports and star imports
+"benchmarks/*" = [
+  "BLE",
+  "RUF005",
+  "RUF012",
+  "S101",
+  "S311",
+  "S603",
+  "D",
+]  # allow assert, random, subprocess calls, ignore BLE, mutable class attr
+"docs/*" = [
+  "PLR0912",
+  "PLR0915",
+  "S101",
+  "D",
+]  # allow assert, ignore max branches and statements
+"docs/generate_examples.py" = ["C901"]  # Allow too complex function
+"kornia/__init__.py" = ["I001"]  # Allow unsorted imports
+"kornia/feature/dedode/*" = [
+  "C408",
+  "F401",
+  "F841",
+  "FLY002",
+  "PLR1714",
+]  # allow DINOv2 things
+"testing/*" = [
+  "S101",  # allow assert
+  "D",  # Don't enforce documentation rules
+]
+"tests/*" = [
+  "BLE",
+  "RUF005",
+  "RUF012",
+  "S101",
+  "S311",
+  "B017",  # Check for Exception since KORNIA_CHECK raises it
+  "D",  # Don't enforce documentation rules
+]  # allow assert, random, ignore BLE, mutable class attr
 
 [tool.ty.src]
 include = ["kornia"]
@@ -390,3 +381,13 @@ not-iterable = "ignore"
 invalid-assignment = "ignore"
 # Silenced because KORNIA_UNWRAP intentionally uses cast for type narrowing
 redundant-cast = "ignore"
+
+[[tool.uv.index]]
+name = "pytorch-cu121"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true

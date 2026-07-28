@@ -408,7 +408,11 @@ def override_parameters(
         in_place: if to override in-place or not.
 
     """
-    if params_override is None:
+    # Nothing to override (None or an empty kwargs dict — the common forward path): return the
+    # params untouched. This skips a per-call `deepcopy_dict` (a full tensor clone of every
+    # param) that only existed to decouple the copy from the override — with no override there
+    # is nothing to decouple. Matches the pre-existing `None` fast path.
+    if not params_override:
         return params
     out = params if in_place else deepcopy_dict(params)
     for k, v in params_override.items():

@@ -291,6 +291,13 @@ class TestAdjustGamma(BaseTester):
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=torch.float)
         self.gradcheck(kornia.enhance.adjust_gamma, (img, 1.0, 2.0))
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.enhance.adjust_gamma
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img, 1.5), op_optimized(img, 1.5))
+
 
 class TestAdjustContrast(BaseTester):
     @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 3, 3), (4, 3, 3, 1, 1)])
@@ -572,6 +579,13 @@ class TestAdjustContrast(BaseTester):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.enhance.adjust_contrast_with_mean_subtraction, (img, 2.0))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.enhance.adjust_contrast
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img, 1.5), op_optimized(img, 1.5))
 
 
 class TestAdjustBrightness(BaseTester):
@@ -1047,6 +1061,15 @@ class TestSharpness(BaseTester):
         actual = op_script(img, 0.8)
         self.assert_close(actual, expected)
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        img = torch.rand(3, 3, 5, 5, device=device, dtype=dtype)
+        op = kornia.enhance.sharpness
+        op_optimized = torch_optimizer(op)
+        # scalar factor (whole batch) and per-sample factor
+        self.assert_close(op(img, 0.5), op_optimized(img, 0.5))
+        factor = torch.tensor([0.3, 0.7, 1.5], device=device, dtype=dtype)
+        self.assert_close(op(img, factor), op_optimized(img, factor))
+
 
 @pytest.mark.skipif(kornia.core.utils.xla_is_available(), reason="issues with xla device")
 class TestSolarize(BaseTester):
@@ -1129,6 +1152,26 @@ class TestSolarize(BaseTester):
         actual = op_script(img, 0.8)
         self.assert_close(actual, expected)
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        img = torch.rand(3, 3, 5, 5, device=device, dtype=dtype)
+        op = kornia.enhance.solarize
+        op_optimized = torch_optimizer(op)
+        # scalar threshold/addition (whole batch)
+        self.assert_close(op(img, 0.5, 0.1), op_optimized(img, 0.5, 0.1))
+        # per-sample 1-d threshold/addition — the batch-wise path that must stay fullgraph-safe
+        thresholds = torch.tensor([0.3, 0.6, 0.8], device=device, dtype=dtype)
+        additions = torch.tensor([-0.2, 0.0, 0.2], device=device, dtype=dtype)
+        self.assert_close(op(img, thresholds, additions), op_optimized(img, thresholds, additions))
+
+    def test_dynamo_fullgraph(self, device, dtype):
+        img = torch.rand(3, 3, 5, 5, device=device, dtype=dtype)
+        thresholds = torch.tensor([0.3, 0.6, 0.8], device=device, dtype=dtype)
+        additions = torch.tensor([-0.2, 0.0, 0.2], device=device, dtype=dtype)
+        expected = kornia.enhance.solarize(img, thresholds, additions)
+        torch._dynamo.reset()
+        compiled = torch.compile(kornia.enhance.solarize, fullgraph=True)
+        self.assert_close(compiled(img, thresholds, additions), expected)
+
 
 class TestPosterize(BaseTester):
     f = kornia.enhance.posterize
@@ -1200,3 +1243,9 @@ class TestPosterize(BaseTester):
         expected = op(img, 8)
         actual = op_script(img, 8)
         self.assert_close(actual, expected)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+        op = kornia.enhance.posterize
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img, 3), op_optimized(img, 3))

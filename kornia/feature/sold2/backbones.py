@@ -195,7 +195,7 @@ class Hourglass(nn.Module):
 
     def _make_residual(self, block: Type[Bottleneck2D], num_blocks: int, planes: int) -> nn.Module:
         layers = []
-        for _ in range(0, num_blocks):
+        for _ in range(num_blocks):
             layers.append(block(planes * self.expansion, planes))
         return nn.Sequential(*layers)
 

@@ -23,7 +23,6 @@ import torch
 from torch import Size
 
 from kornia.core.ops import eye_like
-from kornia.geometry.bbox import validate_bbox
 from kornia.geometry.linalg import transform_points
 
 __all__ = ["Boxes", "Boxes3D"]
@@ -127,7 +126,6 @@ def _boxes_to_quadrilaterals(boxes: torch.Tensor, mode: str = "xyxy", validate_b
             quadrilaterals = boxes.clone()
         else:
             raise ValueError(f"Unknown mode {mode}")
-        not validate_boxes or validate_bbox(quadrilaterals)
     elif mode.startswith("xy"):
         if mode == "xyxy":
             height, width = boxes[..., 3] - boxes[..., 1], boxes[..., 2] - boxes[..., 0]

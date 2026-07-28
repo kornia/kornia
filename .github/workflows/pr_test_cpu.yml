@@ -82,6 +82,26 @@ jobs:
         model-weights-${{ needs.pre-tests.outputs.hash }}
         model-weights-
 
+  # Runs only the torch.compile / dynamo tests under the inductor backend, which the main
+  # `tests` matrix deselects (KORNIA_TEST_OPTIMIZER=""). Keeps the compile-clean core a
+  # defended floor at PR time. Scoped to a single config and `-k dynamo or compile` so the
+  # extra CI cost is small (only the compile-marked tests actually build inductor graphs).
+  dynamo:
+    needs: [pre-tests]
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ubuntu-latest
+      python-version: '["3.11"]'
+      pytorch-version: '["2.9.1"]'
+      pytorch-dtype: float32
+      optimizer: inductor
+      pytest-extra: 'tests/augmentation tests/enhance tests/filters tests/color tests/losses tests/morphology -k "dynamo or compile"'
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
+
   typecheck:
     needs: [pre-tests]
     uses: ./.github/workflows/typecheck.yml
@@ -91,7 +111,7 @@ jobs:
     uses: ./.github/workflows/tutorials.yml
 
   collector:
-    needs: [tests, typecheck]
+    needs: [tests, dynamo, typecheck]
     if: always()
     runs-on: ubuntu-latest
     steps:

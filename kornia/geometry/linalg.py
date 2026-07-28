@@ -209,6 +209,12 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
         raise ValueError(f"Last input dimensions must differ by one unit Got{trans_01} and {points_1}")
 
+    # No points to transform (e.g. an image chip with no annotations): transforming an empty set
+    # yields the same empty set. Return early — the reshape below cannot infer ``-1`` from a
+    # 0-element tensor, so this also avoids a spurious crash on valid empty inputs.
+    if points_1.shape[-2] == 0:
+        return points_1
+
     # We reshape to BxNxD in case we get more dimensions, e.g., MxBxNxD
     shape_inp = list(points_1.shape)
     points_1 = points_1.reshape(-1, points_1.shape[-2], points_1.shape[-1])

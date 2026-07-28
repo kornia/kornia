@@ -25,7 +25,7 @@ import torch.nn.functional as F
 from kornia.constants import pi
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _torch_inverse_cast
+from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast
 
 __all__ = [
     "ARKitQTVecs_to_ColmapQTVecs",
@@ -637,11 +637,6 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input must be a tensor of shape Nx4 or 4. Got {quaternion.shape}")
 
     # unpack input and compute conversion
-    q1: torch.Tensor = torch.tensor([])
-    q2: torch.Tensor = torch.tensor([])
-    q3: torch.Tensor = torch.tensor([])
-    cos_theta: torch.Tensor = torch.tensor([])
-
     cos_theta = quaternion[..., 0]
     q1 = quaternion[..., 1]
     q2 = quaternion[..., 2]
@@ -703,7 +698,6 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     quaternion_scalar: torch.Tensor = torch.cos(norm_q)
 
     # compose quaternion and return
-    quaternion_exp: torch.Tensor = torch.tensor([])
     quaternion_exp = torch.cat((quaternion_scalar, quaternion_vector), dim=-1)
 
     return quaternion_exp
@@ -735,9 +729,6 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
     # unpack quaternion vector and scalar
-    quaternion_vector: torch.Tensor = torch.tensor([])
-    quaternion_scalar: torch.Tensor = torch.tensor([])
-
     quaternion_scalar = quaternion[..., 0:1]
     quaternion_vector = quaternion[..., 1:4]
 
@@ -1088,7 +1079,9 @@ def normalize_homography(
     # compute the transformation pixel/norm for src/dst
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
 
-    src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
+    # Closed-form 3x3 inverse of the (well-conditioned) pixel-normalization matrix: cusolver-free,
+    # so homography normalization runs on the Jetson wheel where ``torch.linalg.inv`` dlopen-fails.
+    src_pix_trans_src_norm = _inverse_3x3_closed_form(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
 
     # compute chain transformations

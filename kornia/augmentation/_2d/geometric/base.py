@@ -136,16 +136,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
         return output
 
-    def apply_non_transform_box(
-        self,
-        input: Boxes,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-    ) -> Boxes:
-        """Process boxes corresponding to the inputs that are no transformation applied."""
-        return input
-
     def apply_transform_box(
         self,
         input: Boxes,
@@ -161,16 +151,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         input = self.apply_non_transform_box(input, params, flags, transform)
         return input.transform_boxes_(transform)
 
-    def apply_non_transform_keypoint(
-        self,
-        input: Keypoints,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-    ) -> Keypoints:
-        """Process keypoints corresponding to the inputs that are no transformation applied."""
-        return input
-
     def apply_transform_keypoint(
         self,
         input: Keypoints,
@@ -185,16 +165,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             transform = self.transform_matrix
         input = self.apply_non_transform_keypoint(input, params, flags, transform)
         return input.transform_keypoints_(transform)
-
-    def apply_non_transform_class(
-        self,
-        input: torch.Tensor,
-        params: Dict[str, torch.Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        """Process class tags corresponding to the inputs that are no transformation applied."""
-        return input
 
     def apply_transform_class(
         self,
@@ -217,7 +187,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = torch.atleast_1d(batch_prob > 0.5)
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -309,7 +279,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     ) -> Boxes:
         output = input.clone()
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = torch.atleast_1d(batch_prob > 0.5)
 
         if transform is None:
             raise RuntimeError("`transform` has to be a torch.Tensor. Got None.")
@@ -349,7 +319,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """
         output = input.clone()
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = torch.atleast_1d(batch_prob > 0.5)
 
         if transform is None:
             raise RuntimeError("`transform` has to be a torch.Tensor. Got None.")

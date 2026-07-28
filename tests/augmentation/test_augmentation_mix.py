@@ -122,6 +122,21 @@ class TestRandomMixUpV2(BaseTester):
         self.assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
         self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.parametrize("p", [0.0, 0.5])
+    def test_partial_batch_passthrough(self, p, device, dtype):
+        # See TestRandomJigsaw.test_partial_batch_passthrough: output batch size must
+        # match the input and unselected samples must be left byte-identical.
+        torch.manual_seed(0)
+        f = RandomMixUpV2(p=p, data_keys=["input"])
+
+        input = torch.rand((12, 3, 8, 8), device=device, dtype=dtype)
+        output = f(input)
+
+        assert output.shape == input.shape
+        untouched = ~(f._params["batch_prob"] > 0.5)
+        if untouched.any():
+            self.assert_close(output[untouched], input[untouched])
+
 
 class TestRandomCutMixV2(BaseTester):
     def test_smoke(self):
@@ -268,6 +283,21 @@ class TestRandomCutMixV2(BaseTester):
             out_label[0, :, 2], torch.tensor([0.5000, 0.5000], device=device, dtype=dtype), rtol=1e-4, atol=1e-4
         )
 
+    @pytest.mark.parametrize("p", [0.0, 0.5])
+    def test_partial_batch_passthrough(self, p, device, dtype):
+        # See TestRandomJigsaw.test_partial_batch_passthrough: output batch size must
+        # match the input and unselected samples must be left byte-identical.
+        torch.manual_seed(0)
+        f = RandomCutMixV2(p=p, data_keys=["input"], use_correct_lambda=True)
+
+        input = torch.rand((12, 3, 8, 8), device=device, dtype=dtype)
+        output = f(input)
+
+        assert output.shape == input.shape
+        untouched = ~(f._params["batch_prob"] > 0.5)
+        if untouched.any():
+            self.assert_close(output[untouched], input[untouched])
+
 
 class TestRandomMosaic(BaseTester):
     def test_smoke(self):
@@ -368,7 +398,10 @@ class TestRandomMosaic(BaseTester):
             dtype=dtype,
         )
 
-        f(input, boxes)
+        out_image, _ = f(input, boxes)
+        # Mosaic resizes to output_size, so we can't assert pass-through identity, but the
+        # batch dimension must be preserved regardless of how many samples are selected.
+        assert out_image.shape[0] == input.shape[0]
 
 
 class TestRandomJigsaw(BaseTester):
@@ -421,6 +454,24 @@ class TestRandomJigsaw(BaseTester):
         input = torch.randn((12, 3, 256, 256), device=device, dtype=dtype)
 
         f(input)
+
+    @pytest.mark.parametrize("p", [0.0, 0.5])
+    def test_partial_batch_passthrough(self, p, device, dtype):
+        # Regression for the partial-batch corruption where apply_transform sliced the
+        # batch down to the to-apply subset and returned it as the whole output.
+        # The output batch size must always equal the input, and samples that were not
+        # selected for the transform must pass through byte-identical.
+        torch.manual_seed(76)
+        f = RandomJigsaw(grid=(2, 2), p=p, data_keys=["input"])
+
+        input = torch.randn((12, 3, 16, 16), device=device, dtype=dtype)
+        output = f(input)
+
+        assert output.shape == input.shape
+        to_apply = f._params["batch_prob"] > 0.5
+        untouched = ~to_apply
+        if untouched.any():
+            self.assert_close(output[untouched], input[untouched])
 
 
 class TestRandomTransplantation(BaseTester):

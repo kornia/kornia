@@ -40,17 +40,18 @@ def mask_ignore_pixels(
     Returns:
         Tuple ``(target, target_mask)``. ``target`` is either the original
         tensor or a copy where ignored labels were replaced by zero.
-        ``target_mask`` is ``None`` when no ignored pixels are present;
-        otherwise it is a boolean tensor with ``True`` at valid positions.
+        ``target_mask`` is ``None`` only when ``ignore_index`` is ``None``;
+        otherwise it is a boolean tensor with ``True`` at valid positions
+        (all-``True`` when no pixels are ignored).
     """
     if ignore_index is None:
         return target, None
 
     target_mask = target != ignore_index
 
-    if target_mask.all():
-        return target, None
-
+    # No data-dependent early-out: always return the mask. When nothing is ignored the mask
+    # is all-True, so the caller's masking is a no-op and `where` leaves `target` unchanged —
+    # identical result to the old early-return, but fullgraph-compilable.
     # map invalid pixels to a valid class (0)
     # they need to be manually excluded from the loss computation after
     target = target.where(target_mask, target.new_zeros(1))

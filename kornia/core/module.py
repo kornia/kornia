@@ -93,10 +93,7 @@ class ImageModule(nn.Module, ImageModuleMixIn, ONNXExportMixin):
                 input_names_to_handle=input_names_to_handle, output_type=output_type
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            if output_type == "pt":
-                self._output_image = self._detach_tensor_to_cpu(_output_image)
-            else:
-                self._output_image = _output_image
+            self._store_output_image(_output_image, output_type)
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image
@@ -170,10 +167,7 @@ class ImageSequential(nn.Sequential, ImageModuleMixIn, ONNXExportMixin):
                 input_names_to_handle=input_names_to_handle, output_type=output_type
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            if output_type == "pt":
-                self._output_image = self._detach_tensor_to_cpu(_output_image)
-            else:
-                self._output_image = _output_image
+            self._store_output_image(_output_image, output_type)
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image

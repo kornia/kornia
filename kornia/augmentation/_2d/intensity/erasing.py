@@ -93,12 +93,31 @@ class RandomErasing(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        _, c, h, w = input.size()
-        values = params["values"].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
+        _, _, h, w = input.size()
+        values = params["values"].view(-1, 1, 1, 1).to(input)
 
+        if self.same_on_batch:
+            # Every sample shares one rectangle, so write that single region directly instead of
+            # building a full-image mask and `where`-blending the whole tensor. Equivalent to the
+            # masked path (the mask covers [x, x+width) x [y, y+height), clipped to the image), but
+            # touches only the erased box — much cheaper for a batch (matches torchvision's slice).
+            # Read the four shared box coords in a single device sync (one ``tolist``) rather than
+            # four separate ``int(...)`` calls.
+            xs, ys, box_w, box_h = (
+                torch.stack([params["xs"][0], params["ys"][0], params["widths"][0], params["heights"][0]])
+                .long()
+                .tolist()
+            )
+            transformed = input.clone()
+            transformed[:, :, ys : ys + box_h, xs : xs + box_w] = values
+            return transformed
+
+        # Broadcast the per-sample fill value (B, 1, 1, 1) and the single-channel mask (B, 1, H, W)
+        # directly in `torch.where` instead of `repeat`-materializing both to full (B, C, H, W).
+        # `where` broadcasts to the input shape, so the result is identical while allocating two
+        # small tensors instead of two image-sized ones.
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
-        mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
-        mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
+        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input)  # (B, 1, H, W)
         transformed = torch.where(mask == 1.0, values, input)
         return transformed
 
@@ -109,14 +128,14 @@ class RandomErasing(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        _, c, h, w = input.size()
+        _, _, h, w = input.size()
 
-        values = params["values"][..., None, None, None].repeat(1, *input.shape[1:]).to(input)
-        # Erase the corresponding areas on masks.
-        values = values.zero_()
+        # Erase the corresponding areas on masks (fill with zeros). Broadcast a scalar zero and the
+        # single-channel mask (B, 1, H, W) in `torch.where` rather than `repeat`-materializing full
+        # (B, C, H, W) tensors — same result, two small allocations instead of two image-sized ones.
+        values = torch.zeros((), dtype=input.dtype, device=input.device)
 
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
-        mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
-        mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
+        mask = bbox_to_mask(bboxes, w, h).unsqueeze(1).to(input)  # (B, 1, H, W)
         transformed = torch.where(mask == 1.0, values, input)
         return transformed

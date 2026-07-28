@@ -19,10 +19,9 @@
 import warnings
 from functools import wraps
 from inspect import isclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Tuple
 
 import torch
-from packaging import version
 
 
 def torch_version() -> str:
@@ -35,6 +34,37 @@ def torch_version() -> str:
         The clean version string (e.g., "2.0.1" from "2.0.1+cu118").
     """
     return torch.__version__.partition("+")[0]
+
+
+def _parse_torch_version(v: str) -> Tuple[int, int, int]:
+    """Parse ``torch.__version__`` into a ``(major, minor, patch)`` int tuple.
+
+    Build metadata (``+cu118``) and any pre-release/dev suffix on a component
+    (``2.4.0rc1``) are dropped, so the result orders identically to the release
+    versions Kornia compares against. Computed once at import time so the
+    ``torch_version_*`` comparators never run a string method — those are the
+    calls ``torch.compile``'s dynamo tracer cannot lower, and reaching them on a
+    hot path (e.g. ``is_autocast_enabled`` in the augmentation base) breaks the
+    whole graph.
+    """
+    base = v.partition("+")[0]
+    parts = base.split(".")
+    nums = []
+    for part in parts[:3]:
+        digits = ""
+        for ch in part:
+            if not ch.isdigit():
+                break
+            digits += ch
+        nums.append(int(digits) if digits else 0)
+    while len(nums) < 3:
+        nums.append(0)
+    return (nums[0], nums[1], nums[2])
+
+
+# Parsed once at import: subsequent comparisons are pure integer-tuple compares,
+# which dynamo constant-folds cleanly (unlike ``partition``/``packaging.version``).
+_TORCH_VERSION: Tuple[int, int, int] = _parse_torch_version(torch.__version__)
 
 
 def torch_version_lt(major: int, minor: int, patch: int) -> bool:
@@ -50,8 +80,7 @@ def torch_version_lt(major: int, minor: int, patch: int) -> bool:
         False otherwise.
 
     """
-    _version = version.parse(torch_version())
-    return _version < version.parse(f"{major}.{minor}.{patch}")
+    return _TORCH_VERSION < (major, minor, patch)
 
 
 def torch_version_le(major: int, minor: int, patch: int) -> bool:
@@ -67,8 +96,7 @@ def torch_version_le(major: int, minor: int, patch: int) -> bool:
         False otherwise.
 
     """
-    _version = version.parse(torch_version())
-    return _version <= version.parse(f"{major}.{minor}.{patch}")
+    return _TORCH_VERSION <= (major, minor, patch)
 
 
 def torch_version_ge(major: int, minor: int, patch: Optional[int] = None) -> bool:
@@ -95,11 +123,9 @@ def torch_version_ge(major: int, minor: int, patch: Optional[int] = None) -> boo
         >>> torch_version_ge(3, 0, 0)  # True if PyTorch >= 3.0.0
         False
     """
-    _version = version.parse(torch_version())
     if patch is None:
-        return _version >= version.parse(f"{major}.{minor}")
-    else:
-        return _version >= version.parse(f"{major}.{minor}.{patch}")
+        return _TORCH_VERSION[:2] >= (major, minor)
+    return _TORCH_VERSION >= (major, minor, patch)
 
 
 def _emit_deprecation_warning(

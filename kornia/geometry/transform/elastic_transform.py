@@ -21,8 +21,8 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.filters import filter2d
-from kornia.filters.kernels import get_gaussian_kernel2d
+from kornia.filters import filter2d_separable
+from kornia.filters.kernels import get_gaussian_kernel1d
 from kornia.geometry.grid import create_meshgrid
 
 __all__ = ["elastic_transform2d"]
@@ -84,15 +84,20 @@ def elastic_transform2d(
     KORNIA_CHECK_SHAPE(noise, ["B", "C", "H", "W"])
 
     device, dtype = image.device, image.dtype
-    # if isinstance(sigma, tuple):
-    #    sigma_t = torch.tensor(sigma, device=device, dtype=dtype)
+
+    # Normalise sigma to a (B, 2) = (sigma_y, sigma_x) tensor, matching get_gaussian_kernel2d.
     if isinstance(sigma, torch.Tensor):
         sigma = sigma.expand(2)[None, ...]
-    #        sigma = sigma.to(device=device, dtype=dtype)
+    else:
+        sigma = torch.tensor([sigma], device=device, dtype=dtype)
+    ksize_y, ksize_x = kernel_size
+    sigma_y, sigma_x = sigma[:, 0, None], sigma[:, 1, None]
 
-    # Get Gaussian kernel for 'y' and 'x' displacement
-    kernel_x = get_gaussian_kernel2d(kernel_size, sigma)  # _t[0].expand(2).unsqueeze(0))
-    kernel_y = get_gaussian_kernel2d(kernel_size, sigma)  # _t[1].expand(2).unsqueeze(0))
+    # The Gaussian used to smooth the displacement field is separable, so filter with two 1-D
+    # passes rather than a full (ksize_y x ksize_x) 2-D convolution: numerically identical up to
+    # float-accumulation order (~1e-7) and ~30-60x cheaper for the default (63, 63) kernel.
+    kernel_1d_x = get_gaussian_kernel1d(ksize_x, sigma_x, device=device, dtype=dtype)
+    kernel_1d_y = get_gaussian_kernel1d(ksize_y, sigma_y, device=device, dtype=dtype)
 
     if isinstance(alpha, torch.Tensor):
         alpha_x = alpha[0]
@@ -101,12 +106,9 @@ def elastic_transform2d(
         alpha_x = torch.tensor(alpha[0], device=device, dtype=dtype)
         alpha_y = torch.tensor(alpha[1], device=device, dtype=dtype)
 
-    # Convolve over a random displacement matrix and scale them with 'alpha'
-    disp_x = noise[:, :1]
-    disp_y = noise[:, 1:]
-
-    disp_x = filter2d(disp_x, kernel=kernel_y, border_type="constant") * alpha_x
-    disp_y = filter2d(disp_y, kernel=kernel_x, border_type="constant") * alpha_y
+    # Convolve over the random displacement matrix and scale by 'alpha'.
+    disp_x = filter2d_separable(noise[:, :1], kernel_1d_x, kernel_1d_y, border_type="constant") * alpha_x
+    disp_y = filter2d_separable(noise[:, 1:], kernel_1d_x, kernel_1d_y, border_type="constant") * alpha_y
 
     # torch.stack and F.normalize displacement
     disp = torch.cat([disp_x, disp_y], 1).permute(0, 2, 3, 1)

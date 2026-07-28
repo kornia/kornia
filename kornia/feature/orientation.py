@@ -112,7 +112,7 @@ class PatchDominantGradientOrientation(nn.Module):
         wo0_big = (1.0 - wo1_big) * mag
         wo1_big = wo1_big * mag
         ang_bins_list = []
-        for i in range(0, self.num_ang_bins):
+        for i in range(self.num_ang_bins):
             ang_bins_i = F.adaptive_avg_pool2d(
                 (bo0_big == i).to(patch.dtype) * wo0_big + (bo1_big == i).to(patch.dtype) * wo1_big, (1, 1)
             )

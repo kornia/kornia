@@ -44,11 +44,7 @@ def math_clamp(x, min_, max_):  # type: ignore
     return min(max(x, min_), max_)
 
 
-AMP_CUSTOM_FWD_F32 = (
-    torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
-    if hasattr(torch, "amp") and hasattr(torch.amp, "custom_fwd")
-    else torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
-)
+AMP_CUSTOM_FWD_F32 = torch.amp.custom_fwd(cast_inputs=torch.float32, device_type="cuda")
 
 
 @AMP_CUSTOM_FWD_F32

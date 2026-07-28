@@ -20,6 +20,7 @@ import pytest
 from kornia.models.dexined import DexiNed
 
 
+@pytest.mark.timeout(120)
 def test_dexined_to_onnx(tmp_path):
     """Ensure `DexiNed.to_onnx` exports a valid ONNX model and saves the file."""
     onnx = pytest.importorskip("onnx")

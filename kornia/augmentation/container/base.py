@@ -24,6 +24,7 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.core.utils import is_exporting
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -91,6 +92,8 @@ class BasicSequentialBase(nn.Sequential):
 
     def clear_state(self) -> None:
         """Reset self._params state to None."""
+        if is_exporting():
+            return
         self._params = None
 
     # TODO: Implement this for all submodules.
@@ -153,8 +156,6 @@ class SequentialBase(BasicSequentialBase):
         *args : a list of kornia augmentation and image operation modules.
         same_on_batch: apply the same transformation across the batch.
             If None, it will not overwrite the function-wise settings.
-        return_transform: if ``True`` return the matrix describing the transformation
-            applied to each. If None, it will not overwrite the function-wise settings.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False). If None, it will not overwrite the function-wise settings.
 
@@ -170,25 +171,22 @@ class SequentialBase(BasicSequentialBase):
     def update_attribute(
         self,
         same_on_batch: Optional[bool] = None,
-        return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
     ) -> None:
         """Propagate sequence-level flags to child augmentation modules.
 
         Args:
             same_on_batch: Override for ``same_on_batch``.
-            return_transform: Reserved for compatibility with older interfaces.
             keepdim: Override for ``keepdim``.
         """
         for mod in self.children():
-            # MixAugmentation does not have return transform
             if isinstance(mod, (_AugmentationBase, K.MixAugmentationBaseV2)):
                 if same_on_batch is not None:
                     mod.same_on_batch = same_on_batch
                 if keepdim is not None:
                     mod.keepdim = keepdim
             if isinstance(mod, SequentialBase):
-                mod.update_attribute(same_on_batch, return_transform, keepdim)
+                mod.update_attribute(same_on_batch, keepdim)
 
     @property
     def same_on_batch(self) -> Optional[bool]:
@@ -452,7 +450,8 @@ class ImageSequentialBase(SequentialBase):
 
         input = self.transform_inputs(input, params=params, extra_args=extra_args)
 
-        self._params = params
+        if not is_exporting():
+            self._params = params
         return input
 
 
@@ -501,11 +500,15 @@ class TransformMatrixMinIn:
             )
 
     def _update_transform_matrix(self, transform_matrix: Optional[torch.Tensor]) -> None:
+        if is_exporting():
+            return
         if self._transform_matrix is None:
             self._transform_matrix = transform_matrix
         else:
             self._transform_matrix = transform_matrix @ self._transform_matrix
 
     def _reset_transform_matrix_state(self) -> None:
+        if is_exporting():
+            return
         self._transform_matrix = None
         self._transform_matrices = []

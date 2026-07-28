@@ -113,7 +113,10 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
                     expected_device=device,
                 )
     if device is None:
-        device = torch.get_default_device()
+        # `torch.empty(0).device` reads the current default device and, unlike
+        # `torch.get_default_device()`, is traceable by dynamo — so this helper stays
+        # fullgraph-compilable even when a caller can't prove a tensor is in the list.
+        device = torch.empty(0).device
     if dtype is None:
         dtype = torch.get_default_dtype()
     return (device, dtype)
@@ -148,6 +151,22 @@ def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
         well-conditioned matrices; behavior on singular matrices is undefined
         (no explicit check, same as ``torch.linalg.inv`` itself).
     """
+    if not torch.jit.is_tracing():
+        # inv(M) = adj(M) / det, and for a 3x3 the adjugate rows are cross products of the
+        # columns: with columns (a, b, c), the inverse rows are (b x c, c x a, a x b) / det,
+        # det = a . (b x c). Three fused ``cross`` ops instead of nine scalar cofactor
+        # expressions and four stacks — far fewer kernel launches (dominant on small matrices).
+        col_a = input[..., :, 0]
+        col_b = input[..., :, 1]
+        col_c = input[..., :, 2]
+        row0 = torch.linalg.cross(col_b, col_c, dim=-1)
+        row1 = torch.linalg.cross(col_c, col_a, dim=-1)
+        row2 = torch.linalg.cross(col_a, col_b, dim=-1)
+        det = (col_a * row0).sum(-1)
+        return torch.stack([row0, row1, row2], dim=-2) / det[..., None, None]
+
+    # Under tracing (legacy ONNX / jit.trace) stick to the plain scalar adjugate: it lowers to
+    # basic arithmetic that every opset supports, whereas ``cross`` may not.
     a = input[..., 0, 0]
     b = input[..., 0, 1]
     c = input[..., 0, 2]
@@ -334,6 +353,20 @@ def is_autocast_enabled(both: bool = True) -> bool:
             return torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()
 
     return torch.is_autocast_enabled()
+
+
+# ``torch.compiler.is_exporting`` is absent on very old torch; resolve it once at import.
+_torch_is_exporting = getattr(torch.compiler, "is_exporting", None)
+
+
+def is_exporting() -> bool:
+    """Whether execution is inside a ``torch.export`` capture.
+
+    Used to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that
+    ``torch.export`` on torch <= 2.9 rejects, without changing the captured output. Returns
+    ``False`` on torch versions where ``torch.compiler.is_exporting`` is unavailable.
+    """
+    return bool(_torch_is_exporting()) if _torch_is_exporting is not None else False
 
 
 def dataclass_to_dict(obj: Any) -> Any:

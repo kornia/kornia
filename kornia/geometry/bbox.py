@@ -138,7 +138,6 @@ def infer_bbox_shape(boxes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         (tensor([2., 2.]), tensor([2., 3.]))
 
     """
-    validate_bbox(boxes)
     width: torch.Tensor = boxes[:, 1, 0] - boxes[:, 0, 0] + 1
     height: torch.Tensor = boxes[:, 2, 1] - boxes[:, 0, 1] + 1
     return height, width
@@ -224,7 +223,10 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
                  [0., 0., 0., 0., 0.]]])
 
     """
-    validate_bbox(boxes)
+    # NOTE: `validate_bbox`'s boolean result was previously computed here and discarded — it
+    # never raised, so it performed no validation while adding a data-dependent graph break
+    # (`torch.any(...)` -> Python `if`) that blocked torch.compile fullgraph (e.g. RandomErasing,
+    # which builds its mask through this function). Dropped; behaviour is byte-identical.
     # zero padding the surroundings
     yy = torch.arange(height, device=boxes.device, dtype=boxes.dtype).view(height, 1)
     xx = torch.arange(width, device=boxes.device, dtype=boxes.dtype).view(1, width)
@@ -232,7 +234,12 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     y_min = boxes[:, 0, 1].view(-1, 1, 1)
     x_max = boxes[:, 2, 0].view(-1, 1, 1)
     y_max = boxes[:, 2, 1].view(-1, 1, 1)
-    mask = (xx >= x_min) & (xx <= x_max) & (yy >= y_min) & (yy <= y_max)
+    # Reduce along each axis first (cheap ``(B, 1, W)`` and ``(B, H, 1)`` ands), then combine once.
+    # The previous ``a & b & c & d`` chained two full ``(B, H, W)`` ands; this does a single one —
+    # byte-identical result, half the full-grid work (the dominant cost when masking large images).
+    x_in = (xx >= x_min) & (xx <= x_max)
+    y_in = (yy >= y_min) & (yy <= y_max)
+    mask = x_in & y_in
     return mask.to(boxes.dtype)
 
 
@@ -365,16 +372,22 @@ def bbox_generator(
             f"`width`({width.device}), `height`({height.device})."
         )
 
-    bbox = torch.tensor([[[0, 0], [0, 0], [0, 0], [0, 0]]], device=x_start.device, dtype=x_start.dtype).repeat(
-        1 if x_start.dim() == 0 else len(x_start), 1, 1
+    # Build the four corners (TL, TR, BR, BL) directly by stacking instead of allocating a zero
+    # tensor and mutating it with six indexed in-place adds (each of which is a separate kernel /
+    # copy). `.view(-1)` treats a scalar input as batch-1, matching the previous ``repeat`` shape.
+    x0 = x_start.view(-1)
+    y0 = y_start.view(-1)
+    x1 = x0 + width.view(-1) - 1
+    y1 = y0 + height.view(-1) - 1
+    bbox = torch.stack(
+        [
+            torch.stack([x0, y0], dim=-1),
+            torch.stack([x1, y0], dim=-1),
+            torch.stack([x1, y1], dim=-1),
+            torch.stack([x0, y1], dim=-1),
+        ],
+        dim=-2,
     )
-
-    bbox[:, :, 0] += x_start.view(-1, 1)
-    bbox[:, :, 1] += y_start.view(-1, 1)
-    bbox[:, 1, 0] += width - 1
-    bbox[:, 2, 0] += width - 1
-    bbox[:, 2, 1] += height - 1
-    bbox[:, 3, 1] += height - 1
 
     return bbox
 

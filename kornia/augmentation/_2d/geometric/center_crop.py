@@ -22,7 +22,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
+from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform
 
 
 class CenterCrop(GeometricAugmentationBase2D):
@@ -138,7 +138,17 @@ class CenterCrop(GeometricAugmentationBase2D):
                 flags["align_corners"],
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
-            return crop_by_indices(input, params["src"], flags["size"])
+            # A centered crop of a static size is deterministic: the crop box is uniform across
+            # the batch and depends only on the (symbolic) input shape, so slice directly instead
+            # of routing through `crop_by_indices`, whose `x.unique()` uniformity probe and
+            # `int(coord_tensor[i])` indexing break torch.compile fullgraph. The offsets match
+            # `center_crop_generator` (`int(dim/2 - size/2)` == `(dim - size) // 2` for size <=
+            # dim, which the generator guarantees) and the slice equals the requested size, so
+            # this is byte-identical.
+            crop_h, crop_w = int(flags["size"][0]), int(flags["size"][1])
+            top = (input.shape[-2] - crop_h) // 2
+            left = (input.shape[-1] - crop_w) // 2
+            return input[..., top : top + crop_h, left : left + crop_w]
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def inverse_transform(
