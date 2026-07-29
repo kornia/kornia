@@ -38,5 +38,5 @@ class TestELoFTR(BaseTester):
         with torch.no_grad():
             out = eloftr(data_dev)
 
-        self.assert_close(data_dev["keypoints0"].shape, out["keypoints0"].shape, rtol=1, atol=1)
-        self.assert_close(data_dev["keypoints1"].shape, out["keypoints1"].shape, rtol=1, atol=1)
+        self.assert_close(out["keypoints0"], data_dev["keypoints0"])
+        self.assert_close(out["keypoints1"], data_dev["keypoints1"])

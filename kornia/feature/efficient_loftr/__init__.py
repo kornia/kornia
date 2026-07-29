@@ -17,4 +17,4 @@
 
 from __future__ import annotations
 
-from .effiicient_loftr import EfficientLoFTR
+from .efficient_loftr import EfficientLoFTR

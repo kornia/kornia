@@ -118,6 +118,7 @@ class EfficientLoFTR(nn.Module):
                 urls[pretrained], map_location=torch.device("cpu"), weights_only=True
             )
             self.load_state_dict(pretrained_dict["state_dict"])
+            reparameter(self)
         self.eval()
 
     def forward(self, data: dict[str, Tensor]) -> dict[str, Tensor]:
