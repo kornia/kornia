@@ -89,3 +89,28 @@ class KimiVLConfig:
             self.vision_config = MoonViTConfig()
         if self.projector_config is None:
             self.projector_config = KimiVLProjectorConfig()
+
+
+def _kimi_vl_a3b_instruct_config() -> KimiVLConfig:
+    """Return the configuration for the supported pretrained Kimi-VL-A3B-Instruct model."""
+    vision_config = MoonViTConfig(
+        image_size=336,
+        patch_size=14,
+        num_channels=3,
+        hidden_size=1152,
+        num_hidden_layers=27,
+        num_attention_heads=16,
+        intermediate_size=4304,
+        hidden_act="gelu",
+        layer_norm_eps=1e-6,
+        dropout_p=0.0,
+        attention_dropout_p=0.0,
+        rope_theta=800000.0,
+    )
+    projector_config = KimiVLProjectorConfig(
+        input_dim=1152,
+        hidden_dim=4608,
+        output_dim=2048,
+        dropout_p=0.0,
+    )
+    return KimiVLConfig(vision_config=vision_config, projector_config=projector_config)

@@ -15,10 +15,14 @@
 # limitations under the License.
 #
 
+import sys
+from types import ModuleType
+
 import pytest
 import torch
 
-from kornia.models.kimi_vl import KimiVLConfig, KimiVLModel
+import kornia.models.kimi_vl.builder as kimi_vl_builder
+from kornia.models.kimi_vl import KimiVLBuilder, KimiVLConfig, KimiVLModel
 from kornia.models.kimi_vl.config import KimiVLProjectorConfig, MoonViTConfig
 from kornia.models.kimi_vl.model import KimiVLProjector
 from kornia.models.kimi_vl.moonvit import MoonViT, MoonViTAttention, MoonViTEncoder, MoonViTRotaryEmbedding
@@ -47,6 +51,47 @@ def config():
 @pytest.fixture
 def model(device, dtype, config):
     return KimiVLModel(config).to(device, dtype)
+
+
+class TestKimiVLBuilder(BaseTester):
+    def test_from_config(self, config):
+        model = KimiVLBuilder.from_config(config)
+
+        assert isinstance(model, KimiVLModel)
+        assert model.config is config
+
+    def test_from_pretrained_hf(self, config, monkeypatch):
+        expected = KimiVLBuilder.from_config(config)
+        calls = []
+        monkeypatch.setitem(sys.modules, "huggingface_hub", ModuleType("huggingface_hub"))
+
+        def download_weights(model_name, cache_dir):
+            calls.append((model_name, cache_dir))
+            return expected.state_dict()
+
+        monkeypatch.setattr(kimi_vl_builder, "_download_weights", download_weights)
+        monkeypatch.setattr(KimiVLBuilder, "_from_state_dict", lambda state_dict: expected)
+
+        actual = KimiVLBuilder.from_pretrained_hf(cache_dir="cache")
+
+        assert actual is expected
+        assert calls == [(kimi_vl_builder._KIMI_VL_A3B_INSTRUCT_REPO_ID, "cache")]
+
+    def test_from_checkpoint(self, config, monkeypatch):
+        expected = KimiVLBuilder.from_config(config)
+        calls = []
+
+        def load_checkpoint(checkpoint):
+            calls.append(checkpoint)
+            return expected.state_dict()
+
+        monkeypatch.setattr(kimi_vl_builder, "_load_checkpoint", load_checkpoint)
+        monkeypatch.setattr(KimiVLBuilder, "_from_state_dict", lambda state_dict: expected)
+
+        actual = KimiVLBuilder.from_checkpoint("model.safetensors")
+
+        assert actual is expected
+        assert calls == ["model.safetensors"]
 
 
 class TestKimiVLModel(BaseTester):
