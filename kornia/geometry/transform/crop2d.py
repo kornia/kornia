@@ -370,7 +370,7 @@ def crop_by_indices(
 
     if size is None:
         h, w = infer_bbox_shape(src)
-        if B > 0 and not ((h == h[0]).all() and (w == w[0]).all()):
+        if B > 0 and ((h != h[0]).any() | (w != w[0]).any()).item():
             raise ValueError(
                 "All boxes in the batch must have the same height and width when `size` is None. "
                 "Please pass `size` explicitly when box dimensions vary across the batch."
