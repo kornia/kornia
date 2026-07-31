@@ -98,6 +98,34 @@ The `SegmentationModelsBuilder` class offers a flexible API for implementing and
        segmented_output = model(input_tensor)
        print(segmented_output.shape)
 
+.. _KimiVLBuilder:
+
+KimiVLBuilder
+-------------
+
+The `KimiVLBuilder` class constructs Kimi-VL models from a configuration or downloads pretrained weights. Pretrained
+loading currently supports only the converted Kimi-VL-A3B-Instruct vision encoder and projector checkpoint.
+
+**Key Methods:**
+
+- `from_config`: Constructs a randomly initialized Kimi-VL model from a `KimiVLConfig`.
+- `from_pretrained_hf`: Downloads and strictly loads the supported pretrained checkpoint.
+
+.. autoclass:: kornia.models.kimi_vl.KimiVLBuilder
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+   .. rubric:: Example
+
+   The following code loads the supported pretrained Kimi-VL vision model:
+
+   .. code-block:: python
+
+       from kornia.models.kimi_vl import KimiVLBuilder
+
+       model = KimiVLBuilder.from_pretrained_hf().eval()
+
 .. _BoxMotTracker:
 
 BoxMotTracker
