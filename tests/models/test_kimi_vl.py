@@ -15,8 +15,7 @@
 # limitations under the License.
 #
 
-import sys
-from types import ModuleType
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -60,38 +59,17 @@ class TestKimiVLBuilder(BaseTester):
         assert isinstance(model, KimiVLModel)
         assert model.config is config
 
-    def test_from_pretrained_hf(self, config, monkeypatch):
+    def test_from_pretrained_hf(self, config):
         expected = KimiVLBuilder.from_config(config)
-        calls = []
-        monkeypatch.setitem(sys.modules, "huggingface_hub", ModuleType("huggingface_hub"))
+        with (
+            patch("torch.hub.load_state_dict_from_url", return_value=expected.state_dict()) as mock_download,
+            patch.object(kimi_vl_builder, "_kimi_vl_a3b_instruct_config", return_value=config),
+        ):
+            actual = KimiVLBuilder.from_pretrained_hf()
 
-        def download_weights(model_name, cache_dir):
-            calls.append((model_name, cache_dir))
-            return expected.state_dict()
-
-        monkeypatch.setattr(kimi_vl_builder, "_download_weights", download_weights)
-        monkeypatch.setattr(KimiVLBuilder, "_from_state_dict", lambda state_dict: expected)
-
-        actual = KimiVLBuilder.from_pretrained_hf(cache_dir="cache")
-
-        assert actual is expected
-        assert calls == [(kimi_vl_builder._KIMI_VL_A3B_INSTRUCT_REPO_ID, "cache")]
-
-    def test_from_checkpoint(self, config, monkeypatch):
-        expected = KimiVLBuilder.from_config(config)
-        calls = []
-
-        def load_checkpoint(checkpoint):
-            calls.append(checkpoint)
-            return expected.state_dict()
-
-        monkeypatch.setattr(kimi_vl_builder, "_load_checkpoint", load_checkpoint)
-        monkeypatch.setattr(KimiVLBuilder, "_from_state_dict", lambda state_dict: expected)
-
-        actual = KimiVLBuilder.from_checkpoint("model.safetensors")
-
-        assert actual is expected
-        assert calls == ["model.safetensors"]
+        assert isinstance(actual, KimiVLModel)
+        assert actual.config is config
+        mock_download.assert_called_once_with(kimi_vl_builder._KIMI_VL_A3B_INSTRUCT_URL, map_location="cpu")
 
 
 class TestKimiVLModel(BaseTester):
