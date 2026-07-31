@@ -172,7 +172,7 @@ class ParametrizedLine(nn.Module):
         res_lambda = torch.where(
             dot_prod_mask,
             -(plane.offset + batched_dot_product(plane.normal.data, self.origin.data)) / dot_prod,
-            torch.empty_like(dot_prod),
+            torch.zeros_like(dot_prod),
         )
 
         res_point = self.point_at(res_lambda)
