@@ -160,12 +160,14 @@ def _compute_luts(
 
     b, gh, gw, c, th, tw = tiles_x_im.shape
     pixels: int = th * tw
-    tiles: torch.Tensor = tiles_x_im.view(-1, pixels)  # test with view  # T x (THxTW)
+    tiles: torch.Tensor = tiles_x_im.view(-1, pixels)  # T x (THxTW)
     if not diff:
         if torch.jit.is_scripting():
             histos = torch.stack([_torch_histc_cast(tile, bins=num_bins, min=0, max=1) for tile in tiles])
         else:
-            histos = torch.stack(list(map(_my_histc, tiles, [num_bins] * len(tiles))))
+            # Vectorized histogram computation across tiles to eliminate Python loops and GPU sync
+            vmap_histc = torch.vmap(lambda tile: _torch_histc_cast(tile, bins=num_bins, min=0, max=1))
+            histos = vmap_histc(tiles)
     else:
         bins: torch.Tensor = torch.linspace(0, 1, num_bins, device=tiles.device)
         histos = histogram(tiles, bins, torch.tensor(0.001)).squeeze()
@@ -200,7 +202,7 @@ def _map_luts(interp_tiles: torch.Tensor, luts: torch.Tensor) -> torch.Tensor:
         luts: luts for each one of the original tiles. (B, GH, GW, C, 256)
 
     Returns:
-         mapped luts (B, 2GH, 2GW, 4, C, 256)
+        mapped luts (B, 2GH, 2GW, 4, C, 256)
 
     """
     if interp_tiles.dim() != 6:
@@ -379,9 +381,6 @@ def equalize_clahe(
 
     imgs: torch.Tensor = input  # B x C x H x W
 
-    # hist_tiles: torch.Tensor  # B x GH x GW x C x TH x TW  # not supported by JIT
-    # img_padded: torch.Tensor  # B x C x H' x W'  # not supported by JIT
-    # the size of the tiles must be even in order to divide them into 4 tiles for the interpolation
     hist_tiles, img_padded = _compute_tiles(imgs, grid_size, True)
     tile_size: Tuple[int, int] = (hist_tiles.shape[-2], hist_tiles.shape[-1])
     interp_tiles: torch.Tensor = _compute_interpolation_tiles(img_padded, tile_size)  # B x 2GH x 2GW x C x TH/2 x TW/2
@@ -390,13 +389,10 @@ def equalize_clahe(
     )  # B x GH x GW x C x 256
     equalized_tiles: torch.Tensor = _compute_equalized_tiles(interp_tiles, luts)  # B x 2GH x 2GW x C x TH/2 x TW/2
 
-    # reconstruct the images form the tiles
-    #    try permute + contiguous + view
     eq_imgs: torch.Tensor = equalized_tiles.permute(0, 3, 1, 4, 2, 5).reshape_as(img_padded)
     h, w = imgs.shape[-2:]
     eq_imgs = eq_imgs[..., :h, :w]  # crop imgs if they were padded
 
-    # remove batch if the input was not in batch form
     if input.dim() != eq_imgs.dim():
         eq_imgs = eq_imgs.squeeze(0)
 
