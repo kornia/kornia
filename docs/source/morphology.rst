@@ -19,6 +19,6 @@ Interactive Demo
 ~~~~~~~~~~~~~~~~
 .. raw:: html
 
-    <gradio-app src="kornia/morphological_operators"></gradio-app>
+    <gradio-app src="https://kornia-morphological-operators.hf.space"></gradio-app>
 
 Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/morphological_operators>`_.

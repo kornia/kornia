@@ -737,7 +737,7 @@ class Resize(nn.Module):
 
     .. raw:: html
 
-        <gradio-app src="kornia/kornia-resize-antialias"></gradio-app>
+        <gradio-app src="https://kornia-kornia-resize-antialias.hf.space"></gradio-app>
 
     """
 
