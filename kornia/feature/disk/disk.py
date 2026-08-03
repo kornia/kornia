@@ -48,7 +48,7 @@ class DISK(nn.Module):
 
     """
 
-    def __init__(self, desc_dim: int = 128, unet: None | nn.Module = None) -> None:
+    def __init__(self, desc_dim: int = 128, unet: nn.Module | None = None) -> None:
         super().__init__()
 
         self.desc_dim = desc_dim

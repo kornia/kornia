@@ -985,7 +985,7 @@ class Rotate(nn.Module):
     ) -> None:
         super().__init__()
         self.angle: torch.Tensor = angle
-        self.center: Union[None, torch.Tensor] = center
+        self.center: Union[torch.Tensor, None] = center
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners
@@ -1098,7 +1098,7 @@ class Scale(nn.Module):
     ) -> None:
         super().__init__()
         self.scale_factor: torch.Tensor = scale_factor
-        self.center: Union[None, torch.Tensor] = center
+        self.center: Union[torch.Tensor, None] = center
         self.mode: str = mode
         self.padding_mode: str = padding_mode
         self.align_corners: bool = align_corners

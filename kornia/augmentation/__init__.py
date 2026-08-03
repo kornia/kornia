@@ -180,7 +180,6 @@ __all__ = [
     "RandomPlasmaShadow",
     "RandomPosterize",
     "RandomRGBShift",
-    "RandomRGBShift",
     "RandomRain",
     "RandomResizedCrop",
     "RandomRotation",

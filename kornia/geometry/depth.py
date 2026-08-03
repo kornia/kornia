@@ -363,8 +363,8 @@ class DepthWarper(nn.Module):
         if not isinstance(pinhole_dst, PinholeCamera):
             raise TypeError(f"Expected pinhole_dst as PinholeCamera, got {type(pinhole_dst)}")
         self._pinhole_dst: PinholeCamera = pinhole_dst
-        self._pinhole_src: None | PinholeCamera = None
-        self._dst_proj_src: None | torch.Tensor = None
+        self._pinhole_src: PinholeCamera | None = None
+        self._dst_proj_src: torch.Tensor | None = None
 
         # Meshgrid only depends on (height, width), can be staticmethod cached
         self.grid: torch.Tensor = self._create_meshgrid(height, width)
