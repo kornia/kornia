@@ -8,7 +8,7 @@ Follow the coding standards and best practices defined in [CONTRIBUTING.md](../C
 
 ## AI Policy
 
-**CRITICAL**: All contributions must comply with the [AI_POLICY.md](AI_POLICY.md). Review that document for complete requirements.
+**CRITICAL**: All contributions must comply with the [AI_POLICY.md](../AI_POLICY.md). Review that document for complete requirements.
 
 ### Core Principles:
 - Code and comments must not be direct, unreviewed outputs of AI agents
@@ -20,11 +20,11 @@ Follow the coding standards and best practices defined in [CONTRIBUTING.md](../C
 
 AI-based reviewers (e.g. GitHub Copilot, CodeRabbit) must follow the repository's AI usage policy and review rules.
 
-For the complete and authoritative AI reviewer instructions, see [AI_POLICY.md](AI_POLICY.md), section 3.
+For the complete and authoritative AI reviewer instructions, see [AI_POLICY.md](../AI_POLICY.md), section 3.
 
 When generating or reviewing suggestions, prefer:
 - Enforcing the coding standards in [CONTRIBUTING.md](../CONTRIBUTING.md#coding-standards)
-- Enforcing the AI usage rules and review heuristics defined in [AI_POLICY.md](AI_POLICY.md)
+- Enforcing the AI usage rules and review heuristics defined in [AI_POLICY.md](../AI_POLICY.md)
 - Highlighting missing tests, missing proof of local execution, and misuse of `kornia` vs. raw PyTorch utilities
 ## Key Guidelines
 
@@ -50,7 +50,7 @@ When reviewing code changes, verify:
 
 - Code and comments are not direct, unreviewed AI agent outputs
 - Code follows guidelines in [CONTRIBUTING.md](../CONTRIBUTING.md)
-- Code complies with [AI_POLICY.md](AI_POLICY.md)
+- Code complies with [AI_POLICY.md](../AI_POLICY.md)
 - Tests are included for new functionality
 - Code passes `pixi run lint` and `pixi run typecheck`
 - PR includes proof of local test execution (test logs)

@@ -1,0 +1,38 @@
+name: Doc links
+
+on:
+  pull_request:
+    paths:
+      - '**.md'
+      - '.github/scripts/check_doc_links.py'
+      - '.github/workflows/doc-links.yml'
+  schedule:
+    - cron: '35 6 * * 1'  # Mondays, 06:35 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  links:
+    name: Check documentation links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Offline on pull requests: relative links and the email inventory
+      # only. This repo has ~195 external links, so probing them on every
+      # PR would be slow and would fail on unrelated third-party outages.
+      - name: Check links (offline)
+        if: github.event_name == 'pull_request'
+        run: python3 .github/scripts/check_doc_links.py --offline
+
+      # Networked weekly, where a failure is a red cron job rather than a
+      # blocked pull request.
+      - name: Check links (including external)
+        if: github.event_name != 'pull_request'
+        run: python3 .github/scripts/check_doc_links.py
