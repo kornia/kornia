@@ -1,4 +1,22 @@
 #!/usr/bin/env python3
+
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Check that links in the org's markdown documents still resolve.
 
 Written after an audit found several dead pointers in Kornia's docs that
@@ -44,9 +62,7 @@ errors: list[str] = []
 notes: list[str] = []
 
 # Things that look like an address but are not a mailbox.
-NOT_MAILBOXES = re.compile(
-    r"@(?:\d+x)?\.(?:png|jpe?g|svg|gif|webp|ico)$|^git@", re.I
-)
+NOT_MAILBOXES = re.compile(r"@(?:\d+x)?\.(?:png|jpe?g|svg|gif|webp|ico)$|^git@", re.I)
 
 COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 FENCE_RE = re.compile(r"^```.*?^```", re.S | re.M)
@@ -66,6 +82,7 @@ def strip_noncontent(text: str) -> str:
 
 
 def markdown_files() -> list[Path]:
+    """Return every markdown file in the repository, skipping vendored trees."""
     out: list[Path] = []
     for p in ROOT.rglob("*.md"):
         if any(part in SKIP_DIRS for part in p.parts):
@@ -75,9 +92,18 @@ def markdown_files() -> list[Path]:
 
 
 def probe(url: str) -> tuple[str, object]:
-    req = urllib.request.Request(url, headers={"User-Agent": UA}, method="GET")
+    """Fetch a URL and classify it as ok, dead or unverified.
+
+    Only http and https are ever requested; the scheme is checked here rather
+    than trusted from the caller, which is also what makes the urlopen below
+    safe to allow past ruff's S310.
+    """
+    if urlparse(url).scheme not in {"http", "https"}:
+        return "unverified", "unsupported scheme"
+
+    req = urllib.request.Request(url, headers={"User-Agent": UA}, method="GET")  # noqa: S310 - scheme checked above
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:  # noqa: S310 - scheme checked above
             return "ok", resp.status
     except urllib.error.HTTPError as exc:
         if exc.code in (404, 410):
@@ -92,7 +118,82 @@ def probe(url: str) -> tuple[str, object]:
         return "unverified", type(exc).__name__
 
 
+def classify_target(path: Path, target: str, external: dict[str, list[str]], emails: dict[str, list[str]]) -> None:
+    """Sort one link into the external map, the email map, or a relative-path check."""
+    rel = str(path.relative_to(ROOT))
+    target = target.strip()
+    if not target:
+        return
+
+    if target.startswith("mailto:"):
+        emails.setdefault(target[7:], []).append(rel)
+        return
+
+    parsed = urlparse(target)
+    if parsed.scheme in {"http", "https"}:
+        external.setdefault(target, []).append(rel)
+        return
+    if parsed.scheme:
+        return  # tel:, data:, etc.
+    if target.startswith("#"):
+        return  # in-document anchor; heading slugs are not worth guessing
+
+    if not (path.parent / parsed.path).resolve().exists():
+        errors.append(f"{rel}: relative link '{target}' does not exist on disk")
+
+
+def collect(files: list[Path]) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Scan every file and return the external links and email addresses found."""
+    external: dict[str, list[str]] = {}
+    emails: dict[str, list[str]] = {}
+
+    for path in files:
+        body = strip_noncontent(path.read_text(encoding="utf-8"))
+        for target in set(LINK_RE.findall(body)) | set(AUTOLINK_RE.findall(body)):
+            classify_target(path, target, external, emails)
+
+        # Bare addresses in prose, outside markdown link syntax. The trailing
+        # group must not be [\w.-]+, or a sentence-ending period is swallowed
+        # into the address ("hello@kornia.org." is not the mailbox).
+        for addr in set(re.findall(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", body)):
+            if NOT_MAILBOXES.search(addr):
+                continue  # image filename or an SSH remote, not an address
+            emails.setdefault(addr, []).append(str(path.relative_to(ROOT)))
+
+    return external, emails
+
+
+def report_external(external: dict[str, list[str]]) -> None:
+    """Probe every external URL, recording deaths as errors and refusals as notes."""
+    for url in sorted(external):
+        verdict, status = probe(url)
+        where = ", ".join(sorted(set(external[url])))
+        if verdict == "dead":
+            errors.append(f"{where}: DEAD ({status}) {url}")
+            print(f"DEAD        {status}  {url}")
+        elif verdict == "unverified":
+            notes.append(f"{where}: unverified ({status}) {url}")
+            print(f"unverified  {status}  {url}")
+
+
+def report_emails(emails: dict[str, list[str]], offline: bool) -> None:
+    """List referenced addresses, flagging any whose domain does not resolve."""
+    if not emails:
+        return
+    print("\nEmail addresses referenced (verify a human still reads these):")
+    for addr in sorted(emails):
+        domain = addr.split("@")[-1]
+        verdict, status = ("skipped", "-") if offline else probe(f"https://{domain}")
+        where = ", ".join(sorted(set(emails[addr])))
+        if (verdict, status) == ("dead", "DNS"):
+            errors.append(f"{where}: email domain {domain} does not resolve ({addr})")
+            print(f"  {addr:<40} {where}  <-- domain does not resolve")
+        else:
+            print(f"  {addr:<40} {where}")
+
+
 def main() -> int:
+    """Check documentation links; return 1 if anything is genuinely broken."""
     # --offline skips every network probe, so pull requests get a fast,
     # deterministic check. The networked run is scheduled, where a
     # third-party blip costs a red cron job rather than a blocked PR.
@@ -103,73 +204,16 @@ def main() -> int:
         print("no markdown files found")
         return 0
 
-    external: dict[str, list[str]] = {}
-    emails: dict[str, list[str]] = {}
-
-    for path in files:
-        rel = path.relative_to(ROOT)
-        text = strip_noncontent(path.read_text(encoding="utf-8"))
-
-        targets = set(LINK_RE.findall(text)) | set(AUTOLINK_RE.findall(text))
-
-        for target in targets:
-            target = target.strip()
-            if not target:
-                continue
-
-            if target.startswith("mailto:"):
-                emails.setdefault(target[7:], []).append(str(rel))
-                continue
-
-            parsed = urlparse(target)
-            if parsed.scheme in {"http", "https"}:
-                external.setdefault(target, []).append(str(rel))
-                continue
-            if parsed.scheme:
-                continue  # tel:, data:, etc.
-            if target.startswith("#"):
-                continue  # in-document anchor; heading slugs are not worth guessing
-
-            local = (path.parent / parsed.path).resolve()
-            if not local.exists():
-                errors.append(f"{rel}: relative link '{target}' does not exist on disk")
-
-    # Bare email addresses outside markdown link syntax, e.g. in prose.
-    for path in files:
-        rel = path.relative_to(ROOT)
-        # The trailing group must not be [\w.-]+, or a sentence-ending period
-        # gets swallowed into the address ("hello@kornia.org." != the mailbox).
-        addr_re = r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"
-        body = strip_noncontent(path.read_text(encoding="utf-8"))
-        for addr in set(re.findall(addr_re, body)):
-            if NOT_MAILBOXES.search(addr):
-                continue  # image filename or an SSH remote, not an address
-            emails.setdefault(addr, []).append(str(rel))
+    external, emails = collect(files)
 
     mode = "offline" if offline else "networked"
-    print(f"{len(files)} markdown file(s), {len(external)} external link(s), "
-          f"{len(emails)} email address(es)  [{mode}]\n")
+    print(
+        f"{len(files)} markdown file(s), {len(external)} external link(s), {len(emails)} email address(es)  [{mode}]\n"
+    )
 
-    for url in (() if offline else sorted(external)):
-        verdict, status = probe(url)
-        where = ", ".join(sorted(set(external[url])))
-        if verdict == "dead":
-            errors.append(f"{where}: DEAD ({status}) {url}")
-            print(f"DEAD        {status}  {url}")
-        elif verdict == "unverified":
-            notes.append(f"{where}: unverified ({status}) {url}")
-            print(f"unverified  {status}  {url}")
-
-    if emails:
-        print("\nEmail addresses referenced (verify a human still reads these):")
-        for addr in sorted(emails):
-            domain = addr.split("@")[-1]
-            verdict, status = ("skipped", "-") if offline else probe(f"https://{domain}")
-            flag = "  <-- domain does not resolve" if (verdict, status) == ("dead", "DNS") else ""
-            if flag:
-                errors.append(f"{', '.join(sorted(set(emails[addr])))}: "
-                              f"email domain {domain} does not resolve ({addr})")
-            print(f"  {addr:<40} {', '.join(sorted(set(emails[addr])))}{flag}")
+    if not offline:
+        report_external(external)
+    report_emails(emails, offline)
 
     if notes:
         print(f"\n{len(notes)} unverified (host refused an automated request; not proof of breakage)")
