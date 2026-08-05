@@ -170,10 +170,10 @@ class RandomRotation90(GeometricAugmentationBase2D):
                   [0., 0., 2., 1.],
                   [0., 0., 1., 0.],
                   [1., 0., 0., 0.]]]])
-        >>> aug.transform_matrix
-        tensor([[[-4.3711e-08,  1.0000e+00,  1.1921e-07],
-                 [-1.0000e+00, -4.3711e-08,  3.0000e+00],
-                 [ 0.0000e+00,  0.0000e+00,  1.0000e+00]]])
+        >>> aug.transform_matrix.round(decimals=4) + 0.  # + 0. turns -0. into 0.
+        tensor([[[ 0.,  1.,  0.],
+                 [-1.,  0.,  3.],
+                 [ 0.,  0.,  1.]]])
         >>> inv = aug.inverse(out)
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
