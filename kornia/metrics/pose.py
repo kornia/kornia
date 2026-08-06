@@ -86,9 +86,8 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
         a perfect or exactly-opposite match.
 
     .. note::
-        The angle is undefined if either vector is zero, and such entries come back as ``NaN`` rather
-        than raising, so that one degenerate sample does not abort a batch. Callers that may hit this
-        (a pure-rotation relative pose has zero translation) should mask the result before reducing.
+        A zero-length vector gives ``NaN`` rather than raising, since the angle is undefined there.
+        Mask those entries before reducing.
 
     Example:
         >>> v = torch.tensor([1.0, 0.0, 0.0])
@@ -159,9 +158,8 @@ def pose_errors(P: Tensor, P_gt: Tensor, fold_translation: bool = True) -> dict[
         (translation) and ``"max_err"`` (element-wise max of the two).
 
     .. note::
-        A pose with zero translation has an undefined translation direction, so its ``"t_err"`` and
-        ``"max_err"`` come back as ``NaN``. Mask those entries out before passing ``"max_err"`` to
-        :func:`auc_from_errors`, which otherwise propagates the ``NaN`` into the AUC.
+        A pose with zero translation gives ``NaN`` for ``"t_err"`` and ``"max_err"``, and
+        :func:`auc_from_errors` propagates that into the AUC. Mask those entries first.
 
     Example:
         >>> P = torch.eye(4)
@@ -205,9 +203,8 @@ def auc_from_errors(errors: Tensor, thresholds: float | Sequence[float] = (1, 3,
         a dict mapping each threshold to its AUC in :math:`[0, 100]`.
 
     .. note::
-        A sample whose error is exactly equal to a threshold contributes no area at that threshold,
-        so a set of errors all equal to ``thr`` scores ``0`` there. This matches the reference
-        implementations, but it makes the curve discontinuous right at the threshold.
+        An error exactly equal to a threshold contributes no area there, so errors all equal to
+        ``thr`` score ``0`` at ``thr``. This follows the reference implementations.
 
     Example:
         >>> auc_from_errors(torch.zeros(1), thresholds=5.0)
@@ -221,8 +218,7 @@ def auc_from_errors(errors: Tensor, thresholds: float | Sequence[float] = (1, 3,
     KORNIA_CHECK(all(thr > 0 for thr in thresholds), f"thresholds must be positive. Got: {thresholds}")
 
     errors = errors.flatten()
-    # The AUC is summarized as Python floats, so accumulate in at least single precision: an integer
-    # dtype would truncate the threshold, and half precision loses integer exactness in ``arange``.
+    # An integer dtype would truncate the threshold, half precision loses exactness in arange.
     if errors.dtype not in (torch.float32, torch.float64):
         errors = errors.to(torch.get_default_dtype())
     errors = errors.sort().values
@@ -233,9 +229,8 @@ def auc_from_errors(errors: Tensor, thresholds: float | Sequence[float] = (1, 3,
 
     aucs: dict[float, float] = {}
     for thr in thresholds:
-        # Index of the first error at or past the threshold: everything before it is kept, and the
-        # curve is closed off with a horizontal segment out to ``thr``. A positive threshold always
-        # lands past the prepended zero, so this slice holds at least one point.
+        # First error at or past the threshold. A positive thr always lands past the prepended
+        # zero, so last >= 1 and the curve can be closed off with a flat segment out to thr.
         last = int(torch.searchsorted(errors, errors.new_tensor(thr)).item())
         recall_below = torch.cat([recall[:last], recall[last - 1 : last]])
         errors_below = torch.cat([errors[:last], errors.new_tensor([thr])])
