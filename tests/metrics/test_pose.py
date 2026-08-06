@@ -64,6 +64,13 @@ class TestAngleErrorMat(BaseTester):
         R2 = torch.tensor(ROT_Z_90, device=device, dtype=torch.float64)
         self.gradcheck(kornia.metrics.angle_error_mat, (R1, R2), requires_grad=(True, False))
 
+    def test_mismatched_batch_raises(self, device, dtype):
+        # A batch of 1 against a batch of 4 used to broadcast instead of raising.
+        R1 = torch.eye(3, device=device, dtype=dtype).expand(1, 3, 3)
+        R2 = torch.eye(3, device=device, dtype=dtype).expand(4, 3, 3)
+        with pytest.raises(Exception):
+            kornia.metrics.angle_error_mat(R1, R2)
+
 
 class TestAngleErrorVec(BaseTester):
     def test_aligned_orthogonal_opposite(self, device, dtype):
@@ -86,6 +93,13 @@ class TestAngleErrorVec(BaseTester):
         zero = torch.zeros(3, device=device, dtype=dtype)
         unit = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
         assert torch.isnan(kornia.metrics.angle_error_vec(zero, unit))
+
+    def test_mismatched_batch_raises(self, device, dtype):
+        # A batch of 1 against a batch of 5 used to broadcast instead of raising.
+        v1 = torch.tensor([[1.0, 0.0, 0.0]], device=device, dtype=dtype)
+        v2 = torch.ones(5, 3, device=device, dtype=dtype)
+        with pytest.raises(Exception):
+            kornia.metrics.angle_error_vec(v1, v2)
 
     def test_gradcheck(self, device):
         v1 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=torch.float64)
@@ -221,9 +235,18 @@ class TestAucFromErrors(BaseTester):
         assert set(kornia.metrics.auc_from_errors(errors)) == {1.0, 3.0, 5.0, 10.0}
 
     def test_nan_error_propagates(self, device, dtype):
-        # pose_errors yields NaN for a zero translation, and it carries through to the AUC.
-        errors = torch.tensor([1.0, float("nan")], device=device, dtype=dtype)
-        assert math.isnan(kornia.metrics.auc_from_errors(errors, thresholds=5.0)[5.0])
+        # pose_errors yields NaN for a zero translation, and it carries through to the AUC. This has
+        # to hold at every threshold: NaN sorts last, so a low threshold used to cut it off and
+        # return a finite number.
+        errors = torch.tensor([1.0, 5.0, float("nan")], device=device, dtype=dtype)
+        aucs = kornia.metrics.auc_from_errors(errors, thresholds=(2.0, 10.0))
+        assert all(math.isnan(v) for v in aucs.values())
+
+    def test_negative_errors_raise(self, device, dtype):
+        # A negative sorts ahead of the prepended zero, so searchsorted returned an AUC above 100.
+        errors = torch.tensor([-5.0, 1.0], device=device, dtype=dtype)
+        with pytest.raises(Exception):
+            kornia.metrics.auc_from_errors(errors, thresholds=2.0)
 
     def test_input_order_and_shape_do_not_matter(self, device, dtype):
         flat = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype)

@@ -30,7 +30,12 @@ from collections.abc import Sequence
 import torch
 from torch import Tensor
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import (
+    KORNIA_CHECK,
+    KORNIA_CHECK_IS_TENSOR,
+    KORNIA_CHECK_SAME_SHAPE,
+    KORNIA_CHECK_SHAPE,
+)
 
 
 def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
@@ -60,6 +65,7 @@ def angle_error_mat(R1: Tensor, R2: Tensor) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(R2)
     KORNIA_CHECK_SHAPE(R1, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(R2, ["*", "3", "3"])
+    KORNIA_CHECK_SAME_SHAPE(R1, R2)
 
     relative = R1.transpose(-2, -1) @ R2
     trace = relative.diagonal(dim1=-2, dim2=-1).sum(-1)
@@ -98,6 +104,7 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(v2)
     KORNIA_CHECK_SHAPE(v1, ["*", "3"])
     KORNIA_CHECK_SHAPE(v2, ["*", "3"])
+    KORNIA_CHECK_SAME_SHAPE(v1, v2)
 
     dot = (v1 * v2).sum(-1)
     norms = v1.norm(dim=-1) * v2.norm(dim=-1)
@@ -194,13 +201,14 @@ def auc_from_errors(errors: Tensor, thresholds: float | Sequence[float] = (1, 3,
     in the same units as ``errors``.
 
     Args:
-        errors: per-sample error values of shape :math:`(B,)`. Integer and half-precision inputs are
-            promoted to the default floating dtype before accumulating.
+        errors: per-sample error values of shape :math:`(B,)`. Must be non-negative. Integer and
+            half-precision inputs are promoted to the default floating dtype before accumulating.
         thresholds: a single threshold or a sequence of thresholds, in the same units as ``errors``.
             Must be strictly positive. Defaults to ``(1, 3, 5, 10)``.
 
     Return:
-        a dict mapping each threshold to its AUC in :math:`[0, 100]`.
+        a dict mapping each threshold to its AUC in :math:`[0, 100]`, or ``NaN`` at every threshold
+        if any error is ``NaN``.
 
     .. note::
         An error exactly equal to a threshold contributes no area there, so errors all equal to
@@ -221,6 +229,11 @@ def auc_from_errors(errors: Tensor, thresholds: float | Sequence[float] = (1, 3,
     # An integer dtype would truncate the threshold, half precision loses exactness in arange.
     if errors.dtype not in (torch.float32, torch.float64):
         errors = errors.to(torch.get_default_dtype())
+    # A negative error would sort ahead of the zero prepended below, leaving the array unsorted and
+    # searchsorted free to return nonsense. NaN compares false here and is handled next.
+    KORNIA_CHECK(not bool((errors < 0).any()), "errors must be non-negative.")
+    if bool(torch.isnan(errors).any()):
+        return dict.fromkeys(thresholds, float("nan"))
     errors = errors.sort().values
     n = errors.numel()
     recall = torch.arange(1, n + 1, device=errors.device, dtype=errors.dtype) / n
