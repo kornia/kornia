@@ -75,6 +75,17 @@ class TestAngleErrorVec(BaseTester):
         assert out.shape == (2,)
         self.assert_close(out, expected)
 
+    def test_zero_vector_is_nan(self, device, dtype):
+        # The angle against a zero vector is undefined, so it surfaces as NaN rather than raising.
+        zero = torch.zeros(3, device=device, dtype=dtype)
+        unit = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        assert torch.isnan(kornia.metrics.angle_error_vec(zero, unit))
+
+    def test_gradcheck(self, device):
+        v1 = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=torch.float64)
+        v2 = torch.tensor([0.0, 1.0, 0.0], device=device, dtype=torch.float64)
+        self.gradcheck(kornia.metrics.angle_error_vec, (v1, v2), requires_grad=(True, False))
+
 
 class TestTranslationAte(BaseTester):
     def test_single_returns_batch_shape(self, device, dtype):
@@ -91,6 +102,13 @@ class TestTranslationAte(BaseTester):
         out = kornia.metrics.translation_ate(t, t_gt)
         assert out.shape == (2,)
         self.assert_close(out, torch.tensor([5.0, 0.0], device=device, dtype=dtype))
+
+    def test_mismatched_shapes_raise(self, device, dtype):
+        # Without a shape check, an unbatched t against a batched t_gt silently broadcasts to (1, B).
+        t = torch.zeros(3, device=device, dtype=dtype)
+        t_gt = torch.ones(4, 3, device=device, dtype=dtype)
+        with pytest.raises(Exception):
+            kornia.metrics.translation_ate(t, t_gt)
 
 
 class TestPoseErrors(BaseTester):
@@ -144,3 +162,27 @@ class TestAucFromErrors(BaseTester):
         # thr=2 sits exactly at the error -> no area below -> 0.
         assert math.isclose(aucs[2.0], 0.0, abs_tol=1e-3)
         assert math.isclose(aucs[4.0], 75.0, abs_tol=1e-3)
+
+    def test_integer_errors_do_not_truncate_threshold(self, device):
+        # An integer error tensor must not drag the threshold down to int: thr=2.5 stays 2.5, and the
+        # single error of 2 then sits below it, so the AUC matches the float-dtype result.
+        int_errors = torch.tensor([2], device=device, dtype=torch.int64)
+        float_errors = torch.tensor([2.0], device=device)
+        assert math.isclose(
+            kornia.metrics.auc_from_errors(int_errors, thresholds=2.5)[2.5],
+            kornia.metrics.auc_from_errors(float_errors, thresholds=2.5)[2.5],
+            abs_tol=1e-3,
+        )
+
+    def test_errors_above_threshold_and_empty(self, device, dtype):
+        above = torch.tensor([50.0, 60.0], device=device, dtype=dtype)
+        assert math.isclose(kornia.metrics.auc_from_errors(above, thresholds=10.0)[10.0], 0.0, abs_tol=1e-3)
+        empty = torch.empty(0, device=device, dtype=dtype)
+        assert math.isclose(kornia.metrics.auc_from_errors(empty, thresholds=5.0)[5.0], 0.0, abs_tol=1e-3)
+
+    @pytest.mark.parametrize("thr", [0.0, -3.0])
+    def test_non_positive_threshold_raises(self, device, dtype, thr):
+        # Non-positive thresholds used to fall off the end of the curve and return nan or -0.0.
+        errors = torch.tensor([1.0], device=device, dtype=dtype)
+        with pytest.raises(Exception):
+            kornia.metrics.auc_from_errors(errors, thresholds=thr)

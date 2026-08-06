@@ -23,7 +23,9 @@ sign ambiguity of an essential-matrix translation. :func:`auc_from_errors` summa
 as the area under its cumulative curve.
 """
 
-from typing import Sequence, Union
+from __future__ import annotations
+
+from collections.abc import Sequence
 
 import torch
 from torch import Tensor
@@ -83,6 +85,11 @@ def angle_error_vec(v1: Tensor, v2: Tensor) -> Tensor:
         This is inherent to every geodesic/angular metric; it only bites if you backpropagate through
         a perfect or exactly-opposite match.
 
+    .. note::
+        The angle is undefined if either vector is zero, and such entries come back as ``NaN`` rather
+        than raising, so that one degenerate sample does not abort a batch. Callers that may hit this
+        (a pure-rotation relative pose has zero translation) should mask the result before reducing.
+
     Example:
         >>> v = torch.tensor([1.0, 0.0, 0.0])
         >>> angle_error_vec(v, v)
@@ -108,11 +115,12 @@ def translation_ate(t: Tensor, t_gt: Tensor) -> Tensor:
     for raw essential-matrix translations).
 
     Args:
-        t: an estimated translation of shape :math:`(3,)` or :math:`(B, 3)`.
-        t_gt: a ground-truth translation of the same shape.
+        t: an estimated translation of shape :math:`(*, 3)`.
+        t_gt: a ground-truth translation of the same shape as ``t``.
 
     Return:
-        the per-sample translation error, with shape :math:`(B,)`.
+        the per-sample translation error, with shape :math:`(*,)`. An unbatched :math:`(3,)` input is
+        treated as a single sample and returns shape :math:`(1,)`.
 
     .. note::
         Unlike the :func:`angle_error_vec` / :func:`angle_error_mat` angular metrics, this has no
@@ -129,6 +137,7 @@ def translation_ate(t: Tensor, t_gt: Tensor) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(t_gt)
     KORNIA_CHECK_SHAPE(t, ["*", "3"])
     KORNIA_CHECK_SHAPE(t_gt, ["*", "3"])
+    KORNIA_CHECK(t.shape == t_gt.shape, f"t and t_gt shapes must match. Got: {t.shape} and {t_gt.shape}")
 
     if t.dim() == 1:
         t, t_gt = t[None], t_gt[None]
@@ -148,6 +157,11 @@ def pose_errors(P: Tensor, P_gt: Tensor, fold_translation: bool = True) -> dict[
     Return:
         a dict of per-pose errors of shape :math:`(B,)`: ``"R_err"`` (rotation), ``"t_err"``
         (translation) and ``"max_err"`` (element-wise max of the two).
+
+    .. note::
+        A pose with zero translation has an undefined translation direction, so its ``"t_err"`` and
+        ``"max_err"`` come back as ``NaN``. Mask those entries out before passing ``"max_err"`` to
+        :func:`auc_from_errors`, which otherwise propagates the ``NaN`` into the AUC.
 
     Example:
         >>> P = torch.eye(4)
@@ -174,7 +188,7 @@ def pose_errors(P: Tensor, P_gt: Tensor, fold_translation: bool = True) -> dict[
     return {"R_err": r_err, "t_err": t_err, "max_err": torch.maximum(r_err, t_err)}
 
 
-def auc_from_errors(errors: Tensor, thresholds: Union[float, Sequence[float]] = (1, 3, 5, 10)) -> dict[float, float]:
+def auc_from_errors(errors: Tensor, thresholds: float | Sequence[float] = (1, 3, 5, 10)) -> dict[float, float]:
     r"""Area under the cumulative error curve at one or more thresholds.
 
     The metric is generic: any non-negative error array works. Pose-error metrics (e.g. the
@@ -182,22 +196,36 @@ def auc_from_errors(errors: Tensor, thresholds: Union[float, Sequence[float]] = 
     in the same units as ``errors``.
 
     Args:
-        errors: per-sample error values of shape :math:`(B,)`.
+        errors: per-sample error values of shape :math:`(B,)`. Integer and half-precision inputs are
+            promoted to the default floating dtype before accumulating.
         thresholds: a single threshold or a sequence of thresholds, in the same units as ``errors``.
-            Defaults to ``(1, 3, 5, 10)``.
+            Must be strictly positive. Defaults to ``(1, 3, 5, 10)``.
 
     Return:
         a dict mapping each threshold to its AUC in :math:`[0, 100]`.
+
+    .. note::
+        A sample whose error is exactly equal to a threshold contributes no area at that threshold,
+        so a set of errors all equal to ``thr`` scores ``0`` there. This matches the reference
+        implementations, but it makes the curve discontinuous right at the threshold.
 
     Example:
         >>> auc_from_errors(torch.zeros(1), thresholds=5.0)
         {5.0: 100.0}
     """
     KORNIA_CHECK_IS_TENSOR(errors)
-    if isinstance(thresholds, (int | float)):
-        thresholds = [float(thresholds)]
+    if isinstance(thresholds, (int, float)):
+        thresholds = [thresholds]
+    thresholds = [float(thr) for thr in thresholds]
+    KORNIA_CHECK(len(thresholds) > 0, "thresholds must not be empty.")
+    KORNIA_CHECK(all(thr > 0 for thr in thresholds), f"thresholds must be positive. Got: {thresholds}")
 
-    errors = errors.flatten().sort().values
+    errors = errors.flatten()
+    # The AUC is summarized as Python floats, so accumulate in at least single precision: an integer
+    # dtype would truncate the threshold, and half precision loses integer exactness in ``arange``.
+    if errors.dtype not in (torch.float32, torch.float64):
+        errors = errors.to(torch.get_default_dtype())
+    errors = errors.sort().values
     n = errors.numel()
     recall = torch.arange(1, n + 1, device=errors.device, dtype=errors.dtype) / n
     errors = torch.cat([errors.new_zeros(1), errors])
@@ -205,11 +233,12 @@ def auc_from_errors(errors: Tensor, thresholds: Union[float, Sequence[float]] = 
 
     aucs: dict[float, float] = {}
     for thr in thresholds:
-        # Index of the first error past the threshold: everything before it is kept, and the curve is
-        # closed off with a vertical step up to ``thr``.
-        last = int(torch.searchsorted(errors, errors.new_tensor(float(thr))).item())
+        # Index of the first error at or past the threshold: everything before it is kept, and the
+        # curve is closed off with a horizontal segment out to ``thr``. A positive threshold always
+        # lands past the prepended zero, so this slice holds at least one point.
+        last = int(torch.searchsorted(errors, errors.new_tensor(thr)).item())
         recall_below = torch.cat([recall[:last], recall[last - 1 : last]])
-        errors_below = torch.cat([errors[:last], errors.new_tensor([float(thr)])])
+        errors_below = torch.cat([errors[:last], errors.new_tensor([thr])])
         area = torch.trapezoid(recall_below, x=errors_below)
-        aucs[float(thr)] = (area / thr).item() * 100.0
+        aucs[thr] = (area / thr).item() * 100.0
     return aucs
