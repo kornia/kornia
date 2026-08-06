@@ -58,6 +58,12 @@ class TestAngleErrorMat(BaseTester):
                 torch.eye(3, device=device, dtype=dtype), torch.ones(2, device=device, dtype=dtype)
             )
 
+    def test_gradcheck(self, device):
+        # 90 degrees apart, away from the arccos singularities at 0 and 180.
+        R1 = torch.eye(3, device=device, dtype=torch.float64)
+        R2 = torch.tensor(ROT_Z_90, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.metrics.angle_error_mat, (R1, R2), requires_grad=(True, False))
+
 
 class TestAngleErrorVec(BaseTester):
     def test_aligned_orthogonal_opposite(self, device, dtype):
@@ -110,6 +116,11 @@ class TestTranslationAte(BaseTester):
         with pytest.raises(Exception):
             kornia.metrics.translation_ate(t, t_gt)
 
+    def test_gradcheck(self, device):
+        t = torch.zeros(3, device=device, dtype=torch.float64)
+        t_gt = torch.tensor([3.0, 4.0, 0.0], device=device, dtype=torch.float64)
+        self.gradcheck(kornia.metrics.translation_ate, (t, t_gt), requires_grad=(True, False))
+
 
 class TestPoseErrors(BaseTester):
     @staticmethod
@@ -145,6 +156,20 @@ class TestPoseErrors(BaseTester):
             kornia.metrics.pose_errors(
                 torch.eye(3, device=device, dtype=dtype), torch.eye(4, device=device, dtype=dtype)
             )
+
+    @pytest.mark.parametrize("rows", [3, 4])
+    def test_batched(self, device, dtype, rows):
+        P = torch.eye(4, device=device, dtype=dtype)[:rows]
+        batch = P.expand(2, rows, 4)
+        out = kornia.metrics.pose_errors(batch, batch)
+        assert out["R_err"].shape == (2,)
+        assert out["max_err"].shape == (2,)
+
+    @pytest.mark.parametrize("shape", [(2, 4), (2, 2, 3, 4)])
+    def test_bad_dims_raise(self, device, dtype, shape):
+        P = torch.zeros(shape, device=device, dtype=dtype)
+        with pytest.raises(Exception):
+            kornia.metrics.pose_errors(P, P)
 
 
 class TestAucFromErrors(BaseTester):
@@ -185,3 +210,25 @@ class TestAucFromErrors(BaseTester):
         errors = torch.tensor([1.0], device=device, dtype=dtype)
         with pytest.raises(Exception):
             kornia.metrics.auc_from_errors(errors, thresholds=thr)
+
+    def test_empty_thresholds_raise(self, device, dtype):
+        errors = torch.tensor([1.0], device=device, dtype=dtype)
+        with pytest.raises(Exception):
+            kornia.metrics.auc_from_errors(errors, thresholds=[])
+
+    def test_default_thresholds(self, device, dtype):
+        errors = torch.tensor([2.0, 4.0, 6.0], device=device, dtype=dtype)
+        assert set(kornia.metrics.auc_from_errors(errors)) == {1.0, 3.0, 5.0, 10.0}
+
+    def test_nan_error_propagates(self, device, dtype):
+        # pose_errors yields NaN for a zero translation, and it carries through to the AUC.
+        errors = torch.tensor([1.0, float("nan")], device=device, dtype=dtype)
+        assert math.isnan(kornia.metrics.auc_from_errors(errors, thresholds=5.0)[5.0])
+
+    def test_input_order_and_shape_do_not_matter(self, device, dtype):
+        flat = torch.tensor([1.0, 2.0, 3.0, 4.0], device=device, dtype=dtype)
+        shuffled = torch.tensor([3.0, 1.0, 4.0, 2.0], device=device, dtype=dtype)
+        two_d = flat.reshape(2, 2)
+        expected = kornia.metrics.auc_from_errors(flat, thresholds=5.0)[5.0]
+        assert math.isclose(kornia.metrics.auc_from_errors(shuffled, thresholds=5.0)[5.0], expected, abs_tol=1e-3)
+        assert math.isclose(kornia.metrics.auc_from_errors(two_d, thresholds=5.0)[5.0], expected, abs_tol=1e-3)
