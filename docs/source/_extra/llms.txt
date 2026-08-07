@@ -4,7 +4,7 @@
 
 Conventions every code generator must know before writing Kornia code:
 
-- Images are 4D float tensors `(B, C, H, W)` with values in `[0, 1]`. Add a batch dim with `img[None]` if needed.
+- Images are float tensors with values in `[0, 1]`; the batched layout `(B, C, H, W)` is accepted everywhere. Some op families (e.g. color conversions) also take `(*, C, H, W)` with arbitrary leading dims. Add a batch dim with `img[None]` if needed.
 - Point coordinates are `(x, y)` ordered (x = column axis, y = row axis); output sizes and `dsize` arguments are `(h, w)` ordered.
 - Angles are in degrees; a positive angle rotates counter-clockwise as displayed (origin at the top-left corner, matching OpenCV).
 - `warp_perspective` / `warp_affine` default to `align_corners=True`; `resize` defaults to `align_corners=None` (the PyTorch interpolation default). Do not assume they match.

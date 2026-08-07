@@ -8,7 +8,7 @@ Install: `pip install kornia`
 
 These conventions hold library-wide; per-function docs note any exception.
 
-- **Image layout:** 4D float tensors `(B, C, H, W)`, channel order RGB, values in `[0, 1]`. Most ops require the batch dim — add it with `img[None]`.
+- **Image layout:** float tensors `(B, C, H, W)`, channel order RGB, values in `[0, 1]`. The batched 4D layout is accepted everywhere; some op families (e.g. color conversions) also take `(*, C, H, W)` with arbitrary leading dims. When unsure, use `(B, C, H, W)` — add the batch dim with `img[None]`.
 - **Point coordinates:** `(x, y)` order, where x indexes columns and y indexes rows. A point tensor for N points is `(B, N, 2)`.
 - **Sizes:** output sizes and `dsize` arguments are `(h, w)` order — the OPPOSITE axis order from points.
 - **Angles:** degrees, not radians. Positive angle = counter-clockwise rotation as displayed, with the origin at the top-left corner (OpenCV convention).
@@ -107,7 +107,7 @@ Classical and learned local features with a common interface: LAFs (local affine
 import torch
 import kornia.feature as KF
 
-# LoFTR-style dense matching (downloads weights on first use)
+# LoFTR-style dense matching (downloads pretrained weights at construction)
 matcher = KF.LoFTR(pretrained="outdoor")
 input_dict = {
     "image0": torch.rand(1, 1, 128, 128),  # grayscale (B, 1, H, W)
@@ -138,7 +138,7 @@ img = img[None]  # most ops want (B, C, H, W)
 
 ## Pitfalls checklist
 
-1. Passing `(H, W, C)` NumPy-style arrays — convert with `kornia.utils.image_to_tensor(np_img)[None]` (or `torch.from_numpy(...).permute(2, 0, 1)[None] / 255`).
+1. Passing `(H, W, C)` NumPy-style arrays — convert with `kornia.image.image_to_tensor(np_img)[None]` (or `torch.from_numpy(...).permute(2, 0, 1)[None] / 255`). `kornia.utils.image_to_tensor` is deprecated.
 2. Passing `(w, h)` to `dsize`/`size` arguments — they are `(h, w)`.
 3. Passing `(y, x)` (row, col) points — point tensors are `(x, y)`.
 4. Assuming `align_corners` defaults are uniform — warps default `True`, `resize` defaults `None`.
@@ -149,7 +149,7 @@ img = img[None]  # most ops want (B, C, H, W)
 
 ## Links
 
-- Docs: https://kornia.readthedocs.io/en/latest/
-- Machine-readable index: https://kornia.readthedocs.io/en/latest/llms.txt
-- Source: https://github.com/kornia/kornia
-- Tutorials: https://kornia.github.io/tutorials/
+- Docs: <https://kornia.readthedocs.io/en/latest/>
+- Machine-readable index: <https://kornia.readthedocs.io/en/latest/llms.txt>
+- Source: <https://github.com/kornia/kornia>
+- Tutorials: <https://kornia.github.io/tutorials/>
