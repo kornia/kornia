@@ -49,6 +49,7 @@ def test_import_without_jit_script_deprecation():
         capture_output=True,
         text=True,
         check=False,
+        timeout=300,
     )
     assert result.returncode == 0, f"importing kornia raised a deprecation warning:\n{result.stderr}"
 
@@ -62,10 +63,16 @@ def test_import_emits_no_warnings():
     honest form of the ``python -W error -c "import kornia"`` gate from
     https://github.com/kornia/kornia/issues/3727 — it fails on any warning kornia's import
     path emits or triggers, protecting downstream users who run with ``-W error``.
+
+    ``resetwarnings`` first, so filters inherited from the environment (``PYTHONWARNINGS``,
+    a ``-W`` flag propagated by the test runner) cannot make the torch import fail and
+    cannot pre-arm filters that fight the ``simplefilter("error")`` below.
     """
     script = textwrap.dedent(
         """
         import warnings
+
+        warnings.resetwarnings()
 
         import torch  # noqa: F401  # torch's own import warnings are not kornia's to fix
 
@@ -73,11 +80,12 @@ def test_import_emits_no_warnings():
         import kornia  # noqa: F401
         """
     )
-    # Trusted, fixed command (the current interpreter running a literal script); no external input.
+    # Same trusted, fixed command shape as above.
     result = subprocess.run(  # noqa: S603
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,
         check=False,
+        timeout=300,
     )
     assert result.returncode == 0, f"importing kornia emitted a warning:\n{result.stderr}"
