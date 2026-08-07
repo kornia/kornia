@@ -444,4 +444,4 @@ def batched_forward(
             out_list.append(model_dev(data[st:end].to(device), **kwargs))
         out = torch.cat(out_list, 0)
         return out.to(data.device)
-    return model(data, **kwargs)
+    return model_dev(data.to(device), **kwargs).to(data.device)
