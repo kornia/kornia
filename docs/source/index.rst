@@ -19,7 +19,7 @@ DexiNed edge detection model.
 
 .. code-block:: python
 
-      image = kornia.utils.sample.get_sample_images()[0][None]
+      image = torch.rand(1, 3, 320, 320)
       model = DexiNedBuilder.build()
       model.save(image)
 
@@ -27,7 +27,7 @@ RTDETRDetector for object detection.
 
 .. code-block:: python
 
-      image = kornia.utils.sample.get_sample_images()[0][None]
+      image = torch.rand(1, 3, 320, 320)
       model = RTDETRDetectorBuilder.build()
       model.save(image)
 
@@ -36,7 +36,7 @@ BoxMotTracker for object tracking.
 .. code-block:: python
 
       import kornia
-      image = kornia.utils.sample.get_sample_images()[0][None]
+      image = torch.rand(1, 3, 320, 320)
       model = BoxMotTracker()
       for i in range(4):
          model.update(image)

@@ -115,3 +115,89 @@ class TestDeprecatedWrappers:
             utils.create_meshgrid(2, 2)
         dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
         assert len(dep_warnings) == 2
+
+
+class TestRestoredWrappers:
+    """Names removed in 0.8.3 without a deprecation window, restored as warning shims.
+
+    See https://github.com/kornia/kornia/pull/3891 follow-up audit: of the 34 public
+    `kornia.utils` names in v0.8.2, 20 were removed with no shim. These are the ones
+    whose implementations still exist elsewhere in the library.
+    """
+
+    def test_eye_like_warns(self):
+        with pytest.warns(DeprecationWarning, match="kornia.core.ops.eye_like"):
+            out = utils.eye_like(3, torch.rand(2, 4, 4))
+        assert out.shape == (2, 3, 3)
+
+    def test_vec_like_warns(self):
+        with pytest.warns(DeprecationWarning, match="kornia.core.ops.vec_like"):
+            out = utils.vec_like(3, torch.rand(2, 4, 4))
+        assert out.shape == (2, 3, 1)
+
+    def test_safe_solve_with_mask_warns(self):
+        A = torch.eye(3)[None]
+        b = torch.rand(1, 3, 3)
+        with pytest.warns(DeprecationWarning, match="kornia.core.utils.safe_solve_with_mask"):
+            sol, _, mask = utils.safe_solve_with_mask(b, A)
+        assert sol.shape == b.shape
+        assert bool(mask.all())
+
+    def test_safe_inverse_with_mask_warns(self):
+        A = torch.eye(3)[None]
+        with pytest.warns(DeprecationWarning, match="kornia.core.utils.safe_inverse_with_mask"):
+            inv, mask = utils.safe_inverse_with_mask(A)
+        assert inv.shape == A.shape
+        assert bool(mask.all())
+
+    def test_is_mps_tensor_safe_warns(self):
+        with pytest.warns(DeprecationWarning, match="kornia.core.utils.is_mps_tensor_safe"):
+            out = utils.is_mps_tensor_safe(torch.rand(1))
+        assert out is False
+
+    def test_dataclass_roundtrip_warns(self):
+        from dataclasses import dataclass
+
+        @dataclass
+        class _Cfg:
+            a: int
+
+        with pytest.warns(DeprecationWarning, match="kornia.core.utils.dataclass_to_dict"):
+            d = utils.dataclass_to_dict(_Cfg(a=1))
+        with pytest.warns(DeprecationWarning, match="kornia.core.utils.dict_to_dataclass"):
+            cfg = utils.dict_to_dataclass(d, _Cfg)
+        assert cfg == _Cfg(a=1)
+
+    def test_image_list_to_tensor_warns(self):
+        arrs = [np.zeros((8, 8, 3), dtype=np.uint8)] * 2
+        with pytest.warns(DeprecationWarning, match="kornia.image.image_list_to_tensor"):
+            t = utils.image_list_to_tensor(arrs)
+        assert t.shape == (2, 3, 8, 8)
+
+    def test_image_to_tensor_module_warns(self):
+        with pytest.warns(DeprecationWarning, match="kornia.image.ImageToTensor"):
+            mod = utils.ImageToTensor()
+        out = mod(np.zeros((8, 8, 3), dtype=np.uint8))
+        assert isinstance(out, torch.Tensor)
+
+    def test_cached_downloader_warns(self):
+        with pytest.warns(DeprecationWarning, match="kornia.onnx.download.CachedDownloader"):
+            cls = utils.CachedDownloader
+        from kornia.onnx.download import CachedDownloader
+
+        assert cls is CachedDownloader
+
+    def test_restored_wrappers_in_all(self):
+        expected = {
+            "CachedDownloader",
+            "ImageToTensor",
+            "dataclass_to_dict",
+            "dict_to_dataclass",
+            "eye_like",
+            "image_list_to_tensor",
+            "is_mps_tensor_safe",
+            "safe_inverse_with_mask",
+            "safe_solve_with_mask",
+            "vec_like",
+        }
+        assert expected.issubset(set(utils.__all__))

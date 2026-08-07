@@ -24,6 +24,27 @@ Import from the new locations instead (e.g., `kornia.image.draw_line` instead of
 from typing import Any
 
 from kornia.core._compat import deprecated
+from kornia.core.ops import (
+    eye_like as _eye_like,
+)
+from kornia.core.ops import (
+    vec_like as _vec_like,
+)
+from kornia.core.utils import (
+    dataclass_to_dict as _dataclass_to_dict,
+)
+from kornia.core.utils import (
+    dict_to_dataclass as _dict_to_dataclass,
+)
+from kornia.core.utils import (
+    is_mps_tensor_safe as _is_mps_tensor_safe,
+)
+from kornia.core.utils import (
+    safe_inverse_with_mask as _safe_inverse_with_mask,
+)
+from kornia.core.utils import (
+    safe_solve_with_mask as _safe_solve_with_mask,
+)
 from kornia.geometry import (
     create_meshgrid as _create_meshgrid,
 )
@@ -37,6 +58,9 @@ from kornia.geometry import (
     save_pointcloud_ply as _save_pointcloud_ply,
 )
 from kornia.image import (
+    ImageToTensor as _ImageToTensor,
+)
+from kornia.image import (
     draw_convex_polygon as _draw_convex_polygon,
 )
 from kornia.image import (
@@ -47,6 +71,9 @@ from kornia.image import (
 )
 from kornia.image import (
     draw_rectangle as _draw_rectangle,
+)
+from kornia.image import (
+    image_list_to_tensor as _image_list_to_tensor,
 )
 from kornia.image import (
     image_to_string as _image_to_string,
@@ -194,18 +221,139 @@ def one_hot(*args: Any, **kwargs: Any) -> Any:
     return _one_hot(*args, **kwargs)
 
 
+# The 0.8.3 removal shipped without shims for these public names, breaking
+# `kornia.utils.<name>` with no deprecation window. Restored here with the
+# standard warning so the documented deprecation policy holds.
+
+
+@deprecated(
+    replace_with="kornia.core.ops.eye_like",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.ops` instead.",
+)
+def eye_like(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.ops.eye_like` instead."""
+    return _eye_like(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.core.ops.vec_like",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.ops` instead.",
+)
+def vec_like(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.ops.vec_like` instead."""
+    return _vec_like(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.core.utils.safe_solve_with_mask",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.utils` instead.",
+)
+def safe_solve_with_mask(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.utils.safe_solve_with_mask` instead."""
+    return _safe_solve_with_mask(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.core.utils.safe_inverse_with_mask",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.utils` instead.",
+)
+def safe_inverse_with_mask(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.utils.safe_inverse_with_mask` instead."""
+    return _safe_inverse_with_mask(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.core.utils.is_mps_tensor_safe",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.utils` instead.",
+)
+def is_mps_tensor_safe(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.utils.is_mps_tensor_safe` instead."""
+    return _is_mps_tensor_safe(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.core.utils.dataclass_to_dict",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.utils` instead.",
+)
+def dataclass_to_dict(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.utils.dataclass_to_dict` instead."""
+    return _dataclass_to_dict(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.core.utils.dict_to_dataclass",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.utils` instead.",
+)
+def dict_to_dataclass(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.utils.dict_to_dataclass` instead."""
+    return _dict_to_dataclass(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.image.image_list_to_tensor",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.image` instead.",
+)
+def image_list_to_tensor(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.image.image_list_to_tensor` instead."""
+    return _image_list_to_tensor(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.image.ImageToTensor",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.image` instead.",
+)
+class ImageToTensor(_ImageToTensor):
+    """Deprecated: Use `kornia.image.ImageToTensor` instead."""
+
+
+def __getattr__(name: str) -> Any:
+    # Lazy so that `import kornia.utils` never pulls in the onnx machinery.
+    if name == "CachedDownloader":
+        import warnings
+
+        from kornia.onnx.download import CachedDownloader as _CachedDownloader
+
+        warnings.warn(
+            "`kornia.utils.CachedDownloader` is deprecated since kornia 0.8.3."
+            " Use `kornia.onnx.download.CachedDownloader` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return _CachedDownloader
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
+    "CachedDownloader",
+    "ImageToTensor",
     "create_meshgrid",
     "create_meshgrid3d",
+    "dataclass_to_dict",
+    "dict_to_dataclass",
     "draw_convex_polygon",
     "draw_line",
     "draw_point2d",
     "draw_rectangle",
+    "eye_like",
+    "image_list_to_tensor",
     "image_to_string",
     "image_to_tensor",
+    "is_mps_tensor_safe",
     "load_pointcloud_ply",
     "one_hot",
     "print_image",
+    "safe_inverse_with_mask",
+    "safe_solve_with_mask",
     "save_pointcloud_ply",
     "tensor_to_image",
+    "vec_like",
 ]
