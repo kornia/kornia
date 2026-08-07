@@ -41,7 +41,7 @@ The promises (stable core)
 
 1. **Deprecation before removal.** A public symbol is never removed or given
    an incompatible signature in a single step. It first spends at least one
-   minor release wrapped in :func:`kornia.core._compat.deprecated`, which
+   minor release wrapped in ``kornia.core._compat.deprecated``, which
    keeps the old call working while emitting a :class:`DeprecationWarning`
    that names the replacement and the version that introduced the
    deprecation (this is the mechanism the 0.8.3 ``kornia.utils`` →
@@ -55,9 +55,10 @@ The promises (stable core)
 3. **Release notes carry the ledger.** Every deprecation, removal, and
    behavior change in the stable core is listed in the release notes of the
    release that introduces it.
-4. **Imports stay clean.** ``import kornia`` emits no warnings; this is
-   enforced by a CI-gated test (``tests/test_import.py``), so downstream
-   ``-W error`` users are safe.
+4. **Imports stay clean.** Importing kornia emits no warnings of its own —
+   none raised or triggered by kornia's import path, once PyTorch itself is
+   loaded. This is enforced by CI-gated tests (``tests/test_import.py``), so
+   downstream ``-W error`` users are safe.
 5. **Conventions are stable.** The documented
    :doc:`conventions </get-started/conventions>` (tensor layout, coordinate
    order, angle units, homography conventions) are part of the API surface
