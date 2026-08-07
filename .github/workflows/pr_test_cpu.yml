@@ -69,6 +69,28 @@ jobs:
           # macOS only runs float32 tests
           - os: macos-latest
             pytorch-dtype: "float64"
+          # torch 2.5.1 wheels crash with STATUS_ILLEGAL_INSTRUCTION (0xc000001d) in
+          # affine_grid on the windows-2025 runner image (now rolling out as
+          # windows-latest); run those legs on windows-2022 via `include` below.
+          - os: windows-latest
+            pytorch-version: "2.5.1"
+        include:
+          - os: windows-2022
+            pytorch-dtype: "float32"
+            python-version: "3.11"
+            pytorch-version: "2.5.1"
+          - os: windows-2022
+            pytorch-dtype: "float64"
+            python-version: "3.11"
+            pytorch-version: "2.5.1"
+          - os: windows-2022
+            pytorch-dtype: "float32"
+            python-version: "3.12"
+            pytorch-version: "2.5.1"
+          - os: windows-2022
+            pytorch-dtype: "float64"
+            python-version: "3.12"
+            pytorch-version: "2.5.1"
 
     uses: ./.github/workflows/tests.yml
     with:
