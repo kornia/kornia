@@ -17,7 +17,6 @@
 
 from __future__ import annotations
 
-import warnings
 from typing import Optional
 
 import torch
@@ -497,7 +496,9 @@ def transform_bbox(
             ``xmin, ymin, xmax, ymax``. If set to 'xywh' the boxes are assumed to be in the format
             ``xmin, ymin, width, height``
         restore_coordinates: In case the boxes are flipped, adding a post processing step to restore the
-            coordinates to a valid bounding box.
+            coordinates to a valid bounding box. Enabled by default (``None`` behaves as ``True``); pass
+            ``False`` to keep the raw transformed corners (the pre-2022 behavior, which yields invalid
+            boxes under flips).
 
     Returns:
         The set of transformed points in the specified mode
@@ -508,16 +509,6 @@ def transform_bbox(
 
     if mode not in ("xyxy", "xywh"):
         raise ValueError(f"Mode must be one of 'xyxy', 'xywh'. Got {mode}")
-
-    # (B, N, 4, 2) shaped polygon boxes do not need to be restored.
-    if restore_coordinates is None and not (boxes.shape[-2:] == torch.Size([4, 2])):
-        warnings.warn(
-            "Previous behaviour produces incorrect box coordinates if a flip transformation performed on boxes."
-            "The previous wrong behaviour has been corrected and will be removed in the future versions."
-            "If you wish to keep the previous behaviour, please set `restore_coordinates=False`."
-            "Otherwise, set `restore_coordinates=True` as an acknowledgement.",
-            stacklevel=1,
-        )
 
     # convert boxes to format xyxy
     if mode == "xywh":
