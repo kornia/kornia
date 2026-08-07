@@ -1,0 +1,42 @@
+# Kornia
+
+> Kornia is a differentiable computer vision library for PyTorch: classic CV operations (color conversion, filtering, geometric transforms, camera/epipolar geometry, augmentation) implemented as batched, GPU-ready, autograd-friendly tensor ops, plus curated local-feature and vision models. There is no NumPy/OpenCV dependency — everything is `torch.Tensor` in, `torch.Tensor` out.
+
+Conventions every code generator must know before writing Kornia code:
+
+- Images are float tensors with values in `[0, 1]`; the batched layout `(B, C, H, W)` is accepted everywhere. Some op families (e.g. color conversions) also take `(*, C, H, W)` with arbitrary leading dims. Add a batch dim with `img[None]` if needed.
+- Point coordinates are `(x, y)` ordered (x = column axis, y = row axis); output sizes and `dsize` arguments are `(h, w)` ordered.
+- Angles are in degrees; a positive angle rotates counter-clockwise as displayed (origin at the top-left corner, matching OpenCV).
+- `warp_perspective` / `warp_affine` default to `align_corners=True`; `resize` defaults to `align_corners=None` (the PyTorch interpolation default). Do not assume they match.
+- Transformation matrices are batched: homographies `(B, 3, 3)`, affine `(B, 2, 3)`, operating on pixel coordinates unless the function name or a flag says `normalized`.
+- `kornia.augmentation.AugmentationSequential` applies one sampled transform consistently across image / mask / bbox / keypoints and can invert it with `.inverse()`.
+
+For the full self-contained reference with runnable examples, fetch [llms-full.txt](https://kornia.readthedocs.io/en/latest/llms-full.txt).
+
+## Get started
+
+- [Introduction](https://kornia.readthedocs.io/en/latest/get-started/introduction.html): what Kornia is and the design principles behind it
+- [Installation](https://kornia.readthedocs.io/en/latest/get-started/installation.html): pip/conda/source installation
+- [Tutorials](https://kornia.github.io/tutorials/): runnable end-to-end examples
+
+## Core API
+
+- [kornia.geometry](https://kornia.readthedocs.io/en/latest/geometry.html): warps, homographies, camera models, epipolar geometry, Lie groups, conversions — the differentiated core
+- [kornia.augmentation](https://kornia.readthedocs.io/en/latest/augmentation.html): batched differentiable augmentations with transform tracking and inversion
+- [kornia.filters](https://kornia.readthedocs.io/en/latest/filters.html): blur, edges (Sobel, Canny), gradients
+- [kornia.color](https://kornia.readthedocs.io/en/latest/color.html): color space conversions
+- [kornia.feature](https://kornia.readthedocs.io/en/latest/feature.html): detectors, descriptors, and matchers (SIFT, HardNet, DISK, LoFTR, LightGlue, ...)
+- [kornia.enhance](https://kornia.readthedocs.io/en/latest/enhance.html): normalization, histogram, contrast/gamma adjustments
+- [kornia.losses](https://kornia.readthedocs.io/en/latest/losses.html): SSIM, PSNR, Dice, focal, Hausdorff losses
+- [kornia.metrics](https://kornia.readthedocs.io/en/latest/metrics.html): accuracy, IoU, PSNR/SSIM metrics
+- [kornia.morphology](https://kornia.readthedocs.io/en/latest/morphology.html): dilation, erosion, opening, closing
+- [kornia.io](https://kornia.readthedocs.io/en/latest/io.html): image loading/saving to tensors
+- [kornia.contrib](https://kornia.readthedocs.io/en/latest/contrib.html): experimental modules
+
+## Optional
+
+- [Applications](https://kornia.readthedocs.io/en/latest/applications/intro.html): face detection, image matching, stitching, registration, denoising walkthroughs
+- [Models](https://kornia.readthedocs.io/en/latest/models.html): pre-trained model wrappers (SAM, RT-DETR, YuNet, ...)
+- [GitHub repository](https://github.com/kornia/kornia): source, issue tracker
+- [Contributing guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md): contribution protocol
+- [AI usage policy](https://github.com/kornia/kornia/blob/main/AI_POLICY.md): rules for AI-assisted contributions

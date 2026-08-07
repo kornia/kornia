@@ -1,4 +1,22 @@
 #!/usr/bin/env python3
+
+# LICENSE HEADER MANAGED BY add-license-header
+#
+# Copyright 2018 Kornia Team
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
 """Check that links in the org's markdown documents still resolve.
 
 Written after an audit found several dead pointers in Kornia's docs that
@@ -44,9 +62,7 @@ errors: list[str] = []
 notes: list[str] = []
 
 # Things that look like an address but are not a mailbox.
-NOT_MAILBOXES = re.compile(
-    r"@(?:\d+x)?\.(?:png|jpe?g|svg|gif|webp|ico)$|^git@", re.I
-)
+NOT_MAILBOXES = re.compile(r"@(?:\d+x)?\.(?:png|jpe?g|svg|gif|webp|ico)$|^git@", re.I)
 
 COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 FENCE_RE = re.compile(r"^```.*?^```", re.S | re.M)
@@ -66,18 +82,23 @@ def strip_noncontent(text: str) -> str:
 
 
 def markdown_files() -> list[Path]:
+    """Collect the markdown-formatted files whose links should be checked."""
     out: list[Path] = []
     for p in ROOT.rglob("*.md"):
         if any(part in SKIP_DIRS for part in p.parts):
             continue
         out.append(p)
+    # llms.txt / llms-full.txt are markdown-formatted; keep their links honest too
+    out.extend(ROOT.glob("docs/source/_extra/llms*.txt"))
     return sorted(out)
 
 
 def probe(url: str) -> tuple[str, object]:
-    req = urllib.request.Request(url, headers={"User-Agent": UA}, method="GET")
+    """Fetch a URL and classify it as ok, dead, or unverified."""
+    # Only http/https reach this point: callers filter on the parsed scheme.
+    req = urllib.request.Request(url, headers={"User-Agent": UA}, method="GET")  # noqa: S310
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:  # noqa: S310
             return "ok", resp.status
     except urllib.error.HTTPError as exc:
         if exc.code in (404, 410):
@@ -92,7 +113,8 @@ def probe(url: str) -> tuple[str, object]:
         return "unverified", type(exc).__name__
 
 
-def main() -> int:
+def main() -> int:  # noqa: C901
+    """Scan the docs for dead links; return a non-zero exit code if any are found."""
     # --offline skips every network probe, so pull requests get a fast,
     # deterministic check. The networked run is scheduled, where a
     # third-party blip costs a red cron job rather than a blocked PR.
@@ -147,10 +169,11 @@ def main() -> int:
             emails.setdefault(addr, []).append(str(rel))
 
     mode = "offline" if offline else "networked"
-    print(f"{len(files)} markdown file(s), {len(external)} external link(s), "
-          f"{len(emails)} email address(es)  [{mode}]\n")
+    print(
+        f"{len(files)} markdown file(s), {len(external)} external link(s), {len(emails)} email address(es)  [{mode}]\n"
+    )
 
-    for url in (() if offline else sorted(external)):
+    for url in () if offline else sorted(external):
         verdict, status = probe(url)
         where = ", ".join(sorted(set(external[url])))
         if verdict == "dead":
@@ -167,8 +190,9 @@ def main() -> int:
             verdict, status = ("skipped", "-") if offline else probe(f"https://{domain}")
             flag = "  <-- domain does not resolve" if (verdict, status) == ("dead", "DNS") else ""
             if flag:
-                errors.append(f"{', '.join(sorted(set(emails[addr])))}: "
-                              f"email domain {domain} does not resolve ({addr})")
+                errors.append(
+                    f"{', '.join(sorted(set(emails[addr])))}: email domain {domain} does not resolve ({addr})"
+                )
             print(f"  {addr:<40} {', '.join(sorted(set(emails[addr])))}{flag}")
 
     if notes:
