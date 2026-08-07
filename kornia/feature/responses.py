@@ -333,6 +333,15 @@ class BlobDoG(nn.Module):
         return self.__class__.__name__
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Compute Difference-of-Gaussians response maps.
+
+        Args:
+            input: Input tensor of shape :math:`(B, C, H, W)`.
+            sigmas: Unused in this wrapper; kept for API compatibility.
+
+        Returns:
+            DoG response tensor from :func:`dog_response`.
+        """
         return dog_response(input)
 
 
@@ -353,6 +362,16 @@ class BlobDoGSingle(nn.Module):
         return f"{self.__class__.__name__}, sigma1={self.sigma1}, sigma2={self.sigma2})"
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Compute single-scale Difference-of-Gaussians response.
+
+        Args:
+            input: Input tensor of shape :math:`(B, C, H, W)`.
+            sigmas: Unused in this wrapper; kept for API compatibility.
+
+        Returns:
+            Response tensor from :func:`dog_response_single` using stored
+            ``sigma1`` and ``sigma2``.
+        """
         return dog_response_single(input, self.sigma1, self.sigma2)
 
 
@@ -378,6 +397,16 @@ class CornerHarris(nn.Module):
         return f"{self.__class__.__name__}(k={self.k}, grads_mode={self.grads_mode})"
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Compute Harris corner response for each input channel.
+
+        Args:
+            input: Input tensor of shape :math:`(B, C, H, W)`.
+            sigmas: Optional Gaussian smoothing values forwarded to
+                :func:`harris_response`.
+
+        Returns:
+            Harris response map tensor.
+        """
         return harris_response(input, self.k, self.grads_mode, sigmas)
 
 
@@ -397,6 +426,15 @@ class CornerGFTT(nn.Module):
         return f"{self.__class__.__name__}(grads_mode={self.grads_mode})"
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Compute Shi-Tomasi (GFTT) corner response maps.
+
+        Args:
+            input: Input tensor of shape :math:`(B, C, H, W)`.
+            sigmas: Optional smoothing sigmas for multi-scale workflows.
+
+        Returns:
+            GFTT response map tensor from :func:`gftt_response`.
+        """
         return gftt_response(input, self.grads_mode, sigmas)
 
 
@@ -416,4 +454,14 @@ class BlobHessian(nn.Module):
         return f"{self.__class__.__name__}(grads_mode={self.grads_mode})"
 
     def forward(self, input: torch.Tensor, sigmas: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Compute Hessian determinant-like blob responses.
+
+        Args:
+            input: Input tensor of shape :math:`(B, C, H, W)`.
+            sigmas: Optional smoothing values passed to
+                :func:`hessian_response`.
+
+        Returns:
+            Hessian response map tensor.
+        """
         return hessian_response(input, self.grads_mode, sigmas)

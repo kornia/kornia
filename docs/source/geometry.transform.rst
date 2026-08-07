@@ -101,9 +101,9 @@ Interactive Demo
 
 .. raw:: html
 
-    <gradio-app src="kornia/kornia-resize-antialias"></gradio-app>
+    <gradio-app src="https://kornia-kornia-resize-antialias.hf.space"></gradio-app>
 
 
 .. raw:: html
 
-    <gradio-app src="kornia/geometry_image_transform_with_kornia"></gradio-app>
+    <gradio-app src="https://kornia-geometry-image-transform-with-kornia.hf.space"></gradio-app>

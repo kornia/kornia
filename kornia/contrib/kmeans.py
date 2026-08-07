@@ -69,6 +69,20 @@ class KMeans:
 
     @property
     def cluster_centers(self) -> torch.Tensor:
+        """Return the current cluster centers.
+
+        Returns:
+            A tensor with shape :math:`(C, D)`:
+            - ``C`` is the number of clusters.
+            - ``D`` is the feature dimension of each sample.
+
+            If :meth:`fit` has already been called, this returns the learned
+            final centers. Otherwise, it returns the initialization provided
+            during construction.
+
+        Raises:
+            TypeError: If no initial centers were provided and ``fit`` has not been run.
+        """
         if isinstance(self._final_cluster_centers, torch.Tensor):
             return self._final_cluster_centers
         if isinstance(self._cluster_centers, torch.Tensor):
@@ -78,6 +92,16 @@ class KMeans:
 
     @property
     def cluster_assignments(self) -> torch.Tensor:
+        """Return cluster labels assigned during the most recent ``fit`` call.
+
+        Returns:
+            A 1D tensor with shape :math:`(N,)`, where ``N`` is the number of
+            samples given to :meth:`fit`. Each value is the cluster index
+            assigned to the corresponding sample.
+
+        Raises:
+            TypeError: If ``fit`` has not been run yet.
+        """
         if isinstance(self._final_cluster_assignments, torch.Tensor):
             return self._final_cluster_assignments
         else:

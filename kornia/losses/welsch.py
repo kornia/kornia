@@ -130,4 +130,15 @@ class WelschLoss(nn.Module):
         self.reduction = reduction
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
+        """Compute the Welsch robust regression loss.
+
+        Args:
+            img1: Predicted tensor with arbitrary shape.
+            img2: Target tensor with the same shape as ``img1``.
+
+        Returns:
+            Loss tensor reduced according to ``self.reduction``. The Welsch
+            penalty saturates for large residuals, reducing the influence of
+            strong outliers.
+        """
         return welsch_loss(img1=img1, img2=img2, reduction=self.reduction)

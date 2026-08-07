@@ -21,5 +21,5 @@ Interactive Demo
 
 .. raw:: html
 
-   <gradio-app src="kornia/line-segment-matching"></gradio-app>
-   <gradio-app src="kornia/Line-Fitting"></gradio-app>
+   <gradio-app src="https://kornia-line-segment-matching.hf.space"></gradio-app>
+   <gradio-app src="https://kornia-line-fitting.hf.space"></gradio-app>

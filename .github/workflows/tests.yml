@@ -21,6 +21,10 @@ on:
         required: false
         type: string
         default: ""
+      optimizer:
+        required: false
+        type: string
+        default: ""
       fail-fast:
         required: false
         type: boolean
@@ -75,7 +79,7 @@ jobs:
         run: echo "name=py$(echo '${{ matrix.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.9.4
+        uses: prefix-dev/setup-pixi@v0.9.6
         with:
           pixi-version: v0.40.0
           cache: true
@@ -89,5 +93,5 @@ jobs:
           KORNIA_TEST_DEVICE: cpu
           KORNIA_TEST_DTYPE: ${{ inputs.pytorch-dtype }}
           KORNIA_TEST_RUNSLOW: ${{ inputs.runslow }}
-          KORNIA_TEST_OPTIMIZER: ""
+          KORNIA_TEST_OPTIMIZER: ${{ inputs.optimizer }}
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} test ${{ inputs.pytest-extra }}

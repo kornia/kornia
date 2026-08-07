@@ -133,23 +133,25 @@ def distort_points(
 
     # Distort points
     r2 = x * x + y * y
+    r4 = r2 * r2
+    r6 = r4 * r2
 
-    rad_poly = (1 + dist[..., 0:1] * r2 + dist[..., 1:2] * r2 * r2 + dist[..., 4:5] * r2**3) / (
-        1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r2 * r2 + dist[..., 7:8] * r2**3
+    rad_poly = (1 + dist[..., 0:1] * r2 + dist[..., 1:2] * r4 + dist[..., 4:5] * r6) / (
+        1 + dist[..., 5:6] * r2 + dist[..., 6:7] * r4 + dist[..., 7:8] * r6
     )
     xd = (
         x * rad_poly
         + 2 * dist[..., 2:3] * x * y
         + dist[..., 3:4] * (r2 + 2 * x * x)
         + dist[..., 8:9] * r2
-        + dist[..., 9:10] * r2 * r2
+        + dist[..., 9:10] * r4
     )
     yd = (
         y * rad_poly
         + dist[..., 2:3] * (r2 + 2 * y * y)
         + 2 * dist[..., 3:4] * x * y
         + dist[..., 10:11] * r2
-        + dist[..., 11:12] * r2 * r2
+        + dist[..., 11:12] * r4
     )
 
     # Compensate for tilt distortion

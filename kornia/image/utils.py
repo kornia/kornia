@@ -238,6 +238,19 @@ class ImageToTensor(nn.Module):
         self.keepdim = keepdim
 
     def forward(self, x: Any) -> torch.Tensor:
+        """Convert a NumPy-style image object into a PyTorch image tensor.
+
+        Args:
+            x: Input image array accepted by :func:`image_to_tensor`. Common
+                layouts are ``(H, W)``, ``(H, W, C)``, or ``(B, H, W, C)``,
+                where :math:`B` is batch size, :math:`H` is height,
+                :math:`W` is width, and :math:`C` is channel count.
+
+        Returns:
+            Tensor returned by :func:`image_to_tensor`. When ``self.keepdim`` is
+            ``False``, a batch dimension is added so image data follows
+            PyTorch's channel-first convention.
+        """
         return image_to_tensor(x, keepdim=self.keepdim)
 
 

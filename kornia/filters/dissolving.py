@@ -273,4 +273,26 @@ class StableDiffusionDissolving(ImageModule):
         self.model = _DissolvingWraper_HF(self._sdm_model, num_ddim_steps=1000, is_sdxl=is_sdxl)
 
     def forward(self, input: torch.Tensor, step_number: int) -> torch.Tensor:
+        """Apply one Stable Diffusion dissolving step to an image tensor.
+
+        The wrapped diffusion model progressively removes or weakens image
+        content according to the requested diffusion timestep. Lower and higher
+        ``step_number`` values correspond to different points on the internal
+        denoising schedule configured by the wrapper.
+
+        Args:
+            input: Image tensor passed to the wrapped dissolving model. The
+                expected shape follows the model wrapper, typically
+                :math:`(B, C, H, W)`, where :math:`B` is the batch size,
+                :math:`C` is the channel count, :math:`H` is the image height,
+                and :math:`W` is the image width.
+            step_number: Integer diffusion timestep used by the dissolving
+                process. It selects how far along the configured DDIM schedule
+                the image is processed.
+
+        Returns:
+            Tensor produced by the diffusion model at ``step_number``. The
+            tensor follows the wrapper's image layout and represents the
+            dissolved version of ``input``.
+        """
         return self.model.dissolve(input, step_number)

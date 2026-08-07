@@ -20,7 +20,12 @@ from typing import Dict, Tuple, Union
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
+from kornia.augmentation.utils import (
+    _adapted_rsampling,
+    _check_positive_int_or_traced,
+    _common_param_check,
+    _joint_range_check,
+)
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["RectangleEraseGenerator"]
@@ -95,8 +100,8 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
-        if not (isinstance(height, int) and height > 0 and isinstance(width, int) and width > 0):
-            raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
+        _check_positive_int_or_traced(height, "height")
+        _check_positive_int_or_traced(width, "width")
 
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.ratio, self.scale])

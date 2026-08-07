@@ -98,9 +98,14 @@ def gaussian_blur2d(
         KORNIA_CHECK_IS_TENSOR(sigma)
         sigma = sigma.to(device=input.device, dtype=input.dtype)
 
-    # Validate sigma values are positive
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
-    KORNIA_CHECK(bool((sigma > 0).all()), f"sigma must be positive, got {sigma}")
+    # `bool()` on a tensor is untraceable by dynamo; skip the data-dependent check under compile.
+    if not torch.compiler.is_compiling():
+        # Only interpolate `sigma` into the message when the check actually fails: a plain
+        # f-string here would format the whole `sigma` tensor (a costly tensor->str) on every
+        # eager call even when it passes — which dominated the eager Gaussian-blur runtime.
+        positive = bool((sigma > 0).all())
+        KORNIA_CHECK(positive, "sigma must be positive" if positive else f"sigma must be positive, got {sigma}")
 
     if separable:
         ky, kx = _unpack_2d_ks(kernel_size)
@@ -169,6 +174,24 @@ class GaussianBlur2d(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Blur an image with a Gaussian low-pass filter.
+
+        Gaussian blur computes a weighted local average where pixels near the
+        center of the kernel have larger weights than pixels farther away. The
+        configured standard deviation, ``sigma``, controls how quickly those
+        weights decay with distance, and the kernel size controls the support
+        of the approximation.
+
+        Args:
+            input: Image or feature tensor with shape :math:`(B, C, H, W)`,
+                where :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the height, and :math:`W` is the width.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` containing the smoothed
+            result. The output keeps the same channel layout as ``input`` while
+            reducing high-frequency noise and fine texture.
+        """
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type, self.separable)
 
 

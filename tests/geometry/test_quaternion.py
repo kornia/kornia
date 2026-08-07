@@ -60,6 +60,19 @@ class TestQuaternion(BaseTester):
         with pytest.raises(Exception):
             _ = Quaternion(1, [0, 0, 0])
 
+    def test_constructor_scalar_tensre(self, device, dtype):
+        with pytest.raises(ValueError):
+            Quaternion(torch.tensor(1.0, device=device, dtype=dtype))
+
+    def test_constructor_wrong_last_dim(self, device, dtype):
+        with pytest.raises(ValueError):
+            Quaternion(torch.randn(3, 5, device=device, dtype=dtype))
+
+    def test_constructor_valid_shape(self, device, dtype):
+        data = torch.randn(2, 4, device=device, dtype=dtype)
+        q = Quaternion(data)
+        self.assert_close(q.data, data)
+
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_random(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)

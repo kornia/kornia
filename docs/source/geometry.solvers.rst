@@ -9,6 +9,11 @@ kornia.geometry.solvers
 
 Module containing various geometrical solvers/optimizers.
 
+Homogeneous Solvers
+-------------------
+
+.. autofunction:: null_vector_3x4
+
 Polynomial Solvers
 ------------------
 

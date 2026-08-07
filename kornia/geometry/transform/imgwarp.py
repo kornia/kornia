@@ -24,7 +24,12 @@ import torch.nn.functional as F
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.core.ops import eye_like
-from kornia.core.utils import _torch_inverse_cast, _torch_solve_cast
+from kornia.core.utils import (
+    _inverse_3x3_closed_form,
+    _normalize_to_float32_or_float64,
+    _torch_inverse_cast,
+    _torch_solve_cast,
+)
 from kornia.geometry.conversions import (
     angle_to_rotation_matrix,
     axis_angle_to_rotation_matrix,
@@ -133,15 +138,28 @@ def warp_perspective(
     # we F.normalize the 3x3 transformation matrix and convert to 3x4
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M, (H, W), (h_out, w_out))  # Bx3x3
 
-    src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)  # Bx3x3
+    # Closed-form 3x3 inverse (pure arithmetic) instead of ``torch.linalg.inv``: numerically
+    # equivalent for these well-conditioned transforms, and it runs where the LAPACK/cusolver
+    # backend is unavailable (e.g. the Jetson wheel, where ``linalg.inv`` dlopen-fails and would
+    # otherwise crash every warp on GPU).
+    src_norm_trans_dst_norm = _inverse_3x3_closed_form(dst_norm_trans_src_norm)  # Bx3x3
 
-    # this piece of code substitutes F.affine_grid since it does not support 3x3
-    grid = (
-        create_meshgrid(h_out, w_out, normalized_coordinates=True, device=src.device)
-        .to(src.dtype)
-        .expand(B, h_out, w_out, 2)
-    )
-    grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid)
+    # Substitutes F.affine_grid (which only handles the affine 2x3 case) by applying the full 3x3
+    # projective transform to every grid point directly.
+    grid = create_meshgrid(h_out, w_out, normalized_coordinates=True, device=src.device).to(src.dtype)
+    if torch.jit.is_tracing():
+        # Under tracing/ONNX use the reference transform_points path (its op set exports cleanly).
+        grid = transform_points(src_norm_trans_dst_norm[:, None, None], grid.expand(B, h_out, w_out, 2))
+    else:
+        # Eager fast path: inline the per-point projective map (three broadcasts and a divide),
+        # avoiding transform_points' repeat_interleave of the matrix to B*H copies + homogeneous
+        # round-trip.
+        gx0, gy0 = grid[..., 0], grid[..., 1]  # (1, H, W)
+        m = src_norm_trans_dst_norm  # (B, 3, 3)
+        denom = m[:, 2, 0, None, None] * gx0 + m[:, 2, 1, None, None] * gy0 + m[:, 2, 2, None, None]
+        gx = (m[:, 0, 0, None, None] * gx0 + m[:, 0, 1, None, None] * gy0 + m[:, 0, 2, None, None]) / denom
+        gy = (m[:, 1, 0, None, None] * gx0 + m[:, 1, 1, None, None] * gy0 + m[:, 1, 2, None, None]) / denom
+        grid = torch.stack([gx, gy], dim=-1)  # (B, H, W, 2)
 
     if padding_mode == "fill":
         return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
@@ -209,13 +227,43 @@ def warp_affine(
         raise ValueError(f"Input M must be a Bx2x3 torch.Tensor. Got {M.shape}")
 
     B, C, H, W = src.size()
+    B_M = M.shape[0]
 
     M_3x3: torch.Tensor = convert_affinematrix_to_homography(M)
     dst_norm_trans_src_norm: torch.Tensor = normalize_homography(M_3x3, (H, W), dsize)
 
-    src_norm_trans_dst_norm = _torch_inverse_cast(dst_norm_trans_src_norm)
+    # Closed-form 3x3 inverse (see warp_perspective) — cusolver-free, so affine warps run on the
+    # Jetson wheel where ``torch.linalg.inv`` dlopen-fails.
+    src_norm_trans_dst_norm = _inverse_3x3_closed_form(dst_norm_trans_src_norm)
 
-    grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :], [B, C, dsize[0], dsize[1]], align_corners=align_corners)
+    # Generate the grid from the matrix batch. When a single shared transform is passed for a
+    # batch of images (``M`` is ``1x2x3`` with ``src`` ``BxCxHxW``), build one grid and expand it
+    # (a stride-0 view, no copy) instead of materializing B identical grids — this is what makes a
+    # batch-shared warp as cheap as torchvision's. When ``B_M == B`` (per-sample) nothing changes.
+    if torch.jit.is_tracing():
+        # Under tracing/ONNX use F.affine_grid (a single op the exporter lowers cleanly).
+        grid = F.affine_grid(
+            src_norm_trans_dst_norm[:, :2, :], [B_M, C, dsize[0], dsize[1]], align_corners=align_corners
+        )
+    else:
+        # Eager fast path: apply the affine matrix to a base grid directly instead of F.affine_grid
+        # — three broadcast multiply-adds per axis, markedly cheaper on launch-bound hardware. The
+        # base grid reproduces F.affine_grid's convention for the requested ``align_corners`` (pixel
+        # corners at +/-1 vs pixel centers). A shared (1x2x3) matrix broadcasts across the batch.
+        h_out, w_out = dsize
+        if align_corners:
+            xs = torch.linspace(-1.0, 1.0, w_out, device=src.device, dtype=src.dtype)
+            ys = torch.linspace(-1.0, 1.0, h_out, device=src.device, dtype=src.dtype)
+        else:
+            xs = torch.linspace(-1.0 + 1.0 / w_out, 1.0 - 1.0 / w_out, w_out, device=src.device, dtype=src.dtype)
+            ys = torch.linspace(-1.0 + 1.0 / h_out, 1.0 - 1.0 / h_out, h_out, device=src.device, dtype=src.dtype)
+        base_y, base_x = torch.meshgrid(ys, xs, indexing="ij")  # (H, W)
+        m = src_norm_trans_dst_norm  # (B_M, 3, 3); affine, so the bottom row is [0, 0, 1]
+        gx = m[:, 0, 0, None, None] * base_x + m[:, 0, 1, None, None] * base_y + m[:, 0, 2, None, None]
+        gy = m[:, 1, 0, None, None] * base_x + m[:, 1, 1, None, None] * base_y + m[:, 1, 2, None, None]
+        grid = torch.stack([gx, gy], dim=-1)  # (B_M, H, W, 2)
+    if B_M == 1 and B > 1:
+        grid = grid.expand(B, -1, -1, -1)
 
     if padding_mode == "fill":
         if fill_value is None:
@@ -312,6 +360,74 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
 #         super().__init__()
 
 
+def _unit_square_to_quad(points: torch.Tensor) -> torch.Tensor:
+    """Closed-form perspective matrix mapping the unit square to a quadrilateral.
+
+    Maps the canonical unit-square corners ``[(0,0), (1,0), (1,1), (0,1)]`` to the
+    four points in ``points`` (in the same corner order). Implemented via Heckbert's
+    direct formulation (no linear solve) so it lowers cleanly to ONNX.
+
+    Args:
+        points: ``(B, 4, 2)`` tensor of quadrilateral vertices.
+
+    Returns:
+        ``(B, 3, 3)`` perspective transformation matrix.
+    """
+    x0 = points[..., 0, 0]
+    y0 = points[..., 0, 1]
+    x1 = points[..., 1, 0]
+    y1 = points[..., 1, 1]
+    x2 = points[..., 2, 0]
+    y2 = points[..., 2, 1]
+    x3 = points[..., 3, 0]
+    y3 = points[..., 3, 1]
+
+    dx1 = x1 - x2
+    dx2 = x3 - x2
+    sx = x0 - x1 + x2 - x3
+    dy1 = y1 - y2
+    dy2 = y3 - y2
+    sy = y0 - y1 + y2 - y3
+
+    denom = dx1 * dy2 - dy1 * dx2
+    a31 = (sx * dy2 - sy * dx2) / denom
+    a32 = (dx1 * sy - dy1 * sx) / denom
+    a11 = x1 - x0 + a31 * x1
+    a12 = x3 - x0 + a32 * x3
+    a13 = x0
+    a21 = y1 - y0 + a31 * y1
+    a22 = y3 - y0 + a32 * y3
+    a23 = y0
+
+    one = torch.ones_like(x0)
+
+    row0 = torch.stack([a11, a12, a13], dim=-1)
+    row1 = torch.stack([a21, a22, a23], dim=-1)
+    row2 = torch.stack([a31, a32, one], dim=-1)
+    return torch.stack([row0, row1, row2], dim=-2)
+
+
+def _get_perspective_transform_closed_form(points_src: torch.Tensor, points_dst: torch.Tensor) -> torch.Tensor:
+    """Perspective transform via two unit-square (Heckbert) decompositions.
+
+    Computes ``H = H_d @ inv(H_s)`` where ``H_s`` maps the unit square to
+    ``points_src`` and ``H_d`` maps it to ``points_dst``, so ``H`` maps
+    ``points_src`` onto ``points_dst`` directly. Uses only arithmetic and a
+    closed-form 3x3 inverse — no ``torch.linalg.solve`` — so it needs no
+    LAPACK/cusolver backend (runs on the Jetson wheel) and traces cleanly for
+    ONNX. The result is normalized to ``H[2, 2] == 1`` to match the DLT
+    convention. Computed in float32/float64 for numerical stability, then cast
+    back to the input dtype.
+    """
+    dtype = points_src.dtype
+    work_dtype = _normalize_to_float32_or_float64(dtype)
+    h_s = _unit_square_to_quad(points_src.to(work_dtype))
+    h_d = _unit_square_to_quad(points_dst.to(work_dtype))
+    transform = h_d @ _inverse_3x3_closed_form(h_s)
+    transform = transform / transform[..., 2:3, 2:3]
+    return transform.to(dtype)
+
+
 def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> torch.Tensor:
     r"""Calculate a perspective transform from four pairs of the corresponding points.
 
@@ -363,38 +479,11 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
     KORNIA_CHECK(points_src.shape == points_dst.shape, "Source data shape must match Destination data shape.")
     KORNIA_CHECK(points_src.dtype == points_dst.dtype, "Source data type must match Destination data type.")
 
-    # we build matrix A by using only 4 point correspondence. The linear
-    # system is solved with the least square method, so here
-    # we could even pass more correspondence
-
-    # create the lhs torch.Tensor with shape # Bx8x8
-    B: int = points_src.shape[0]  # batch_size
-
-    A = torch.empty(B, 8, 8, device=points_src.device, dtype=points_src.dtype)
-
-    # we need to perform in batch
-    _zeros = torch.zeros(B, device=points_src.device, dtype=points_src.dtype)
-    _ones = torch.ones(B, device=points_src.device, dtype=points_src.dtype)
-
-    for i in range(4):
-        x1, y1 = points_src[..., i, 0], points_src[..., i, 1]  # Bx4
-        x2, y2 = points_dst[..., i, 0], points_dst[..., i, 1]  # Bx4
-
-        A[:, 2 * i] = torch.stack([x1, y1, _ones, _zeros, _zeros, _zeros, -x1 * x2, -y1 * x2], -1)
-        A[:, 2 * i + 1] = torch.stack([_zeros, _zeros, _zeros, x1, y1, _ones, -x1 * y2, -y1 * y2], -1)
-
-    # the rhs torch.Tensor
-    b = points_dst.view(-1, 8, 1)
-
-    # solve the system Ax = b
-    X: torch.Tensor = _torch_solve_cast(A, b)
-
-    # create variable to return the Bx3x3 transform
-    M = torch.empty(B, 9, device=points_src.device, dtype=points_src.dtype)
-    M[..., :8] = X[..., 0]  # Bx8
-    M[..., -1].fill_(1)
-
-    return M.view(-1, 3, 3)  # Bx3x3
+    # Solve via two closed-form unit-square (Heckbert) decompositions rather than an 8x8
+    # ``torch.linalg.solve``. Both yield the perspective transform mapping ``points_src`` onto
+    # ``points_dst``; the closed form additionally needs no LAPACK/cusolver backend (so it runs on
+    # the Jetson wheel, where ``linalg.solve`` dlopen-fails) and traces cleanly for ONNX.
+    return _get_perspective_transform_closed_form(points_src, points_dst)
 
 
 # TODO: move to kornia.geometry.affine
@@ -696,8 +785,8 @@ def get_shear_matrix2d(
         This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
 
     """
-    sx = torch.tensor([0.0]).repeat(center.size(0)) if sx is None else sx
-    sy = torch.tensor([0.0]).repeat(center.size(0)) if sy is None else sy
+    sx = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if sx is None else sx
+    sy = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if sy is None else sy
 
     x, y = torch.split(center, 1, dim=-1)
     x, y = x.view(-1), y.view(-1)
@@ -818,12 +907,12 @@ def get_shear_matrix3d(
         This function is often used in conjunction with :func:`warp_perspective3d`.
 
     """
-    sxy = torch.tensor([0.0]).repeat(center.size(0)) if sxy is None else sxy
-    sxz = torch.tensor([0.0]).repeat(center.size(0)) if sxz is None else sxz
-    syx = torch.tensor([0.0]).repeat(center.size(0)) if syx is None else syx
-    syz = torch.tensor([0.0]).repeat(center.size(0)) if syz is None else syz
-    szx = torch.tensor([0.0]).repeat(center.size(0)) if szx is None else szx
-    szy = torch.tensor([0.0]).repeat(center.size(0)) if szy is None else szy
+    sxy = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if sxy is None else sxy
+    sxz = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if sxz is None else sxz
+    syx = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if syx is None else syx
+    syz = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if syz is None else syz
+    szx = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if szx is None else szx
+    szy = torch.zeros(center.size(0), device=center.device, dtype=center.dtype) if szy is None else szy
 
     x, y, z = torch.split(center, 1, dim=-1)
     x, y, z = x.view(-1), y.view(-1), z.view(-1)

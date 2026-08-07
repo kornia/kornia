@@ -96,4 +96,22 @@ class UnsharpMask(nn.Module):
         self.border_type = border_type
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Sharpen an image by adding back high-frequency detail.
+
+        Unsharp masking first builds a blurred version of the image and then
+        uses the difference between the original and blurred images as a detail
+        signal. Adding that detail back emphasizes edges and fine texture while
+        keeping the tensor layout unchanged.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the image height, and :math:`W` is the
+                image width.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` containing the sharpened
+            image. The amount and spatial scale of sharpening are controlled by
+            the configured Gaussian kernel size, sigma, and border handling.
+        """
         return unsharp_mask(input, self.kernel_size, self.sigma, self.border_type)

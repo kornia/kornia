@@ -1,0 +1,163 @@
+# Kornia — full reference for language models
+
+> Kornia is a differentiable computer vision library for PyTorch. Classic CV operations (color, filtering, geometric transforms, camera/epipolar geometry, augmentation) are implemented as batched, GPU-ready, autograd-friendly tensor operations. Everything is `torch.Tensor` in, `torch.Tensor` out; PyTorch is the only runtime dependency.
+
+Install: `pip install kornia`
+
+## Tensor and coordinate conventions
+
+These conventions hold library-wide; per-function docs note any exception.
+
+- **Image layout:** float tensors `(B, C, H, W)`, channel order RGB, values in `[0, 1]`. The batched 4D layout is accepted everywhere; some op families (e.g. color conversions) also take `(*, C, H, W)` with arbitrary leading dims. When unsure, use `(B, C, H, W)` — add the batch dim with `img[None]`.
+- **Point coordinates:** `(x, y)` order, where x indexes columns and y indexes rows. A point tensor for N points is `(B, N, 2)`.
+- **Sizes:** output sizes and `dsize` arguments are `(h, w)` order — the OPPOSITE axis order from points.
+- **Angles:** degrees in the 2D image APIs (`rotate`, `get_rotation_matrix2d`, `RandomRotation`); radians in the 3D/conversion APIs (`axis_angle_to_rotation_matrix`, `So3`; convert with `deg2rad`/`rad2deg`). Positive 2D angle = counter-clockwise rotation as displayed, with the origin at the top-left corner (OpenCV convention).
+- **Transformation matrices:** batched. Homographies are `(B, 3, 3)`, affine matrices `(B, 2, 3)`. They act on pixel coordinates unless the function name or a flag says `normalized`. To apply a `(3, 3)` matrix, add the batch dim: `M[None]`.
+- **`align_corners`:** `warp_perspective` and `warp_affine` default to `align_corners=True`; `resize` defaults to `align_corners=None` (PyTorch's native default per interpolation mode). When mixing Kornia warps with `torch.nn.functional.interpolate` or `grid_sample`, pass `align_corners` explicitly everywhere.
+- **Devices/dtypes:** ops run on whatever device/dtype the input tensors carry; there is no implicit `.cuda()` or `.float()`.
+
+Full conventions reference with runnable proofs: <https://kornia.readthedocs.io/en/latest/get-started/conventions.html>
+
+## kornia.geometry — warps, homographies, camera geometry
+
+The differentiated core: differentiable, batched geometric transforms with no OpenCV/torchvision equivalent.
+
+Key functions:
+
+- `warp_perspective(src, M, dsize, mode="bilinear", padding_mode="zeros", align_corners=True)` — src `(B, C, H, W)`, M `(B, 3, 3)` pixel-coordinate homography, dsize `(h, w)`.
+- `warp_affine(src, M, dsize, ...)` — M `(B, 2, 3)`.
+- `get_perspective_transform(points_src, points_dst)` — both `(B, 4, 2)` in `(x, y)` pixel coords; returns `(B, 3, 3)` mapping src → dst.
+- `get_rotation_matrix2d(center, angle, scale)` — center `(B, 2)` in `(x, y)`, angle `(B,)` degrees, scale `(B, 2)`; returns `(B, 2, 3)`.
+- `rotate(tensor, angle)`, `translate`, `scale`, `resize(input, size, interpolation="bilinear", align_corners=None)`.
+- Conversions: `rad2deg`, `deg2rad`, `angle_axis_to_rotation_matrix`, `rotation_matrix_to_quaternion`, and the `So3`/`Se3` Lie group classes.
+- Epipolar: `find_fundamental`, `find_essential`, `sampson_epipolar_distance`, `triangulate_points`.
+
+Example — warp an image with a 4-point homography:
+
+```python
+import torch
+import kornia.geometry as KG
+
+img = torch.rand(1, 3, 100, 100)  # (B, C, H, W), values in [0, 1]
+# four corners, (x, y) order, pixel coordinates
+points_src = torch.tensor([[[0.0, 0.0], [99.0, 0.0], [99.0, 99.0], [0.0, 99.0]]])
+points_dst = torch.tensor([[[10.0, 5.0], [90.0, 10.0], [95.0, 95.0], [5.0, 90.0]]])
+M = KG.get_perspective_transform(points_src, points_dst)  # (1, 3, 3)
+out = KG.warp_perspective(img, M, dsize=(100, 100))  # dsize is (h, w)
+```
+
+## kornia.augmentation — batched augmentation with transform tracking
+
+`AugmentationSequential` applies the SAME sampled transform to every registered data type and can invert it. This is the correct way to keep images, masks, boxes, and keypoints consistent.
+
+```python
+import torch
+import kornia.augmentation as K
+
+aug = K.AugmentationSequential(
+    K.RandomAffine(degrees=30.0, p=1.0),
+    K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+    data_keys=["input", "mask", "keypoints"],
+)
+image = torch.rand(1, 3, 64, 64)
+mask = (torch.rand(1, 1, 64, 64) > 0.5).float()
+keypoints = torch.tensor([[[16.0, 16.0], [48.0, 32.0]]])  # (B, N, 2), (x, y)
+
+img_out, mask_out, kpts_out = aug(image, mask, keypoints)
+# geometric part is inverted for all data types; color ops are skipped on masks/keypoints
+img_back, mask_back, kpts_back = aug.inverse(img_out, mask_out, kpts_out)
+```
+
+Notes:
+
+- `data_keys` order defines the positional argument order.
+- Random parameters are sampled per batch element; `p=1.0` forces application.
+- The last applied transform matrices are available via `aug.transform_matrix` after a forward pass.
+
+## kornia.color — color space conversions
+
+`rgb_to_grayscale`, `rgb_to_hsv`, `hsv_to_rgb`, `rgb_to_lab`, `rgb_to_yuv`, `bgr_to_rgb`, etc. All take `(B, C, H, W)` float tensors in `[0, 1]` (except explicitly-ranged spaces like LAB on output).
+
+```python
+import torch
+import kornia.color as KC
+
+rgb = torch.rand(1, 3, 32, 32)
+gray = KC.rgb_to_grayscale(rgb)  # (1, 1, 32, 32)
+hsv = KC.rgb_to_hsv(rgb)  # hue in radians [0, 2pi], s/v in [0, 1]
+```
+
+## kornia.filters — blurring, gradients, edges
+
+- `gaussian_blur2d(input, kernel_size, sigma, border_type="reflect", separable=True)` — kernel_size `(ky, kx)` ints, sigma `(sy, sx)` floats or tensor.
+- `sobel(input)`, `spatial_gradient(input)`, `canny(input)`, `median_blur`, `box_blur`, `bilateral_blur`.
+
+```python
+import torch
+import kornia.filters as KF
+
+img = torch.rand(1, 3, 64, 64)
+blurred = KF.gaussian_blur2d(img, kernel_size=(5, 5), sigma=(1.5, 1.5))
+magnitude, edges = KF.canny(img)  # gradient magnitudes and thresholded edge map
+```
+
+## kornia.feature — detection, description, matching
+
+Classical and learned local features with a common interface: LAFs (local affine frames) of shape `(B, N, 2, 3)`.
+
+```python
+import torch
+import kornia.feature as KF
+
+# LoFTR-style dense matching (downloads pretrained weights at construction)
+matcher = KF.LoFTR(pretrained="outdoor")
+input_dict = {
+    "image0": torch.rand(1, 1, 128, 128),  # grayscale (B, 1, H, W)
+    "image1": torch.rand(1, 1, 128, 128),
+}
+with torch.inference_mode():
+    out = matcher(input_dict)
+# out["keypoints0"], out["keypoints1"]: matched (x, y) pixel coords; out["confidence"]
+```
+
+Other entry points: `SIFTDescriptor`, `HardNet`, `DISK`, `LightGlueMatcher`, `match_smnn`, `LAFDescriptor`.
+
+## kornia.enhance / kornia.losses / kornia.metrics / kornia.morphology
+
+- `kornia.enhance`: `normalize`, `denormalize`, `equalize_clahe`, `adjust_gamma`, `adjust_brightness` — all differentiable.
+- `kornia.losses`: `ssim_loss`, `psnr_loss`, `dice_loss`, `focal_loss`, `charbonnier_loss` — take `(B, C, H, W)` predictions/targets.
+- `kornia.metrics`: `ssim`, `psnr`, `mean_iou`, `accuracy`.
+- `kornia.morphology`: `dilation(tensor, kernel)`, `erosion`, `opening`, `closing` — kernel is a 2D `(kH, kW)` tensor of ones/zeros.
+
+## kornia.io — image I/O
+
+```python
+import kornia.io as KIO
+
+img = KIO.load_image("photo.jpg", KIO.ImageLoadType.RGB32)  # (3, H, W) float32 in [0, 1]
+img = img[None]  # most ops want (B, C, H, W)
+```
+
+## Pitfalls checklist
+
+1. Passing `(H, W, C)` NumPy-style arrays — convert with `kornia.image.image_to_tensor(np_img)[None]` (or `torch.from_numpy(...).permute(2, 0, 1)[None] / 255`). `kornia.utils.image_to_tensor` is deprecated.
+2. Passing `(w, h)` to `dsize`/`size` arguments — they are `(h, w)`.
+3. Passing `(y, x)` (row, col) points — point tensors are `(x, y)`.
+4. Assuming `align_corners` defaults are uniform — warps default `True`, `resize` defaults `None`.
+5. Using an unbatched `(3, 3)` homography — add the batch dim: `M[None]`.
+6. Radians where degrees are expected — rotation angles are degrees.
+7. Uint8 `[0, 255]` tensors — ops expect float `[0, 1]`; divide by 255 first.
+8. Augmenting image and mask through two separate augmentation calls — the random parameters will differ; use one `AugmentationSequential` with `data_keys`.
+9. Feeding `homography_warp` a source→destination pixel homography — it expects destination→source, normalized to [-1, 1]: normalize the forward homography FIRST, then invert (`torch.inverse(normalize_homography(M, size_src, size_dst))`). It also defaults to `align_corners=False` unlike `warp_perspective`.
+10. Mixing `axis_angle_to_rotation_matrix` (right-hand rule, math convention — screen-clockwise for +z on y-down images) with `rotate` (screen-counter-clockwise) without negating the angle.
+11. Treating `kornia.geometry.bbox.infer_bbox_shape` width/height as exclusive — they are inclusive (`x_right - x_left + 1`): corners (1,1),(2,2) give width 2.
+12. Quaternions in XYZW order — `kornia.geometry.quaternion.Quaternion` uses WXYZ (scalar first).
+13. Expecting hue in `[0, 360]` or `[0, 1]` — `rgb_to_hsv` returns radians `[0, 2π)`.
+14. Wrong `data_keys` box format — `"bbox"` means 4-corner `(B, 4, 2)`; coordinate formats are `"bbox_xyxy"` / `"bbox_xywh"`.
+
+## Links
+
+- Docs: <https://kornia.readthedocs.io/en/latest/>
+- Machine-readable index: <https://kornia.readthedocs.io/en/latest/llms.txt>
+- Source: <https://github.com/kornia/kornia>
+- Tutorials: <https://kornia.github.io/tutorials/>

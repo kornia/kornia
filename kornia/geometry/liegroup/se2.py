@@ -332,7 +332,7 @@ class Se2(nn.Module):
                     [0., 0.]], requires_grad=True)
 
         """
-        # KORNIA_CHECK_SHAPE(matrix, ["B", "3", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(matrix, ["*", "3", "3"])
         r = So2.from_matrix(matrix[..., :2, :2])
         t = matrix[..., :2, -1]
         return cls(r, t)

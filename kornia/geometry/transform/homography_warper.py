@@ -40,10 +40,33 @@ class BaseWarper(nn.Module):
         self.width = width
 
     @abstractmethod
-    def forward(self, patch_src: torch.Tensor, src_homo_dst: Optional[torch.Tensor] = None) -> torch.Tensor: ...
+    def forward(self, patch_src: torch.Tensor, src_homo_dst: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Sample a source patch on this warper's destination grid.
+
+        Args:
+            patch_src: Source image or patch tensor with shape
+                :math:`(B, C, H, W)`, where :math:`B` is batch size,
+                :math:`C` is channels, :math:`H` is source height, and
+                :math:`W` is source width.
+            src_homo_dst: Optional homography with shape :math:`(B, 3, 3)`
+                mapping destination coordinates into the source image. Concrete
+                implementations may also use a grid precomputed from this
+                matrix.
+
+        Returns:
+            Tensor sampled in the destination frame managed by this warper.
+        """
+        ...
 
     @abstractmethod
-    def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None: ...
+    def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None:
+        """Precompute a sampling grid for repeated homography warps.
+
+        Args:
+            src_homo_dst: Homography tensor with shape :math:`(B, 3, 3)` used
+                to transform destination grid points into source coordinates.
+        """
+        ...
 
 
 class HomographyWarper(BaseWarper):

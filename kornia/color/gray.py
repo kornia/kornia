@@ -157,6 +157,16 @@ class GrayscaleToRgb(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert a grayscale tensor to RGB.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 1, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``1`` is a single grayscale channel, and ``H``/``W`` are height and width.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H, W)`.
+        """
         return grayscale_to_rgb(image)
 
 
@@ -189,6 +199,16 @@ class RgbToGrayscale(nn.Module):
         self.rgb_weights = rgb_weights
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB tensor to grayscale.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
+
+        Returns:
+            Grayscale tensor with shape :math:`(*, 1, H, W)`, computed with the module's RGB weights.
+        """
         return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
 
 
@@ -215,4 +235,14 @@ class BgrToGrayscale(nn.Module):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert a BGR tensor to grayscale.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to BGR channels, and ``H``/``W`` are height and width.
+
+        Returns:
+            Grayscale tensor with shape :math:`(*, 1, H, W)`.
+        """
         return bgr_to_grayscale(image)

@@ -447,6 +447,18 @@ class DescriptorMatcherWithSteerer(nn.Module):
     def matching_function(
         self, d1: torch.Tensor, d2: torch.Tensor, dm: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Dispatch descriptor matching to the configured matching strategy.
+
+        Args:
+            d1: Descriptor tensor from the first image with shape `(N1, D)`, where `N1` is descriptor count and `D` is
+                descriptor dimension.
+            d2: Descriptor tensor from the second image with shape `(N2, D)`, where `N2` is descriptor count and `D` is
+                descriptor dimension.
+            dm: Optional descriptor-distance matrix used instead of recomputing distances from `d1` and `d2`.
+
+        Returns:
+            Tuple containing match distances or scores and index pairs selected by the configured matching strategy.
+        """
         if self.match_mode == "nn":
             return match_nn(d1, d2, dm=dm)
         elif self.match_mode == "mnn":

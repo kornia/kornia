@@ -27,7 +27,7 @@ Interactive Demo
 ~~~~~~~~~~~~~~~~
 .. raw:: html
 
-    <gradio-app src="kornia/kornia-image-filtering"></gradio-app>
+    <gradio-app src="https://kornia-kornia-image-filtering.hf.space"></gradio-app>
 
 Visit the `Kornia image filtering demo on the Hugging Face Spaces
 <https://huggingface.co/spaces/kornia/kornia-image-filtering>`_.
@@ -53,7 +53,7 @@ Interactive Demo
 ~~~~~~~~~~~~~~~~
 .. raw:: html
 
-    <gradio-app src="kornia/edge_detector"></gradio-app>
+    <gradio-app src="https://kornia-edge-detector.hf.space"></gradio-app>
 
 Visit the `Kornia edge detector demo on the Hugging Face Spaces
 <https://huggingface.co/spaces/kornia/edge_detector>`_.

@@ -58,12 +58,18 @@ build-docs = { cmd = "uv run python -m sphinx -W -b html docs/source docs/build/
 clean = { cmd = "find . -type f -name '*.pyc' -delete && find . -type d -name '__pycache__' -delete && rm -rf .venv" }
 
 # ------------------------------------------------------------------------------
+# Restrict CUDA feature to supported platforms only
+# ------------------------------------------------------------------------------
+[feature.cuda]
+platforms = ["linux-64", "linux-aarch64", "win-64"]
+
+# ------------------------------------------------------------------------------
 # Feature: CUDA (PyTorch CUDA wheels) - for local GPU development
 # Requires reinstall because uv doesn't support per-environment sources
 # ------------------------------------------------------------------------------
 
 [feature.cuda.tasks]
-install = { cmd = "uv sync --extra dev --extra x && uv pip install --reinstall torch torchvision --index pytorch-cu121", description = "Install dev dependencies (CUDA PyTorch)" }
+install = { cmd = "uv sync --extra dev && uv pip install --reinstall torch torchvision --index pytorch-cu121", description = "Install dev dependencies (CUDA PyTorch)" }
 install-docs = { cmd = "uv sync --extra dev --extra docs --extra x && uv pip install --reinstall torch torchvision --index pytorch-cu121", description = "Install dev + docs (CUDA PyTorch)" }
 # CUDA test tasks
 test-cuda = { cmd = "uv run pytest -v tests/", env = { KORNIA_TEST_DEVICE = "cuda" }, description = "Run tests on CUDA" }
