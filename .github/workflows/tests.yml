@@ -88,12 +88,13 @@ jobs:
       - name: Install dependencies
         run: pixi run -e ${{ steps.pixi-env.outputs.name }} install
 
-      # torch 2.5.1 Windows wheels crash with STATUS_ILLEGAL_INSTRUCTION (0xc000001d) inside
-      # affine_grid on part of the runner fleet (host-CPU-dependent, hits both windows-2022 and
-      # windows-2025 — the CPU-autocast bf16 path dispatches AVX512 kernels some hosts lack).
-      # Clamp both ISA dispatchers to AVX2 for these legs. Drop when 2.5.1 leaves the matrix.
-      - name: Clamp CPU ISA for torch 2.5.1 on Windows
-        if: runner.os == 'Windows' && startsWith(matrix.pytorch-version, '2.5')
+      # torch Windows wheels crash with STATUS_ILLEGAL_INSTRUCTION (0xc000001d) inside
+      # affine_grid on part of the runner fleet — observed on torch 2.5.1 AND 2.9.1, on both
+      # windows-2022 and windows-2025 (host-CPU-dependent: the CPU-autocast bf16 path
+      # dispatches AVX512 kernels some hosts don't actually execute). Clamp both ISA
+      # dispatchers to AVX2 on every Windows leg.
+      - name: Clamp CPU ISA on Windows
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           echo "ATEN_CPU_CAPABILITY=avx2" >> $GITHUB_ENV
