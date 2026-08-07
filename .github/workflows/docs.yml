@@ -50,13 +50,16 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || inputs.ref }}
 
+      # On direct pull_request runs (empty inputs) fall back to a prefix restore of the
+      # model-weights caches saved by the test workflows: doctests download ~10 model
+      # checkpoints, and a cold cache both takes minutes and breaks doctests (torch.hub
+      # prints 'Downloading: ...', which the examples do not expect).
       - name: Restore cache
-        if: inputs.cache-path != ''
         uses: actions/cache/restore@v6
         with:
-          path: ${{ inputs.cache-path }}
-          key: ${{ inputs.cache-key }}
-          restore-keys: ${{ inputs.cache-restore-keys }}
+          path: ${{ inputs.cache-path || 'weights/' }}
+          key: ${{ inputs.cache-key || 'model-weights-docs' }}
+          restore-keys: ${{ inputs.cache-restore-keys || 'model-weights-' }}
 
       - name: Set pixi environment name
         id: pixi-env
