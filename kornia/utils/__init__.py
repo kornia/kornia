@@ -39,6 +39,18 @@ from kornia.core.utils import (
     dict_to_dataclass as _dict_to_dataclass,
 )
 from kornia.core.utils import (
+    get_cuda_device_if_available as _get_cuda_device_if_available,
+)
+from kornia.core.utils import (
+    get_cuda_or_mps_device_if_available as _get_cuda_or_mps_device_if_available,
+)
+from kornia.core.utils import (
+    get_mps_device_if_available as _get_mps_device_if_available,
+)
+from kornia.core.utils import (
+    is_autocast_enabled as _is_autocast_enabled,
+)
+from kornia.core.utils import (
     is_mps_tensor_safe as _is_mps_tensor_safe,
 )
 from kornia.core.utils import (
@@ -46,6 +58,9 @@ from kornia.core.utils import (
 )
 from kornia.core.utils import (
     safe_solve_with_mask as _safe_solve_with_mask,
+)
+from kornia.core.utils import (
+    xla_is_available as _xla_is_available,
 )
 from kornia.geometry import (
     create_meshgrid as _create_meshgrid,
@@ -371,6 +386,56 @@ def map_location_to_cpu(storage: Any, *args: Any, **kwargs: Any) -> Any:
     return storage
 
 
+@deprecated(
+    replace_with="kornia.core.utils.get_cuda_device_if_available",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.utils` instead.",
+)
+def get_cuda_device_if_available(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.utils.get_cuda_device_if_available` instead."""
+    return _get_cuda_device_if_available(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.core.utils.get_mps_device_if_available",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.utils` instead.",
+)
+def get_mps_device_if_available(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.utils.get_mps_device_if_available` instead."""
+    return _get_mps_device_if_available(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.core.utils.get_cuda_or_mps_device_if_available",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.utils` instead.",
+)
+def get_cuda_or_mps_device_if_available(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.utils.get_cuda_or_mps_device_if_available` instead."""
+    return _get_cuda_or_mps_device_if_available(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.core.utils.is_autocast_enabled",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.utils` instead.",
+)
+def is_autocast_enabled(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.utils.is_autocast_enabled` instead."""
+    return _is_autocast_enabled(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.core.utils.xla_is_available",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.utils` instead.",
+)
+def xla_is_available(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.utils.xla_is_available` instead."""
+    return _xla_is_available(*args, **kwargs)
+
+
 def __getattr__(name: str) -> Any:
     # Lazy so that `import kornia.utils` never pulls in the onnx machinery.
     if name == "CachedDownloader":
@@ -399,10 +464,14 @@ __all__ = [
     "draw_point2d",
     "draw_rectangle",
     "eye_like",
+    "get_cuda_device_if_available",
+    "get_cuda_or_mps_device_if_available",
+    "get_mps_device_if_available",
     "get_sample_images",
     "image_list_to_tensor",
     "image_to_string",
     "image_to_tensor",
+    "is_autocast_enabled",
     "is_mps_tensor_safe",
     "load_pointcloud_ply",
     "map_location_to_cpu",
@@ -414,4 +483,5 @@ __all__ = [
     "tensor_to_image",
     "torch_meshgrid",
     "vec_like",
+    "xla_is_available",
 ]

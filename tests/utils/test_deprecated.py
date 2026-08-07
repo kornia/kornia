@@ -220,6 +220,71 @@ class TestRestoredWrappers:
             out = utils.map_location_to_cpu(t, "cuda:0")
         assert out is t
 
+    def test_device_and_env_helpers_warn(self):
+        with pytest.warns(DeprecationWarning, match="kornia.core.utils.get_cuda_device_if_available"):
+            dev = utils.get_cuda_device_if_available()
+        assert isinstance(dev, torch.device)
+        with pytest.warns(DeprecationWarning, match="kornia.core.utils.get_mps_device_if_available"):
+            dev = utils.get_mps_device_if_available()
+        assert isinstance(dev, torch.device)
+        with pytest.warns(DeprecationWarning, match="kornia.core.utils.get_cuda_or_mps_device_if_available"):
+            dev = utils.get_cuda_or_mps_device_if_available()
+        assert isinstance(dev, torch.device)
+        with pytest.warns(DeprecationWarning, match="kornia.core.utils.is_autocast_enabled"):
+            out = utils.is_autocast_enabled()
+        assert isinstance(out, bool)
+        with pytest.warns(DeprecationWarning, match="kornia.core.utils.xla_is_available"):
+            out = utils.xla_is_available()
+        assert isinstance(out, bool)
+
+    def test_v082_public_surface_fully_restored(self):
+        """Every public name from v0.8.2's kornia.utils.__all__ must still resolve.
+
+        Frozen copy of `git show v0.8.2:kornia/utils/__init__.py` __all__, minus the
+        underscore-prefixed `_extract_device_dtype` (private per the stability policy).
+        This is the closure of the 0.8.3 hard-removal audit: if any name here stops
+        resolving, the deprecation window was skipped again.
+        """
+        v082_public_all = [
+            "CachedDownloader",
+            "ImageToTensor",
+            "batched_forward",
+            "create_meshgrid",
+            "create_meshgrid3d",
+            "dataclass_to_dict",
+            "deprecated",
+            "dict_to_dataclass",
+            "draw_convex_polygon",
+            "draw_line",
+            "draw_point2d",
+            "draw_rectangle",
+            "eye_like",
+            "get_cuda_device_if_available",
+            "get_cuda_or_mps_device_if_available",
+            "get_mps_device_if_available",
+            "get_sample_images",
+            "image_list_to_tensor",
+            "image_to_string",
+            "image_to_tensor",
+            "is_autocast_enabled",
+            "is_mps_tensor_safe",
+            "load_pointcloud_ply",
+            "map_location_to_cpu",
+            "one_hot",
+            "print_image",
+            "safe_inverse_with_mask",
+            "safe_solve_with_mask",
+            "save_pointcloud_ply",
+            "tensor_to_image",
+            "torch_meshgrid",
+            "vec_like",
+            "xla_is_available",
+        ]
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            unresolvable = [n for n in v082_public_all if not hasattr(utils, n)]
+        assert not unresolvable, f"v0.8.2 public names no longer resolvable: {unresolvable}"
+
     def test_restored_wrappers_in_all(self):
         expected = {
             "CachedDownloader",
@@ -228,13 +293,18 @@ class TestRestoredWrappers:
             "dataclass_to_dict",
             "dict_to_dataclass",
             "eye_like",
+            "get_cuda_device_if_available",
+            "get_cuda_or_mps_device_if_available",
+            "get_mps_device_if_available",
             "get_sample_images",
             "image_list_to_tensor",
+            "is_autocast_enabled",
             "is_mps_tensor_safe",
             "map_location_to_cpu",
             "safe_inverse_with_mask",
             "safe_solve_with_mask",
             "torch_meshgrid",
             "vec_like",
+            "xla_is_available",
         }
         assert expected.issubset(set(utils.__all__))

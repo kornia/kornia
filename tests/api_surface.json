@@ -719,10 +719,14 @@
     "draw_point2d",
     "draw_rectangle",
     "eye_like",
+    "get_cuda_device_if_available",
+    "get_cuda_or_mps_device_if_available",
+    "get_mps_device_if_available",
     "get_sample_images",
     "image_list_to_tensor",
     "image_to_string",
     "image_to_tensor",
+    "is_autocast_enabled",
     "is_mps_tensor_safe",
     "load_pointcloud_ply",
     "map_location_to_cpu",
@@ -733,6 +737,7 @@
     "save_pointcloud_ply",
     "tensor_to_image",
     "torch_meshgrid",
-    "vec_like"
+    "vec_like",
+    "xla_is_available"
   ]
 }
