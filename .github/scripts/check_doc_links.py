@@ -71,6 +71,8 @@ def markdown_files() -> list[Path]:
         if any(part in SKIP_DIRS for part in p.parts):
             continue
         out.append(p)
+    # llms.txt / llms-full.txt are markdown-formatted; keep their links honest too
+    out.extend(ROOT.glob("docs/source/_extra/llms*.txt"))
     return sorted(out)
 
 
