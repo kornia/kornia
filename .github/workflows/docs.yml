@@ -4,6 +4,7 @@ on:
     paths:
       - 'docs/**'
       - '*.rst'
+      - '.github/workflows/docs.yml'
   workflow_call:
     inputs:
       python-version:
@@ -36,9 +37,12 @@ jobs:
     name: docs
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: ${{ inputs.fail-fast }}
+      # On direct pull_request events the `inputs` context is empty (the workflow_call
+      # defaults do NOT apply), so fall back explicitly — otherwise fromJSON('') fails
+      # at workflow parse time and the run dies at startup with zero jobs.
+      fail-fast: ${{ inputs.fail-fast || false }}
       matrix:
-        python-version: ${{ fromJSON(inputs.python-version) }}
+        python-version: ${{ fromJSON(inputs.python-version || '["3.11"]') }}
 
     steps:
       - name: Checkout repository

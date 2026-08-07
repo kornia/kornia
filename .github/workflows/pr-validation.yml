@@ -33,7 +33,26 @@ jobs:
 
             const warnings = [];
 
-            if (issueNumbers.length === 0) {
+            // The assignment/triage guardrails exist for external contributors;
+            // maintainers (write access or above) open PRs from their own judgment.
+            let isMaintainer = false;
+            try {
+              const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: prAuthor
+              });
+              isMaintainer = ['admin', 'maintain', 'write'].includes(perm.permission);
+              if (isMaintainer) {
+                core.info(`@${prAuthor} has ${perm.permission} access; skipping contributor guardrails.`);
+              }
+            } catch (error) {
+              core.warning(`Could not determine permission for @${prAuthor}: ${error.message}`);
+            }
+
+            if (isMaintainer) {
+              // no warnings: fall through so any stale warning comment gets deleted
+            } else if (issueNumbers.length === 0) {
               warnings.push('❌ **No linked issue found**: This PR does not reference any issue. Please link to an issue using "Fixes #123" or "Closes #123" in the PR description.');
             } else {
               // Check each linked issue
