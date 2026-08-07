@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || inputs.ref }}
 
@@ -55,7 +55,7 @@ jobs:
       # checkpoints, and a cold cache both takes minutes and breaks doctests (torch.hub
       # prints 'Downloading: ...', which the examples do not expect).
       - name: Restore cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ${{ inputs.cache-path || 'weights/' }}
           key: ${{ inputs.cache-key || 'model-weights-docs' }}
@@ -67,7 +67,7 @@ jobs:
         run: echo "name=py$(echo '${{ matrix.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.9.6
+        uses: prefix-dev/setup-pixi@v0.10.0
         with:
           pixi-version: v0.40.0
           cache: true

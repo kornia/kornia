@@ -25,15 +25,15 @@ jobs:
       hash: ${{ steps.hashid.outputs.weights-hash }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.9.6
+        uses: prefix-dev/setup-pixi@v0.10.0
         with:
           pixi-version: v0.40.0
           cache: true
 
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         id: cache-weights
         with:
           path: weights/

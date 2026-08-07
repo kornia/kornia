@@ -1034,16 +1034,16 @@ def get_hanning_kernel2d(
     return kernel2d
 
 
-@deprecated(replace_with="get_gaussian_kernel1d", version="6.9.10")
+@deprecated(replace_with="get_gaussian_kernel1d", version="0.6.10")
 def get_gaussian_kernel1d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
     return get_gaussian_kernel1d(*args, **kwargs)
 
 
-@deprecated(replace_with="get_gaussian_kernel2d", version="6.9.10")
+@deprecated(replace_with="get_gaussian_kernel2d", version="0.6.10")
 def get_gaussian_kernel2d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
     return get_gaussian_kernel2d(*args, **kwargs)
 
 
-@deprecated(replace_with="get_gaussian_kernel3d", version="6.9.10")
+@deprecated(replace_with="get_gaussian_kernel3d", version="0.6.10")
 def get_gaussian_kernel3d_t(*args: Any, **kwargs: Any) -> torch.Tensor:  # noqa: D103
     return get_gaussian_kernel3d(*args, **kwargs)
