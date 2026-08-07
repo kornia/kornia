@@ -10,3 +10,5 @@ kornia.core
 .. autoclass:: TensorWrapper
     :members:
     :undoc-members:
+
+.. autofunction:: kornia.core.utils.batched_forward

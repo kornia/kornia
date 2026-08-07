@@ -44,6 +44,7 @@ natively in Rust to reduce the memory footprint during the decoding and types co
 
 .. autofunction:: load_image
 .. autofunction:: write_image
+.. autofunction:: get_sample_images
 
 .. autoclass:: ImageLoadType
     :members:
