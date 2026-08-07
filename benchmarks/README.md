@@ -115,7 +115,48 @@ better); kornia runs a batched float BCHW tensor, OpenCV a per-image uint8 loop 
 | resize | 25576 | 26561 | 34531 |
 | get_perspective_transform | 16336 | 69578 | 784576 |
 
-The honest reading: OpenCV's uint8 single-image loop wins the CPU regime outright; compiled
-kornia on an accelerator overtakes it on the warps once batched (kornia's regime), and the
-batched `get_perspective_transform` solver beats OpenCV's per-pair solver even on CPU at
-batch 32. `torch.compile` is worth 1.3–7× across these ops.
+### CUDA (batch=32, fp32, 256×256, throughput items/s)
+
+Measured 2026-08-07 on commits `b317c16d`/`f4cb83eb`, torch 2.x, full tables in
+[PR #3906](https://github.com/kornia/kornia/pull/3906). OpenCV column is the same box's CPU
+uint8 per-image loop.
+
+NVIDIA L4 (Intel Cascade Lake host):
+
+| op | kornia (eager) | kornia (compiled) | torchvision v2 | opencv (CPU) |
+| --- | --: | --: | --: | --: |
+| warp_perspective | 24897 | **56552** | - | 1246 |
+| warp_affine | 27747 | **53575** | - | 1946 |
+| rotate | 14230 | 44547 | **74258** | 2002 |
+| resize | **1021334** | 322329 | 838383 | 25742 |
+| get_perspective_transform | 26723 | **139442** | - | 388340 |
+
+NVIDIA RTX PRO 6000 Blackwell (AMD Turin host):
+
+| op | kornia (eager) | kornia (compiled) | torchvision v2 | opencv (CPU) |
+| --- | --: | --: | --: | --: |
+| warp_perspective | 96022 | **232170** | - | 3223 |
+| warp_affine | 120089 | **217083** | - | 5747 |
+| rotate | 58357 | 159196 | **298016** | 5742 |
+| resize | 625142 | **1204817** | 625100 | 60394 |
+| get_perspective_transform | 78071 | **431034** | - | 272523 |
+
+### The honest reading (across Apple Silicon, L4, RTX PRO 6000, RTX 4090/WSL2)
+
+- **Batched GPU is kornia's regime and the margin is large:** compiled `warp_perspective` at
+  batch 32 beats OpenCV's per-image CPU loop by ~45× (L4) to ~72× (RTX PRO 6000); eager alone
+  is ~20–30×.
+- **`rotate` is a found weak spot:** torchvision v2 beats kornia on every GPU tested
+  (~1.7–2×, up to ~4× vs eager where compile was unavailable). First data-driven optimization
+  target for the Stage-3 iteration.
+- **`resize`:** kornia eager matches torchvision almost exactly (same underlying kernel);
+  `torch.compile` is a large win at big batches on newer GPUs (3.6M img/s at batch 128 on
+  Blackwell) but *regressed* resize on L4 at batch ≤ 32 — compile is not a free win, measure
+  per shape.
+- **Batched `get_perspective_transform` beats OpenCV's per-pair solver even on CPU** once
+  batched: crossover by batch ≈ 32, up to ~13× at batch 128 on an AMD Turin CPU
+  (3.5M solves/s compiled).
+- **CPU per-image warps remain OpenCV's win everywhere**, as expected and published.
+- **WSL2 + RTX 4090: inductor failed for all ops** (`InductorError`, reported by the harness's
+  compile-failure NOTE rather than silently skipped); eager still led OpenCV by ~23× on
+  batch-128 warp_perspective.
