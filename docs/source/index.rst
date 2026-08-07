@@ -101,6 +101,7 @@ Join the community
    get-started/introduction
    get-started/highlights
    get-started/conventions
+   get-started/stability
    get-started/installation
    get-started/precision
    get-started/about

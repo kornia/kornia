@@ -17,6 +17,7 @@ These conventions hold library-wide; per-function docs note any exception.
 - **Devices/dtypes:** ops run on whatever device/dtype the input tensors carry; there is no implicit `.cuda()` or `.float()`.
 
 Full conventions reference with runnable proofs: <https://kornia.readthedocs.io/en/latest/get-started/conventions.html>
+Stability: the core modules (geometry, augmentation, color, filters, enhance, losses, metrics, morphology, io, image) follow a written deprecation policy — public symbols warn for at least one minor release before breaking: <https://kornia.readthedocs.io/en/latest/get-started/stability.html>
 
 ## kornia.geometry — warps, homographies, camera geometry
 
