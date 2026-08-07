@@ -21,6 +21,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.download import hf_url, load_state_dict_from_url
+
 from ._unets import Unet
 from .detector import heatmap_to_keypoints
 from .structs import DISKFeatures
@@ -143,8 +145,14 @@ class DISK(nn.Module):
 
         """
         urls = {
-            "depth": "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",
-            "epipolar": "https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth",
+            "depth": [
+                hf_url("disk", "depth-save.pth"),
+                "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",
+            ],
+            "epipolar": [
+                hf_url("disk", "epipolar-save.pth"),
+                "https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth",
+            ],
         }
 
         if checkpoint not in urls:
@@ -152,7 +160,7 @@ class DISK(nn.Module):
 
         if device is None:
             device = torch.device("cpu")
-        pretrained_dict = torch.hub.load_state_dict_from_url(urls[checkpoint], map_location=device)
+        pretrained_dict = load_state_dict_from_url(urls[checkpoint], map_location=device)
 
         model: DISK = cls().to(device)
         model.load_state_dict(pretrained_dict["extractor"])

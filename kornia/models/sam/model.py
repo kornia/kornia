@@ -34,6 +34,7 @@ from typing import Any, Optional
 import torch
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url
 from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.models.base import ModelBase
 from kornia.models.sam.architecture.common import LayerNorm
@@ -228,7 +229,10 @@ class Sam(ONNXExportMixin, ModelBase[SamConfig]):
                     SamModelType.vit_b: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth",
                     SamModelType.vit_l: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth",
                     SamModelType.vit_h: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
-                    SamModelType.mobile_sam: "https://github.com/ChaoningZhang/MobileSAM/raw/a509aac54fdd7af59f843135f2f7cee307283c88/weights/mobile_sam.pt",
+                    SamModelType.mobile_sam: [
+                        hf_url("mobile_sam", "mobile_sam.pt"),
+                        "https://github.com/ChaoningZhang/MobileSAM/raw/a509aac54fdd7af59f843135f2f7cee307283c88/weights/mobile_sam.pt",
+                    ],
                 }[model_type]
             else:
                 warnings.warn("checkpoint is not None. pretrained=True is ignored", stacklevel=1)
