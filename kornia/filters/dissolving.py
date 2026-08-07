@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+from __future__ import annotations
+
 import os
 from typing import Any
 
@@ -140,7 +142,7 @@ class _DissolvingWraper_HF:
     @torch.no_grad()
     def encode_tensor_to_latent(self, image: torch.Tensor) -> torch.Tensor:
         with torch.no_grad():
-            # The VAE weights stay in the pipeline dtype (float32), so inputs of any
+            # The VAE weights stay in the pipeline dtype (e.g. float32), so inputs of any
             # user dtype (e.g. float64) must be cast to it, not only moved to the device.
             image = (image / 0.5 - 1).to(device=self.model.device, dtype=self.model.vae.dtype)
             latents = self.model.vae.encode(image)["latent_dist"].sample()
@@ -149,7 +151,7 @@ class _DissolvingWraper_HF:
 
     @torch.no_grad()
     def decode_tensor_to_latent(self, latents: torch.Tensor) -> torch.Tensor:
-        # Perform in-place detach to reduce memory usage and copies
+        # Detach from autograd, then match the VAE device/dtype (allocates only on mismatch).
         latents = latents.detach().to(device=self.model.device, dtype=self.model.vae.dtype)
         latents = latents * (1.0 / 0.18215)  # Fused division as multiplication (faster)
         # Reduce attribute lookups by localizing frequently used attributes
