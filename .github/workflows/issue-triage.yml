@@ -35,7 +35,7 @@ jobs:
             }
 
             if (isMaintainer) {
-              core.info(`@${author} has write access; skipping triage label and welcome message.`);
+              core.info(`@${author} has write access or above; skipping triage label and welcome message.`);
               return;
             }
 
