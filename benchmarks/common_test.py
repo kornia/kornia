@@ -21,8 +21,12 @@ from __future__ import annotations
 
 import json
 import math
+import sys
+from pathlib import Path
 
 import torch
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import git_commit, run_metadata, save_json, time_us
 
 
@@ -59,8 +63,15 @@ def test_git_commit_is_short_hash():
     assert len(git_commit()) >= 7
 
 
-def test_save_json_round_trip_sanitizes_nan(tmp_path):
-    path = save_json(tmp_path / "run.json", {"a": 1}, [{"op": "x", "median_us": float("nan")}])
-    payload = json.loads(path.read_text())  # strict parse — a bare NaN token would fail here
+def test_save_json_round_trip_sanitizes_non_finite(tmp_path):
+    rows = [{"op": "x", "median_us": float("nan"), "throughput_per_s": float("inf"), "iqr_us": float("-inf")}]
+    path = save_json(tmp_path / "run.json", {"a": 1}, rows)
+
+    def reject_constant(name):
+        raise AssertionError(f"non-strict JSON token in output: {name}")
+
+    payload = json.loads(path.read_text(), parse_constant=reject_constant)
     assert payload["metadata"] == {"a": 1}
     assert payload["results"][0]["median_us"] is None
+    assert payload["results"][0]["throughput_per_s"] is None
+    assert payload["results"][0]["iqr_us"] is None

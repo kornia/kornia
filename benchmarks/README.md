@@ -8,8 +8,8 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 
 | Directory | Contents |
 | --- | --- |
-| [`augmentation/`](augmentation/) | Cross-library augmentation throughput (kornia, torchvision v2, albumentations, OpenCV, PIL, kornia-rs) — per-op, pipeline, fp16/AMP. See its [README](augmentation/README.md) for the regimes discussion. |
-| [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): the differentiated-core geometry ops vs OpenCV/torchvision v2, plus per-op scripts from past optimization PRs. |
+| [`augmentation/`](augmentation/) | Cross-library augmentation throughput; see its [README](augmentation/README.md). |
+| [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions. |
 | [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics. |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |

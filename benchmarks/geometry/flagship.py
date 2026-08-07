@@ -48,6 +48,7 @@ import math
 import platform
 import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Callable, Optional
 
 import numpy as np
@@ -62,7 +63,14 @@ Backend = Optional[Callable[[], object]]
 
 
 def build_ops(
-    b: int, h: int, w: int, device: torch.device, dtype: torch.dtype, do_compile: bool, cv2, tvf
+    b: int,
+    h: int,
+    w: int,
+    device: torch.device,
+    dtype: torch.dtype,
+    do_compile: bool,
+    cv2: Optional[ModuleType],
+    tvf: Optional[ModuleType],
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
     """Build {op: {backend: zero-arg callable}} with identical transform params per backend.
 

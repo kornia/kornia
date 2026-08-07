@@ -96,7 +96,7 @@ def run_metadata(device: torch.device) -> dict[str, Any]:
 
 
 def _sanitize(obj: Any) -> Any:
-    if isinstance(obj, float) and math.isnan(obj):
+    if isinstance(obj, float) and not math.isfinite(obj):
         return None
     if isinstance(obj, dict):
         return {k: _sanitize(v) for k, v in obj.items()}
@@ -106,8 +106,9 @@ def _sanitize(obj: Any) -> Any:
 
 
 def save_json(path: str | Path, metadata: dict[str, Any], results: list[dict[str, Any]]) -> Path:
-    """Write one run as strict-valid JSON ``{"metadata": ..., "results": [...]}`` (NaN → null)."""
+    """Write one run as strict-valid JSON ``{"metadata": ..., "results": [...]}`` (non-finite → null)."""
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(_sanitize({"metadata": metadata, "results": results}), indent=2) + "\n")
+    payload = _sanitize({"metadata": metadata, "results": results})
+    out.write_text(json.dumps(payload, indent=2, allow_nan=False) + "\n")
     return out
