@@ -16,6 +16,8 @@ These conventions hold library-wide; per-function docs note any exception.
 - **`align_corners`:** `warp_perspective` and `warp_affine` default to `align_corners=True`; `resize` defaults to `align_corners=None` (PyTorch's native default per interpolation mode). When mixing Kornia warps with `torch.nn.functional.interpolate` or `grid_sample`, pass `align_corners` explicitly everywhere.
 - **Devices/dtypes:** ops run on whatever device/dtype the input tensors carry; there is no implicit `.cuda()` or `.float()`.
 
+Full conventions reference with runnable proofs: <https://kornia.readthedocs.io/en/latest/get-started/conventions.html>
+
 ## kornia.geometry — warps, homographies, camera geometry
 
 The differentiated core: differentiable, batched geometric transforms with no OpenCV/torchvision equivalent.
@@ -146,6 +148,12 @@ img = img[None]  # most ops want (B, C, H, W)
 6. Radians where degrees are expected — rotation angles are degrees.
 7. Uint8 `[0, 255]` tensors — ops expect float `[0, 1]`; divide by 255 first.
 8. Augmenting image and mask through two separate augmentation calls — the random parameters will differ; use one `AugmentationSequential` with `data_keys`.
+9. Feeding `homography_warp` a source→destination pixel homography — it expects destination→source, normalized to [-1, 1] (`normalize_homography(torch.inverse(M), size_src, size_dst)`), and defaults to `align_corners=False` unlike `warp_perspective`.
+10. Mixing `axis_angle_to_rotation_matrix` (right-hand rule, math convention — screen-clockwise for +z on y-down images) with `rotate` (screen-counter-clockwise) without negating the angle.
+11. Treating `kornia.geometry.bbox.infer_bbox_shape` width/height as exclusive — they are inclusive (`x_right - x_left + 1`): corners (1,1),(2,2) give width 2.
+12. Quaternions in XYZW order — `kornia.geometry.quaternion.Quaternion` uses WXYZ (scalar first).
+13. Expecting hue in `[0, 360]` or `[0, 1]` — `rgb_to_hsv` returns radians `[0, 2π)`.
+14. Wrong `data_keys` box format — `"bbox"` means 4-corner `(B, 4, 2)`; coordinate formats are `"bbox_xyxy"` / `"bbox_xywh"`.
 
 ## Links
 
