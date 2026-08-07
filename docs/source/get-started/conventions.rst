@@ -225,9 +225,7 @@ Quick self-review for generated code, most common first:
 12. Quaternions constructed in XYZW order — Kornia uses WXYZ.
 13. Expecting hue in ``[0, 360]`` or ``[0, 1]`` — ``rgb_to_hsv`` returns
     radians ``[0, 2π)``.
-14. Assuming ``resize`` and ``warp_*`` sample pixels identically — their
-    ``align_corners`` defaults differ (see table).
-15. Wrong ``data_keys`` box format — ``"bbox"`` means 4-corner ``(B, 4, 2)``;
+14. Wrong ``data_keys`` box format — ``"bbox"`` means 4-corner ``(B, 4, 2)``;
     use ``"bbox_xyxy"``/``"bbox_xywh"`` for coordinate formats.
 
 .. tip::

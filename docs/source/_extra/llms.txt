@@ -6,7 +6,7 @@ Conventions every code generator must know before writing Kornia code:
 
 - Images are float tensors with values in `[0, 1]`; the batched layout `(B, C, H, W)` is accepted everywhere. Some op families (e.g. color conversions) also take `(*, C, H, W)` with arbitrary leading dims. Add a batch dim with `img[None]` if needed.
 - Point coordinates are `(x, y)` ordered (x = column axis, y = row axis); output sizes and `dsize` arguments are `(h, w)` ordered.
-- Angles are in degrees; a positive angle rotates counter-clockwise as displayed (origin at the top-left corner, matching OpenCV).
+- Angles are in degrees in the 2D image APIs (`rotate`, `get_rotation_matrix2d`) and radians in the 3D/conversion APIs (`axis_angle_*`, `So3`); a positive 2D angle rotates counter-clockwise as displayed (origin at the top-left corner, matching OpenCV).
 - `warp_perspective` / `warp_affine` default to `align_corners=True`; `resize` defaults to `align_corners=None` (the PyTorch interpolation default). Do not assume they match.
 - Transformation matrices are batched: homographies `(B, 3, 3)`, affine `(B, 2, 3)`, operating on pixel coordinates unless the function name or a flag says `normalized`.
 - `kornia.augmentation.AugmentationSequential` applies one sampled transform consistently across image / mask / bbox / keypoints and can invert it with `.inverse()`.
