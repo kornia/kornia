@@ -21,9 +21,11 @@ This module has been deprecated. Functions have been moved to their respective m
 Import from the new locations instead (e.g., `kornia.image.draw_line` instead of `kornia.utils.draw_line`).
 """
 
+from __future__ import annotations
+
 from typing import Any
 
-from kornia.core._compat import deprecated
+from kornia.core._compat import _emit_deprecation_warning, deprecated
 from kornia.core.ops import (
     eye_like as _eye_like,
 )
@@ -306,13 +308,21 @@ def image_list_to_tensor(*args: Any, **kwargs: Any) -> Any:
     return _image_list_to_tensor(*args, **kwargs)
 
 
-@deprecated(
-    replace_with="kornia.image.ImageToTensor",
-    version="0.8.3",
-    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.image` instead.",
-)
 class ImageToTensor(_ImageToTensor):
-    """Deprecated: Use `kornia.image.ImageToTensor` instead."""
+    """Deprecated: Use `kornia.image.ImageToTensor` instead.
+
+    A real subclass (not the `@deprecated` decorator, which turns classes into plain
+    callables) so `isinstance` checks and further subclassing keep working.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        _emit_deprecation_warning(
+            "ImageToTensor",
+            "kornia.image.ImageToTensor",
+            "0.8.3",
+            " The `kornia.utils` module has been removed. Import from `kornia.image` instead.",
+        )
+        super().__init__(*args, **kwargs)
 
 
 @deprecated(
@@ -364,15 +374,13 @@ def map_location_to_cpu(storage: Any, *args: Any, **kwargs: Any) -> Any:
 def __getattr__(name: str) -> Any:
     # Lazy so that `import kornia.utils` never pulls in the onnx machinery.
     if name == "CachedDownloader":
-        import warnings
-
         from kornia.onnx.download import CachedDownloader as _CachedDownloader
 
-        warnings.warn(
-            "`kornia.utils.CachedDownloader` is deprecated since kornia 0.8.3."
-            " Use `kornia.onnx.download.CachedDownloader` instead.",
-            DeprecationWarning,
-            stacklevel=2,
+        _emit_deprecation_warning(
+            "CachedDownloader",
+            "kornia.onnx.download.CachedDownloader",
+            "0.8.3",
+            " The `kornia.utils` module has been removed. Import from `kornia.onnx.download` instead.",
         )
         return _CachedDownloader
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

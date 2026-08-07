@@ -180,6 +180,16 @@ class TestRestoredWrappers:
         out = mod(np.zeros((8, 8, 3), dtype=np.uint8))
         assert isinstance(out, torch.Tensor)
 
+    def test_image_to_tensor_is_a_real_class(self):
+        """The shim must stay a type: isinstance checks and subclassing worked in 0.8.2."""
+        from kornia.image import ImageToTensor as NewImageToTensor
+
+        assert isinstance(utils.ImageToTensor, type)
+        assert issubclass(utils.ImageToTensor, NewImageToTensor)
+        with pytest.warns(DeprecationWarning):
+            inst = utils.ImageToTensor()
+        assert isinstance(inst, NewImageToTensor)
+
     def test_cached_downloader_warns(self):
         with pytest.warns(DeprecationWarning, match="kornia.onnx.download.CachedDownloader"):
             cls = utils.CachedDownloader

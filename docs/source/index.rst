@@ -19,13 +19,19 @@ DexiNed edge detection model.
 
 .. code-block:: python
 
+      import kornia
+      from kornia.contrib import EdgeDetectorBuilder
+
       image = kornia.io.get_sample_images()[0][None]
-      model = DexiNedBuilder.build()
+      model = EdgeDetectorBuilder.build()
       model.save(image)
 
 RTDETRDetector for object detection.
 
 .. code-block:: python
+
+      import kornia
+      from kornia.contrib import RTDETRDetectorBuilder
 
       image = kornia.io.get_sample_images()[0][None]
       model = RTDETRDetectorBuilder.build()
@@ -36,6 +42,8 @@ BoxMotTracker for object tracking.
 .. code-block:: python
 
       import kornia
+      from kornia.contrib import BoxMotTracker
+
       image = kornia.io.get_sample_images()[0][None]
       model = BoxMotTracker()
       for i in range(4):
