@@ -8,5 +8,7 @@ kornia.core
 .. currentmodule:: kornia.core
 
 .. autoclass:: TensorWrapper
+
+.. autofunction:: kornia.core.utils.batched_forward
     :members:
     :undoc-members:

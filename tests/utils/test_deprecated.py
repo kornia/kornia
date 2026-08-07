@@ -187,17 +187,44 @@ class TestRestoredWrappers:
 
         assert cls is CachedDownloader
 
+    def test_batched_forward_warns(self):
+        x = torch.rand(300, 2)
+        with pytest.warns(DeprecationWarning, match="kornia.core.utils.batched_forward"):
+            out = utils.batched_forward(torch.nn.Identity(), x, torch.device("cpu"), batch_size=128)
+        assert torch.allclose(out, x)
+
+    def test_get_sample_images_no_download_warns(self, tmp_path):
+        # empty path list: warns and returns an empty list without touching the network
+        with pytest.warns(DeprecationWarning, match="kornia.io.get_sample_images"):
+            out = utils.get_sample_images(paths=[], download=False, cache_dir=str(tmp_path))
+        assert out == []
+
+    def test_torch_meshgrid_warns(self):
+        with pytest.warns(DeprecationWarning, match="torch.meshgrid"):
+            xs, _ys = utils.torch_meshgrid([torch.arange(2), torch.arange(3)], indexing="ij")
+        assert xs.shape == (2, 3)
+
+    def test_map_location_to_cpu_warns(self):
+        t = torch.rand(2)
+        with pytest.warns(DeprecationWarning, match="map_location"):
+            out = utils.map_location_to_cpu(t, "cuda:0")
+        assert out is t
+
     def test_restored_wrappers_in_all(self):
         expected = {
             "CachedDownloader",
             "ImageToTensor",
+            "batched_forward",
             "dataclass_to_dict",
             "dict_to_dataclass",
             "eye_like",
+            "get_sample_images",
             "image_list_to_tensor",
             "is_mps_tensor_safe",
+            "map_location_to_cpu",
             "safe_inverse_with_mask",
             "safe_solve_with_mask",
+            "torch_meshgrid",
             "vec_like",
         }
         assert expected.issubset(set(utils.__all__))

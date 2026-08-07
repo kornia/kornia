@@ -315,6 +315,52 @@ class ImageToTensor(_ImageToTensor):
     """Deprecated: Use `kornia.image.ImageToTensor` instead."""
 
 
+@deprecated(
+    replace_with="kornia.io.get_sample_images",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.io` instead.",
+)
+def get_sample_images(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.io.get_sample_images` instead."""
+    from kornia.io import get_sample_images as _get_sample_images
+
+    return _get_sample_images(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="kornia.core.utils.batched_forward",
+    version="0.8.3",
+    extra_reason=" The `kornia.utils` module has been removed. Import from `kornia.core.utils` instead.",
+)
+def batched_forward(*args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Use `kornia.core.utils.batched_forward` instead."""
+    from kornia.core.utils import batched_forward as _batched_forward
+
+    return _batched_forward(*args, **kwargs)
+
+
+@deprecated(
+    replace_with="torch.meshgrid",
+    version="0.8.3",
+    extra_reason=" This compatibility wrapper predates torch 1.10; call `torch.meshgrid(tensors, indexing=...)`.",
+)
+def torch_meshgrid(tensors: Any, indexing: str) -> Any:
+    """Deprecated: Use `torch.meshgrid` directly."""
+    import torch
+
+    return torch.meshgrid(tensors, indexing=indexing)
+
+
+@deprecated(
+    replace_with='torch.load(..., map_location="cpu")',
+    version="0.8.3",
+    extra_reason=" This identity hook predates `map_location` accepting device strings.",
+)
+def map_location_to_cpu(storage: Any, *args: Any, **kwargs: Any) -> Any:
+    """Deprecated: Pass `map_location="cpu"` to `torch.load` instead."""
+    return storage
+
+
 def __getattr__(name: str) -> Any:
     # Lazy so that `import kornia.utils` never pulls in the onnx machinery.
     if name == "CachedDownloader":
@@ -335,6 +381,7 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "CachedDownloader",
     "ImageToTensor",
+    "batched_forward",
     "create_meshgrid",
     "create_meshgrid3d",
     "dataclass_to_dict",
@@ -344,16 +391,19 @@ __all__ = [
     "draw_point2d",
     "draw_rectangle",
     "eye_like",
+    "get_sample_images",
     "image_list_to_tensor",
     "image_to_string",
     "image_to_tensor",
     "is_mps_tensor_safe",
     "load_pointcloud_ply",
+    "map_location_to_cpu",
     "one_hot",
     "print_image",
     "safe_inverse_with_mask",
     "safe_solve_with_mask",
     "save_pointcloud_ply",
     "tensor_to_image",
+    "torch_meshgrid",
     "vec_like",
 ]

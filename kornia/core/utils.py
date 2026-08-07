@@ -397,3 +397,51 @@ def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
             constructor_args[key] = value
     # TODO: remove type ignore when https://github.com/python/mypy/issues/14941 be andressed
     return dataclass_type(**constructor_args)
+
+
+def batched_forward(
+    model: torch.nn.Module, data: torch.Tensor, device: torch.device, batch_size: int = 128, **kwargs: Any
+) -> torch.Tensor:
+    r"""Run the forward in micro-batches.
+
+    When the just model.forward(data) does not fit into device memory, e.g. on laptop GPU.
+    In the end, it transfers the output to the device of the input data tensor.
+    E.g. running HardNet on 8000x1x32x32 tensor.
+
+    Removed from ``kornia.utils.memory`` in 0.8.3 and restored here as public API.
+
+    Args:
+        model: Any torch model, which outputs a single tensor as an output.
+        data: Input data of Bx(Any) shape.
+        device: which device should we run on.
+        batch_size: "micro-batch" size.
+        **kwargs: any other arguments, which accepts model.
+
+    Returns:
+        output of the model.
+
+    Example:
+        >>> import torch
+        >>> from kornia.core.utils import batched_forward
+        >>> model = torch.nn.Identity()
+        >>> x = torch.rand(300, 2)
+        >>> out = batched_forward(model, x, torch.device("cpu"), batch_size=128)
+        >>> bool(torch.allclose(out, x))
+        True
+
+    """
+    model_dev = model.to(device)
+    B: int = len(data)
+    bs: int = batch_size
+    if B > batch_size:
+        out_list = []
+        n_batches = int(B // bs + 1)
+        for batch_idx in range(n_batches):
+            st = batch_idx * bs
+            end = min((batch_idx + 1) * bs, B)
+            if st >= end:
+                continue
+            out_list.append(model_dev(data[st:end].to(device), **kwargs))
+        out = torch.cat(out_list, 0)
+        return out.to(data.device)
+    return model(data, **kwargs)
