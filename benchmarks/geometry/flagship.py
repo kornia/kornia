@@ -46,8 +46,12 @@ Backend = Optional[Callable[[], object]]
 
 def build_ops(
     b: int, h: int, w: int, device: torch.device, dtype: torch.dtype, do_compile: bool, cv2, tvf
-) -> dict[str, dict[str, Backend]]:
-    """Build {op: {backend: zero-arg callable}} with identical transform params per backend."""
+) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
+    """Build {op: {backend: zero-arg callable}} with identical transform params per backend.
+
+    Also returns {op: exception name} for ops whose ``torch.compile`` warmup failed, so the
+    caller can report them instead of leaving a silent skip cell.
+    """
     rng = np.random.default_rng(0)
     imgs_u8 = [(rng.random((h, w, 3)) * 255).astype(np.uint8) for _ in range(b)]
     batch_f = (
@@ -72,7 +76,9 @@ def build_ops(
     h_np = h_mat.float().cpu().numpy().astype(np.float64)
     src_np, dst_np = src_pts32.numpy(), dst_pts32.numpy()
 
-    def kornia_row(fn: Callable[[], object]) -> dict[str, Backend]:
+    compile_failures: dict[str, str] = {}
+
+    def kornia_row(label: str, fn: Callable[[], object]) -> dict[str, Backend]:
         row: dict[str, Backend] = {"kornia (eager)": fn}
         if do_compile:
             torch._dynamo.reset()
@@ -80,25 +86,26 @@ def build_ops(
             try:
                 compiled()  # warmup: compile + autotune before the timed region
                 row["kornia (compiled)"] = compiled
-            except Exception:
+            except Exception as e:
                 row["kornia (compiled)"] = None
+                compile_failures[label] = type(e).__name__
         return row
 
     ops: dict[str, dict[str, Backend]] = {}
 
-    row = kornia_row(lambda: KG.warp_perspective(batch_f, h_mat, (h, w)))
+    row = kornia_row("warp_perspective", lambda: KG.warp_perspective(batch_f, h_mat, (h, w)))
     row["opencv"] = (
         (lambda: [cv2.warpPerspective(im, h_np[i], (w, h)) for i, im in enumerate(imgs_u8)]) if cv2 else None
     )
     row["torchvision v2"] = None
     ops["warp_perspective"] = row
 
-    row = kornia_row(lambda: KG.warp_affine(batch_f, m_affine, (h, w)))
+    row = kornia_row("warp_affine", lambda: KG.warp_affine(batch_f, m_affine, (h, w)))
     row["opencv"] = (lambda: [cv2.warpAffine(im, m_np[i], (w, h)) for i, im in enumerate(imgs_u8)]) if cv2 else None
     row["torchvision v2"] = None
     ops["warp_affine"] = row
 
-    row = kornia_row(lambda: KG.rotate(batch_f, angle))
+    row = kornia_row("rotate", lambda: KG.rotate(batch_f, angle))
     if cv2:
         m_rot = cv2.getRotationMatrix2D((w / 2, h / 2), angle_deg, 1.0)
         row["opencv"] = lambda: [cv2.warpAffine(im, m_rot, (w, h)) for im in imgs_u8]
@@ -108,16 +115,16 @@ def build_ops(
     ops["rotate"] = row
 
     dst_size = (h // 2, w // 2)
-    row = kornia_row(lambda: KG.resize(batch_f, dst_size, interpolation="bilinear"))
+    row = kornia_row("resize", lambda: KG.resize(batch_f, dst_size, interpolation="bilinear"))
     row["opencv"] = (lambda: [cv2.resize(im, (dst_size[1], dst_size[0])) for im in imgs_u8]) if cv2 else None
     row["torchvision v2"] = (lambda: tvf.resize(batch_f, list(dst_size), antialias=False)) if tvf else None
     ops["resize"] = row
 
-    row = kornia_row(lambda: KG.get_perspective_transform(src_pts, dst_pts))
+    row = kornia_row("get_perspective_transform", lambda: KG.get_perspective_transform(src_pts, dst_pts))
     row["opencv"] = (lambda: [cv2.getPerspectiveTransform(src_np[i], dst_np[i]) for i in range(b)]) if cv2 else None
     row["torchvision v2"] = None
     ops["get_perspective_transform"] = row
-    return ops
+    return ops, compile_failures
 
 
 def main() -> None:
@@ -161,7 +168,10 @@ def main() -> None:
     col_w = 14
     header = ""
     for b in [int(x) for x in args.batches.split(",")]:
-        ops = build_ops(b, args.size, args.size, device, dtype, args.compile, cv2, tvf)
+        ops, compile_failures = build_ops(b, args.size, args.size, device, dtype, args.compile, cv2, tvf)
+        if compile_failures:
+            exc_names = sorted(set(compile_failures.values()))
+            print(f"# NOTE: torch.compile warmup failed ({', '.join(exc_names)}) for: {', '.join(compile_failures)}")
         header = f"{'batch=' + str(b):<26}" + "".join(f"{n[:col_w]:>{col_w + 1}}" for n in backends)
         print("-" * len(header))
         print(header)
