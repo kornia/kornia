@@ -39,6 +39,7 @@ For the full self-contained reference with runnable examples, fetch [llms-full.t
 
 - [Applications](https://kornia.readthedocs.io/en/latest/applications/intro.html): face detection, image matching, stitching, registration, denoising walkthroughs
 - [Models](https://kornia.readthedocs.io/en/latest/models.html): pre-trained model wrappers (SAM, RT-DETR, YuNet, ...)
+- [Benchmarks](https://github.com/kornia/kornia/tree/main/benchmarks): reproducible cross-library performance harness with current, honest numbers (where Kornia wins and loses)
 - [GitHub repository](https://github.com/kornia/kornia): source, issue tracker
 - [Contributing guide](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md): contribution protocol
 - [AI usage policy](https://github.com/kornia/kornia/blob/main/AI_POLICY.md): rules for AI-assisted contributions
