@@ -13,10 +13,32 @@ jobs:
     name: Triage New Issue
     runs-on: ubuntu-latest
     steps:
-      - name: Add triage label
+      - name: Triage new issue
         uses: actions/github-script@v9
         with:
           script: |
+            const author = context.payload.issue.user.login;
+
+            // The triage label and wait-for-assignment message exist to route
+            // external contributors; maintainers (write access or above)
+            // triage their own issues.
+            let isMaintainer = false;
+            try {
+              const { data: perm } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username: author
+              });
+              isMaintainer = ['admin', 'maintain', 'write'].includes(perm.permission);
+            } catch (error) {
+              core.warning(`Could not determine permission for @${author}: ${error.message}`);
+            }
+
+            if (isMaintainer) {
+              core.info(`@${author} has write access; skipping triage label and welcome message.`);
+              return;
+            }
+
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -24,10 +46,6 @@ jobs:
               labels: ['triage']
             });
 
-      - name: Post welcome message
-        uses: actions/github-script@v9
-        with:
-          script: |
             const welcomeMessage = '## ⚠️ Before Submitting a PR\n\n' +
               'Please wait for a maintainer to approve and assign this issue to you or someone else before submitting a PR. ' +
               'PRs submitted without prior approval and assignment may be closed. ' +
