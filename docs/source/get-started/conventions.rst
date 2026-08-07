@@ -96,9 +96,12 @@ Transformation matrices and homographies
 - :func:`kornia.geometry.transform.homography_warp` is different on every
   axis: it takes the **destination→source** homography, **normalized** to
   ``[-1, 1]`` by default (``normalized_homography=True``), and defaults to
-  ``align_corners=False``. Convert a pixel source→destination homography
-  with :func:`kornia.geometry.conversions.normalize_homography` plus
-  ``torch.inverse``:
+  ``align_corners=False``. Convert a pixel source→destination homography by
+  normalizing it FIRST with
+  :func:`kornia.geometry.conversions.normalize_homography` (which expects
+  the forward src→dst homography) and inverting AFTER — inverting first
+  with unswapped sizes is silently wrong whenever the source and
+  destination sizes differ:
 
 .. code-block:: python
 
@@ -109,9 +112,9 @@ Transformation matrices and homographies
     img = torch.rand(1, 1, 8, 8)
     M = torch.tensor([[[1.0, 0.0, 2.0], [0.0, 1.0, 1.0], [0.0, 0.0, 1.0]]])  # src->dst, pixels
 
-    a = warp_perspective(img, M, (8, 8))
-    M_norm_inv = normalize_homography(torch.inverse(M), (8, 8), (8, 8))
-    b = homography_warp(img, M_norm_inv, (8, 8), align_corners=True)
+    a = warp_perspective(img, M, (16, 8))  # note: dst size differs from src
+    M_norm_inv = torch.inverse(normalize_homography(M, (8, 8), (16, 8)))  # normalize, THEN invert
+    b = homography_warp(img, M_norm_inv, (16, 8), align_corners=True)
     assert torch.allclose(a, b, atol=1e-5)
 
 ``align_corners`` defaults

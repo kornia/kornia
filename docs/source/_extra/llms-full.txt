@@ -148,7 +148,7 @@ img = img[None]  # most ops want (B, C, H, W)
 6. Radians where degrees are expected — rotation angles are degrees.
 7. Uint8 `[0, 255]` tensors — ops expect float `[0, 1]`; divide by 255 first.
 8. Augmenting image and mask through two separate augmentation calls — the random parameters will differ; use one `AugmentationSequential` with `data_keys`.
-9. Feeding `homography_warp` a source→destination pixel homography — it expects destination→source, normalized to [-1, 1] (`normalize_homography(torch.inverse(M), size_src, size_dst)`), and defaults to `align_corners=False` unlike `warp_perspective`.
+9. Feeding `homography_warp` a source→destination pixel homography — it expects destination→source, normalized to [-1, 1]: normalize the forward homography FIRST, then invert (`torch.inverse(normalize_homography(M, size_src, size_dst))`). It also defaults to `align_corners=False` unlike `warp_perspective`.
 10. Mixing `axis_angle_to_rotation_matrix` (right-hand rule, math convention — screen-clockwise for +z on y-down images) with `rotate` (screen-counter-clockwise) without negating the angle.
 11. Treating `kornia.geometry.bbox.infer_bbox_shape` width/height as exclusive — they are inclusive (`x_right - x_left + 1`): corners (1,1),(2,2) give width 2.
 12. Quaternions in XYZW order — `kornia.geometry.quaternion.Quaternion` uses WXYZ (scalar first).
