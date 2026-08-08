@@ -256,6 +256,76 @@ class TestHsvToRgb(BaseTester):
         data[:, 0] -= 4 * math.pi
         self.assert_close(f(data), expected, low_tolerance=True)
 
+    def test_sextant_boundaries(self, device, dtype):
+        # Pins outputs at exact sextant-boundary hues (h = k*pi/3 for k=0..6, s=0.6, v=0.8) plus
+        # s=0 gray and v=0 black edge cases, so a branchless rewrite of the sextant selection
+        # cannot silently swap a p/q/t/v value in any of the six sextants.
+        # Snippet used to generate expected (current stack+gather implementation):
+        # h = torch.tensor([k * math.pi / 3.0 for k in range(7)], dtype=torch.float64)
+        # s = torch.full((7,), 0.6, dtype=torch.float64)
+        # v = torch.full((7,), 0.8, dtype=torch.float64)
+        # data = torch.stack([h, s, v], dim=1).view(7, 3, 1, 1)
+        # expected = kornia.color.hsv_to_rgb(data)  # <-- print and paste below
+        h = torch.tensor([k * math.pi / 3.0 for k in range(7)], device=device, dtype=dtype)
+        s = torch.full((7,), 0.6, device=device, dtype=dtype)
+        v = torch.full((7,), 0.8, device=device, dtype=dtype)
+        data = torch.stack([h, s, v], dim=1).view(7, 3, 1, 1)
+        expected = torch.tensor(
+            [
+                [0.8, 0.32, 0.32],
+                [0.8, 0.8, 0.32],
+                [0.32, 0.8, 0.32],
+                [0.32, 0.8, 0.8],
+                [0.32, 0.32, 0.8],
+                [0.8, 0.32, 0.8],
+                [0.8, 0.32, 0.32],
+            ],
+            device=device,
+            dtype=dtype,
+        ).view(7, 3, 1, 1)
+        # k=6 (h=2*pi) rounds imprecisely at float16 and can land a hair over the sextant-0
+        # boundary; loosen tolerance rather than special-case the dtype.
+        self.assert_close(kornia.color.hsv_to_rgb(data), expected, low_tolerance=True)
+
+        # Mid-sextant hues (f=0.25): at exact boundaries f=0 collapses q==v and t==p, so a p/t or
+        # q/v swap would go unnoticed there; with f=0.25 all four of p=0.32, q=0.68, t=0.44, v=0.8
+        # are distinct and every sextant's full selection is pinned.
+        # Snippet used to generate expected (current stack+gather implementation):
+        # hm = torch.tensor([(k + 0.25) * math.pi / 3.0 for k in range(6)], dtype=torch.float64)
+        # data_mid = torch.stack([hm, torch.full((6,), 0.6), torch.full((6,), 0.8)], 1).view(6, 3, 1, 1)
+        # expected_mid = kornia.color.hsv_to_rgb(data_mid)  # <-- print and paste below
+        hm = torch.tensor([(k + 0.25) * math.pi / 3.0 for k in range(6)], device=device, dtype=dtype)
+        data_mid = torch.stack([hm, torch.full_like(hm, 0.6), torch.full_like(hm, 0.8)], dim=1).view(6, 3, 1, 1)
+        expected_mid = torch.tensor(
+            [
+                [0.8, 0.44, 0.32],
+                [0.68, 0.8, 0.32],
+                [0.32, 0.8, 0.44],
+                [0.32, 0.68, 0.8],
+                [0.44, 0.32, 0.8],
+                [0.8, 0.32, 0.68],
+            ],
+            device=device,
+            dtype=dtype,
+        ).view(6, 3, 1, 1)
+        self.assert_close(kornia.color.hsv_to_rgb(data_mid), expected_mid, low_tolerance=True)
+
+        # s=0 gray: output must equal v on every channel regardless of hue
+        hg = torch.tensor([0.0, math.pi / 2, math.pi, 3 * math.pi / 2, 2 * math.pi - 0.01], device=device, dtype=dtype)
+        sg = torch.zeros(5, device=device, dtype=dtype)
+        vg = torch.tensor([0.0, 0.25, 0.5, 0.75, 1.0], device=device, dtype=dtype)
+        data_gray = torch.stack([hg, sg, vg], dim=1).view(5, 3, 1, 1)
+        expected_gray = vg.view(5, 1, 1, 1).expand(5, 3, 1, 1)
+        self.assert_close(kornia.color.hsv_to_rgb(data_gray), expected_gray)
+
+        # v=0 black: output must be zero regardless of hue/saturation
+        hk = torch.tensor([0.0, math.pi / 2, math.pi, 3 * math.pi / 2, 2 * math.pi - 0.01], device=device, dtype=dtype)
+        sk = torch.tensor([0.0, 0.3, 0.6, 0.9, 1.0], device=device, dtype=dtype)
+        vk = torch.zeros(5, device=device, dtype=dtype)
+        data_black = torch.stack([hk, sk, vk], dim=1).view(5, 3, 1, 1)
+        expected_black = torch.zeros(5, 3, 1, 1, device=device, dtype=dtype)
+        self.assert_close(kornia.color.hsv_to_rgb(data_black), expected_black)
+
     @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
