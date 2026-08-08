@@ -32,7 +32,12 @@ __all__ = ["BaseWarper", "HomographyWarper"]
 
 
 class BaseWarper(nn.Module):
-    """Provide a base class for homography-based image warping."""
+    """Provide a base class for homography-based image warping.
+
+    Convention:
+        - subclasses receive ``src_homo_dst`` as the destination→source homography
+
+    """
 
     def __init__(self, height: int, width: int, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -75,6 +80,10 @@ class HomographyWarper(BaseWarper):
     .. math::
 
         X_{dst} = H_{src}^{\{dst\}} * X_{src}
+
+    Convention:
+        - align_corners: ``False`` by default, matching :func:`homography_warp`
+        - See the convention block of :func:`homography_warp`.
 
     Args:
         height: The height of the destination torch.Tensor.
