@@ -191,8 +191,8 @@ def warp_affine(
     the specified matrix:
 
     .. math::
-        \text{dst}(x, y) = \text{src} \left( M_{11} x + M_{12} y + M_{13} ,
-        M_{21} x + M_{22} y + M_{23} \right )
+        \text{dst}(x, y) = \text{src} \left( M^{-1}_{11} x + M^{-1}_{12} y + M^{-1}_{13} ,
+        M^{-1}_{21} x + M^{-1}_{22} y + M^{-1}_{23} \right )
 
     Convention:
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
@@ -323,13 +323,14 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - ``grid`` coordinates: ``(x, y)`` (last dim), shape :math:`(1, H, W, 2)`
-        - ``src_homo_dst`` is the destination→source homography :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`
+        - ``src_homo_dst`` is the destination→source homography :math:`(1, 3, 3)`,
+          :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`
 
     Args:
         grid: Unwrapped grid of the shape :math:`(1, H, W, 2)`.
         src_homo_dst: Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
-          has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
+          has to be :math:`(1, 3, 3)`, :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`.
 
     Returns:
         the transformed grid of shape :math:`(N, H, W, 2)`.
@@ -352,13 +353,14 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - ``grid`` coordinates: ``(x, y, z)`` (last dim), shape :math:`(1, D, H, W, 3)`
-        - ``src_homo_dst`` is the destination→source homography :math:`(1, 4, 4)` or :math:`(N, 1, 4, 4)`
+        - ``src_homo_dst`` is the destination→source homography :math:`(1, 4, 4)`,
+          :math:`(N, 4, 4)` or :math:`(N, 1, 4, 4)`
 
     Args:
         grid: Unwrapped grid of the shape :math:`(1, D, H, W, 3)`.
         src_homo_dst: Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
-          has to be :math:`(1, 4, 4)` or :math:`(N, 1, 4, 4)`.
+          has to be :math:`(1, 4, 4)`, :math:`(N, 4, 4)` or :math:`(N, 1, 4, 4)`.
 
     Returns:
         the transformed grid of shape :math:`(N, D, H, W, 3)`.
@@ -1415,10 +1417,7 @@ def warp_perspective3d(
     the specified matrix:
 
     .. math::
-        \text{dst} (x, y) = \text{src} \left(
-        \frac{M_{11} x + M_{12} y + M_{13}}{M_{31} x + M_{32} y + M_{33}} ,
-        \frac{M_{21} x + M_{22} y + M_{23}}{M_{31} x + M_{32} y + M_{33}}
-        \right )
+        \text{dst}(x, y, z) = \text{src}\left( M^{-1} \cdot (x, y, z, 1)^{T} \right)
 
     Convention:
         - input: :math:`(B, C, D, H, W)`; ``dsize`` is ``(d, h, w)``
@@ -1438,7 +1437,7 @@ def warp_perspective3d(
         align_corners: interpolation flag.
 
     Returns:
-        the warped input image :math:`(B, C, D, H, W)`.
+        the warped input image :math:`(B, C, d, h, w)`, spatial sizes given by ``dsize``.
 
     .. note::
         This function is often used in conjunction with :func:`get_perspective_transform3d`.
@@ -1572,7 +1571,7 @@ def homography_warp3d(
         patch_src: The image or torch.Tensor to warp. Should be from source of shape :math:`(N, C, D, H, W)`.
         src_homo_dst: The homography or torch.stack of homographies from destination to source of shape
           :math:`(N, 4, 4)`.
-        dsize: The height and width of the image to warp.
+        dsize: The depth, height and width of the volume to warp.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
@@ -1582,9 +1581,9 @@ def homography_warp3d(
         Patch sampled at locations from source to destination.
 
     Example:
-        >>> input = torch.rand(1, 3, 32, 32)
-        >>> homography = torch.eye(3).view(1, 3, 3)
-        >>> output = homography_warp(input, homography, (32, 32))
+        >>> input = torch.rand(1, 3, 8, 32, 32)
+        >>> homography = torch.eye(4).view(1, 4, 4)
+        >>> output = homography_warp3d(input, homography, (8, 32, 32))
 
     """
     if not src_homo_dst.device == patch_src.device:

@@ -29,7 +29,9 @@ Image 2d transforms
 -------------------
 
 .. autofunction:: affine
+.. autofunction:: affine3d
 .. autofunction:: rotate
+.. autofunction:: rotate3d
 .. autofunction:: translate
 .. autofunction:: scale
 .. autofunction:: shear
@@ -37,6 +39,7 @@ Image 2d transforms
 .. autofunction:: vflip
 .. autofunction:: rot180
 .. autofunction:: resize
+.. autofunction:: resize_to_be_divisible
 .. autofunction:: rescale
 .. autofunction:: elastic_transform2d
 .. autofunction:: pyrdown

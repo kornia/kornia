@@ -218,6 +218,11 @@ class TestResize(BaseTester):
             dtype=dtype,
         )
         self.assert_close(out, expected, atol=1e-3, rtol=1e-3)
+        # the output above cannot distinguish None from False (they interpolate identically), so
+        # the documented default is additionally pinned on the signature itself
+        import inspect
+
+        assert inspect.signature(kornia.geometry.transform.resize).parameters["align_corners"].default is None
 
     def test_gradcheck(self, device):
         # test parameters
