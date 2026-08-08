@@ -803,7 +803,7 @@ def get_translation_matrix2d(translations: torch.Tensor) -> torch.Tensor:
 def get_shear_matrix2d(
     center: torch.Tensor, sx: Optional[torch.Tensor] = None, sy: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-    r"""Compose shear matrix Bx4x4 from the components.
+    r"""Compose shear matrix Bx3x3 from the components.
 
     Note: Ordered shearing, shear x-axis then y-axis.
 
@@ -1476,8 +1476,9 @@ def homography_warp(
         - input: :math:`(N, C, H, W)`
         - ``src_homo_dst`` is the destination→source homography :math:`(N, 3, 3)`
           (contrast :func:`warp_perspective`, which consumes source→destination pixel)
-        - ``normalized_homography=True`` by default: ``src_homo_dst`` and ``dsize`` are in
+        - ``normalized_homography=True`` by default: ``src_homo_dst`` is in
           normalized :math:`[-1, 1]` coordinates
+        - ``dsize`` is ``(h, w)``
         - align_corners: ``False`` by default (only honored when ``normalized_homography=True``;
           the pixel-homography path currently forces ``True``)
         - padding_mode: ``'zeros'`` by default

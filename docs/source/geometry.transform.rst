@@ -22,6 +22,8 @@ Warp operators
 .. autofunction:: warp_grid
 .. autofunction:: warp_grid3d
 .. autofunction:: remap
+.. autofunction:: homography_warp
+.. autofunction:: homography_warp3d
 
 Image 2d transforms
 -------------------
@@ -49,6 +51,7 @@ Matrix transformations
 .. autofunction:: get_perspective_transform3d
 .. autofunction:: get_projective_transform
 .. autofunction:: get_rotation_matrix2d
+.. autofunction:: get_translation_matrix2d
 .. autofunction:: get_shear_matrix2d
 .. autofunction:: get_shear_matrix3d
 .. autofunction:: get_affine_matrix2d
@@ -83,6 +86,7 @@ Module
 .. autoclass:: Resize
 .. autoclass:: Rescale
 .. autoclass:: Affine
+.. autoclass:: BaseWarper
 .. autoclass:: HomographyWarper
 
 

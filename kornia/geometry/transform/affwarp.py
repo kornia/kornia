@@ -597,7 +597,7 @@ def resize(
     .. image:: _static/img/resize.png
 
     Convention:
-        - input: :math:`(B, C, H, W)`; ``size`` is ``(h, w)``
+        - input: :math:`(*, H, W)`; ``size`` is ``(h, w)``
         - align_corners: ``None`` by default (follows ``torch.nn.functional.interpolate``;
           note :func:`warp_perspective`/:func:`rotate` default ``True``)
         - ``side`` resizing preserves aspect ratio using the named side
