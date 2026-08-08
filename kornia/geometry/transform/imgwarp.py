@@ -105,7 +105,7 @@ def warp_perspective(
         fill_value: torch.Tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
 
     Returns:
-        the warped input image :math:`(B, C, H, W)`.
+        the warped input image :math:`(B, C, h, w)`, spatial sizes given by ``dsize``.
 
     Example:
        >>> img = torch.rand(1, 4, 5, 6)
@@ -212,7 +212,7 @@ def warp_affine(
         fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area.
 
     Returns:
-        the warped torch.Tensor with shape :math:`(B, C, H, W)`.
+        the warped torch.Tensor with shape :math:`(B, C, h, w)`, spatial sizes given by ``dsize``.
 
     .. note::
         This function is often used in conjunction with :func:`get_rotation_matrix2d`,
@@ -1063,7 +1063,8 @@ def warp_affine3d(
         align_corners : mode for grid_generation.
 
     Returns:
-        torch.Tensor: the warped 3d torch.tensor with shape :math:`(B, C, D, H, W)`.
+        torch.Tensor: the warped 3d torch.tensor with shape :math:`(B, C, d, h, w)`, spatial sizes
+        given by ``dsize``.
 
     .. note::
         This function is often used in conjunction with :func:`get_perspective_transform3d`.
@@ -1477,9 +1478,10 @@ def homography_warp(
     Convention:
         - input: :math:`(N, C, H, W)`
         - ``src_homo_dst`` is the destination→source homography :math:`(N, 3, 3)`, in normalized
-          :math:`[-1, 1]` coordinates, when ``normalized_homography=True`` (default); with
-          ``normalized_homography=False`` it is consumed as the source→destination **pixel**
-          homography, exactly like :func:`warp_perspective`
+          :math:`[-1, 1]` coordinates by default (``normalized_coordinates=True``), when
+          ``normalized_homography=True`` (default); with ``normalized_homography=False`` it is
+          consumed as the source→destination **pixel** homography, exactly like
+          :func:`warp_perspective`
         - ``dsize`` is ``(h, w)``
         - align_corners: ``False`` by default; ``mode``: ``'bilinear'`` by default (both only
           honored when ``normalized_homography=True`` — the pixel-homography path currently
