@@ -44,7 +44,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import math
 import platform
 import sys
 from pathlib import Path
@@ -55,7 +54,7 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import run_metadata, save_json, time_us
+from common import run_batch_sweep, run_metadata, save_json, versions_line
 
 import kornia.geometry as KG
 
@@ -71,6 +70,7 @@ def build_ops(
     do_compile: bool,
     cv2: Optional[ModuleType],
     tvf: Optional[ModuleType],
+    skip_compile: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
     """Build {op: {backend: zero-arg callable}} with identical transform params per backend.
 
@@ -105,13 +105,28 @@ def build_ops(
 
     def kornia_row(label: str, fn: Callable[[], object]) -> dict[str, Backend]:
         row: dict[str, Backend] = {"kornia (eager)": fn}
-        if do_compile:
+        if do_compile and label not in skip_compile:
             torch._dynamo.reset()
             compiled = torch.compile(fn)
             try:
                 compiled()  # warmup: compile + autotune before the timed region
+                if device.type == "cuda":
+                    torch.cuda.synchronize()  # surface async kernel faults HERE, not at the next op
                 row["kornia (compiled)"] = compiled
             except Exception as e:
+                errors = str(e)
+                if device.type == "cuda":
+                    try:
+                        torch.cuda.synchronize()  # a FAILED warmup may still have launched kernels
+                    except Exception as sync_err:
+                        errors += " | " + str(sync_err)
+                if "illegal memory access" in errors:
+                    raise SystemExit(
+                        f"FATAL: CUDA context poisoned during torch.compile warmup of '{label}' "
+                        "(illegal memory access); no later measurement would be trustworthy. "
+                        f"Rerun with --skip-compile-ops {label} to keep it eager-only, or without "
+                        "--compile; CUDA_LAUNCH_BLOCKING=1 localizes the kernel."
+                    ) from e
                 row["kornia (compiled)"] = None
                 compile_failures[label] = type(e).__name__
         return row
@@ -160,8 +175,15 @@ def main() -> None:
     parser.add_argument("--dtype", type=str, default="float32", choices=["float32", "float16", "bfloat16"])
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--compile", action="store_true", help="also time torch.compile'd kornia")
+    parser.add_argument(
+        "--skip-compile-ops",
+        type=str,
+        default="",
+        help="comma-separated op names to keep eager-only (workaround for faulting compiled kernels)",
+    )
     parser.add_argument("--json", type=str, default=None, help="write machine-readable results to this path")
     args = parser.parse_args()
+    skip_compile = frozenset(s.strip() for s in args.skip_compile_ops.split(",") if s.strip())
 
     torch.set_num_threads(args.threads)
     torch.manual_seed(0)
@@ -171,62 +193,34 @@ def main() -> None:
 
     try:
         import cv2
-    except ImportError:
+    except Exception:
         cv2 = None
     try:
         import torchvision.transforms.v2.functional as tvf
-    except ImportError:
+    except Exception:
         tvf = None
 
     meta = run_metadata(device)
     print(f"# flagship geometry benchmark — commit {meta['git_commit']} — {platform.platform()}")
+    print(versions_line(meta))
     if device.type == "cuda":
-        print(f"# CUDA device: {meta['cuda_device']}")
+        print(f"# CUDA device: {meta['cuda_device']} (CUDA {meta['cuda_version']})")
     print(f"# device={device}, dtype={args.dtype}, threads={args.threads}, size={args.size} — throughput items/s")
     print("# kornia/torchvision: batched float BCHW; opencv: uint8 HWC per-image loop (CPU); '-' = skipped")
     for lib, name in [(cv2, "opencv"), (tvf, "torchvision")]:
         if lib is None:
             print(f"# NOTE: {name} not installed — its column is skipped")
+    if skip_compile:
+        print(f"# NOTE: --skip-compile-ops keeps eager-only: {', '.join(sorted(skip_compile))}")
 
     backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "opencv"]
-    results: list[dict[str, object]] = []
-    col_w = 14
-    header = ""
-    for b in [int(x) for x in args.batches.split(",")]:
-        ops, compile_failures = build_ops(b, args.size, args.size, device, dtype, args.compile, cv2, tvf)
-        if compile_failures:
-            exc_names = sorted(set(compile_failures.values()))
-            print(f"# NOTE: torch.compile warmup failed ({', '.join(exc_names)}) for: {', '.join(compile_failures)}")
-        header = f"{'batch=' + str(b):<26}" + "".join(f"{n[:col_w]:>{col_w + 1}}" for n in backends)
-        print("-" * len(header))
-        print(header)
-        print("-" * len(header))
-        for op_name, row in ops.items():
-            cells = []
-            for backend in backends:
-                fn = row.get(backend)
-                if fn is None:
-                    cells.append(f"{'-':>{col_w + 1}}")
-                    continue
-                is_torch_backend = backend.startswith(("kornia", "torchvision"))
-                median, iqr = time_us(fn, sync=sync if is_torch_backend else None)
-                thr = b / (median * 1e-6) if not math.isnan(median) else float("nan")
-                results.append(
-                    {
-                        "op": op_name,
-                        "backend": backend,
-                        "batch": b,
-                        "height": args.size,
-                        "width": args.size,
-                        "dtype": args.dtype,
-                        "median_us": median,
-                        "iqr_us": iqr,
-                        "throughput_per_s": thr,
-                    }
-                )
-                cells.append(f"{thr:>{col_w + 1}.0f}")
-            print(f"{op_name:<26}" + "".join(cells))
-    print("-" * len(header))
+    results = run_batch_sweep(
+        [int(x) for x in args.batches.split(",") if x.strip()],
+        lambda b: build_ops(b, args.size, args.size, device, dtype, args.compile, cv2, tvf, skip_compile),
+        backends,
+        row_fields=lambda b: {"height": args.size, "width": args.size, "dtype": args.dtype},
+        sync=sync,
+    )
     if args.json:
         out = save_json(args.json, meta, results)
         print(f"# results written to {out}")
