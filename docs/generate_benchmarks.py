@@ -135,8 +135,8 @@ def _digest(results_root: Path) -> str:
 
 def refresh_llms(llms_path: Path, results_root: Path) -> None:
     text = Path(llms_path).read_text()
-    if BEGIN not in text or END not in text:
-        raise RuntimeError(f"markers {BEGIN}/{END} not found in {llms_path}")
+    if BEGIN not in text or END not in text or text.index(BEGIN) > text.index(END):
+        raise RuntimeError(f"markers {BEGIN}/{END} not found (in order) in {llms_path}")
     head, rest = text.split(BEGIN, 1)
     _, tail = rest.split(END, 1)
     Path(llms_path).write_text(f"{head}{BEGIN}\n{_digest(results_root)}{END}{tail}")

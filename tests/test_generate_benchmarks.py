@@ -92,3 +92,10 @@ def test_refresh_llms_missing_markers_raises(tmp_path: Path) -> None:
     llms.write_text("no markers here\n")
     with pytest.raises(RuntimeError):
         generate_benchmarks.refresh_llms(llms, _seed(tmp_path))
+
+
+def test_refresh_llms_swapped_markers_raises(tmp_path: Path) -> None:
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("before\n<!-- BENCH:END -->\nold\n<!-- BENCH:BEGIN -->\nafter\n")
+    with pytest.raises(RuntimeError):
+        generate_benchmarks.refresh_llms(llms, _seed(tmp_path))
