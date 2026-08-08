@@ -28,6 +28,7 @@ from .disparity import mean_absolute_disparity_error, mean_bad_pixel_error, root
 from .endpoint_error import AEPE, aepe, average_endpoint_error
 from .mean_average_precision import mean_average_precision
 from .mean_iou import mean_iou, mean_iou_bbox
+from .pose import angle_error_mat, angle_error_vec, auc_from_errors, pose_errors, translation_ate
 from .psnr import psnr
 from .ssim import SSIM, ssim
 from .ssim3d import SSIM3D, ssim3d
@@ -39,6 +40,9 @@ __all__ = [
     "AverageMeter",
     "accuracy",
     "aepe",
+    "angle_error_mat",
+    "angle_error_vec",
+    "auc_from_errors",
     "average_endpoint_error",
     "confusion_matrix",
     "mean_absolute_disparity_error",
@@ -46,8 +50,10 @@ __all__ = [
     "mean_bad_pixel_error",
     "mean_iou",
     "mean_iou_bbox",
+    "pose_errors",
     "psnr",
     "root_mean_squared_disparity_error",
     "ssim",
     "ssim3d",
+    "translation_ate",
 ]
