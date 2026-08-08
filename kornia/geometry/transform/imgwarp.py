@@ -361,7 +361,7 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           has to be :math:`(1, 4, 4)` or :math:`(N, 1, 4, 4)`.
 
     Returns:
-        the transformed grid of shape :math:`(N, H, W, 3)`.
+        the transformed grid of shape :math:`(N, D, H, W, 3)`.
 
     """
     batch_size: int = src_homo_dst.size(0)

@@ -360,6 +360,9 @@ class TestRotate(BaseTester):
         angle = torch.tensor([90.0], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Rotate(angle)
         self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        # the function's own bare default must match (class and function defaults can diverge
+        # in this module — see Rescale vs rescale — so both APIs are pinned independently)
+        self.assert_close(kornia.geometry.transform.rotate(inp, angle), expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         # test parameters
