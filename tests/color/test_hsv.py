@@ -287,6 +287,29 @@ class TestHsvToRgb(BaseTester):
         # boundary; loosen tolerance rather than special-case the dtype.
         self.assert_close(kornia.color.hsv_to_rgb(data), expected, low_tolerance=True)
 
+        # Mid-sextant hues (f=0.25): at exact boundaries f=0 collapses q==v and t==p, so a p/t or
+        # q/v swap would go unnoticed there; with f=0.25 all four of p=0.32, q=0.68, t=0.44, v=0.8
+        # are distinct and every sextant's full selection is pinned.
+        # Snippet used to generate expected (current stack+gather implementation):
+        # hm = torch.tensor([(k + 0.25) * math.pi / 3.0 for k in range(6)], dtype=torch.float64)
+        # data_mid = torch.stack([hm, torch.full((6,), 0.6), torch.full((6,), 0.8)], 1).view(6, 3, 1, 1)
+        # expected_mid = kornia.color.hsv_to_rgb(data_mid)  # <-- print and paste below
+        hm = torch.tensor([(k + 0.25) * math.pi / 3.0 for k in range(6)], device=device, dtype=dtype)
+        data_mid = torch.stack([hm, torch.full_like(hm, 0.6), torch.full_like(hm, 0.8)], dim=1).view(6, 3, 1, 1)
+        expected_mid = torch.tensor(
+            [
+                [0.8, 0.44, 0.32],
+                [0.68, 0.8, 0.32],
+                [0.32, 0.8, 0.44],
+                [0.32, 0.68, 0.8],
+                [0.44, 0.32, 0.8],
+                [0.8, 0.32, 0.68],
+            ],
+            device=device,
+            dtype=dtype,
+        ).view(6, 3, 1, 1)
+        self.assert_close(kornia.color.hsv_to_rgb(data_mid), expected_mid, low_tolerance=True)
+
         # s=0 gray: output must equal v on every channel regardless of hue
         hg = torch.tensor([0.0, math.pi / 2, math.pi, 3 * math.pi / 2, 2 * math.pi - 0.01], device=device, dtype=dtype)
         sg = torch.zeros(5, device=device, dtype=dtype)
