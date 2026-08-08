@@ -26,9 +26,12 @@ machine-readable JSON export so every run is comparable and citable.
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
+import os
 import platform
+import re
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -109,11 +112,14 @@ def _sanitize(obj: Any) -> Any:
 
 
 def save_json(path: str | Path, metadata: dict[str, Any], results: list[dict[str, Any]]) -> Path:
-    """Write one run as strict-valid JSON ``{"metadata": ..., "results": [...]}`` (non-finite → null)."""
+    """Write one run as strict-valid JSON ``{"metadata": ..., "results": [...]}`` (non-finite → null).
+
+    Keys are sorted so committed result files satisfy the ``pretty-format-json`` pre-commit hook.
+    """
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     payload = _sanitize({"metadata": metadata, "results": results})
-    out.write_text(json.dumps(payload, indent=2, allow_nan=False) + "\n")
+    out.write_text(json.dumps(payload, indent=2, allow_nan=False, sort_keys=True) + "\n")
     return out
 
 
@@ -121,6 +127,108 @@ def versions_line(meta: dict[str, Any]) -> str:
     """One-line software-stack summary for printed table headers (the JSON carries the same data)."""
     keys = ("torch", "kornia", "python", "opencv", "torchvision", "albumentations", "pillow", "kornia_rs")
     return "# " + ", ".join(f"{k} {meta.get(k) or '-'}" for k in keys)
+
+
+def collect_load_metrics() -> dict[str, Any]:
+    """Aggregate system-load snapshot for run metadata.
+
+    Privacy-preserving by design: numbers only (load averages, memory totals, CPU count) —
+    never process or application names.
+    """
+    metrics: dict[str, Any] = {
+        "load_avg_1m": None,
+        "load_avg_5m": None,
+        "load_avg_15m": None,
+        "cpu_count": os.cpu_count(),
+        "mem_total_bytes": None,
+        "mem_available_bytes": None,
+    }
+    try:
+        one, five, fifteen = os.getloadavg()
+        metrics.update(load_avg_1m=one, load_avg_5m=five, load_avg_15m=fifteen)
+    except (OSError, AttributeError):
+        pass
+    try:
+        import psutil  # optional; aggregate numbers only
+
+        vm = psutil.virtual_memory()
+        metrics.update(mem_total_bytes=int(vm.total), mem_available_bytes=int(vm.available))
+    except Exception:  # noqa: S110
+        pass
+    return metrics
+
+
+def machine_slug(meta: dict[str, Any], override: Optional[str] = None) -> str:
+    """Stable, human-readable machine identifier for result filenames."""
+    if override:
+        return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", override.lower())).strip("-")
+    name = meta.get("cuda_device")
+    if not name:
+        if sys.platform == "darwin":
+            try:
+                name = subprocess.check_output(
+                    ["sysctl", "-n", "machdep.cpu.brand_string"],  # noqa: S607
+                    text=True,
+                ).strip()
+            except Exception:
+                name = None
+        elif sys.platform.startswith("linux"):
+            try:
+                for line in Path("/proc/cpuinfo").read_text().splitlines():
+                    if line.lower().startswith("model name"):
+                        name = line.split(":", 1)[1].strip()
+                        break
+            except Exception:
+                name = None
+    if not name:
+        name = str(meta.get("machine", "unknown"))
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", name.lower())).strip("-")
+
+
+def canonical_result_name(meta: dict[str, Any], suite: str, slug_override: Optional[str] = None) -> str:
+    """Filename for a contributed run: <suite>--<machine-slug>--<device-type>.json."""
+    device_type = str(meta["device"]).split(":")[0]
+    return f"{suite}--{machine_slug(meta, slug_override)}--{device_type}.json"
+
+
+def add_contribute_args(parser: argparse.ArgumentParser) -> None:
+    """CLI options shared by every flagship suite for contributing canonical result files."""
+    parser.add_argument(
+        "--contribute",
+        type=str,
+        default=None,
+        help="write this run to DIR/<kornia-version>/<suite>--<machine>--<device>.json for committing",
+    )
+    parser.add_argument(
+        "--machine-slug", type=str, default=None, help="override the auto-detected machine name in the filename"
+    )
+
+
+def print_preflight(metrics: dict[str, Any]) -> None:
+    """Measurement-hygiene notice. Advisory only; records nothing beyond aggregate numbers."""
+    print("# preflight: close other applications, use mains power, let the machine cool before contributing.")
+    load1, ncpu = metrics.get("load_avg_1m"), metrics.get("cpu_count")
+    if load1 is not None and ncpu and load1 > ncpu:
+        print(f"# preflight WARNING: load average {load1:.1f} exceeds {ncpu} CPUs - numbers will be noisy.")
+    total, avail = metrics.get("mem_total_bytes"), metrics.get("mem_available_bytes")
+    if total and avail is not None and avail < 0.1 * total:
+        print("# preflight WARNING: less than 10% memory available - numbers will be noisy.")
+
+
+def contribute_result(
+    results_dir: str | Path,
+    suite: str,
+    metadata: dict[str, Any],
+    results: list[dict[str, Any]],
+    slug_override: Optional[str] = None,
+) -> Path:
+    """Write one run under the canonical results layout and print the git line to commit it."""
+    version = str(metadata.get("kornia", "unknown"))
+    out = Path(results_dir) / version / canonical_result_name(metadata, suite, slug_override)
+    save_json(out, metadata, results)
+    print(f"# contributed: {out}")
+    print(f"# commit it with: git add {out}")
+    return out
 
 
 def run_batch_sweep(

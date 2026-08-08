@@ -70,6 +70,13 @@ spec.loader.exec_module(generate_examples)
 # Pre-generate the example images
 generate_examples.main()
 
+spec = importlib.util.spec_from_file_location("generate_benchmarks", "../generate_benchmarks.py")
+generate_benchmarks = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(generate_benchmarks)
+
+# Pre-generate the benchmark results page
+generate_benchmarks.main()
+
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.

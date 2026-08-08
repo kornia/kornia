@@ -65,7 +65,16 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import run_batch_sweep, run_metadata, save_json, versions_line
+from common import (
+    add_contribute_args,
+    collect_load_metrics,
+    contribute_result,
+    print_preflight,
+    run_batch_sweep,
+    run_metadata,
+    save_json,
+    versions_line,
+)
 
 import kornia.augmentation as KA
 
@@ -206,6 +215,7 @@ def main() -> None:
         help="comma-separated op names to keep eager-only (workaround for faulting compiled kernels)",
     )
     parser.add_argument("--json", type=str, default=None, help="write machine-readable results to this path")
+    add_contribute_args(parser)
     args = parser.parse_args()
     skip_compile = frozenset(s.strip() for s in args.skip_compile_ops.split(",") if s.strip())
 
@@ -235,6 +245,9 @@ def main() -> None:
         pil = None
 
     meta = run_metadata(device)
+    meta["load"] = collect_load_metrics()
+    if args.contribute:
+        print_preflight(meta["load"])
     print(f"# flagship augmentation benchmark — commit {meta['git_commit']} — {platform.platform()}")
     print(versions_line(meta))
     if device.type == "cuda":
@@ -262,6 +275,8 @@ def main() -> None:
     if args.json:
         out = save_json(args.json, meta, results)
         print(f"# results written to {out}")
+    if args.contribute:
+        contribute_result(args.contribute, "augmentation", meta, results, slug_override=args.machine_slug)
 
 
 if __name__ == "__main__":

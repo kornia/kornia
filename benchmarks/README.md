@@ -89,6 +89,21 @@ One file per run:
 4. Missing optional libraries must degrade to a skip note, never a crash.
 5. Document the regimes in the module docstring; keep the honest framing.
 
+## Contributing results (any machine)
+
+1. Check out the release tag you are measuring.
+2. Quiet the machine: close other applications, mains power, let it cool. Only aggregate load
+   numbers (load average, memory) are recorded in the file - never process or app names.
+3. Run each suite with `--contribute`:
+
+       python benchmarks/augmentation/flagship.py --device cuda --contribute benchmarks/results
+
+   The run lands at `benchmarks/results/<kornia-version>/<suite>--<machine>--<device>.json`
+   (override the machine name with `--machine-slug`).
+4. Commit the file and open a PR. CI validates the schema (`benchmarks/results_schema.py`);
+   the docs page and the llms digest regenerate from it automatically at the next docs build
+   (`python docs/generate_benchmarks.py --refresh-llms` refreshes the committed digest).
+
 ## Sample results — geometry flagship ops
 
 Directional numbers only — reproduce on your own hardware for anything you cite. Measured

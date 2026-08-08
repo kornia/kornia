@@ -27,6 +27,7 @@ from pathlib import Path
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import common
 from common import git_commit, run_batch_sweep, run_metadata, save_json, time_us, versions_line
 
 
@@ -134,3 +135,60 @@ def test_run_batch_sweep_reports_warmup_failures(capsys):  # 'compile' in a test
 
     run_batch_sweep([1], build, ["fast"], row_fields=lambda b: {}, min_run_time=0.05)
     assert "torch.compile warmup failed" in capsys.readouterr().out
+
+
+def test_collect_load_metrics_aggregate_only() -> None:
+    from common import collect_load_metrics
+
+    m = collect_load_metrics()
+    assert set(m) == {
+        "load_avg_1m",
+        "load_avg_5m",
+        "load_avg_15m",
+        "cpu_count",
+        "mem_total_bytes",
+        "mem_available_bytes",
+    }
+    # privacy: values are numbers or None — never strings that could carry process names
+    assert all(v is None or isinstance(v, (int, float)) for v in m.values())
+
+
+def test_machine_slug_prefers_cuda_device() -> None:
+    from common import machine_slug
+
+    assert machine_slug({"cuda_device": "NVIDIA GeForce RTX 4080", "machine": "x86_64"}) == ("nvidia-geforce-rtx-4080")
+
+
+def test_machine_slug_override_wins() -> None:
+    from common import machine_slug
+
+    assert machine_slug({"cuda_device": "NVIDIA L4"}, override="box-a") == "box-a"
+
+
+def test_canonical_result_name() -> None:
+    from common import canonical_result_name
+
+    meta = {"cuda_device": "NVIDIA L4", "device": "cuda:0", "machine": "x86_64"}
+    assert canonical_result_name(meta, "augmentation") == "augmentation--nvidia-l4--cuda.json"
+
+
+def test_contribute_result_writes_canonical_path(tmp_path) -> None:
+    meta = {"kornia": "0.9.0rc1", "device": "cpu", "machine": "arm64", "load": {"load_avg_1m": 1.0}}
+    out = common.contribute_result(tmp_path, "filters", meta, [{"op": "sobel", "batch": 1}], slug_override="test-box")
+    assert out == tmp_path / "0.9.0rc1" / "filters--test-box--cpu.json"
+    payload = json.loads(out.read_text())
+    assert payload["metadata"]["load"]["load_avg_1m"] == 1.0
+    assert payload["results"][0]["op"] == "sobel"
+
+
+def test_print_preflight_warns_on_high_load(capsys) -> None:
+    common.print_preflight({"load_avg_1m": 64.0, "cpu_count": 8, "mem_total_bytes": 100, "mem_available_bytes": 5})
+    outp = capsys.readouterr().out
+    assert "close other applications" in outp
+    assert "WARNING" in outp  # load1 > cpu_count and available < 10% both trip it
+
+
+def test_machine_slug_override_is_slugified() -> None:
+    from common import machine_slug
+
+    assert machine_slug({"machine": "x86_64"}, override="My Box! #2") == "my-box-2"

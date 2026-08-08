@@ -102,6 +102,7 @@ Join the community
    get-started/highlights
    get-started/conventions
    get-started/stability
+   get-started/performance
    get-started/installation
    get-started/precision
    get-started/about

@@ -156,15 +156,28 @@ img = img[None]  # most ops want (B, C, H, W)
 13. Expecting hue in `[0, 360]` or `[0, 1]` — `rgb_to_hsv` returns radians `[0, 2π)`.
 14. Wrong `data_keys` box format — `"bbox"` means 4-corner `(B, 4, 2)`; coordinate formats are `"bbox_xyxy"` / `"bbox_xywh"`.
 
-## Performance (measured 2026-08-07)
+## Performance (auto-refreshed from benchmarks/results)
 
 From the in-repo benchmark harness (`benchmarks/` in the GitHub repo — warmup + repeats, median wall clock, device sync, recorded hardware metadata; see `benchmarks/README.md`). Guidance for choosing a backend, not marketing; numbers vary by hardware — reproduce with `python benchmarks/geometry/flagship.py --json out.json` before citing:
+
+Durable findings from earlier CUDA runs (2026-08-07, see benchmarks/README.md):
 
 - Kornia's regime is batched float tensors on an accelerator, differentiable end-to-end. At batch 32, 256×256 fp32, `warp_perspective` under `torch.compile` reached ~57k img/s on an NVIDIA L4 and ~232k img/s on an RTX PRO 6000 — roughly 45–72× OpenCV's per-image uint8 CPU loop on the same hosts.
 - OpenCV wins the CPU single-image uint8 regime on image warps and resize — use OpenCV or kornia-rs for per-image CPU data loading; use Kornia for batched / GPU / differentiable pipelines.
 - Batched `get_perspective_transform` beats OpenCV's per-pair solver even on CPU once batched: crossover around batch 32, ~13× (3.5M solves/s, compiled) at batch 128 on an AMD Turin CPU.
 - Known weak spot (as of 2026-08): `rotate` on GPU trails torchvision v2 by ~1.7–2×.
 - `torch.compile` speeds most of these ops 1.3–7×, but regressed `resize` at batch ≤ 32 on L4 — measure your own shapes before assuming compile helps.
+
+<!-- BENCH:BEGIN -->
+- Result set: kornia 0.9.0rc1, committed in `benchmarks/results/0.9.0rc1/` (per-machine
+  snapshots; reproduce with `python benchmarks/<suite>/flagship.py --contribute benchmarks/results`).
+- augmentation on apple-m1/cpu (2026-08-08): fastest overall opencv RandomHorizontalFlip@1 at 180552 items/s; slowest kornia op ColorJiggle@32 at 157 items/s.
+- augmentation on apple-m1/mps (2026-08-08): fastest overall opencv RandomHorizontalFlip@8 at 182381 items/s; slowest kornia op ColorJiggle@1 at 91 items/s.
+- filters on apple-m1/cpu (2026-08-08): fastest overall opencv box_blur@1 at 22422 items/s; slowest kornia op median_blur@32 at 11 items/s.
+- filters on apple-m1/mps (2026-08-08): fastest overall opencv box_blur@1 at 20137 items/s; slowest kornia op median_blur@32 at 1 items/s.
+- geometry on apple-m1/cpu (2026-08-08): fastest overall opencv get_perspective_transform@32 at 501126 items/s; slowest kornia op warp_perspective@32 at 841 items/s.
+- geometry on apple-m1/mps (2026-08-08): fastest overall opencv get_perspective_transform@8 at 490803 items/s; slowest kornia op rotate@1 at 218 items/s.
+<!-- BENCH:END -->
 
 ## Links
 
