@@ -32,9 +32,11 @@ def validate_result(path: Path) -> list[str]:
         payload = json.loads(Path(path).read_text())
     except (OSError, json.JSONDecodeError) as exc:
         return [f"unreadable JSON: {exc}"]
-    if set(payload) != {"metadata", "results"}:
-        return [f"top-level keys must be metadata/results, got {sorted(payload)}"]
+    if not isinstance(payload, dict) or set(payload) != {"metadata", "results"}:
+        return [f"top level must be an object with keys metadata/results, got {type(payload).__name__}"]
     meta, results = payload["metadata"], payload["results"]
+    if not isinstance(meta, dict):
+        return [f"metadata must be an object, got {type(meta).__name__}"]
     for key in REQUIRED_METADATA:
         if key not in meta:
             errors.append(f"metadata missing '{key}'")
@@ -45,11 +47,18 @@ def validate_result(path: Path) -> list[str]:
         errors.append("results must be a non-empty list")
     else:
         for i, row in enumerate(results):
+            if not isinstance(row, dict):
+                errors.append(f"results[{i}] must be an object, got {type(row).__name__}")
+                continue
             for key, types in (("op", str), ("backend", str), ("batch", int)):
-                if not isinstance(row.get(key), types):
+                if not isinstance(row.get(key), types) or isinstance(row.get(key), bool):
                     errors.append(f"results[{i}].{key} missing or wrong type")
             for key in ("median_us", "throughput_per_s"):
-                if key not in row or (row[key] is not None and not isinstance(row[key], (int, float))):
+                if (
+                    key not in row
+                    or isinstance(row[key], bool)
+                    or (row[key] is not None and not isinstance(row[key], (int, float)))
+                ):
                     errors.append(f"results[{i}].{key} missing or wrong type")
     name = Path(path).name
     parts = name[: -len(".json")].split("--") if name.endswith(".json") else []

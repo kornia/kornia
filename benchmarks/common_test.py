@@ -186,3 +186,9 @@ def test_print_preflight_warns_on_high_load(capsys) -> None:
     outp = capsys.readouterr().out
     assert "close other applications" in outp
     assert "WARNING" in outp  # load1 > cpu_count and available < 10% both trip it
+
+
+def test_machine_slug_override_is_slugified() -> None:
+    from common import machine_slug
+
+    assert machine_slug({"machine": "x86_64"}, override="My Box! #2") == "my-box-2"

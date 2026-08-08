@@ -63,7 +63,8 @@ def load_results(results_root: Path) -> dict[str, dict[str, dict]]:
 
 
 def _version_key(v: str) -> tuple:
-    nums = [int(x) for x in re.findall(r"\d+", v)[:3]]
+    # pad to three numeric parts so digit-less dirs (e.g. "unknown") stay comparable
+    nums = ([int(x) for x in re.findall(r"\d+", v)[:3]] + [0, 0, 0])[:3]
     is_final = not re.search(r"(rc|a|b|dev)\d*$", v)
     return (*nums, is_final, v)
 

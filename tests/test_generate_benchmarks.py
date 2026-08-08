@@ -121,3 +121,7 @@ def test_committed_digest_is_fresh(tmp_path: Path) -> None:
     copy.write_text(committed.read_text())
     generate_benchmarks.refresh_llms(copy, results_root)
     assert copy.read_bytes() == committed.read_bytes()
+
+
+def test_latest_version_tolerates_digitless_dirs() -> None:
+    assert generate_benchmarks.latest_version(["unknown", "0.9.0rc1"]) == "0.9.0rc1"

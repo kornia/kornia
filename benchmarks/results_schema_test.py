@@ -85,3 +85,28 @@ def test_all_committed_results_are_valid() -> None:
     results_root = Path(__file__).parent / "results"
     for path in sorted(results_root.rglob("*.json")):
         assert results_schema.validate_result(path) == [], f"{path} invalid"
+
+
+def test_non_object_payload_rejected(tmp_path) -> None:
+    p = tmp_path / "0.9.0rc1" / "filters--test-box--cpu.json"
+    p.parent.mkdir()
+    p.write_text(json.dumps(["metadata", "results"]))
+    errors = results_schema.validate_result(p)
+    assert errors and "object" in errors[0]
+
+
+def test_non_object_metadata_rejected(tmp_path) -> None:
+    p = tmp_path / "0.9.0rc1" / "filters--test-box--cpu.json"
+    p.parent.mkdir()
+    p.write_text(json.dumps({"metadata": "oops", "results": []}))
+    errors = results_schema.validate_result(p)
+    assert errors and "metadata must be an object" in errors[0]
+
+
+def test_bool_batch_rejected(tmp_path) -> None:
+    p = tmp_path / "0.9.0rc1" / "filters--test-box--cpu.json"
+    p.parent.mkdir()
+    payload = _valid_payload()
+    payload["results"][0]["batch"] = True
+    p.write_text(json.dumps(payload))
+    assert any("batch" in e for e in results_schema.validate_result(p))

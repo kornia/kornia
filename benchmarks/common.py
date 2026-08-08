@@ -161,7 +161,7 @@ def collect_load_metrics() -> dict[str, Any]:
 def machine_slug(meta: dict[str, Any], override: Optional[str] = None) -> str:
     """Stable, human-readable machine identifier for result filenames."""
     if override:
-        return override
+        return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", override.lower())).strip("-")
     name = meta.get("cuda_device")
     if not name:
         if sys.platform == "darwin":
