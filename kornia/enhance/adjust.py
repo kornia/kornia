@@ -274,6 +274,11 @@ def adjust_gamma(
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
 
+    .. note::
+       The non-negativity check on ``gamma``/``gain`` runs on CPU and CUDA (via ``torch._assert_async``).
+       On MPS it is skipped: the op has no MPS kernel and its CPU fallback would synchronize the
+       device on every call, so invalid values do not raise there.
+
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_gamma(x, 1.0, 2.0)
@@ -305,8 +310,14 @@ def adjust_gamma(
     gamma = gamma.to(input.device).to(input.dtype)
     gain = gain.to(input.device).to(input.dtype)
 
-    _assert_async_value_check((gamma >= 0.0).all(), "Gamma must be non-negative. Clamp it first: gamma.clamp_min(0.0).")
-    _assert_async_value_check((gain >= 0.0).all(), "Gain must be non-negative. Clamp it first: gain.clamp_min(0.0).")
+    _assert_async_value_check(
+        (gamma >= 0.0).all(),
+        "Gamma must be non-negative. Clamp it first: max(gamma, 0.0) for floats, gamma.clamp_min(0.0) for tensors.",
+    )
+    _assert_async_value_check(
+        (gain >= 0.0).all(),
+        "Gain must be non-negative. Clamp it first: max(gain, 0.0) for floats, gain.clamp_min(0.0) for tensors.",
+    )
 
     for _ in range(len(input.shape) - len(gamma.shape)):
         gamma = torch.unsqueeze(gamma, dim=-1)
@@ -353,6 +364,11 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
 
+    .. note::
+       The non-negativity check on ``factor`` runs on CPU and CUDA (via ``torch._assert_async``).
+       On MPS it is skipped: the op has no MPS kernel and its CPU fallback would synchronize the
+       device on every call, so invalid values do not raise there.
+
     Example:
         >>> import torch
         >>> x = torch.ones(1, 1, 2, 2)
@@ -381,7 +397,8 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
 
     _assert_async_value_check(
         (factor >= 0).all(),
-        "Contrast factor must be non-negative. Sample it from a non-negative range or clamp: factor.clamp_min(0.0).",
+        "Contrast factor must be non-negative. Clamp it first: max(factor, 0.0) for floats, "
+        "factor.clamp_min(0.0) for tensors.",
     )
 
     # Apply contrast factor to each channel
@@ -706,6 +723,11 @@ def solarize(
     Returns:
         The solarized images with shape :math:`(*, C, H, W)`.
 
+    .. note::
+       The range check on ``additions`` runs on CPU and CUDA (via ``torch._assert_async``).
+       On MPS it is skipped: the op has no MPS kernel and its CPU fallback would synchronize the
+       device on every call, so invalid values do not raise there.
+
     Example:
         >>> x = torch.rand(1, 4, 3, 3)
         >>> out = solarize(x, thresholds=0.5, additions=0.)
@@ -737,7 +759,8 @@ def solarize(
 
         _assert_async_value_check(
             ((additions < 0.5) & (additions > -0.5)).all(),
-            "The addition must be in the open range (-0.5, 0.5). Clamp it first, e.g. additions.clamp(-0.49, 0.49).",
+            "The addition must be in the open range (-0.5, 0.5). Clamp it first: min(max(additions, -0.49), 0.49) "
+            "for floats, additions.clamp(-0.49, 0.49) for tensors.",
         )
 
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:

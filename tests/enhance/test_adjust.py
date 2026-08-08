@@ -369,14 +369,17 @@ class TestAdjustContrast(BaseTester):
 
     def test_mps_skips_value_check(self, device, dtype):
         # aten::_assert_async has no MPS kernel; its CPU fallback forces a full device sync per
-        # call. On MPS the value check is skipped entirely (documented in adjust_contrast), so
-        # even an invalid factor must go through without raising or falling back to CPU.
+        # call. On MPS the value check is skipped entirely (see the note in the adjust_contrast
+        # docstring), so even an invalid factor must go through without raising, and the output
+        # must stay on the device with the requested dtype.
         if device.type != "mps":
             pytest.skip("pins the MPS-only no-CPU-fallback behavior")
         img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
         factor = torch.tensor([-0.5], device=device, dtype=dtype)
         out = kornia.enhance.adjust_contrast(img, factor)
         assert out.shape == img.shape
+        assert out.device == img.device
+        assert out.dtype == img.dtype
 
     def test_factor_one_with_mean_subtraction(self, device, dtype):
         # prepare input data
