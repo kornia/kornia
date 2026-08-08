@@ -70,6 +70,7 @@ def build_ops(
     do_compile: bool,
     cv2: Optional[ModuleType],
     tvf: Optional[ModuleType],
+    skip_compile: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
     """Build {op: {backend: zero-arg callable}} with identical transform params per backend.
 
@@ -104,7 +105,7 @@ def build_ops(
 
     def kornia_row(label: str, fn: Callable[[], object]) -> dict[str, Backend]:
         row: dict[str, Backend] = {"kornia (eager)": fn}
-        if do_compile:
+        if do_compile and label not in skip_compile:
             torch._dynamo.reset()
             compiled = torch.compile(fn)
             try:
@@ -113,11 +114,18 @@ def build_ops(
                     torch.cuda.synchronize()  # surface async kernel faults HERE, not at the next op
                 row["kornia (compiled)"] = compiled
             except Exception as e:
-                if "illegal memory access" in str(e):
+                errors = str(e)
+                if device.type == "cuda":
+                    try:
+                        torch.cuda.synchronize()  # a FAILED warmup may still have launched kernels
+                    except Exception as sync_err:
+                        errors += " | " + str(sync_err)
+                if "illegal memory access" in errors:
                     raise SystemExit(
                         f"FATAL: CUDA context poisoned during torch.compile warmup of '{label}' "
                         "(illegal memory access); no later measurement would be trustworthy. "
-                        "Rerun without --compile, or with CUDA_LAUNCH_BLOCKING=1 to localize the kernel."
+                        f"Rerun with --skip-compile-ops {label} to keep it eager-only, or without "
+                        "--compile; CUDA_LAUNCH_BLOCKING=1 localizes the kernel."
                     ) from e
                 row["kornia (compiled)"] = None
                 compile_failures[label] = type(e).__name__
@@ -167,8 +175,15 @@ def main() -> None:
     parser.add_argument("--dtype", type=str, default="float32", choices=["float32", "float16", "bfloat16"])
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--compile", action="store_true", help="also time torch.compile'd kornia")
+    parser.add_argument(
+        "--skip-compile-ops",
+        type=str,
+        default="",
+        help="comma-separated op names to keep eager-only (workaround for faulting compiled kernels)",
+    )
     parser.add_argument("--json", type=str, default=None, help="write machine-readable results to this path")
     args = parser.parse_args()
+    skip_compile = frozenset(s.strip() for s in args.skip_compile_ops.split(",") if s.strip())
 
     torch.set_num_threads(args.threads)
     torch.manual_seed(0)
@@ -194,11 +209,13 @@ def main() -> None:
     for lib, name in [(cv2, "opencv"), (tvf, "torchvision")]:
         if lib is None:
             print(f"# NOTE: {name} not installed — its column is skipped")
+    if skip_compile:
+        print(f"# NOTE: --skip-compile-ops keeps eager-only: {', '.join(sorted(skip_compile))}")
 
     backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "opencv"]
     results = run_batch_sweep(
         [int(x) for x in args.batches.split(",") if x.strip()],
-        lambda b: build_ops(b, args.size, args.size, device, dtype, args.compile, cv2, tvf),
+        lambda b: build_ops(b, args.size, args.size, device, dtype, args.compile, cv2, tvf, skip_compile),
         backends,
         row_fields=lambda b: {"height": args.size, "width": args.size, "dtype": args.dtype},
         sync=sync,
