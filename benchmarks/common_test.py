@@ -134,3 +134,38 @@ def test_run_batch_sweep_reports_warmup_failures(capsys):  # 'compile' in a test
 
     run_batch_sweep([1], build, ["fast"], row_fields=lambda b: {}, min_run_time=0.05)
     assert "torch.compile warmup failed" in capsys.readouterr().out
+
+
+def test_collect_load_metrics_aggregate_only() -> None:
+    from common import collect_load_metrics
+
+    m = collect_load_metrics()
+    assert set(m) == {
+        "load_avg_1m",
+        "load_avg_5m",
+        "load_avg_15m",
+        "cpu_count",
+        "mem_total_bytes",
+        "mem_available_bytes",
+    }
+    # privacy: values are numbers or None — never strings that could carry process names
+    assert all(v is None or isinstance(v, (int, float)) for v in m.values())
+
+
+def test_machine_slug_prefers_cuda_device() -> None:
+    from common import machine_slug
+
+    assert machine_slug({"cuda_device": "NVIDIA GeForce RTX 4080", "machine": "x86_64"}) == ("nvidia-geforce-rtx-4080")
+
+
+def test_machine_slug_override_wins() -> None:
+    from common import machine_slug
+
+    assert machine_slug({"cuda_device": "NVIDIA L4"}, override="box-a") == "box-a"
+
+
+def test_canonical_result_name() -> None:
+    from common import canonical_result_name
+
+    meta = {"cuda_device": "NVIDIA L4", "device": "cuda:0", "machine": "x86_64"}
+    assert canonical_result_name(meta, "augmentation") == "augmentation--nvidia-l4--cuda.json"
