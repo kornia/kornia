@@ -112,11 +112,14 @@ def _sanitize(obj: Any) -> Any:
 
 
 def save_json(path: str | Path, metadata: dict[str, Any], results: list[dict[str, Any]]) -> Path:
-    """Write one run as strict-valid JSON ``{"metadata": ..., "results": [...]}`` (non-finite → null)."""
+    """Write one run as strict-valid JSON ``{"metadata": ..., "results": [...]}`` (non-finite → null).
+
+    Keys are sorted so committed result files satisfy the ``pretty-format-json`` pre-commit hook.
+    """
     out = Path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     payload = _sanitize({"metadata": metadata, "results": results})
-    out.write_text(json.dumps(payload, indent=2, allow_nan=False) + "\n")
+    out.write_text(json.dumps(payload, indent=2, allow_nan=False, sort_keys=True) + "\n")
     return out
 
 
