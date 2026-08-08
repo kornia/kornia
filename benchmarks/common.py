@@ -123,7 +123,7 @@ def run_batch_sweep(
     backends: list[str],
     row_fields: Callable[[int], dict[str, Any]],
     sync: Optional[Callable[[], None]] = None,
-    torch_backends: tuple[str, ...] = ("kornia", "torchvision"),
+    torch_backends: tuple[str, ...] = ("kornia (", "torchvision"),
     label_width: int = 26,
     col_width: int = 14,
     min_run_time: float = 1.0,
@@ -133,7 +133,8 @@ def run_batch_sweep(
     ``build_ops(batch)`` returns ``({op: {backend: zero-arg callable | None}}, {op: exc_name})``;
     the second dict names ops whose ``torch.compile`` warmup failed, reported as a NOTE instead
     of a silent skip cell. ``sync`` lands inside the timed region only for backends whose name
-    starts with one of ``torch_backends`` — uint8 CPU-loop baselines are timed without it.
+    starts with one of ``torch_backends`` — uint8 CPU-loop baselines are timed without it (the
+    default prefix is ``"kornia ("`` so the CPU-only ``"kornia-rs"`` backend never matches).
     """
     results: list[dict[str, Any]] = []
     header = ""

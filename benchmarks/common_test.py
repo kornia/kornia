@@ -96,6 +96,31 @@ def test_run_batch_sweep_rows_and_skip_cells(capsys):
     assert "-" in out  # the skip cell
 
 
+def test_run_batch_sweep_syncs_torch_backends_only():
+    synced_during: list[str] = []
+    current = {"name": ""}
+
+    def build(b):
+        def make(name):
+            def fn():
+                current["name"] = name
+
+            return fn
+
+        return {"opA": {"kornia (eager)": make("kornia (eager)"), "kornia-rs": make("kornia-rs")}}, {}
+
+    run_batch_sweep(
+        [1],
+        build,
+        ["kornia (eager)", "kornia-rs"],
+        row_fields=lambda b: {},
+        sync=lambda: synced_during.append(current["name"]),
+        min_run_time=0.05,
+    )
+    assert "kornia (eager)" in synced_during  # torch backend gets the device sync
+    assert "kornia-rs" not in synced_during  # CPU-only backend must not be synced
+
+
 def test_run_batch_sweep_reports_warmup_failures(capsys):  # 'compile' in a test NAME gets deselected by conftest
     def build(b):
         return {"opA": {"fast": lambda: None}}, {"opA": "RuntimeError"}

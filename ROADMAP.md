@@ -75,7 +75,7 @@ classical-CV gaps and hardening the model zoo.
   ops (warps, blurs, color conversions) toward native `kornia-rs` kernels. *The cross-library
   benchmark harness has landed* — `benchmarks/augmentation/{flagship,cross_library,pipeline}.py`
   plus a documented `README.md` measure kornia (eager + compiled) against torchvision v2,
-  albumentations, and OpenCV on CPU and GPU, with an honest per-regime reading
+  albumentations, OpenCV, and PIL on CPU and GPU, with an honest per-regime reading
   and a standing improvement list. Early findings: `torch.compile` gives kornia 2–4× on pointwise
   ops and a compiled pipeline already beats torchvision v2 / reaches albumentations parity on CPU;
   kornia-rs is the fastest CPU/`uint8` backend on most ops (motivating the backend item below).

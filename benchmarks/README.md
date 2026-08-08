@@ -8,9 +8,9 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 
 | Directory | Contents |
 | --- | --- |
-| [`augmentation/`](augmentation/) | Cross-library augmentation benchmarks — [`flagship.py`](augmentation/flagship.py) (class-API, parameter sampling included, vs torchvision v2/albumentations/OpenCV) plus pipeline/per-op scripts; see its [README](augmentation/README.md). |
+| [`augmentation/`](augmentation/) | Cross-library augmentation benchmarks — [`flagship.py`](augmentation/flagship.py) (class-API, parameter sampling included, vs torchvision v2/albumentations/OpenCV/PIL) plus pipeline/per-op scripts; see its [README](augmentation/README.md). |
 | [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
-| [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs. |
+| [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs/PIL. |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions. |
 | [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics. |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
