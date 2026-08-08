@@ -53,8 +53,8 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    max_rgb, argmax_rgb = image.max(-3)
-    min_rgb, _argmin_rgb = image.min(-3)
+    max_rgb = image.amax(-3)
+    min_rgb = image.amin(-3)
     deltac = max_rgb - min_rgb
 
     v = max_rgb
@@ -67,8 +67,12 @@ def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     h2 = (rc - bc) + 2.0 * deltac
     h3 = (gc - rc) + 4.0 * deltac
 
-    h = torch.stack((h1, h2, h3), dim=-3) / deltac.unsqueeze(-3)
-    h = torch.gather(h, dim=-3, index=argmax_rgb.unsqueeze(-3)).squeeze(-3)
+    # select the sextant of the first maximal channel, matching torch.max(dim) tie-breaking;
+    # branchless selection avoids max/argmax-with-indices and gather, which are ~100x slower
+    # than amax/pointwise ops on MPS and block fusion under torch.compile
+    r, g, b = torch.unbind(image, dim=-3)
+    h = torch.where((r >= g) & (r >= b), h1, torch.where(g >= b, h2, h3))
+    h = h / deltac
     h = (h / 6.0) % 1.0
     h = 2.0 * math.pi * h  # we return 0/2pi output
 
