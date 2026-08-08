@@ -208,7 +208,11 @@ The honest reading (this box only — an integrated GPU is not the datacenter re
   `kornia/enhance/adjust.py` (MPS does not support the op), which forces device sync per call.
 - **Found weak spot: compile coverage** — `RandomResizedCrop` fails to compile
   (`GuardOnDataDependentSymNode` from data-dependent crop parameters) on both devices;
-  `RandomPerspective` additionally fails on MPS. Direct input for the S5 compile-cleanliness work.
+  `RandomPerspective` additionally fails on MPS — and on an NVIDIA L4 its *compiled* warmup goes
+  further and triggers a **CUDA illegal memory access** (inductor emits an out-of-bounds indexing
+  kernel for the data-dependent parameter graph; the harness names the op and exits, and
+  `--skip-compile-ops RandomPerspective` keeps the rest of the compiled column measurable).
+  Direct input for the S5 compile-cleanliness work.
 - **`RandomGaussianBlur` compiled regresses ~15× on CPU** (conv-bound; compile overhead exceeds
   the kernel) — consistent with the historical all-libraries finding; don't compile blindly.
 - Where compile works on pointwise ops it delivers: `RandomBrightness` 6.5k → 15.6k (CPU),
