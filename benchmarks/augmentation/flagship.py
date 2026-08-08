@@ -196,19 +196,19 @@ def main() -> None:
 
     try:
         import torchvision.transforms.v2 as T2
-    except ImportError:
+    except Exception:
         T2 = None
     try:
         import albumentations as A
-    except ImportError:
+    except Exception:
         A = None
     try:
         import cv2
-    except ImportError:
+    except Exception:
         cv2 = None
     try:
         from PIL import Image as pil
-    except ImportError:
+    except Exception:
         pil = None
 
     meta = run_metadata(device)
@@ -227,7 +227,7 @@ def main() -> None:
 
     backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "albumentations", "opencv", "PIL"]
     results = run_batch_sweep(
-        [int(x) for x in args.batches.split(",")],
+        [int(x) for x in args.batches.split(",") if x.strip()],
         lambda b: build_ops(b, args.size, args.size, device, dtype, args.compile, T2, A, cv2, pil),
         backends,
         row_fields=lambda b: {"height": args.size, "width": args.size, "dtype": args.dtype},

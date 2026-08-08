@@ -170,11 +170,11 @@ def main() -> None:
 
     try:
         import cv2
-    except ImportError:
+    except Exception:
         cv2 = None
     try:
         import torchvision.transforms.v2.functional as tvf
-    except ImportError:
+    except Exception:
         tvf = None
 
     meta = run_metadata(device)
@@ -189,7 +189,7 @@ def main() -> None:
 
     backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "opencv"]
     results = run_batch_sweep(
-        [int(x) for x in args.batches.split(",")],
+        [int(x) for x in args.batches.split(",") if x.strip()],
         lambda b: build_ops(b, args.size, args.size, device, dtype, args.compile, cv2, tvf),
         backends,
         row_fields=lambda b: {"height": args.size, "width": args.size, "dtype": args.dtype},

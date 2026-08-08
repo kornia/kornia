@@ -72,7 +72,7 @@ def krs_fn(name: str) -> Optional[Callable[..., object]]:
     """Resolve a kornia-rs function across wheel layouts (imgproc submodule vs top-level)."""
     try:
         import kornia_rs
-    except ImportError:
+    except Exception:
         return None
     ns = getattr(kornia_rs, "imgproc", kornia_rs)
     return getattr(ns, name, getattr(kornia_rs, name, None))
@@ -197,20 +197,20 @@ def main() -> None:
 
     try:
         import cv2
-    except ImportError:
+    except Exception:
         cv2 = None
     try:
         import albumentations as A
-    except ImportError:
+    except Exception:
         A = None
     try:
         import torchvision.transforms.v2.functional as tvf
-    except ImportError:
+    except Exception:
         tvf = None
     try:
         from PIL import Image as pil
         from PIL import ImageFilter as pilf
-    except ImportError:
+    except Exception:
         pil = None
         pilf = None
 
@@ -235,7 +235,7 @@ def main() -> None:
 
     backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "albumentations", "opencv", "kornia-rs", "PIL"]
     results = run_batch_sweep(
-        [int(x) for x in args.batches.split(",")],
+        [int(x) for x in args.batches.split(",") if x.strip()],
         lambda b: build_ops(b, args.size, args.size, device, dtype, args.compile, cv2, A, tvf, pil, pilf),
         backends,
         row_fields=lambda b: {"height": args.size, "width": args.size, "dtype": args.dtype},
