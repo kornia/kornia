@@ -23,6 +23,9 @@ import json
 from pathlib import Path
 
 REQUIRED_METADATA = ("timestamp_utc", "git_commit", "platform", "python", "torch", "kornia", "device", "load")
+ALLOWED_LOAD_KEYS = frozenset(
+    {"load_avg_1m", "load_avg_5m", "load_avg_15m", "cpu_count", "mem_total_bytes", "mem_available_bytes"}
+)
 
 
 def validate_result(path: Path) -> list[str]:
@@ -43,6 +46,11 @@ def validate_result(path: Path) -> list[str]:
     load = meta.get("load", {})
     if not isinstance(load, dict) or not all(v is None or isinstance(v, (int, float)) for v in load.values()):
         errors.append("metadata.load must contain only numeric aggregates or null (privacy rule)")
+    elif not set(load) <= ALLOWED_LOAD_KEYS:
+        errors.append(
+            f"metadata.load has unexpected keys {sorted(set(load) - ALLOWED_LOAD_KEYS)} - only the aggregate "
+            "metrics emitted by collect_load_metrics are allowed (privacy rule)"
+        )
     if not isinstance(results, list) or not results:
         errors.append("results must be a non-empty list")
     else:

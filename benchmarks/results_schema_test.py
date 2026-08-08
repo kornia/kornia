@@ -110,3 +110,12 @@ def test_bool_batch_rejected(tmp_path) -> None:
     payload["results"][0]["batch"] = True
     p.write_text(json.dumps(payload))
     assert any("batch" in e for e in results_schema.validate_result(p))
+
+
+def test_unexpected_load_keys_rejected(tmp_path) -> None:
+    p = tmp_path / "0.9.0rc1" / "filters--test-box--cpu.json"
+    p.parent.mkdir()
+    payload = _valid_payload()
+    payload["metadata"]["load"]["process_names"] = 42
+    p.write_text(json.dumps(payload))
+    assert any("unexpected keys" in e for e in results_schema.validate_result(p))
