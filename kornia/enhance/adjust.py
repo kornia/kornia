@@ -815,6 +815,12 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
     if isinstance(bits, int):
         bits = torch.as_tensor(bits)
 
+    # bits may be a CPU tensor (e.g. user-supplied `torch.tensor([...])`, or the int branch
+    # above via `torch.as_tensor`) while `input` lives on another device (MPS/CUDA). A 0-dim
+    # CPU tensor is silently allowed to mix with any device (PyTorch's "wrapped number" rule),
+    # but multi-element bits tensors are not, so move it onto input's device explicitly.
+    bits = bits.to(device=input.device)
+
     # TODO: find a better way to check boundaries on tensors
     # if not torch.all((bits >= 0) * (bits <= 8)) and bits.dtype == torch.int:
     #     raise ValueError(f"bits must be integers within range [0, 8]. Got {bits}.")
