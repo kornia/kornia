@@ -27,7 +27,7 @@ from pathlib import Path
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import git_commit, run_batch_sweep, run_metadata, save_json, time_us
+from common import git_commit, run_batch_sweep, run_metadata, save_json, time_us, versions_line
 
 
 def test_time_us_returns_median_and_spread():
@@ -94,6 +94,13 @@ def test_run_batch_sweep_rows_and_skip_cells(capsys):
     out = capsys.readouterr().out
     assert "batch=1" in out and "batch=2" in out
     assert "-" in out  # the skip cell
+
+
+def test_versions_line_reports_stack_and_gaps():
+    line = versions_line({"torch": "2.9.1", "kornia": "0.9.0", "torchvision": None})
+    assert line.startswith("#")
+    assert "torch 2.9.1" in line and "kornia 0.9.0" in line
+    assert "torchvision -" in line  # missing libs shown as '-', never dropped
 
 
 def test_run_batch_sweep_syncs_torch_backends_only():

@@ -65,7 +65,7 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import run_batch_sweep, run_metadata, save_json
+from common import run_batch_sweep, run_metadata, save_json, versions_line
 
 import kornia.augmentation as KA
 
@@ -236,8 +236,9 @@ def main() -> None:
 
     meta = run_metadata(device)
     print(f"# flagship augmentation benchmark — commit {meta['git_commit']} — {platform.platform()}")
+    print(versions_line(meta))
     if device.type == "cuda":
-        print(f"# CUDA device: {meta['cuda_device']}")
+        print(f"# CUDA device: {meta['cuda_device']} (CUDA {meta['cuda_version']})")
     print(f"# device={device}, dtype={args.dtype}, threads={args.threads}, size={args.size} — throughput img/s")
     print("# augmentation classes built once; timed region = parameter sampling + application per call")
     print(

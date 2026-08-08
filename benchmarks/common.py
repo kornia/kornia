@@ -117,6 +117,12 @@ def save_json(path: str | Path, metadata: dict[str, Any], results: list[dict[str
     return out
 
 
+def versions_line(meta: dict[str, Any]) -> str:
+    """One-line software-stack summary for printed table headers (the JSON carries the same data)."""
+    keys = ("torch", "kornia", "python", "opencv", "torchvision", "albumentations", "pillow", "kornia_rs")
+    return "# " + ", ".join(f"{k} {meta.get(k) or '-'}" for k in keys)
+
+
 def run_batch_sweep(
     batches: list[int],
     build_ops: Callable[[int], tuple[dict[str, dict[str, Optional[Callable[[], object]]]], dict[str, str]]],
