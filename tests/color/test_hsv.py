@@ -125,7 +125,7 @@ class TestRgbToHsv(BaseTester):
         )
         expected_h = torch.tensor([[0.0, math.pi / 3.0, math.pi, 5.0 * math.pi / 3.0]], device=device, dtype=dtype)
         hsv = kornia.color.rgb_to_hsv(data)
-        self.assert_close(hsv[0], expected_h)
+        self.assert_close(hsv[..., 0, :, :], expected_h)
 
     def test_nan_rgb_to_hsv(self, device, dtype):
         if dtype == torch.float16:
