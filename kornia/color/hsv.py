@@ -112,11 +112,24 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     t: torch.Tensor = v * (1.0 - (1.0 - f) * s)
 
     hi = hi.long().clamp_(0, 5)
-    indices: torch.Tensor = torch.stack([hi, hi + 6, hi + 12], dim=-3)
-    out = torch.stack((v, q, p, p, t, v, t, v, v, q, p, p, p, p, t, v, v, q), dim=-3)
-    out = torch.gather(out, -3, indices)
 
-    return out
+    # branchless per-channel sextant selection, replacing an 18-plane stack + gather: gather blocks
+    # pointwise fusion under torch.compile (the stack+gather graph fails to compile on the MPS
+    # inductor backend) and materializing an 18-plane buffer costs extra memory traffic in eager.
+    # Each where-chain reproduces one row of the original [v,q,p,p,t,v / t,v,v,q,p,p / p,p,t,v,v,q]
+    # table indexed by hi, selecting (not recomputing) the same p/q/t/v tensors; the sextant masks
+    # are computed once and reused across R/G/B instead of being recomputed per channel.
+    m0 = hi == 0
+    m1 = hi == 1
+    m2 = hi == 2
+    m3 = hi == 3
+    m4 = hi == 4
+
+    r = torch.where(m0, v, torch.where(m1, q, torch.where(m2, p, torch.where(m3, p, torch.where(m4, t, v)))))
+    g = torch.where(m0, t, torch.where(m1, v, torch.where(m2, v, torch.where(m3, q, torch.where(m4, p, p)))))
+    b = torch.where(m0, p, torch.where(m1, p, torch.where(m2, t, torch.where(m3, v, torch.where(m4, v, q)))))
+
+    return torch.stack((r, g, b), dim=-3)
 
 
 class RgbToHsv(nn.Module):
