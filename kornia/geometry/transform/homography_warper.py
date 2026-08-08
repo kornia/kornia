@@ -90,7 +90,7 @@ class HomographyWarper(BaseWarper):
         width: The width of the destination torch.Tensor.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         normalized_coordinates: whether to use a grid with normalized coordinates.
         align_corners: interpolation flag.
 

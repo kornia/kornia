@@ -727,14 +727,16 @@ def rescale(
     .. image:: _static/img/rescale.png
 
     Convention:
+        - ``factor`` is ``(factor_h, factor_w)`` when a pair — height first (contrast
+          :func:`scale`, whose ``scale_factor`` is x-first)
         - align_corners: ``None`` by default (follows ``torch.nn.functional.interpolate``;
           see the convention block of :func:`resize`)
         - delegates to :func:`resize` after converting ``factor`` to an output ``size``
 
     Args:
         input: The image tensor to be scale with shape of :math:`(B, C, H, W)`.
-        factor: Desired scaling factor in each direction. If scalar, the value is used
-            for both the x- and y-direction.
+        factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If scalar,
+            the value is used for both height and width.
         interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
             ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.
@@ -961,8 +963,8 @@ class Rescale(nn.Module):
         - See the convention block of :func:`rescale`.
 
     Args:
-        factor: Desired scaling factor in each direction. If scalar, the value is used
-            for both the x- and y-direction.
+        factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If scalar,
+            the value is used for both height and width.
         interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
             ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.

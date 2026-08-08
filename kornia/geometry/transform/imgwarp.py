@@ -89,7 +89,7 @@ def warp_perspective(
     Convention:
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
         - ``M`` is the source→destination **pixel** homography :math:`(B, 3, 3)`
-          (contrast :func:`homography_warp`, which consumes destination→source normalized)
+          (contrast :func:`homography_warp`, which by default consumes destination→source normalized)
         - coordinates: ``(x, y)``, pixel centers, origin at top-left
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
@@ -329,7 +329,7 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`
 
     Args:
-        grid: Unwrapped grid of the shape :math:`(1, H, W, 2)`.
+        grid: Unwrapped grid of the shape :math:`(1, H, W, 2)` or :math:`(N, H, W, 2)`.
         src_homo_dst: Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
           has to be :math:`(1, 3, 3)`, :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`.
@@ -360,7 +360,7 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           :math:`(N, 4, 4)` or :math:`(N, 1, 4, 4)`
 
     Args:
-        grid: Unwrapped grid of the shape :math:`(1, D, H, W, 3)`.
+        grid: Unwrapped grid of the shape :math:`(1, D, H, W, 3)` or :math:`(N, D, H, W, 3)`.
         src_homo_dst: Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
           has to be :math:`(1, 4, 4)`, :math:`(N, 4, 4)` or :math:`(N, 1, 4, 4)`.
@@ -488,7 +488,7 @@ def get_perspective_transform(points_src: torch.Tensor, points_dst: torch.Tensor
     Convention:
         - points: ``(x, y)``, pixel centers, origin at top-left; shape :math:`(B, 4, 2)`
         - returns the source→destination **pixel** homography :math:`(B, 3, 3)`
-          (contrast :func:`homography_warp`, which consumes destination→source normalized)
+          (contrast :func:`homography_warp`, which by default consumes destination→source normalized)
 
     Args:
         points_src: coordinates of quadrangle vertices in the source image with shape :math:`(B, 4, 2)`.
@@ -711,7 +711,8 @@ def invert_affine_transform(matrix: torch.Tensor) -> torch.Tensor:
     The result is also a 2x3 matrix of the same type as M.
 
     Convention:
-        - ``matrix`` is the pixel-space affine transform :math:`(B, 2, 3)`; returns its inverse, same shape
+        - ``matrix`` is a :math:`(B, 2, 3)` affine transform in any coordinate convention
+          (pixel or normalized) — pure matrix inversion; the result stays in the input's convention
 
     Args:
         matrix: original affine transform. The torch.Tensor must be
@@ -902,7 +903,7 @@ def get_affine_matrix3d(
         the 3d affine transformation matrix :math:`(B, 4, 4)`.
 
     .. note::
-        This function is often used in conjunction with :func:`warp_perspective`.
+        This function is often used in conjunction with :func:`warp_perspective3d`.
 
     """
     transform: torch.Tensor = get_projective_transform(center, -angles, scale)
@@ -952,7 +953,7 @@ def get_shear_matrix3d(
           slice (``z = 0``)
         - returns :math:`(B, 4, 4)` affine matrix in pixel coordinates
 
-    Params:
+    Args:
         center: shearing center coordinates of (x, y, z).
         sxy: shearing angle along x axis, towards y plane in radiants.
         sxz: shearing angle along x axis, towards z plane in radiants.
