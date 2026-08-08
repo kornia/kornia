@@ -8,8 +8,9 @@ baselines. Goal: current, citable numbers with disclosed methodology — where k
 
 | Directory | Contents |
 | --- | --- |
-| [`augmentation/`](augmentation/) | Cross-library augmentation throughput; see its [README](augmentation/README.md). |
+| [`augmentation/`](augmentation/) | Cross-library augmentation benchmarks — [`flagship.py`](augmentation/flagship.py) (class-API, parameter sampling included, vs torchvision v2/albumentations/OpenCV) plus pipeline/per-op scripts; see its [README](augmentation/README.md). |
 | [`geometry/`](geometry/) | [`flagship.py`](geometry/flagship.py): core geometry ops vs OpenCV/torchvision v2. |
+| [`filters/`](filters/) | [`flagship.py`](filters/flagship.py): core filters vs OpenCV/albumentations/torchvision v2/kornia-rs. |
 | [`color/`](color/) | pytest-benchmark microbenchmarks for color conversions. |
 | [`feature/`](feature/) | Local-feature detector benchmarks incl. quality (matching) metrics. |
 | [`common.py`](common.py) | Shared methodology utilities — use these in every new benchmark. |
@@ -160,3 +161,96 @@ NVIDIA RTX PRO 6000 Blackwell (AMD Turin host):
 - **WSL2 + RTX 4090: inductor failed for all ops** (`InductorError`, reported by the harness's
   compile-failure NOTE rather than silently skipped); eager still led OpenCV by ~23× on
   batch-128 warp_perspective.
+
+## Sample results — augmentation flagship (class API)
+
+Directional numbers only — reproduce on your own hardware for anything you cite. Measured
+2026-08-08, commit `c97b0f9a`, Apple Silicon (macOS 26.5, arm64), Python 3.11, torch 2.9.1,
+torchvision 0.24.1, albumentations 2.0.8, OpenCV 4.11.0, Pillow 12.3, float32, 256×256,
+4 threads, batch 32, throughput img/s. Timed region = parameter sampling + application through
+each library's random-transform class API; kornia/torchvision run a batched float tensor,
+albumentations/OpenCV/PIL a per-image uint8 CPU loop. CUDA tables follow the PR-thread protocol
+used for the geometry suite.
+
+`--device cpu --compile`:
+
+| op | kornia (eager) | kornia (compiled) | torchvision v2 | albumentations | opencv | PIL |
+| --- | --: | --: | --: | --: | --: | --: |
+| RandomHorizontalFlip | 10488 | 16754 | 10481 | 33421 | **37019** | 9813 |
+| RandomAffine | 899 | 1939 | 1373 | **5162** | - | - |
+| RandomPerspective | 843 | 1396 | 1086 | **5890** | - | - |
+| RandomResizedCrop | 3653 | ✗ | 3975 | **20241** | - | - |
+| ColorJiggle | 105 | ✗ | 269 | **2060** | - | - |
+| RandomGaussianBlur | 1103 | 75 | 993 | **5008** | - | - |
+| RandomBrightness | 6457 | **15590** | 9156 | 13846 | - | - |
+| RandomGrayscale | 5615 | 12592 | 22666 | 23614 | **49286** | 14373 |
+
+`--device mps --compile` (uint8 loop backends are CPU, repeated for reference):
+
+| op | kornia (eager) | kornia (compiled) | torchvision v2 | albumentations | opencv | PIL |
+| --- | --: | --: | --: | --: | --: | --: |
+| RandomHorizontalFlip | 16651 | 21301 | 20428 | 62662 | **77361** | 13492 |
+| RandomAffine | 1605 | 2701 | 2600 | **6508** | - | - |
+| RandomPerspective | 1611 | ✗ | 2071 | **7481** | - | - |
+| RandomResizedCrop | 3680 | ✗ | 17471 | **26307** | - | - |
+| ColorJiggle | 48 | ✗ | 538 | **2548** | - | - |
+| RandomGaussianBlur | 2968 | 4315 | 3616 | **6026** | - | - |
+| RandomBrightness | 4018 | 13510 | 7692 | **24982** | - | - |
+| RandomGrayscale | 5306 | 17504 | 10569 | 39590 | **92889** | 18483 |
+
+The honest reading (this box only — an integrated GPU is not the datacenter regime):
+
+- **albumentations owns the CPU single-image race here**, winning almost every row at batch ≤ 32
+  — published as-is; kornia's regime is large-batch discrete-GPU + differentiable.
+- **Found weak spot: `ColorJiggle`** — ~20× behind albumentations and ~2.5× behind torchvision's
+  `ColorJitter` on CPU, worse on MPS (48 img/s), and `torch.compile` fails on it
+  (`InductorError` on this stack). On MPS its path hits a `torch._assert_async` CPU fallback in
+  `kornia/enhance/adjust.py` (MPS does not support the op), which forces device sync per call.
+- **Found weak spot: compile coverage** — `RandomResizedCrop` fails to compile
+  (`GuardOnDataDependentSymNode` from data-dependent crop parameters) on both devices;
+  `RandomPerspective` additionally fails on MPS. Direct input for the S5 compile-cleanliness work.
+- **`RandomGaussianBlur` compiled regresses ~15× on CPU** (conv-bound; compile overhead exceeds
+  the kernel) — consistent with the historical all-libraries finding; don't compile blindly.
+- Where compile works on pointwise ops it delivers: `RandomBrightness` 6.5k → 15.6k (CPU),
+  4k → 13.5k (MPS); `RandomGrayscale` 2.2× (CPU) / 3.3× (MPS).
+
+## Sample results — filters flagship
+
+Same machine, stack, and caveats as above; batch 32, 256×256, float32, throughput img/s.
+kornia-rs 0.1.10 (this wheel) ships no filter functions — its column is skipped and reported.
+PIL matches exactly on box (`BoxBlur(2)`) and median (`MedianFilter(5)`); its Gaussian is a
+box-approximation with radius = sigma (matched in spirit).
+
+`--device cpu --compile`:
+
+| op | kornia (eager) | kornia (compiled) | torchvision v2 | albumentations | opencv | PIL |
+| --- | --: | --: | --: | --: | --: | --: |
+| gaussian_blur2d | 423 | 391 | 672 | 5345 | **9253** | 844 |
+| sobel | 826 | 1183 | - | - | **2907** | - |
+| laplacian | 674 | 618 | - | - | **2593** | - |
+| median_blur | 13 | 13 | - | 7552 | **7990** | 21 |
+| box_blur | 676 | 625 | - | 15116 | **16646** | 1940 |
+| canny | 37 | 74 | - | - | **2568** | - |
+
+`--device mps --compile` (uint8 loop backends are CPU, repeated for reference):
+
+| op | kornia (eager) | kornia (compiled) | torchvision v2 | albumentations | opencv | PIL |
+| --- | --: | --: | --: | --: | --: | --: |
+| gaussian_blur2d | 2941 | 2592 | 3860 | 5988 | **12327** | 869 |
+| sobel | 2688 | **6673** | - | - | 3440 | - |
+| laplacian | **5891** | 4411 | - | - | 2905 | - |
+| median_blur | 1 | 1 | - | 6191 | **6473** | 20 |
+| box_blur | 7233 | 4493 | - | **14575** | 14226 | 1860 |
+| canny | 187 | 376 | - | - | **2406** | - |
+
+The honest reading:
+
+- **Found weak spot (worst in the whole harness so far): `median_blur`** — 13 img/s CPU and
+  **1 img/s MPS** vs ~8k for OpenCV/albumentations and 21 for PIL. The unfold-based kernel is
+  ~600× off the native implementations; top Stage-3 candidate alongside `rotate`.
+- **Found weak spot: `canny`** — ~35–70× behind OpenCV on CPU (37–74 vs 2568 img/s).
+- Even on an integrated GPU, batched MPS starts winning the derivative filters: `sobel`
+  (compiled) and `laplacian` beat the OpenCV loop, and `box_blur` closes to within 2× of the
+  uint8 backends; the remaining blurs still lose to SIMD.
+- PIL is the slowest float-correct reference on most ops, as expected — but still ~1.6–3× ahead
+  of kornia's CPU blurs at this scale, and ~60× ahead on `median_blur`.
