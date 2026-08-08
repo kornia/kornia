@@ -90,6 +90,7 @@ def run_metadata(device: torch.device) -> dict[str, Any]:
         "numpy": _optional_version("numpy"),
         "albumentations": _optional_version("albumentations"),
         "kornia_rs": _optional_version("kornia_rs"),
+        "pillow": _optional_version("PIL"),
     }
     if device.type == "cuda":
         meta["cuda_device"] = torch.cuda.get_device_name(device)

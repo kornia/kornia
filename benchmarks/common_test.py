@@ -79,7 +79,7 @@ def test_save_json_round_trip_sanitizes_non_finite(tmp_path):
 
 def test_run_metadata_records_optional_baseline_versions():
     meta = run_metadata(torch.device("cpu"))
-    for key in ("opencv", "torchvision", "albumentations", "kornia_rs"):
+    for key in ("opencv", "torchvision", "albumentations", "kornia_rs", "pillow"):
         assert key in meta  # None when not installed — key must still be present
 
 

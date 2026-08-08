@@ -5,24 +5,25 @@ Benchmarks augmentations **as augmentations** — through the user-facing random
 transforms), not the underlying deterministic functionals. Transform objects are constructed once,
 outside the timed region; the timed region is parameter sampling + application, per call.
 
-=====================  ==========================  =========================  ===============
-kornia.augmentation    torchvision.transforms.v2   albumentations             opencv
-=====================  ==========================  =========================  ===============
-RandomHorizontalFlip   RandomHorizontalFlip        HorizontalFlip             ``cv2.flip``
-RandomAffine           RandomAffine                Affine                     —
-RandomPerspective      RandomPerspective           Perspective                —
-RandomResizedCrop      RandomResizedCrop           RandomResizedCrop          —
-ColorJiggle            ColorJitter                 ColorJitter                —
-RandomGaussianBlur     GaussianBlur                GaussianBlur               —
-RandomBrightness       ColorJitter(brightness=)    RandomBrightnessContrast   —
-RandomGrayscale        RandomGrayscale             ToGray                     ``cv2.cvtColor``
-=====================  ==========================  =========================  ===============
+=====================  ==========================  =========================  ================  ==================
+kornia.augmentation    torchvision.transforms.v2   albumentations             opencv            PIL
+=====================  ==========================  =========================  ================  ==================
+RandomHorizontalFlip   RandomHorizontalFlip        HorizontalFlip             ``cv2.flip``      ``Image.transpose``
+RandomAffine           RandomAffine                Affine                     —                 —
+RandomPerspective      RandomPerspective           Perspective                —                 —
+RandomResizedCrop      RandomResizedCrop           RandomResizedCrop          —                 —
+ColorJiggle            ColorJitter                 ColorJitter                —                 —
+RandomGaussianBlur     GaussianBlur                GaussianBlur               —                 —
+RandomBrightness       ColorJitter(brightness=)    RandomBrightnessContrast   —                 —
+RandomGrayscale        RandomGrayscale             ToGray                     ``cv2.cvtColor``  ``convert("L")``
+=====================  ==========================  =========================  ================  ==================
 
 Regimes (see ``benchmarks/README.md``): kornia/torchvision run a batched float BCHW tensor on
-CPU or GPU and kornia is differentiable; albumentations/OpenCV run single uint8 HWC images on
-CPU in a Python loop — their native regime. OpenCV is only listed where the augmentation is
-parameter-free (flip, grayscale): for randomly-parameterized augmentations, albumentations *is*
-the OpenCV-backed baseline. Parameter distributions are matched in spirit across libraries, but
+CPU or GPU and kornia is differentiable; albumentations/OpenCV/PIL run single uint8 HWC images on
+CPU in a Python loop — their native regime. OpenCV and PIL are only listed where the augmentation
+is parameter-free (flip via ``Image.transpose``, grayscale via ``convert("L")``): for
+randomly-parameterized augmentations, albumentations *is* the OpenCV-backed baseline. PIL is
+usually the slowest but serves as the signal-processing-correct reference implementation. Parameter distributions are matched in spirit across libraries, but
 parameterizations differ (e.g. perspective distortion scales) — columns are regime comparisons,
 not bit-exact races. RandomResizedCrop outputs size//2 per side for every backend;
 throughput is img/s of input images.
@@ -63,6 +64,7 @@ def build_ops(
     T2: Optional[ModuleType],
     A: Optional[ModuleType],
     cv2: Optional[ModuleType],
+    pil: Optional[ModuleType],
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
     """Build {op: {backend: zero-arg callable}}; each callable transforms the whole batch once."""
     rng = np.random.default_rng(0)
@@ -99,6 +101,9 @@ def build_ops(
     row["torchvision v2"] = tv(T2.RandomHorizontalFlip(p=1.0)) if T2 else None
     row["albumentations"] = alb(A.HorizontalFlip(p=1.0)) if A else None
     row["opencv"] = (lambda: [cv2.flip(im, 1) for im in imgs_u8]) if cv2 else None
+    row["PIL"] = (
+        (lambda: [pil.fromarray(im).transpose(pil.Transpose.FLIP_LEFT_RIGHT) for im in imgs_u8]) if pil else None
+    )
     ops["RandomHorizontalFlip"] = row
 
     row = kornia_row("RandomAffine", KA.RandomAffine(degrees=30.0, translate=(0.1, 0.1), scale=(0.8, 1.2), p=1.0))
@@ -146,6 +151,7 @@ def build_ops(
     row["torchvision v2"] = tv(T2.RandomGrayscale(p=1.0)) if T2 else None
     row["albumentations"] = alb(A.ToGray(p=1.0)) if A else None
     row["opencv"] = (lambda: [cv2.cvtColor(im, cv2.COLOR_RGB2GRAY) for im in imgs_u8]) if cv2 else None
+    row["PIL"] = (lambda: [pil.fromarray(im).convert("L") for im in imgs_u8]) if pil else None
     ops["RandomGrayscale"] = row
 
     return ops, compile_failures
@@ -182,6 +188,10 @@ def main() -> None:
         import cv2
     except ImportError:
         cv2 = None
+    try:
+        from PIL import Image as pil
+    except ImportError:
+        pil = None
 
     meta = run_metadata(device)
     print(f"# flagship augmentation benchmark — commit {meta['git_commit']} — {platform.platform()}")
@@ -189,15 +199,18 @@ def main() -> None:
         print(f"# CUDA device: {meta['cuda_device']}")
     print(f"# device={device}, dtype={args.dtype}, threads={args.threads}, size={args.size} — throughput img/s")
     print("# augmentation classes built once; timed region = parameter sampling + application per call")
-    print("# kornia/torchvision: batched float BCHW; albumentations/opencv: uint8 HWC per-image loop (CPU); '-' = skipped")
-    for lib, name in [(T2, "torchvision"), (A, "albumentations"), (cv2, "opencv")]:
+    print(
+        "# kornia/torchvision: batched float BCHW; albumentations/opencv/PIL: uint8 HWC per-image loop (CPU); "
+        "'-' = skipped"
+    )
+    for lib, name in [(T2, "torchvision"), (A, "albumentations"), (cv2, "opencv"), (pil, "PIL")]:
         if lib is None:
             print(f"# NOTE: {name} not installed — its column is skipped")
 
-    backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "albumentations", "opencv"]
+    backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "albumentations", "opencv", "PIL"]
     results = run_batch_sweep(
         [int(x) for x in args.batches.split(",")],
-        lambda b: build_ops(b, args.size, args.size, device, dtype, args.compile, T2, A, cv2),
+        lambda b: build_ops(b, args.size, args.size, device, dtype, args.compile, T2, A, cv2, pil),
         backends,
         row_fields=lambda b: {"height": args.size, "width": args.size, "dtype": args.dtype},
         sync=sync,

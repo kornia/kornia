@@ -8,7 +8,7 @@ each performance regime measurable and gives future work a concrete target to im
 
 | Script | What it measures |
 | --- | --- |
-| [`flagship.py`](flagship.py) | **The flagship suite** — augmentations benchmarked through each library's random-transform class API (parameter sampling included) vs torchvision v2, albumentations, and OpenCV where comparable; shared `common.py` methodology, `--json` export. Supersedes `all_libraries.py`. |
+| [`flagship.py`](flagship.py) | **The flagship suite** — augmentations benchmarked through each library's random-transform class API (parameter sampling included) vs torchvision v2, albumentations, and OpenCV/PIL where comparable; shared `common.py` methodology, `--json` export. Supersedes `all_libraries.py`. |
 | [`vs_torchvision.py`](vs_torchvision.py) | Per-op kornia (eager + `torch.compile`) vs torchvision v2, with a `best/tv` ratio and win/lose verdict per op. |
 | [`cross_library.py`](cross_library.py) | A focused per-op comparison of kornia vs torchvision v2 vs albumentations. |
 | [`pipeline.py`](pipeline.py) | End-to-end **multi-op pipeline** throughput (the shape a training loop runs); supports `--compile` and `--half` (fp16/AMP). |

@@ -3,21 +3,24 @@
 Covers the core image filters with fixed, identical parameters across backends (equal footing;
 5×5 kernels, sigma 1.5 where applicable):
 
-================  ===============================================  ==============================
+================  ===============================================  ===================================
 kornia.filters    OpenCV (uint8 HWC, per-image Python loop)        others
-================  ===============================================  ==============================
-gaussian_blur2d   ``cv2.GaussianBlur``                             albumentations, tvf, kornia-rs
+================  ===============================================  ===================================
+gaussian_blur2d   ``cv2.GaussianBlur``                             albumentations, tvf, kornia-rs, PIL
 sobel             ``cv2.magnitude(Sobel(dx), Sobel(dy))``          —
 laplacian         ``cv2.Laplacian``                                —
-median_blur       ``cv2.medianBlur``                               albumentations
-box_blur          ``cv2.blur``                                     albumentations
+median_blur       ``cv2.medianBlur``                               albumentations, PIL
+box_blur          ``cv2.blur``                                     albumentations, PIL
 canny             ``cv2.Canny`` (on grayscale)                     —
-================  ===============================================  ==============================
+================  ===============================================  ===================================
 
 Regimes (see ``benchmarks/README.md``): kornia/torchvision run a batched float BCHW tensor on CPU
-or GPU and kornia is differentiable; OpenCV/albumentations/kornia-rs run single uint8 HWC images
-on CPU in a Python loop — their native regime. albumentations wraps OpenCV in its transform-class
-API (constructed once, called with fixed parameters). Canny thresholds are each library's standard
+or GPU and kornia is differentiable; OpenCV/albumentations/kornia-rs/PIL run single uint8 HWC
+images on CPU in a Python loop — their native regime. albumentations wraps OpenCV in its
+transform-class API (constructed once, called with fixed parameters). PIL — usually the slowest,
+but the signal-processing-correct reference — matches exactly on ``BoxBlur(2)`` (5×5 box) and
+``MedianFilter(5)``; its ``GaussianBlur(radius=1.5)`` approximates a true Gaussian with repeated
+box passes, so the sigma is matched in spirit only. Canny thresholds are each library's standard
 defaults — kornia 0.1/0.2 on normalized float gradients, OpenCV 100/200 on uint8 gradients — the
 domains differ, so that row compares regimes, not identical outputs. kornia's canny converts to
 grayscale internally per its definition; the OpenCV canny loop therefore includes ``cv2.cvtColor``
@@ -68,6 +71,8 @@ def build_ops(
     cv2: Optional[ModuleType],
     A: Optional[ModuleType],
     tvf: Optional[ModuleType],
+    pil: Optional[ModuleType],
+    pilf: Optional[ModuleType],
 ) -> tuple[dict[str, dict[str, Backend]], dict[str, str]]:
     """Build {op: {backend: zero-arg callable}} with identical filter parameters per backend."""
     rng = np.random.default_rng(0)
@@ -102,6 +107,7 @@ def build_ops(
     row["albumentations"] = alb(A.GaussianBlur(blur_limit=(5, 5), sigma_limit=(1.5, 1.5), p=1.0)) if A else None
     row["torchvision v2"] = (lambda: tvf.gaussian_blur(batch_f, [5, 5], [1.5, 1.5])) if tvf else None
     row["kornia-rs"] = (lambda: [krs_gaussian(im, (5, 5), (1.5, 1.5)) for im in imgs_u8]) if krs_gaussian else None
+    row["PIL"] = (lambda: [pil.fromarray(im).filter(pilf.GaussianBlur(radius=1.5)) for im in imgs_u8]) if pil else None
     ops["gaussian_blur2d"] = row
 
     row = kornia_row("sobel", lambda: KF.sobel(batch_f))
@@ -132,6 +138,7 @@ def build_ops(
     row["albumentations"] = alb(A.MedianBlur(blur_limit=(5, 5), p=1.0)) if A else None
     row["torchvision v2"] = None
     row["kornia-rs"] = None
+    row["PIL"] = (lambda: [pil.fromarray(im).filter(pilf.MedianFilter(5)) for im in imgs_u8]) if pil else None
     ops["median_blur"] = row
 
     row = kornia_row("box_blur", lambda: KF.box_blur(batch_f, (5, 5)))
@@ -139,6 +146,7 @@ def build_ops(
     row["albumentations"] = alb(A.Blur(blur_limit=(5, 5), p=1.0)) if A else None
     row["torchvision v2"] = None
     row["kornia-rs"] = None
+    row["PIL"] = (lambda: [pil.fromarray(im).filter(pilf.BoxBlur(2)) for im in imgs_u8]) if pil else None
     ops["box_blur"] = row
 
     row = kornia_row("canny", lambda: KF.canny(batch_f))
@@ -182,22 +190,37 @@ def main() -> None:
         import torchvision.transforms.v2.functional as tvf
     except ImportError:
         tvf = None
+    try:
+        from PIL import Image as pil
+        from PIL import ImageFilter as pilf
+    except ImportError:
+        pil = None
+        pilf = None
 
     meta = run_metadata(device)
     print(f"# flagship filters benchmark — commit {meta['git_commit']} — {platform.platform()}")
     if device.type == "cuda":
         print(f"# CUDA device: {meta['cuda_device']}")
     print(f"# device={device}, dtype={args.dtype}, threads={args.threads}, size={args.size} — throughput img/s")
-    print("# kornia/torchvision: batched float BCHW; albumentations/opencv/kornia-rs: uint8 HWC per-image loop (CPU)")
-    skips = [(cv2, "opencv"), (A, "albumentations"), (tvf, "torchvision"), (krs_fn("gaussian_blur"), "kornia-rs filters")]
+    print(
+        "# kornia/torchvision: batched float BCHW; albumentations/opencv/kornia-rs/PIL: "
+        "uint8 HWC per-image loop (CPU)"
+    )
+    skips = [
+        (cv2, "opencv"),
+        (A, "albumentations"),
+        (tvf, "torchvision"),
+        (krs_fn("gaussian_blur"), "kornia-rs filters"),
+        (pil, "PIL"),
+    ]
     for present, name in skips:
         if present is None:
             print(f"# NOTE: {name} not available — its column is skipped")
 
-    backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "albumentations", "opencv", "kornia-rs"]
+    backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "albumentations", "opencv", "kornia-rs", "PIL"]
     results = run_batch_sweep(
         [int(x) for x in args.batches.split(",")],
-        lambda b: build_ops(b, args.size, args.size, device, dtype, args.compile, cv2, A, tvf),
+        lambda b: build_ops(b, args.size, args.size, device, dtype, args.compile, cv2, A, tvf, pil, pilf),
         backends,
         row_fields=lambda b: {"height": args.size, "width": args.size, "dtype": args.dtype},
         sync=sync,
