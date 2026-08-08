@@ -27,6 +27,7 @@ from pathlib import Path
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import common
 from common import git_commit, run_batch_sweep, run_metadata, save_json, time_us, versions_line
 
 
@@ -169,3 +170,19 @@ def test_canonical_result_name() -> None:
 
     meta = {"cuda_device": "NVIDIA L4", "device": "cuda:0", "machine": "x86_64"}
     assert canonical_result_name(meta, "augmentation") == "augmentation--nvidia-l4--cuda.json"
+
+
+def test_contribute_result_writes_canonical_path(tmp_path) -> None:
+    meta = {"kornia": "0.9.0rc1", "device": "cpu", "machine": "arm64", "load": {"load_avg_1m": 1.0}}
+    out = common.contribute_result(tmp_path, "filters", meta, [{"op": "sobel", "batch": 1}], slug_override="test-box")
+    assert out == tmp_path / "0.9.0rc1" / "filters--test-box--cpu.json"
+    payload = json.loads(out.read_text())
+    assert payload["metadata"]["load"]["load_avg_1m"] == 1.0
+    assert payload["results"][0]["op"] == "sobel"
+
+
+def test_print_preflight_warns_on_high_load(capsys) -> None:
+    common.print_preflight({"load_avg_1m": 64.0, "cpu_count": 8, "mem_total_bytes": 100, "mem_available_bytes": 5})
+    outp = capsys.readouterr().out
+    assert "close other applications" in outp
+    assert "WARNING" in outp  # load1 > cpu_count and available < 10% both trip it

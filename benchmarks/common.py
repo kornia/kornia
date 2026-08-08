@@ -26,6 +26,7 @@ machine-readable JSON export so every run is comparable and citable.
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
 import os
@@ -185,6 +186,46 @@ def canonical_result_name(meta: dict[str, Any], suite: str, slug_override: Optio
     """Filename for a contributed run: <suite>--<machine-slug>--<device-type>.json."""
     device_type = str(meta["device"]).split(":")[0]
     return f"{suite}--{machine_slug(meta, slug_override)}--{device_type}.json"
+
+
+def add_contribute_args(parser: argparse.ArgumentParser) -> None:
+    """CLI options shared by every flagship suite for contributing canonical result files."""
+    parser.add_argument(
+        "--contribute",
+        type=str,
+        default=None,
+        help="write this run to DIR/<kornia-version>/<suite>--<machine>--<device>.json for committing",
+    )
+    parser.add_argument(
+        "--machine-slug", type=str, default=None, help="override the auto-detected machine name in the filename"
+    )
+
+
+def print_preflight(metrics: dict[str, Any]) -> None:
+    """Measurement-hygiene notice. Advisory only; records nothing beyond aggregate numbers."""
+    print("# preflight: close other applications, use mains power, let the machine cool before contributing.")
+    load1, ncpu = metrics.get("load_avg_1m"), metrics.get("cpu_count")
+    if load1 is not None and ncpu and load1 > ncpu:
+        print(f"# preflight WARNING: load average {load1:.1f} exceeds {ncpu} CPUs - numbers will be noisy.")
+    total, avail = metrics.get("mem_total_bytes"), metrics.get("mem_available_bytes")
+    if total and avail is not None and avail < 0.1 * total:
+        print("# preflight WARNING: less than 10% memory available - numbers will be noisy.")
+
+
+def contribute_result(
+    results_dir: str | Path,
+    suite: str,
+    metadata: dict[str, Any],
+    results: list[dict[str, Any]],
+    slug_override: Optional[str] = None,
+) -> Path:
+    """Write one run under the canonical results layout and print the git line to commit it."""
+    version = str(metadata.get("kornia", "unknown"))
+    out = Path(results_dir) / version / canonical_result_name(metadata, suite, slug_override)
+    save_json(out, metadata, results)
+    print(f"# contributed: {out}")
+    print(f"# commit it with: git add {out}")
+    return out
 
 
 def run_batch_sweep(
