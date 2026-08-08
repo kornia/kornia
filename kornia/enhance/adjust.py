@@ -34,6 +34,19 @@ from kornia.core.utils import _torch_histc_cast
 from kornia.image.utils import perform_keep_shape_image, perform_keep_shape_video
 
 
+def _assert_async_value_check(cond: torch.Tensor, msg: str) -> None:
+    """Validate a tensor condition without graph breaks or hidden device syncs.
+
+    ``torch._assert_async`` keeps the check fullgraph-compilable (a Python ``if tensor: raise``
+    would break the graph), but ``aten::_assert_async`` has no MPS kernel — the CPU fallback
+    materializes ``cond`` and drains the queued stream on every call, so on MPS the check is
+    skipped instead.
+    """
+    if cond.device.type == "mps":
+        return
+    torch._assert_async(cond, msg)
+
+
 def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
 
@@ -292,10 +305,8 @@ def adjust_gamma(
     gamma = gamma.to(input.device).to(input.dtype)
     gain = gain.to(input.device).to(input.dtype)
 
-    # torch._assert_async keeps the value check while staying fullgraph-compilable (a Python
-    # `if tensor: raise` would break the graph).
-    torch._assert_async((gamma >= 0.0).all(), "Gamma must be non-negative.")
-    torch._assert_async((gain >= 0.0).all(), "Gain must be non-negative.")
+    _assert_async_value_check((gamma >= 0.0).all(), "Gamma must be non-negative. Clamp it first: gamma.clamp_min(0.0).")
+    _assert_async_value_check((gain >= 0.0).all(), "Gain must be non-negative. Clamp it first: gain.clamp_min(0.0).")
 
     for _ in range(len(input.shape) - len(gamma.shape)):
         gamma = torch.unsqueeze(gamma, dim=-1)
@@ -368,8 +379,10 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    # torch._assert_async keeps the value check while staying fullgraph-compilable.
-    torch._assert_async((factor >= 0).all(), "Contrast factor must be positive.")
+    _assert_async_value_check(
+        (factor >= 0).all(),
+        "Contrast factor must be non-negative. Sample it from a non-negative range or clamp: factor.clamp_min(0.0).",
+    )
 
     # Apply contrast factor to each channel
     img_adjust: torch.Tensor = image * factor
@@ -722,11 +735,9 @@ def solarize(
         if isinstance(additions, float):
             additions = torch.as_tensor(additions)
 
-        # `torch._assert_async` keeps this a single traceable path (no Python-level branch on a
-        # tensor value), so `solarize` stays torch.compile fullgraph-safe while still validating.
-        torch._assert_async(
+        _assert_async_value_check(
             ((additions < 0.5) & (additions > -0.5)).all(),
-            "The value of 'addition' is between -0.5 and 0.5.",
+            "The addition must be in the open range (-0.5, 0.5). Clamp it first, e.g. additions.clamp(-0.49, 0.49).",
         )
 
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
