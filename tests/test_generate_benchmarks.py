@@ -74,7 +74,12 @@ def test_refresh_llms_replaces_only_marker_block(tmp_path: Path) -> None:
     generate_benchmarks.refresh_llms(llms, _seed(tmp_path))
     text = llms.read_text()
     assert text.startswith("before\n") and text.endswith("after\n")
-    assert "old" not in text and "ColorJiggle" not in text  # digest is per-suite headline, not per-op dump
+    assert "old" not in text  # marker block content was replaced, not appended to
+    # digest is one headline line per result file, naming the actual op/batch that was
+    # fastest/slowest so the numbers can't be misread as a blanket per-backend gap
+    digest_lines = [ln for ln in text.splitlines() if ln.startswith("- augmentation")]
+    assert len(digest_lines) == 1
+    assert "ColorJiggle@32" in digest_lines[0]
     assert "0.9.0rc1" in text and "apple-m3" in text
 
 
@@ -99,3 +104,20 @@ def test_refresh_llms_swapped_markers_raises(tmp_path: Path) -> None:
     llms.write_text("before\n<!-- BENCH:END -->\nold\n<!-- BENCH:BEGIN -->\nafter\n")
     with pytest.raises(RuntimeError):
         generate_benchmarks.refresh_llms(llms, _seed(tmp_path))
+
+
+def test_committed_digest_is_fresh(tmp_path: Path) -> None:
+    """The committed llms-full.txt digest must already match committed results.
+
+    Guards against the committed benchmark digest going stale relative to committed
+    results: if this fails, re-run `python docs/generate_benchmarks.py --refresh-llms`
+    and commit the result.
+    """
+    results_root = generate_benchmarks.RESULTS
+    if not any(results_root.rglob("*.json")):
+        pytest.skip("no committed benchmark results")
+    committed = generate_benchmarks.LLMS_FULL
+    copy = tmp_path / "llms-full.txt"
+    copy.write_text(committed.read_text())
+    generate_benchmarks.refresh_llms(copy, results_root)
+    assert copy.read_bytes() == committed.read_bytes()

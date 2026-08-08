@@ -125,10 +125,10 @@ def _digest(results_root: Path) -> str:
         worst = min(kornia_rows, key=lambda r: r["throughput_per_s"]) if kornia_rows else None
         line = (
             f"- {suite} on {slug}/{device} ({meta['timestamp_utc'][:10]}): fastest overall "
-            f"{best['backend']} at {best['throughput_per_s']:.0f}/s"
+            f"{best['backend']} {best['op']}@{best['batch']} at {best['throughput_per_s']:.0f} items/s"
         )
         if worst is not None:
-            line += f"; slowest kornia backend at {worst['throughput_per_s']:.0f}/s"
+            line += f"; slowest kornia op {worst['op']}@{worst['batch']} at {worst['throughput_per_s']:.0f} items/s"
         lines.append(line + ".")
     return "\n".join(lines) + "\n"
 

@@ -15,23 +15,22 @@
 # limitations under the License.
 #
 
-"""Shim for benchmark result schema validation tests (collected by CI via tests/ directory)."""
+"""CI shim for benchmark result schema validation (collected by CI via tests/ directory)."""
 
 from __future__ import annotations
 
 import importlib.util
-import os
 from pathlib import Path
 
-# Load results_schema_test from benchmarks/ directory
-spec = importlib.util.spec_from_file_location(
-    "results_schema_test",
-    os.path.join(Path(__file__).resolve().parent.parent, "benchmarks", "results_schema_test.py"),
-)
-results_schema_test = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(results_schema_test)
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+_spec = importlib.util.spec_from_file_location("results_schema", REPO_ROOT / "benchmarks" / "results_schema.py")
+results_schema = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(results_schema)
 
 
 def test_all_committed_results_are_valid() -> None:
-    """Proxy test that ensures all committed benchmark results pass validation."""
-    results_schema_test.test_all_committed_results_are_valid()
+    """Every committed benchmark result JSON must pass schema validation."""
+    results_root = REPO_ROOT / "benchmarks" / "results"
+    for path in sorted(results_root.rglob("*.json")):
+        assert results_schema.validate_result(path) == [], f"{path} invalid"
