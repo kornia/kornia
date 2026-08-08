@@ -192,6 +192,24 @@ class TestRotationMatrix2d(BaseTester):
         # evaluate function gradient
         self.gradcheck(kornia.geometry.get_rotation_matrix2d, (center, angle, scale))
 
+    def test_convention_center_xy_order(self, device, dtype):
+        # get_rotation_matrix2d's center is (x, y): using an asymmetric center (cx=3, cy=1) with 90deg
+        # rotation and unit scale numerically distinguishes x-first from y-first ordering, since
+        # swapping cx/cy would flip the sign/magnitude of M[..., 0, 2] and M[..., 1, 2].
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
+        # Snippet used to generate expected:
+        # center = torch.tensor([[3.0, 1.0]])
+        # angle = torch.tensor([90.0])
+        # scale = torch.tensor([[1.0, 1.0]])
+        # expected = kornia.geometry.get_rotation_matrix2d(center, angle, scale)
+        center = torch.tensor([[3.0, 1.0]], device=device, dtype=dtype)
+        angle = torch.tensor([90.0], device=device, dtype=dtype)
+        scale = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
+        M = kornia.geometry.get_rotation_matrix2d(center, angle, scale)
+        expected = torch.tensor([[[0.0, 1.0, 2.0], [-1.0, 0.0, 4.0]]], device=device, dtype=dtype)
+        self.assert_close(M, expected, atol=1e-4, rtol=1e-4)
+
 
 class TestWarpAffine(BaseTester):
     def test_smoke(self, device, dtype):
@@ -394,6 +412,25 @@ class TestWarpPerspective(BaseTester):
         # Same as opencv: cv2.warpPerspective(kornia.tensor_to_image(img_b), homo_ab[0].numpy(), (w, h))
         img_a = kornia.geometry.transform.homography_warp(img_b, homo_ab, (h, w), normalized_homography=False)
         self.assert_close(img_a, expected, atol=1e-4, rtol=1e-4)
+
+    def test_convention_normalize_invert_equivalence(self, device, dtype):
+        # homography_warp's default normalized_homography=True path (normalize the pixel homography,
+        # invert it, then warp with normalized coordinates) is equivalent to warp_perspective's raw
+        # pixel-homography path, given matching align_corners.
+        # Snippet used to generate expected:
+        # x = torch.arange(9.0).view(1, 1, 3, 3)
+        # H = torch.tensor([[[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]])
+        # expected = kornia.geometry.transform.warp_perspective(x, H, (3, 3), align_corners=True)
+        x = torch.arange(9.0, device=device, dtype=dtype).view(1, 1, 3, 3)
+        H = torch.tensor([[[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 3.0, 4.0], [0.0, 6.0, 7.0]]]], device=device, dtype=dtype)
+
+        wp = kornia.geometry.transform.warp_perspective(x, H, (3, 3), align_corners=True)
+        self.assert_close(wp, expected, atol=1e-4, rtol=1e-4)
+
+        Hn = kornia.geometry.conversions.normalize_homography(H, (3, 3), (3, 3))
+        hw = kornia.geometry.transform.homography_warp(x, _torch_inverse_cast(Hn), (3, 3), align_corners=True)
+        self.assert_close(hw, expected, atol=1e-4, rtol=1e-4)
 
     def test_rotation_inverse(self, device, dtype):
         h, w = 4, 4
