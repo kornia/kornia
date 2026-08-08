@@ -416,20 +416,27 @@ class TestWarpPerspective(BaseTester):
     def test_convention_normalize_invert_equivalence(self, device, dtype):
         # homography_warp's default normalized_homography=True path (normalize the pixel homography,
         # invert it, then warp with normalized coordinates) is equivalent to warp_perspective's raw
-        # pixel-homography path, given matching align_corners.
+        # pixel-homography path, given matching align_corners. Input size and dsize are deliberately
+        # asymmetric: with equal square sizes normalize and invert commute, so the operation ORDER
+        # (the conventions-page pitfall) would be invisible; at 4x6 -> (3, 5) the inverted order
+        # diverges from this literal by 15.0.
         # Snippet used to generate expected:
-        # x = torch.arange(9.0).view(1, 1, 3, 3)
+        # x = torch.arange(24.0).view(1, 1, 4, 6)
         # H = torch.tensor([[[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]])
-        # expected = kornia.geometry.transform.warp_perspective(x, H, (3, 3), align_corners=True)
-        x = torch.arange(9.0, device=device, dtype=dtype).view(1, 1, 3, 3)
+        # expected = kornia.geometry.transform.warp_perspective(x, H, (3, 5), align_corners=True)
+        x = torch.arange(24.0, device=device, dtype=dtype).view(1, 1, 4, 6)
         H = torch.tensor([[[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
-        expected = torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 3.0, 4.0], [0.0, 6.0, 7.0]]]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [[[[0.0, 0.0, 1.0, 2.0, 3.0], [0.0, 6.0, 7.0, 8.0, 9.0], [0.0, 12.0, 13.0, 14.0, 15.0]]]],
+            device=device,
+            dtype=dtype,
+        )
 
-        wp = kornia.geometry.transform.warp_perspective(x, H, (3, 3), align_corners=True)
+        wp = kornia.geometry.transform.warp_perspective(x, H, (3, 5), align_corners=True)
         self.assert_close(wp, expected, atol=1e-4, rtol=1e-4)
 
-        Hn = kornia.geometry.conversions.normalize_homography(H, (3, 3), (3, 3))
-        hw = kornia.geometry.transform.homography_warp(x, _torch_inverse_cast(Hn), (3, 3), align_corners=True)
+        Hn = kornia.geometry.conversions.normalize_homography(H, (4, 6), (3, 5))
+        hw = kornia.geometry.transform.homography_warp(x, _torch_inverse_cast(Hn), (3, 5), align_corners=True)
         self.assert_close(hw, expected, atol=1e-4, rtol=1e-4)
 
     def test_rotation_inverse(self, device, dtype):

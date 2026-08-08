@@ -735,8 +735,8 @@ def rescale(
 
     Args:
         input: The image tensor to be scale with shape of :math:`(B, C, H, W)`.
-        factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If scalar,
-            the value is used for both height and width.
+        factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
+            float, the value is used for both height and width (an ``int`` raises ``TypeError``).
         interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
             ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.
@@ -963,8 +963,8 @@ class Rescale(nn.Module):
         - See the convention block of :func:`rescale`.
 
     Args:
-        factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If scalar,
-            the value is used for both height and width.
+        factor: Desired scaling factor as ``(factor_h, factor_w)`` — height first. If a single
+            float, the value is used for both height and width (an ``int`` raises ``TypeError``).
         interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
             ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.

@@ -327,9 +327,12 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
         - ``grid`` coordinates: ``(x, y)`` (last dim), shape :math:`(1, H, W, 2)` or :math:`(N, H, W, 2)`
         - ``src_homo_dst`` is the destination→source homography :math:`(1, 3, 3)`,
           :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`
+        - only the :math:`(1, H, W, 2)` grid broadcasts over homography batches; a batched grid
+          requires a matching batch of :math:`N` homographies
 
     Args:
-        grid: Unwrapped grid of the shape :math:`(1, H, W, 2)` or :math:`(N, H, W, 2)`.
+        grid: Unwrapped grid of the shape :math:`(1, H, W, 2)`, or :math:`(N, H, W, 2)` with a
+          matching batch of :math:`N` homographies.
         src_homo_dst: Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
           has to be :math:`(1, 3, 3)`, :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`.
@@ -358,9 +361,12 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
           :math:`(N, D, H, W, 3)`
         - ``src_homo_dst`` is the destination→source homography :math:`(1, 4, 4)`,
           :math:`(N, 4, 4)` or :math:`(N, 1, 4, 4)`
+        - only the :math:`(1, D, H, W, 3)` grid broadcasts over homography batches; a batched
+          grid requires a matching batch of :math:`N` homographies
 
     Args:
-        grid: Unwrapped grid of the shape :math:`(1, D, H, W, 3)` or :math:`(N, D, H, W, 3)`.
+        grid: Unwrapped grid of the shape :math:`(1, D, H, W, 3)`, or :math:`(N, D, H, W, 3)`
+          with a matching batch of :math:`N` homographies.
         src_homo_dst: Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
           has to be :math:`(1, 4, 4)`, :math:`(N, 4, 4)` or :math:`(N, 1, 4, 4)`.
@@ -1506,7 +1512,8 @@ def homography_warp(
         padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
         normalized_coordinates: Whether the homography assumes [-1, 1] normalized coordinates or not.
-        normalized_homography: show is homography normalized.
+        normalized_homography: whether ``src_homo_dst`` is a normalized (destination→source)
+            homography (``True``, default) or a pixel source→destination homography (``False``).
 
     Return:
         Patch sampled at locations from source to destination.

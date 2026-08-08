@@ -126,7 +126,7 @@ class HomographyWarper(BaseWarper):
         Args:
             src_homo_dst: Homography or homographies (stacked) to
               transform all points in the grid. Shape of the homography
-              has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
+              has to be :math:`(1, 3, 3)`, :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`.
               The homography assumes normalized coordinates [-1, 1] if
               normalized_coordinates is True.
 
