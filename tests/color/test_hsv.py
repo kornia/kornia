@@ -109,6 +109,24 @@ class TestRgbToHsv(BaseTester):
 
         self.assert_close(kornia.color.rgb_to_hsv(data), expected)
 
+    def test_channel_ties(self, device, dtype):
+        # Pins the argmax tie-breaking convention (first maximal channel wins) so that
+        # implementation changes cannot silently alter the hue of achromatic/boundary pixels.
+        # Snippet used to generate expected hues (torch, first-occurrence argmax semantics):
+        # gray r=g=b -> h=0; yellow r=g>b -> pi/3; cyan g=b>r -> pi; magenta r=b>g -> 5*pi/3
+        data = torch.tensor(
+            [
+                [[0.5000, 0.5000, 0.3000, 0.6000]],
+                [[0.5000, 0.5000, 0.7000, 0.2000]],
+                [[0.5000, 0.1000, 0.7000, 0.6000]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected_h = torch.tensor([[0.0, math.pi / 3.0, math.pi, 5.0 * math.pi / 3.0]], device=device, dtype=dtype)
+        hsv = kornia.color.rgb_to_hsv(data)
+        self.assert_close(hsv[0], expected_h)
+
     def test_nan_rgb_to_hsv(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip("not work for half-precision")
@@ -135,6 +153,13 @@ class TestRgbToHsv(BaseTester):
         ops = kornia.color.RgbToHsv().to(device, dtype)
         fcn = kornia.color.rgb_to_hsv
         self.assert_close(ops(img), fcn(img))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.color.rgb_to_hsv
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img), op_optimized(img))
 
 
 class TestHsvToRgb(BaseTester):
@@ -251,3 +276,10 @@ class TestHsvToRgb(BaseTester):
         ops = kornia.color.HsvToRgb().to(device, dtype)
         fcn = kornia.color.hsv_to_rgb
         self.assert_close(ops(img), fcn(img))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        B, C, H, W = 2, 3, 4, 4
+        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.color.hsv_to_rgb
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img), op_optimized(img))
