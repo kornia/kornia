@@ -66,6 +66,21 @@ def test_version_dir_mismatch_flagged(tmp_path) -> None:
     assert any("version" in e for e in results_schema.validate_result(p))
 
 
+def test_missing_metric_fields_flagged(tmp_path) -> None:
+    p = tmp_path / "0.9.0rc1" / "filters--test-box--cpu.json"
+    p.parent.mkdir()
+    payload = _valid_payload()
+    # Remove required metric fields
+    payload["results"][0].pop("median_us", None)
+    p.write_text(json.dumps(payload))
+    assert any("median_us" in e for e in results_schema.validate_result(p))
+    # Also test missing throughput_per_s
+    payload = _valid_payload()
+    payload["results"][0].pop("throughput_per_s", None)
+    p.write_text(json.dumps(payload))
+    assert any("throughput_per_s" in e for e in results_schema.validate_result(p))
+
+
 def test_all_committed_results_are_valid() -> None:
     results_root = Path(__file__).parent / "results"
     for path in sorted(results_root.rglob("*.json")):

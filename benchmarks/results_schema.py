@@ -49,8 +49,8 @@ def validate_result(path: Path) -> list[str]:
                 if not isinstance(row.get(key), types):
                     errors.append(f"results[{i}].{key} missing or wrong type")
             for key in ("median_us", "throughput_per_s"):
-                if key in row and row[key] is not None and not isinstance(row[key], (int, float)):
-                    errors.append(f"results[{i}].{key} must be numeric or null")
+                if key not in row or (row[key] is not None and not isinstance(row[key], (int, float))):
+                    errors.append(f"results[{i}].{key} missing or wrong type")
     name = Path(path).name
     parts = name[: -len(".json")].split("--") if name.endswith(".json") else []
     if len(parts) != 3:
