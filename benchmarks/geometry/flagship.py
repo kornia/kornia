@@ -109,8 +109,16 @@ def build_ops(
             compiled = torch.compile(fn)
             try:
                 compiled()  # warmup: compile + autotune before the timed region
+                if device.type == "cuda":
+                    torch.cuda.synchronize()  # surface async kernel faults HERE, not at the next op
                 row["kornia (compiled)"] = compiled
             except Exception as e:
+                if "illegal memory access" in str(e):
+                    raise SystemExit(
+                        f"FATAL: CUDA context poisoned during torch.compile warmup of '{label}' "
+                        "(illegal memory access); no later measurement would be trustworthy. "
+                        "Rerun without --compile, or with CUDA_LAUNCH_BLOCKING=1 to localize the kernel."
+                    ) from e
                 row["kornia (compiled)"] = None
                 compile_failures[label] = type(e).__name__
         return row
