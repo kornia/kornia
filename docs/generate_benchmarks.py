@@ -21,11 +21,15 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 RESULTS = REPO / "benchmarks" / "results"
 OUT = REPO / "docs" / "source" / "get-started" / "performance.rst"
+LLMS_FULL = REPO / "docs" / "source" / "_extra" / "llms-full.txt"
+
+BEGIN, END = "<!-- BENCH:BEGIN -->", "<!-- BENCH:END -->"
 
 INTRO = """\
 Performance
@@ -103,9 +107,47 @@ def render_page(results_root: Path) -> str:
     return "\n".join(parts)
 
 
+def _digest(results_root: Path) -> str:
+    data = load_results(results_root)
+    if not data:
+        return "- No committed benchmark results yet.\n"
+    version = latest_version(list(data))
+    lines = [f"- Result set: kornia {version}, committed in `benchmarks/results/{version}/` (per-machine"]
+    lines += ["  snapshots; reproduce with `python benchmarks/<suite>/flagship.py --contribute benchmarks/results`)."]
+    for fname, payload in sorted(data[version].items()):
+        suite, slug, device = fname[:-5].split("--")
+        meta = payload["metadata"]
+        rows = [r for r in payload["results"] if isinstance(r.get("throughput_per_s"), (int, float))]
+        if not rows:
+            continue
+        best = max(rows, key=lambda r: r["throughput_per_s"])
+        kornia_rows = [r for r in rows if r["backend"].startswith("kornia")]
+        worst = min(kornia_rows, key=lambda r: r["throughput_per_s"]) if kornia_rows else None
+        line = (
+            f"- {suite} on {slug}/{device} ({meta['timestamp_utc'][:10]}): fastest overall "
+            f"{best['backend']} at {best['throughput_per_s']:.0f}/s"
+        )
+        if worst is not None:
+            line += f"; slowest kornia backend at {worst['throughput_per_s']:.0f}/s"
+        lines.append(line + ".")
+    return "\n".join(lines) + "\n"
+
+
+def refresh_llms(llms_path: Path, results_root: Path) -> None:
+    text = Path(llms_path).read_text()
+    if BEGIN not in text or END not in text:
+        raise RuntimeError(f"markers {BEGIN}/{END} not found in {llms_path}")
+    head, rest = text.split(BEGIN, 1)
+    _, tail = rest.split(END, 1)
+    Path(llms_path).write_text(f"{head}{BEGIN}\n{_digest(results_root)}{END}{tail}")
+
+
 def main() -> None:
     OUT.write_text(render_page(RESULTS))
 
 
 if __name__ == "__main__":
-    main()
+    if "--refresh-llms" in sys.argv:
+        refresh_llms(LLMS_FULL, RESULTS)
+    else:
+        main()

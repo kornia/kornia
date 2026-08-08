@@ -19,6 +19,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
 _spec = importlib.util.spec_from_file_location(
     "generate_benchmarks", Path(__file__).parents[1] / "docs" / "generate_benchmarks.py"
 )
@@ -44,7 +46,7 @@ def _seed(tmp_path: Path) -> Path:
         ],
     }
     d = tmp_path / "0.9.0rc1"
-    d.mkdir()
+    d.mkdir(exist_ok=True)
     (d / "augmentation--apple-m3--mps.json").write_text(json.dumps(payload))
     return tmp_path
 
@@ -64,3 +66,29 @@ def test_latest_version_orders_rc_before_final() -> None:
 def test_render_page_empty_results_dir(tmp_path: Path) -> None:
     rst = generate_benchmarks.render_page(tmp_path)
     assert "No benchmark results" in rst  # page still builds, honestly empty
+
+
+def test_refresh_llms_replaces_only_marker_block(tmp_path: Path) -> None:
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("before\n<!-- BENCH:BEGIN -->\nold\n<!-- BENCH:END -->\nafter\n")
+    generate_benchmarks.refresh_llms(llms, _seed(tmp_path))
+    text = llms.read_text()
+    assert text.startswith("before\n") and text.endswith("after\n")
+    assert "old" not in text and "ColorJiggle" not in text  # digest is per-suite headline, not per-op dump
+    assert "0.9.0rc1" in text and "apple-m3" in text
+
+
+def test_refresh_llms_idempotent(tmp_path: Path) -> None:
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("x\n<!-- BENCH:BEGIN -->\n<!-- BENCH:END -->\ny\n")
+    generate_benchmarks.refresh_llms(llms, _seed(tmp_path))
+    first = llms.read_text()
+    generate_benchmarks.refresh_llms(llms, _seed(tmp_path))
+    assert llms.read_text() == first
+
+
+def test_refresh_llms_missing_markers_raises(tmp_path: Path) -> None:
+    llms = tmp_path / "llms-full.txt"
+    llms.write_text("no markers here\n")
+    with pytest.raises(RuntimeError):
+        generate_benchmarks.refresh_llms(llms, _seed(tmp_path))
