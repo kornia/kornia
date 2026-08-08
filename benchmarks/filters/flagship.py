@@ -1,7 +1,7 @@
 """Flagship filters benchmark: kornia.filters vs OpenCV, albumentations, torchvision v2, kornia-rs.
 
 Covers the core image filters with fixed, identical parameters across backends (equal footing;
-5×5 kernels, sigma 1.5 where applicable):
+5x5 kernels, sigma 1.5 where applicable):
 
 ================  ===============================================  ===================================
 kornia.filters    OpenCV (uint8 HWC, per-image Python loop)        others
@@ -18,7 +18,7 @@ Regimes (see ``benchmarks/README.md``): kornia/torchvision run a batched float B
 or GPU and kornia is differentiable; OpenCV/albumentations/kornia-rs/PIL run single uint8 HWC
 images on CPU in a Python loop — their native regime. albumentations wraps OpenCV in its
 transform-class API (constructed once, called with fixed parameters). PIL — usually the slowest,
-but the signal-processing-correct reference — matches exactly on ``BoxBlur(2)`` (5×5 box) and
+but the signal-processing-correct reference — matches exactly on ``BoxBlur(2)`` (5x5 box) and
 ``MedianFilter(5)``; its ``GaussianBlur(radius=1.5)`` approximates a true Gaussian with repeated
 box passes, so the sigma is matched in spirit only. Canny thresholds are each library's standard
 defaults — kornia 0.1/0.2 on normalized float gradients, OpenCV 100/200 on uint8 gradients — the
@@ -203,8 +203,7 @@ def main() -> None:
         print(f"# CUDA device: {meta['cuda_device']}")
     print(f"# device={device}, dtype={args.dtype}, threads={args.threads}, size={args.size} — throughput img/s")
     print(
-        "# kornia/torchvision: batched float BCHW; albumentations/opencv/kornia-rs/PIL: "
-        "uint8 HWC per-image loop (CPU)"
+        "# kornia/torchvision: batched float BCHW; albumentations/opencv/kornia-rs/PIL: uint8 HWC per-image loop (CPU)"
     )
     skips = [
         (cv2, "opencv"),

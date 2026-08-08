@@ -23,7 +23,8 @@ CPU or GPU and kornia is differentiable; albumentations/OpenCV/PIL run single ui
 CPU in a Python loop — their native regime. OpenCV and PIL are only listed where the augmentation
 is parameter-free (flip via ``Image.transpose``, grayscale via ``convert("L")``): for
 randomly-parameterized augmentations, albumentations *is* the OpenCV-backed baseline. PIL is
-usually the slowest but serves as the signal-processing-correct reference implementation. Parameter distributions are matched in spirit across libraries, but
+usually the slowest but serves as the signal-processing-correct reference implementation.
+Parameter distributions are matched in spirit across libraries, but
 parameterizations differ (e.g. perspective distortion scales) — columns are regime comparisons,
 not bit-exact races. RandomResizedCrop outputs size//2 per side for every backend;
 throughput is img/s of input images.
@@ -170,7 +171,7 @@ def main() -> None:
 
     torch.set_num_threads(args.threads)
     torch.manual_seed(0)
-    np.random.seed(0)
+    np.random.seed(0)  # noqa: NPY002 — albumentations samples from the legacy global RNG
     random.seed(0)
     device = torch.device(args.device)
     dtype = getattr(torch, args.dtype)
