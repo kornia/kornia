@@ -872,7 +872,8 @@ def get_affine_matrix3d(
     r"""Compose 3d affine matrix from the components.
 
     Convention:
-        - ``center`` is ``(x, y, z)`` in pixels, origin at top-left
+        - ``center`` is ``(x, y, z)`` in pixels, origin at the top-left of the first depth
+          slice (``z = 0``)
         - ``angles`` are negated before delegating to :func:`get_projective_transform`, whose own
           rotation convention follows the right-hand rule (see
           :func:`kornia.geometry.conversions.axis_angle_to_rotation_matrix`)
@@ -942,7 +943,8 @@ def get_shear_matrix3d(
         t = S_{xz}S_{zx} + (S_{xz}S_{yx} + S_{yz})S_{zy} + 1
 
     Convention:
-        - ``center`` is ``(x, y, z)`` in pixels, origin at top-left
+        - ``center`` is ``(x, y, z)`` in pixels, origin at the top-left of the first depth
+          slice (``z = 0``)
         - returns :math:`(B, 4, 4)` affine matrix in pixel coordinates
 
     Params:
@@ -1126,7 +1128,8 @@ def get_projective_transform(center: torch.Tensor, angles: torch.Tensor, scales:
     The function computes the projection matrix given the center and angles per axis.
 
     Convention:
-        - ``center`` is ``(x, y, z)`` in pixels, origin at top-left
+        - ``center`` is ``(x, y, z)`` in pixels, origin at the top-left of the first depth
+          slice (``z = 0``)
         - rotation follows the right-hand rule (see
           :func:`kornia.geometry.conversions.axis_angle_to_rotation_matrix`); a positive rotation
           about +z is **clockwise on screen** (y-down image axes) — opposite of :func:`get_rotation_matrix2d`
@@ -1238,7 +1241,7 @@ def get_perspective_transform3d(src: torch.Tensor, dst: torch.Tensor) -> torch.T
         \end{pmatrix}
 
     Convention:
-        - points: ``(x, y, z)``, pixel centers, origin at top-left; shape :math:`(B, 8, 3)`
+        - points: ``(x, y, z)``, pixel centers, origin at the top-left of the first depth slice; shape :math:`(B, 8, 3)`
         - returns the source→destination **pixel** homography :math:`(B, 4, 4)`
 
     Args:
@@ -1470,17 +1473,18 @@ def homography_warp(
 ) -> torch.Tensor:
     r"""Warp image patches or tensors by normalized 2D homographies.
 
-    See :class:`~kornia.geometry.warp.HomographyWarper` for details.
+    See :class:`~kornia.geometry.transform.HomographyWarper` for details.
 
     Convention:
         - input: :math:`(N, C, H, W)`
-        - ``src_homo_dst`` is the destination→source homography :math:`(N, 3, 3)`
-          (contrast :func:`warp_perspective`, which consumes source→destination pixel)
-        - ``normalized_homography=True`` by default: ``src_homo_dst`` is in
-          normalized :math:`[-1, 1]` coordinates
+        - ``src_homo_dst`` is the destination→source homography :math:`(N, 3, 3)`, in normalized
+          :math:`[-1, 1]` coordinates, when ``normalized_homography=True`` (default); with
+          ``normalized_homography=False`` it is consumed as the source→destination **pixel**
+          homography, exactly like :func:`warp_perspective`
         - ``dsize`` is ``(h, w)``
-        - align_corners: ``False`` by default (only honored when ``normalized_homography=True``;
-          the pixel-homography path currently forces ``True``)
+        - align_corners: ``False`` by default; ``mode``: ``'bilinear'`` by default (both only
+          honored when ``normalized_homography=True`` — the pixel-homography path currently
+          forces ``align_corners=True`` and ``mode='bilinear'``)
         - padding_mode: ``'zeros'`` by default
 
     Args:
@@ -1559,7 +1563,8 @@ def homography_warp3d(
 
     Convention:
         - input: :math:`(N, C, D, H, W)`; ``dsize`` is ``(d, h, w)``
-        - ``src_homo_dst`` is the destination→source homography :math:`(N, 4, 4)`, normalized coordinates
+        - ``src_homo_dst`` is the destination→source homography :math:`(N, 4, 4)`, in normalized
+          :math:`[-1, 1]` coordinates by default (``normalized_coordinates=True``)
         - align_corners: ``False`` by default
         - padding_mode: ``'zeros'`` by default
 

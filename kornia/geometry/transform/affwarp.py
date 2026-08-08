@@ -338,7 +338,8 @@ def rotate3d(
     r"""Rotate 3D the tensor anti-clockwise about the centre.
 
     Convention:
-        - ``center`` is ``(x, y, z)`` in pixels, origin at top-left; defaults to the tensor center
+        - ``center`` is ``(x, y, z)`` in pixels, origin at the top-left of the first depth
+          slice (``z = 0``); defaults to the tensor center
         - align_corners: ``False`` by default
         - padding_mode: ``'zeros'`` by default
 

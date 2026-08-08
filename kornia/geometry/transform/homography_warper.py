@@ -79,7 +79,7 @@ class HomographyWarper(BaseWarper):
 
     .. math::
 
-        X_{dst} = H_{src}^{\{dst\}} * X_{src}
+        X_{src} = H_{src}^{\{dst\}} * X_{dst}
 
     Convention:
         - align_corners: ``False`` by default, matching :func:`homography_warp`
