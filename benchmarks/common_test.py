@@ -27,7 +27,7 @@ from pathlib import Path
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import git_commit, run_metadata, save_json, time_us
+from common import git_commit, run_batch_sweep, run_metadata, save_json, time_us
 
 
 def test_time_us_returns_median_and_spread():
@@ -75,3 +75,30 @@ def test_save_json_round_trip_sanitizes_non_finite(tmp_path):
     assert payload["results"][0]["median_us"] is None
     assert payload["results"][0]["throughput_per_s"] is None
     assert payload["results"][0]["iqr_us"] is None
+
+
+def test_run_metadata_records_optional_baseline_versions():
+    meta = run_metadata(torch.device("cpu"))
+    for key in ("opencv", "torchvision", "albumentations", "kornia_rs"):
+        assert key in meta  # None when not installed — key must still be present
+
+
+def test_run_batch_sweep_rows_and_skip_cells(capsys):
+    def build(b):
+        return {"opA": {"fast": lambda: None, "missing": None}}, {}
+
+    rows = run_batch_sweep([1, 2], build, ["fast", "missing"], row_fields=lambda b: {"size": 8}, min_run_time=0.05)
+    assert [r["batch"] for r in rows] == [1, 2]  # only 'fast' produces rows
+    assert rows[0]["op"] == "opA" and rows[0]["backend"] == "fast" and rows[0]["size"] == 8
+    assert rows[0]["median_us"] > 0 and rows[0]["throughput_per_s"] > 0
+    out = capsys.readouterr().out
+    assert "batch=1" in out and "batch=2" in out
+    assert "-" in out  # the skip cell
+
+
+def test_run_batch_sweep_reports_warmup_failures(capsys):  # 'compile' in a test NAME gets deselected by conftest
+    def build(b):
+        return {"opA": {"fast": lambda: None}}, {"opA": "RuntimeError"}
+
+    run_batch_sweep([1], build, ["fast"], row_fields=lambda b: {}, min_run_time=0.05)
+    assert "torch.compile warmup failed" in capsys.readouterr().out

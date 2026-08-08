@@ -44,7 +44,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import math
 import platform
 import sys
 from pathlib import Path
@@ -55,7 +54,7 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import run_metadata, save_json, time_us
+from common import run_batch_sweep, run_metadata, save_json
 
 import kornia.geometry as KG
 
@@ -189,44 +188,13 @@ def main() -> None:
             print(f"# NOTE: {name} not installed — its column is skipped")
 
     backends = ["kornia (eager)", "kornia (compiled)", "torchvision v2", "opencv"]
-    results: list[dict[str, object]] = []
-    col_w = 14
-    header = ""
-    for b in [int(x) for x in args.batches.split(",")]:
-        ops, compile_failures = build_ops(b, args.size, args.size, device, dtype, args.compile, cv2, tvf)
-        if compile_failures:
-            exc_names = sorted(set(compile_failures.values()))
-            print(f"# NOTE: torch.compile warmup failed ({', '.join(exc_names)}) for: {', '.join(compile_failures)}")
-        header = f"{'batch=' + str(b):<26}" + "".join(f"{n[:col_w]:>{col_w + 1}}" for n in backends)
-        print("-" * len(header))
-        print(header)
-        print("-" * len(header))
-        for op_name, row in ops.items():
-            cells = []
-            for backend in backends:
-                fn = row.get(backend)
-                if fn is None:
-                    cells.append(f"{'-':>{col_w + 1}}")
-                    continue
-                is_torch_backend = backend.startswith(("kornia", "torchvision"))
-                median, iqr = time_us(fn, sync=sync if is_torch_backend else None)
-                thr = b / (median * 1e-6) if not math.isnan(median) else float("nan")
-                results.append(
-                    {
-                        "op": op_name,
-                        "backend": backend,
-                        "batch": b,
-                        "height": args.size,
-                        "width": args.size,
-                        "dtype": args.dtype,
-                        "median_us": median,
-                        "iqr_us": iqr,
-                        "throughput_per_s": thr,
-                    }
-                )
-                cells.append(f"{thr:>{col_w + 1}.0f}")
-            print(f"{op_name:<26}" + "".join(cells))
-    print("-" * len(header))
+    results = run_batch_sweep(
+        [int(x) for x in args.batches.split(",")],
+        lambda b: build_ops(b, args.size, args.size, device, dtype, args.compile, cv2, tvf),
+        backends,
+        row_fields=lambda b: {"height": args.size, "width": args.size, "dtype": args.dtype},
+        sync=sync,
+    )
     if args.json:
         out = save_json(args.json, meta, results)
         print(f"# results written to {out}")

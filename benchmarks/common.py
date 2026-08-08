@@ -88,6 +88,8 @@ def run_metadata(device: torch.device) -> dict[str, Any]:
         "opencv": _optional_version("cv2"),
         "torchvision": _optional_version("torchvision"),
         "numpy": _optional_version("numpy"),
+        "albumentations": _optional_version("albumentations"),
+        "kornia_rs": _optional_version("kornia_rs"),
     }
     if device.type == "cuda":
         meta["cuda_device"] = torch.cuda.get_device_name(device)
@@ -112,3 +114,60 @@ def save_json(path: str | Path, metadata: dict[str, Any], results: list[dict[str
     payload = _sanitize({"metadata": metadata, "results": results})
     out.write_text(json.dumps(payload, indent=2, allow_nan=False) + "\n")
     return out
+
+
+def run_batch_sweep(
+    batches: list[int],
+    build_ops: Callable[[int], tuple[dict[str, dict[str, Optional[Callable[[], object]]]], dict[str, str]]],
+    backends: list[str],
+    row_fields: Callable[[int], dict[str, Any]],
+    sync: Optional[Callable[[], None]] = None,
+    torch_backends: tuple[str, ...] = ("kornia", "torchvision"),
+    label_width: int = 26,
+    col_width: int = 14,
+    min_run_time: float = 1.0,
+) -> list[dict[str, Any]]:
+    """Sweep batch sizes, print one throughput table per batch, and return JSON-ready rows.
+
+    ``build_ops(batch)`` returns ``({op: {backend: zero-arg callable | None}}, {op: exc_name})``;
+    the second dict names ops whose ``torch.compile`` warmup failed, reported as a NOTE instead
+    of a silent skip cell. ``sync`` lands inside the timed region only for backends whose name
+    starts with one of ``torch_backends`` — uint8 CPU-loop baselines are timed without it.
+    """
+    results: list[dict[str, Any]] = []
+    header = ""
+    for b in batches:
+        ops, compile_failures = build_ops(b)
+        if compile_failures:
+            exc_names = sorted(set(compile_failures.values()))
+            print(f"# NOTE: torch.compile warmup failed ({', '.join(exc_names)}) for: {', '.join(compile_failures)}")
+        header = f"{'batch=' + str(b):<{label_width}}" + "".join(f"{n[:col_width]:>{col_width + 1}}" for n in backends)
+        print("-" * len(header))
+        print(header)
+        print("-" * len(header))
+        for op_name, row in ops.items():
+            cells = []
+            for backend in backends:
+                fn = row.get(backend)
+                if fn is None:
+                    cells.append(f"{'-':>{col_width + 1}}")
+                    continue
+                backend_sync = sync if backend.startswith(torch_backends) else None
+                median, iqr = time_us(fn, min_run_time=min_run_time, sync=backend_sync)
+                thr = b / (median * 1e-6) if not math.isnan(median) else float("nan")
+                results.append(
+                    {
+                        "op": op_name,
+                        "backend": backend,
+                        "batch": b,
+                        **row_fields(b),
+                        "median_us": median,
+                        "iqr_us": iqr,
+                        "throughput_per_s": thr,
+                    }
+                )
+                cells.append(f"{thr:>{col_width + 1}.0f}")
+            print(f"{op_name:<{label_width}}" + "".join(cells))
+    if header:
+        print("-" * len(header))
+    return results
