@@ -813,7 +813,12 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         raise TypeError(f"bits type is not an int or torch.Tensor. Got {type(bits)}")
 
     if isinstance(bits, int):
-        bits = torch.as_tensor(bits)
+        bits = torch.as_tensor(bits, device=input.device)
+
+    # A user-supplied CPU bits tensor mixes with any device only when 0-dim (PyTorch's "wrapped
+    # number" rule); multi-element CPU tensors hit a device mismatch on MPS/CUDA, so move bits
+    # onto input's device explicitly (no-op when already there).
+    bits = bits.to(device=input.device)
 
     # TODO: find a better way to check boundaries on tensors
     # if not torch.all((bits >= 0) * (bits <= 8)) and bits.dtype == torch.int:
