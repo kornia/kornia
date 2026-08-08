@@ -210,6 +210,15 @@ class TestHomographyWarper(BaseTester):
             dtype=dtype,
         )
         self.assert_close(patch_dst, expected, atol=1e-3, rtol=1e-3)
+        # the literal above cannot distinguish False from None (grid_sample treats them alike), so
+        # the documented defaults are additionally pinned on the signatures of both APIs
+        import inspect
+
+        assert (
+            inspect.signature(kornia.geometry.transform.HomographyWarper.__init__).parameters["align_corners"].default
+            is False
+        )
+        assert inspect.signature(kornia.geometry.transform.homography_warp).parameters["align_corners"].default is False
 
     @pytest.mark.parametrize("shape", [(4, 5), (2, 6), (4, 3), (5, 7)])
     def test_translation(self, shape, device, dtype):

@@ -99,7 +99,7 @@ def warp_perspective(
         M: transformation matrix with shape :math:`(B, 3, 3)`.
         dsize: size of the output image (height, width).
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
-        padding_mode: padding mode for outside grid values ``'torch.zeros'`` | ``'border'`` | ``'reflection'``
+        padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``
             | ``'fill'``.
         align_corners: interpolation flag.
         fill_value: torch.Tensor of shape :math:`(3)` that fills the padding area. Only supported for RGB.
@@ -194,6 +194,8 @@ def warp_affine(
         \text{dst}(x, y) = \text{src} \left( M^{-1}_{11} x + M^{-1}_{12} y + M^{-1}_{13} ,
         M^{-1}_{21} x + M^{-1}_{22} y + M^{-1}_{23} \right )
 
+    where :math:`M^{-1}` is the inverse of the :math:`3 \times 3` homogeneous extension of ``M``.
+
     Convention:
         - input: :math:`(B, C, H, W)`; ``dsize`` is ``(h, w)``
         - ``M`` is the source→destination **pixel** affine matrix :math:`(B, 2, 3)`
@@ -206,7 +208,7 @@ def warp_affine(
         M: affine transformation of shape :math:`(B, 2, 3)`.
         dsize: size of the output image (height, width).
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
-        padding_mode: padding mode for outside grid values ``'torch.zeros'`` | ``'border'`` | ``'reflection'``
+        padding_mode: padding mode for outside grid values ``'zeros'`` | ``'border'`` | ``'reflection'``
             | ``'fill'``.
         align_corners : mode for grid_generation.
         fill_value: torch.Tensor of shape :math:`(C)` or :math:`(1)` that fills the padding area.
@@ -322,7 +324,7 @@ def warp_grid(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     r"""Compute the grid to warp the coordinates grid by the homography/ies.
 
     Convention:
-        - ``grid`` coordinates: ``(x, y)`` (last dim), shape :math:`(1, H, W, 2)`
+        - ``grid`` coordinates: ``(x, y)`` (last dim), shape :math:`(1, H, W, 2)` or :math:`(N, H, W, 2)`
         - ``src_homo_dst`` is the destination→source homography :math:`(1, 3, 3)`,
           :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`
 
@@ -352,7 +354,8 @@ def warp_grid3d(grid: torch.Tensor, src_homo_dst: torch.Tensor) -> torch.Tensor:
     r"""Compute the grid to warp the coordinates grid by the homography/ies.
 
     Convention:
-        - ``grid`` coordinates: ``(x, y, z)`` (last dim), shape :math:`(1, D, H, W, 3)`
+        - ``grid`` coordinates: ``(x, y, z)`` (last dim), shape :math:`(1, D, H, W, 3)` or
+          :math:`(N, D, H, W, 3)`
         - ``src_homo_dst`` is the destination→source homography :math:`(1, 4, 4)`,
           :math:`(N, 4, 4)` or :math:`(N, 1, 4, 4)`
 
@@ -647,7 +650,7 @@ def remap(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
         normalized_coordinates: whether the input coordinates are
            normalized in the range of [-1, 1].
@@ -1059,7 +1062,7 @@ def warp_affine3d(
         flags: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners : mode for grid_generation.
 
     Returns:
@@ -1418,7 +1421,9 @@ def warp_perspective3d(
     the specified matrix:
 
     .. math::
-        \text{dst}(x, y, z) = \text{src}\left( M^{-1} \cdot (x, y, z, 1)^{T} \right)
+        \text{dst}(x, y, z) = \text{src}\left( \pi\left( M^{-1} \cdot (x, y, z, 1)^{T} \right) \right)
+
+    where :math:`\pi` divides by the fourth (homogeneous) coordinate.
 
     Convention:
         - input: :math:`(B, C, D, H, W)`; ``dsize`` is ``(d, h, w)``
@@ -1490,8 +1495,9 @@ def homography_warp(
 
     Args:
         patch_src: The image or torch.Tensor to warp. Should be from source of shape :math:`(N, C, H, W)`.
-        src_homo_dst: The homography or torch.stack of homographies from destination to source of shape
-            :math:`(N, 3, 3)`.
+        src_homo_dst: The homography or torch.stack of homographies of shape :math:`(N, 3, 3)` —
+            destination to source when ``normalized_homography=True`` (default), source to
+            destination (pixel) when ``normalized_homography=False``.
         dsize:
           if homography normalized: The height and width of the image to warp.
           if homography not normalized: size of the output image (height, width).

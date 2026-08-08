@@ -151,11 +151,11 @@ def affine(
 
     Args:
         tensor: The image tensor to be warped in shapes of
-            :math:`(H, W)`, :math:`(D, H, W)` and :math:`(B, C, H, W)`.
+            :math:`(C, H, W)` or :math:`(B, C, H, W)`.
         matrix: The 2x3 affine transformation matrix.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -209,12 +209,12 @@ def affine3d(
 
     Args:
         tensor: The image tensor to be warped in shapes of
-            :math:`(D, H, W)`, :math:`(C, D, H, W)` and :math:`(B, C, D, H, W)`.
+            :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`.
         matrix: The affine transformation matrix with shape :math:`(B, 3, 4)`.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-         `` 'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+         `` 'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -282,7 +282,7 @@ def rotate(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -352,12 +352,12 @@ def rotate3d(
         roll: The roll angle through which to rotate. The tensor
           must have a shape of (B), where B is batch size.
         center: The center through which to rotate. The tensor
-          must have a shape of (B, 2), where B is batch size and last
-          dimension contains cx and cy.
+          must have a shape of (B, 3), where B is batch size and last
+          dimension contains x, y and z.
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -422,7 +422,7 @@ def translate(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -481,7 +481,7 @@ def scale(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -543,7 +543,7 @@ def shear(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -738,8 +738,6 @@ def rescale(
         interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
             ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.
-        side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
-            or ``'horz'``.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
 
@@ -860,7 +858,7 @@ class Affine(nn.Module):
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Raises:
@@ -968,8 +966,6 @@ class Rescale(nn.Module):
         interpolation:  algorithm used for upsampling: ``'nearest'`` | ``'linear'`` | ``'bilinear'`` |
             ``'bicubic'`` | ``'trilinear'`` | ``'area'``.
         align_corners: interpolation flag.
-        side: Corresponding side if ``size`` is an integer. Can be one of ``'short'``, ``'long'``, ``'vert'``,
-            or ``'horz'``.
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
 
@@ -1030,7 +1026,7 @@ class Rotate(nn.Module):
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -1090,7 +1086,7 @@ class Translate(nn.Module):
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -1151,7 +1147,7 @@ class Scale(nn.Module):
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:
@@ -1211,7 +1207,7 @@ class Shear(nn.Module):
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: interpolation flag.
 
     Returns:

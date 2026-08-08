@@ -29,9 +29,7 @@ Image 2d transforms
 -------------------
 
 .. autofunction:: affine
-.. autofunction:: affine3d
 .. autofunction:: rotate
-.. autofunction:: rotate3d
 .. autofunction:: translate
 .. autofunction:: scale
 .. autofunction:: shear
@@ -46,6 +44,12 @@ Image 2d transforms
 .. autofunction:: pyrup
 .. autofunction:: build_pyramid
 .. autofunction:: build_laplacian_pyramid
+
+Image 3d transforms
+-------------------
+
+.. autofunction:: affine3d
+.. autofunction:: rotate3d
 
 Matrix transformations
 ----------------------
