@@ -48,6 +48,15 @@ def crop_and_resize(
 ) -> torch.Tensor:
     r"""Extract crops from 2D images (4D torch.Tensor) and resize given a bounding box.
 
+    Convention:
+        - input: :math:`(B, C, H, W)`; ``size`` is ``(h, w)``
+        - ``boxes``: :math:`(B, 4, 2)` corner points in ``(x, y)`` order
+          top-left, top-right, bottom-right, bottom-left; coordinates are
+          **inclusive** pixel positions (box ``(1, 1)``..``(2, 2)`` selects a
+          :math:`2 \times 2` pixel block), origin at top-left
+        - align_corners: ``True`` by default
+        - padding_mode: ``'zeros'`` by default
+
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
         boxes : a torch.Tensor containing the coordinates of the bounding boxes to be extracted.
@@ -59,7 +68,7 @@ def crop_and_resize(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | 'reflection'.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
 
     Returns:
@@ -122,6 +131,12 @@ def center_crop(
 ) -> torch.Tensor:
     r"""Crop the 2D images (4D torch.Tensor) from the center.
 
+    Convention:
+        - input: :math:`(B, C, H, W)` (strictly 4D — no unbatched ``(C, H, W)``/
+          ``(H, W)`` input is accepted); ``size`` is ``(h, w)``
+        - align_corners: ``True`` by default
+        - padding_mode: ``'zeros'`` by default
+
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
         size: a tuple with the expected height and width
@@ -129,7 +144,7 @@ def center_crop(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
 
     Returns:
@@ -207,6 +222,16 @@ def crop_by_boxes(
     So far, the ragged torch.Tensor is not supported by PyTorch right now. This function hereby requires
     the bounding boxes in a batch must be rectangles with same width and height.
 
+    Convention:
+        - input: :math:`(B, C, H, W)`
+        - ``src_box``/``dst_box``: :math:`(B, 4, 2)` corner points in ``(x, y)`` order
+          top-left, top-right, bottom-right, bottom-left — same convention as
+          :func:`crop_and_resize`; ``dst_box`` determines the output resolution
+        - a single box (batch size 1) broadcasts over a batch of images, but a single
+          image does not broadcast over a batch of boxes
+        - align_corners: ``True`` by default
+        - padding_mode: ``'zeros'`` by default
+
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
         src_box: a torch.Tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
@@ -220,7 +245,7 @@ def crop_by_boxes(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
         validate_boxes: flag to perform validation on boxes.
 
@@ -281,6 +306,28 @@ def crop_by_transform_mat(
 ) -> torch.Tensor:
     """Perform crop transform on 2D images (4D torch.Tensor) given a perspective transformation matrix.
 
+    Convention:
+        - input: :math:`(B, C, H, W)`; ``out_size`` is ``(h, w)``
+        - ``transform`` is the source→destination **pixel** transform, accepted as
+          either :math:`(B, 2, 3)` affine or :math:`(B, 3, 3)` homogeneous; dispatch is
+          by shape — :math:`(B, 2, 3)` takes the cheaper :func:`warp_affine` path,
+          while :math:`(B, 3, 3)` takes :func:`warp_perspective` and uses the **full**
+          matrix, so a non-trivial third (projective) row changes the output for
+          non-degenerate ``out_size`` (see warning below); :class:`CenterCrop2D` itself
+          calls this with a :math:`(B, 2, 3)` transform
+        - align_corners: ``True`` by default
+        - padding_mode: ``'zeros'`` by default
+
+    .. warning::
+        The :math:`(B, 3, 3)` full-matrix behavior above has degenerate-``out_size``
+        exceptions: with ``align_corners=True`` and an ``out_size`` dimension equal to
+        ``1``, the destination-side grid is singular and the output is all-``NaN``; with
+        ``align_corners=False`` and an ``out_size`` dimension equal to ``1``, this
+        function silently falls back to the :math:`(B, 2, 3)` :func:`warp_affine` path
+        (dropping the projective row entirely), so two :math:`(B, 3, 3)` matrices that
+        differ only in their third row produce byte-identical output. Tracked in
+        `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
+
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
         transform: a perspective transformation matrix with shape (B, 3, 3), or an
@@ -289,7 +336,7 @@ def crop_by_transform_mat(
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
         padding_mode (str): padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         align_corners: mode for grid_generation.
 
     Returns:
@@ -366,6 +413,21 @@ def crop_by_indices(
 ) -> torch.Tensor:
     """Crop tensors with naive indices.
 
+    Convention:
+        - input: :math:`(B, C, H, W)`; ``size`` is ``(h, w)`` if given, else inferred
+          from ``src_box``
+        - ``src_box``: :math:`(B, 4, 2)` corner points in ``(x, y)`` order top-left,
+          top-right, bottom-right, bottom-left — same convention as :func:`crop_and_resize`
+        - unlike the other crop operators in this module: ``interpolation=`` (not
+          ``mode=``), ``align_corners=None`` by default (not ``True``), and an
+          ``antialias=False`` option
+        - ``shape_compensation`` (``'resize'`` by default) only takes effect when
+          ``src_box`` is not literally identical across the batch (same position and
+          size for every item); when ``src_box`` **is** identical across the batch,
+          ``shape_compensation`` is ignored — the result is an exact integer slice
+          when the slice shape already matches ``size`` (or when ``size=None``), and
+          is resized to ``size`` otherwise
+
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
         src_box: a torch.Tensor with shape (B, 4, 2) containing the coordinates of the bounding boxes
@@ -382,6 +444,11 @@ def crop_by_indices(
             No effect for upscaling.
         shape_compensation: if the cropped slice sizes are not exactly align `size`, the image can either be padded
             or resized.
+
+    Returns:
+        The cropped torch.Tensor with shape :math:`(B, C, h, w)`, where
+        :math:`(h, w)` is ``size`` if given, otherwise the shape inferred
+        from ``src_box``.
 
     """
     KORNIA_CHECK_SHAPE(input_tensor, ["B", "C", "H", "W"])
@@ -437,6 +504,12 @@ def crop_by_indices(
 
 class CenterCrop2D(nn.Module):
     """Center crop the input torch.Tensor.
+
+    Convention:
+        - ``align_corners`` (and ``resample``) only take effect when
+          ``cropping_mode='resample'``; the default ``cropping_mode='slice'`` performs
+          integer-index slicing and ignores both
+        - See the convention block of :func:`~kornia.geometry.transform.center_crop`.
 
     Args:
         size: Size (h, w) in pixels of the resized region or just one side.
