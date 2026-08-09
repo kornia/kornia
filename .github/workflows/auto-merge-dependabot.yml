@@ -14,9 +14,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Enable auto merge for Dependabot PRs
+      - name: Fetch dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto merge for patch and minor updates
+        if: steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor'
         uses: peter-evans/enable-pull-request-automerge@v3
         with:
           merge-method: squash
           token: ${{ secrets.GITHUB_TOKEN }}
-          
