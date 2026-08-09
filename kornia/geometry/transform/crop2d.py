@@ -409,9 +409,10 @@ def crop_by_indices(
         - unlike the other crop operators in this module: ``interpolation=`` (not
           ``mode=``), ``align_corners=None`` by default (not ``True``), and an
           ``antialias=False`` option
-        - ``shape_compensation`` (``'resize'`` by default) only changes behavior when
-          the cropped slices differ in size across the batch; a uniform batch is
-          always resized to ``size`` regardless of ``shape_compensation``
+        - ``shape_compensation`` (``'resize'`` by default) only takes effect when
+          ``src_box`` is not literally identical across the batch (same position and
+          size for every item); an identical-``src_box`` batch takes a fast path that
+          always resizes, regardless of ``shape_compensation``
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).

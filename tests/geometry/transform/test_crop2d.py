@@ -413,11 +413,13 @@ class TestCropByIndices(BaseTester):
             kornia.geometry.transform.crop_by_indices(img, src_box, size=None)
 
     def test_convention_shape_compensation_pad_vs_resize(self, device, dtype):
-        # shape_compensation='pad' is only ever consulted when box sizes differ across the
-        # batch -- a batch of uniformly-sized boxes always takes a fast slice(+resize) path that
-        # ignores shape_compensation entirely. With a box LARGER than the requested `size`,
-        # 'pad' trims via F.pad's negative padding (keeps the top-left corner, no interpolation)
-        # while the default 'resize' downsamples via interpolation -- genuinely different results.
+        # shape_compensation='pad' is only ever consulted when src_box is not literally
+        # identical across the batch (same position and size for every item) -- an
+        # identical-src_box batch takes a fast slice(+resize) path that ignores
+        # shape_compensation entirely, regardless of whether box size matches `size`.
+        # With a box LARGER than the requested `size`, 'pad' trims via F.pad's negative
+        # padding (keeps the top-left corner, no interpolation) while the default
+        # 'resize' downsamples via interpolation -- genuinely different results.
         inp = torch.arange(0.0, 32.0, device=device, dtype=dtype).view(1, 1, 4, 8).repeat(2, 1, 1, 1)
         src_box = torch.tensor(
             [
@@ -436,7 +438,10 @@ class TestCropByIndices(BaseTester):
         expected_pad_0 = torch.tensor([[0.0, 1.0], [8.0, 9.0]], device=device, dtype=dtype)
         self.assert_close(out_resize[0, 0], expected_resize_0, rtol=1e-2, atol=1e-2)
         self.assert_close(out_pad[0, 0], expected_pad_0, rtol=1e-2, atol=1e-2)
-        # sample 1's box already matches `size`, so 'pad' and 'resize' agree there.
+        # This batch is non-uniform (box 0 != box 1), so both samples reach the per-item
+        # loop. There, sample 1's own cropped slice already matches `size`, so its
+        # per-item branch takes the plain-copy path -- independent of the batch-level
+        # fast path above -- and 'pad'/'resize' agree there too.
         self.assert_close(out_resize[1], out_pad[1])
 
 
