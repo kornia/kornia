@@ -78,7 +78,10 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
           natural ``(points_src, points_dst)`` order, while :func:`warp_image_tps`
           is typically composed **reversed** — ``get_tps_transform(points_dst,
           points_src)`` — since image warping samples from output space back
-          into input space; the recipe for warping an image end-to-end::
+          into input space; the recipe for warping an image end-to-end (when
+          targeting :func:`warp_image_tps`, ``points_src``/``points_dst`` here
+          must already be in normalized ``[-1, 1]`` grid coordinates — see that
+          function's Convention block)::
 
               kernel_weights, affine_weights = get_tps_transform(points_dst, points_src)
               warped = warp_image_tps(image, kernel_centers=points_src,
@@ -153,10 +156,9 @@ def warp_points_tps(
         - points: :math:`(B, N, 2)` (or :math:`(B, K, 2)` for kernel centers) in
           ``(x, y)`` order, in whatever coordinate frame the input points are already
           in — this function performs no normalization of its own
-        - ``kernel_centers`` is exactly the ``points_dst`` you passed to
-          :func:`get_tps_transform` (see its Convention block) when computing
-          ``kernel_weights``/``affine_weights``; passing the source points instead
-          silently produces the wrong warp
+        - ``kernel_centers`` must be the ``points_dst`` argument (the second
+          positional argument) passed to :func:`get_tps_transform`; see its
+          Convention block for the full binding rule and recipe
         - returns points warped in that same coordinate frame/units as the input, with
           no renormalization; the output is **not** clamped — a valid TPS transform can
           map an in-range point outside that frame (e.g. warping ``(0.75, 0)`` through a
@@ -243,11 +245,19 @@ def warp_image_tps(
         - image: :math:`(B, C, H, W)`; kernel/affine weights as returned by
           :func:`get_tps_transform` called **reversed** —
           ``get_tps_transform(points_dst, points_src)`` — see its Convention block
-        - this function's own ``kernel_centers`` parameter must receive the same
-          tensor that was passed as the **second** positional argument to that
-          reversed :func:`get_tps_transform` call — i.e. the original source
-          control points (``points_src``) — see the recipe in its Convention
-          block; passing the other point set silently produces the wrong warp
+        - ``kernel_centers`` must be the tensor passed as the **second** positional
+          argument to that reversed :func:`get_tps_transform` call (i.e.
+          ``points_src``); see :func:`get_tps_transform`'s Convention block for the
+          full binding rule and recipe
+        - all control points feeding ``kernel_weights``/``affine_weights``
+          (and ``kernel_centers`` itself) must already be in normalized
+          ``[-1, 1]`` grid coordinates, corner-aligned (:math:`x_{norm} =
+          2x/(W-1) - 1`, the same mapping ``align_corners=True`` uses) — this
+          function always evaluates the TPS on a sampling grid built via
+          ``create_meshgrid(h, w, normalized_coordinates=True)`` regardless of
+          the ``align_corners`` argument below (see the warning); pixel-space
+          control points silently produce a wrong warp of the correct shape,
+          with no error raised
         - align_corners: ``False`` by default
         - padding_mode: ``'zeros'`` by default
 

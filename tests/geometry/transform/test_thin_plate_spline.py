@@ -19,9 +19,8 @@ import pytest
 import torch
 
 import kornia
-from conftest import supports_2d_border_padding
 
-from testing.base import BaseTester
+from testing.base import BaseTester, supports_2d_border_padding
 
 
 def _sample_points(batch_size, device, dtype=torch.float32):
@@ -298,9 +297,62 @@ class TestWarpImage(BaseTester):
         out_zeros = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine, padding_mode="zeros")
         self.assert_close(out_default, out_zeros)
 
-        if supports_2d_border_padding(device):
-            out_border = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine, padding_mode="border")
-            assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
+    def test_convention_padding_mode_border_differs_from_zeros(self, device, dtype):
+        # Companion to test_convention_default_padding_mode_zeros above: 'border' padding
+        # must actually differ from the 'zeros' default. MPS's 2D grid_sample doesn't
+        # support 'border' (probed at runtime), so this half is skipped visibly there
+        # instead of silently no-op'ing inside an `if` guard.
+        if dtype == torch.float16:
+            pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
+        if not supports_2d_border_padding(device):
+            pytest.skip("MPS 2D grid_sample lacks 'border' padding")
+
+        src = torch.tensor(
+            [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]], device=device, dtype=dtype
+        )
+        kernel, affine = kornia.geometry.transform.get_tps_transform(src, src)
+        img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+
+        out_default = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine)
+        out_border = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine, padding_mode="border")
+        assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
+
+    def test_convention_control_points_normalized_coords(self, device, dtype):
+        # warp_image_tps always evaluates the TPS on a sampling grid built via
+        # create_meshgrid(h, w, normalized_coordinates=True): control points must
+        # already be in normalized [-1, 1], corner-aligned coordinates. Pixel-space
+        # control points silently produce a wrong (but correctly-shaped) warp -- see
+        # the Convention block. Pinned here with a small translation expressed in
+        # normalized coordinates, contrasted against the (unasserted, documented-wrong)
+        # pixel-space version to confirm the two diverge.
+        if dtype == torch.float16:
+            pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
+        if dtype == torch.bfloat16:
+            pytest.skip("bfloat16 rounding of near-zero boundary values exceeds this test's atol")
+
+        img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        # 4 corners + center, normalized [-1, 1] coordinates (align_corners=True mapping).
+        src = torch.tensor(
+            [[[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0], [0.0, 0.0]]], device=device, dtype=dtype
+        )
+        dst = src.clone()
+        dst[..., 0] += 2.0 / 3.0  # one-pixel shift in normalized coords for W=4 (2 / (4 - 1))
+
+        kernel, affine = kornia.geometry.transform.get_tps_transform(dst, src)
+        warped = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine, align_corners=True)
+
+        # Snippet used to generate expected (requires only this module):
+        # img = torch.arange(16.0).view(1, 1, 4, 4)
+        # src = torch.tensor([[[-1.,-1.],[1.,-1.],[1.,1.],[-1.,1.],[0.,0.]]])
+        # dst = src.clone(); dst[..., 0] += 2.0 / 3.0
+        # kernel, affine = get_tps_transform(dst, src)
+        # warp_image_tps(img, src, kernel, affine, align_corners=True)
+        expected = torch.tensor(
+            [[[[0.0, 0.0, 1.0, 2.0], [0.0, 4.0, 5.0, 6.0], [0.0, 8.0, 9.0, 10.0], [0.0, 12.0, 13.0, 14.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(warped, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.xfail(reason="warp_image_tps default align_corners=False breaks identity — kornia#3928", strict=True)
     def test_convention_default_align_corners_reproduces_identity(self, device, dtype):

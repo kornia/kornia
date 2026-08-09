@@ -160,8 +160,7 @@ def rot180(input: torch.Tensor) -> torch.Tensor:
           :func:`hflip`)
         - requires rank ≥ 2 (operates on dim ``-2``, flipping dims ``-2`` and ``-1``):
           unbatched :math:`(H, W)`/:math:`(C, H, W)` or batched :math:`(*, C, H, W)`
-          all work, unlike :func:`center_crop`/:func:`pyrdown`'s strict
-          :math:`(B, C, H, W)` requirement
+          all work
 
     Args:
         input: input torch.Tensor.
@@ -179,11 +178,7 @@ def hflip(input: torch.Tensor) -> torch.Tensor:
     .. image:: _static/img/hflip.png
 
     Convention:
-        - flips along the width axis (the last dimension)
-        - requires rank ≥ 1 (operates on dim ``-1``): unbatched :math:`(W,)`/
-          :math:`(H, W)`/:math:`(C, H, W)` or batched :math:`(*, C, H, W)` all
-          work, unlike :func:`center_crop`/:func:`pyrdown`'s strict
-          :math:`(B, C, H, W)` requirement
+        - flips the last dimension (dim ``-1``)
 
     Args:
         input: input torch.Tensor.
@@ -203,8 +198,7 @@ def vflip(input: torch.Tensor) -> torch.Tensor:
     Convention:
         - flips along the height axis (the second-to-last dimension)
         - requires rank ≥ 2 (operates on dim ``-2``): unbatched :math:`(H, W)`/
-          :math:`(C, H, W)` or batched :math:`(*, C, H, W)` all work, unlike
-          :func:`center_crop`/:func:`pyrdown`'s strict :math:`(B, C, H, W)` requirement
+          :math:`(C, H, W)` or batched :math:`(*, C, H, W)` all work
 
     Args:
         input: input torch.Tensor.

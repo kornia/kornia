@@ -94,7 +94,7 @@ class TestMyFunction(BaseTester):
 
 The `device` and `dtype` fixtures are injected automatically. Use `self.assert_close()` for tensor comparisons. Test configurations are driven by env vars `KORNIA_TEST_DEVICE` and `KORNIA_TEST_DTYPE`, or by `--device`/`--dtype` pytest args.
 
-Tests actually run under the repo `.venv` (`pixi run test`/`test-quick`/etc. all shell out to `uv run pytest`, which uses `.venv`) — the separate `.pixi` conda environment is not what test invocations use and its package versions should not be assumed to match `.venv`. Environments can differ (e.g. package versions); do not assume they match without checking.
+Tests actually run under the repo `.venv` (`pixi run test`/`test-quick`/etc. all shell out to `uv run pytest`, which uses `.venv`) — the separate `.pixi` conda environment is not what test invocations use and its package versions should not be assumed to match `.venv`.
 
 ## Coding Standards
 

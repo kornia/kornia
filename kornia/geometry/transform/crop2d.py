@@ -132,9 +132,8 @@ def center_crop(
     r"""Crop the 2D images (4D torch.Tensor) from the center.
 
     Convention:
-        - input: :math:`(B, C, H, W)` (strictly 4D — unlike :func:`hflip`/:func:`vflip`/
-          :func:`rot180`, no unbatched ``(C, H, W)``/``(H, W)`` input is accepted);
-          ``size`` is ``(h, w)``
+        - input: :math:`(B, C, H, W)` (strictly 4D — no unbatched ``(C, H, W)``/
+          ``(H, W)`` input is accepted); ``size`` is ``(h, w)``
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
 
