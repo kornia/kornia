@@ -38,6 +38,23 @@ class TestPyrUp(BaseTester):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.pyrup, (img,), nondet_tol=1e-8)
 
+    def test_convention_align_corners_and_border_type_change_output(self, device, dtype):
+        # pyrup's align_corners (default False) and border_type (default 'reflect') defaults
+        # actually change the output values -- existing tests only check output shape. pyrup is
+        # an independent implementation (interpolate-then-blur, no delegation to pyrdown), so the
+        # sibling pin on TestPyrDown gives this op no coverage on its own.
+        x = torch.arange(0.0, 16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+
+        out_ac_false = kornia.geometry.transform.pyrup(x, align_corners=False)
+        out_ac_true = kornia.geometry.transform.pyrup(x, align_corners=True)
+        out_default = kornia.geometry.transform.pyrup(x)
+        self.assert_close(out_default, out_ac_false, rtol=1e-2, atol=1e-2)
+        assert not torch.allclose(out_ac_false, out_ac_true, atol=1e-2, rtol=1e-2)
+
+        out_reflect = kornia.geometry.transform.pyrup(x, border_type="reflect")
+        out_constant = kornia.geometry.transform.pyrup(x, border_type="constant")
+        assert not torch.allclose(out_reflect, out_constant, atol=1e-2, rtol=1e-2)
+
 
 class TestPyrDown(BaseTester):
     def test_shape(self, device, dtype):
