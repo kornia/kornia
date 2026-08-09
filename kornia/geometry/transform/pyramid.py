@@ -524,8 +524,7 @@ def build_pyramid(
     .. warning::
         The ``max_level`` bounds check does not currently reject non-positive
         **integer** values: passing an integer ``max_level <= 0`` returns the
-        same single-element list as ``max_level=1`` instead of raising
-        (non-integer ``max_level`` values still raise an error). Tracked in
+        same single-element list as ``max_level=1`` instead of raising. Tracked in
         `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
 
     Args:
@@ -607,8 +606,7 @@ def build_laplacian_pyramid(
         `#3927 <https://github.com/kornia/kornia/issues/3927>`_. Separately, the
         ``max_level`` bounds check does not currently reject non-positive
         **integer** values: passing an integer ``max_level <= 0`` returns the
-        same single-element list as ``max_level=1`` instead of raising
-        (non-integer ``max_level`` values still raise an error) — also
+        same single-element list as ``max_level=1`` instead of raising — also
         tracked in `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
 
     Args:

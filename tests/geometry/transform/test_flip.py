@@ -154,10 +154,10 @@ class TestHflip(BaseTester):
         self.gradcheck(kornia.geometry.transform.Hflip(), (input,))
 
     def test_convention_rank1_supported(self, device, dtype):
-        # hflip's documented rank floor is 1 (operates on dim -1): even a bare rank-1 tensor
-        # (no H/W structure at all) works, unlike vflip/rot180 which need a second-to-last
-        # axis (see TestVflip/TestRot180.test_convention_rank1_raises). Rank-0 behavior is not
-        # part of the documented contract and is intentionally not pinned here.
+        # hflip enforces no rank floor (it flips dim -1, which every rank >= 0 tensor
+        # has): a bare rank-1 tensor (no H/W structure at all) works, unlike vflip/rot180
+        # which require rank >= 2 (see TestVflip/TestRot180.test_convention_rank1_raises).
+        # Rank-0 also works but is intentionally not pinned here.
         x = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
         # Snippet used to generate expected (requires only this module): hflip reverses the
         # last dimension, so for a rank-1 tensor that is simply the element order reversed.

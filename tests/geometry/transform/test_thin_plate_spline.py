@@ -318,13 +318,13 @@ class TestWarpImage(BaseTester):
         assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
 
     def test_convention_control_points_normalized_coords(self, device, dtype):
-        # warp_image_tps always evaluates the TPS on a sampling grid built via
-        # create_meshgrid(h, w, normalized_coordinates=True): control points must
-        # already be in normalized [-1, 1], corner-aligned coordinates. Pixel-space
-        # control points silently produce a wrong (but correctly-shaped) warp -- see
-        # the Convention block. Pinned here with a small translation expressed in
-        # normalized coordinates, contrasted against the (unasserted, documented-wrong)
-        # pixel-space version to confirm the two diverge.
+        # warp_image_tps's destination/output lattice is always corner-aligned
+        # (create_meshgrid(h, w, normalized_coordinates=True)), independent of the
+        # align_corners argument -- see the Convention block. With align_corners=True
+        # passed explicitly, grid_sample's own convention matches that lattice, so
+        # corner-aligned control points on both sides reproduce the intended warp
+        # exactly. Pinned here with a small translation expressed in corner-aligned
+        # normalized coordinates against a hardcoded expected output.
         if dtype == torch.float16:
             pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
         if dtype == torch.bfloat16:

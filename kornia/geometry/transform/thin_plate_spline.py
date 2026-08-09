@@ -79,9 +79,10 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
           is typically composed **reversed** — ``get_tps_transform(points_dst,
           points_src)`` — since image warping samples from output space back
           into input space; the recipe for warping an image end-to-end (when
-          targeting :func:`warp_image_tps`, ``points_src``/``points_dst`` here
-          must already be in normalized ``[-1, 1]`` grid coordinates — see that
-          function's Convention block)::
+          targeting :func:`warp_image_tps`, ``points_dst`` here is the always
+          corner-aligned output lattice and ``points_src`` here is the input-side
+          frame selected by :func:`warp_image_tps`'s ``align_corners`` — see that
+          function's Convention block for both formulas)::
 
               kernel_weights, affine_weights = get_tps_transform(points_dst, points_src)
               warped = warp_image_tps(image, kernel_centers=points_src,
@@ -249,27 +250,42 @@ def warp_image_tps(
           argument to that reversed :func:`get_tps_transform` call (i.e.
           ``points_src``); see :func:`get_tps_transform`'s Convention block for the
           full binding rule and recipe
-        - all control points feeding ``kernel_weights``/``affine_weights``
-          (and ``kernel_centers`` itself) must already be in normalized
-          ``[-1, 1]`` grid coordinates, corner-aligned (:math:`x_{norm} =
-          2x/(W-1) - 1`, the same mapping ``align_corners=True`` uses) — this
-          function always evaluates the TPS on a sampling grid built via
-          ``create_meshgrid(h, w, normalized_coordinates=True)`` regardless of
-          the ``align_corners`` argument below (see the warning); pixel-space
-          control points silently produce a wrong warp of the correct shape,
-          with no error raised
+        - control points span two different normalized grid_sample coordinate
+          frames, where ``[-1, 1]`` is the in-bounds extent (values outside are
+          allowed, subject to ``padding_mode``) rather than a validity bound:
+
+          - ``get_tps_transform``'s reversed **first** argument (the
+            destination/output lattice) is always corner-aligned,
+            :math:`x_{norm} = 2x/(W-1) - 1`, because this function's internal
+            sampling grid is always built via
+            ``create_meshgrid(h, w, normalized_coordinates=True)`` regardless of
+            ``align_corners`` below (see the warning)
+          - ``kernel_centers`` and ``get_tps_transform``'s reversed **second**
+            argument (the source/input side) must instead match this
+            function's own ``align_corners``: at the default
+            ``align_corners=False`` that is the half-pixel mapping
+            :math:`x_{norm} = (2x+1)/W - 1`; passing ``align_corners=True``
+            switches it to the same corner-aligned formula as the output
+            lattice, so both sides can then share one normalization — the
+            simplest usage
+          - pixel-space (unnormalized) control points on either side silently
+            produce a wrong warp of the correct shape, with no error raised
         - align_corners: ``False`` by default
         - padding_mode: ``'zeros'`` by default
 
     .. warning::
-        This function always samples via a grid built with the ``align_corners=True``
-        convention (``create_meshgrid(h, w, normalized_coordinates=True)``), so the
-        default ``align_corners=False`` mismatches it: even a mathematically-identity
-        TPS transform is **not** reproduced exactly at the default — this mismatch is
-        likely unintended and tracked in
+        This function's own sampling grid (the destination/output lattice) is
+        always corner-aligned regardless of the ``align_corners`` argument below,
+        while the source-side control points must match ``align_corners`` (see
+        the Convention block above). So the common idiom of normalizing both
+        sides the same corner-aligned way and calling this function at the
+        default ``align_corners=False`` does **not** reproduce even a
+        mathematically-identity TPS transform exactly — this is likely
+        unintended and tracked in
         `#3928 <https://github.com/kornia/kornia/issues/3928>`_. Passing
-        ``align_corners=True`` explicitly removes it, leaving an identity round-trip up
-        to ordinary floating-point precision.
+        ``align_corners=True`` explicitly (keeping both sides corner-aligned)
+        removes the mismatch, leaving an identity round-trip up to ordinary
+        floating-point precision.
 
     Args:
         image: input image torch.Tensor :math:`(B, C, H, W)`.
