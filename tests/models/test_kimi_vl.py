@@ -15,10 +15,13 @@
 # limitations under the License.
 #
 
+from unittest.mock import patch
+
 import pytest
 import torch
 
-from kornia.models.kimi_vl import KimiVLConfig, KimiVLModel
+import kornia.models.kimi_vl.builder as kimi_vl_builder
+from kornia.models.kimi_vl import KimiVLBuilder, KimiVLConfig, KimiVLModel
 from kornia.models.kimi_vl.config import KimiVLProjectorConfig, MoonViTConfig
 from kornia.models.kimi_vl.model import KimiVLProjector
 from kornia.models.kimi_vl.moonvit import MoonViT, MoonViTAttention, MoonViTEncoder, MoonViTRotaryEmbedding
@@ -47,6 +50,31 @@ def config():
 @pytest.fixture
 def model(device, dtype, config):
     return KimiVLModel(config).to(device, dtype)
+
+
+class TestKimiVLBuilder(BaseTester):
+    def test_from_config(self, config):
+        model = KimiVLBuilder.from_config(config)
+
+        assert isinstance(model, KimiVLModel)
+        assert model.config is config
+
+    def test_from_pretrained_hf(self, config):
+        expected = KimiVLBuilder.from_config(config)
+        with (
+            patch.object(kimi_vl_builder, "_download_weights", return_value=expected.state_dict()) as mock_download,
+            patch.object(kimi_vl_builder, "_kimi_vl_a3b_instruct_config", return_value=config),
+        ):
+            actual = KimiVLBuilder.from_pretrained_hf(cache_dir="cache")
+
+        assert isinstance(actual, KimiVLModel)
+        assert actual.config is config
+        mock_download.assert_called_once_with(kimi_vl_builder._KIMI_VL_A3B_INSTRUCT_REPO_ID, "cache")
+
+    def test_pretrained_config_matches_checkpoint_grid(self):
+        config = kimi_vl_builder._kimi_vl_a3b_instruct_config()
+        # The published checkpoint stores the original 64x64 pos-embed grid.
+        assert config.vision_config.image_size // config.vision_config.patch_size == 64
 
 
 class TestKimiVLModel(BaseTester):
