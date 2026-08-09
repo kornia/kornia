@@ -592,10 +592,10 @@ def build_laplacian_pyramid(
 
     Args:
         input : the torch.Tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
-        max_level: the number of pyramid levels to return, including the
-          unchanged original image as level 0. Values less than 1 currently
-          behave like ``max_level=1`` (a single-element list); see Convention
-          above for what the levels contain when ``max_level > 1``.
+        max_level: the number of pyramid levels to return (see Convention
+          above for what each level contains). Values less than 1 currently
+          behave like ``max_level=1``, returning just the base Gaussian
+          level.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
