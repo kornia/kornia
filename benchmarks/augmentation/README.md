@@ -8,17 +8,17 @@ each performance regime measurable and gives future work a concrete target to im
 
 | Script | What it measures |
 | --- | --- |
+| [`flagship.py`](flagship.py) | **The flagship suite** — augmentations benchmarked through each library's random-transform class API (parameter sampling included) vs torchvision v2, albumentations, and OpenCV/PIL where comparable; shared `common.py` methodology, `--json` export. Supersedes `all_libraries.py`. |
 | [`vs_torchvision.py`](vs_torchvision.py) | Per-op kornia (eager + `torch.compile`) vs torchvision v2, with a `best/tv` ratio and win/lose verdict per op. |
-| [`all_libraries.py`](all_libraries.py) | Per-op throughput across **all** libraries (kornia eager + compiled, torchvision v2, albumentations, OpenCV, PIL, kornia-rs). |
 | [`cross_library.py`](cross_library.py) | A focused per-op comparison of kornia vs torchvision v2 vs albumentations. |
 | [`pipeline.py`](pipeline.py) | End-to-end **multi-op pipeline** throughput (the shape a training loop runs); supports `--compile` and `--half` (fp16/AMP). |
 
 Run:
 
 ```bash
-python benchmarks/augmentation/all_libraries.py --batch 32 --size 256 --device cpu --compile
-python benchmarks/augmentation/all_libraries.py --batch 32 --size 256 --device cuda --compile
-python benchmarks/augmentation/pipeline.py      --batch 32 --size 224 --device cuda --compile
+python benchmarks/augmentation/flagship.py --batches 1,8,32 --size 256 --device cpu --compile
+python benchmarks/augmentation/flagship.py --batches 1,8,32 --size 256 --device cuda --compile --json aug_cuda.json
+python benchmarks/augmentation/pipeline.py --batch 32 --size 224 --device cuda --compile
 ```
 
 Each script prints the git commit, platform, and (on CUDA) the device name, per the benchmark
@@ -48,7 +48,12 @@ Two distinct races follow:
   raw speed but is not differentiable; nothing else runs here at all. This is the regime kornia
   is designed to lead, and where `torch.compile` fusion pays off.
 
-## Sample results
+## Historical sample results (all_libraries.py, superseded 2026-08-08)
+
+The tables below were measured with the superseded per-op script `all_libraries.py` (deterministic
+parameters, albumentations transforms constructed inside the timed loop, PIL/kornia-rs columns);
+it predates the shared `common.py` methodology and JSON export. Fresh flagship numbers live in the
+root [`benchmarks/README.md`](../README.md); the script itself remains in git history.
 
 Directional numbers only — reproduce on your own hardware for anything you cite. Measured on an
 NVIDIA Jetson Orin (aarch64), torch 2.10, **CPU**, batch 8, 128×128, throughput in **img/s**

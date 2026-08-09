@@ -61,8 +61,8 @@ class KMeans:
         self.tolerance = tolerance
         self.max_iterations = max_iterations
 
-        self._final_cluster_assignments: None | torch.Tensor = None
-        self._final_cluster_centers: None | torch.Tensor = None
+        self._final_cluster_assignments: torch.Tensor | None = None
+        self._final_cluster_centers: torch.Tensor | None = None
 
         if seed is not None:
             torch.manual_seed(seed)

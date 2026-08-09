@@ -49,7 +49,9 @@ print their git commit, platform, and device so results are auditable:
 
 - ``vs_torchvision.py`` — per-op kornia (eager / ``torch.compile``) vs torchvision v2, with a
   ``best/tv`` ratio and verdict per op.
-- ``all_libraries.py`` — per-op across kornia, torchvision, albumentations, OpenCV, PIL, kornia-rs.
+- ``flagship.py`` — the flagship suite: augmentations through each library's random-transform
+  class API (parameter sampling included) vs torchvision v2, albumentations, OpenCV, and PIL,
+  with machine-readable JSON export.
 - ``pipeline.py`` — end-to-end multi-op pipeline throughput (the shape a training loop runs),
   including a compiled and an ``--half`` (fp16/AMP) path.
 

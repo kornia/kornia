@@ -49,5 +49,51 @@ def test_import_without_jit_script_deprecation():
         capture_output=True,
         text=True,
         check=False,
+        timeout=300,
     )
     assert result.returncode == 0, f"importing kornia raised a deprecation warning:\n{result.stderr}"
+
+
+def test_import_emits_no_warnings():
+    """Importing kornia must not emit ANY warning, whatever module raises it.
+
+    Stricter companion to the jit-script guard above: torch — and onnxruntime, when
+    installed — are imported first so their own import-time warnings (outside kornia's
+    control, and platform/version-dependent) are excluded, then every warning is promoted
+    to an error for the kornia import itself. This is the honest form of the
+    ``python -W error -c "import kornia"`` gate from
+    https://github.com/kornia/kornia/issues/3727 — it fails on any warning kornia's own
+    import path emits or triggers, protecting downstream users who run with ``-W error``.
+
+    ``resetwarnings`` first, so filters inherited from the environment (``PYTHONWARNINGS``,
+    a ``-W`` flag propagated by the test runner) cannot make the torch import fail and
+    cannot pre-arm filters that fight the ``simplefilter("error")`` below.
+    """
+    script = textwrap.dedent(
+        """
+        import contextlib
+        import warnings
+
+        warnings.resetwarnings()
+
+        import torch  # noqa: F401  # torch's own import warnings are not kornia's to fix
+
+        # Same for onnxruntime, which kornia.feature.lightglue_onnx imports eagerly when
+        # installed: its import-time platform warnings (e.g. "Unsupported Windows version
+        # (2025server)" on windows-2025 runners) are not kornia's to fix either.
+        with contextlib.suppress(ImportError):
+            import onnxruntime  # noqa: F401
+
+        warnings.simplefilter("error")
+        import kornia  # noqa: F401
+        """
+    )
+    # Same trusted, fixed command shape as above.
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, f"importing kornia emitted a warning:\n{result.stderr}"
