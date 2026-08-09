@@ -4742,6 +4742,27 @@ class TestPadTo(BaseTester):
         assert out.shape == (1, 1, 4, 5)
         self.assert_close(aug.inverse(out), img)
 
+    def test_crop_if_exceeds_true_crops_larger_input(self, device, dtype):
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=True)
+        out = aug(img)
+        assert out.shape == (1, 1, 4, 5)
+
+    def test_crop_if_exceeds_false_keeps_larger_input_unchanged(self, device, dtype):
+        img = torch.rand(1, 1, 6, 6, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        out = aug(img)
+        assert out.shape == (1, 1, 6, 6)
+        self.assert_close(out, img)
+        self.assert_close(aug.inverse(out), img)
+
+    def test_crop_if_exceeds_false_mixed_dims(self, device, dtype):
+        # height (6) exceeds target (4); width (2) is below target (5)
+        img = torch.rand(1, 1, 6, 2, device=device, dtype=dtype)
+        aug = PadTo(size=(4, 5), crop_if_exceeds=False)
+        out = aug(img)
+        assert out.shape == (1, 1, 6, 5)
+
 
 class TestResize:
     def test_smoke(self, device, dtype):
