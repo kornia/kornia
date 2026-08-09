@@ -95,9 +95,9 @@ class VisualPrompter:
 
         self.device = device
         self.dtype = dtype
-        self._original_image_size: None | tuple[int, int] = None
-        self._input_image_size: None | tuple[int, int] = None
-        self._input_encoder_size: None | tuple[int, int] = None
+        self._original_image_size: tuple[int, int] | None = None
+        self._input_image_size: tuple[int, int] | None = None
+        self._input_encoder_size: tuple[int, int] | None = None
         self.reset_image()
 
     def preprocess_image(

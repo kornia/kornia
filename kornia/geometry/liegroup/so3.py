@@ -278,8 +278,8 @@ class So3(nn.Module):
     def identity(
         cls,
         batch_size: Optional[int] = None,
-        device: Union[None, str, torch.device] = None,
-        dtype: Union[None, torch.dtype] = None,
+        device: Union[str, torch.device, None] = None,
+        dtype: Union[torch.dtype, None] = None,
     ) -> So3:
         """Create a So3 group representing an identity rotation.
 
@@ -316,8 +316,8 @@ class So3(nn.Module):
     def random(
         cls,
         batch_size: Optional[int] = None,
-        device: Union[None, str, torch.device] = None,
-        dtype: Union[None, torch.dtype] = None,
+        device: Union[str, torch.device, None] = None,
+        dtype: Union[torch.dtype, None] = None,
     ) -> So3:
         """Create a So3 group representing a random rotation.
 

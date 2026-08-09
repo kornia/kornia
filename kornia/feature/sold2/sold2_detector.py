@@ -23,6 +23,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.download import load_state_dict_from_url
 from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, HeatMapRefineCfg, JunctionRefineCfg, LineDetectorCfg
 from kornia.geometry.bbox import nms
@@ -76,7 +77,7 @@ class SOLD2_detector(nn.Module):
         self.model = SOLD2Net(dataclass_to_dict(self.config))
 
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
             state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
             self.model.load_state_dict(state_dict)
         self.eval()

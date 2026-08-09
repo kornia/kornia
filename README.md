@@ -273,6 +273,10 @@ Our primary focus is on integrating **Vision Language Models (VLM)** and **Visio
 
 Kornia's foundation lies in its extensive collection of classic computer vision operators, providing robust tools for image processing, feature extraction, and geometric transformations. We continuously seek for contributors to help us improve our documentation and present nice tutorials to our users.
 
+## Contributing
+
+We welcome contributions to Kornia! Whether you are fixing bugs, improving documentation, or adding new computer vision features, please check out our [Contribution Guidelines](CONTRIBUTING.md) to get started with setting up your development environment, running tests, and submitting pull requests.
+
 
 ## Cite
 
