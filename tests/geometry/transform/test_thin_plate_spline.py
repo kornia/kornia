@@ -299,7 +299,9 @@ class TestWarpImage(BaseTester):
         self.assert_close(out_true, img, rtol=1e-2, atol=1e-2)
         assert not torch.allclose(out_default, img, atol=1e-2, rtol=1e-2)
 
-        # Snippet used to generate expected (requires numpy only):
+        # Snippet used to generate expected (uses torch + kornia.geometry.transform's
+        # get_tps_transform/warp_image_tps to build a reference identity-warp; not an
+        # independent reference implementation):
         # src = torch.tensor([[[-1.,-1.],[-1.,1.],[1.,-1.],[1.,1.],[0.,0.]]])
         # kernel, affine = kornia.geometry.transform.get_tps_transform(src, src)
         # img = torch.arange(16.0).view(1, 1, 4, 4)
@@ -334,6 +336,7 @@ class TestWarpImage(BaseTester):
         out_zeros = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine, padding_mode="zeros")
         self.assert_close(out_default, out_zeros)
 
-        if device.type != "mps":  # MPS grid_sample does not implement padding_mode='border'
+        # MPS 2D grid_sample raises "Unsupported Border padding mode" (torch 2.9.1); 3D supports it.
+        if device.type != "mps":
             out_border = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine, padding_mode="border")
             assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)

@@ -412,11 +412,10 @@ class TestCropByBoxes3D(BaseTester):
         )
         self.assert_close(out_default, out_zeros)
 
-        if device.type != "mps":  # MPS grid_sample does not implement padding_mode='border'
-            out_border = kornia.geometry.transform.crop_by_transform_mat3d(
-                inp, transform, (3, 3, 3), align_corners=True, padding_mode="border"
-            )
-            assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
+        out_border = kornia.geometry.transform.crop_by_transform_mat3d(
+            inp, transform, (3, 3, 3), align_corners=True, padding_mode="border"
+        )
+        assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
 
 
 class TestCrop3DSizeValidation:

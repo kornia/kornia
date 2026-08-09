@@ -65,8 +65,12 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
           normalization of its own
         - returns kernel weights :math:`(B, N, 2)` and affine weights :math:`(B, 3, 2)`,
           consumed by :func:`warp_points_tps`/:func:`warp_image_tps`; the identity
-          mapping (``points_src == points_dst``) yields exactly-zero kernel weights and
-          an exactly-identity affine
+          mapping (``points_src == points_dst``) yields kernel weights and an affine
+          that are mathematically zero/identity up to linear-solver (LU) round-off —
+          not bit-exact in general. Residual size is dtype- and backend-dependent (e.g.
+          CPU float64 shows a ~1e-16 residual and MPS float32 a ~1e-8 to ~1e-6 residual,
+          for inputs where CPU float32 happens to land exactly on zero), and float16
+          currently produces NaN weights
         - to build the transform consumed by :func:`warp_image_tps`, call this with the
           arguments **reversed** — ``get_tps_transform(points_dst, points_src)`` —
           since image warping samples from output space back into input space;
@@ -145,8 +149,11 @@ def warp_points_tps(
           positional argument) passed to :func:`get_tps_transform` when computing
           ``kernel_weights``/``affine_weights``; passing the source points instead
           silently produces the wrong warp
-        - returns points warped in that same frame (e.g. normalized :math:`[-1, 1]`
-          input points come back in :math:`[-1, 1]`)
+        - returns points warped in that same coordinate frame/units as the input, with
+          no renormalization; the output is **not** clamped — a valid TPS transform can
+          map an in-range point outside that frame (e.g. warping ``(0.75, 0)`` through a
+          transform that is exactly a 2x affine scale returns ``(1.5, 0)``, outside
+          :math:`[-1, 1]`)
 
     Args:
         points_src: torch.Tensor of source points :math:`(B, N, 2)`.

@@ -158,8 +158,12 @@ class ScalePyramid(nn.Module):
         - ``forward`` returns a 3-tuple ``(pyr, sigmas, pixel_dists)``, one entry per
           octave: ``pyr[octave]`` is :math:`(B, C, L, H_i, W_i)` with
           ``L = n_levels + extra_levels`` stacked levels; ``sigmas[octave]`` and
-          ``pixel_dists[octave]`` are :math:`(B, L)`, the absolute blur sigma and the
-          pixel spacing (relative to the input) of each level
+          ``pixel_dists[octave]`` are :math:`(B, L)` — ``sigmas`` is
+          octave-relative, resetting to the same ``init_sigma``-seeded sequence
+          at the start of every octave (identical values across octaves), and
+          ``pixel_dists`` is the pixel spacing of each level relative to the
+          input; the blur sigma in original-image pixels is
+          ``sigmas[octave] * pixel_dists[octave]``, not ``sigmas[octave]`` alone
         - no ``align_corners`` constructor parameter — the internal ``double_image``
           and octave-seeding resizes are hardcoded to ``align_corners=True`` and are
           not user-configurable
@@ -505,7 +509,10 @@ def build_pyramid(
     Args:
         input : the torch.Tensor to be used to construct the pyramid.
         max_level: number of pyramid levels to return, including the unchanged
-          original image as level 0. Must be a positive integer.
+          original image as level 0. Intended to be a positive integer; the
+          current bounds check does not reject non-positive values — passing
+          ``0`` or a negative integer is not rejected and returns the same
+          single-element ``[input]`` list as ``max_level=1``.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
@@ -557,17 +564,31 @@ def build_laplacian_pyramid(
 
     Convention:
         - input: :math:`(B, C, H, W)`
-        - ``max_level`` is the total number of levels returned (including the
-          unchanged original as level 0), not a 0-based index of the last level
-        - built from :func:`build_pyramid`'s Gaussian levels, taking the per-level
-          difference against a :func:`pyrup`-expanded neighbor
+        - ``max_level`` is the total number of levels returned, not a 0-based
+          index of the last level
+        - levels ``0`` through ``max_level - 2`` are band-pass residuals: level
+          ``i`` = :func:`build_pyramid` Gaussian level ``i`` minus a
+          :func:`pyrup`-expanded Gaussian level ``i + 1``; only the last
+          element (index ``max_level - 1``) is the unsubtracted final Gaussian
+          level — level 0 is **not** the unchanged original image whenever
+          ``max_level > 1``
+        - for inputs whose height or width is not a power of two, the input is
+          reflect-padded up to the next power of two before the Gaussian
+          pyramid is built, so every returned level — including level 0 — is
+          shaped from the padded size, not the original input size (e.g. a
+          :math:`(1, 1, 6, 6)` input produces a level 0 of shape
+          :math:`(1, 1, 8, 8)`)
         - border_type: ``'reflect'`` by default
         - align_corners: ``False`` by default
 
     Args:
         input : the torch.Tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
-        max_level: number of pyramid levels to return, including the unchanged
-          original image as level 0. Must be a positive integer.
+        max_level: intended to be a positive integer giving the number of
+          levels to return. The current bounds check does not reject
+          non-positive values: ``max_level`` values ``<= 1`` (including ``0``
+          and negative integers) all return the same single-element list
+          containing just the base Gaussian level; see Convention above for
+          what the levels contain when ``max_level > 1``.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.

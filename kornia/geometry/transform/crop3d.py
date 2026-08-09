@@ -383,8 +383,9 @@ def crop_by_transform_mat3d(
 
     Convention:
         - input: :math:`(B, C, D, H, W)`; ``out_size`` is ``(d, h, w)``
-        - ``transform`` is the source→destination **pixel** transform :math:`(B, 4, 4)`
-          (only the top three rows are used — see :func:`warp_affine3d`)
+        - ``transform`` is the source→destination **pixel** transform, accepted as
+          either :math:`(B, 3, 4)` affine or :math:`(B, 4, 4)` homogeneous — for the
+          homogeneous form only the top three rows are used (see :func:`warp_affine3d`)
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
 

@@ -139,6 +139,12 @@ class TestElasticTransform(BaseTester):
         out_a = elastic_transform2d(image, noise, kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=(2.0, 0.5))
         out_b = elastic_transform2d(image, noise, kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=(0.5, 2.0))
 
+        # Snippet used to generate expected (requires only this module):
+        # image = torch.zeros(1, 1, 9, 9); image[0, 0, 4, 4] = 1.0
+        # noise = torch.zeros(1, 2, 9, 9); noise[0, 0] = 0.2
+        # out_a = elastic_transform2d(image, noise, kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=(2.0, 0.5))
+        # out_b = elastic_transform2d(image, noise, kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=(0.5, 2.0))
+        # (out_a[0, 0] > 0.05).nonzero().tolist() / (out_b[0, 0] > 0.05).nonzero().tolist()
         # alpha=(2.0, 0.5): larger alpha[0] -> larger x-displacement -> marker moves further left.
         assert (out_a[0, 0] > 0.05).nonzero().tolist() == [[4, 2], [4, 3]]
         # alpha=(0.5, 2.0): smaller alpha[0] -> smaller x-displacement -> marker moves less.
@@ -188,11 +194,18 @@ class TestElasticTransform(BaseTester):
 
         out_default = elastic_transform2d(image, noise, **kwargs)
         out_zeros = elastic_transform2d(image, noise, padding_mode="zeros", **kwargs)
+        # Snippet used to generate expected (requires only this module):
+        # image = torch.zeros(1, 1, 5, 5); image[0, 0, 2, 4] = 5.0
+        # noise = torch.zeros(1, 2, 5, 5); noise[0, 0] = 1.0
+        # kwargs = dict(kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=(4.0, 0.0))
+        # elastic_transform2d(image, noise, **kwargs)[0, 0, 2]                       # 'zeros' row
+        # elastic_transform2d(image, noise, padding_mode="border", **kwargs)[0, 0, 2]  # 'border' row
         expected_zeros_row = torch.tensor([2.5, 2.5, 2.5, 2.5, 2.5], device=device, dtype=dtype)
         self.assert_close(out_default[0, 0, 2], expected_zeros_row, rtol=1e-2, atol=1e-2)
         self.assert_close(out_zeros[0, 0, 2], expected_zeros_row, rtol=1e-2, atol=1e-2)
 
-        if device.type != "mps":  # MPS grid_sample does not implement padding_mode='border'
+        # MPS 2D grid_sample raises "Unsupported Border padding mode" (torch 2.9.1); 3D supports it.
+        if device.type != "mps":
             out_border = elastic_transform2d(image, noise, padding_mode="border", **kwargs)
             expected_border_row = torch.tensor([5.0, 5.0, 5.0, 5.0, 5.0], device=device, dtype=dtype)
             self.assert_close(out_border[0, 0, 2], expected_border_row, rtol=1e-2, atol=1e-2)

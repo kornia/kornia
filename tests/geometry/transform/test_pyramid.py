@@ -53,6 +53,7 @@ class TestPyrUp(BaseTester):
 
         out_reflect = kornia.geometry.transform.pyrup(x, border_type="reflect")
         out_constant = kornia.geometry.transform.pyrup(x, border_type="constant")
+        self.assert_close(out_default, out_reflect, rtol=1e-2, atol=1e-2)
         assert not torch.allclose(out_reflect, out_constant, atol=1e-2, rtol=1e-2)
 
 
@@ -97,6 +98,7 @@ class TestPyrDown(BaseTester):
 
         out_reflect = kornia.geometry.transform.pyrdown(x, border_type="reflect")
         out_constant = kornia.geometry.transform.pyrdown(x, border_type="constant")
+        self.assert_close(out_default, out_reflect, rtol=1e-2, atol=1e-2)
         assert not torch.allclose(out_reflect, out_constant, atol=1e-2, rtol=1e-2)
 
     def test_convention_floor_not_ceil_on_odd_size(self, device, dtype):

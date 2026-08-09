@@ -310,8 +310,10 @@ def crop_by_transform_mat(
 
     Convention:
         - input: :math:`(B, C, H, W)`; ``out_size`` is ``(h, w)``
-        - ``transform`` is the source→destination **pixel** transform :math:`(B, 3, 3)`
-          (only the top two rows are used — see :func:`warp_affine`)
+        - ``transform`` is the source→destination **pixel** transform, accepted as
+          either :math:`(B, 2, 3)` affine or :math:`(B, 3, 3)` homogeneous — for the
+          homogeneous form only the top two rows are used (see :func:`warp_affine`);
+          :class:`CenterCrop2D` itself calls this with a :math:`(B, 2, 3)` transform
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
 
@@ -411,8 +413,10 @@ def crop_by_indices(
           ``antialias=False`` option
         - ``shape_compensation`` (``'resize'`` by default) only takes effect when
           ``src_box`` is not literally identical across the batch (same position and
-          size for every item); an identical-``src_box`` batch takes a fast path that
-          always resizes, regardless of ``shape_compensation``
+          size for every item); when ``src_box`` **is** identical across the batch,
+          ``shape_compensation`` is ignored — the result is an exact integer slice
+          when the slice shape already matches ``size`` (or when ``size=None``), and
+          is resized to ``size`` otherwise
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
