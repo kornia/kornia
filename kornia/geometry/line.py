@@ -164,6 +164,10 @@ class ParametrizedLine(nn.Module):
             - the lambda value used to compute the look at point.
             - the intersected point.
 
+        Note:
+            If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique
+            intersection; the function returns lambda ``0`` and the line origin as the point.
+
         """
         dot_prod = batched_dot_product(plane.normal.data, self.direction.data)
         dot_prod_mask = dot_prod.abs() >= eps
