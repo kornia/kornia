@@ -100,6 +100,11 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         sigma = params["sigma"].unsqueeze(-1).expand(-1, 2)
+        if self.same_on_batch:
+            # Every sample shares one sigma, so pass a single (1, 2) sigma: gaussian_blur2d then
+            # builds one kernel and convolves the batch depthwise (groups=C) instead of B distinct
+            # kernels (groups=B*C). Same result, far less kernel-construction and conv work.
+            sigma = sigma[:1]
         return self._gaussian_blur2d_fn(
             input,
             kernel_size=self.flags["kernel_size"],

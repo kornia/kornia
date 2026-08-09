@@ -74,6 +74,16 @@ class BasicLayer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the module forward pass.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         return self.layer(x)
 
 
@@ -365,6 +375,12 @@ class XFeat(nn.Module):
         self, feats1: torch.Tensor, feats2: torch.Tensor, min_cossim: float = 0.82
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Mutual nearest-neighbour matching on L2-normalised descriptor pairs."""
+        # If either descriptor set is empty there are no possible matches; return early
+        # with empty index tensors.
+        if feats1.shape[0] == 0 or feats2.shape[0] == 0:
+            empty = torch.empty(0, dtype=torch.long, device=feats1.device)
+            return empty, empty.clone()
+
         cossim = feats1 @ feats2.t()
         cossim_t = feats2 @ feats1.t()
         _, match12 = cossim.max(dim=1)

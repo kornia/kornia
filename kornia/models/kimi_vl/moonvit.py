@@ -56,6 +56,23 @@ class MoonViTRotaryEmbedding(nn.Module):
         self.theta = theta
 
     def forward(self, h: int, w: int, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Build cosine and sine tables for two-dimensional rotary position embeddings.
+
+        The MoonViT encoder works on a flattened patch grid. This method receives the
+        grid height ``h`` and width ``w`` after patch embedding, creates one frequency
+        bank for the vertical axis and one for the horizontal axis, and then expands
+        them so each flattened patch token has a matching rotary embedding. The
+        returned tensors are later applied to the query and key vectors in attention.
+
+        Args:
+            h: Number of patch rows in the image grid.
+            w: Number of patch columns in the image grid.
+            device: Device on which the cosine and sine tensors should be allocated.
+
+        Returns:
+            A tuple containing the cosine and sine lookup tables, each with shape
+            :math:`(h * w, D)`, where ``D`` is the per-head rotary embedding dimension.
+        """
         # dim must be divisible by 2 for 2D RoPE (half for H, half for W)
         # And each half must be divisible by 2 for complex rotation
         dim_h = self.dim // 2
@@ -89,6 +106,18 @@ class MoonViTRotaryEmbedding(nn.Module):
 
 
 class MoonViTAttention(nn.Module):
+    """Multi-head self-attention layer used by the MoonViT vision encoder.
+
+    The layer projects input tokens into query, key, and value tensors, splits the
+    hidden dimension across attention heads, applies two-dimensional rotary positional
+    embeddings (RoPE) to the query and key tensors, and finally computes scaled
+    dot-product attention. The output is projected back to the model hidden size.
+
+    Args:
+        config: MoonViT configuration containing the hidden size, number of attention
+            heads, and attention dropout probability.
+    """
+
     def __init__(self, config: MoonViTConfig) -> None:
         super().__init__()
         self.num_heads = config.num_attention_heads
@@ -109,6 +138,24 @@ class MoonViTAttention(nn.Module):
         sin: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Apply rotary self-attention to a sequence of visual patch tokens.
+
+        Args:
+            hidden_states: Input token tensor with shape :math:`(B, N, D)`, where
+                ``B`` is the batch size, ``N`` is the number of flattened image
+                patches, and ``D`` is the hidden size.
+            cos: Cosine component of the rotary positional embedding with shape
+                :math:`(N, d)`, where ``d`` is the per-head dimension.
+            sin: Sine component of the rotary positional embedding with shape
+                :math:`(N, d)`.
+            attention_mask: Optional mask broadcastable to the scaled dot-product
+                attention scores. It can be used to prevent selected tokens from
+                attending to one another.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` containing the attended visual token
+            features after the output projection.
+        """
         batch_size, seq_len, _ = hidden_states.shape
 
         query = self.q_proj(hidden_states)
@@ -154,6 +201,17 @@ class MoonViTMLP(nn.Module):
         self.dropout = nn.Dropout(config.dropout_p)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Project token features through the MoonViT feed-forward network.
+
+        Args:
+            x: Input token features with shape :math:`(B, N, D)`, where ``B`` is the
+                batch size, ``N`` is the number of patch tokens, and ``D`` is the model
+                hidden size.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` after expansion to the intermediate
+            hidden size, GELU activation, projection back to ``D``, and dropout.
+        """
         x = self.fc1(x)
         x = self.act(x)
         x = self.fc2(x)
@@ -184,6 +242,26 @@ class MoonViTLayer(nn.Module):
     def forward(
         self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        """Run one pre-normalized MoonViT transformer block.
+
+        The block first normalizes the input tokens before self-attention, adds the
+        attention result back through a residual connection, then repeats the same
+        pre-normalization and residual pattern for the MLP sub-block.
+
+        Args:
+            x: Token tensor with shape :math:`(B, N, D)`, where ``B`` is the batch
+                size, ``N`` is the number of flattened image patches, and ``D`` is the
+                hidden size.
+            cos: Cosine rotary embedding table with shape :math:`(N, d)`, where ``d``
+                is the per-head attention dimension.
+            sin: Sine rotary embedding table with shape :math:`(N, d)`.
+            attention_mask: Optional attention mask forwarded to the self-attention
+                layer.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` after attention, MLP processing, and
+            residual updates.
+        """
         x = x + self.attn(self.norm1(x), cos, sin, attention_mask)
         x = x + self.mlp(self.norm2(x))
         return x
@@ -205,6 +283,20 @@ class MoonViTEncoder(nn.Module):
     def forward(
         self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
+        """Encode visual patch tokens through the full MoonViT transformer stack.
+
+        Args:
+            x: Input token tensor with shape :math:`(B, N, D)`, where ``B`` is batch
+                size, ``N`` is the flattened patch count, and ``D`` is hidden size.
+            cos: Cosine rotary embedding table shared by all encoder layers.
+            sin: Sine rotary embedding table shared by all encoder layers.
+            attention_mask: Optional attention mask passed unchanged to every
+                transformer layer.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` containing the encoded patch sequence
+            after all MoonViT layers have been applied.
+        """
         for layer in self.layers:
             x = layer(x, cos, sin, attention_mask)
         return x

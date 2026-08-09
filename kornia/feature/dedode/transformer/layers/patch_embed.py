@@ -85,6 +85,19 @@ class PatchEmbed(nn.Module):
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
 
     def forward(self, x: Tensor) -> Tensor:
+        """Run this DeDoDe module forward.
+
+        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
+        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         _, _, H, W = x.shape
         patch_H, patch_W = self.patch_size
         KORNIA_CHECK(H % patch_H == 0, f"Input image height {H} is not a multiple of patch height {patch_H}")
@@ -99,6 +112,11 @@ class PatchEmbed(nn.Module):
         return x
 
     def flops(self) -> float:
+        """Estimate this layer computational cost.
+
+        Returns:
+            Estimated number of floating-point operations for this layer.
+        """
         Ho, Wo = self.patches_resolution
         flops = Ho * Wo * self.embed_dim * self.in_chans * (self.patch_size[0] * self.patch_size[1])
         if self.norm is not None:

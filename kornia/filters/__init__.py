@@ -34,7 +34,7 @@ from .blur_pool import (
 )
 from .canny import Canny, canny
 from .dissolving import StableDiffusionDissolving
-from .filter import fft_conv, filter2d, filter2d_separable, filter3d
+from .filter import convolve2d, convolve3d, correlate2d, correlate3d, fft_conv, filter2d, filter2d_separable, filter3d
 from .gaussian import GaussianBlur2d, gaussian_blur2d, gaussian_blur2d_t
 from .guided import GuidedBlur, guided_blur
 from .in_range import InRange, in_range

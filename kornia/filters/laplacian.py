@@ -106,4 +106,21 @@ class Laplacian(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute the second-order Laplacian response of an image tensor.
+
+        The Laplacian filter measures rapid local intensity changes by
+        combining second derivatives along the spatial axes. It is commonly
+        used for edge detection, focus measures, and highlighting fine image
+        detail.
+
+        Args:
+            input: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the number of
+                channels, :math:`H` is the height, and :math:`W` is the width.
+
+        Returns:
+            Tensor with shape :math:`(B, C, H, W)` containing the Laplacian
+            response for each batch item and channel. Positive and negative
+            values represent opposite directions of local curvature.
+        """
         return laplacian(input, self.kernel_size, self.border_type, self.normalized)

@@ -64,6 +64,7 @@ from torch import nn
 from torch.nn.modules.utils import _pair
 
 from kornia.color import grayscale_to_rgb
+from kornia.core.download import load_state_dict_from_url
 from kornia.geometry.subpix import nms2d
 
 from .deform_conv2d import deform_conv2d
@@ -458,6 +459,16 @@ class DeformableConv2d(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the module forward pass.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         h, w = x.shape[2:]
         max_offset = max(h, w) / 4.0
         out = self.offset_conv(x)
@@ -529,6 +540,16 @@ class ConvBlock(nn.Module):
         self.bn2 = norm_layer(out_channels)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the module forward pass.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         x = self.gate(self.bn1(self.conv1(x)))
         return self.gate(self.bn2(self.conv2(x)))
 
@@ -571,6 +592,16 @@ class ResBlock(nn.Module):
         self.stride = stride
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the module forward pass.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         identity = x
         out = self.gate(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
@@ -709,7 +740,10 @@ _ALIKED_CFGS: dict[str, tuple[int, int, int, int, int, int, int]] = {
     "aliked-n32": (16, 32, 64, 128, 128, 3, 32),
 }
 
-_CHECKPOINT_URL = "https://github.com/Shiaoming/ALIKED/raw/main/models/{}.pth"
+_CHECKPOINT_URLS = [
+    "https://huggingface.co/kornia/aliked/resolve/main/{}.pth",
+    "https://github.com/Shiaoming/ALIKED/raw/main/models/{}.pth",
+]
 
 
 class ALIKED(nn.Module):
@@ -998,8 +1032,8 @@ class ALIKED(nn.Module):
             detection_threshold=detection_threshold,
             nms_radius=nms_radius,
         ).to(device)
-        url = _CHECKPOINT_URL.format(model_name)
-        state_dict = torch.hub.load_state_dict_from_url(url, map_location=device)
+        urls = [t.format(model_name) for t in _CHECKPOINT_URLS]
+        state_dict = load_state_dict_from_url(urls, map_location=device)
         model.load_state_dict(state_dict, strict=False)
         model.eval()
         return model

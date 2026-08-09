@@ -26,6 +26,7 @@ from typing import Any, Generic, List, Optional, TypeVar, Union, cast
 import torch
 from torch import nn
 
+from kornia.core.download import load_state_dict_from_url
 from kornia.core.external import PILImage as Image
 from kornia.image.utils import tensor_to_image
 from kornia.io import write_image
@@ -113,7 +114,7 @@ class ModelBaseMixin:
 class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
     """Abstract model class with some utilities function."""
 
-    def load_checkpoint(self, checkpoint: str, device: Optional[torch.device] = None) -> None:
+    def load_checkpoint(self, checkpoint: str | list[str], device: Optional[torch.device] = None) -> None:
         """Load checkpoint from a given url or file.
 
         Args:
@@ -121,11 +122,11 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
             device: The desired device to load the weights and move the model
 
         """
-        if os.path.isfile(checkpoint):
+        if isinstance(checkpoint, str) and os.path.isfile(checkpoint):
             with open(checkpoint, "rb") as f:
                 state_dict = torch.load(f, map_location=device)
         else:
-            state_dict = torch.hub.load_state_dict_from_url(checkpoint, map_location=device)
+            state_dict = load_state_dict_from_url(checkpoint, map_location=device)
 
         self.load_state_dict(state_dict)
 
@@ -150,6 +151,21 @@ class ModelBase(ABC, nn.Module, ModelBaseMixin, Generic[ModelConfig]):
         options: Optional[dict[Any, Any]] = None,
         disable: bool = False,
     ) -> ModelBase[ModelConfig]:
+        """Compile this model with :func:`torch.compile`.
+
+        Args:
+            fullgraph: Whether Dynamo should require a single full graph.
+            dynamic: Whether dynamic shape tracing is enabled.
+            backend: Compilation backend name passed to :func:`torch.compile`.
+            mode: Optional backend-specific compilation mode.
+            options: Optional backend-specific option dictionary.
+            disable: If ``True``, return an uncompiled model wrapper according
+                to PyTorch's compile semantics.
+
+        Returns:
+            Compiled model object with the same high-level interface as this
+            instance.
+        """
         compiled = torch.compile(
             self, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable
         )

@@ -86,6 +86,26 @@ from testing.base import BaseTester
 from testing.overwrite import default_with_one_parameter_changed
 
 
+def _assert_dynamo_fullgraph(make_op, tester, device, dtype, shape=(2, 3, 8, 8)):
+    """Compile an augmentation two ways and assert both are fullgraph and match eager.
+
+    ``make_op`` is a zero-arg factory: compiling the *full* forward needs a fresh module so the
+    parameter-generation path is traced rather than replayed. The first check feeds pre-sampled
+    ``params`` (exercises ``apply_transform`` under compile, as the per-op ``test_dynamo`` tests
+    historically did); the second compiles ``op(input)`` with no ``params`` so that
+    ``forward_parameters`` is captured inside the graph too — a path the ``params=`` form skips.
+    """
+    torch.manual_seed(0)
+    input = torch.rand(*shape, device=device, dtype=dtype)
+    op = make_op()
+    params = op.forward_parameters(input.shape)
+    expected = op(input, params=params)
+    torch._dynamo.reset()
+    tester.assert_close(torch.compile(op, fullgraph=True)(input, params=params), expected)
+    torch._dynamo.reset()
+    assert torch.compile(make_op(), fullgraph=True)(input).shape == input.shape
+
+
 @pytest.mark.usefixtures("device", "dtype")
 class CommonTests(BaseTester):
     # TODO same_on_batch tests?
@@ -184,25 +204,21 @@ class CommonTests(BaseTester):
         generated_params = augmentation.forward_parameters(batch_shape)
         assert isinstance(generated_params, dict)
 
-        # compute_transformation can be called and returns the correct shaped transformation matrix
-        to_apply = generated_params["batch_prob"] > 0.5
-        expected_transformation_shape = torch.Size((to_apply.sum(), 3, 3))
+        # compute_transformation now operates on the full batch (ONNX-friendly contract)
+        # and returns a (B, 3, 3) transform matrix.
+        expected_transformation_shape = torch.Size((batch_shape[0], 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
-        transformation = augmentation.compute_transformation(test_input[to_apply], generated_params, augmentation.flags)
+        transformation = augmentation.compute_transformation(test_input, generated_params, augmentation.flags)
         assert transformation.shape == expected_transformation_shape
 
-        # apply_transform can be called and returns the correct batch sized output
-        if to_apply.sum() != 0:
-            output = augmentation.apply_transform(
-                test_input[to_apply],
-                generated_params,
-                augmentation.flags,
-                transformation,
-            )
-            assert output.shape[0] == to_apply.sum()
-        else:
-            # Re-generate parameters if 0 batch size
-            self._test_smoke_implementation(params)
+        # apply_transform can be called on the full batch and returns full-batch output
+        output = augmentation.apply_transform(
+            test_input,
+            generated_params,
+            augmentation.flags,
+            transformation,
+        )
+        assert output.shape[0] == batch_shape[0]
 
     def _test_smoke_call_implementation(self, params):
         batch_shape = (4, 3, 5, 6)
@@ -262,26 +278,34 @@ class CommonTests(BaseTester):
             self.assert_close(transform, expected_transformation, low_tolerance=True)
 
     def _test_module_implementation(self, params):
-        augmentation = self._create_augmentation_from_params(**params, p=0.5)
+        # Verifies the composition invariant of AugmentationSequential:
+        #   Sequential(aug_a, aug_b)(x) == aug_b(aug_a(x))
+        # and the transform matrix is the product of the individual matrices.
+        #
+        # Two distinct instances are required because `AugmentationSequential(aug, aug)`
+        # registers a single child (nn.Module dedupes same-instance children).
+        # We force p=1.0 so both augmentations always fire.
+        augmentation_a = self._create_augmentation_from_params(**params, p=1.0)
+        augmentation_b = self._create_augmentation_from_params(**params, p=1.0)
 
-        augmentation_sequence = AugmentationSequential(augmentation, augmentation)
+        augmentation_sequence = AugmentationSequential(augmentation_a, augmentation_b)
 
-        input_tensor = torch.rand(3, 5, 5, device=self.device, dtype=self.dtype)  # 3 x 5 x 5
+        input_tensor = torch.rand(2, 3, 5, 5, device=self.device, dtype=self.dtype)
 
         torch.manual_seed(42)
-        out1 = augmentation(input_tensor)
-        transform1 = augmentation.transform_matrix
-        out2 = augmentation(out1)
-        transform = augmentation.transform_matrix @ transform1
+        out_manual_a = augmentation_a(input_tensor)
+        transform_a = augmentation_a.transform_matrix
+        out_manual = augmentation_b(out_manual_a)
+        transform_manual = augmentation_b.transform_matrix @ transform_a
 
         torch.manual_seed(42)
         out_sequence = augmentation_sequence(input_tensor)
         transform_sequence = augmentation_sequence.transform_matrix
 
-        assert out1.shape == out_sequence.shape
-        assert transform.shape == transform_sequence.shape
-        self.assert_close(out2, out_sequence, low_tolerance=True)
-        self.assert_close(transform, transform_sequence, low_tolerance=True)
+        assert out_manual.shape == out_sequence.shape
+        assert transform_manual.shape == transform_sequence.shape
+        self.assert_close(out_manual, out_sequence, low_tolerance=True)
+        self.assert_close(transform_manual, transform_sequence, low_tolerance=True)
 
     def _test_inverse_coordinate_check_implementation(self, params):
         torch.manual_seed(42)
@@ -330,6 +354,11 @@ class TestRandomEqualizeAlternative(CommonTests):
     @pytest.fixture(params=[_default_param_set], scope="class")
     def param_set(self, request):
         return request.param
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # Guards the batched-histogram fullgraph path (#3841): the full forward, including
+        # parameter generation, must compile without a graph break — not just apply_transform.
+        _assert_dynamo_fullgraph(lambda: RandomEqualize(p=1.0), self, device, dtype)
 
     def test_random_p_1(self):
         input_tensor = torch.arange(20.0, device=self.device, dtype=self.dtype) / 20
@@ -877,6 +906,19 @@ class TestRandomHorizontalFlip(BaseTester):
         repr = "RandomHorizontalFlip(p=0.5, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        torch.manual_seed(0)
+        input = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        op = RandomHorizontalFlip(p=1.0)
+        params = op.forward_parameters(input.shape)
+        expected = op(input, params=params)
+        compiled = torch.compile(op, fullgraph=True)
+        self.assert_close(compiled(input, params=params), expected)
+        # Also compile the full forward (parameters generated internally) so the
+        # parameter-generation path is fullgraph too, not just apply_transform.
+        torch._dynamo.reset()
+        assert torch.compile(RandomHorizontalFlip(p=1.0), fullgraph=True)(input).shape == input.shape
+
     def test_random_hflip(self, device, dtype):
         f = RandomHorizontalFlip(p=1.0, keepdim=True)
         f1 = RandomHorizontalFlip(p=0.0, keepdim=True)
@@ -1055,6 +1097,19 @@ class TestRandomVerticalFlip(BaseTester):
         f = RandomVerticalFlip(p=0.5)
         repr = "RandomVerticalFlip(p=0.5, p_batch=1.0, same_on_batch=False)"
         assert str(f) == repr
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        torch.manual_seed(0)
+        input = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
+        op = RandomVerticalFlip(p=1.0)
+        params = op.forward_parameters(input.shape)
+        expected = op(input, params=params)
+        compiled = torch.compile(op, fullgraph=True)
+        self.assert_close(compiled(input, params=params), expected)
+        # Also compile the full forward (parameters generated internally) so the
+        # parameter-generation path is fullgraph too, not just apply_transform.
+        torch._dynamo.reset()
+        assert torch.compile(RandomVerticalFlip(p=1.0), fullgraph=True)(input).shape == input.shape
 
     def test_random_vflip(self, device, dtype):
         f = RandomVerticalFlip(p=1.0)
@@ -1642,6 +1697,27 @@ class TestColorJitter(BaseTester):
         )
         assert str(f) == repr
 
+    def test_fixed_order(self, device, dtype):
+        # A fixed `order` applies the same adjustments deterministically; invalid entries raise.
+        img = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        out = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))(img)
+        assert out.shape == img.shape
+        with pytest.raises(ValueError):
+            ColorJitter(0.2, 0.2, 0.2, 0.1, order=(0, 1, 9))
+
+    def test_dynamo_fixed_order(self, device, dtype, torch_optimizer):
+        # A fixed `order` avoids iterating the random order tensor, so it is fullgraph-safe.
+        # Replay the sampled params so the (random) eager and compiled runs are comparable.
+        img = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))
+        eager = op(img)
+        op_optimized = torch_optimizer(op)
+        self.assert_close(eager, op_optimized(img, params=op._params))
+        # Full forward (no params): the parameter-generation path must be fullgraph too.
+        torch._dynamo.reset()
+        fresh = ColorJitter(0.2, 0.2, 0.2, 0.1, p=1.0, order=(0, 1, 2, 3))
+        assert torch.compile(fresh, fullgraph=True)(img).shape == img.shape
+
     def test_color_jitter(self, device, dtype):
         if dtype == torch.float16:
             pytest.skip("not work for half-precision")
@@ -2047,6 +2123,9 @@ class TestColorJitter(BaseTester):
 
 
 class TestRandomBrightness(BaseTester):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        _assert_dynamo_fullgraph(lambda: RandomBrightness((0.8, 1.2), p=1.0), self, device, dtype)
+
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomBrightness(brightness=(0.5, 1.5))
@@ -2158,6 +2237,9 @@ class TestRandomBrightness(BaseTester):
 
 
 class TestRandomContrast(BaseTester):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        _assert_dynamo_fullgraph(lambda: RandomContrast((0.8, 1.2), p=1.0), self, device, dtype)
+
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
     def test_smoke(self):
         f = RandomContrast(contrast=(0.7, 1.3))
@@ -2528,6 +2610,15 @@ class TestRectangleRandomErasing(BaseTester):
         res = f(input)
         self.assert_close(res[0], res[1])
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        torch.manual_seed(0)
+        input = torch.rand(2, 3, 11, 7, device=device, dtype=dtype)
+        op = RandomErasing(p=1.0)
+        params = op.forward_parameters(input.shape)
+        expected = op(input, params=params)
+        compiled = torch.compile(op, fullgraph=True)
+        self.assert_close(compiled(input, params=params), expected)
+
     @pytest.mark.slow
     def test_gradcheck(self, device):
         # test parameters
@@ -2677,6 +2768,22 @@ class TestRandomGamma(BaseTester):
 
 
 class TestRandomGrayscale(BaseTester):
+    def test_multispectral(self, device, dtype):
+        # Non-RGB channel counts (e.g. satellite imagery) grayscale to the weighted average
+        # across all bands, broadcast back to the input channel count.
+        x = torch.rand(2, 7, 8, 8, device=device, dtype=dtype)
+        out = RandomGrayscale(p=1.0)(x)
+        assert out.shape == x.shape
+        expected = x.mean(dim=1, keepdim=True).expand(-1, 7, -1, -1)  # equal weights by default
+        self.assert_close(out, expected)
+        # every output band is identical (a true grayscale)
+        self.assert_close(out[:, 0], out[:, 3])
+        # custom per-band weights are honoured; a wrong length is rejected
+        weights = torch.full((7,), 1.0 / 7, device=device, dtype=dtype)
+        self.assert_close(RandomGrayscale(rgb_weights=weights, p=1.0)(x), expected)
+        with pytest.raises(Exception):
+            RandomGrayscale(rgb_weights=torch.ones(4, device=device, dtype=dtype), p=1.0)(x)
+
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -2919,6 +3026,15 @@ class TestRandomGrayscale(BaseTester):
 
 
 class TestCenterCrop(BaseTester):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # slice cropping mode: a static-size centered crop is fullgraph-safe and matches eager.
+        input = torch.rand(2, 3, 20, 24, device=device, dtype=dtype)
+        op = CenterCrop((16, 10))
+        params = op.forward_parameters(input.shape)
+        expected = op(input, params=params)
+        compiled = torch.compile(op, fullgraph=True)
+        self.assert_close(compiled(input, params=params), expected)
+
     def test_no_transform(self, device, dtype):
         inp = torch.rand(1, 2, 4, 4, device=device, dtype=dtype)
         out = CenterCrop(2)(inp)
@@ -3957,6 +4073,9 @@ class TestRandomGaussianBlur(BaseTester):
 
 
 class TestRandomInvert(BaseTester):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        _assert_dynamo_fullgraph(lambda: RandomInvert(p=1.0), self, device, dtype)
+
     def test_smoke(self, device, dtype):
         img = torch.ones(1, 3, 4, 5, device=device, dtype=dtype)
         self.assert_close(RandomInvert(p=1.0)(img), torch.zeros_like(img))
@@ -3983,6 +4102,12 @@ class TestRandomChannelShuffle(BaseTester):
         out = aug(img)
         self.assert_close(out, out_expected)
 
+    def test_same_on_batch(self, device, dtype):
+        input_tensor = torch.rand(1, 3, 5, 5, device=device, dtype=dtype).repeat(2, 1, 1, 1)
+        transform = RandomChannelShuffle(p=1.0, same_on_batch=True)
+        output_tensor = transform(input_tensor)
+        self.assert_close(output_tensor[0], output_tensor[1])
+
 
 class TestRandomClahe(BaseTester):
     def test_smoke(self, device, dtype):
@@ -3998,11 +4123,21 @@ class TestRandomClahe(BaseTester):
 
 
 class TestRandomGaussianNoise(BaseTester):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        _assert_dynamo_fullgraph(lambda: RandomGaussianNoise(p=1.0), self, device, dtype)
+
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomGaussianNoise(p=1.0)
         assert img.shape == aug(img).shape
+
+    def test_same_on_batch(self, device, dtype):
+        input_tensor = torch.rand(1, 1, 5, 5, device=device, dtype=dtype).repeat(2, 1, 1, 1)
+        transform = RandomGaussianNoise(p=1.0, same_on_batch=True)
+        output_tensor = transform(input_tensor)
+        self.assert_close(output_tensor[0], output_tensor[1])
+        assert not torch.allclose(input_tensor, output_tensor)
 
 
 class TestRandomSaltAndPepperNoise(BaseTester):
@@ -4615,6 +4750,15 @@ class TestResize:
         out = aug(img)
         assert out.shape == (1, 1, 4, 5)
         assert aug.inverse(out).shape == (1, 1, 4, 6)
+
+    def test_dynamo(self, device, dtype):
+        # A tuple output size resizes the whole batch in one call and the transform matrix is
+        # built without a data-dependent branch, so Resize is fullgraph-safe and matches eager.
+        img = torch.rand(3, 3, 20, 24, device=device, dtype=dtype)
+        aug = Resize(size=(16, 16))
+        torch._dynamo.reset()
+        compiled = torch.compile(aug, fullgraph=True)
+        torch.testing.assert_close(aug(img), compiled(img), rtol=1e-4, atol=1e-4)
 
 
 class TestSmallestMaxSize:

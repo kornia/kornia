@@ -22,7 +22,9 @@ from kornia.losses.mutual_information import (
     MILossFromRef,
     NMILossFromRef,
     mutual_information_loss,
+    mutual_information_loss_2d,
     normalized_mutual_information_loss,
+    normalized_mutual_information_loss_2d,
 )
 
 from testing.base import BaseTester
@@ -49,8 +51,7 @@ class TestMutualInformationLoss(BaseTester):
         for radius in [1 / 2, 1, 2, 3]:
             # relative MI, expect 1
             assert torch.allclose(
-                self.relative_mi(img_1, img_2, window_radius=radius),
-                torch.ones(1, device=device, dtype=dtype),
+                self.relative_mi(img_1, img_2, window_radius=radius), torch.ones(1, dtype=dtype, device=device)
             ), "Wrong MI behaviour, correlated case."
             # relative MI, expect 0
             # NOTE: mutual_information_loss is a finite-sample, histogram-based estimator applied to random data.
@@ -58,32 +59,32 @@ class TestMutualInformationLoss(BaseTester):
             # radii introduce noticeable variance, so we use a slightly looser atol here for test robustness.
             assert torch.allclose(
                 self.relative_mi(img_1, img_3, window_radius=radius),
-                torch.zeros(1, device=device, dtype=dtype),
+                torch.zeros(1, dtype=dtype, device=device),
                 atol=0.2,
             ), "Wrong MI behaviour, uncorrelated case."
 
             assert torch.allclose(
                 self.relative_mi(img_2, img_3, window_radius=radius),
-                torch.zeros(1, device=device, dtype=dtype),
+                torch.zeros(1, dtype=dtype, device=device),
                 atol=0.2,
             ), "Wrong MI behaviour, uncorrelated case."
 
             # NMI, expect -2
             assert torch.allclose(
                 normalized_mutual_information_loss(img_1, img_2, window_radius=radius, num_bins=num_bins),
-                -2 * torch.ones(1, device=device, dtype=dtype),
+                -2 * torch.ones(1, dtype=dtype, device=device),
                 atol=0.2 * radius + 0.15,
             ), "Wrong NMI behaviour, correlated case."
 
             # NMI, expect -1
             assert torch.allclose(
                 normalized_mutual_information_loss(img_1, img_3, window_radius=radius, num_bins=num_bins),
-                -torch.ones(1, device=device, dtype=dtype),
+                -torch.ones(1, dtype=dtype, device=device),
                 atol=0.1,
             ), "Wrong NMI behaviour, uncorrelated case."
             assert torch.allclose(
                 normalized_mutual_information_loss(img_2, img_3, window_radius=radius, num_bins=num_bins),
-                -torch.ones(1, device=device, dtype=dtype),
+                -torch.ones(1, dtype=dtype, device=device),
                 atol=0.1,
             ), "Wrong NMI behaviour, uncorrelated case."
 
@@ -177,8 +178,12 @@ class TestMutualInformationLoss(BaseTester):
             normalized_loss_iterative = torch.stack(normalized_losses)
 
             # Compare
-            assert loss_batch.shape == dims[:-1], "The shape of the batched losses for mi is wrong."
-            assert normalized_loss_batch.shape == dims[:-1], "The shape of the batched losses for nmi is wrong."
+            assert loss_batch.shape == dims[:-1], (
+                f"The shape of the batched losses for mi is wrong: {loss_batch.shape} vs {dims[:-1]}."
+            )
+            assert normalized_loss_batch.shape == dims[:-1], (
+                f"The shape of the batched losses for nmi is wrong: {normalized_loss_batch.shape} vs {dims[:-1]}."
+            )
 
             assert torch.allclose(loss_batch.flatten(), loss_iterative, atol=1e-4), (
                 f"Batch mismatch for mi! Batch: {loss_batch}, Iterative: {loss_iterative}"
@@ -202,6 +207,33 @@ class TestMutualInformationLoss(BaseTester):
         op_module = MILossFromRef(target)
 
         self.assert_close(op(*args), op_module(pred))
+
+    def test_masking(self, device, dtype):
+        """test masking works on a 2d signal."""
+        pred = torch.rand(2, 3, 200, 200, device=device, dtype=dtype)
+        target = torch.rand(2, 3, 200, 200, device=device, dtype=dtype)
+        target_mask = torch.zeros(pred.shape[-2:], dtype=torch.bool, device=device)
+        pred_mask = target_mask.clone()
+        target_mask[:100] = True
+        pred_mask[:, :100] = True
+        # we tweak the values of target and pred for the normalization to be the same with or without the mask
+        target[..., 0, 0] = 0
+        target[..., 0, 1] = 1
+        pred[..., 0, 0] = 0
+        pred[..., 0, 1] = 1
+        restricted_pred = pred[..., :100, :100]
+        restricted_target = target[..., :100, :100]
+
+        masked_kwargs = {"input": pred, "target": target, "input_mask": pred_mask, "target_mask": target_mask}
+        restricted_kwargs = {
+            "input": restricted_pred,
+            "target": restricted_target,
+        }
+        self.assert_close(mutual_information_loss_2d(**masked_kwargs), mutual_information_loss_2d(**restricted_kwargs))
+        self.assert_close(
+            normalized_mutual_information_loss_2d(**masked_kwargs),
+            normalized_mutual_information_loss_2d(**restricted_kwargs),
+        )
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         pred = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)

@@ -376,3 +376,12 @@ class TestNormalizeMinMax(BaseTester):
 
         # Verify shape is preserved
         assert out.shape == input_shape
+
+    def test_keyword_argument(self, device, dtype):
+        # Regression test for #3745: the perform_keep_shape_image wrapper binds the
+        # first argument as `input`, so passing the image by keyword must use `input=`
+        # and match the documented signature.
+        x = torch.rand(1, 2, 4, 5, device=device, dtype=dtype)
+        out_kwarg = kornia.enhance.normalize_min_max(input=x, min_val=-1.0, max_val=1.0)
+        out_positional = kornia.enhance.normalize_min_max(x, min_val=-1.0, max_val=1.0)
+        self.assert_close(out_kwarg, out_positional)

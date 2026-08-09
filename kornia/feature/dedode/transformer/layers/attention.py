@@ -72,6 +72,19 @@ class Attention(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x: Tensor) -> Tensor:
+        """Run this DeDoDe module forward.
+
+        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
+        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
 
@@ -91,6 +104,20 @@ class MemEffAttention(Attention):
     """Implement a memory-efficient version of Multi-Head Self-Attention using xFormers."""
 
     def forward(self, x: Tensor, attn_bias=None) -> Tensor:  # type: ignore[no-untyped-def]
+        """Run this DeDoDe module forward.
+
+        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
+        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+            attn_bias: Input value used by this method.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         if not XFORMERS_AVAILABLE:
             if attn_bias is not None:
                 raise ValueError("xFormers is required for nested tensors usage")

@@ -21,6 +21,7 @@ kornia.egg-info/
 docs/source/_static/*jpg
 docs/source/_static/img/*jpg
 docs/source/_static/scripts/*
+docs/source/get-started/performance.rst
 *DS_Store
 *jpg
 
@@ -33,3 +34,9 @@ weights/
 .uv_cache/
 
 .python-version
+
+# Benchmark profiling outputs
+benchmarks/profile/
+
+# Editor / agent metadata
+.omc/

@@ -28,7 +28,6 @@ import os
 import pytest
 import torch
 import torch.nn.functional as F
-from safetensors.torch import load_file
 
 from kornia.models.kimi_vl import KimiVLConfig, KimiVLModel
 from kornia.models.kimi_vl.config import KimiVLProjectorConfig, MoonViTConfig
@@ -45,6 +44,9 @@ def test_kimi_vl_official_weights():
     weights_dir = os.environ.get("KIMI_VL_WEIGHTS_DIR")
     if not weights_dir:
         pytest.skip("KIMI_VL_WEIGHTS_DIR is not set; skipping test_kimi_vl_official_weights")
+
+    safetensors_torch = pytest.importorskip("safetensors.torch")
+    load_file = safetensors_torch.load_file
 
     index_path = os.path.join(weights_dir, "model.safetensors.index.json")
 

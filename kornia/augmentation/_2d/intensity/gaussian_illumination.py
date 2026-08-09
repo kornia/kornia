@@ -170,7 +170,9 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
             # We must explicitly move it to the input's device before adding.
             gradient = params["gradient"].to(input.device, input.dtype)
 
-            return input.add_(gradient).clamp_(0, 1)
+            # Out-of-place add: in-place would mutate the caller's tensor and corrupt
+            # the non-transformed branch, which shares the same input.
+            return input.add(gradient).clamp_(0, 1)
 
         self._fn = _apply_transform
 

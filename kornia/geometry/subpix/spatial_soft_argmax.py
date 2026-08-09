@@ -204,6 +204,22 @@ class ConvSoftArgmax2d(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        """Estimate local 2D coordinates from heatmap windows.
+
+        The operation applies soft-argmax inside sliding windows. Instead of
+        choosing the hard maximum location, it computes an expectation over
+        window coordinates, which gives differentiable subpixel coordinates.
+
+        Args:
+            x: Heatmap tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is the number of heatmap
+                channels, :math:`H` is height, and :math:`W` is width.
+
+        Returns:
+            Coordinates from :func:`conv_soft_argmax2d`. If
+            ``self.output_value`` is ``True``, returns ``(coords, values)``,
+            where ``values`` are the corresponding window responses.
+        """
         return conv_soft_argmax2d(
             x,
             self.kernel_size,
@@ -258,6 +274,19 @@ class ConvSoftArgmax3d(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        """Estimate local 3D coordinates from response-volume windows.
+
+        Args:
+            x: Response tensor with shape :math:`(B, C, D, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channel count,
+                :math:`D` is depth or scale level, :math:`H` is height, and
+                :math:`W` is width.
+
+        Returns:
+            Coordinates from :func:`conv_soft_argmax3d`. If
+            ``self.output_value`` is ``True``, returns ``(coords, values)``;
+            otherwise returns only coordinates.
+        """
         return conv_soft_argmax3d(
             x,
             self.kernel_size,
@@ -566,6 +595,22 @@ class SpatialSoftArgmax2d(nn.Module):
         )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute one differentiable 2D coordinate per channel map.
+
+        The full spatial map is converted into a probability distribution and
+        the coordinate expectation is returned. This is a smooth alternative to
+        taking the hard argmax of each heatmap.
+
+        Args:
+            input: Heatmap tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channel count,
+                :math:`H` is height, and :math:`W` is width.
+
+        Returns:
+            Coordinate tensor from :func:`spatial_soft_argmax2d`. Coordinate
+            values are normalized or pixel-based according to
+            ``self.normalized_coordinates``.
+        """
         return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates)
 
 
@@ -920,6 +965,23 @@ class ConvQuadInterp3d(nn.Module):
     def forward(
         self, x: torch.Tensor, precomputed_nms_mask: Optional[torch.Tensor] = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Refine 3D extrema with convolution-based quadratic interpolation.
+
+        The method starts from local maxima in a scale-space response volume
+        and fits a local quadratic model around each candidate. The fitted
+        offset gives a subpixel position in scale, x, and y coordinates.
+
+        Args:
+            x: Response tensor with shape :math:`(B, C, D, H, W)`, where
+                :math:`D` is the scale/depth dimension.
+            precomputed_nms_mask: Optional boolean NMS mask with the same shape
+                as ``x``. Passing it avoids recomputing local maxima.
+
+        Returns:
+            Tuple ``(coords, values)``. ``coords`` stores refined coordinates
+            for scale, x, and y; ``values`` stores the corrected response
+            scores.
+        """
         return conv_quad_interp3d(
             x,
             self.n_iters,
@@ -1182,6 +1244,18 @@ class IterativeQuadInterp3d(nn.Module):
         x: torch.Tensor,
         precomputed_nms_mask: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Refine 3D extrema by iteratively fitting local quadratic patches.
+
+        Args:
+            x: Response tensor with shape :math:`(B, C, D, H, W)`.
+            precomputed_nms_mask: Optional boolean local-maxima mask with the
+                same shape as ``x``.
+
+        Returns:
+            Tuple ``(coords, values)`` from :func:`iterative_quad_interp3d`.
+            ``coords`` contains refined scale, x, and y locations, while
+            ``values`` contains their response scores.
+        """
         return iterative_quad_interp3d(
             x,
             self.n_iters,
@@ -1276,6 +1350,21 @@ class AdaptiveQuadInterp3d(nn.Module):
         x: torch.Tensor,
         precomputed_nms_mask: Optional[torch.Tensor] = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Refine 3D extrema with the selected interpolation backend.
+
+        The backend is chosen according to ``self.mode`` (or device when
+        ``mode='auto'``), then delegated to either
+        :func:`conv_quad_interp3d` or :func:`iterative_quad_interp3d`.
+
+        Args:
+            x: Response tensor with shape :math:`(B, C, D, H, W)`.
+            precomputed_nms_mask: Optional boolean local-maxima mask with the
+                same shape as ``x``.
+
+        Returns:
+            Tuple ``(coords, values)`` containing refined scale-space
+            coordinates and corresponding response scores.
+        """
         use_conv = self.mode == "conv" or (self.mode == "auto" and x.is_cuda)
         if use_conv:
             return conv_quad_interp3d(

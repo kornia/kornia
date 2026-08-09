@@ -29,6 +29,7 @@ from torch import nn
 from torch.utils import checkpoint
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.models.common import DropPath, LayerNorm2d, window_partition, window_unpartition
 
 
@@ -112,6 +113,18 @@ class MBConv(nn.Module):
         self.act = activation()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the MBConv residual block to a feature map.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channels, :math:`H` is
+                height, and :math:`W` is width.
+
+        Returns:
+            Tensor with the same shape as ``x`` after pointwise expansion,
+            depthwise convolution, projection, stochastic depth, and residual
+            activation.
+        """
         return self.act(x + self.drop_path(self.conv3(self.conv2(self.conv1(x)))))
 
 
@@ -141,6 +154,17 @@ class PatchMerging(nn.Module):
         self.conv3 = ConvBN(out_dim, out_dim, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Merge or project patch tokens for TinyViT downsampling.
+
+        Args:
+            x: Either token tensor with shape :math:`(B, H * W, C)` or feature
+                map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Token tensor with shape :math:`(B, H_{out} * W_{out}, C_{out})`.
+            The spatial size is reduced when this layer was configured with
+            stride ``2``.
+        """
         if x.ndim == 3:
             x = x.transpose(1, 2).unflatten(2, self.input_resolution)  # (B, H * W, C) -> (B, C, H, W)
         x = self.conv3(self.conv2(self.conv1(x)))
@@ -185,6 +209,15 @@ class ConvLayer(nn.Module):
         self.downsample = downsample
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply a sequence of convolutional TinyViT blocks.
+
+        Args:
+            x: Feature tensor passed through the layer blocks.
+
+        Returns:
+            Tensor after all MBConv blocks and the optional downsample module.
+            The output may be a token tensor when downsampling is configured.
+        """
         for blk in self.blocks:
             x = checkpoint.checkpoint(blk, x) if self.use_checkpoint else blk(x)
         if self.downsample is not None:
@@ -264,6 +297,17 @@ class Attention(nn.Module):
 
     @staticmethod
     def build_attention_bias(resolution: tuple[int, int]) -> tuple[torch.Tensor, int]:
+        """Build lookup indices for relative attention bias.
+
+        Args:
+            resolution: Window resolution ``(H, W)`` used by the attention
+                block.
+
+        Returns:
+            Tuple ``(indices, size)``. ``indices`` maps each token pair in the
+            window to a relative-position bias entry, and ``size`` is the
+            number of unique bias entries.
+        """
         H, W = resolution
         rows = torch.arange(H)
         cols = torch.arange(W)
@@ -280,11 +324,30 @@ class Attention(nn.Module):
     # is this really necessary?
     @torch.no_grad()
     def train(self, mode: bool = True) -> Attention:
+        """Switch training/evaluation mode and refresh cached attention bias.
+
+        Args:
+            mode: ``True`` for training mode, ``False`` for evaluation mode.
+
+        Returns:
+            ``self`` after updating the module mode. In evaluation mode the
+            relative attention bias lookup is cached for reuse.
+        """
         super().train(mode)
         self.ab = None if (mode and self.ab is not None) else self.attention_biases[:, self.attention_bias_idxs]
         return self
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply relative-position self-attention to token features.
+
+        Args:
+            x: Token tensor with shape :math:`(B, N, C)`, where :math:`B` is
+                batch size, :math:`N` is number of tokens, and :math:`C` is
+                embedding dimension.
+
+        Returns:
+            Tensor with shape :math:`(B, N, C)` after attention and projection.
+        """
         B, N, _ = x.shape
         x = self.norm(x)
         qkv = self.qkv(x)
@@ -342,6 +405,16 @@ class TinyViTBlock(nn.Module):
         self.drop_path2 = DropPath(drop_path)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply one TinyViT window-attention block.
+
+        Args:
+            x: Token tensor with shape :math:`(B, H * W, C)`, where
+                :math:`H` and :math:`W` match ``self.input_resolution``.
+
+        Returns:
+            Tensor with the same shape as ``x`` after window attention, local
+            convolution, MLP, and residual connections.
+        """
         H, W = self.input_resolution
         B, L, C = x.shape
         res_x = x
@@ -422,6 +495,16 @@ class BasicLayer(nn.Module):
         self.downsample = downsample
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run a TinyViT stage made of several blocks.
+
+        Args:
+            x: Token tensor with shape :math:`(B, H * W, C)`.
+
+        Returns:
+            Tensor after all TinyViT blocks and optional patch merging. The
+            channel count or token resolution may change if ``downsample`` is
+            configured.
+        """
         for blk in self.blocks:
             x = checkpoint.checkpoint(blk, x) if self.use_checkpoint else blk(x)
         if self.downsample is not None:
@@ -575,9 +658,9 @@ class TinyViT(nn.Module):
         return {"5m": _tiny_vit_5m, "11m": _tiny_vit_11m, "21m": _tiny_vit_21m}[variant](pretrained, **kwargs)
 
 
-def _load_pretrained(model: TinyViT, url: str) -> TinyViT:
+def _load_pretrained(model: TinyViT, url: str | list[str]) -> TinyViT:
     model_state_dict = model.state_dict()
-    state_dict = torch.hub.load_state_dict_from_url(url)
+    state_dict = load_state_dict_from_url(url)
 
     # official checkpoint has "model" key
     if "model" in state_dict:
@@ -623,10 +706,14 @@ def _tiny_vit_5m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
             pretrained = "in1k"
 
         url = {
-            "in22k": (
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22k_distill.pth"
-            ),
-            "in1k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22kto1k_distill.pth",
+            "in22k": [
+                hf_url("tiny_vit", "tiny_vit_5m_22k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22k_distill.pth",
+            ],
+            "in1k": [
+                hf_url("tiny_vit", "tiny_vit_5m_22kto1k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22kto1k_distill.pth",
+            ],
         }[pretrained]
         model = _load_pretrained(model, url)
 
@@ -648,10 +735,14 @@ def _tiny_vit_11m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
             pretrained = "in1k"
 
         url = {
-            "in22k": (
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22k_distill.pth"
-            ),
-            "in1k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22kto1k_distill.pth",
+            "in22k": [
+                hf_url("tiny_vit", "tiny_vit_11m_22k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22k_distill.pth",
+            ],
+            "in1k": [
+                hf_url("tiny_vit", "tiny_vit_11m_22kto1k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22kto1k_distill.pth",
+            ],
         }[pretrained]
         model = _load_pretrained(model, url)
 
@@ -678,12 +769,22 @@ def _tiny_vit_21m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
                 pretrained = "in1k_512"
 
         url = {
-            "in22k": (
-                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22k_distill.pth"
-            ),
-            "in1k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_distill.pth",
-            "in1k_384": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_384_distill.pth",
-            "in1k_512": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_512_distill.pth",
+            "in22k": [
+                hf_url("tiny_vit", "tiny_vit_21m_22k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22k_distill.pth",
+            ],
+            "in1k": [
+                hf_url("tiny_vit", "tiny_vit_21m_22kto1k_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_distill.pth",
+            ],
+            "in1k_384": [
+                hf_url("tiny_vit", "tiny_vit_21m_22kto1k_384_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_384_distill.pth",
+            ],
+            "in1k_512": [
+                hf_url("tiny_vit", "tiny_vit_21m_22kto1k_512_distill.pth"),
+                "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_512_distill.pth",
+            ],
         }[pretrained]
         model = _load_pretrained(model, url)
 

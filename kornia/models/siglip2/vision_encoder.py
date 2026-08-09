@@ -182,6 +182,18 @@ class SigLip2MultiheadAttentionPoolingHead(nn.Module):
         self.mlp = SigLip2VisionMLP(config)
 
     def forward(self, hidden_state: torch.Tensor) -> torch.Tensor:
+        """Pool vision tokens with a learned probe query.
+
+        Args:
+            hidden_state: Vision token tensor with shape :math:`(B, N, D)`,
+                where :math:`B` is batch size, :math:`N` is token count, and
+                :math:`D` is hidden size.
+
+        Returns:
+            Tensor with shape :math:`(B, 1, D)` containing the pooled visual
+            representation after attention, layer normalization, and MLP
+            refinement.
+        """
         # repeat the probe token for the batch size
         batch_size = hidden_state.shape[0]
         probe = self.probe.repeat(batch_size, 1, 1)  # (batch_size, 1, hidden_size)

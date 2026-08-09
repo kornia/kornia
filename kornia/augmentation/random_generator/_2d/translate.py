@@ -20,7 +20,12 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
+from kornia.augmentation.utils import (
+    _adapted_rsampling,
+    _check_positive_int_or_traced,
+    _common_param_check,
+    _range_bound,
+)
 from kornia.core.utils import _extract_device_dtype
 
 __all__ = ["TranslateGenerator"]
@@ -88,8 +93,8 @@ class TranslateGenerator(RandomGeneratorBase):
 
         _device, _dtype = _extract_device_dtype([self.translate_x, self.translate_y])
         _common_param_check(batch_size, same_on_batch)
-        if not (isinstance(width, (int,)) and isinstance(height, (int,)) and width > 0 and height > 0):
-            raise AssertionError(f"`width` and `height` must be positive integers. Got {width}, {height}.")
+        _check_positive_int_or_traced(width, "width")
+        _check_positive_int_or_traced(height, "height")
 
         if self.translate_x_sampler is not None:
             translate_x = (

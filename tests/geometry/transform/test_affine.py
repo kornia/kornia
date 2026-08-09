@@ -188,6 +188,42 @@ class TestResize(BaseTester):
         out = kornia.geometry.transform.resize(inp, 10, align_corners=False, side="horz")
         assert out.shape == (1, 3, 4, 10)
 
+    def test_convention_align_corners_default_none(self, device, dtype):
+        # resize's bare default align_corners=None behaves like align_corners=False (no test in the
+        # suite exercises the bare default; every other call here passes align_corners=False explicitly).
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
+        # Snippet used to generate expected:
+        # inp_x = torch.arange(20, dtype=torch.float32) / 20.0
+        # inp = inp_x[None].T @ inp_x[None]
+        # inp = inp[None, None]
+        # expected = kornia.geometry.transform.resize(inp, (5, 5), antialias=False)  # no align_corners passed
+        inp_x = torch.arange(20, device=device, dtype=dtype) / 20.0
+        inp = inp_x[None].T @ inp_x[None]
+        inp = inp[None, None]
+        out = kornia.geometry.transform.resize(inp, (5, 5), antialias=False)
+        expected = torch.tensor(
+            [
+                [
+                    [
+                        [0.0056, 0.0206, 0.0356, 0.0506, 0.0656],
+                        [0.0206, 0.0756, 0.1306, 0.1856, 0.2406],
+                        [0.0356, 0.1306, 0.2256, 0.3206, 0.4156],
+                        [0.0506, 0.1856, 0.3206, 0.4556, 0.5906],
+                        [0.0656, 0.2406, 0.4156, 0.5906, 0.7656],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        self.assert_close(out, expected, atol=1e-3, rtol=1e-3)
+        # the output above cannot distinguish None from False (they interpolate identically), so
+        # the documented default is additionally pinned on the signature itself
+        import inspect
+
+        assert inspect.signature(kornia.geometry.transform.resize).parameters["align_corners"].default is None
+
     def test_gradcheck(self, device):
         # test parameters
         new_size = 4
@@ -314,6 +350,24 @@ class TestRotate(BaseTester):
         angle = torch.tensor([90.0], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Rotate(angle, align_corners=True)
         self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+
+    def test_convention_align_corners_default_true(self, device, dtype):
+        # rotate/Rotate's bare default align_corners=True (every other test in this class passes
+        # align_corners=True explicitly to Rotate; this exercises the bare default).
+        if dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("hardcoded-literal pin only reliable at float32/float64 precision")
+        # Snippet used to generate expected:
+        # inp = torch.tensor([[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]])
+        # angle = torch.tensor([90.0])
+        # expected = kornia.geometry.transform.Rotate(angle)(inp)  # no align_corners passed
+        inp = torch.tensor([[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[0.0, 0.0], [4.0, 6.0], [3.0, 5.0], [0.0, 0.0]]], device=device, dtype=dtype)
+        angle = torch.tensor([90.0], device=device, dtype=dtype)
+        transform = kornia.geometry.transform.Rotate(angle)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        # the function's own bare default must match (class and function defaults can diverge
+        # in this module — see Rescale vs rescale — so both APIs are pinned independently)
+        self.assert_close(kornia.geometry.transform.rotate(inp, angle), expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         # test parameters
@@ -785,3 +839,19 @@ class TestGetShearMatrix(BaseTester):
         )
 
         self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
+
+    def test_get_shear_matrix2d_default_params_device_dtype(self, device, dtype):
+        # When sx and sy are None, the defaults should inherit device and dtype from center.
+        center = torch.tensor([[128.0, 128.0]], device=device, dtype=dtype)
+        out = kornia.geometry.transform.get_shear_matrix2d(center, sx=None, sy=None)
+        assert out.device.type == center.device.type, "Output device must match center device"
+        assert out.dtype == center.dtype, "Output dtype must match center dtype"
+
+    def test_get_shear_matrix3d_default_params_device_dtype(self, device, dtype):
+        # When shear params are None, the defaults should inherit device and dtype from center.
+        center = torch.tensor([[64.0, 64.0, 32.0]], device=device, dtype=dtype)
+        out = kornia.geometry.transform.get_shear_matrix3d(
+            center, sxy=None, sxz=None, syx=None, syz=None, szx=None, szy=None
+        )
+        assert out.device.type == center.device.type, "Output device must match center device"
+        assert out.dtype == center.dtype, "Output dtype must match center dtype"

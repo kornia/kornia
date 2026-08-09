@@ -112,6 +112,20 @@ class ImageStitcher(nn.Module):
         return input_dict
 
     def postprocess(self, image: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """Crop redundant empty columns from a stitched panorama.
+
+        Args:
+            image: Stitched image tensor, typically shaped
+                :math:`(B, C, H, W_{panorama})`, where ``W_{panorama}`` is the
+                panorama width after concatenation/warping.
+            mask: Validity mask aligned with ``image`` where non-zero values mark
+                pixels covered by at least one input view.
+
+        Returns:
+            The stitched image cropped to remove trailing invalid columns
+            (columns that contain no valid pixels in the mask).
+            If no redundant area is found, the original ``image`` is returned.
+        """
         # NOTE: assumes no batch mode. This method keeps all valid regions after stitching.
         mask_ = mask.sum((0, 1))
         index = int(mask_.bool().any(0).long().argmin().item())
@@ -120,6 +134,17 @@ class ImageStitcher(nn.Module):
         return image[..., :index]
 
     def on_matcher(self, data: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+        """Run the configured feature matcher on preprocessed inputs.
+
+        Args:
+            data: Matcher input dictionary, usually containing ``image0`` and
+                ``image1`` tensors.
+
+        Returns:
+            A correspondence dictionary produced by ``self.matcher``.
+            Typical entries are matched keypoints and batch indices used later
+            for homography estimation.
+        """
         return self.matcher(data)
 
     def stitch_pair(
@@ -129,6 +154,24 @@ class ImageStitcher(nn.Module):
         mask_left: Optional[torch.Tensor] = None,
         mask_right: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Stitch two images into a shared panorama frame.
+
+        Args:
+            images_left: Reference image tensor, shaped :math:`(B, C, H, W_l)`.
+            images_right: Image tensor to be warped onto the reference frame,
+                shaped :math:`(B, C, H, W_r)`.
+            mask_left: Optional validity mask for ``images_left`` with the same
+                shape as ``images_left``.
+            mask_right: Optional validity mask for ``images_right`` with the same
+                shape as ``images_right``.
+
+        Returns:
+            A tuple ``(stitched_image, stitched_mask)``:
+            - ``stitched_image`` is the blended panorama tensor with width
+              ``W_l + W_r`` before final cropping.
+            - ``stitched_mask`` is a mask tensor indicating which panorama
+              pixels are valid after warping and blending.
+        """
         # Compute the transformed images
         input_dict = self.preprocess(images_left, images_right)
         out_shape = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])
@@ -148,6 +191,17 @@ class ImageStitcher(nn.Module):
         return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
 
     def forward(self, *imgs: torch.Tensor) -> torch.Tensor:
+        """Iteratively stitch a sequence of overlapping images.
+
+        Args:
+            *imgs: Ordered image tensors from left to right. Each tensor is expected
+                to share a common height and overlap with the next image.
+                Each tensor typically follows :math:`(B, C, H, W)`.
+
+        Returns:
+            A single panorama tensor obtained by stitching all provided images
+            in order and cropping trailing empty space.
+        """
         img_out = imgs[0]
         mask_left = torch.ones_like(img_out)
         for i in range(len(imgs) - 1):

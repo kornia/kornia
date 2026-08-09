@@ -89,7 +89,7 @@ def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Te
         rectangle2[..., n, 2] = keypoints[..., n, 0] + 2
         rectangle2[..., n, 3] = keypoints[..., n, 1] + 2
     color = torch.tensor([0, 0, 1]).repeat(imgs.shape[0], imgs.shape[1], 1)
-    imgs_draw = K.utils.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
+    imgs_draw = K.image.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
 
     return imgs_draw
 
@@ -224,7 +224,7 @@ def main():
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
-    mix_augmentations_list = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019)}
+    mix_augmentations_list = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019), "PatchMix": ((), 2, 2024)}
     # ITERATE OVER THE TRANSFORMS
     for aug_name, (args, _, seed) in mix_augmentations_list.items():
         img_in = torch.cat([img1, img2])
@@ -234,11 +234,15 @@ def main():
         # set seed
         torch.manual_seed(seed)
         # apply the augmentation to the image and concat
-        img_aug, _ = aug(img_in, torch.tensor([0, 1]))
+        # PatchMix returns (B, C, H, W); index [0] to get (C, H, W) for cat
+        if aug_name == "PatchMix":
+            img_aug = aug(img_in)[0]
+        else:
+            img_aug, _ = aug(img_in, torch.tensor([0, 1]))
 
         output = torch.cat([img_in[0], img_in[1], img_aug], dim=-1)
         # save the output image
-        out_np = K.utils.tensor_to_image((output * 255.0).byte())
+        out_np = K.image.tensor_to_image((output * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
@@ -259,7 +263,7 @@ def main():
 
         output = torch.cat([img_in[0], img_in[1], img_aug[0]], dim=-1)
         # save the output image
-        out_np = K.utils.tensor_to_image((output * 255.0).byte())
+        out_np = K.image.tensor_to_image((output * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
@@ -319,7 +323,7 @@ def main():
         output = torch.cat([inp[0], *(out[i] for i in range(out.size(0)))], dim=-1)
 
         # save the output image
-        out_np = K.utils.tensor_to_image((output * 255.0).byte())
+        out_np = K.image.tensor_to_image((output * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")

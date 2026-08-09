@@ -186,4 +186,14 @@ class SSIM3D(nn.Module):
         self.padding = padding
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
+        """Compute a 3D SSIM map between two volume batches.
+
+        Args:
+            img1: First volume tensor with shape :math:`(B, C, D, H, W)`.
+            img2: Second volume tensor with the same shape as ``img1``.
+
+        Returns:
+            Tensor with shape :math:`(B, C, D, H, W)` containing local
+            structural similarity values across depth, height, and width.
+        """
         return ssim3d(img1, img2, self.window_size, self.max_val, self.eps, self.padding)

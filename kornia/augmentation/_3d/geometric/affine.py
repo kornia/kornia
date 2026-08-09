@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -148,17 +149,20 @@ class RandomAffine3D(GeometricAugmentationBase3D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        # Inline ``deg2rad`` so the trace lowers to plain multiply (legacy ONNX has
+        # no symbolic for ``aten::deg2rad`` at opset 20).
+        deg2rad_factor: float = math.pi / 180.0
         transform: torch.Tensor = get_affine_matrix3d(
             params["translations"],
             params["center"],
             params["scale"],
             params["angles"],
-            torch.deg2rad(params["sxy"]),
-            torch.deg2rad(params["sxz"]),
-            torch.deg2rad(params["syx"]),
-            torch.deg2rad(params["syz"]),
-            torch.deg2rad(params["szx"]),
-            torch.deg2rad(params["szy"]),
+            params["sxy"] * deg2rad_factor,
+            params["sxz"] * deg2rad_factor,
+            params["syx"] * deg2rad_factor,
+            params["syz"] * deg2rad_factor,
+            params["szx"] * deg2rad_factor,
+            params["szy"] * deg2rad_factor,
         ).to(input)
         return transform
 

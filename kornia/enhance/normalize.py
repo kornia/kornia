@@ -81,6 +81,20 @@ class Normalize(nn.Module):
         self.std = std
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Normalize an input tensor channel-wise with this module's statistics.
+
+        This method is a thin wrapper over :func:`normalize`, reusing the
+        ``mean`` and ``std`` values stored in the module constructor.
+
+        Args:
+            input: Tensor to normalize, typically with shape :math:`(*, C, ...)`,
+                where ``*`` represents optional leading dimensions (for example
+                batch) and ``C`` is the channel dimension.
+
+        Returns:
+            A tensor with the same shape as ``input`` whose channel values are
+            normalized by ``(x - mean) / std``.
+        """
         return normalize(input, self.mean, self.std)
 
     def __repr__(self) -> str:
@@ -194,6 +208,19 @@ class Denormalize(nn.Module):
         self.std = std
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Restore scale/offset from a tensor normalized by mean and std.
+
+        This method delegates to :func:`denormalize` using this module's stored
+        ``mean`` and ``std`` parameters.
+
+        Args:
+            input: Tensor to denormalize, commonly shaped :math:`(*, C, ...)`
+                with channel dimension ``C``.
+
+        Returns:
+            A tensor with the same shape as ``input`` where each channel is
+            transformed by ``x * std + mean``.
+        """
         return denormalize(input, self.mean, self.std)
 
     def __repr__(self) -> str:
@@ -275,7 +302,9 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
 
 
 @perform_keep_shape_image
-def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6) -> torch.Tensor:
+def normalize_min_max(
+    input: torch.Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6
+) -> torch.Tensor:
     r"""Normalise an image/video torch.Tensor by MinMax and re-scales the value between a range.
 
     The data is normalised using the following formulation:
@@ -286,7 +315,7 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.
     where :math:`a` is :math:`\text{min_val}` and :math:`b` is :math:`\text{max_val}`.
 
     Args:
-        x: The image torch.Tensor to be normalised with shape :math:`(*, C, H, W)`.
+        input: The image torch.Tensor to be normalised with shape :math:`(*, C, H, W)`.
         min_val: The minimum value for the new range.
         max_val: The maximum value for the new range.
         eps: Float number to avoid zero division.
@@ -303,8 +332,8 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.
         tensor(1.0000)
 
     """
-    if not isinstance(x, torch.Tensor):
-        raise TypeError(f"data should be a torch.Tensor. Got: {type(x)}.")
+    if not isinstance(input, torch.Tensor):
+        raise TypeError(f"data should be a torch.Tensor. Got: {type(input)}.")
 
     if not isinstance(min_val, float):
         raise TypeError(f"'min_val' should be a float. Got: {type(min_val)}.")
@@ -312,10 +341,10 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.
     if not isinstance(max_val, float):
         raise TypeError(f"'max_val' should be a float. Got: {type(max_val)}.")
 
-    shape = x.shape
+    shape = input.shape
     B, C = shape[0], shape[1]
 
-    x_reshaped = x.view(B, C, -1)
+    x_reshaped = input.view(B, C, -1)
     x_min = x_reshaped.min(-1, keepdim=True)[0]  # Shape: (B, C, 1)
     x_max = x_reshaped.max(-1, keepdim=True)[0]  # Shape: (B, C, 1)
 
