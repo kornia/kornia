@@ -144,6 +144,38 @@ class TestElasticTransform(BaseTester):
         # alpha=(0.5, 2.0): smaller alpha[0] -> smaller x-displacement -> marker moves less.
         assert (out_b[0, 0] > 0.05).nonzero().tolist() == [[4, 3], [4, 4]]
 
+        # sigma is genuinely (sigma_y, sigma_x): an impulse in the x-displacement noise channel,
+        # blurred with a strongly anisotropic sigma, spreads along ROWS when sigma[0] is large and
+        # is confined to a single row when sigma[1] is large instead -- pinning sigma[0] to the y
+        # (row) direction, independently of the alpha check above.
+        #
+        # Snippet used to generate expected (requires only this module):
+        # N, c = 21, 10
+        # image = torch.zeros(1, 1, N, N); image[0, 0, :, c] = 1.0
+        # noise = torch.zeros(1, 2, N, N); noise[0, 0, c, c] = 1.0
+        # kwargs = dict(kernel_size=(9, 9), alpha=(3.0, 0.0))
+        # out = elastic_transform2d(image, noise, sigma=(3.0, 0.3), **kwargs)  # or (0.3, 3.0)
+        # diffs = (out[0, 0, 1:-1] - image[0, 0, 1:-1]).abs()
+        # (diffs > 0.05).any(dim=1).nonzero().flatten().add(1).tolist()
+        n_sigma, center = 21, 10
+        sigma_image = torch.zeros(1, 1, n_sigma, n_sigma, device=device, dtype=dtype)
+        sigma_image[0, 0, :, center] = 1.0
+        sigma_noise = torch.zeros(1, 2, n_sigma, n_sigma, device=device, dtype=dtype)
+        sigma_noise[0, 0, center, center] = 1.0
+        sigma_kwargs = {"kernel_size": (9, 9), "alpha": (3.0, 0.0)}
+
+        out_sigma_y_wide = elastic_transform2d(sigma_image, sigma_noise, sigma=(3.0, 0.3), **sigma_kwargs)
+        out_sigma_x_wide = elastic_transform2d(sigma_image, sigma_noise, sigma=(0.3, 3.0), **sigma_kwargs)
+
+        def _moved_rows(out: torch.Tensor) -> list:
+            diffs = (out[0, 0, 1:-1] - sigma_image[0, 0, 1:-1]).abs()
+            return (diffs > 0.05).any(dim=1).nonzero().flatten().add(1).tolist()
+
+        # sigma=(3.0, 0.3): large sigma_y spreads the impulse across 9 rows (kernel half-width 4).
+        assert _moved_rows(out_sigma_y_wide) == [6, 7, 8, 9, 10, 11, 12, 13, 14]
+        # sigma=(0.3, 3.0): large sigma_x instead -- vertical spread collapses to the impulse row.
+        assert _moved_rows(out_sigma_x_wide) == [10]
+
     def test_convention_padding_mode_affects_border_sampling(self, device, dtype):
         # padding_mode's default ('zeros') genuinely affects boundary sampling, but only once the
         # displacement pushes the (internally clamped-to-[-1,1]) sampling grid all the way to the

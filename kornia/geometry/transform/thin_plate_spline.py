@@ -141,6 +141,10 @@ def warp_points_tps(
         - points: :math:`(B, N, 2)` (or :math:`(B, K, 2)` for kernel centers) in
           ``(x, y)`` order, in whatever coordinate frame the input points are already
           in — this function performs no normalization of its own
+        - ``kernel_centers`` must be the ``points_dst`` argument (the **second**
+          positional argument) passed to :func:`get_tps_transform` when computing
+          ``kernel_weights``/``affine_weights``; passing the source points instead
+          silently produces the wrong warp
         - returns points warped in that same frame (e.g. normalized :math:`[-1, 1]`
           input points come back in :math:`[-1, 1]`)
 
@@ -225,6 +229,9 @@ def warp_image_tps(
           :func:`get_tps_transform` called with the arguments **reversed** —
           ``get_tps_transform(points_dst, points_src)`` — see the convention block of
           :func:`get_tps_transform`
+        - ``kernel_centers`` must be the **second** positional argument passed to that
+          :func:`get_tps_transform` call (i.e. ``points_src``, since the call is
+          reversed here); passing the other point set silently produces the wrong warp
         - internally samples via ``create_meshgrid(h, w, normalized_coordinates=True)``,
           which always builds its grid using the ``align_corners=True`` convention
         - the default ``align_corners=False`` therefore mismatches that internally-built
