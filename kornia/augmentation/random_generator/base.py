@@ -38,7 +38,7 @@ class _PostInitInjectionMetaClass(type):
 class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
     """Base class for generating random augmentation parameters."""
 
-    device: Union[None, str, torch.device] = None
+    device: Union[str, torch.device, None] = None
     dtype: torch.dtype
 
     def __init__(self) -> None:

@@ -187,7 +187,7 @@ class SIFTFeature(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         config: Optional[Detector_config] = None,
         compile_model: bool = False,
         score_threshold: float = 0.0,
@@ -225,7 +225,7 @@ class SIFTFeatureScaleSpace(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         compile_modules: Union[bool, List[str]] = False,
     ) -> None:
         if device is None:
@@ -255,7 +255,7 @@ class GFTTAffNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         compile_modules: Union[bool, List[str]] = False,
     ) -> None:
         if device is None:
@@ -282,7 +282,7 @@ class HesAffNetHardNet(LocalFeature):
         self,
         num_features: int = 2048,
         upright: bool = False,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         compile_modules: Union[bool, List[str]] = False,
     ) -> None:
         if device is None:
@@ -309,7 +309,7 @@ class KeyNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         scale_laf: float = 1.0,
         compile_model: bool = False,
         score_threshold: float = 0.0,
@@ -338,7 +338,7 @@ class KeyNetAffNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         scale_laf: float = 1.0,
         compile_model: bool = False,
         score_threshold: float = 0.0,
