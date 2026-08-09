@@ -178,7 +178,9 @@ def hflip(input: torch.Tensor) -> torch.Tensor:
     .. image:: _static/img/hflip.png
 
     Convention:
-        - flips the last dimension (dim ``-1``)
+        - flips the last dimension (dim ``-1``); accepts any rank :math:`\geq 1`
+          (rank-0 input is currently returned unchanged, but that behavior is
+          outside the documented contract)
 
     Args:
         input: input torch.Tensor.
