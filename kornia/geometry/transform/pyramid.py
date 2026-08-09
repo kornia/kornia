@@ -50,6 +50,9 @@ def _get_pyramid_gaussian_kernel() -> torch.Tensor:
 class PyrDown(nn.Module):
     r"""Blur a torch.Tensor and downsamples it.
 
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.transform.pyrdown`.
+
     Args:
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
@@ -99,8 +102,11 @@ class PyrDown(nn.Module):
 class PyrUp(nn.Module):
     r"""Upsample a torch.Tensor and then blurs it.
 
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.transform.pyrup`.
+
     Args:
-        borde_type: the padding mode to be applied before convolving.
+        border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
@@ -146,6 +152,17 @@ class ScalePyramid(nn.Module):
     r"""Create an scale pyramid of image, usually used for local feature detection.
 
     Images are consequently smoothed with Gaussian blur and downscaled.
+
+    Convention:
+        - input: :math:`(B, C, H, W)`
+        - ``forward`` returns a 3-tuple ``(pyr, sigmas, pixel_dists)``, one entry per
+          octave: ``pyr[octave]`` is :math:`(B, C, L, H_i, W_i)` with
+          ``L = n_levels + extra_levels`` stacked levels; ``sigmas[octave]`` and
+          ``pixel_dists[octave]`` are :math:`(B, L)`, the absolute blur sigma and the
+          pixel spacing (relative to the input) of each level
+        - no ``align_corners`` constructor parameter — the internal ``double_image``
+          and octave-seeding resizes are hardcoded to ``align_corners=True`` and are
+          not user-configurable
 
     Args:
         n_levels: number of the levels in octave.
@@ -377,6 +394,14 @@ def pyrdown(
 
     .. image:: _static/img/pyrdown.png
 
+    Convention:
+        - input: :math:`(B, C, H, W)`
+        - output spatial size is ``floor(side / factor)`` per dimension
+          (:math:`5 \times 5 \to 2 \times 2` at the default ``factor=2.0`` —
+          note OpenCV's ``pyrDown`` rounds up instead)
+        - border_type: ``'reflect'`` by default (blur before downsample)
+        - align_corners: ``False`` by default
+
     Args:
         input: the torch.Tensor to be downsampled.
         border_type: the padding mode to be applied before convolving.
@@ -417,6 +442,13 @@ def pyrup(input: torch.Tensor, border_type: str = "reflect", align_corners: bool
     r"""Upsample a torch.Tensor and then blurs it.
 
     .. image:: _static/img/pyrup.png
+
+    Convention:
+        - input: :math:`(B, C, H, W)`
+        - output spatial size is exactly doubled per dimension (no ``factor``
+          parameter, unlike :func:`pyrdown`; :math:`3 \times 3 \to 6 \times 6`)
+        - border_type: ``'reflect'`` by default (blur after upsample)
+        - align_corners: ``False`` by default
 
     Args:
         input: the torch.Tensor to be downsampled.
@@ -461,10 +493,19 @@ def build_pyramid(
     The function constructs a vector of images and builds the Gaussian pyramid
     by recursively applying pyrDown to the previously built pyramid layers.
 
+    Convention:
+        - input: :math:`(B, C, H, W)`
+        - ``max_level`` is the total number of levels returned (including the
+          unchanged original as level 0), not a 0-based index of the last level
+        - each subsequent level is produced by :func:`pyrdown` (``floor(side / 2)``
+          per dimension)
+        - border_type: ``'reflect'`` by default
+        - align_corners: ``False`` by default
+
     Args:
         input : the torch.Tensor to be used to construct the pyramid.
-        max_level: 0-based index of the last (the smallest) pyramid layer.
-          It must be non-negative.
+        max_level: number of pyramid levels to return, including the unchanged
+          original image as level 0. Must be a positive integer.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
@@ -514,10 +555,19 @@ def build_laplacian_pyramid(
 
     See :cite:`burt1987laplacian` for more details.
 
+    Convention:
+        - input: :math:`(B, C, H, W)`
+        - ``max_level`` is the total number of levels returned (including the
+          unchanged original as level 0), not a 0-based index of the last level
+        - built from :func:`build_pyramid`'s Gaussian levels, taking the per-level
+          difference against a :func:`pyrup`-expanded neighbor
+        - border_type: ``'reflect'`` by default
+        - align_corners: ``False`` by default
+
     Args:
         input : the torch.Tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
-        max_level: 0-based index of the last (the smallest) pyramid layer.
-          It must be non-negative.
+        max_level: number of pyramid levels to return, including the unchanged
+          original image as level 0. Must be a positive integer.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.

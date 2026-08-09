@@ -26,6 +26,9 @@ class Vflip(nn.Module):
 
     Input must be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.transform.vflip`.
+
     Args:
         input: input torch.Tensor.
 
@@ -68,6 +71,9 @@ class Hflip(nn.Module):
     r"""Horizontally flip a torch.Tensor image or a batch of torch.Tensor images.
 
     Input must be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.transform.hflip`.
 
     Args:
         input: input torch.Tensor.
@@ -112,6 +118,9 @@ class Rot180(nn.Module):
 
     Input must be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
+    Convention:
+        - See the convention block of :func:`~kornia.geometry.transform.rot180`.
+
     Args:
         input: input torch.Tensor.
 
@@ -154,6 +163,14 @@ def rot180(input: torch.Tensor) -> torch.Tensor:
 
     Input must be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
+    Convention:
+        - flips both the height and width axes (equivalent to :func:`vflip` followed by
+          :func:`hflip`); no coordinate system, origin, or pixel convention applies — this
+          op is convention-agnostic
+        - accepts any rank: unbatched :math:`(H, W)`/:math:`(C, H, W)` or batched
+          :math:`(*, C, H, W)` all work, unlike :func:`center_crop`/:func:`pyrdown`'s
+          strict :math:`(B, C, H, W)` requirement
+
     Args:
         input: input torch.Tensor.
 
@@ -171,6 +188,13 @@ def hflip(input: torch.Tensor) -> torch.Tensor:
 
     Input must be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
 
+    Convention:
+        - flips along the width axis (the last dimension); no coordinate system, origin,
+          or pixel convention applies — this op is convention-agnostic
+        - accepts any rank: unbatched :math:`(H, W)`/:math:`(C, H, W)` or batched
+          :math:`(*, C, H, W)` all work, unlike :func:`center_crop`/:func:`pyrdown`'s
+          strict :math:`(B, C, H, W)` requirement
+
     Args:
         input: input torch.Tensor.
 
@@ -187,6 +211,13 @@ def vflip(input: torch.Tensor) -> torch.Tensor:
     .. image:: _static/img/vflip.png
 
     Input must be a torch.Tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
+
+    Convention:
+        - flips along the height axis (the second-to-last dimension); no coordinate
+          system, origin, or pixel convention applies — this op is convention-agnostic
+        - accepts any rank: unbatched :math:`(H, W)`/:math:`(C, H, W)` or batched
+          :math:`(*, C, H, W)` all work, unlike :func:`center_crop`/:func:`pyrdown`'s
+          strict :math:`(B, C, H, W)` requirement
 
     Args:
         input: input torch.Tensor.

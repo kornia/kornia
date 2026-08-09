@@ -42,19 +42,28 @@ def elastic_transform2d(
 
     .. image:: _static/img/elastic_transform2d.png
 
+    Convention:
+        - image: :math:`(B, C, H, W)`; ``noise``: :math:`(B, 2, H, W)` with
+          channel 0 the x- and channel 1 the y-displacement of the sampling
+          grid (positive x-noise shifts image content left)
+        - displacements are smoothed with a Gaussian (``kernel_size``,
+          ``sigma``) and scaled by ``alpha``
+        - align_corners: ``False`` by default
+        - padding_mode: ``'zeros'`` by default
+
     Args:
         image: Input image to be transformed with shape :math:`(B, C, H, W)`.
         noise: Noise image used to spatially transform the input image. Same
           resolution as the input image with shape :math:`(B, 2, H, W)`. The coordinates order
           it is expected to be in x-y.
-        kernel_size: the size of the Gaussian kernel.
+        kernel_size: the size of the Gaussian kernel, in the y and x directions, respectively.
         sigma: The standard deviation of the Gaussian in the y and x directions,
           respectively. Larger sigma results in smaller pixel displacements.
         alpha : The scaling factor that controls the intensity of the deformation
-          in the y and x directions, respectively.
-        align_corners: Interpolation flag used by ```grid_sample```.
-        mode: Interpolation mode used by ```grid_sample```. Either ``'bilinear'`` or ``'nearest'``.
-        padding_mode: The padding used by ```grid_sample```. Either ``'torch.zeros'``, ``'border'`` or ``'refection'``.
+          in the x and y directions, respectively.
+        align_corners: Interpolation flag used by ``grid_sample``.
+        mode: Interpolation mode used by ``grid_sample``. Either ``'bilinear'`` or ``'nearest'``.
+        padding_mode: The padding used by ``grid_sample``. Either ``'zeros'``, ``'border'`` or ``'reflection'``.
 
     Returns:
         the elastically transformed input image with shape :math:`(B,C,H,W)`.
