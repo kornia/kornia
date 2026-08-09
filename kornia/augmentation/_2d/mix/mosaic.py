@@ -207,7 +207,7 @@ class RandomMosaic(MixAugmentationBaseV2):
 
             return crop_by_transform_mat(
                 input,
-                transform,
+                transform[:, :2, :],
                 flags["output_size"],
                 mode=flags["resample"].name.lower(),
                 padding_mode=padding_mode,

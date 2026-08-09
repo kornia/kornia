@@ -232,7 +232,7 @@ class RandomCrop(GeometricAugmentationBase2D):
 
             return crop_by_transform_mat(
                 input,
-                transform,
+                transform[:, :2, :],
                 flags["size"],
                 mode=flags["resample"].name.lower(),
                 padding_mode=padding_mode,
