@@ -525,8 +525,10 @@ def build_pyramid(
 
     .. warning::
         The ``max_level`` bounds check does not currently reject non-positive
-        values: passing ``max_level <= 0`` returns the same single-element
-        list as ``max_level=1`` instead of raising. Tracked in
+        **integer** values: passing an integer ``max_level <= 0`` returns the
+        same single-element list as ``max_level=1`` instead of raising (a
+        non-integer ``max_level``, e.g. ``-0.5``, still raises ``TypeError``
+        from the ``range()`` call). Tracked in
         `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
 
     Args:
@@ -606,9 +608,11 @@ def build_laplacian_pyramid(
         ``max_level > 1`` (e.g. a :math:`(1, 1, 5, 8)` input with
         ``max_level=2``). This is likely unintended and tracked in
         `#3927 <https://github.com/kornia/kornia/issues/3927>`_. Separately, the
-        ``max_level`` bounds check does not currently reject non-positive values:
-        passing ``max_level <= 0`` returns the same single-element list as
-        ``max_level=1`` instead of raising — also tracked in
+        ``max_level`` bounds check does not currently reject non-positive
+        **integer** values: passing an integer ``max_level <= 0`` returns the
+        same single-element list as ``max_level=1`` instead of raising (a
+        non-integer ``max_level``, e.g. ``-0.5``, still raises ``TypeError``
+        from the ``range()`` call) — also tracked in
         `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
 
     Args:
