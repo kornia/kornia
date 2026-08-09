@@ -1217,7 +1217,7 @@ class TestPosterize(BaseTester):
     )
     def test_cardinality(self, shape, bits, device, dtype):
         inputs = torch.ones(*shape, device=device, dtype=dtype)
-        TestPosterize.f(inputs, bits).shape == torch.Size(shape)
+        assert TestPosterize.f(inputs, bits).shape == torch.Size(shape)
 
     # TODO(jian): add better assertions
     def test_exception(self, device, dtype):
