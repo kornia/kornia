@@ -446,6 +446,11 @@ def crop_by_indices(
         shape_compensation: if the cropped slice sizes are not exactly align `size`, the image can either be padded
             or resized.
 
+    Returns:
+        The cropped torch.Tensor with shape :math:`(B, C, h, w)`, where
+        :math:`(h, w)` is ``size`` if given, otherwise the shape inferred
+        from ``src_box``.
+
     """
     KORNIA_CHECK_SHAPE(input_tensor, ["B", "C", "H", "W"])
     KORNIA_CHECK_SHAPE(src_box, ["B", "4", "2"])

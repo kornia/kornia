@@ -244,10 +244,10 @@ def warp_image_tps(
           :func:`get_tps_transform` called **reversed** —
           ``get_tps_transform(points_dst, points_src)`` — see its Convention block
         - this function's own ``kernel_centers`` parameter must receive the same
-          tensor that was passed as the **first** (``points_src``) argument to
-          that reversed :func:`get_tps_transform` call — see the recipe in its
-          Convention block; passing the other point set silently produces the
-          wrong warp
+          tensor that was passed as the **second** positional argument to that
+          reversed :func:`get_tps_transform` call — i.e. the original source
+          control points (``points_src``) — see the recipe in its Convention
+          block; passing the other point set silently produces the wrong warp
         - align_corners: ``False`` by default
         - padding_mode: ``'zeros'`` by default
 

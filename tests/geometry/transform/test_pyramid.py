@@ -176,12 +176,12 @@ class TestScalePyramid(BaseTester):
         # extra_levels=3), init_sigma=0.25 below the assumed input blur (0.5) makes
         # octave 0's first sigma the input blur itself, while octave 1+ starts from
         # init_sigma as usual -- the two octaves diverge only in that first entry.
-        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        inp = torch.rand(1, 1, 32, 32, device=device, dtype=dtype)
         sp = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=0.25)
         _, sigmas, _ = sp(inp)
         # Snippet used to generate expected (requires only this module):
         # sp = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=0.25)
-        # _, sigmas, _ = sp(torch.rand(1, 1, 64, 64))
+        # _, sigmas, _ = sp(torch.rand(1, 1, 32, 32))
         # sigmas[0][0].tolist(), sigmas[1][0].tolist()
         expected_octave0 = torch.tensor([0.5, 0.5, 1.0, 2.0], device=device, dtype=dtype)
         expected_octave1 = torch.tensor([0.25, 0.5, 1.0, 2.0], device=device, dtype=dtype)

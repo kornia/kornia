@@ -18,6 +18,7 @@
 import pytest
 import torch
 
+from conftest import supports_2d_border_padding
 from kornia.geometry.transform import elastic_transform2d
 
 from testing.base import BaseTester
@@ -221,8 +222,7 @@ class TestElasticTransform(BaseTester):
         self.assert_close(out_default[0, 0, 2], expected_zeros_row, rtol=1e-2, atol=1e-2)
         self.assert_close(out_zeros[0, 0, 2], expected_zeros_row, rtol=1e-2, atol=1e-2)
 
-        # MPS 2D grid_sample raises "Unsupported Border padding mode" (torch 2.9.1); 3D supports it.
-        if device.type != "mps":
+        if supports_2d_border_padding(device):
             out_border = elastic_transform2d(image, noise, padding_mode="border", **kwargs)
             expected_border_row = torch.tensor([5.0, 5.0, 5.0, 5.0, 5.0], device=device, dtype=dtype)
             self.assert_close(out_border[0, 0, 2], expected_border_row, rtol=1e-2, atol=1e-2)

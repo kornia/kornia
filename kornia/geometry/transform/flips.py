@@ -180,10 +180,10 @@ def hflip(input: torch.Tensor) -> torch.Tensor:
 
     Convention:
         - flips along the width axis (the last dimension)
-        - accepts any rank (rank-0 input is returned unchanged): unbatched
-          :math:`(H, W)`/:math:`(C, H, W)` or batched :math:`(*, C, H, W)` all work,
-          unlike :func:`center_crop`/:func:`pyrdown`'s strict :math:`(B, C, H, W)`
-          requirement
+        - requires rank ≥ 1 (operates on dim ``-1``): unbatched :math:`(W,)`/
+          :math:`(H, W)`/:math:`(C, H, W)` or batched :math:`(*, C, H, W)` all
+          work, unlike :func:`center_crop`/:func:`pyrdown`'s strict
+          :math:`(B, C, H, W)` requirement
 
     Args:
         input: input torch.Tensor.

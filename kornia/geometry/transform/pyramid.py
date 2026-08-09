@@ -158,27 +158,24 @@ class ScalePyramid(nn.Module):
         - ``forward`` returns a 3-tuple ``(pyr, sigmas, pixel_dists)``, one entry per
           octave: ``pyr[octave]`` is :math:`(B, C, L, H_i, W_i)` with
           ``L = n_levels + extra_levels`` stacked levels; ``sigmas[octave]`` and
-          ``pixel_dists[octave]`` are :math:`(B, L)` — ``sigmas`` is
-          octave-relative, resetting to the same ``init_sigma``-seeded sequence
-          at the start of every octave, identical from octave 1 onward; octave
-          0's first entry is instead the assumed input blur (``0.5``, or
-          ``1.0`` when ``double_image=True``) whenever ``init_sigma`` is below
-          that value — e.g. ``ScalePyramid(n_levels=1, init_sigma=0.25)`` gives
-          octave 0 ``[0.5, 0.5, 1.0, 2.0]`` vs octave 1+ ``[0.25, 0.5, 1.0, 2.0]``
-          (the per-level values scale with ``n_levels``/``extra_levels``); and
+          ``pixel_dists[octave]`` are :math:`(B, L)` — these are **nominal**
+          bookkeeping scale metadata (the values the scale-space construction
+          targets), not measured physical blur. ``sigmas`` is octave-relative,
+          resetting to the same ``init_sigma``-seeded sequence at the start of
+          every octave (octave 0's first entry is instead the assumed input
+          blur, ``0.5``, or ``1.0`` when ``double_image=True``, whenever
+          ``init_sigma`` is below that value) — e.g.
+          ``ScalePyramid(n_levels=1, init_sigma=0.25)`` returns octave 0
+          ``[0.5, 0.5, 1.0, 2.0]`` and octave 1+ ``[0.25, 0.5, 1.0, 2.0]`` (the
+          per-level values scale with ``n_levels``/``extra_levels``); and
           ``pixel_dists`` is the pixel spacing of each level relative to the
-          input; the blur sigma in original-image pixels is
-          ``sigmas[octave] * pixel_dists[octave]``, not ``sigmas[octave]`` alone —
-          this rule is exact for level 0 of every octave and for octave 1 onward,
-          but is an underestimate for octave-0 levels :math:`\geq 1` whenever
-          ``init_sigma`` is below the assumed input blur: the level-to-level
-          blur kernels are sized assuming a prior sigma of ``init_sigma``, while
-          octave 0's actual level-0 blur is instead the (larger) assumed input
-          blur, so the composed true sigma is
-          :math:`\sqrt{\text{true\_prior}^2 + \delta^2}` rather than the labeled
-          value — e.g. for the ``init_sigma=0.25`` example above, octave 0's
-          labeled ``sigmas[0][1] == 0.5`` while the true composed blur is
-          :math:`\approx 0.661` (about 32% higher)
+          input. The nominal blur in original-image pixels is
+          ``sigmas[octave] * pixel_dists[octave]``, not ``sigmas[octave]``
+          alone. Caveat: when ``init_sigma`` is below the assumed input blur,
+          the true blur exceeds this nominal value for octave-0 levels
+          :math:`\geq 1` and for everything seeded from them in later octaves
+          (each octave is seeded from an earlier octave's under-labelled
+          level, so the gap propagates onward)
         - no ``align_corners`` constructor parameter — the internal ``double_image``
           and octave-seeding resizes are hardcoded to ``align_corners=True`` and are
           not user-configurable
@@ -352,11 +349,12 @@ class ScalePyramid(nn.Module):
 
         Returns:
             Three lists with one entry per octave. ``pyr`` contains stacked
-            image levels, ``sigmas`` contains the octave-relative blur sigma
-            for each level (multiply by the matching ``pixel_dists`` entry for
-            the absolute blur in original-image pixels), and ``pixel_dists``
-            contains the pixel spacing of each level relative to the original
-            image.
+            image levels, ``sigmas`` contains the octave-relative nominal blur
+            sigma for each level (multiply by the matching ``pixel_dists``
+            entry for the nominal absolute blur in original-image pixels — see
+            the class Convention block for when the true blur exceeds this
+            nominal value), and ``pixel_dists`` contains the pixel spacing of
+            each level relative to the original image.
         """
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
@@ -526,9 +524,8 @@ def build_pyramid(
     .. warning::
         The ``max_level`` bounds check does not currently reject non-positive
         **integer** values: passing an integer ``max_level <= 0`` returns the
-        same single-element list as ``max_level=1`` instead of raising (a
-        non-integer ``max_level``, e.g. ``-0.5``, still raises ``TypeError``
-        from the ``range()`` call). Tracked in
+        same single-element list as ``max_level=1`` instead of raising
+        (non-integer ``max_level`` values still raise an error). Tracked in
         `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
 
     Args:
@@ -610,10 +607,9 @@ def build_laplacian_pyramid(
         `#3927 <https://github.com/kornia/kornia/issues/3927>`_. Separately, the
         ``max_level`` bounds check does not currently reject non-positive
         **integer** values: passing an integer ``max_level <= 0`` returns the
-        same single-element list as ``max_level=1`` instead of raising (a
-        non-integer ``max_level``, e.g. ``-0.5``, still raises ``TypeError``
-        from the ``range()`` call) — also tracked in
-        `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
+        same single-element list as ``max_level=1`` instead of raising
+        (non-integer ``max_level`` values still raise an error) — also
+        tracked in `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
 
     Args:
         input : the torch.Tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.

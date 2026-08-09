@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import kornia
+from conftest import supports_2d_border_padding
 
 from testing.base import BaseTester
 
@@ -275,16 +276,11 @@ class TestWarpImage(BaseTester):
         warped = kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine, align_corners=True)
         self.assert_close(warped, image, atol=1e-4, rtol=1e-4)
 
-    def test_convention_default_align_corners_and_padding_mode(self, device, dtype):
-        # warp_image_tps's align_corners default is False, which does NOT reproduce an
-        # identity TPS warp: its internal create_meshgrid call always builds the sampling
-        # grid using the align_corners=True convention, so it mismatches grid_sample's own
-        # (default) False convention even for a mathematically-identity TPS transform (see
-        # the warning in the Convention block above warp_image_tps; align_corners=True itself
-        # is already pinned by test_identity_warp_align_corners above). Its padding_mode
-        # default is 'zeros': grid_sample calls that sample outside bounds (which happens even
-        # for this identity TPS warp, because of the align_corners mismatch) fill with 0, not
-        # the edge value ('border' would).
+    def test_convention_default_padding_mode_zeros(self, device, dtype):
+        # warp_image_tps's padding_mode default is 'zeros': grid_sample calls that sample
+        # outside bounds fill with 0, not the edge value ('border' would). This is
+        # independent of the align_corners identity-mismatch bug pinned separately by
+        # test_convention_default_align_corners_reproduces_identity below.
         if dtype == torch.float16:
             # get_tps_transform's linear solve is numerically unstable in float16 (produces NaN
             # kernel/affine weights) -- matches this file's pre-existing
@@ -298,12 +294,32 @@ class TestWarpImage(BaseTester):
         img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
 
         out_default = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine)
-        assert not torch.allclose(out_default, img, atol=1e-2, rtol=1e-2)
 
         out_zeros = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine, padding_mode="zeros")
         self.assert_close(out_default, out_zeros)
 
-        # MPS 2D grid_sample raises "Unsupported Border padding mode" (torch 2.9.1); 3D supports it.
-        if device.type != "mps":
+        if supports_2d_border_padding(device):
             out_border = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine, padding_mode="border")
             assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
+
+    @pytest.mark.xfail(reason="warp_image_tps default align_corners=False breaks identity — kornia#3928", strict=True)
+    def test_convention_default_align_corners_reproduces_identity(self, device, dtype):
+        # Intended/correct behavior: an identity TPS transform warped with warp_image_tps's
+        # *default* align_corners should reproduce the input image, exactly like the
+        # align_corners=True case already pinned by test_identity_warp_align_corners above.
+        # It currently does not (internal create_meshgrid always builds the sampling grid
+        # using the align_corners=True convention, mismatching grid_sample's default False
+        # convention -- see the warning in warp_image_tps's Convention block, #3928). This
+        # test is marked xfail(strict=True) so that once #3928 is fixed it XPASSes and fails
+        # loudly, forcing the xfail mark to be removed instead of silently staying green.
+        if dtype == torch.float16:
+            pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
+
+        src = torch.tensor(
+            [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]], device=device, dtype=dtype
+        )
+        kernel, affine = kornia.geometry.transform.get_tps_transform(src, src)
+        img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+
+        out_default = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine)
+        self.assert_close(out_default, img, atol=1e-2, rtol=1e-2)
