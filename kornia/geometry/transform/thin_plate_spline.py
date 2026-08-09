@@ -246,10 +246,11 @@ def warp_image_tps(
         This function always samples via a grid built with the ``align_corners=True``
         convention (``create_meshgrid(h, w, normalized_coordinates=True)``), so the
         default ``align_corners=False`` mismatches it: even a mathematically-identity
-        TPS transform is **not** reproduced exactly at the default. Passing
-        ``align_corners=True`` explicitly removes this grid mismatch, leaving an
-        identity round-trip up to ordinary floating-point precision. This is likely
-        unintended and tracked in `#3923 <https://github.com/kornia/kornia/issues/3923>`_.
+        TPS transform is **not** reproduced exactly at the default — this mismatch is
+        likely unintended and tracked in
+        `#3923 <https://github.com/kornia/kornia/issues/3923>`_. Passing
+        ``align_corners=True`` explicitly removes it, leaving an identity round-trip up
+        to ordinary floating-point precision.
 
     Args:
         image: input image torch.Tensor :math:`(B, C, H, W)`.
