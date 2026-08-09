@@ -339,21 +339,24 @@ class TestCropByBoxes3D(BaseTester):
         )
 
     def test_convention_align_corners_default_is_false(self, device, dtype):
-        # crop_by_boxes3d's align_corners default is False -- every existing dedicated test in
+        # crop_by_boxes3d's align_corners default is False -- every other dedicated test in
         # this class passes align_corners=True explicitly, so the default itself was never
-        # exercised until now.
-        inp = torch.arange(0.0, 343.0, device=device, dtype=dtype).view(1, 1, 7, 7, 7)
+        # exercised until now. Also pins the docstring's "inclusive coordinates" consequence
+        # with the same fixture: the box extent (1, 1, 1)..(2, 2, 2) reproduces the exact
+        # integer-voxel slice only under align_corners=True -- the align_corners=False
+        # default interpolates instead.
+        vol = torch.arange(64.0, device=device, dtype=dtype).view(1, 1, 4, 4, 4)
         src_box = torch.tensor(
             [
                 [
                     [1.0, 1.0, 1.0],
-                    [3.0, 1.0, 1.0],
-                    [3.0, 3.0, 1.0],
-                    [1.0, 3.0, 1.0],
+                    [2.0, 1.0, 1.0],
+                    [2.0, 2.0, 1.0],
+                    [1.0, 2.0, 1.0],
                     [1.0, 1.0, 2.0],
-                    [3.0, 1.0, 2.0],
-                    [3.0, 3.0, 2.0],
-                    [1.0, 3.0, 2.0],
+                    [2.0, 1.0, 2.0],
+                    [2.0, 2.0, 2.0],
+                    [1.0, 2.0, 2.0],
                 ]
             ],
             device=device,
@@ -375,54 +378,16 @@ class TestCropByBoxes3D(BaseTester):
             device=device,
             dtype=dtype,
         )
-        out_default = kornia.geometry.transform.crop_by_boxes3d(inp, src_box, dst_box)
-        out_true = kornia.geometry.transform.crop_by_boxes3d(inp, src_box, dst_box, align_corners=True)
-        out_false = kornia.geometry.transform.crop_by_boxes3d(inp, src_box, dst_box, align_corners=False)
+        expected_slice = vol[:, :, 1:3, 1:3, 1:3]
+
+        out_default = kornia.geometry.transform.crop_by_boxes3d(vol, src_box, dst_box)
+        out_true = kornia.geometry.transform.crop_by_boxes3d(vol, src_box, dst_box, align_corners=True)
+        out_false = kornia.geometry.transform.crop_by_boxes3d(vol, src_box, dst_box, align_corners=False)
+
         self.assert_close(out_default, out_false, rtol=1e-2, atol=1e-2)
         assert not torch.allclose(out_default, out_true, atol=1e-2, rtol=1e-2)
-
-        # Consequence for the docstring's "inclusive coordinates" claim: the box extent
-        # (1, 1, 1)..(2, 2, 2) does NOT reproduce the exact integer-voxel slice under the
-        # align_corners=False default (it interpolates instead) -- only align_corners=True
-        # does.
-        vol = torch.arange(64.0, device=device, dtype=dtype).view(1, 1, 4, 4, 4)
-        unit_src_box = torch.tensor(
-            [
-                [
-                    [1.0, 1.0, 1.0],
-                    [2.0, 1.0, 1.0],
-                    [2.0, 2.0, 1.0],
-                    [1.0, 2.0, 1.0],
-                    [1.0, 1.0, 2.0],
-                    [2.0, 1.0, 2.0],
-                    [2.0, 2.0, 2.0],
-                    [1.0, 2.0, 2.0],
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )
-        unit_dst_box = torch.tensor(
-            [
-                [
-                    [0.0, 0.0, 0.0],
-                    [1.0, 0.0, 0.0],
-                    [1.0, 1.0, 0.0],
-                    [0.0, 1.0, 0.0],
-                    [0.0, 0.0, 1.0],
-                    [1.0, 0.0, 1.0],
-                    [1.0, 1.0, 1.0],
-                    [0.0, 1.0, 1.0],
-                ]
-            ],
-            device=device,
-            dtype=dtype,
-        )
-        expected_slice = vol[:, :, 1:3, 1:3, 1:3]
-        unit_out_default = kornia.geometry.transform.crop_by_boxes3d(vol, unit_src_box, unit_dst_box)
-        unit_out_true = kornia.geometry.transform.crop_by_boxes3d(vol, unit_src_box, unit_dst_box, align_corners=True)
-        assert not torch.allclose(unit_out_default, expected_slice, atol=1e-2, rtol=1e-2)
-        self.assert_close(unit_out_true, expected_slice, rtol=1e-2, atol=1e-2)
+        self.assert_close(out_true, expected_slice, rtol=1e-2, atol=1e-2)
+        assert not torch.allclose(out_default, expected_slice, atol=1e-2, rtol=1e-2)
 
     def test_convention_crop_by_transform_mat3d_direct(self, device, dtype):
         # crop_by_transform_mat3d has no direct test anywhere in this file -- it is only ever

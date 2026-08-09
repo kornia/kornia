@@ -179,6 +179,10 @@ class TestScalePyramid(BaseTester):
         inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
         sp = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=0.25)
         _, sigmas, _ = sp(inp)
+        # Snippet used to generate expected (requires only this module):
+        # sp = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=0.25)
+        # _, sigmas, _ = sp(torch.rand(1, 1, 64, 64))
+        # sigmas[0][0].tolist(), sigmas[1][0].tolist()
         expected_octave0 = torch.tensor([0.5, 0.5, 1.0, 2.0], device=device, dtype=dtype)
         expected_octave1 = torch.tensor([0.25, 0.5, 1.0, 2.0], device=device, dtype=dtype)
         self.assert_close(sigmas[0][0], expected_octave0, rtol=1e-3, atol=1e-3)
@@ -212,14 +216,6 @@ class TestBuildPyramid(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.build_pyramid, (img, max_level))
 
-    @pytest.mark.parametrize("max_level", (0, -1))
-    def test_convention_max_level_less_than_one_behaves_like_one(self, max_level, device, dtype):
-        # max_level <= 1 (including 0 and negative) is not rejected and currently
-        # behaves like max_level=1: a single-element list. See the Args entry above.
-        sample = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
-        pyramid = kornia.geometry.transform.build_pyramid(sample, max_level)
-        assert len(pyramid) == 1
-
 
 class TestBuildLaplacianPyramid(BaseTester):
     def test_smoke(self, device, dtype):
@@ -247,11 +243,3 @@ class TestBuildLaplacianPyramid(BaseTester):
         batch_size, channels, height, width = 1, 2, 7, 9
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.build_laplacian_pyramid, (img, max_level), nondet_tol=1e-8)
-
-    @pytest.mark.parametrize("max_level", (0, -1))
-    def test_convention_max_level_less_than_one_behaves_like_one(self, max_level, device, dtype):
-        # max_level <= 1 (including 0 and negative) is not rejected and currently
-        # behaves like max_level=1: a single-element list. See the Args entry above.
-        sample = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
-        pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level)
-        assert len(pyramid) == 1

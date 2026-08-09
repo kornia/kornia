@@ -313,10 +313,21 @@ def crop_by_transform_mat(
           either :math:`(B, 2, 3)` affine or :math:`(B, 3, 3)` homogeneous; dispatch is
           by shape — :math:`(B, 2, 3)` takes the cheaper :func:`warp_affine` path,
           while :math:`(B, 3, 3)` takes :func:`warp_perspective` and uses the **full**
-          matrix, so a non-trivial third (projective) row changes the output;
-          :class:`CenterCrop2D` itself calls this with a :math:`(B, 2, 3)` transform
+          matrix, so a non-trivial third (projective) row changes the output for
+          non-degenerate ``out_size`` (see warning below); :class:`CenterCrop2D` itself
+          calls this with a :math:`(B, 2, 3)` transform
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
+
+    .. warning::
+        The :math:`(B, 3, 3)` full-matrix behavior above has degenerate-``out_size``
+        exceptions: with ``align_corners=True`` and an ``out_size`` dimension equal to
+        ``1``, the destination-side grid is singular and the output is all-``NaN``; with
+        ``align_corners=False`` and an ``out_size`` dimension equal to ``1``, this
+        function silently falls back to the :math:`(B, 2, 3)` :func:`warp_affine` path
+        (dropping the projective row entirely), so two :math:`(B, 3, 3)` matrices that
+        differ only in their third row produce byte-identical output. Tracked in
+        `#3929 <https://github.com/kornia/kornia/issues/3929>`_.
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).

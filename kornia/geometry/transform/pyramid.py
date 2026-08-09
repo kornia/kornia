@@ -168,7 +168,17 @@ class ScalePyramid(nn.Module):
           (the per-level values scale with ``n_levels``/``extra_levels``); and
           ``pixel_dists`` is the pixel spacing of each level relative to the
           input; the blur sigma in original-image pixels is
-          ``sigmas[octave] * pixel_dists[octave]``, not ``sigmas[octave]`` alone
+          ``sigmas[octave] * pixel_dists[octave]``, not ``sigmas[octave]`` alone —
+          this rule is exact for level 0 of every octave and for octave 1 onward,
+          but is an underestimate for octave-0 levels :math:`\geq 1` whenever
+          ``init_sigma`` is below the assumed input blur: the level-to-level
+          blur kernels are sized assuming a prior sigma of ``init_sigma``, while
+          octave 0's actual level-0 blur is instead the (larger) assumed input
+          blur, so the composed true sigma is
+          :math:`\sqrt{\text{true\_prior}^2 + \delta^2}` rather than the labeled
+          value — e.g. for the ``init_sigma=0.25`` example above, octave 0's
+          labeled ``sigmas[0][1] == 0.5`` while the true composed blur is
+          :math:`\approx 0.661` (about 32% higher)
         - no ``align_corners`` constructor parameter — the internal ``double_image``
           and octave-seeding resizes are hardcoded to ``align_corners=True`` and are
           not user-configurable
@@ -513,11 +523,16 @@ def build_pyramid(
         - border_type: ``'reflect'`` by default
         - align_corners: ``False`` by default
 
+    .. warning::
+        The ``max_level`` bounds check does not currently reject non-positive
+        values: passing ``max_level <= 0`` returns the same single-element
+        list as ``max_level=1`` instead of raising. Tracked in
+        `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
+
     Args:
         input : the torch.Tensor to be used to construct the pyramid.
         max_level: the number of pyramid levels to return, including the
-          unchanged original image as level 0. Non-positive integer values
-          currently behave like ``max_level=1`` (a single-element list).
+          unchanged original image as level 0.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
@@ -590,14 +605,16 @@ def build_laplacian_pyramid(
         subtraction can raise ``RuntimeError`` from a shape mismatch when
         ``max_level > 1`` (e.g. a :math:`(1, 1, 5, 8)` input with
         ``max_level=2``). This is likely unintended and tracked in
-        `#3923 <https://github.com/kornia/kornia/issues/3923>`_.
+        `#3927 <https://github.com/kornia/kornia/issues/3927>`_. Separately, the
+        ``max_level`` bounds check does not currently reject non-positive values:
+        passing ``max_level <= 0`` returns the same single-element list as
+        ``max_level=1`` instead of raising — also tracked in
+        `#3927 <https://github.com/kornia/kornia/issues/3927>`_.
 
     Args:
         input : the torch.Tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
         max_level: the number of pyramid levels to return (see Convention
-          above for what each level contains). Non-positive integer values
-          currently behave like ``max_level=1``, returning just the base
-          Gaussian level.
+          above for what each level contains).
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.

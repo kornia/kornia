@@ -276,10 +276,7 @@ def crop_by_boxes3d(
         - input: :math:`(B, C, D, H, W)`
         - ``src_box``/``dst_box``: :math:`(B, 8, 3)` corner points in ``(x, y, z)``
           order, front face then back face, each face top-left, top-right,
-          bottom-right, bottom-left — same ``(x, y)``/inclusive-pixel convention as
-          :func:`crop_and_resize`, with ``z`` anchored at the top-left of the first
-          depth slice (``z = 0``); reproducing the exact integer-voxel slice requires
-          ``align_corners=True`` — the default ``False`` interpolates instead;
+          bottom-right, bottom-left — same convention as :func:`crop_and_resize3d`;
           ``dst_box`` determines the output resolution
         - align_corners: ``False`` by default
 

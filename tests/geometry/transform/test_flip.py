@@ -159,6 +159,9 @@ class TestHflip(BaseTester):
         # TestVflip/TestRot180.test_convention_rank1_raises). A rank-0 tensor also works and
         # is returned unchanged (there is no dimension to flip).
         x = torch.tensor([0.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
+        # Snippet used to generate expected (requires only this module): hflip reverses the
+        # last dimension, so for a rank-1 tensor that is simply the element order reversed.
+        # x.flip(-1) -> tensor([3., 2., 1., 0.])
         expected = torch.tensor([3.0, 2.0, 1.0, 0.0], device=device, dtype=dtype)
         self.assert_close(kornia.geometry.transform.hflip(x), expected)
 

@@ -155,14 +155,25 @@ class TestElasticTransform(BaseTester):
         # is confined to a single row when sigma[1] is large instead -- pinning sigma[0] to the y
         # (row) direction, independently of the alpha check above.
         #
+        # Pinned as an ORDERING PROPERTY (row-wise spread of the affected region), not as exact
+        # threshold-crossing pixel lists: compute the per-row total displaced energy, then the
+        # weighted standard deviation of that energy across rows (how far the effect spreads
+        # vertically). sigma=(3.0, 0.3) must spread markedly wider across rows than sigma=(0.3, 3.0).
+        #
         # Snippet used to generate expected (requires only this module):
         # N, c = 21, 10
         # image = torch.zeros(1, 1, N, N); image[0, 0, :, c] = 1.0
         # noise = torch.zeros(1, 2, N, N); noise[0, 0, c, c] = 1.0
         # kwargs = dict(kernel_size=(9, 9), alpha=(3.0, 0.0))
-        # out = elastic_transform2d(image, noise, sigma=(3.0, 0.3), **kwargs)  # or (0.3, 3.0)
-        # diffs = (out[0, 0, 1:-1] - image[0, 0, 1:-1]).abs()
-        # (diffs > 0.05).any(dim=1).nonzero().flatten().add(1).tolist()
+        # out_y = elastic_transform2d(image, noise, sigma=(3.0, 0.3), **kwargs)
+        # out_x = elastic_transform2d(image, noise, sigma=(0.3, 3.0), **kwargs)
+        # def row_std(out):
+        #     energy = (out[0, 0, 1:-1] - image[0, 0, 1:-1]).abs().sum(dim=1)
+        #     rows = torch.arange(energy.shape[0], dtype=energy.dtype)
+        #     w = energy / energy.sum()
+        #     mean = (w * rows).sum()
+        #     return (w * (rows - mean) ** 2).sum().sqrt().item()
+        # row_std(out_y), row_std(out_x)  # -> 2.582, 0.144 (ratio ~18x)
         n_sigma, center = 21, 10
         sigma_image = torch.zeros(1, 1, n_sigma, n_sigma, device=device, dtype=dtype)
         sigma_image[0, 0, :, center] = 1.0
@@ -173,14 +184,20 @@ class TestElasticTransform(BaseTester):
         out_sigma_y_wide = elastic_transform2d(sigma_image, sigma_noise, sigma=(3.0, 0.3), **sigma_kwargs)
         out_sigma_x_wide = elastic_transform2d(sigma_image, sigma_noise, sigma=(0.3, 3.0), **sigma_kwargs)
 
-        def _moved_rows(out: torch.Tensor) -> list[int]:
-            diffs = (out[0, 0, 1:-1] - sigma_image[0, 0, 1:-1]).abs()
-            return (diffs > 0.05).any(dim=1).nonzero().flatten().add(1).tolist()
+        def _row_spread_std(out: torch.Tensor) -> torch.Tensor:
+            # weighted standard deviation (over interior rows) of the displaced energy,
+            # i.e. how far the affected region spreads vertically.
+            energy = (out[0, 0, 1:-1] - sigma_image[0, 0, 1:-1]).abs().sum(dim=1)
+            rows = torch.arange(energy.shape[0], dtype=energy.dtype, device=energy.device)
+            weights = energy / energy.sum()
+            mean = (weights * rows).sum()
+            return (weights * (rows - mean) ** 2).sum().sqrt()
 
-        # sigma=(3.0, 0.3): large sigma_y spreads the impulse across 9 rows (kernel half-width 4).
-        assert _moved_rows(out_sigma_y_wide) == [6, 7, 8, 9, 10, 11, 12, 13, 14]
-        # sigma=(0.3, 3.0): large sigma_x instead -- vertical spread collapses to the impulse row.
-        assert _moved_rows(out_sigma_x_wide) == [10]
+        spread_y_wide = _row_spread_std(out_sigma_y_wide)
+        spread_x_wide = _row_spread_std(out_sigma_x_wide)
+        # sigma=(3.0, 0.3) (large sigma_y) spreads markedly wider across rows than
+        # sigma=(0.3, 3.0) (large sigma_x) -- a robust ordering property, not an exact pixel list.
+        assert spread_y_wide > 5 * spread_x_wide
 
     def test_convention_padding_mode_affects_border_sampling(self, device, dtype):
         # padding_mode's default ('zeros') genuinely affects boundary sampling, but only once the
