@@ -238,6 +238,9 @@ Interactive Demo
 
     <gradio-app src="https://kornia-kornia-loftr.hf.space"></gradio-app>
 
+.. autoclass:: EfficientLoFTR
+   :members: forward
+
 .. autoclass:: OnnxLightGlue
    :members: forward
 
