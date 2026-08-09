@@ -117,7 +117,6 @@ class RandomAffine3D(GeometricAugmentationBase3D):
             ]
         ] = None,
         shears: Union[
-            None,
             torch.Tensor,
             float,
             Tuple[float, float],
@@ -130,6 +129,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
                 Tuple[float, float],
                 Tuple[float, float],
             ],
+            None,
         ] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
