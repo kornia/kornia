@@ -173,7 +173,7 @@ class TestElasticTransform(BaseTester):
         out_sigma_y_wide = elastic_transform2d(sigma_image, sigma_noise, sigma=(3.0, 0.3), **sigma_kwargs)
         out_sigma_x_wide = elastic_transform2d(sigma_image, sigma_noise, sigma=(0.3, 3.0), **sigma_kwargs)
 
-        def _moved_rows(out: torch.Tensor) -> list:
+        def _moved_rows(out: torch.Tensor) -> list[int]:
             diffs = (out[0, 0, 1:-1] - sigma_image[0, 0, 1:-1]).abs()
             return (diffs > 0.05).any(dim=1).nonzero().flatten().add(1).tolist()
 
