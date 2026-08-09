@@ -50,10 +50,16 @@ The fix must run the **same code path** in eager and compile.
 4. **Benchmark before/after — REQUIRED for every touched function.** A compile fix that doesn't speed anything up (or regresses eager) must be justified. Benchmarking is an experiment, not a vibe — hold it to experimental standards:
    ```python
    import torch.utils.benchmark as bench
-   def us(f,*a): return bench.Timer(stmt="f(*a)",globals={"f":f,"a":a}).blocked_autorange(min_run_time=1.0).median*1e6
+
+
+   def us(f, *a):
+       return bench.Timer(stmt="f(*a)", globals={"f": f, "a": a}).blocked_autorange(min_run_time=1.0).median * 1e6
+
+
    eager = us(fn, *args)
-   c = torch.compile(fn, fullgraph=True); c(*args)  # warmup — compile + allocator + cudnn autotune all happen on the first call
-   comp  = us(c, *args)
+   c = torch.compile(fn, fullgraph=True)
+   c(*args)  # warmup — compile + allocator + cudnn autotune all happen on the first call
+   comp = us(c, *args)
    ```
    Methodology that makes the number trustworthy — deviate and the comparison is noise:
    - **Warm up** before timing (first call pays compilation / autotune / lazy-init). **Never** time a single call — use `blocked_autorange` (statistical, median of many) so you report signal, not scheduler jitter.
