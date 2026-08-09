@@ -188,9 +188,9 @@ We're all volunteers. These policies help us focus on high-impact work.
     ```python
     from testing.base import BaseTester
 
+
     class TestMyFunction(BaseTester):
         # To compare the actual and expected tensors use `self.assert_close(...)`
-
 
         def test_smoke(self, device, dtype):
             # test the function with different parameters arguments, to check if the function at least runs with all the
@@ -241,6 +241,7 @@ We're all volunteers. These policies help us focus on high-impact work.
     ```python
     import pytest
 
+
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_smoke(batch_size, device, dtype):
         x = torch.rand(batch_size, 2, 3, device=device, dtype=dtype)
@@ -271,6 +272,7 @@ We're all volunteers. These policies help us focus on high-impact work.
     ```python
     from __future__ import annotations
     import torch.nn as nn
+
 
     class MyModule(nn.Module):
         def forward(self, x: torch.Tensor) -> torch.Tensor:
