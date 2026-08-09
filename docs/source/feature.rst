@@ -159,11 +159,27 @@ Local Features (Detector and Descriptors together)
 .. autoclass:: SOLD2_detector
    :members: forward
 
+.. autoclass:: ALIKED
+   :members: forward, from_pretrained, forward_laf
+
+.. autoclass:: ALIKEDFeatures
+   :undoc-members:
+   :members: n, to
+
 .. autoclass:: DeDoDe
    :members: forward, from_pretrained, describe, detect
 
 .. autoclass:: DISK
    :members: forward, from_pretrained, heatmap_and_dense_descriptors
+
+.. autoclass:: XFeat
+   :members: forward, from_pretrained, detectAndCompute, detectAndComputeDense, match_xfeat, match_xfeat_star
+
+.. autoclass:: XFeatModel
+   :members: forward
+
+.. autoclass:: InterpolateSparse2d
+   :members: forward
 
 .. autoclass:: DISKFeatures
    :undoc-members:

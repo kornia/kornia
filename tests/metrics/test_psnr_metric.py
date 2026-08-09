@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import pytest
 import torch
 
 import kornia
@@ -28,3 +29,9 @@ class TestPsnr(BaseTester):
         expected = torch.tensor(20.0, device=device, dtype=dtype)
         actual = kornia.metrics.psnr(sample, 1.2 * sample, 2.0)
         self.assert_close(actual, expected)
+
+    def test_exception_shape_mismatch(self, device, dtype):
+        a = torch.ones(4, device=device, dtype=dtype)
+        b = torch.ones(8, device=device, dtype=dtype)
+        with pytest.raises(TypeError, match="Expected tensors of equal shapes"):
+            kornia.metrics.psnr(a, b, max_val=1.0)

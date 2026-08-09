@@ -43,7 +43,7 @@ def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
             raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
         _validate_shape(input.shape, required_shapes=("BCHW",))
-        _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+        _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, torch.float16, torch.float32, torch.float64])
 
         return f(input, *args, **kwargs)
 
@@ -69,7 +69,7 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
         input_shape = len(input.shape)
         if input_shape != 5:
             raise AssertionError(f"Expect input of 5 dimensions, got {input_shape} instead")
-        _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+        _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, torch.float16, torch.float32, torch.float64])
 
         return f(input, *args, **kwargs)
 
@@ -408,7 +408,11 @@ def override_parameters(
         in_place: if to override in-place or not.
 
     """
-    if params_override is None:
+    # Nothing to override (None or an empty kwargs dict — the common forward path): return the
+    # params untouched. This skips a per-call `deepcopy_dict` (a full tensor clone of every
+    # param) that only existed to decouple the copy from the override — with no override there
+    # is nothing to decouple. Matches the pre-existing `None` fast path.
+    if not params_override:
         return params
     out = params if in_place else deepcopy_dict(params)
     for k, v in params_override.items():

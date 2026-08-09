@@ -92,9 +92,13 @@ class Quaternion(nn.Module):
 
         """
         super().__init__()
+
         if not isinstance(data, (torch.Tensor, nn.Parameter)):
             raise TypeError(f"Expected torch.Tensor or nn.Parameter, got {type(data)}")
-        # KORNIA_CHECK_SHAPE(data, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
+        # KORNIA_CHECK_SHAPE(data, ["B", "4"])   # FIXME: resolve shape bugs. @edgarriba
+
+        if data.ndim == 0 or data.shape[-1] != 4:
+            raise ValueError(f"Quaternion input must have last dimension == 4. Got shape {tuple(data.shape)}")
         self._data = data
 
     def to(self, *args: Any, **kwargs: Any) -> "Quaternion":
@@ -669,8 +673,15 @@ def average_quaternions(Q: "Quaternion", w: Optional[torch.Tensor] = None) -> "Q
         w = w / w.sum()
         A = data.T @ torch.diag(w) @ data
 
+    orig_dtype = A.dtype
+    if A.dtype in (torch.float16, torch.bfloat16):
+        A = A.float()
     eigenvalues, eigenvectors = torch.linalg.eigh(A)
-    q_avg = eigenvectors[:, torch.argmax(eigenvalues)]
+    # Use float32 eigenvalues for argmax to avoid half-precision rounding
+    # changing which eigenvector is selected when eigenvalues are close.
+    max_idx = torch.argmax(eigenvalues)
+    eigenvectors = eigenvectors.to(orig_dtype)
+    q_avg = eigenvectors[:, max_idx]
     q_avg = q_avg / q_avg.norm()
 
     return Quaternion(q_avg.unsqueeze(0))

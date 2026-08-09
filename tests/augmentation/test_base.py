@@ -68,7 +68,9 @@ class TestBasicAugmentationBase(BaseTester):
             }
             output = augmentation.forward_parameters(input_shape)
             assert "batch_prob" in output
-            assert len(output["degrees"]) == output["batch_prob"].sum().item() == num
+            # generate_parameters is now called with the full batch shape (ONNX-friendly contract).
+            assert len(output["degrees"]) == input_shape[0]
+            assert output["batch_prob"].sum().item() == num
 
     @pytest.mark.parametrize("keepdim", (True, False))
     def test_forward(self, device, dtype, keepdim):
@@ -127,12 +129,16 @@ class TestAugmentationBase2D(BaseTester):
             # Not an easy fix, happens on verifying torch.tensor([True, True])
             # _params = {'batch_prob': torch.tensor([True, True]), 'params': {}, 'flags': {'foo': 0}}
             # apply_transform.assert_called_once_with(input, _params)
-            assert output is expected_output
+            # Identity check relaxed to value equality: the where-blend always materialises
+            # a fresh tensor, so output is never the same object as apply_transform's return.
+            assert torch.equal(output, expected_output)
 
             # Calling the augmentation with a tensor and set return_transform shall
             # return the expected tensor and transformation.
             output = augmentation(input)
-            assert output is expected_output
+            # Identity check relaxed to value equality: the where-blend always materialises
+            # a fresh tensor, so output is never the same object as apply_transform's return.
+            assert torch.equal(output, expected_output)
 
             # Calling the augmentation with a tensor and params shall return the expected tensor using the given params.
             params = {"params": {}, "flags": {"bar": 1}}
@@ -143,7 +149,9 @@ class TestAugmentationBase2D(BaseTester):
             # Not an easy fix, happens on verifying torch.tensor([True, True])
             # _params = {'batch_prob': torch.tensor([True, True]), 'params': {}, 'flags': {'foo': 0}}
             # apply_transform.assert_called_once_with(input, _params)
-            assert output is expected_output
+            # Identity check relaxed to value equality: the where-blend always materialises
+            # a fresh tensor, so output is never the same object as apply_transform's return.
+            assert torch.equal(output, expected_output)
 
             # Calling the augmentation with a tensor,a transformation and set
             # return_transform shall return the expected tensor and the proper

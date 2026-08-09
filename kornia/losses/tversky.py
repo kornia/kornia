@@ -167,4 +167,19 @@ class TverskyLoss(nn.Module):
         self.ignore_index: Optional[int] = ignore_index
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Compute the Tversky segmentation loss for class logits and labels.
+
+        Args:
+            pred: Logit tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` is number of classes,
+                :math:`H` is height, and :math:`W` is width.
+            target: Integer class-label tensor with shape :math:`(B, H, W)`.
+                Labels matching ``self.ignore_index`` are excluded from the
+                loss when an ignore index is configured.
+
+        Returns:
+            Scalar tensor containing the Tversky loss. ``self.alpha`` controls
+            the false-positive penalty and ``self.beta`` controls the
+            false-negative penalty.
+        """
         return tversky_loss(pred, target, self.alpha, self.beta, self.eps, self.ignore_index)

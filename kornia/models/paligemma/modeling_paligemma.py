@@ -40,6 +40,17 @@ class GemmaRMSNorm(nn.Module):
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply Gemma RMS normalization to hidden states.
+
+        Args:
+            x: Hidden-state tensor with shape :math:`(B, N, D)`, where
+                :math:`B` is batch size, :math:`N` is sequence length, and
+                :math:`D` is hidden dimension.
+
+        Returns:
+            Tensor with the same shape as ``x`` after root-mean-square
+            normalization and learned scaling.
+        """
         output = self._norm(x.float()).type_as(x)
         return output * (1.0 + self.weight)
 
@@ -63,6 +74,16 @@ class GemmaRotaryEmbedding(nn.Module):
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
     def forward(self, x: torch.Tensor, position_ids: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Create rotary sine and cosine embeddings for token positions.
+
+        Args:
+            x: Tensor whose dtype is used for the returned embeddings.
+            position_ids: Position tensor with shape :math:`(B, N)`.
+
+        Returns:
+            Tuple ``(cos, sin)`` containing rotary embedding factors with dtype
+            matching ``x``.
+        """
         inv_freq_expanded = self.inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
         position_ids_expanded = position_ids[:, None, :].float()
 
@@ -105,6 +126,15 @@ class GemmaMLP(nn.Module):
         self.act_fn = nn.GELU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the gated Gemma feed-forward projection.
+
+        Args:
+            x: Hidden-state tensor with shape :math:`(B, N, D)`.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` after gate projection,
+            activation, up projection, elementwise gating, and down projection.
+        """
         return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
 
 
@@ -146,6 +176,18 @@ class GemmaAttention(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
     ) -> torch.Tensor:
+        """Apply grouped-query self-attention with rotary position embeddings.
+
+        Args:
+            hidden_states: Input token tensor with shape :math:`(B, N, D)`.
+            attention_mask: Optional attention mask passed to scaled dot-product
+                attention.
+            position_ids: Token position ids with shape :math:`(B, N)`.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` after attention and output
+            projection.
+        """
         bsz, q_len, _ = hidden_states.size()
 
         query_states = self.q_proj(hidden_states)
@@ -200,6 +242,17 @@ class GemmaDecoderLayer(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
     ) -> torch.Tensor:
+        """Run one Gemma decoder layer.
+
+        Args:
+            hidden_states: Input token tensor with shape :math:`(B, N, D)`.
+            attention_mask: Optional mask used by the attention block.
+            position_ids: Token position ids used to build rotary embeddings.
+
+        Returns:
+            Tensor with shape :math:`(B, N, D)` after self-attention, MLP, and
+            residual connections.
+        """
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states = self.self_attn(

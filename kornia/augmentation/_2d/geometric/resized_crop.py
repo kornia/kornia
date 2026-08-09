@@ -101,6 +101,11 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             "cropping_mode": cropping_mode,
             "padding_mode": "zeros",
         }
+        # In "slice" mode the image is cropped by index (``crop_by_indices``) and apply_transform
+        # never reads the transform matrix — only box/keypoint propagation does. Defer building it
+        # (a full get_perspective_transform) until ``.transform_matrix`` is actually accessed.
+        # "resample" mode warps through the matrix, so it must be built eagerly.
+        self._compute_matrix_lazily = cropping_mode == "slice"
 
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]

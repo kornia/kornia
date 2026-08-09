@@ -90,6 +90,15 @@ class FineMatching(nn.Module):
 
     @torch.no_grad()
     def get_fine_match(self, coords_normed: torch.Tensor, data: dict[str, Any]) -> None:
+        """Extract fine-level correspondences from the refined matching heatmap.
+
+        Args:
+            coords_normed: Input value used by this method.
+            data: Dictionary containing image features, keypoints, descriptors, and image sizes for matching.
+
+        Returns:
+            Dictionary updated with refined fine-level correspondences.
+        """
         W, _, _, scale = self.W, self.WW, self.C, self.scale
 
         # mkpts0_f and mkpts1_f

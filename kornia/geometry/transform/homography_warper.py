@@ -32,7 +32,12 @@ __all__ = ["BaseWarper", "HomographyWarper"]
 
 
 class BaseWarper(nn.Module):
-    """Provide a base class for homography-based image warping."""
+    """Provide a base class for homography-based image warping.
+
+    Convention:
+        - subclasses receive ``src_homo_dst`` as the destination→source homography
+
+    """
 
     def __init__(self, height: int, width: int, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -40,10 +45,33 @@ class BaseWarper(nn.Module):
         self.width = width
 
     @abstractmethod
-    def forward(self, patch_src: torch.Tensor, src_homo_dst: Optional[torch.Tensor] = None) -> torch.Tensor: ...
+    def forward(self, patch_src: torch.Tensor, src_homo_dst: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Sample a source patch on this warper's destination grid.
+
+        Args:
+            patch_src: Source image or patch tensor with shape
+                :math:`(B, C, H, W)`, where :math:`B` is batch size,
+                :math:`C` is channels, :math:`H` is source height, and
+                :math:`W` is source width.
+            src_homo_dst: Optional homography with shape :math:`(B, 3, 3)`
+                mapping destination coordinates into the source image. Concrete
+                implementations may also use a grid precomputed from this
+                matrix.
+
+        Returns:
+            Tensor sampled in the destination frame managed by this warper.
+        """
+        ...
 
     @abstractmethod
-    def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None: ...
+    def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None:
+        """Precompute a sampling grid for repeated homography warps.
+
+        Args:
+            src_homo_dst: Homography tensor with shape :math:`(B, 3, 3)` used
+                to transform destination grid points into source coordinates.
+        """
+        ...
 
 
 class HomographyWarper(BaseWarper):
@@ -51,14 +79,18 @@ class HomographyWarper(BaseWarper):
 
     .. math::
 
-        X_{dst} = H_{src}^{\{dst\}} * X_{src}
+        X_{src} = H_{src}^{\{dst\}} * X_{dst}
+
+    Convention:
+        - align_corners: ``False`` by default, matching :func:`homography_warp`
+        - See the convention block of :func:`homography_warp`.
 
     Args:
         height: The height of the destination torch.Tensor.
         width: The width of the destination torch.Tensor.
         mode: interpolation mode to calculate output values ``'bilinear'`` | ``'nearest'``.
         padding_mode: padding mode for outside grid values
-          ``'torch.zeros'`` | ``'border'`` | ``'reflection'``.
+          ``'zeros'`` | ``'border'`` | ``'reflection'``.
         normalized_coordinates: whether to use a grid with normalized coordinates.
         align_corners: interpolation flag.
 
@@ -94,7 +126,7 @@ class HomographyWarper(BaseWarper):
         Args:
             src_homo_dst: Homography or homographies (stacked) to
               transform all points in the grid. Shape of the homography
-              has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
+              has to be :math:`(1, 3, 3)`, :math:`(N, 3, 3)` or :math:`(N, 1, 3, 3)`.
               The homography assumes normalized coordinates [-1, 1] if
               normalized_coordinates is True.
 

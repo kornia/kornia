@@ -317,6 +317,16 @@ class RawToRgb(nn.Module):
         self.cfa = cfa
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert a Bayer raw tensor to RGB.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 1, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``1`` is a single raw Bayer channel, and ``H``/``W`` are height and width.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H, W)` using this module's CFA pattern.
+        """
         return raw_to_rgb(image, cfa=self.cfa)
 
 
@@ -347,6 +357,16 @@ class RgbToRaw(nn.Module):
         self.cfa = cfa
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert an RGB tensor to Bayer raw.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 3, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``3`` corresponds to RGB channels, and ``H``/``W`` are height and width.
+
+        Returns:
+            Raw tensor with shape :math:`(*, 1, H, W)` using this module's CFA pattern.
+        """
         return rgb_to_raw(image, cfa=self.cfa)
 
 
@@ -372,4 +392,14 @@ class RawToRgb2x2Downscaled(nn.Module):
         self.cfa = cfa
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
+        """Convert a Bayer raw tensor to downscaled RGB.
+
+        Args:
+            image: Input tensor with shape :math:`(*, 1, H, W)`.
+                Here, ``*`` means any number of leading dimensions (for example, batch size),
+                ``1`` is a single raw Bayer channel, and ``H``/``W`` are height and width.
+
+        Returns:
+            RGB tensor with shape :math:`(*, 3, H / 2, W / 2)`.
+        """
         return raw_to_rgb_2x2_downscaled(image, cfa=self.cfa)

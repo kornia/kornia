@@ -64,11 +64,11 @@ def connected_components(image: torch.Tensor, num_iterations: int = 100) -> torc
 
     # allocate the output tensors for labels
     B, _, _, _ = image_view.shape
-    out = torch.arange(1, B * H * W + 1, device=image.device, dtype=image.dtype).view((-1, 1, H, W))
+    out = torch.arange(1, B * H * W + 1, device=image.device, dtype=torch.float32).view((-1, 1, H, W))
     out[~mask] = 0
 
     for _ in range(num_iterations):
         out = F.max_pool2d(out, kernel_size=3, stride=1, padding=1)
         out = torch.mul(out, mask)  # mask using element-wise multiplication
 
-    return out.view_as(image)
+    return out.to(image.dtype).view_as(image)

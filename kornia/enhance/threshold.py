@@ -134,4 +134,19 @@ class Threshold(Module):
         self.type = int(type)
 
     def forward(self, input: Tensor) -> Tensor:
+        """Apply thresholding with this module's configured parameters.
+
+        This method delegates to :func:`threshold` and reuses the threshold
+        value, maximum replacement value, and thresholding mode stored on the
+        module instance.
+
+        Args:
+            input: Input tensor to threshold. Typical image inputs are shaped
+                :math:`(*, C, H, W)`, but any tensor shape supported by
+                :func:`threshold` is accepted.
+
+        Returns:
+            A tensor with the same shape as ``input`` where values are remapped
+            according to ``self.type`` using ``self.thresh`` and ``self.maxval``.
+        """
         return threshold(input, self.thresh, self.maxval, self.type)

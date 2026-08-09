@@ -20,6 +20,8 @@ from typing import List, Optional, Tuple
 import torch
 from torch import nn
 
+from kornia.core.utils import _torch_svd_cast
+
 __all__ = ["ZCAWhitening", "linear_transform", "zca_mean", "zca_whiten"]
 
 
@@ -258,7 +260,7 @@ def zca_mean(
     else:
         cov = cov / float(N)
 
-    U, S, _ = torch.linalg.svd(cov)
+    U, S, _ = _torch_svd_cast(cov)
 
     S = S.reshape(-1, 1)
     S_inv_root: torch.Tensor = torch.rsqrt(S + eps)

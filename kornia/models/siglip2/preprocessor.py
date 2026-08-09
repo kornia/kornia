@@ -82,6 +82,17 @@ class SigLip2ImagePreprocessor(nn.Module):
         self.preprocessor = nn.Sequential(*preproc_list)
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
+        """Prepare images for SigLIP2 vision encoding.
+
+        Args:
+            images: Image tensor with shape :math:`(C, H, W)` or
+                :math:`(B, C, H, W)`. Values are expected in the range used by
+                the configured rescale factor.
+
+        Returns:
+            Batched tensor resized to the configured image size and normalized
+            with the stored mean and standard deviation.
+        """
         # ensure batch dimension
         if images.dim() == 3:
             images = images.unsqueeze(0)

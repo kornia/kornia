@@ -92,6 +92,16 @@ class MLP(nn.Module):
         self.sigmoid_output = sigmoid_output
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the configured MLP to the last tensor dimension.
+
+        Args:
+            x: Input tensor whose last dimension equals ``input_dim``.
+
+        Returns:
+            Tensor with the same leading dimensions as ``x`` and final
+            dimension ``output_dim``. If ``sigmoid_output`` is enabled, the
+            final values are passed through a sigmoid.
+        """
         for i, layer in enumerate(self.layers):
             x = F.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
         if self.sigmoid_output:
@@ -110,6 +120,17 @@ class DropPath(nn.Module):
         self.scale_by_keep = scale_by_keep
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply stochastic depth to a residual branch.
+
+        Args:
+            x: Residual-branch tensor with arbitrary shape. The first dimension
+                is treated as the batch dimension.
+
+        Returns:
+            Tensor with the same shape as ``x``. During training, complete
+            samples may be dropped and optionally scaled by the keep
+            probability; during evaluation the input is returned unchanged.
+        """
         if self.drop_prob == 0.0 or not self.training:
             return x
         keep_prob = 1 - self.drop_prob
@@ -132,6 +153,17 @@ class LayerNorm2d(nn.Module):
         self.eps = eps
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply channel-wise layer normalization to an NCHW tensor.
+
+        Args:
+            x: Tensor with shape :math:`(B, C, H, W)`, where :math:`B` is batch
+                size, :math:`C` is channel count, :math:`H` is height, and
+                :math:`W` is width.
+
+        Returns:
+            Tensor with the same shape as ``x`` after normalizing across the
+            channel dimension and applying learned affine parameters.
+        """
         u = x.mean(1, keepdim=True)
         s = (x - u).pow(2).mean(1, keepdim=True)
         x = (x - u) / (s + self.eps).sqrt()

@@ -39,4 +39,16 @@ class Rescale(nn.Module):
             self.factor = factor
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Multiply the input tensor by the configured scaling factor.
+
+        Args:
+            input: Tensor to be rescaled. In image workflows this is commonly
+                shaped as :math:`(*, C, H, W)`, where ``*`` denotes optional
+                leading dimensions (for example batch), ``C`` is channel count,
+                and ``H``/``W`` are spatial dimensions.
+
+        Returns:
+            A tensor with the same shape as ``input``, where each element is
+            multiplied by ``self.factor``.
+        """
         return input * self.factor

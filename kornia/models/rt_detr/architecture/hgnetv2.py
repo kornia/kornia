@@ -44,6 +44,15 @@ class StemBlock(nn.Module):
         self.pool = nn.Sequential(nn.ZeroPad2d((0, 1, 0, 1)), nn.MaxPool2d(2, 1))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the HGNetV2 stem and reduce the input spatial resolution.
+
+        Args:
+            x: Image tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Stem feature map after strided convolutions, pooling, concatenation,
+            and channel projection.
+        """
         x = self.stem1(x)
         x = torch.cat([self.pool(x), self.stem2b(self.stem2a(x))], 1)
         x = self.stem4(self.stem3(x))
@@ -103,6 +112,15 @@ class HGBlock(nn.Module):
         self.aggregation_excitation_conv = ConvNormAct(config.out_channels // 2, config.out_channels, 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply one HGNetV2 aggregation block.
+
+        Args:
+            x: Feature map tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Aggregated feature map. If ``self.identity`` is enabled, the input
+            is added as a residual connection.
+        """
         feats = [x]
         for layer in self.layers:
             feats.append(layer(feats[-1]))
@@ -148,6 +166,15 @@ class PPHGNetV2(nn.Module):
             self.stages.append(HGStage(cfg))
 
     def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
+        """Run the PPHGNetV2 backbone and return detection feature maps.
+
+        Args:
+            x: Image tensor with shape :math:`(B, 3, H, W)`.
+
+        Returns:
+            List ``[s3, s4, s5]`` containing the final three backbone stages
+            used by the detector neck.
+        """
         x = self.stem(x)
         s2 = self.stages[0](x)
         s3 = self.stages[1](s2)
@@ -157,6 +184,14 @@ class PPHGNetV2(nn.Module):
 
     @staticmethod
     def from_config(variant: str) -> PPHGNetV2:
+        """Create a PPHGNetV2 backbone from a named variant.
+
+        Args:
+            variant: Backbone variant name. Currently ``"L"`` is supported.
+
+        Returns:
+            Configured :class:`PPHGNetV2` instance.
+        """
         if variant == "L":
             return PPHGNetV2(
                 stem_channels=[3, 32, 48],

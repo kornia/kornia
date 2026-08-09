@@ -124,11 +124,15 @@ class RandomMosaic(MixAugmentationBaseV2):
         idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[to_apply]
 
         maybe_out_boxes: Optional[Boxes] = None
+        # ``batch_shapes`` and ``src_box`` are full-batch sized.
+        # Subset them to match ``idx`` (the to_apply indices).
+        batch_shapes_idx = batch_shapes[to_apply]
+        src_box_idx = src_box[to_apply]
         for i in range(flags["mosaic_grid"][0]):
             for j in range(flags["mosaic_grid"][1]):
                 _offset = offset.clone()
-                _offset[idx, 0] = batch_shapes[:, -2] * i - src_box[:, 0, 0]
-                _offset[idx, 1] = batch_shapes[:, -1] * j - src_box[:, 0, 1]
+                _offset[idx, 0] = batch_shapes_idx[:, -2] * i - src_box_idx[:, 0, 0]
+                _offset[idx, 1] = batch_shapes_idx[:, -1] * j - src_box_idx[:, 0, 1]
                 _box = input.clone()
                 _idx = i * flags["mosaic_grid"][1] + j
                 _box._data[params["permutation"][:, 0]] = _box._data[params["permutation"][:, _idx]]

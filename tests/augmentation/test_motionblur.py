@@ -92,6 +92,14 @@ class TestRandomMotionBlur(BaseTester):
             fast_mode=False,
         )
 
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # A fixed (int) kernel size avoids the data-dependent kernel-size selection and
+        # is torch.compile fullgraph-safe.
+        img = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
+        op = RandomMotionBlur(kernel_size=5, angle=(35.0, 35.0), direction=(0.5, 0.5), p=1.0)
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img), op_optimized(img))
+
 
 class TestRandomMotionBlur3D(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent

@@ -272,7 +272,7 @@ class Se2(nn.Module):
     def identity(
         cls,
         batch_size: Optional[int] = None,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> Se2:
         """Create a Se2 group representing an identity rotation and zero translation.
@@ -332,7 +332,7 @@ class Se2(nn.Module):
                     [0., 0.]], requires_grad=True)
 
         """
-        # KORNIA_CHECK_SHAPE(matrix, ["B", "3", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        KORNIA_CHECK_SHAPE(matrix, ["*", "3", "3"])
         r = So2.from_matrix(matrix[..., :2, :2])
         t = matrix[..., :2, -1]
         return cls(r, t)
@@ -362,7 +362,7 @@ class Se2(nn.Module):
     def random(
         cls,
         batch_size: Optional[int] = None,
-        device: Union[None, str, torch.device] = None,
+        device: Union[str, torch.device, None] = None,
         dtype: Union[torch.dtype, None] = None,
     ) -> Se2:
         """Create a Se2 group representing a random transformation.

@@ -69,6 +69,25 @@ class NonMaximaSuppression2d(nn.Module):
         return (pad(ky), pad(kx), pad(ky), pad(kx))
 
     def forward(self, x: torch.Tensor, mask_only: bool = False) -> torch.Tensor:
+        """Keep only strict local maxima in a 2D response map.
+
+        Each spatial location is compared with the surrounding values inside
+        ``self.kernel_size``. Locations that are not strictly larger than their
+        neighbors are suppressed. This is commonly used to turn dense corner or
+        keypoint response maps into sparse candidate locations.
+
+        Args:
+            x: Response tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is the batch size, :math:`C` is the number of
+                response channels, :math:`H` is height, and :math:`W` is width.
+            mask_only: If ``True``, return the boolean maxima mask. If
+                ``False``, return ``x`` masked by local-maxima positions.
+
+        Returns:
+            If ``mask_only`` is ``True``, a boolean tensor with shape
+            :math:`(B, C, H, W)`. Otherwise, a tensor with the same shape and
+            dtype as ``x`` where non-maxima have been set to zero.
+        """
         if len(x.shape) != 4:
             raise AssertionError(x.shape)
         B, CH, H, W = x.size()
@@ -225,6 +244,25 @@ class NonMaximaSuppression3d(nn.Module):
         return (kd, kd, ky, ky, kx, kx)
 
     def forward(self, x: torch.Tensor, mask_only: bool = False) -> torch.Tensor:
+        """Keep only strict local maxima in a 3D response volume.
+
+        Each voxel is compared with its neighbors across depth, height, and
+        width. This is used by scale-space detectors to keep responses that are
+        locally maximal both in image position and in scale/depth.
+
+        Args:
+            x: Response tensor with shape :math:`(B, C, D, H, W)`, where
+                :math:`B` is batch size, :math:`C` is channel count,
+                :math:`D` is depth or scale level, :math:`H` is height, and
+                :math:`W` is width.
+            mask_only: If ``True``, return only the maxima mask; otherwise
+                return suppressed responses.
+
+        Returns:
+            Boolean maxima mask with shape :math:`(B, C, D, H, W)` when
+            ``mask_only`` is ``True``. Otherwise, an NMS-filtered tensor with
+            the same shape and dtype as ``x``.
+        """
         if len(x.shape) != 5:
             raise AssertionError(x.shape)
         # find local maximum values

@@ -35,6 +35,7 @@ pixi run test-quick
 | `--runslow` | `KORNIA_TEST_RUNSLOW` | off | Include `@pytest.mark.slow` tests |
 | `--tf32` | `KORNIA_TEST_TF32` | off | Enable TF32 mode (see below) |
 | `--optimizer` | `KORNIA_TEST_OPTIMIZER` | `inductor` | `torch.compile` backend for dynamo tests |
+| `--isolate-half-precision` | `KORNIA_TEST_ISOLATE_HALF` | off | Run float16/bfloat16 CUDA tests each in a fresh `subprocess.run` process (no shared CUDA state) |
 
 ## Test Structure
 
@@ -187,7 +188,51 @@ If you write a new function that calls SVD, use `_torch_svd_cast` rather than ca
 
 ---
 
-### 7. MPS (Apple Silicon) Limitations
+### 7. Half-Precision dtypes (float16 / bfloat16)
+
+**What it is.** float16 and bfloat16 have limited support across PyTorch and kornia:
+
+- **bfloat16**: Many kornia functions explicitly reject it.  In addition, many CUDA kernels lack bfloat16 implementations (`svd_cuda`, `linalg_eigh_cuda`, `cdist_cuda`, `lu_factor_cublas`, `geqrf_cuda`, etc.).
+- **float16**: PyTorch's `linalg` routines (`linalg.inv`, `linalg.eigh`, `linalg.svd`, …) do not accept float16 on CPU (`RuntimeError: Low precision dtypes not supported`).  On CUDA, many kernels trigger device-side asserts for float16 inputs.
+
+**Testing strategy: isolated runs.** Half-precision tests live alongside their float32/float64 counterparts in the same directories and files.  They are **not** run in combined (`--dtype=all`) invocations on CUDA; instead, half-precision and standard-precision suites are run as separate, isolated pytest invocations:
+
+```bash
+# Standard CI — all devices, float32 and float64 only
+pixi run test tests/ --dtype=float32,float64
+
+# Half-precision — run separately, per directory or file
+pytest tests/color/           --dtype=float16,bfloat16
+pytest tests/geometry/        --dtype=float16,bfloat16 --device=cuda
+```
+
+Keeping the runs separate means a half-precision failure or CUDA context corruption cannot affect the float32/float64 results.
+
+**CUDA device-side asserts and test contamination.** CUDA kernel errors are *asynchronous*: a failing kernel logs the error but continues execution until the next host–device synchronisation point.  If that sync happens inside a *different* (passing) test, that test fails spuriously.  Once a device-side assert fires, the CUDA context is permanently broken for the process lifetime.
+
+The root `conftest.py` contains two autouse fixtures to handle this:
+
+- **`skip_half_precision_on_cuda`** — *skips* float16 and bfloat16 tests on CUDA when tests are run in combined mode.  Skipping means no CUDA kernel is launched, so no assert can be triggered.  On CPU/MPS/TPU, tests run as normal (they may fail).
+
+- **`cuda_device_assert_guard`** — synchronises the CUDA device *before* each CUDA test.  If the context is already corrupted by a previous test, the current test is *skipped* rather than allowed to fail spuriously.  After each CUDA test, a second synchronisation drains the queue so that any async error surfaces in teardown of the test that caused it, not at the start of the next one.
+
+**Running half-precision tests across a whole directory.**  Use `--isolate-half-precision`.  Each float16/bfloat16 CUDA test is run in a completely fresh Python process via `subprocess.run`, so a device-side assert in one test cannot affect any other test — there is no shared CUDA state at all:
+
+```bash
+# Whole directory, fully isolated — results reported normally (pass/fail per test)
+pytest tests/color/     --device=cuda --dtype=bfloat16 --isolate-half-precision
+pytest tests/geometry/  --device=cuda --dtype=all      --isolate-half-precision
+
+# Via pixi tasks
+pixi run test-half        # float16 + bfloat16, CPU
+pixi run test-cuda-half   # float16 + bfloat16, CUDA, with isolation
+```
+
+Without `--isolate-half-precision`, float16/bfloat16 CUDA tests are **skipped** (safe default for combined runs).
+
+**See also.** `docs/source/get-started/precision.rst` for the per-module half-precision support table.
+
+### 8. MPS (Apple Silicon) Limitations
 
 **What MPS is.** The `mps` device uses Apple's Metal Performance Shaders backend. Run tests against it with `--device=mps`.
 

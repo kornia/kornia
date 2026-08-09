@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+import math
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -98,10 +99,15 @@ class RandomShear(GeometricAugmentationBase2D):
     def compute_transformation(
         self, input: torch.Tensor, params: Dict[str, torch.Tensor], flags: Dict[str, Any]
     ) -> torch.Tensor:
+        # Inline ``deg2rad`` so the trace lowers to plain multiply (legacy ONNX has
+        # no symbolic for ``aten::deg2rad`` at opset 20).
+        deg2rad_factor: float = math.pi / 180.0
+        shear_x = torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype) * deg2rad_factor
+        shear_y = torch.as_tensor(params["shear_y"], device=input.device, dtype=input.dtype) * deg2rad_factor
         return get_shear_matrix2d(
             torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
-            torch.deg2rad(torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype)),
-            torch.deg2rad(torch.as_tensor(params["shear_y"], device=input.device, dtype=input.dtype)),
+            shear_x,
+            shear_y,
         )
 
     def apply_transform(

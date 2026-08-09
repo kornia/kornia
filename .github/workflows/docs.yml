@@ -4,6 +4,7 @@ on:
     paths:
       - 'docs/**'
       - '*.rst'
+      - '.github/workflows/docs.yml'
   workflow_call:
     inputs:
       python-version:
@@ -36,23 +37,29 @@ jobs:
     name: docs
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: ${{ inputs.fail-fast }}
+      # On direct pull_request events the `inputs` context is empty (the workflow_call
+      # defaults do NOT apply), so fall back explicitly — otherwise fromJSON('') fails
+      # at workflow parse time and the run dies at startup with zero jobs.
+      fail-fast: ${{ inputs.fail-fast || false }}
       matrix:
-        python-version: ${{ fromJSON(inputs.python-version) }}
+        python-version: ${{ fromJSON(inputs.python-version || '["3.11"]') }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || inputs.ref }}
 
+      # On direct pull_request runs (empty inputs) fall back to a prefix restore of the
+      # model-weights caches saved by the test workflows: doctests download ~10 model
+      # checkpoints, and a cold cache both takes minutes and breaks doctests (torch.hub
+      # prints 'Downloading: ...', which the examples do not expect).
       - name: Restore cache
-        if: inputs.cache-path != ''
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
-          path: ${{ inputs.cache-path }}
-          key: ${{ inputs.cache-key }}
-          restore-keys: ${{ inputs.cache-restore-keys }}
+          path: ${{ inputs.cache-path || 'weights/' }}
+          key: ${{ inputs.cache-key || 'model-weights-docs' }}
+          restore-keys: ${{ inputs.cache-restore-keys || 'model-weights-' }}
 
       - name: Set pixi environment name
         id: pixi-env
@@ -60,7 +67,7 @@ jobs:
         run: echo "name=py$(echo '${{ matrix.python-version }}' | tr -d '.')" >> $GITHUB_OUTPUT
 
       - name: Setup pixi
-        uses: prefix-dev/setup-pixi@v0.9.4
+        uses: prefix-dev/setup-pixi@v0.10.0
         with:
           pixi-version: v0.40.0
           cache: true

@@ -107,6 +107,15 @@ class TestInRange(BaseTester):
             upper = torch.tensor([0.6, 0.6, 0.6])
             InRange(lower=lower, upper=upper, return_mask=2)(input_tensor)
 
+    def test_tensor_bounds_return_masked_input(self, device, dtype):
+        # Exercises the Tensor-bounds branch (lines 132-139) with return_mask=False (line 148)
+        inp = torch.ones(1, 3, 4, 4, device=device, dtype=dtype) * 0.5
+        lower = torch.tensor([0.2, 0.2, 0.2], device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        upper = torch.tensor([0.8, 0.8, 0.8], device=device, dtype=dtype).reshape(1, 3, 1, 1)
+        out = in_range(inp, lower, upper, return_mask=False)
+        # All pixels are in range, so output == input
+        self.assert_close(out, inp)
+
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         inp = torch.rand(1, 3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)

@@ -64,6 +64,7 @@ from torch import nn
 from torch.nn.modules.utils import _pair
 
 from kornia.color import grayscale_to_rgb
+from kornia.core.download import load_state_dict_from_url
 from kornia.geometry.subpix import nms2d
 
 from .deform_conv2d import deform_conv2d
@@ -161,10 +162,15 @@ def _affine_from_cov(cov: torch.Tensor) -> torch.Tensor:
         Affine matrices ``(N, 2, 2)``.
     """
     # eigh returns eigenvalues sorted ascending; columns of eigenvectors are evecs.
+    # torch.linalg.eigh is not implemented for float16/bfloat16 on CUDA, so promote
+    # to float32 and cast the result back.
+    orig_dtype = cov.dtype
+    if cov.dtype in (torch.float16, torch.bfloat16):
+        cov = cov.float()
     eigenvalues, eigenvectors = torch.linalg.eigh(cov)
     scales = eigenvalues.clamp(min=1e-8).sqrt()  # (N, 2)
     # Each column of eigenvectors multiplied by the corresponding scale.
-    return eigenvectors * scales[:, None, :]  # (N, 2, 2)
+    return (eigenvectors * scales[:, None, :]).to(orig_dtype)  # (N, 2, 2)
 
 
 def _laf_from_kpts_and_affine(
@@ -453,6 +459,16 @@ class DeformableConv2d(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the module forward pass.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         h, w = x.shape[2:]
         max_offset = max(h, w) / 4.0
         out = self.offset_conv(x)
@@ -524,6 +540,16 @@ class ConvBlock(nn.Module):
         self.bn2 = norm_layer(out_channels)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the module forward pass.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         x = self.gate(self.bn1(self.conv1(x)))
         return self.gate(self.bn2(self.conv2(x)))
 
@@ -566,6 +592,16 @@ class ResBlock(nn.Module):
         self.stride = stride
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the module forward pass.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         identity = x
         out = self.gate(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
@@ -704,7 +740,10 @@ _ALIKED_CFGS: dict[str, tuple[int, int, int, int, int, int, int]] = {
     "aliked-n32": (16, 32, 64, 128, 128, 3, 32),
 }
 
-_CHECKPOINT_URL = "https://github.com/Shiaoming/ALIKED/raw/main/models/{}.pth"
+_CHECKPOINT_URLS = [
+    "https://huggingface.co/kornia/aliked/resolve/main/{}.pth",
+    "https://github.com/Shiaoming/ALIKED/raw/main/models/{}.pth",
+]
 
 
 class ALIKED(nn.Module):
@@ -715,6 +754,8 @@ class ALIKED(nn.Module):
     differentiable keypoint detector (DKD).
 
     See :cite:`zhao2023aliked` for details.
+
+    .. image:: _static/img/ALIKED.png
 
     Args:
         model_name: backbone configuration, one of
@@ -880,6 +921,7 @@ class ALIKED(nn.Module):
         self,
         img: torch.Tensor,
         mask: Optional[torch.Tensor] = None,
+        compute_affine: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Detect and describe local features, returning results in kornia LAF format.
 
@@ -897,6 +939,11 @@ class ALIKED(nn.Module):
                 ``[0, 1]``; the score map is multiplied by this mask before
                 keypoint detection so that features are suppressed in masked
                 regions.
+            compute_affine: if ``True`` (default), estimate the 2x2 affine shape
+                of each LAF using ``torch.linalg.eigh`` on the soft-argmax
+                covariance.  Set to ``False`` to skip the eigendecomposition and
+                return identity affines, which is faster and avoids the linalg
+                call entirely (useful when only keypoint positions are needed).
 
         Returns:
             - Detected local affine frames with shape :math:`(B,N,2,3)`.
@@ -911,11 +958,17 @@ class ALIKED(nn.Module):
 
         if mask is not None:
             # Resize mask to score map resolution and apply.
-            mask_rs = F.interpolate(mask.float(), size=score_map.shape[-2:], mode="bilinear", align_corners=True)
+            mask_rs = F.interpolate(
+                mask.to(score_map.dtype), size=score_map.shape[-2:], mode="bilinear", align_corners=True
+            )
             score_map = score_map * mask_rs
 
-        dkd_out = self.dkd(score_map, return_affine=True)
-        keypoints, kptscores, _scoredispersitys, local_affines = dkd_out  # type: ignore[misc]
+        dkd_out = self.dkd(score_map, return_affine=compute_affine)
+        if compute_affine:
+            keypoints, kptscores, _scoredispersitys, local_affines = dkd_out  # type: ignore[misc]
+        else:
+            keypoints, kptscores, _scoredispersitys = dkd_out  # type: ignore[misc]
+            local_affines = None
         descriptors, _offsets = self.desc_head(feature_map, keypoints)
 
         B, _, H, W = img.shape
@@ -924,7 +977,13 @@ class ALIKED(nn.Module):
         lafs_list: list[torch.Tensor] = []
         for i in range(B):
             kps_px = wh * (keypoints[i] + 1) / 2.0  # (N, 2)
-            laf_i = _laf_from_kpts_and_affine(kps_px, local_affines[i])  # (N, 2, 3)
+            if local_affines is not None:
+                affine_i = local_affines[i]
+            else:
+                # Identity affine: both axes are unit-scale, no rotation.
+                n = kps_px.shape[0]
+                affine_i = torch.eye(2, device=img.device, dtype=img.dtype).unsqueeze(0).expand(n, -1, -1)
+            laf_i = _laf_from_kpts_and_affine(kps_px, affine_i)  # (N, 2, 3)
             lafs_list.append(laf_i)
 
         # Pad to the maximum number of keypoints in the batch.
@@ -973,8 +1032,8 @@ class ALIKED(nn.Module):
             detection_threshold=detection_threshold,
             nms_radius=nms_radius,
         ).to(device)
-        url = _CHECKPOINT_URL.format(model_name)
-        state_dict = torch.hub.load_state_dict_from_url(url, map_location=device)
+        urls = [t.format(model_name) for t in _CHECKPOINT_URLS]
+        state_dict = load_state_dict_from_url(urls, map_location=device)
         model.load_state_dict(state_dict, strict=False)
         model.eval()
         return model

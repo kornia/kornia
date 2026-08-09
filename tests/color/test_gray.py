@@ -161,6 +161,12 @@ class TestRgbToGrayscale(BaseTester):
             rgb_weights = torch.tensor([0.2, 0.8])
             assert kornia.color.rgb_to_grayscale(img, rgb_weights=rgb_weights)
 
+    def test_unsupported_dtype_raises(self, device):
+        # int32 is not uint8 and not a float dtype -> TypeError
+        img = torch.ones(3, 4, 4, device=device, dtype=torch.int32)
+        with pytest.raises(TypeError, match="Unknown data type"):
+            kornia.color.rgb_to_grayscale(img)
+
     def test_opencv(self, device, dtype):
         data = torch.tensor(
             [
