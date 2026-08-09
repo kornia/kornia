@@ -146,6 +146,25 @@ class TestHflip(BaseTester):
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.Hflip(), (input,))
 
+    def test_convention_unbatched_and_bare_shapes(self, device, dtype):
+        # hflip/vflip/rot180 have no rank/shape check at all: unbatched (C, H, W) and even bare
+        # (H, W) inputs both work unchanged, unlike center_crop/pyrdown which require exactly a
+        # 4D (B, C, H, W) input.
+        x_chw = torch.zeros(2, 3, 3, device=device, dtype=dtype)
+        x_chw[0, 0, 0] = 1.0
+        out_chw = kornia.geometry.transform.hflip(x_chw)
+        assert out_chw.shape == (2, 3, 3)
+        assert (out_chw > 0).nonzero().tolist() == [[0, 0, 2]]
+
+        x_hw = torch.zeros(3, 3, device=device, dtype=dtype)
+        x_hw[0, 0] = 1.0
+        out_hw = kornia.geometry.transform.hflip(x_hw)
+        assert out_hw.shape == (3, 3)
+        assert (out_hw > 0).nonzero().tolist() == [[0, 2]]
+
+        assert kornia.geometry.transform.vflip(x_hw).shape == (3, 3)
+        assert kornia.geometry.transform.rot180(x_hw).shape == (3, 3)
+
 
 class TestRot180(BaseTester):
     def smoke_test(self, device, dtype):

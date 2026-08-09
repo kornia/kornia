@@ -108,3 +108,59 @@ class TestElasticTransform(BaseTester):
         assert self.gradcheck(
             elastic_transform2d, (image, noise), raise_exception=True, fast_mode=True, nondet_tol=1e-4
         )
+
+    def test_convention_noise_channel0_is_x_positive_shifts_left(self, device, dtype):
+        # noise channel 0 is the x-sampling-offset channel; a positive constant value there
+        # shifts image content LEFT (not right, and not channel 1/y). test_values uses a
+        # symmetric (both-channels-equal) noise tensor and so cannot discriminate this.
+        image = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
+        image[0, 0, 2, 2] = 1.0
+        noise = torch.zeros(1, 2, 5, 5, device=device, dtype=dtype)
+        noise[0, 0] = 0.5
+
+        # Snippet used to generate expected:
+        # img = torch.zeros(1, 1, 5, 5); img[0, 0, 2, 2] = 1.0
+        # noise = torch.zeros(1, 2, 5, 5); noise[0, 0] = 0.5
+        # out = elastic_transform2d(img, noise, kernel_size=(3, 3), sigma=(1., 1.), alpha=(1., 1.))
+        # (out[0, 0] > 0.1).nonzero() -> [[2, 1]]
+        out = elastic_transform2d(image, noise, kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=(1.0, 1.0))
+        assert (out[0, 0] > 0.1).nonzero().tolist() == [[2, 1]]
+
+    def test_convention_kernel_size_sigma_yx_alpha_xy_order(self, device, dtype):
+        # kernel_size and sigma are (y, x) order (matching the docstring), but alpha is
+        # genuinely (x, y) order in the executed code: alpha[0] always scales the
+        # x-displacement and alpha[1] the y-displacement -- contradicting the "in the y and x
+        # directions, respectively" docstring text, which only holds for kernel_size/sigma.
+        image = torch.zeros(1, 1, 9, 9, device=device, dtype=dtype)
+        image[0, 0, 4, 4] = 1.0
+        noise = torch.zeros(1, 2, 9, 9, device=device, dtype=dtype)
+        noise[0, 0] = 0.2
+
+        out_a = elastic_transform2d(image, noise, kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=(2.0, 0.5))
+        out_b = elastic_transform2d(image, noise, kernel_size=(3, 3), sigma=(1.0, 1.0), alpha=(0.5, 2.0))
+
+        # alpha=(2.0, 0.5): larger alpha[0] -> larger x-displacement -> marker moves further left.
+        assert (out_a[0, 0] > 0.05).nonzero().tolist() == [[4, 2], [4, 3]]
+        # alpha=(0.5, 2.0): smaller alpha[0] -> smaller x-displacement -> marker moves less.
+        assert (out_b[0, 0] > 0.05).nonzero().tolist() == [[4, 3], [4, 4]]
+
+    def test_convention_padding_mode_affects_border_sampling(self, device, dtype):
+        # padding_mode's default ('zeros') genuinely affects boundary sampling, but only once the
+        # displacement pushes the (internally clamped-to-[-1,1]) sampling grid all the way to the
+        # edge -- no other existing test drives the displacement far enough to reach it.
+        image = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
+        image[0, 0, 2, 4] = 5.0
+        noise = torch.zeros(1, 2, 5, 5, device=device, dtype=dtype)
+        noise[0, 0] = 1.0
+        kwargs = {"kernel_size": (3, 3), "sigma": (1.0, 1.0), "alpha": (4.0, 0.0)}
+
+        out_default = elastic_transform2d(image, noise, **kwargs)
+        out_zeros = elastic_transform2d(image, noise, padding_mode="zeros", **kwargs)
+        expected_zeros_row = torch.tensor([2.5, 2.5, 2.5, 2.5, 2.5], device=device, dtype=dtype)
+        self.assert_close(out_default[0, 0, 2], expected_zeros_row, rtol=1e-2, atol=1e-2)
+        self.assert_close(out_zeros[0, 0, 2], expected_zeros_row, rtol=1e-2, atol=1e-2)
+
+        if device.type != "mps":  # MPS grid_sample does not implement padding_mode='border'
+            out_border = elastic_transform2d(image, noise, padding_mode="border", **kwargs)
+            expected_border_row = torch.tensor([5.0, 5.0, 5.0, 5.0, 5.0], device=device, dtype=dtype)
+            self.assert_close(out_border[0, 0, 2], expected_border_row, rtol=1e-2, atol=1e-2)

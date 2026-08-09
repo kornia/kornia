@@ -163,6 +163,42 @@ class TestCropAndResize(BaseTester):
         expected = op(img, boxes, (crop_height, crop_width))
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
+    def test_convention_box_batch_broadcast_one_directional(self, device, dtype):
+        # A single box broadcasts over a batch of N images, but a single image does NOT
+        # broadcast over a batch of N boxes (raises RuntimeError instead) -- the broadcasting
+        # crop_and_resize supports is one-directional, not general batch broadcasting.
+        inp = torch.arange(0.0, 16.0, device=device, dtype=dtype).view(1, 1, 4, 4).repeat(2, 1, 1, 1)
+        one_box = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
+
+        out = kornia.geometry.transform.crop_and_resize(inp, one_box, (2, 2))
+        expected = torch.tensor([[[5.0, 6.0], [9.0, 10.0]]], device=device, dtype=dtype).unsqueeze(1).repeat(2, 1, 1, 1)
+        self.assert_close(out, expected, rtol=1e-2, atol=1e-2)
+
+        inp_one = torch.arange(0.0, 16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        two_boxes = torch.tensor(
+            [[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]], [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]],
+            device=device,
+            dtype=dtype,
+        )
+        with pytest.raises(RuntimeError):
+            kornia.geometry.transform.crop_and_resize(inp_one, two_boxes, (2, 2))
+
+    def test_convention_padding_mode_default_zeros(self, device, dtype):
+        # crop_and_resize's padding_mode default is 'zeros': a box sampling outside the image
+        # bounds fills the out-of-bounds region with 0, not the edge value ('border' would).
+        inp = torch.arange(1.0, 17.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+        boxes = torch.tensor([[[-1.0, -1.0], [1.0, -1.0], [1.0, 1.0], [-1.0, 1.0]]], device=device, dtype=dtype)
+
+        out_default = kornia.geometry.transform.crop_and_resize(inp, boxes, (3, 3))
+        expected_zeros = torch.tensor(
+            [[[[0.0, 0.0, 0.0], [0.0, 1.0, 2.0], [0.0, 5.0, 6.0]]]], device=device, dtype=dtype
+        )
+        self.assert_close(out_default, expected_zeros, rtol=1e-2, atol=1e-2)
+
+        if device.type != "mps":  # MPS grid_sample does not implement padding_mode='border'
+            out_border = kornia.geometry.transform.crop_and_resize(inp, boxes, (3, 3), padding_mode="border")
+            assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
+
 
 class TestCenterCrop(BaseTester):
     def test_center_crop_h2_w4(self, device, dtype):
@@ -231,6 +267,26 @@ class TestCenterCrop(BaseTester):
         actual = op_script(img, (4, 2))
         expected = op(img, (4, 2))
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
+
+    def test_convention_align_corners_ignored_under_slice_mode(self, device, dtype):
+        # CenterCrop2D's align_corners constructor arg has NO effect under the default
+        # cropping_mode='slice' (pure integer-index slicing, no resampling); it only changes the
+        # output under cropping_mode='resample'.
+        inp = torch.arange(0.0, 16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
+
+        out_slice_true = kornia.geometry.transform.CenterCrop2D((2, 2), align_corners=True, cropping_mode="slice")(inp)
+        out_slice_false = kornia.geometry.transform.CenterCrop2D((2, 2), align_corners=False, cropping_mode="slice")(
+            inp
+        )
+        self.assert_close(out_slice_true, out_slice_false)
+
+        out_resample_true = kornia.geometry.transform.CenterCrop2D(
+            (2, 2), align_corners=True, cropping_mode="resample"
+        )(inp)
+        out_resample_false = kornia.geometry.transform.CenterCrop2D(
+            (2, 2), align_corners=False, cropping_mode="resample"
+        )(inp)
+        assert not torch.allclose(out_resample_true, out_resample_false, atol=1e-2, rtol=1e-2)
 
 
 class TestCropByBoxes(BaseTester):
@@ -355,6 +411,33 @@ class TestCropByIndices(BaseTester):
 
         with pytest.raises(ValueError, match="All boxes in the batch must have the same height and width"):
             kornia.geometry.transform.crop_by_indices(img, src_box, size=None)
+
+    def test_convention_shape_compensation_pad_vs_resize(self, device, dtype):
+        # shape_compensation='pad' is only ever consulted when box sizes differ across the
+        # batch -- a batch of uniformly-sized boxes always takes a fast slice(+resize) path that
+        # ignores shape_compensation entirely. With a box LARGER than the requested `size`,
+        # 'pad' trims via F.pad's negative padding (keeps the top-left corner, no interpolation)
+        # while the default 'resize' downsamples via interpolation -- genuinely different results.
+        inp = torch.arange(0.0, 32.0, device=device, dtype=dtype).view(1, 1, 4, 8).repeat(2, 1, 1, 1)
+        src_box = torch.tensor(
+            [
+                [[0, 0], [2, 0], [2, 2], [0, 2]],  # 3x3 box, LARGER than size=(2, 2)
+                [[0, 0], [1, 0], [1, 1], [0, 1]],  # 2x2 box, matches size=(2, 2)
+            ],
+            device=device,
+            dtype=torch.int64,
+        )
+        size = (2, 2)
+
+        out_resize = kornia.geometry.transform.crop_by_indices(inp, src_box, size=size, shape_compensation="resize")
+        out_pad = kornia.geometry.transform.crop_by_indices(inp, src_box, size=size, shape_compensation="pad")
+
+        expected_resize_0 = torch.tensor([[2.25, 3.75], [14.25, 15.75]], device=device, dtype=dtype)
+        expected_pad_0 = torch.tensor([[0.0, 1.0], [8.0, 9.0]], device=device, dtype=dtype)
+        self.assert_close(out_resize[0, 0], expected_resize_0, rtol=1e-2, atol=1e-2)
+        self.assert_close(out_pad[0, 0], expected_pad_0, rtol=1e-2, atol=1e-2)
+        # sample 1's box already matches `size`, so 'pad' and 'resize' agree there.
+        self.assert_close(out_resize[1], out_pad[1])
 
 
 class TestCropSizeValidation:

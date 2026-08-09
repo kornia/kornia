@@ -66,6 +66,30 @@ class TestPyrDown(BaseTester):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.pyrdown, (img,), nondet_tol=1e-8)
 
+    def test_convention_align_corners_and_border_type_change_output(self, device, dtype):
+        # pyrdown's align_corners (default False) and border_type (default 'reflect') defaults
+        # actually change the output values -- existing tests only check output shape, never a
+        # discriminating-literal comparison of the defaults against their alternatives.
+        x = torch.arange(0.0, 25.0, device=device, dtype=dtype).view(1, 1, 5, 5)
+
+        out_ac_false = kornia.geometry.transform.pyrdown(x, align_corners=False)
+        out_ac_true = kornia.geometry.transform.pyrdown(x, align_corners=True)
+        out_default = kornia.geometry.transform.pyrdown(x)
+        self.assert_close(out_default, out_ac_false, rtol=1e-2, atol=1e-2)
+        assert not torch.allclose(out_ac_false, out_ac_true, atol=1e-2, rtol=1e-2)
+
+        out_reflect = kornia.geometry.transform.pyrdown(x, border_type="reflect")
+        out_constant = kornia.geometry.transform.pyrdown(x, border_type="constant")
+        assert not torch.allclose(out_reflect, out_constant, atol=1e-2, rtol=1e-2)
+
+    def test_convention_floor_not_ceil_on_odd_size(self, device, dtype):
+        # pyrdown uses floor(side / factor), diverging from OpenCV's ceil((side + 1) / 2) on
+        # odd/non-exactly-divisible sizes: 5x5 at the default factor=2.0 gives 2x2, not 3x3.
+        # (test_shape/test_shape_custom_factor only use exactly-divisible sizes, where floor and
+        # ceil agree.)
+        x = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
+        assert kornia.geometry.transform.pyrdown(x).shape == (1, 1, 2, 2)
+
 
 class TestScalePyramid(BaseTester):
     def test_shape_tuple(self, device, dtype):
