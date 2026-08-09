@@ -257,7 +257,7 @@ def affine3d(
 def rotate(
     tensor: torch.Tensor,
     angle: torch.Tensor,
-    center: Union[None, torch.Tensor] = None,
+    center: Union[torch.Tensor, None] = None,
     mode: str = "bilinear",
     padding_mode: str = "zeros",
     align_corners: bool = True,
@@ -330,7 +330,7 @@ def rotate3d(
     yaw: torch.Tensor,
     pitch: torch.Tensor,
     roll: torch.Tensor,
-    center: Union[None, torch.Tensor] = None,
+    center: Union[torch.Tensor, None] = None,
     mode: str = "bilinear",
     padding_mode: str = "zeros",
     align_corners: bool = False,
@@ -455,7 +455,7 @@ def translate(
 def scale(
     tensor: torch.Tensor,
     scale_factor: torch.Tensor,
-    center: Union[None, torch.Tensor] = None,
+    center: Union[torch.Tensor, None] = None,
     mode: str = "bilinear",
     padding_mode: str = "zeros",
     align_corners: bool = True,
@@ -1046,7 +1046,7 @@ class Rotate(nn.Module):
     def __init__(
         self,
         angle: torch.Tensor,
-        center: Union[None, torch.Tensor] = None,
+        center: Union[torch.Tensor, None] = None,
         mode: str = "bilinear",
         padding_mode: str = "zeros",
         align_corners: bool = True,
@@ -1167,7 +1167,7 @@ class Scale(nn.Module):
     def __init__(
         self,
         scale_factor: torch.Tensor,
-        center: Union[None, torch.Tensor] = None,
+        center: Union[torch.Tensor, None] = None,
         mode: str = "bilinear",
         padding_mode: str = "zeros",
         align_corners: bool = True,

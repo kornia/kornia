@@ -194,10 +194,7 @@ img = kr.resize(img, (256, 256), interpolation="bilinear")
 img = np.stack([img] * 2)  # batch images
 
 # Define an augmentation pipeline
-augmentation_pipeline = AugmentationSequential(
-    RandomAffine((-45., 45.), p=1.),
-    RandomBrightness((0.,1.), p=1.)
-)
+augmentation_pipeline = AugmentationSequential(RandomAffine((-45.0, 45.0), p=1.0), RandomBrightness((0.0, 1.0), p=1.0))
 
 # Leveraging StableDiffusion models
 dslv_op = StableDiffusionDissolving()
@@ -216,6 +213,7 @@ dslv_op.save("Kornia-enhanced.jpg")
 ```python
 import numpy as np
 from kornia.onnx import ONNXSequential
+
 # Chain ONNX models from HuggingFace repo and your own local model together
 onnx_seq = ONNXSequential(
     "hf://operators/kornia.geometry.transform.flips.Hflip",
@@ -239,6 +237,7 @@ You can now use Kornia with [TensorFlow](https://www.tensorflow.org/), [JAX](htt
 
 ```python
 import kornia
+
 tf_kornia = kornia.to_tensorflow()
 ```
 

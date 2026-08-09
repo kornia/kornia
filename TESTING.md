@@ -44,12 +44,13 @@ All tests inherit from `testing.base.BaseTester` and implement a standard set of
 ```python
 from testing.base import BaseTester
 
+
 class TestMyFunction(BaseTester):
-    def test_smoke(self, device, dtype): ...        # basic run, all arg combinations
-    def test_exception(self, device, dtype): ...    # error paths
+    def test_smoke(self, device, dtype): ...  # basic run, all arg combinations
+    def test_exception(self, device, dtype): ...  # error paths
     def test_cardinality(self, device, dtype): ...  # output shapes
-    def test_feature(self, device, dtype): ...      # correctness / numerical accuracy
-    def test_gradcheck(self, device): ...           # gradient checking via self.gradcheck()
+    def test_feature(self, device, dtype): ...  # correctness / numerical accuracy
+    def test_gradcheck(self, device): ...  # gradient checking via self.gradcheck()
     def test_dynamo(self, device, dtype, torch_optimizer): ...  # torch.compile compat
 ```
 
@@ -134,8 +135,7 @@ will fail on CUDA/MPS even though the code is correct.
 self.gradcheck(fn, inputs, rtol=1e-3, atol=1e-3, nondet_tol=1e-3)
 
 # In a test calling torch.autograd.gradcheck() directly:
-torch.autograd.gradcheck(fn, inputs, eps=1e-4, atol=1e-3, rtol=1e-3,
-                         fast_mode=True, nondet_tol=1e-3)
+torch.autograd.gradcheck(fn, inputs, eps=1e-4, atol=1e-3, rtol=1e-3, fast_mode=True, nondet_tol=1e-3)
 ```
 
 A value of `1e-3` is usually sufficient; it should not exceed `atol`.
