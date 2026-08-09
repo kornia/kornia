@@ -110,6 +110,22 @@ class TestParametrizedLine(BaseTester):
         self.assert_close(lmbda, expected_lambda)
         self.assert_close(point, expected_point)
 
+    def test_intersect_plane_parallel(self, device, dtype):
+        # the degenerate branch must return deterministic values, not uninitialized memory
+        p0 = torch.tensor([0.0, 4.0, 0.0], device=device, dtype=dtype)
+        p1 = torch.tensor([1.0, 4.0, 0.0], device=device, dtype=dtype)
+        l1 = ParametrizedLine.through(p0, p1)
+
+        v0 = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        v1 = torch.tensor([1.0, 0.0, 1.0], device=device, dtype=dtype)
+        v2 = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)
+        pl0 = Hyperplane.through(v0, v1, v2)
+
+        lmbda, point = l1.intersect(pl0)
+
+        self.assert_close(lmbda, torch.tensor(0.0, device=device, dtype=dtype))
+        self.assert_close(point, p0)
+
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
         pass

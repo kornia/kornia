@@ -79,6 +79,45 @@ class TestCropAndResize(BaseTester):
         patches = kornia.geometry.transform.crop_and_resize(inp, boxes, (2, 2))
         self.assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
+    def test_crop_non_parallel_box(self, device, dtype):
+        # regression test for https://github.com/kornia/kornia/issues/3560:
+        # boxes with non-parallel opposite sides need a perspective warp, not affine
+        inp = torch.arange(1.0, 37.0, device=device, dtype=dtype).view(1, 1, 6, 6)
+
+        boxes = torch.tensor(
+            [[[1.0, 1.0], [4.0, 0.0], [5.0, 4.0], [0.0, 3.0]]], device=device, dtype=dtype
+        )  # 1x4x2 trapezoid
+
+        # Snippet used to generate expected (requires numpy only): solve the DLT for the
+        # homography mapping output corners to the box corners, then bilinear-sample:
+        #   import numpy as np
+        #   img = np.arange(1.0, 37.0).reshape(6, 6)
+        #   src = np.array([[1.0, 1.0], [4.0, 0.0], [5.0, 4.0], [0.0, 3.0]])
+        #   dst = np.array([[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]])
+        #   A, b = [], []
+        #   for (xs, ys), (xd, yd) in zip(src, dst):
+        #       A += [[xd, yd, 1, 0, 0, 0, -xs * xd, -xs * yd], [0, 0, 0, xd, yd, 1, -ys * xd, -ys * yd]]
+        #       b += [xs, ys]
+        #   H = np.append(np.linalg.solve(np.array(A), np.array(b)), 1.0).reshape(3, 3)
+        #   expected = np.zeros((3, 3))
+        #   for j in range(3):
+        #       for i in range(3):
+        #           p = H @ np.array([i, j, 1.0])
+        #           x, y = p[0] / p[2], p[1] / p[2]
+        #           x0, y0 = int(np.floor(x)), int(np.floor(y))
+        #           ax, ay = x - x0, y - y0
+        #           x1, y1 = min(x0 + 1, 5), min(y0 + 1, 5)
+        #           expected[j, i] = (img[y0, x0] * (1 - ax) * (1 - ay) + img[y0, x1] * ax * (1 - ay)
+        #                             + img[y1, x0] * (1 - ax) * ay + img[y1, x1] * ax * ay)
+        expected = torch.tensor(
+            [[[[8.0, 6.9, 5.0], [12.46875, 12.583333, 12.8125], [19.0, 22.055556, 30.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        patches = kornia.geometry.transform.crop_and_resize(inp, boxes, (3, 3))
+        self.assert_close(patches, expected, rtol=1e-4, atol=1e-4)
+
     def test_crop_batch_broadcast(self, device, dtype):
         inp = torch.tensor(
             [
@@ -302,6 +341,20 @@ class TestCropByIndices(BaseTester):
         actual = op_script(img, torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]]))
         expected = op(img, torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]]))
         self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
+
+    def test_crop_by_indices_variable_sizes_exception(self, device, dtype):
+        img = torch.rand(2, 3, 20, 20, device=device, dtype=dtype)
+        src_box = torch.tensor(
+            [
+                [[0, 0], [4, 0], [4, 4], [0, 4]],  # 5x5 box
+                [[0, 0], [9, 0], [9, 9], [0, 9]],  # 10x10 box
+            ],
+            dtype=dtype,
+            device=device,
+        )
+
+        with pytest.raises(ValueError, match="All boxes in the batch must have the same height and width"):
+            kornia.geometry.transform.crop_by_indices(img, src_box, size=None)
 
 
 class TestCropSizeValidation:

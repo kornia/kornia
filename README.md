@@ -194,10 +194,7 @@ img = kr.resize(img, (256, 256), interpolation="bilinear")
 img = np.stack([img] * 2)  # batch images
 
 # Define an augmentation pipeline
-augmentation_pipeline = AugmentationSequential(
-    RandomAffine((-45., 45.), p=1.),
-    RandomBrightness((0.,1.), p=1.)
-)
+augmentation_pipeline = AugmentationSequential(RandomAffine((-45.0, 45.0), p=1.0), RandomBrightness((0.0, 1.0), p=1.0))
 
 # Leveraging StableDiffusion models
 dslv_op = StableDiffusionDissolving()
@@ -216,6 +213,7 @@ dslv_op.save("Kornia-enhanced.jpg")
 ```python
 import numpy as np
 from kornia.onnx import ONNXSequential
+
 # Chain ONNX models from HuggingFace repo and your own local model together
 onnx_seq = ONNXSequential(
     "hf://operators/kornia.geometry.transform.flips.Hflip",
@@ -239,6 +237,7 @@ You can now use Kornia with [TensorFlow](https://www.tensorflow.org/), [JAX](htt
 
 ```python
 import kornia
+
 tf_kornia = kornia.to_tensorflow()
 ```
 
@@ -272,6 +271,10 @@ Our primary focus is on integrating **Vision Language Models (VLM)** and **Visio
 ### Documentation And Tutorial Optimization
 
 Kornia's foundation lies in its extensive collection of classic computer vision operators, providing robust tools for image processing, feature extraction, and geometric transformations. We continuously seek for contributors to help us improve our documentation and present nice tutorials to our users.
+
+## Contributing
+
+We welcome contributions to Kornia! Whether you are fixing bugs, improving documentation, or adding new computer vision features, please check out our [Contribution Guidelines](CONTRIBUTING.md) to get started with setting up your development environment, running tests, and submitting pull requests.
 
 
 ## Cite

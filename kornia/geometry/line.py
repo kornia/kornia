@@ -164,6 +164,10 @@ class ParametrizedLine(nn.Module):
             - the lambda value used to compute the look at point.
             - the intersected point.
 
+        Note:
+            If the line is parallel to the plane (``|normal . direction| < eps``) there is no unique
+            intersection; the function returns lambda ``0`` and the line origin as the point.
+
         """
         dot_prod = batched_dot_product(plane.normal.data, self.direction.data)
         dot_prod_mask = dot_prod.abs() >= eps
@@ -172,7 +176,7 @@ class ParametrizedLine(nn.Module):
         res_lambda = torch.where(
             dot_prod_mask,
             -(plane.offset + batched_dot_product(plane.normal.data, self.origin.data)) / dot_prod,
-            torch.empty_like(dot_prod),
+            torch.zeros_like(dot_prod),
         )
 
         res_point = self.point_at(res_lambda)

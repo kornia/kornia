@@ -82,12 +82,13 @@ All tests should inherit from `BaseTester` (from `testing.base`):
 ```python
 from testing.base import BaseTester
 
+
 class TestMyFunction(BaseTester):
-    def test_smoke(self, device, dtype): ...          # Basic run with all arg combinations
-    def test_exception(self, device, dtype): ...      # Exception cases
-    def test_cardinality(self, device, dtype): ...    # Output shapes
-    def test_feature(self, device, dtype): ...        # Correctness / numerical accuracy
-    def test_gradcheck(self, device): ...             # Gradient checking via self.gradcheck()
+    def test_smoke(self, device, dtype): ...  # Basic run with all arg combinations
+    def test_exception(self, device, dtype): ...  # Exception cases
+    def test_cardinality(self, device, dtype): ...  # Output shapes
+    def test_feature(self, device, dtype): ...  # Correctness / numerical accuracy
+    def test_gradcheck(self, device): ...  # Gradient checking via self.gradcheck()
     def test_dynamo(self, device, dtype, torch_optimizer): ...  # torch.compile compat
 ```
 

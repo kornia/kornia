@@ -26,7 +26,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import infer_bbox_shape
 
 from .affwarp import resize
-from .imgwarp import get_perspective_transform, warp_affine
+from .imgwarp import get_perspective_transform, warp_affine, warp_perspective
 
 __all__ = [
     "CenterCrop2D",
@@ -283,7 +283,8 @@ def crop_by_transform_mat(
 
     Args:
         input_tensor: the 2D image torch.Tensor with shape (B, C, H, W).
-        transform: a perspective transformation matrix with shape (B, 3, 3).
+        transform: a perspective transformation matrix with shape (B, 3, 3), or an
+          affine matrix with shape (B, 2, 3) that takes the cheaper warp_affine path.
         out_size: size of the output image (height, width).
         mode: interpolation mode to calculate output values
           ``'bilinear'`` | ``'nearest'``.
@@ -300,9 +301,51 @@ def crop_by_transform_mat(
         transform.expand(input_tensor.shape[0], -1, -1), device=input_tensor.device, dtype=input_tensor.dtype
     )
 
-    patches: torch.Tensor = warp_affine(
+    # dispatch on the transform shape, which is static and therefore safe for torch.export:
+    # (B, 2, 3) is affine by construction and keeps the cheaper warp_affine path (no perspective
+    # divide, shared-grid broadcast), while (B, 3, 3) takes the full perspective warp.
+    if transform.shape[-2:] == (2, 3):
+        return warp_affine(
+            input_tensor,
+            dst_trans_src,
+            out_size,
+            mode=mode,
+            padding_mode=padding_mode,
+            align_corners=align_corners,
+        )
+
+    h_out, w_out = out_size
+    if not align_corners and (h_out == 1 or w_out == 1):
+        # the destination-side reparametrization below is singular for 1-pixel outputs,
+        # so keep the historical affine sampling for this degenerate size
+        return warp_affine(
+            input_tensor,
+            dst_trans_src[:, :2, :],
+            out_size,
+            mode=mode,
+            padding_mode=padding_mode,
+            align_corners=align_corners,
+        )
+
+    if not align_corners:
+        # warp_perspective always builds its grid with align_corners=True spacing, while this
+        # function historically followed warp_affine/F.affine_grid; this destination-side
+        # reparametrization maps one convention onto the other. It depends only on out_size,
+        # keeping the graph free of data-dependent control flow for torch.export.
+        correction = torch.tensor(
+            [
+                [w_out / (w_out - 1.0), 0.0, -0.5],
+                [0.0, h_out / (h_out - 1.0), -0.5],
+                [0.0, 0.0, 1.0],
+            ],
+            device=dst_trans_src.device,
+            dtype=dst_trans_src.dtype,
+        )
+        dst_trans_src = correction.unsqueeze(0) @ dst_trans_src
+
+    patches: torch.Tensor = warp_perspective(
         input_tensor,
-        dst_trans_src[:, :2, :],
+        dst_trans_src,
         out_size,
         mode=mode,
         padding_mode=padding_mode,
@@ -365,7 +408,12 @@ def crop_by_indices(
 
     if size is None:
         h, w = infer_bbox_shape(src)
-        size = h.unique(sorted=False), w.unique(sorted=False)
+        if B > 0 and ((h != h[0]).any() | (w != w[0]).any()).item():
+            raise ValueError(
+                "All boxes in the batch must have the same height and width when `size` is None. "
+                "Please pass `size` explicitly when box dimensions vary across the batch."
+            )
+        size = (int(h[0].item()), int(w[0].item())) if B > 0 else (0, 0)
     out = torch.empty(B, C, *size, device=input_tensor.device, dtype=input_tensor.dtype)
     # Find out the cropped shapes that need to be resized.
     for i in range(B):

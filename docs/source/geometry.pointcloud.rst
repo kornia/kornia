@@ -9,3 +9,5 @@ kornia.geometry.pointcloud
 
 .. autofunction:: save_pointcloud_ply
 .. autofunction:: load_pointcloud_ply
+.. autofunction:: save_pointcloud_ply_binary
+.. autofunction:: load_pointcloud_ply_binary

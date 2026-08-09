@@ -359,6 +359,28 @@ class TestAdjustContrast(BaseTester):
         f = kornia.enhance.AdjustContrast(1.0)
         self.assert_close(f(data), expected)
 
+    def test_negative_factor_errors(self, device, dtype):
+        if device.type != "cpu":
+            pytest.skip("value asserts are synchronous only on CPU (async on CUDA, skipped on MPS)")
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        factor = torch.tensor([-0.5], device=device, dtype=dtype)
+        with pytest.raises(RuntimeError, match="non-negative"):
+            kornia.enhance.adjust_contrast(img, factor)
+
+    def test_mps_skips_value_check(self, device, dtype):
+        # aten::_assert_async has no MPS kernel; its CPU fallback forces a full device sync per
+        # call. On MPS the value check is skipped entirely (see the note in the adjust_contrast
+        # docstring), so even an invalid factor must go through without raising, and the output
+        # must stay on the device with the requested dtype.
+        if device.type != "mps":
+            pytest.skip("pins the MPS-only no-CPU-fallback behavior")
+        img = torch.rand(1, 3, 4, 4, device=device, dtype=dtype)
+        factor = torch.tensor([-0.5], device=device, dtype=dtype)
+        out = kornia.enhance.adjust_contrast(img, factor)
+        assert out.shape == img.shape
+        assert out.device == img.device
+        assert out.dtype == img.dtype
+
     def test_factor_one_with_mean_subtraction(self, device, dtype):
         # prepare input data
         data = torch.tensor(
@@ -1201,11 +1223,17 @@ class TestPosterize(BaseTester):
     def test_exception(self, device, dtype):
         img = torch.ones(2, 3, 4, 5, device=device, dtype=dtype)
 
+        # invalid input type
         with pytest.raises(TypeError):
-            assert TestPosterize.f([1.0], 0.0)
+            TestPosterize.f([1.0], 0)
 
+        # bits must be int or tensor
         with pytest.raises(TypeError):
-            assert TestPosterize.f(img, 1.0)
+            TestPosterize.f(img, 1.0)
+
+        # batch size mismatch between bits tensor and input
+        with pytest.raises(AssertionError):
+            TestPosterize.f(img, torch.tensor([1, 2, 3], device=device))
 
     # TODO(jian): add better cases
     @pytest.mark.skipif(kornia.core.utils.xla_is_available(), reason="issues with xla device")

@@ -34,6 +34,19 @@ from kornia.core.utils import _torch_histc_cast
 from kornia.image.utils import perform_keep_shape_image, perform_keep_shape_video
 
 
+def _assert_async_value_check(cond: torch.Tensor, msg: str) -> None:
+    """Validate a tensor condition without graph breaks or hidden device syncs.
+
+    ``torch._assert_async`` keeps the check fullgraph-compilable (a Python ``if tensor: raise``
+    would break the graph), but ``aten::_assert_async`` has no MPS kernel — the CPU fallback
+    materializes ``cond`` and drains the queued stream on every call, so on MPS the check is
+    skipped instead.
+    """
+    if cond.device.type == "mps":
+        return
+    torch._assert_async(cond, msg)
+
+
 def adjust_saturation_raw(image: torch.Tensor, factor: Union[float, torch.Tensor]) -> torch.Tensor:
     r"""Adjust color saturation of an image.
 
@@ -261,6 +274,11 @@ def adjust_gamma(
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
 
+    .. note::
+       The non-negativity check on ``gamma``/``gain`` runs on CPU and CUDA (via ``torch._assert_async``).
+       On MPS it is skipped: the op has no MPS kernel and its CPU fallback would synchronize the
+       device on every call, so invalid values do not raise there.
+
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
         >>> adjust_gamma(x, 1.0, 2.0)
@@ -292,10 +310,14 @@ def adjust_gamma(
     gamma = gamma.to(input.device).to(input.dtype)
     gain = gain.to(input.device).to(input.dtype)
 
-    # torch._assert_async keeps the value check while staying fullgraph-compilable (a Python
-    # `if tensor: raise` would break the graph).
-    torch._assert_async((gamma >= 0.0).all(), "Gamma must be non-negative.")
-    torch._assert_async((gain >= 0.0).all(), "Gain must be non-negative.")
+    _assert_async_value_check(
+        (gamma >= 0.0).all(),
+        "Gamma must be non-negative. Clamp it first: max(gamma, 0.0) for floats, gamma.clamp_min(0.0) for tensors.",
+    )
+    _assert_async_value_check(
+        (gain >= 0.0).all(),
+        "Gain must be non-negative. Clamp it first: max(gain, 0.0) for floats, gain.clamp_min(0.0) for tensors.",
+    )
 
     for _ in range(len(input.shape) - len(gamma.shape)):
         gamma = torch.unsqueeze(gamma, dim=-1)
@@ -342,6 +364,11 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
 
+    .. note::
+       The non-negativity check on ``factor`` runs on CPU and CUDA (via ``torch._assert_async``).
+       On MPS it is skipped: the op has no MPS kernel and its CPU fallback would synchronize the
+       device on every call, so invalid values do not raise there.
+
     Example:
         >>> import torch
         >>> x = torch.ones(1, 1, 2, 2)
@@ -368,8 +395,11 @@ def adjust_contrast(image: torch.Tensor, factor: Union[float, torch.Tensor], cli
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    # torch._assert_async keeps the value check while staying fullgraph-compilable.
-    torch._assert_async((factor >= 0).all(), "Contrast factor must be positive.")
+    _assert_async_value_check(
+        (factor >= 0).all(),
+        "Contrast factor must be non-negative. Clamp it first: max(factor, 0.0) for floats, "
+        "factor.clamp_min(0.0) for tensors.",
+    )
 
     # Apply contrast factor to each channel
     img_adjust: torch.Tensor = image * factor
@@ -693,6 +723,11 @@ def solarize(
     Returns:
         The solarized images with shape :math:`(*, C, H, W)`.
 
+    .. note::
+       The range check on ``additions`` runs on CPU and CUDA (via ``torch._assert_async``).
+       On MPS it is skipped: the op has no MPS kernel and its CPU fallback would synchronize the
+       device on every call, so invalid values do not raise there.
+
     Example:
         >>> x = torch.rand(1, 4, 3, 3)
         >>> out = solarize(x, thresholds=0.5, additions=0.)
@@ -722,11 +757,10 @@ def solarize(
         if isinstance(additions, float):
             additions = torch.as_tensor(additions)
 
-        # `torch._assert_async` keeps this a single traceable path (no Python-level branch on a
-        # tensor value), so `solarize` stays torch.compile fullgraph-safe while still validating.
-        torch._assert_async(
+        _assert_async_value_check(
             ((additions < 0.5) & (additions > -0.5)).all(),
-            "The value of 'addition' is between -0.5 and 0.5.",
+            "The addition must be in the open range (-0.5, 0.5). Clamp it first: min(max(additions, -0.49), 0.49) "
+            "for floats, additions.clamp(-0.49, 0.49) for tensors.",
         )
 
         if isinstance(additions, torch.Tensor) and len(additions.shape) != 0:
@@ -779,7 +813,12 @@ def posterize(input: torch.Tensor, bits: Union[int, torch.Tensor]) -> torch.Tens
         raise TypeError(f"bits type is not an int or torch.Tensor. Got {type(bits)}")
 
     if isinstance(bits, int):
-        bits = torch.as_tensor(bits)
+        bits = torch.as_tensor(bits, device=input.device)
+
+    # A user-supplied CPU bits tensor mixes with any device only when 0-dim (PyTorch's "wrapped
+    # number" rule); multi-element CPU tensors hit a device mismatch on MPS/CUDA, so move bits
+    # onto input's device explicitly (no-op when already there).
+    bits = bits.to(device=input.device)
 
     # TODO: find a better way to check boundaries on tensors
     # if not torch.all((bits >= 0) * (bits <= 8)) and bits.dtype == torch.int:

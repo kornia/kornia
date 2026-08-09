@@ -50,10 +50,16 @@ The fix must run the **same code path** in eager and compile.
 4. **Benchmark before/after — REQUIRED for every touched function.** A compile fix that doesn't speed anything up (or regresses eager) must be justified. Benchmarking is an experiment, not a vibe — hold it to experimental standards:
    ```python
    import torch.utils.benchmark as bench
-   def us(f,*a): return bench.Timer(stmt="f(*a)",globals={"f":f,"a":a}).blocked_autorange(min_run_time=1.0).median*1e6
+
+
+   def us(f, *a):
+       return bench.Timer(stmt="f(*a)", globals={"f": f, "a": a}).blocked_autorange(min_run_time=1.0).median * 1e6
+
+
    eager = us(fn, *args)
-   c = torch.compile(fn, fullgraph=True); c(*args)  # warmup — compile + allocator + cudnn autotune all happen on the first call
-   comp  = us(c, *args)
+   c = torch.compile(fn, fullgraph=True)
+   c(*args)  # warmup — compile + allocator + cudnn autotune all happen on the first call
+   comp = us(c, *args)
    ```
    Methodology that makes the number trustworthy — deviate and the comparison is noise:
    - **Warm up** before timing (first call pays compilation / autotune / lazy-init). **Never** time a single call — use `blocked_autorange` (statistical, median of many) so you report signal, not scheduler jitter.
@@ -61,7 +67,9 @@ The fix must run the **same code path** in eager and compile.
    - **Realistic shape + batch** (e.g. `(32,3,256,256)` for augmentation) — a `(1,3,8,8)` toy inflates Python overhead and hides kernel cost. Record **hardware, torch version, commit, date** with the numbers (edge silicon like Jetson is *directional*; headline GPU-leadership claims need a datacenter GPU).
    - Confirm the rewrite didn't **regress eager** (branchless "compute both branches" and deleted early-exits add eager work — measure it). Put the before/after table in the PR.
 
-   **Benchmark against every other library — kornia's numbers are meaningless in isolation.** Use the harnesses, don't hand-roll: `benchmarks/augmentation/all_libraries.py` (kornia eager+compiled vs torchvision v2, albumentations, OpenCV, PIL, **kornia-rs**), `cross_library.py` (focused three-way), `pipeline.py` (end-to-end). Read `benchmarks/augmentation/README.md` first — it documents the regimes and the standing improvement list, and it is where durable results and the honest interpretation live (update it when you move a number). Read the columns honestly and state the regime: **OpenCV / kornia-rs win CPU/uint8/single-image**, **torchvision v2 wins raw float-tensor throughput**, **kornia's regime is GPU-batched + differentiable + compiled** — the only one where differentiable, on-device augmentation exists at all.
+   **Benchmark against every other library — kornia's numbers are meaningless in isolation.** Use the harnesses, don't hand-roll: `benchmarks/augmentation/flagship.py` (each library's random-transform class API, parameter sampling included: kornia eager+compiled vs torchvision v2, albumentations, OpenCV, PIL; `--json` export), `cross_library.py` (focused three-way), `pipeline.py` (end-to-end), plus `benchmarks/filters/flagship.py` and `benchmarks/geometry/flagship.py` for the functional ops. Read `benchmarks/augmentation/README.md` first — it documents the regimes and the standing improvement list, and it is where durable results and the honest interpretation live (update it when you move a number). Read the columns honestly and state the regime: **OpenCV / kornia-rs win CPU/uint8/single-image**, **torchvision v2 wins raw float-tensor throughput**, **kornia's regime is GPU-batched + differentiable + compiled** — the only one where differentiable, on-device augmentation exists at all.
+
+   Durable, citable numbers live in benchmarks/results/ and render at docs get-started/performance — refresh the llms digest with python docs/generate_benchmarks.py --refresh-llms when adding results.
 
    **The moonshot is 10× vs albumentations** for the augmentation package — frame every perf fix against that target. Today kornia trails on CPU; the levers that close then invert the gap: (a) `torch.compile` (the fix you just made — ~2–3×), (b) a **uint8 fast path** (albumentations' whole edge is uint8 + OpenCV; kornia upcasts to float32), (c) pushing the hot op into **`kornia-rs`** (the Rust backend albumentations can't match). A compile fix that only reaches parity is a step toward 10×, not the destination — say in the PR which lever is still on the table.
 
