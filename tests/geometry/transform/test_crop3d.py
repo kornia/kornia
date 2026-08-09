@@ -422,7 +422,7 @@ class TestCropByBoxes3D(BaseTester):
 
         # Intentionally unguarded on MPS: 3D grid_sample supports padding_mode='border' there;
         # only 2D grid_sample has the MPS 'border' limitation guarded elsewhere (see
-        # tests/geometry/transform/conftest.py's supports_2d_border_padding).
+        # testing/base.py's supports_2d_border_padding).
         out_border = kornia.geometry.transform.crop_by_transform_mat3d(
             inp, transform, (3, 3, 3), align_corners=True, padding_mode="border"
         )
