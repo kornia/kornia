@@ -381,6 +381,49 @@ class TestCropByBoxes3D(BaseTester):
         self.assert_close(out_default, out_false, rtol=1e-2, atol=1e-2)
         assert not torch.allclose(out_default, out_true, atol=1e-2, rtol=1e-2)
 
+        # Consequence for the docstring's "inclusive coordinates" claim: the box extent
+        # (1, 1, 1)..(2, 2, 2) does NOT reproduce the exact integer-voxel slice under the
+        # align_corners=False default (it interpolates instead) -- only align_corners=True
+        # does.
+        vol = torch.arange(64.0, device=device, dtype=dtype).view(1, 1, 4, 4, 4)
+        unit_src_box = torch.tensor(
+            [
+                [
+                    [1.0, 1.0, 1.0],
+                    [2.0, 1.0, 1.0],
+                    [2.0, 2.0, 1.0],
+                    [1.0, 2.0, 1.0],
+                    [1.0, 1.0, 2.0],
+                    [2.0, 1.0, 2.0],
+                    [2.0, 2.0, 2.0],
+                    [1.0, 2.0, 2.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        unit_dst_box = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [1.0, 1.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                    [1.0, 0.0, 1.0],
+                    [1.0, 1.0, 1.0],
+                    [0.0, 1.0, 1.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        expected_slice = vol[:, :, 1:3, 1:3, 1:3]
+        unit_out_default = kornia.geometry.transform.crop_by_boxes3d(vol, unit_src_box, unit_dst_box)
+        unit_out_true = kornia.geometry.transform.crop_by_boxes3d(vol, unit_src_box, unit_dst_box, align_corners=True)
+        assert not torch.allclose(unit_out_default, expected_slice, atol=1e-2, rtol=1e-2)
+        self.assert_close(unit_out_true, expected_slice, rtol=1e-2, atol=1e-2)
+
     def test_convention_crop_by_transform_mat3d_direct(self, device, dtype):
         # crop_by_transform_mat3d has no direct test anywhere in this file -- it is only ever
         # exercised indirectly through crop_by_boxes3d. Pin it directly: align_corners=True

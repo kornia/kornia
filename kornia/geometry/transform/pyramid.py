@@ -163,8 +163,9 @@ class ScalePyramid(nn.Module):
           at the start of every octave, identical from octave 1 onward; octave
           0's first entry is instead the assumed input blur (``0.5``, or
           ``1.0`` when ``double_image=True``) whenever ``init_sigma`` is below
-          that value — e.g. ``init_sigma=0.25`` gives octave 0
-          ``[0.5, 0.5, 1.0, 2.0]`` vs octave 1+ ``[0.25, 0.5, 1.0, 2.0]``; and
+          that value — e.g. ``ScalePyramid(n_levels=1, init_sigma=0.25)`` gives
+          octave 0 ``[0.5, 0.5, 1.0, 2.0]`` vs octave 1+ ``[0.25, 0.5, 1.0, 2.0]``
+          (the per-level values scale with ``n_levels``/``extra_levels``); and
           ``pixel_dists`` is the pixel spacing of each level relative to the
           input; the blur sigma in original-image pixels is
           ``sigmas[octave] * pixel_dists[octave]``, not ``sigmas[octave]`` alone
@@ -341,9 +342,11 @@ class ScalePyramid(nn.Module):
 
         Returns:
             Three lists with one entry per octave. ``pyr`` contains stacked
-            image levels, ``sigmas`` contains the absolute blur sigma for each
-            level, and ``pixel_dists`` contains the pixel spacing of each level
-            relative to the original image.
+            image levels, ``sigmas`` contains the octave-relative blur sigma
+            for each level (multiply by the matching ``pixel_dists`` entry for
+            the absolute blur in original-image pixels), and ``pixel_dists``
+            contains the pixel spacing of each level relative to the original
+            image.
         """
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
@@ -459,13 +462,13 @@ def pyrup(input: torch.Tensor, border_type: str = "reflect", align_corners: bool
         - align_corners: ``False`` by default
 
     Args:
-        input: the torch.Tensor to be downsampled.
+        input: the torch.Tensor to be upsampled.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
         align_corners: interpolation flag.
 
     Return:
-        the downsampled torch.Tensor.
+        the upsampled torch.Tensor.
 
     Examples:
         >>> input = torch.arange(4, dtype=torch.float32).reshape(1, 1, 2, 2)
@@ -513,8 +516,8 @@ def build_pyramid(
     Args:
         input : the torch.Tensor to be used to construct the pyramid.
         max_level: the number of pyramid levels to return, including the
-          unchanged original image as level 0. Values less than 1 currently
-          behave like ``max_level=1`` (a single-element list).
+          unchanged original image as level 0. Non-positive integer values
+          currently behave like ``max_level=1`` (a single-element list).
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.
@@ -574,28 +577,27 @@ def build_laplacian_pyramid(
           element (index ``max_level - 1``) is the unsubtracted final Gaussian
           level — level 0 is **not** the unchanged original image whenever
           ``max_level > 1``
-        - when **neither** the height **nor** the width is a power of two, the
-          input is reflect-padded up to the next power of two (per dimension)
-          before the Gaussian pyramid is built, so every returned level —
-          including level 0 — is shaped from the padded size, not the
-          original input size (e.g. a :math:`(1, 1, 6, 6)` input produces a
-          level 0 of shape :math:`(1, 1, 8, 8)`); if **either** dimension is
-          already a power of two, no padding is applied even if the other
-          is not (e.g. :math:`(1, 1, 6, 8)` and :math:`(1, 1, 8, 6)` are
-          both returned unpadded at level 0), and for such odd/non-power-of-two
-          sizes with ``max_level > 1`` the level-to-level subtraction can
-          raise ``RuntimeError`` from a shape mismatch (e.g. a
-          :math:`(1, 1, 5, 8)` or :math:`(1, 1, 8, 5)` input with
-          ``max_level=2``)
+        - the input is reflect-padded up to the next power of two (per
+          dimension) only when **neither** the height **nor** the width is
+          already a power of two; when it is applied, every returned level
+          — including level 0 — is shaped from the padded size
         - border_type: ``'reflect'`` by default
         - align_corners: ``False`` by default
+
+    .. warning::
+        For a mixed odd/power-of-two input size (one dimension a power of two,
+        the other not), no padding is applied and the level-to-level
+        subtraction can raise ``RuntimeError`` from a shape mismatch when
+        ``max_level > 1`` (e.g. a :math:`(1, 1, 5, 8)` input with
+        ``max_level=2``). This is likely unintended and tracked in
+        `#3923 <https://github.com/kornia/kornia/issues/3923>`_.
 
     Args:
         input : the torch.Tensor to be used to construct the pyramid with shape :math:`(B, C, H, W)`.
         max_level: the number of pyramid levels to return (see Convention
-          above for what each level contains). Values less than 1 currently
-          behave like ``max_level=1``, returning just the base Gaussian
-          level.
+          above for what each level contains). Non-positive integer values
+          currently behave like ``max_level=1``, returning just the base
+          Gaussian level.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``.

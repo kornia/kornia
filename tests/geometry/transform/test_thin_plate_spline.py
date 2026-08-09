@@ -275,14 +275,16 @@ class TestWarpImage(BaseTester):
         warped = kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine, align_corners=True)
         self.assert_close(warped, image, atol=1e-4, rtol=1e-4)
 
-    def test_convention_default_align_corners_breaks_identity(self, device, dtype):
-        # warp_image_tps's default align_corners=False does NOT reproduce an identity TPS warp:
-        # its internal create_meshgrid call always builds the sampling grid using the
-        # align_corners=True convention, so it mismatches grid_sample's own (default) False
-        # convention even for a mathematically-identity TPS transform. See the Convention
-        # block above warp_image_tps for the align_corners=True caveat (identity round-trip up
-        # to floating-point precision; align_corners=True itself is already pinned by
-        # test_identity_warp_align_corners above).
+    def test_convention_default_align_corners_and_padding_mode(self, device, dtype):
+        # warp_image_tps's align_corners default is False, which does NOT reproduce an
+        # identity TPS warp: its internal create_meshgrid call always builds the sampling
+        # grid using the align_corners=True convention, so it mismatches grid_sample's own
+        # (default) False convention even for a mathematically-identity TPS transform (see
+        # the warning in the Convention block above warp_image_tps; align_corners=True itself
+        # is already pinned by test_identity_warp_align_corners above). Its padding_mode
+        # default is 'zeros': grid_sample calls that sample outside bounds (which happens even
+        # for this identity TPS warp, because of the align_corners mismatch) fill with 0, not
+        # the edge value ('border' would).
         if dtype == torch.float16:
             # get_tps_transform's linear solve is numerically unstable in float16 (produces NaN
             # kernel/affine weights) -- matches this file's pre-existing
@@ -296,24 +298,8 @@ class TestWarpImage(BaseTester):
         img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
 
         out_default = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine)
-
         assert not torch.allclose(out_default, img, atol=1e-2, rtol=1e-2)
 
-    def test_convention_padding_mode_default_zeros(self, device, dtype):
-        # warp_image_tps's padding_mode default is 'zeros': grid_sample calls that sample
-        # outside bounds (which happens even for this identity TPS warp, because of the
-        # align_corners=False/create_meshgrid mismatch documented above) fill with 0, not the
-        # edge value ('border' would).
-        if dtype == torch.float16:
-            pytest.skip("get_tps_transform is numerically unstable in float16 (produces NaN)")
-
-        src = torch.tensor(
-            [[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]], device=device, dtype=dtype
-        )
-        kernel, affine = kornia.geometry.transform.get_tps_transform(src, src)
-        img = torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4)
-
-        out_default = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine)
         out_zeros = kornia.geometry.transform.warp_image_tps(img, src, kernel, affine, padding_mode="zeros")
         self.assert_close(out_default, out_zeros)
 

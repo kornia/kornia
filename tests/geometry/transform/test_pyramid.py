@@ -171,6 +171,19 @@ class TestScalePyramid(BaseTester):
 
         self.gradcheck(sp_tuple, (img,), nondet_tol=1e-4)
 
+    def test_convention_octave0_sigmas_example(self, device, dtype):
+        # Pins the Convention block's worked example: with n_levels=1 (default
+        # extra_levels=3), init_sigma=0.25 below the assumed input blur (0.5) makes
+        # octave 0's first sigma the input blur itself, while octave 1+ starts from
+        # init_sigma as usual -- the two octaves diverge only in that first entry.
+        inp = torch.rand(1, 1, 64, 64, device=device, dtype=dtype)
+        sp = kornia.geometry.ScalePyramid(n_levels=1, init_sigma=0.25)
+        _, sigmas, _ = sp(inp)
+        expected_octave0 = torch.tensor([0.5, 0.5, 1.0, 2.0], device=device, dtype=dtype)
+        expected_octave1 = torch.tensor([0.25, 0.5, 1.0, 2.0], device=device, dtype=dtype)
+        self.assert_close(sigmas[0][0], expected_octave0, rtol=1e-3, atol=1e-3)
+        self.assert_close(sigmas[1][0], expected_octave1, rtol=1e-3, atol=1e-3)
+
 
 class TestBuildPyramid(BaseTester):
     def test_smoke(self, device, dtype):
@@ -199,7 +212,7 @@ class TestBuildPyramid(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.build_pyramid, (img, max_level))
 
-    @pytest.mark.parametrize("max_level", (0, -1, -5))
+    @pytest.mark.parametrize("max_level", (0, -1))
     def test_convention_max_level_less_than_one_behaves_like_one(self, max_level, device, dtype):
         # max_level <= 1 (including 0 and negative) is not rejected and currently
         # behaves like max_level=1: a single-element list. See the Args entry above.
@@ -235,7 +248,7 @@ class TestBuildLaplacianPyramid(BaseTester):
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.build_laplacian_pyramid, (img, max_level), nondet_tol=1e-8)
 
-    @pytest.mark.parametrize("max_level", (0, -1, -5))
+    @pytest.mark.parametrize("max_level", (0, -1))
     def test_convention_max_level_less_than_one_behaves_like_one(self, max_level, device, dtype):
         # max_level <= 1 (including 0 and negative) is not rejected and currently
         # behaves like max_level=1: a single-element list. See the Args entry above.

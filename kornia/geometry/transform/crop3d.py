@@ -38,10 +38,11 @@ def crop_and_resize3d(
     Convention:
         - input: :math:`(B, C, D, H, W)`; ``size`` is ``(d, h, w)``
         - ``boxes``: :math:`(B, 8, 3)` corner points in ``(x, y, z)`` order, front face
-          then back face, each face top-left, top-right, bottom-right, bottom-left;
-          coordinates are **inclusive** pixel positions (box ``(1, 1, 1)``..``(2, 2, 2)``
-          selects a :math:`2 \times 2 \times 2` block), origin at the top-left of the
-          first depth slice (``z = 0``)
+          then back face, each face top-left, top-right, bottom-right, bottom-left —
+          same ``(x, y)``/inclusive-pixel convention as :func:`crop_and_resize`, with
+          ``z`` anchored at the top-left of the first depth slice (``z = 0``);
+          reproducing the exact integer-voxel slice requires ``align_corners=True`` —
+          the default ``False`` interpolates instead
         - align_corners: ``False`` by default
 
     Args:
@@ -275,10 +276,11 @@ def crop_by_boxes3d(
         - input: :math:`(B, C, D, H, W)`
         - ``src_box``/``dst_box``: :math:`(B, 8, 3)` corner points in ``(x, y, z)``
           order, front face then back face, each face top-left, top-right,
-          bottom-right, bottom-left; coordinates are **inclusive** pixel positions
-          (box ``(1, 1, 1)``..``(2, 2, 2)`` selects a :math:`2 \times 2 \times 2` block),
-          origin at the top-left of the first depth slice (``z = 0``); ``dst_box``
-          determines the output resolution
+          bottom-right, bottom-left — same ``(x, y)``/inclusive-pixel convention as
+          :func:`crop_and_resize`, with ``z`` anchored at the top-left of the first
+          depth slice (``z = 0``); reproducing the exact integer-voxel slice requires
+          ``align_corners=True`` — the default ``False`` interpolates instead;
+          ``dst_box`` determines the output resolution
         - align_corners: ``False`` by default
 
     Args:

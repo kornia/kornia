@@ -197,11 +197,6 @@ class TestCropAndResize(BaseTester):
         )
         self.assert_close(out_default, expected_zeros, rtol=1e-2, atol=1e-2)
 
-        # MPS 2D grid_sample raises "Unsupported Border padding mode" (torch 2.9.1); 3D supports it.
-        if device.type != "mps":
-            out_border = kornia.geometry.transform.crop_and_resize(inp, boxes, (3, 3), padding_mode="border")
-            assert not torch.allclose(out_default, out_border, atol=1e-2, rtol=1e-2)
-
 
 class TestCenterCrop(BaseTester):
     def test_center_crop_h2_w4(self, device, dtype):

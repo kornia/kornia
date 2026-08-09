@@ -69,10 +69,13 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
           that are mathematically zero/identity, realized only up to linear-solver
           (LU) round-off — not bit-exact in general, and the residual size is
           dtype- and backend-dependent; float16 currently produces NaN weights
-        - to build the transform consumed by :func:`warp_image_tps`, call this with the
-          arguments **reversed** — ``get_tps_transform(points_dst, points_src)`` —
-          since image warping samples from output space back into input space;
-          :func:`warp_points_tps` uses the natural ``(points_src, points_dst)`` order
+        - the returned ``kernel_weights``/``affine_weights`` pair with
+          ``kernel_centers = points_dst`` — whichever value was passed as this
+          function's **second** positional argument; :func:`warp_points_tps` calls
+          this in the natural ``(points_src, points_dst)`` order, while
+          :func:`warp_image_tps` requires calling it **reversed** —
+          ``get_tps_transform(points_dst, points_src)`` — since image warping
+          samples from output space back into input space
 
     Args:
         points_src: batch of source points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
@@ -143,8 +146,8 @@ def warp_points_tps(
         - points: :math:`(B, N, 2)` (or :math:`(B, K, 2)` for kernel centers) in
           ``(x, y)`` order, in whatever coordinate frame the input points are already
           in — this function performs no normalization of its own
-        - ``kernel_centers`` must be the ``points_dst`` argument (the **second**
-          positional argument) passed to :func:`get_tps_transform` when computing
+        - ``kernel_centers`` is exactly the ``points_dst`` you passed to
+          :func:`get_tps_transform` (see its Convention block) when computing
           ``kernel_weights``/``affine_weights``; passing the source points instead
           silently produces the wrong warp
         - returns points warped in that same coordinate frame/units as the input, with
@@ -231,20 +234,22 @@ def warp_image_tps(
 
     Convention:
         - image: :math:`(B, C, H, W)`; kernel/affine weights as returned by
-          :func:`get_tps_transform` called with the arguments **reversed** —
-          ``get_tps_transform(points_dst, points_src)`` — see the convention block of
-          :func:`get_tps_transform`
-        - ``kernel_centers`` must be the **second** positional argument passed to that
-          :func:`get_tps_transform` call (i.e. ``points_src``, since the call is
-          reversed here); passing the other point set silently produces the wrong warp
-        - internally samples via ``create_meshgrid(h, w, normalized_coordinates=True)``,
-          which always builds its grid using the ``align_corners=True`` convention
-        - the default ``align_corners=False`` therefore mismatches that internally-built
-          grid: even a mathematically-identity TPS transform is **not** reproduced
-          exactly at the default; passing ``align_corners=True`` explicitly removes this
-          grid mismatch, leaving an identity round-trip up to ordinary floating-point
-          precision (dtype/backend dependent) — not bit-exact in general
+          :func:`get_tps_transform` called **reversed** —
+          ``get_tps_transform(points_dst, points_src)`` — see its Convention block
+        - ``kernel_centers`` is exactly the ``points_dst`` you passed to that
+          (reversed) :func:`get_tps_transform` call — i.e. this function's own
+          ``points_src``; passing the other point set silently produces the wrong warp
+        - align_corners: ``False`` by default
         - padding_mode: ``'zeros'`` by default
+
+    .. warning::
+        This function always samples via a grid built with the ``align_corners=True``
+        convention (``create_meshgrid(h, w, normalized_coordinates=True)``), so the
+        default ``align_corners=False`` mismatches it: even a mathematically-identity
+        TPS transform is **not** reproduced exactly at the default. Passing
+        ``align_corners=True`` explicitly removes this grid mismatch, leaving an
+        identity round-trip up to ordinary floating-point precision. This is likely
+        unintended and tracked in `#3923 <https://github.com/kornia/kornia/issues/3923>`_.
 
     Args:
         image: input image torch.Tensor :math:`(B, C, H, W)`.

@@ -226,9 +226,8 @@ def crop_by_boxes(
     Convention:
         - input: :math:`(B, C, H, W)`
         - ``src_box``/``dst_box``: :math:`(B, 4, 2)` corner points in ``(x, y)`` order
-          top-left, top-right, bottom-right, bottom-left; coordinates are
-          **inclusive** pixel positions, origin at top-left; ``dst_box`` determines
-          the output resolution
+          top-left, top-right, bottom-right, bottom-left — same convention as
+          :func:`crop_and_resize`; ``dst_box`` determines the output resolution
         - a single box (batch size 1) broadcasts over a batch of images, but a single
           image does not broadcast over a batch of boxes
         - align_corners: ``True`` by default
@@ -408,8 +407,7 @@ def crop_by_indices(
         - input: :math:`(B, C, H, W)`; ``size`` is ``(h, w)`` if given, else inferred
           from ``src_box``
         - ``src_box``: :math:`(B, 4, 2)` corner points in ``(x, y)`` order top-left,
-          top-right, bottom-right, bottom-left; **inclusive** pixel positions, origin
-          at top-left — same convention as :func:`crop_and_resize`
+          top-right, bottom-right, bottom-left — same convention as :func:`crop_and_resize`
         - unlike the other crop operators in this module: ``interpolation=`` (not
           ``mode=``), ``align_corners=None`` by default (not ``True``), and an
           ``antialias=False`` option
