@@ -186,9 +186,39 @@ class FaceDetector(nn.Module):
         self.nms = nms_kornia
 
     def preprocess(self, image: torch.Tensor) -> torch.Tensor:
+        """Preprocess input images before feeding them to YuNet.
+
+        Args:
+            image: Batch of RGB images with shape :math:`(B, 3, H, W)`, where:
+                - ``B`` is batch size,
+                - ``3`` is the RGB channel dimension,
+                - ``H`` is image height,
+                - ``W`` is image width.
+
+        Returns:
+            The preprocessed image tensor. The current implementation returns the
+            input unchanged and acts as an extension point for custom pipelines.
+        """
         return image
 
     def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> List[torch.Tensor]:
+        """Decode model outputs into filtered face detections.
+
+        Args:
+            data: Raw output dictionary from YuNet containing ``loc``, ``conf``,
+                and ``iou`` tensors.
+            height: Input image height used to scale decoded box coordinates.
+            width: Input image width used to scale decoded box coordinates.
+
+        Returns:
+            A list with one tensor per batch element. Each tensor is shaped
+            :math:`(N, 15)`, where ``N`` is the number of detections kept after
+            confidence filtering and non-maximum suppression (NMS).
+
+            The 15 values per detection are:
+            - 14 geometry values (bounding box + five keypoints),
+            - 1 confidence score.
+        """
         loc, conf, iou = data["loc"], data["conf"], data["iou"]
 
         scale = torch.tensor(

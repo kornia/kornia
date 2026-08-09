@@ -141,6 +141,20 @@ class EfficientViTBackbone(nn.Module):
         act_func: str,
         fewer_norm: bool = False,
     ) -> nn.Module:
+        """Build the local convolution block used between EfficientViT stages.
+
+        Args:
+            in_channels: Number of input feature channels.
+            out_channels: Number of output feature channels.
+            stride: Spatial stride for the block.
+            expand_ratio: Expansion ratio used by MBConv-style blocks.
+            norm: Normalization layer name.
+            act_func: Activation function name.
+            fewer_norm: If ``True``, omit selected normalization layers.
+
+        Returns:
+            Depthwise-separable or inverted-bottleneck convolution block.
+        """
         if expand_ratio == 1:
             block = DSConv(
                 in_channels=in_channels,
@@ -163,6 +177,15 @@ class EfficientViTBackbone(nn.Module):
         return block
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Run the EfficientViT backbone and collect stage outputs.
+
+        Args:
+            x: Image tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Dictionary containing the input, each stage output, and
+            ``"stage_final"`` for the final feature map.
+        """
         output_dict = {"input": x}
         output_dict["stage0"] = x = self.input_stem(x)
         for stage_id, stage in enumerate(self.stages, 1):
@@ -323,6 +346,21 @@ class EfficientViTLargeBackbone(nn.Module):
         act_func: str,
         fewer_norm: bool = False,
     ) -> nn.Module:
+        """Build a local block for an EfficientViT large stage.
+
+        Args:
+            stage_id: Index of the stage being constructed.
+            in_channels: Number of input feature channels.
+            out_channels: Number of output feature channels.
+            stride: Spatial stride for the block.
+            expand_ratio: Expansion ratio controlling intermediate channels.
+            norm: Normalization layer name.
+            act_func: Activation function name.
+            fewer_norm: If ``True``, use the reduced-normalization variant.
+
+        Returns:
+            Residual, fused-MBConv, or MBConv block chosen for the stage.
+        """
         if expand_ratio == 1:
             block = ResBlock(
                 in_channels=in_channels,
@@ -355,6 +393,15 @@ class EfficientViTLargeBackbone(nn.Module):
         return block
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Run the EfficientViT large backbone and collect stage outputs.
+
+        Args:
+            x: Image tensor with shape :math:`(B, C, H, W)`.
+
+        Returns:
+            Dictionary with entries for each stage and ``"stage_final"`` for
+            the final feature map.
+        """
         output_dict = {"input": x}
         for stage_id, stage in enumerate(self.stages):
             output_dict[f"stage{stage_id}"] = x = stage(x)

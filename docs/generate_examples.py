@@ -89,7 +89,7 @@ def draw_bbox_kpts(imgs: torch.Tensor, bboxes: torch.Tensor, keypoints: torch.Te
         rectangle2[..., n, 2] = keypoints[..., n, 0] + 2
         rectangle2[..., n, 3] = keypoints[..., n, 1] + 2
     color = torch.tensor([0, 0, 1]).repeat(imgs.shape[0], imgs.shape[1], 1)
-    imgs_draw = K.utils.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
+    imgs_draw = K.image.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
 
     return imgs_draw
 
@@ -224,7 +224,7 @@ def main():
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
-    mix_augmentations_list = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019)}
+    mix_augmentations_list = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019), "PatchMix": ((), 2, 2024)}
     # ITERATE OVER THE TRANSFORMS
     for aug_name, (args, _, seed) in mix_augmentations_list.items():
         img_in = torch.cat([img1, img2])
@@ -234,11 +234,15 @@ def main():
         # set seed
         torch.manual_seed(seed)
         # apply the augmentation to the image and concat
-        img_aug, _ = aug(img_in, torch.tensor([0, 1]))
+        # PatchMix returns (B, C, H, W); index [0] to get (C, H, W) for cat
+        if aug_name == "PatchMix":
+            img_aug = aug(img_in)[0]
+        else:
+            img_aug, _ = aug(img_in, torch.tensor([0, 1]))
 
         output = torch.cat([img_in[0], img_in[1], img_aug], dim=-1)
         # save the output image
-        out_np = K.utils.tensor_to_image((output * 255.0).byte())
+        out_np = K.image.tensor_to_image((output * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
@@ -259,7 +263,7 @@ def main():
 
         output = torch.cat([img_in[0], img_in[1], img_aug[0]], dim=-1)
         # save the output image
-        out_np = K.utils.tensor_to_image((output * 255.0).byte())
+        out_np = K.image.tensor_to_image((output * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
@@ -319,7 +323,7 @@ def main():
         output = torch.cat([inp[0], *(out[i] for i in range(out.size(0)))], dim=-1)
 
         # save the output image
-        out_np = K.utils.tensor_to_image((output * 255.0).byte())
+        out_np = K.image.tensor_to_image((output * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
@@ -686,11 +690,19 @@ def main():
 
     # korna.feature module
     mod = importlib.import_module("kornia.feature")
-    responses: list = ["harris_response", "gftt_response", "hessian_response", "dog_response_single", "KeyNet", "DISK"]
+    responses: list = [
+        "harris_response",
+        "gftt_response",
+        "hessian_response",
+        "dog_response_single",
+        "KeyNet",
+        "DISK",
+        "ALIKED",
+        "XFeat",
+    ]
     # ITERATE OVER THE TRANSFORMS
     for fn_name in responses:
         # import function and apply
-        # import pdb;pdb.set_trace()
         img_in = K.color.rgb_to_grayscale(img_kornia)
         if fn_name == "KeyNet":
             fn = K.feature.KeyNet(True)
@@ -704,6 +716,22 @@ def main():
             out, _ = fn.heatmap_and_dense_descriptors(img_in)
             out = K.color.grayscale_to_rgb(out)
             img_in = K.color.rgb_to_bgr(img_in)
+        elif fn_name == "ALIKED":
+            fn = K.feature.ALIKED.from_pretrained()
+            with torch.no_grad():
+                _, out = fn.extract_dense_map(img_outdoor)
+            out = K.color.grayscale_to_rgb(out)
+            img_in = K.color.rgb_to_bgr(img_outdoor)
+        elif fn_name == "XFeat":
+            fn = K.feature.XFeat.from_pretrained()
+            with torch.no_grad():
+                preprocessed, _, _ = fn._preprocess_tensor(img_outdoor)
+                _, K1, _ = fn.net(preprocessed)
+                out = K.feature.XFeat._get_kpts_heatmap(K1)
+            # upsample heatmap from preprocessed size back to original image size
+            out = torch.nn.functional.interpolate(out, img_outdoor.shape[-2:], mode="bilinear", align_corners=False)
+            out = K.color.grayscale_to_rgb(out)
+            img_in = K.color.rgb_to_bgr(img_outdoor)
         else:
             fn = getattr(mod, fn_name)
             out = fn(img_in)

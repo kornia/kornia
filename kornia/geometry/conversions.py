@@ -25,7 +25,7 @@ import torch.nn.functional as F
 from kornia.constants import pi
 from kornia.core._compat import deprecated
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.core.utils import _torch_inverse_cast
+from kornia.core.utils import _inverse_3x3_closed_form, _torch_inverse_cast
 
 __all__ = [
     "ARKitQTVecs_to_ColmapQTVecs",
@@ -637,11 +637,6 @@ def quaternion_to_axis_angle(quaternion: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input must be a tensor of shape Nx4 or 4. Got {quaternion.shape}")
 
     # unpack input and compute conversion
-    q1: torch.Tensor = torch.tensor([])
-    q2: torch.Tensor = torch.tensor([])
-    q3: torch.Tensor = torch.tensor([])
-    cos_theta: torch.Tensor = torch.tensor([])
-
     cos_theta = quaternion[..., 0]
     q1 = quaternion[..., 1]
     q2 = quaternion[..., 2]
@@ -703,7 +698,6 @@ def quaternion_log_to_exp(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
     quaternion_scalar: torch.Tensor = torch.cos(norm_q)
 
     # compose quaternion and return
-    quaternion_exp: torch.Tensor = torch.tensor([])
     quaternion_exp = torch.cat((quaternion_scalar, quaternion_vector), dim=-1)
 
     return quaternion_exp
@@ -735,9 +729,6 @@ def quaternion_exp_to_log(quaternion: torch.Tensor, eps: float = 1.0e-8) -> torc
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
     # unpack quaternion vector and scalar
-    quaternion_vector: torch.Tensor = torch.tensor([])
-    quaternion_scalar: torch.Tensor = torch.tensor([])
-
     quaternion_scalar = quaternion[..., 0:1]
     quaternion_vector = quaternion[..., 1:4]
 
@@ -1088,7 +1079,9 @@ def normalize_homography(
     # compute the transformation pixel/norm for src/dst
     src_norm_trans_src_pix: torch.Tensor = normal_transform_pixel(src_h, src_w).to(dst_pix_trans_src_pix)
 
-    src_pix_trans_src_norm = _torch_inverse_cast(src_norm_trans_src_pix)
+    # Closed-form 3x3 inverse of the (well-conditioned) pixel-normalization matrix: cusolver-free,
+    # so homography normalization runs on the Jetson wheel where ``torch.linalg.inv`` dlopen-fails.
+    src_pix_trans_src_norm = _inverse_3x3_closed_form(src_norm_trans_src_pix)
     dst_norm_trans_dst_pix: torch.Tensor = normal_transform_pixel(dst_h, dst_w).to(dst_pix_trans_src_pix)
 
     # compute chain transformations
@@ -1116,14 +1109,19 @@ def normal_transform_pixel(
         normalized transform with shape :math:`(1, 3, 3)`.
 
     """
-    tr_mat = torch.tensor([[1.0, 0.0, -1.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]], device=device, dtype=dtype)  # 3x3
-
     # prevent divide by zero bugs
     width_denom: float = eps if width == 1 else width - 1.0
     height_denom: float = eps if height == 1 else height - 1.0
 
-    tr_mat[0, 0] = tr_mat[0, 0] * 2.0 / width_denom
-    tr_mat[1, 1] = tr_mat[1, 1] * 2.0 / height_denom
+    sx: float = 2.0 / width_denom
+    sy: float = 2.0 / height_denom
+
+    # Construct the matrix in one shot (no in-place mutation).
+    tr_mat = torch.tensor(
+        [[sx, 0.0, -1.0], [0.0, sy, -1.0], [0.0, 0.0, 1.0]],
+        device=device,
+        dtype=dtype,
+    )  # 3x3
 
     return tr_mat.unsqueeze(0)  # 1x3x3
 
@@ -1299,24 +1297,11 @@ def denormalize_points_with_intrinsics(point_2d_norm: torch.Tensor, camera_matri
     # u = fx * X + cx
     # v = fy * Y + cy
 
-    # unpack coordinates
-    x_coord: torch.Tensor = point_2d_norm[..., 0]
-    y_coord: torch.Tensor = point_2d_norm[..., 1]
-
-    # unpack intrinsics
-    fx: torch.Tensor = camera_matrix[..., 0, 0]
-    fy: torch.Tensor = camera_matrix[..., 1, 1]
-    cx: torch.Tensor = camera_matrix[..., 0, 2]
-    cy: torch.Tensor = camera_matrix[..., 1, 2]
-
-    if len(cx.shape) < len(x_coord.shape):  # broadcast intrinsics
-        cx, cy, fx, fy = cx.unsqueeze(-1), cy.unsqueeze(-1), fx.unsqueeze(-1), fy.unsqueeze(-1)
-
-    # apply intrinsics ans return
-    u_coord: torch.Tensor = x_coord * fx + cx
-    v_coord: torch.Tensor = y_coord * fy + cy
-
-    return torch.stack([u_coord, v_coord], dim=-1)
+    fxfy = camera_matrix[..., :2, :2].diagonal(dim1=-2, dim2=-1)  # (*, 2)
+    cxcy = camera_matrix[..., :2, 2]  # (*, 2)
+    if len(cxcy.shape) < len(point_2d_norm.shape):
+        fxfy, cxcy = fxfy.unsqueeze(-2), cxcy.unsqueeze(-2)
+    return point_2d_norm * fxfy + cxcy
 
 
 def Rt_to_matrix4x4(R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:

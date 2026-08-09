@@ -17,11 +17,11 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 import torch.nn.functional as F
 from torch import nn
+
+from kornia.core.download import hf_url, load_state_dict_from_url
 
 from ._unets import Unet
 from .detector import heatmap_to_keypoints
@@ -50,7 +50,7 @@ class DISK(nn.Module):
 
     """
 
-    def __init__(self, desc_dim: int = 128, unet: None | nn.Module = None) -> None:
+    def __init__(self, desc_dim: int = 128, unet: nn.Module | None = None) -> None:
         super().__init__()
 
         self.desc_dim = desc_dim
@@ -88,7 +88,7 @@ class DISK(nn.Module):
     def forward(
         self,
         images: torch.Tensor,
-        n: Optional[int] = None,
+        n: int | None = None,
         window_size: int = 5,
         score_threshold: float = 0.0,
         pad_if_not_divisible: bool = False,
@@ -128,7 +128,7 @@ class DISK(nn.Module):
         return features
 
     @classmethod
-    def from_pretrained(cls, checkpoint: str = "depth", device: Optional[torch.device] = None) -> DISK:
+    def from_pretrained(cls, checkpoint: str = "depth", device: torch.device | None = None) -> DISK:
         r"""Load a pretrained model.
 
         Depth model was trained using depth map supervision and is slightly more precise but biased to detect keypoints
@@ -145,8 +145,14 @@ class DISK(nn.Module):
 
         """
         urls = {
-            "depth": "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",
-            "epipolar": "https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth",
+            "depth": [
+                hf_url("disk", "depth-save.pth"),
+                "https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth",
+            ],
+            "epipolar": [
+                hf_url("disk", "epipolar-save.pth"),
+                "https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth",
+            ],
         }
 
         if checkpoint not in urls:
@@ -154,7 +160,7 @@ class DISK(nn.Module):
 
         if device is None:
             device = torch.device("cpu")
-        pretrained_dict = torch.hub.load_state_dict_from_url(urls[checkpoint], map_location=device)
+        pretrained_dict = load_state_dict_from_url(urls[checkpoint], map_location=device)
 
         model: DISK = cls().to(device)
         model.load_state_dict(pretrained_dict["extractor"])

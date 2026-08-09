@@ -30,9 +30,9 @@ Interactive Demo
 ~~~~~~~~~~~~~~~~
 .. raw:: html
 
-    <gradio-app src="kornia/kornia-image-enhancement"></gradio-app>
+    <gradio-app src="https://kornia-kornia-image-enhancement.hf.space"></gradio-app>
 
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`_.
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`__.
 
 Equalization
 ------------
@@ -45,9 +45,9 @@ Interactive Demo
 
 .. raw:: html
 
-    <gradio-app src="Iamabhipandat/kornia-image-equalization"></gradio-app>
+    <gradio-app src="https://iamabhipandat-kornia-image-equalization.hf.space"></gradio-app>
 
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/Iamabhipandat/kornia-image-equalization>`_.
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/Iamabhipandat/kornia-image-equalization>`__.
 
 
 .. autofunction:: histogram
@@ -96,4 +96,4 @@ ZCA Whitening Interactive Demo
 ------------------------------
 .. raw:: html
 
-  <gradio-app src="kornia/zca-whitening"></gradio-app>
+  <gradio-app src="https://kornia-zca-whitening.hf.space"></gradio-app>

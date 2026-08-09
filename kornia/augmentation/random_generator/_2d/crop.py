@@ -21,7 +21,12 @@ import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
+from kornia.augmentation.utils import (
+    _adapted_rsampling,
+    _check_positive_int_or_traced,
+    _common_param_check,
+    _joint_range_check,
+)
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -85,8 +90,11 @@ class CropGenerator(RandomGeneratorBase):
                 "If `size` is a torch.Tensor, it must be shaped as (B, 2). "
                 f"Got {size.shape} while expecting {torch.Size([batch_size, 2])}."
             )
-        if not (input_size[0] > 0 and input_size[1] > 0 and (size > 0).all()):
-            raise AssertionError(f"Got non-positive input size or size. {input_size}, {size}.")
+        # Only check the (Python int) input size here; ``size`` comes from a validated positive
+        # config value, and a per-forward ``(size > 0).all()`` sync would break torch.compile
+        # fullgraph.
+        if not (input_size[0] > 0 and input_size[1] > 0):
+            raise AssertionError(f"Got non-positive input size. {input_size}.")
         size = size.floor()
 
         x_diff = input_size[1] - size[:, 1] + 1
@@ -252,24 +260,27 @@ class ResizedCropGenerator(CropGenerator):
         h_out = h[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
         w_out = w[torch.arange(0, batch_size, device=_device, dtype=torch.long), argmax_dim1]
 
-        if not cond_bool.all():
-            # Fallback to center crop
-            in_ratio = float(size[0]) / float(size[1])
-            _min = float(self.ratio.min()) if isinstance(self.ratio, torch.Tensor) else min(self.ratio)
-            if in_ratio < _min:
-                h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
-                w_ct = torch.round(h_ct / _min)
-            elif in_ratio > _min:
-                w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
-                h_ct = torch.round(w_ct * _min)
-            else:  # whole image
-                h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
-                w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
-            h_ct = h_ct.floor()
-            w_ct = w_ct.floor()
+        # Center-crop fallback for samples where no candidate crop fit (``cond_bool`` False). The
+        # fallback size is a compile-time constant (from ``size`` and ``self.ratio``), so compute it
+        # unconditionally and select branchlessly with ``torch.where`` — dropping the
+        # ``if not cond_bool.all()`` device sync keeps the generator torch.compile fullgraph. When
+        # every candidate fit, ``where`` returns ``h_out``/``w_out`` unchanged (byte-identical).
+        in_ratio = float(size[0]) / float(size[1])
+        _min = float(self.ratio.min()) if isinstance(self.ratio, torch.Tensor) else min(self.ratio)
+        if in_ratio < _min:
+            h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
+            w_ct = torch.round(h_ct / _min)
+        elif in_ratio > _min:
+            w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
+            h_ct = torch.round(w_ct * _min)
+        else:  # whole image
+            h_ct = torch.tensor(size[0], device=_device, dtype=_dtype)
+            w_ct = torch.tensor(size[1], device=_device, dtype=_dtype)
+        h_ct = h_ct.floor()
+        w_ct = w_ct.floor()
 
-            h_out = torch.where(cond_bool, h_out, h_ct)
-            w_out = torch.where(cond_bool, w_out, w_ct)
+        h_out = torch.where(cond_bool, h_out, h_ct)
+        w_out = torch.where(cond_bool, w_out, w_ct)
 
         # Clamp crop size to input size to prevent out-of-bounds crops
         h_out = torch.clamp(h_out, min=1, max=size[0])
@@ -308,11 +319,11 @@ def center_crop_generator(
     if device is None:
         device = torch.device("cpu")
     _common_param_check(batch_size)
-    if not isinstance(size, (tuple, list)) and len(size) == 2:
+    if not isinstance(size, (tuple, list)) or len(size) != 2:
         raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
-    if not (isinstance(height, int) and height > 0 and isinstance(width, int) and width > 0):
-        raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
-    if not (height >= size[0] and width >= size[1]):
+    _check_positive_int_or_traced(height, "height")
+    _check_positive_int_or_traced(width, "width")
+    if isinstance(height, int) and isinstance(width, int) and not (height >= size[0] and width >= size[1]):
         raise AssertionError(f"Crop size must be smaller than input size. Got ({height}, {width}) and {size}.")
 
     # unpack input sizes

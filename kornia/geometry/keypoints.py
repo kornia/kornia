@@ -77,10 +77,24 @@ class Keypoints:
 
     @property
     def shape(self) -> Union[Tuple[int, ...], Size]:
+        """Return the tensor shape used to store 2D keypoints.
+
+        Returns:
+            Shape of :attr:`data`. The common layouts are :math:`(N, 2)` for
+            unbatched keypoints and :math:`(B, N, 2)` for batched keypoints,
+            where :math:`B` is the batch size, :math:`N` is the number of
+            keypoints, and the final dimension stores ``(x, y)`` coordinates.
+        """
         return self.data.shape
 
     @property
     def data(self) -> torch.torch.Tensor:
+        """Return the raw 2D keypoint coordinate tensor.
+
+        Returns:
+            Tensor storing keypoint coordinates in ``(..., 2)`` format, where
+            the last dimension contains ``x`` and ``y``.
+        """
         return self._data
 
     @property
@@ -99,6 +113,19 @@ class Keypoints:
         values: Union[torch.torch.Tensor, "Keypoints"],
         inplace: bool = False,
     ) -> "Keypoints":
+        """Write keypoint coordinates at selected tensor indices.
+
+        Args:
+            indices: Index tuple or list accepted by ``Tensor.index_put_`` for
+                the stored coordinate tensor.
+            values: Replacement coordinates, either as a raw tensor or another
+                :class:`Keypoints` object.
+            inplace: If ``True``, update this object in place. Otherwise,
+                clone the coordinates first and return a new wrapper.
+
+        Returns:
+            :class:`Keypoints` object containing the updated coordinates.
+        """
         if inplace:
             _data = self._data
         else:
@@ -169,6 +196,15 @@ class Keypoints:
 
     @classmethod
     def from_tensor(cls, keypoints: torch.torch.Tensor) -> "Keypoints":
+        """Validate and wrap a tensor of 2D keypoint coordinates.
+
+        Args:
+            keypoints: Tensor in :math:`(N, 2)` or :math:`(B, N, 2)` format.
+                The last dimension stores ``(x, y)`` coordinates.
+
+        Returns:
+            New :class:`Keypoints` instance containing the input coordinates.
+        """
         return cls(keypoints)
 
     def to_tensor(self, as_padded_sequence: bool = False) -> Union[torch.torch.Tensor, List[torch.torch.Tensor]]:
@@ -189,9 +225,18 @@ class Keypoints:
         return self._data
 
     def clone(self) -> "Keypoints":
+        """Create an independent copy of the 2D keypoints."""
         return Keypoints(self._data.clone(), False)
 
     def type(self, dtype: torch.dtype) -> "Keypoints":
+        """Cast stored keypoint coordinates to a target dtype.
+
+        Args:
+            dtype: Destination floating-point dtype for the coordinate tensor.
+
+        Returns:
+            ``self`` after converting the stored coordinates in place.
+        """
         self._data = self._data.type(dtype)
         return self
 
@@ -281,10 +326,23 @@ class Keypoints3D:
 
     @property
     def shape(self) -> Size:
+        """Return the tensor shape used to store 3D keypoints.
+
+        Returns:
+            Shape of :attr:`data`. The common layouts are :math:`(N, 3)` and
+            :math:`(B, N, 3)`, where the final dimension stores ``(x, y, z)``
+            coordinates.
+        """
         return self.data.shape
 
     @property
     def data(self) -> torch.torch.Tensor:
+        """Return the raw 3D keypoint coordinate tensor.
+
+        Returns:
+            Tensor storing coordinates in ``(..., 3)`` format, with the final
+            dimension ordered as ``(x, y, z)``.
+        """
         return self._data
 
     def pad(self, padding_size: torch.torch.Tensor) -> "Keypoints3D":
@@ -324,6 +382,15 @@ class Keypoints3D:
 
     @classmethod
     def from_tensor(cls, keypoints: torch.Tensor) -> "Keypoints3D":
+        """Validate and wrap a tensor of 3D keypoint coordinates.
+
+        Args:
+            keypoints: Tensor in :math:`(N, 3)` or :math:`(B, N, 3)` format,
+                where the last dimension stores ``(x, y, z)``.
+
+        Returns:
+            New :class:`Keypoints3D` instance containing the input coordinates.
+        """
         return cls(keypoints)
 
     def to_tensor(self, as_padded_sequence: bool = False) -> Union[torch.torch.Tensor, List[torch.torch.Tensor]]:
@@ -344,4 +411,5 @@ class Keypoints3D:
         return self._data
 
     def clone(self) -> "Keypoints3D":
+        """Create an independent copy of the 3D keypoints."""
         return Keypoints3D(self._data.clone(), False)

@@ -83,4 +83,15 @@ class PSNRLoss(nn.Module):
         self.max_val: float = max_val
 
     def forward(self, image: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Compute the negative PSNR loss between two tensors.
+
+        Args:
+            image: Predicted image or signal tensor with arbitrary shape.
+            target: Reference tensor with the same shape as ``image``.
+
+        Returns:
+            Scalar tensor containing the PSNR-based loss computed with
+            ``self.max_val``. Lower values correspond to higher peak signal to
+            noise ratio.
+        """
         return psnr_loss(image, target, self.max_val)

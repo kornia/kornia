@@ -79,7 +79,6 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     return E
 
 
-@torch.jit.script
 def _multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg1: torch.Tensor) -> torch.Tensor:
     # a, b: (..., 4)
     product_basis = a.unsqueeze(2) * b.unsqueeze(1)  # (..., 4, 4)
@@ -87,7 +86,6 @@ def _multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg1: torch.Tenso
     return product_vector @ T_deg1  # (..., 10)
 
 
-@torch.jit.script
 def _multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg2: torch.Tensor) -> torch.Tensor:
     # a: (..., 10), b: (..., 4)
     product_basis = a.unsqueeze(2) * b.unsqueeze(1)  # (..., 10, 4)
@@ -95,7 +93,6 @@ def _multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor, T_deg2: torch.T
     return product_vector @ T_deg2  # (..., 20)
 
 
-@torch.jit.script
 def _determinant_to_polynomial_jit(
     A: torch.Tensor,
     multiplication_indices: torch.Tensor,
@@ -116,7 +113,6 @@ def _determinant_to_polynomial_jit(
     return cs
 
 
-@torch.jit.script
 def _solve_2x2_tikhonov_safe(A: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Solve (A)x=b for A (...,2,2), b (...,2,1) using Tikhonov regularization.
 
@@ -196,7 +192,6 @@ def _fun_select(mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.Tens
     return mat[:, ratio * j + i]
 
 
-@torch.jit.script
 def _null_to_Nister_solution_script(
     X: torch.Tensor,
     batch_size: int,

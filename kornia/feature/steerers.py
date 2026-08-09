@@ -44,6 +44,15 @@ class DiscreteSteerer(nn.Module):
         self.generator = torch.nn.Parameter(generator)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply one steering step in descriptor space.
+
+        Args:
+            x: Input descriptor tensor whose last dimension matches the
+                steerer generator size.
+
+        Returns:
+            Steered descriptors after one linear transformation.
+        """
         return torch.nn.functional.linear(x, self.generator)
 
     def steer_descriptions(
@@ -52,6 +61,16 @@ class DiscreteSteerer(nn.Module):
         steerer_power: int = 1,
         normalize: bool = False,
     ) -> torch.Tensor:
+        """Apply the steerer repeatedly to descriptor vectors.
+
+        Args:
+            descriptions: Descriptor tensor to steer.
+            steerer_power: Number of repeated steering applications.
+            normalize: If ``True``, L2-normalize descriptors after steering.
+
+        Returns:
+            Steered descriptors with optional normalization.
+        """
         for _ in range(steerer_power):
             descriptions = self.forward(descriptions)
         if normalize:

@@ -26,6 +26,7 @@ from kornia.augmentation.utils import override_parameters
 from kornia.core import ImageModule
 from kornia.core.mixin.image_module import ImageModuleMixIn
 from kornia.core.ops import eye_like
+from kornia.core.utils import is_exporting
 
 from .base import ImageSequentialBase
 from .params import ParamItem
@@ -224,6 +225,19 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         return [idx for idx, (_, child) in enumerate(named_modules) if isinstance(child, K.MixAugmentationBaseV2)]
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, nn.Module]]:
+        """Return the module sequence used for the current forward call.
+
+        Args:
+            params: Optional recorded parameters. When provided, the sequence is
+                reconstructed from them.
+
+        Returns:
+            Iterator of ``(name, module)`` pairs.
+
+        Raises:
+            ValueError: More than one mix augmentation is present while
+                ``random_apply`` is disabled.
+        """
         if params is None:
             # Mix augmentation can only be applied once per forward
             mix_indices = self.get_mix_augmentation_indices(self.named_children())
@@ -242,6 +256,14 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         return self.get_children_by_params(params)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+        """Generate parameters for all modules in the chosen sequence.
+
+        Args:
+            batch_shape: Input batch shape.
+
+        Returns:
+            Parameter list aligned with the execution order.
+        """
         named_modules: Iterator[Tuple[str, nn.Module]] = self.get_forward_sequence()
 
         params: List[ParamItem] = []
@@ -252,7 +274,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 param = ParamItem(name, mod_param)
             else:
                 param = ParamItem(name, None)
-            batch_shape = _get_new_batch_shape(param, batch_shape)
+            batch_shape = _get_new_batch_shape(param, batch_shape, module)
             params.append(param)
         return params
 
@@ -296,8 +318,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 if recompute:
                     flags = override_parameters(module.flags, extra_args, in_place=False)
                     mat = module.generate_transformation_matrix(input, param.data, flags)
-                elif module._transform_matrix is not None:
-                    mat = torch.as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
+                elif module.transform_matrix is not None:
+                    mat = torch.as_tensor(module.transform_matrix, device=input.device, dtype=input.dtype)
                 else:
                     raise RuntimeError(f"{module}._transform_matrix is None while `recompute=False`.")
                 res_mat = mat if res_mat is None else mat @ res_mat
@@ -376,7 +398,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         return _output_image
 
 
-def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Size:
+def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size, module: Optional[nn.Module] = None) -> torch.Size:
     """Get the new batch shape if the augmentation changes the image size.
 
     Note:
@@ -395,15 +417,26 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
 
     # Carefully avoid evaluating expression multiple times; batch_prob is often a 1-element torch.Tensor
     if "output_size" in data:
+        if is_exporting():
+            # The sampled ``output_size`` is an unbacked tensor under export (no python int for
+            # ``torch.Size``). Use the module's static ``flags["size"]`` — known at construction —
+            # so the tracked shape stays correct for a *subsequent* shape-dependent child (e.g. a
+            # resample-mode crop after a resize). Fall back to leaving the shape unchanged when the
+            # size isn't statically available.
+            size = getattr(module, "flags", {}).get("size") if module is not None else None
+            if size is None:
+                return batch_shape
+            new_batch_shape = list(batch_shape)
+            new_batch_shape[-2:] = size
+            return torch.Size(new_batch_shape)
         # Inline check for common PyTorch float torch.Tensor case
         batch_prob = data.get("batch_prob", None)
-        if batch_prob is not None:
-            # Avoid repeated indexing, always fetch scalar efficiently
-            prob = batch_prob.item() if batch_prob.numel() == 1 else batch_prob[0].item()
-            if prob <= 0.5:
-                return batch_shape
-        else:
+        if batch_prob is None:
             # batch_prob missing, fallback do not update shape
+            return batch_shape
+        # Avoid repeated indexing, always fetch scalar efficiently
+        prob = batch_prob.item() if batch_prob.numel() == 1 else batch_prob[0].item()
+        if prob <= 0.5:
             return batch_shape
         # Mutate only last two dims
         new_batch_shape = list(batch_shape)

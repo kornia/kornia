@@ -41,12 +41,20 @@ class AverageMeter:
         self.reset()
 
     def reset(self) -> None:
+        """Reset the current value, accumulated sum, count, and average."""
         self.val = 0
         self._avg = 0
         self.sum = 0
         self.count = 0
 
     def update(self, val: Union[float, bool, torch.Tensor], n: int = 1) -> None:
+        """Add a new value to the running average.
+
+        Args:
+            val: New scalar value or scalar tensor to accumulate.
+            n: Weight for ``val``. This is usually the batch size represented
+                by the value.
+        """
         self.val = val
         self.sum += val * n
         self.count += n
@@ -54,6 +62,7 @@ class AverageMeter:
 
     @property
     def avg(self) -> float:
+        """Return the accumulated average as a Python float."""
         if isinstance(self._avg, torch.Tensor):
             return float(self._avg.item())
         return self._avg

@@ -142,4 +142,15 @@ class CharbonnierLoss(nn.Module):
         self.reduction = reduction
 
     def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
+        """Compute the Charbonnier robust regression loss.
+
+        Args:
+            img1: Predicted tensor with arbitrary shape.
+            img2: Target tensor with the same shape as ``img1``.
+
+        Returns:
+            Loss tensor reduced according to ``self.reduction``. The
+            Charbonnier penalty is a smooth approximation of absolute error and
+            remains differentiable near zero residual.
+        """
         return charbonnier_loss(img1=img1, img2=img2, reduction=self.reduction)

@@ -113,7 +113,10 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
                     expected_device=device,
                 )
     if device is None:
-        device = torch.get_default_device()
+        # `torch.empty(0).device` reads the current default device and, unlike
+        # `torch.get_default_device()`, is traceable by dynamo — so this helper stays
+        # fullgraph-compilable even when a caller can't prove a tensor is in the list.
+        device = torch.empty(0).device
     if dtype is None:
         dtype = torch.get_default_dtype()
     return (device, dtype)
@@ -131,14 +134,87 @@ def _normalize_to_float32_or_float64(dtype: torch.dtype) -> torch.dtype:
     return dtype if dtype in (torch.float32, torch.float64) else torch.float32
 
 
+def _inverse_3x3_closed_form(input: torch.Tensor) -> torch.Tensor:
+    """Closed-form inverse for batched 3x3 matrices.
+
+    Used as an ONNX-traceable fallback to ``torch.linalg.inv``: the legacy ONNX
+    exporter does not lower ``aten::linalg_inv`` (as of opset 17). Computed via
+    the adjugate / determinant formula, which is composed entirely of basic
+    arithmetic ops that all standard ONNX opsets support.
+
+    Args:
+        input: Tensor of shape ``(..., 3, 3)``.
+
+    Returns:
+        Tensor of shape ``(..., 3, 3)`` containing the matrix inverse for each
+        leading-dim slice. Numerically equivalent to ``torch.linalg.inv`` for
+        well-conditioned matrices; behavior on singular matrices is undefined
+        (no explicit check, same as ``torch.linalg.inv`` itself).
+    """
+    if not torch.jit.is_tracing():
+        # inv(M) = adj(M) / det, and for a 3x3 the adjugate rows are cross products of the
+        # columns: with columns (a, b, c), the inverse rows are (b x c, c x a, a x b) / det,
+        # det = a . (b x c). Three fused ``cross`` ops instead of nine scalar cofactor
+        # expressions and four stacks — far fewer kernel launches (dominant on small matrices).
+        col_a = input[..., :, 0]
+        col_b = input[..., :, 1]
+        col_c = input[..., :, 2]
+        row0 = torch.linalg.cross(col_b, col_c, dim=-1)
+        row1 = torch.linalg.cross(col_c, col_a, dim=-1)
+        row2 = torch.linalg.cross(col_a, col_b, dim=-1)
+        det = (col_a * row0).sum(-1)
+        return torch.stack([row0, row1, row2], dim=-2) / det[..., None, None]
+
+    # Under tracing (legacy ONNX / jit.trace) stick to the plain scalar adjugate: it lowers to
+    # basic arithmetic that every opset supports, whereas ``cross`` may not.
+    a = input[..., 0, 0]
+    b = input[..., 0, 1]
+    c = input[..., 0, 2]
+    d = input[..., 1, 0]
+    e = input[..., 1, 1]
+    f = input[..., 1, 2]
+    g = input[..., 2, 0]
+    h = input[..., 2, 1]
+    i = input[..., 2, 2]
+
+    # Cofactors (signed minors).
+    c00 = e * i - f * h
+    c01 = -(d * i - f * g)
+    c02 = d * h - e * g
+    c10 = -(b * i - c * h)
+    c11 = a * i - c * g
+    c12 = -(a * h - b * g)
+    c20 = b * f - c * e
+    c21 = -(a * f - c * d)
+    c22 = a * e - b * d
+
+    det = a * c00 + b * c01 + c * c02
+
+    # Adjugate is the transpose of the cofactor matrix.
+    row0 = torch.stack([c00, c10, c20], dim=-1)
+    row1 = torch.stack([c01, c11, c21], dim=-1)
+    row2 = torch.stack([c02, c12, c22], dim=-1)
+    adj = torch.stack([row0, row1, row2], dim=-2)
+
+    return adj / det[..., None, None]
+
+
 def _torch_inverse_cast(input: torch.Tensor) -> torch.Tensor:
     """Make torch.inverse work with other than fp32/64.
 
     The function torch.inverse is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.inverse, and cast back to the input dtype.
+
+    During tracing (``torch.jit.trace`` and legacy ``torch.onnx.export``) on 3x3
+    matrices, falls back to a closed-form inverse so the resulting graph does not
+    include ``aten::linalg_inv`` (unsupported by the legacy ONNX exporter at
+    opset 20). ``torch.jit.is_tracing()`` is JIT-script-safe (unlike
+    ``torch.onnx.is_in_onnx_export``, which contains an ``import`` statement).
     """
     KORNIA_CHECK_IS_TENSOR(input, "Input must be torch.Tensor")
     dtype = _normalize_to_float32_or_float64(input.dtype)
+    if torch.jit.is_tracing() and input.shape[-2:] == (3, 3):
+        return _inverse_3x3_closed_form(input.to(dtype)).to(input.dtype)
     return torch.linalg.inv(input.to(dtype)).to(input.dtype)
 
 
@@ -161,8 +237,15 @@ def _torch_svd_cast(input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, to
     input data type to fp32, apply torch.svd, and cast back to the input dtype.
 
     NOTE: in torch 1.8.1 this function is recommended to use as torch.linalg.svd
+
+    For numerical stability, fp32 inputs are promoted to fp64 (except on MPS where fp64 is unsupported).
     """
-    dtype = _normalize_to_float32_or_float64(input.dtype)
+    if is_mps_tensor_safe(input):
+        dtype = torch.float32
+    elif input.dtype == torch.float32:
+        dtype = torch.float64
+    else:
+        dtype = _normalize_to_float32_or_float64(input.dtype)
 
     out1, out2, out3H = torch.linalg.svd(input.to(dtype))
     # Since kornia requires torch>=2.0.0, we can always use .mH
@@ -272,6 +355,20 @@ def is_autocast_enabled(both: bool = True) -> bool:
     return torch.is_autocast_enabled()
 
 
+# ``torch.compiler.is_exporting`` is absent on very old torch; resolve it once at import.
+_torch_is_exporting = getattr(torch.compiler, "is_exporting", None)
+
+
+def is_exporting() -> bool:
+    """Whether execution is inside a ``torch.export`` capture.
+
+    Used to skip in-``forward`` side effects (e.g. stashing per-call state on ``self``) that
+    ``torch.export`` on torch <= 2.9 rejects, without changing the captured output. Returns
+    ``False`` on torch versions where ``torch.compiler.is_exporting`` is unavailable.
+    """
+    return bool(_torch_is_exporting()) if _torch_is_exporting is not None else False
+
+
 def dataclass_to_dict(obj: Any) -> Any:
     """Recursively convert dataclass instances to dictionaries."""
     if is_dataclass(obj) and not isinstance(obj, type):
@@ -300,3 +397,51 @@ def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
             constructor_args[key] = value
     # TODO: remove type ignore when https://github.com/python/mypy/issues/14941 be andressed
     return dataclass_type(**constructor_args)
+
+
+def batched_forward(
+    model: torch.nn.Module, data: torch.Tensor, device: torch.device, batch_size: int = 128, **kwargs: Any
+) -> torch.Tensor:
+    r"""Run the forward in micro-batches.
+
+    When the just model.forward(data) does not fit into device memory, e.g. on laptop GPU.
+    In the end, it transfers the output to the device of the input data tensor.
+    E.g. running HardNet on 8000x1x32x32 tensor.
+
+    Removed from ``kornia.utils.memory`` in 0.8.3 and restored here as public API.
+
+    Args:
+        model: Any torch model, which outputs a single tensor as an output.
+        data: Input data of Bx(Any) shape.
+        device: which device should we run on.
+        batch_size: "micro-batch" size.
+        **kwargs: any other arguments, which accepts model.
+
+    Returns:
+        output of the model.
+
+    Example:
+        >>> import torch
+        >>> from kornia.core.utils import batched_forward
+        >>> model = torch.nn.Identity()
+        >>> x = torch.rand(300, 2)
+        >>> out = batched_forward(model, x, torch.device("cpu"), batch_size=128)
+        >>> bool(torch.allclose(out, x))
+        True
+
+    """
+    model_dev = model.to(device)
+    B: int = len(data)
+    bs: int = batch_size
+    if B > batch_size:
+        out_list = []
+        n_batches = int(B // bs + 1)
+        for batch_idx in range(n_batches):
+            st = batch_idx * bs
+            end = min((batch_idx + 1) * bs, B)
+            if st >= end:
+                continue
+            out_list.append(model_dev(data[st:end].to(device), **kwargs))
+        out = torch.cat(out_list, 0)
+        return out.to(data.device)
+    return model_dev(data.to(device), **kwargs).to(data.device)

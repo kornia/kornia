@@ -15,10 +15,11 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import torch
 
+from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 
 
@@ -53,11 +54,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
 
     def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-
-    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
-        B, C, _, _ = shape
-        channels = torch.rand(B, C).argsort(dim=1)
-        return {"channels": channels}
+        self._param_generator = rg.ChannelShuffleGenerator()
 
     def apply_transform(
         self,
@@ -66,7 +63,8 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        out = torch.empty_like(input)
-        for i in range(out.shape[0]):
-            out[i] = input[i, params["channels"][i]]
-        return out
+        # Gather the per-sample channel permutation in one vectorised advanced-index instead of
+        # a Python loop over the batch (which launched a kernel per sample and blocked
+        # torch.compile). `channels` is (B, C); indexing input[(B,1), (B,C)] gives (B, C, H, W).
+        batch_index = torch.arange(input.shape[0], device=input.device).view(-1, 1)
+        return input[batch_index, params["channels"]]

@@ -122,3 +122,22 @@ class TestImageRegistrator(BaseTester):
         # and transformation is quite significant, so
         # 15 px  reprojection error is not super huge
         self.assert_close(bbox_in_2_gt, bbox_in_2_gt_est, atol=15, rtol=0.1)
+
+    def test_register_with_shape_mismatch(self, device):
+        img1 = torch.rand(1, 1, 64, 64, device=device)
+        img2 = torch.rand(1, 1, 32, 32, device=device)
+
+        registrator = ImageRegistrator("similarity", allow_shape_mismatch=True)
+
+        out = registrator.register(img1, img2)
+
+        assert out is not None
+
+    def test_register_shape_mismatch_raises(self, device):
+        img1 = torch.rand(1, 1, 64, 64, device=device)
+        img2 = torch.rand(1, 1, 32, 32, device=device)
+
+        registrator = ImageRegistrator("similarity", allow_shape_mismatch=False)
+
+        with pytest.raises(ValueError):
+            registrator.register(img1, img2)

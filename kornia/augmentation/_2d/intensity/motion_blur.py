@@ -96,6 +96,9 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.MotionBlurGenerator(kernel_size, angle, direction)
         self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
+        # A fixed (int) kernel_size lets us skip the data-dependent kernel-size selection in
+        # apply_transform, keeping that path torch.compile fullgraph-safe.
+        self._fixed_kernel_size: Optional[int] = kernel_size if isinstance(kernel_size, int) else None
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, torch.Tensor]:
         params = super().generate_parameters(batch_shape)
@@ -109,18 +112,22 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # sample a kernel size
-        kernel_size_list: List[int] = params["ksize_factor"].tolist()
-
-        # 1. We have to apply the same kernel size to all samples in the batch, thus we take the previously
-        # selected random index --- `params["idx"][0]` --- to determine the applied kernel size.
-        # 2. The `VideoSequential` flattens the first two dimensions, effectively creating a larger batch.
-        # Its method `VideoSequential.__repeat_param_across_channels__` repeats the previously selected index,
-        # creating a torch.Tensor with equal values. Hence, taking the first one (`params["idx"][0]`) is legit.
-        idx: int = cast(int, params["idx"][0])
+        kernel_size: int
+        if self._fixed_kernel_size is not None:
+            # Fixed kernel size: static value, no data-dependent indexing -> stays fullgraph.
+            kernel_size = self._fixed_kernel_size
+        else:
+            # Sampled from a range. We apply the same kernel size to all samples in the batch,
+            # taking the previously selected random index `params["idx"][0]` to pick it.
+            # (`VideoSequential` flattens the first two dims and repeats that index, so all
+            # entries are equal and taking the first is legit.) This branch is inherently
+            # data-dependent and not fullgraph-compilable.
+            kernel_size_list: List[int] = params["ksize_factor"].tolist()
+            idx: int = cast(int, params["idx"][0])
+            kernel_size = kernel_size_list[idx]
         return motion_blur(
             input,
-            kernel_size=kernel_size_list[idx],
+            kernel_size=kernel_size,
             angle=params["angle_factor"],
             direction=params["direction_factor"],
             border_type=flags["border_type"].name.lower(),

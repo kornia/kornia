@@ -68,7 +68,9 @@ class TestBasicAugmentationBase(BaseTester):
             }
             output = augmentation.forward_parameters(input_shape)
             assert "batch_prob" in output
-            assert len(output["degrees"]) == output["batch_prob"].sum().item() == num
+            # generate_parameters is now called with the full batch shape (ONNX-friendly contract).
+            assert len(output["degrees"]) == input_shape[0]
+            assert output["batch_prob"].sum().item() == num
 
     @pytest.mark.parametrize("keepdim", (True, False))
     def test_forward(self, device, dtype, keepdim):
@@ -93,6 +95,18 @@ class TestBasicAugmentationBase(BaseTester):
             assert output.shape == expected_output.shape
             self.assert_close(output, expected_output)
 
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_deterministic_p_skips_bernoulli(self, p):
+        """When p is 0 or 1 the outcome is deterministic — no Bernoulli sampler should be created."""
+        base = _BasicAugmentationBase(p=p, p_batch=0.5)
+        assert not isinstance(getattr(base, "_p_gen", None), torch.distributions.Bernoulli)
+
+    @pytest.mark.parametrize("p_batch", [0.0, 1.0])
+    def test_deterministic_p_batch_skips_bernoulli(self, p_batch):
+        """When p_batch is 0 or 1 the outcome is deterministic — no Bernoulli sampler should be created."""
+        base = _BasicAugmentationBase(p=0.5, p_batch=p_batch)
+        assert not isinstance(getattr(base, "_p_batch_gen", None), torch.distributions.Bernoulli)
+
 
 class TestAugmentationBase2D(BaseTester):
     def test_forward(self, device, dtype):
@@ -115,12 +129,16 @@ class TestAugmentationBase2D(BaseTester):
             # Not an easy fix, happens on verifying torch.tensor([True, True])
             # _params = {'batch_prob': torch.tensor([True, True]), 'params': {}, 'flags': {'foo': 0}}
             # apply_transform.assert_called_once_with(input, _params)
-            assert output is expected_output
+            # Identity check relaxed to value equality: the where-blend always materialises
+            # a fresh tensor, so output is never the same object as apply_transform's return.
+            assert torch.equal(output, expected_output)
 
             # Calling the augmentation with a tensor and set return_transform shall
             # return the expected tensor and transformation.
             output = augmentation(input)
-            assert output is expected_output
+            # Identity check relaxed to value equality: the where-blend always materialises
+            # a fresh tensor, so output is never the same object as apply_transform's return.
+            assert torch.equal(output, expected_output)
 
             # Calling the augmentation with a tensor and params shall return the expected tensor using the given params.
             params = {"params": {}, "flags": {"bar": 1}}
@@ -131,7 +149,9 @@ class TestAugmentationBase2D(BaseTester):
             # Not an easy fix, happens on verifying torch.tensor([True, True])
             # _params = {'batch_prob': torch.tensor([True, True]), 'params': {}, 'flags': {'foo': 0}}
             # apply_transform.assert_called_once_with(input, _params)
-            assert output is expected_output
+            # Identity check relaxed to value equality: the where-blend always materialises
+            # a fresh tensor, so output is never the same object as apply_transform's return.
+            assert torch.equal(output, expected_output)
 
             # Calling the augmentation with a tensor,a transformation and set
             # return_transform shall return the expected tensor and the proper

@@ -15,7 +15,6 @@
 # limitations under the License.
 #
 
-import warnings
 from typing import Any, Dict, Optional, Tuple, cast
 
 import torch
@@ -23,6 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import dataclass_to_dict, dict_to_dataclass
 from kornia.feature.sold2.structures import DetectorCfg, LineMatcherCfg
 from kornia.geometry.conversions import normalize_pixel_coordinates
@@ -30,8 +30,11 @@ from kornia.geometry.conversions import normalize_pixel_coordinates
 from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
 
-urls: Dict[str, str] = {}
-urls["wireframe"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"
+urls: Dict[str, str | list[str]] = {}
+urls["wireframe"] = [
+    hf_url("sold2", "sold2_wireframe.pth"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
+]
 
 
 class SOLD2(nn.Module):
@@ -63,13 +66,6 @@ class SOLD2(nn.Module):
 
     def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
         if isinstance(config, dict):
-            warnings.warn(
-                "Usage of config as a plain dictionary is deprecated in favor of"
-                " `kornia.features.sold2.structures.DetectorCfg`. The support of plain dictionaries"
-                "as config will be removed in kornia v0.8.0 (December 2024).",
-                category=DeprecationWarning,
-                stacklevel=2,
-            )
             config = dict_to_dataclass(cast(Dict[str, Any], config), DetectorCfg)
         super().__init__()
         # Initialize some parameters
@@ -82,7 +78,7 @@ class SOLD2(nn.Module):
         # Load the pre-trained model
         self.model = SOLD2Net(dataclass_to_dict(self.config))
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
             state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
             self.model.load_state_dict(state_dict)
         self.eval()
@@ -147,6 +143,14 @@ class SOLD2(nn.Module):
         return self.line_matcher(line_seg1, line_seg2, desc1, desc2)
 
     def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Adapt pretrained checkpoint keys to this module implementation.
+
+        Args:
+            state_dict: Checkpoint state dictionary whose keys are adapted to this module layout.
+
+        Returns:
+            State dictionary with checkpoint keys renamed or removed so it can be loaded by the current module.
+        """
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]

@@ -70,6 +70,13 @@ spec.loader.exec_module(generate_examples)
 # Pre-generate the example images
 generate_examples.main()
 
+spec = importlib.util.spec_from_file_location("generate_benchmarks", "../generate_benchmarks.py")
+generate_benchmarks = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(generate_benchmarks)
+
+# Pre-generate the benchmark results page
+generate_benchmarks.main()
+
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
@@ -168,7 +175,7 @@ html_theme = "furo"
 # documentation.
 #
 # TODO(jian): make to work with https://docs.kornia.org
-html_baseurl = "https://kornia.readthedocs.io"
+html_baseurl = "https://kornia.readthedocs.io/en/latest/"
 
 # Changing sidebar title to Kornia
 html_title = "Kornia"
@@ -217,7 +224,7 @@ gtagjs_ids = [
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
-html_extra_path = []
+html_extra_path = ["_extra"]
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = "Kornia"

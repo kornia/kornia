@@ -21,6 +21,7 @@ This subpackage provides modules for keypoint detection, descriptors, and featur
 """
 
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
+from .aliked import ALIKED, ALIKEDFeatures
 from .dedode import DeDoDe
 from .defmo import DeFMO
 from .disk import DISK, DISKFeatures
@@ -93,12 +94,15 @@ from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
+from .xfeat import InterpolateSparse2d, XFeat, XFeatModel
 
 __all__ = [
+    "ALIKED",
     "DISK",
     "KORNIA_CHECK_LAF",
     "SOLD2",
     "TLU",
+    "ALIKEDFeatures",
     "BlobDoG",
     "BlobDoGSingle",
     "BlobHessian",
@@ -109,16 +113,14 @@ __all__ = [
     "DeFMO",
     "DenseSIFTDescriptor",
     "DescriptorMatcher",
-    "DescriptorMatcher",
     "FilterResponseNorm2d",
-    "GFTTAffNetHardNet",
     "GFTTAffNetHardNet",
     "GeometryAwareDescriptorMatcher",
     "HardNet",
     "HardNet8",
     "HesAffNetHardNet",
     "HyNet",
-    "KeyNet",
+    "InterpolateSparse2d",
     "KeyNet",
     "KeyNetAffNetHardNet",
     "KeyNetDetector",
@@ -126,14 +128,11 @@ __all__ = [
     "LAFAffNetShapeEstimator",
     "LAFAffineShapeEstimator",
     "LAFDescriptor",
-    "LAFDescriptor",
     "LAFOrienter",
     "LightGlue",
     "LightGlueMatcher",
     "LoFTR",
     "LocalFeature",
-    "LocalFeature",
-    "LocalFeatureMatcher",
     "LocalFeatureMatcher",
     "MKDDescriptor",
     "MultiResolutionDetector",
@@ -144,12 +143,13 @@ __all__ = [
     "PatchDominantGradientOrientation",
     "SIFTDescriptor",
     "SIFTFeature",
-    "SIFTFeature",
     "SIFTFeatureScaleSpace",
     "SOLD2_detector",
     "SOSNet",
     "ScaleSpaceDetector",
     "TFeat",
+    "XFeat",
+    "XFeatModel",
     "denormalize_laf",
     "dog_response",
     "dog_response_single",
@@ -157,7 +157,6 @@ __all__ = [
     "extract_patches_from_pyramid",
     "extract_patches_simple",
     "get_laf_center",
-    "get_laf_descriptors",
     "get_laf_descriptors",
     "get_laf_orientation",
     "get_laf_scale",
@@ -173,12 +172,8 @@ __all__ = [
     "match_adalam",
     "match_fginn",
     "match_mnn",
-    "match_mnn",
-    "match_nn",
     "match_nn",
     "match_smnn",
-    "match_smnn",
-    "match_snn",
     "match_snn",
     "normalize_laf",
     "perspective_transform_lafs",

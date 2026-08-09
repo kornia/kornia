@@ -60,7 +60,6 @@ class ResizeGenerator(RandomGeneratorBase):
     def make_samplers(self, device: Union[str, torch.device, None], dtype: torch.dtype) -> None:
         self.device = device
         self.dtype = dtype
-        pass
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]

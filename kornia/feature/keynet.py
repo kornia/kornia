@@ -22,6 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 from typing_extensions import TypedDict
 
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.filters import SpatialGradient
 from kornia.geometry.transform import pyrdown
 
@@ -51,7 +52,10 @@ keynet_default_config: KeyNet_conf = {
     "Detector_conf": get_default_detector_config(),
 }
 
-KeyNet_URL = "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"
+KeyNet_URL = [
+    hf_url("keynet", "keynet_pytorch.pth"),
+    "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth",
+]
 
 
 class _FeatureExtractor(nn.Module):
@@ -86,10 +90,10 @@ class _HandcraftedBlock(nn.Module):
         sobel_dx = self.spatial_gradient(dx)
         dxx, dxy = sobel_dx[:, :, 0, :, :], sobel_dx[:, :, 1, :, :]
 
-        sobel_dy = self.spatial_gradient(dy)
-        dyy = sobel_dy[:, :, 1, :, :]
+        # Only dyy is used from sobel_dy; dyx is discarded.
+        dyy = self.spatial_gradient(dy)[:, :, 1, :, :]
 
-        hc_feats = torch.cat([dx, dy, dx**2.0, dy**2.0, dx * dy, dxy, dxy**2.0, dxx, dyy, dxx * dyy], 1)
+        hc_feats = torch.cat([dx, dy, dx.square(), dy.square(), dx * dy, dxy, dxy.square(), dxx, dyy, dxx * dyy], 1)
 
         return hc_feats
 
@@ -153,8 +157,10 @@ class KeyNet(nn.Module):
 
     """
 
-    def __init__(self, pretrained: bool = False, keynet_conf: KeyNet_conf = keynet_default_config) -> None:
+    def __init__(self, pretrained: bool = False, keynet_conf: Optional[KeyNet_conf] = None) -> None:
         super().__init__()
+        if keynet_conf is None:
+            keynet_conf = keynet_default_config
 
         num_filters = keynet_conf["num_filters"]
         self.num_levels = keynet_conf["num_levels"]
@@ -170,18 +176,18 @@ class KeyNet(nn.Module):
         )
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(KeyNet_URL, map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(KeyNet_URL, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
         self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """X - input image."""
-        shape_im = x.shape
+        h, w = x.shape[2], x.shape[3]
         feats: List[torch.Tensor] = [self.feature_extractor(x)]
         for _ in range(1, self.num_levels):
             x = pyrdown(x, factor=1.2)
             feats_i = self.feature_extractor(x)
-            feats_i = F.interpolate(feats_i, size=(shape_im[2], shape_im[3]), mode="bilinear")
+            feats_i = F.interpolate(feats_i, size=(h, w), mode="bilinear", align_corners=False)
             feats.append(feats_i)
         scores = self.last_conv(torch.cat(feats, 1))
         return scores
@@ -211,9 +217,15 @@ class KeyNetDetector(MultiResolutionDetector):
         self,
         pretrained: bool = False,
         num_features: int = 2048,
-        keynet_conf: KeyNet_conf = keynet_default_config,
+        keynet_conf: Optional[KeyNet_conf] = None,
         ori_module: Optional[nn.Module] = None,
         aff_module: Optional[nn.Module] = None,
+        compile_model: bool = False,
+        score_threshold: float = 0.0,
     ) -> None:
+        if keynet_conf is None:
+            keynet_conf = keynet_default_config
         model = KeyNet(pretrained, keynet_conf)
-        super().__init__(model, num_features, keynet_conf["Detector_conf"], ori_module, aff_module)
+        super().__init__(
+            model, num_features, keynet_conf["Detector_conf"], ori_module, aff_module, compile_model, score_threshold
+        )

@@ -40,6 +40,20 @@ class Decoder(nn.Module):
     def forward(
         self, features: torch.Tensor, context: Optional[torch.Tensor] = None, scale: Optional[int] = None
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Run this DeDoDe module forward.
+
+        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
+        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+
+        Args:
+            features: Input value used by this method.
+            context: Input value used by this method.
+            scale: Input value used by this method.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         if context is not None:
             features = torch.cat((features, context), dim=1)
         stuff = self.layers[scale](features)
@@ -92,7 +106,6 @@ class ConvRefiner(nn.Module):
                 for hb in range(hidden_blocks)
             ]
         )
-        self.hidden_blocks = self.hidden_blocks
         self.out_conv = nn.Conv2d(hidden_dim, out_dim, 1, 1, 0)
         self.amp = amp
         self.amp_dtype = amp_dtype
@@ -107,6 +120,19 @@ class ConvRefiner(nn.Module):
         bias=True,
         norm_type=nn.BatchNorm2d,
     ):
+        """Create one decoder block for the requested scale.
+
+        Args:
+            in_dim: Input value used by this method.
+            out_dim: Input value used by this method.
+            dw: Input value used by this method.
+            kernel_size: Input value used by this method.
+            bias: Input value used by this method.
+            norm_type: Input value used by this method.
+
+        Returns:
+            Decoder block configured for the requested input and output channel counts.
+        """
         num_groups = 1 if not dw else in_dim
         if dw:
             if out_dim % in_dim != 0:
@@ -126,7 +152,22 @@ class ConvRefiner(nn.Module):
         return nn.Sequential(conv1, norm, relu, conv2)
 
     def forward(self, feats: torch.Tensor) -> torch.Tensor:
+        """Run this DeDoDe module forward.
+
+        Inputs are image, feature, or token tensors used by the DeDoDe detector/descriptor pipeline. `B` denotes batch
+        size, `C` channels, `H` height, `W` width, `N` token count, and `D` feature dimension where those axes appear.
+
+        Args:
+            feats: Input value used by this method.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         _b, _c, _hs, _ws = feats.shape
+        # AMP is intentionally scoped to "cuda" only: float16 autocast on CPU is not
+        # supported by PyTorch and a no-op on MPS. Use amp_dtype=torch.float32 on
+        # non-CUDA devices to disable AMP entirely.
         with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
             x0 = self.block1(feats)
             x = self.hidden_blocks(x0)

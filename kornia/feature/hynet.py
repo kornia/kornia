@@ -20,10 +20,21 @@ from typing import Dict
 import torch
 from torch import nn
 
-urls: Dict[str, str] = {}
-urls["liberty"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth"  # pylint: disable
-urls["notredame"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_ND.pth"  # pylint: disable
-urls["yosemite"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_YOS.pth"  # pylint: disable
+from kornia.core.download import hf_url, load_state_dict_from_url
+
+urls: Dict[str, str | list[str]] = {}
+urls["liberty"] = [
+    hf_url("hynet", "HyNet_LIB.pth"),
+    "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth",
+]  # pylint: disable
+urls["notredame"] = [
+    hf_url("hynet", "HyNet_ND.pth"),
+    "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_ND.pth",
+]  # pylint: disable
+urls["yosemite"] = [
+    hf_url("hynet", "HyNet_YOS.pth"),
+    "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_YOS.pth",
+]  # pylint: disable
 
 
 class FilterResponseNorm2d(nn.Module):
@@ -76,16 +87,39 @@ class FilterResponseNorm2d(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
+        """Reset learnable parameters to their initial values.
+
+        Returns:
+            None. The module parameters are reset in place.
+        """
         nn.init.ones_(self.weight)
         nn.init.zeros_(self.bias)
         if self.is_eps_leanable:
             nn.init.constant_(self.eps, self.init_eps)
 
     def extra_repr(self) -> str:
+        """Return a compact text summary for module printing.
+
+        Returns:
+            Readable string summarizing the module configuration.
+        """
         return "num_features={num_features}, eps={init_eps}".format(**self.__dict__)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Compute the mean norm of activations per channel.
+        """Run the HyNet normalization or descriptor layer.
+
+        Patch tensors use `(B, C, H, W)`. For HyNet descriptors the expected input is usually grayscale `(B, 1, 32, 32)`
+        and the final descriptor has shape `(B, D)`.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         nu2 = x.pow(2).mean(dim=[2, 3], keepdim=True)
 
         # Perform FRN.
@@ -127,12 +161,35 @@ class TLU(nn.Module):
 
     def reset_parameters(self) -> None:
         # nn.init.zeros_(self.tau)
+        """Reset learnable parameters to their initial values.
+
+        Returns:
+            None. The module parameters are reset in place.
+        """
         nn.init.constant_(self.tau, -1)
 
     def extra_repr(self) -> str:
+        """Return a compact text summary for module printing.
+
+        Returns:
+            Readable string summarizing the module configuration.
+        """
         return "num_features={num_features}".format(**self.__dict__)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the HyNet normalization or descriptor layer.
+
+        Patch tensors use `(B, C, H, W)`. For HyNet descriptors the expected input is usually grayscale `(B, 1, 32, 32)`
+        and the final descriptor has shape `(B, D)`.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         return torch.max(x, self.tau)
 
 
@@ -226,11 +283,24 @@ class HyNet(nn.Module):
         self.desc_norm = nn.LocalResponseNorm(2 * self.dim_desc, 2.0 * self.dim_desc, 0.5, 0.0)
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the HyNet normalization or descriptor layer.
+
+        Patch tensors use `(B, C, H, W)`. For HyNet descriptors the expected input is usually grayscale `(B, 1, 32, 32)`
+        and the final descriptor has shape `(B, D)`.
+
+        Args:
+            x: Input tensor processed by this module. For image-like features this usually follows the `(B, C, H, W)`
+                layout, where `B` is batch size, `C` is channels, and `H`/`W` are height and width.
+
+        Returns:
+            Output tensor or dictionary produced by the module while preserving the shape contract documented by the
+            surrounding class.
+        """
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)

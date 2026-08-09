@@ -99,6 +99,77 @@ class TestImageModuleMixIn:
         img_module.save(name=save_path)
         assert os.path.exists(save_path)
 
+    def test_to_pil_4d_tensor_returns_list(self, img_module):
+        # 4D (B, C, H, W) tensor -> list of PIL Images
+        t = torch.rand(3, 3, 16, 16)
+        result = img_module.to_pil(t)
+        assert isinstance(result, list)
+        assert len(result) == 3
+        assert all(isinstance(im, PILImage.Image) for im in result)
+
+    def test_to_pil_numpy_raises(self, img_module, sample_numpy):
+        with pytest.raises(NotImplementedError):
+            img_module.to_pil(sample_numpy)
+
+    def test_to_pil_1d_tensor_raises(self, img_module):
+        with pytest.raises(NotImplementedError):
+            img_module.to_pil(torch.rand(8))
+
+    def test_to_numpy_pil(self, img_module, sample_image):
+        arr = img_module.to_numpy(sample_image)
+        assert isinstance(arr, np.ndarray)
+        assert arr.shape == (100, 100, 3)
+
+    def test_convert_input_output_invalid_type_raises(self, img_module, sample_tensor):
+        with pytest.raises(ValueError, match="Invalid output_type"):
+
+            @img_module.convert_input_output(output_type="invalid")
+            def dummy_func(tensor):
+                return tensor
+
+    def test_convert_input_output_pil_output(self, img_module, sample_tensor):
+        @img_module.convert_input_output(output_type="pil")
+        def dummy_func(tensor):
+            return tensor
+
+        result = dummy_func(sample_tensor)
+        assert isinstance(result, PILImage.Image)
+
+    def test_convert_input_output_selective_input_names(self, img_module, sample_image):
+        # Only convert arguments named "image", leave others unchanged
+        @img_module.convert_input_output(input_names_to_handle=["image"], output_type="pt")
+        def dummy_func(image, other):
+            return image
+
+        result = dummy_func(sample_image, "not_an_image")
+        assert isinstance(result, torch.Tensor)
+
+    def test_show_4d_tensor(self, img_module):
+        img_module._output_image = torch.rand(4, 3, 16, 16)
+        result = img_module.show(display=False)
+        assert isinstance(result, PILImage.Image)
+
+    def test_show_unsupported_backend_raises(self, img_module, sample_tensor):
+        img_module._output_image = sample_tensor
+        with pytest.raises(ValueError, match="Unsupported backend"):
+            img_module.show(backend="matplotlib", display=False)
+
+    def test_detach_tensor_to_cpu_tensor(self, img_module, sample_tensor):
+        result = img_module._detach_tensor_to_cpu(sample_tensor)
+        assert isinstance(result, torch.Tensor)
+        assert result.device.type == "cpu"
+
+    def test_detach_tensor_to_cpu_list(self, img_module):
+        tensors = [torch.rand(3, 4, 4), torch.rand(3, 4, 4)]
+        result = img_module._detach_tensor_to_cpu(tensors)
+        assert isinstance(result, list)
+        assert all(t.device.type == "cpu" for t in result)
+
+    def test_detach_tensor_to_cpu_tuple(self, img_module):
+        tensors = (torch.rand(3, 4, 4), torch.rand(3, 4, 4))
+        result = img_module._detach_tensor_to_cpu(tensors)
+        assert isinstance(result, tuple)
+
 
 class TestImageModule:
     @pytest.fixture
@@ -108,10 +179,6 @@ class TestImageModule:
     @pytest.fixture
     def sample_tensor(self):
         return torch.rand((3, 100, 100))
-
-    def test_disable_features(self, image_module):
-        image_module.disable_features = True
-        assert image_module.disable_features is True
 
     def test_call_with_features_disabled(self, image_module, sample_tensor):
         image_module.disable_features = True

@@ -74,7 +74,10 @@ class TestCam2Pixel(BaseTester):
         cx, cy = W / 2, H / 2
         eps = 1e-12
         seed = 77
-        low, high = -500, 500
+        # Use normalized image-plane coords so that projected pixel values stay in [0,W) x [0,H).
+        # cam_x/z in [-0.5, 0.5] gives pixel_x in [cx - fx/2, cx + fx/2] = [0, W).
+        low_norm, high_norm = -0.45, 0.45
+        low_z, high_z = 1.0, 500.0
 
         intrinsics = self._create_intrinsics(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
         intrinsics_inv = self._create_intrinsics_inv(batch_size, fx, fy, cx, cy, device=device, dtype=dtype)
@@ -84,7 +87,10 @@ class TestCam2Pixel(BaseTester):
         proj_mat = intrinsics
 
         torch.manual_seed(seed)
-        cam_coords_input = self._get_samples((batch_size, H, W, 3), low, high, device, dtype)
+        # Generate z first, then x,y as z * normalized_coord so pixel coords stay in image bounds
+        cam_coords_z = self._get_samples((batch_size, H, W, 1), low_z, high_z, device, dtype)
+        cam_coords_xy = self._get_samples((batch_size, H, W, 2), low_norm, high_norm, device, dtype) * cam_coords_z
+        cam_coords_input = torch.cat([cam_coords_xy, cam_coords_z], dim=-1)
 
         pixel_coords_output = kornia.geometry.camera.cam2pixel(
             cam_coords_src=cam_coords_input, dst_proj_src=proj_mat, eps=eps
@@ -178,12 +184,18 @@ class TestPixel2Cam(BaseTester):
         cx, cy = W / 2, H / 2
         eps = 1e-12
         seed = 77
-        low_1, high_1 = -500, 500
-        low_2, high_2 = -(max(W, H) * 3), (max(W, H) * 3)
+        # Depth must be positive and bounded away from zero to avoid 1/z blow-up.
+        # Pixel coords restricted to image bounds [0,W) x [0,H) to avoid TF32 precision issues
+        # from large coordinate values in matrix multiplication.
+        low_1, high_1 = 1.0, 500.0
+        low_2x, high_2x = 0.0, float(W)
+        low_2y, high_2y = 0.0, float(H)
 
         torch.manual_seed(seed)
         depth = self._get_samples((batch_size, 1, H, W), low_1, high_1, device, dtype)
-        pixel_coords = self._get_samples((batch_size, H, W, 2), low_2, high_2, device, dtype)
+        pixel_coords_x = self._get_samples((batch_size, H, W, 1), low_2x, high_2x, device, dtype)
+        pixel_coords_y = self._get_samples((batch_size, H, W, 1), low_2y, high_2y, device, dtype)
+        pixel_coords = torch.cat([pixel_coords_x, pixel_coords_y], dim=-1)
 
         last_ch = torch.ones((batch_size, H, W, 1), device=device, dtype=dtype)
         pixel_coords_input = torch.cat([pixel_coords, last_ch], axis=-1)

@@ -22,6 +22,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.enhance.normalize import Normalize
 
 from .dedode_models import DeDoDeDescriptor, DeDoDeDetector, get_descriptor, get_detector
@@ -29,18 +30,48 @@ from .utils import dedode_denormalize_pixel_coordinates, sample_keypoints
 
 urls: Dict[str, Dict[str, str]] = {
     "detector": {
-        "L-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_detector_L.pth",
-        "L-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_C4.pth",
-        "L-SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_SO2.pth",
-        "L-C4-v2": "https://github.com/Parskatt/DeDoDe/releases/download/v2/dedode_detector_L_v2.pth",
+        "L-upright": [
+            hf_url("dedode", "dedode_detector_L.pth"),
+            "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_detector_L.pth",
+        ],
+        "L-C4": [
+            hf_url("dedode", "dedode_detector_C4.pth"),
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_C4.pth",
+        ],
+        "L-SO2": [
+            hf_url("dedode", "dedode_detector_SO2.pth"),
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_SO2.pth",
+        ],
+        "L-C4-v2": [
+            hf_url("dedode", "dedode_detector_L_v2.pth"),
+            "https://github.com/Parskatt/DeDoDe/releases/download/v2/dedode_detector_L_v2.pth",
+        ],
     },
     "descriptor": {
-        "B-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_B.pth",
-        "B-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_C4_Perm_descriptor_setting_C.pth",
-        "B-SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_SO2_Spread_descriptor_setting_C.pth",
-        "G-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_G.pth",
-        "G-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_C4_Perm_descriptor_setting_C.pth",
-        "G-SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_SO2_Spread_descriptor_setting_C.pth",
+        "B-upright": [
+            hf_url("dedode", "dedode_descriptor_B.pth"),
+            "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_B.pth",
+        ],
+        "B-C4": [
+            hf_url("dedode", "B_C4_Perm_descriptor_setting_C.pth"),
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_C4_Perm_descriptor_setting_C.pth",
+        ],
+        "B-SO2": [
+            hf_url("dedode", "B_SO2_Spread_descriptor_setting_C.pth"),
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_SO2_Spread_descriptor_setting_C.pth",
+        ],
+        "G-upright": [
+            hf_url("dedode", "dedode_descriptor_G.pth"),
+            "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_G.pth",
+        ],
+        "G-C4": [
+            hf_url("dedode", "G_C4_Perm_descriptor_setting_C.pth"),
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_C4_Perm_descriptor_setting_C.pth",
+        ],
+        "G-SO2": [
+            hf_url("dedode", "G_SO2_Spread_descriptor_setting_C.pth"),
+            "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_SO2_Spread_descriptor_setting_C.pth",
+        ],
     },
 }
 
@@ -106,13 +137,12 @@ class DeDoDe(nn.Module):
         if apply_imagenet_normalization:
             images = self.normalizer(images)
         _B, _C, H, W = images.shape
-        h, w = images.shape[2:]
         if pad_if_not_divisible:
-            pd_h = 14 - h % 14 if h % 14 > 0 else 0
-            pd_w = 14 - w % 14 if w % 14 > 0 else 0
+            pd_h = 14 - H % 14 if H % 14 > 0 else 0
+            pd_w = 14 - W % 14 if W % 14 > 0 else 0
             images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
-        keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
-        descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
+        keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=H, crop_w=W)
+        descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False, crop_h=H, crop_w=W)
         return dedode_denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
 
     @torch.inference_mode()
@@ -126,6 +156,11 @@ class DeDoDe(nn.Module):
         crop_w: Optional[int] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Detect keypoints in the input images.
+
+        .. note::
+            This method unconditionally sets the model to eval mode via ``self.train(False)``
+            so that BatchNorm and Dropout behave deterministically. This is intentional: the
+            detector is only used at inference time and its statistics must be frozen.
 
         Args:
             images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the input images.
@@ -167,15 +202,23 @@ class DeDoDe(nn.Module):
         images: torch.Tensor,
         keypoints: Optional[torch.Tensor] = None,
         apply_imagenet_normalization: bool = True,
+        pad_if_not_divisible: bool = True,
         crop_h: Optional[int] = None,
         crop_w: Optional[int] = None,
     ) -> torch.Tensor:
         """Describe keypoints in the input images. If keypoints are not provided, returns the dense descriptors.
 
+        .. note::
+            This method unconditionally sets the model to eval mode via ``self.train(False)``
+            so that BatchNorm and Dropout behave deterministically. This is intentional: the
+            descriptor is only used at inference time and its statistics must be frozen.
+
         Args:
             images: A torch.Tensor of shape :math:`(B, 3, H, W)` containing the input images.
             keypoints: An optional torch.Tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
+            pad_if_not_divisible: Zero-pad the image so H and W are divisible by 14. Required when
+                using the ``G`` descriptor backed by DINOv2 (patch size 14). Ignored for ``B``.
             crop_h: The height of the crop to be used for description. If None, the full image is used.
             crop_w: The width of the crop to be used for description. If None, the full image is used.
 
@@ -191,6 +234,10 @@ class DeDoDe(nn.Module):
             KORNIA_CHECK_SHAPE(keypoints, ["B", "N", "2"])
         if apply_imagenet_normalization:
             images = self.normalizer(images)
+        if pad_if_not_divisible:
+            pd_h = 14 - H % 14 if H % 14 > 0 else 0
+            pd_w = 14 - W % 14 if W % 14 > 0 else 0
+            images = F.pad(images, (0, pd_w, 0, pd_h), value=0.0)
         self.train(False)
         descriptions = self.descriptor.forward(images)
         if crop_h is not None and crop_w is not None:
@@ -217,8 +264,8 @@ class DeDoDe(nn.Module):
             detector_weights: The weights to load for the detector.
                 One of 'L-upright' (original paper, https://arxiv.org/abs/2308.08479),
                 'L-C4', 'L-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152),
-                'L-C4-v2' (from dedode v2, better at rotations, less clustering, https://arxiv.org/abs/2404.08928)
-                Default is 'L-C4-v2', but perhaps it should be 'L-C4-v2'?
+                'L-C4-v2' (from dedode v2, better at rotations, less clustering, https://arxiv.org/abs/2404.08928).
+                Default is 'L-C4-v2'.
             descriptor_weights: The weights to load for the descriptor.
                 One of 'B-upright','G-upright' (original paper, https://arxiv.org/abs/2308.08479),
                 'B-C4', 'B-SO2', 'G-C4', 'G-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152).
@@ -230,16 +277,19 @@ class DeDoDe(nn.Module):
             The pretrained model.
 
         """
+        # The model architecture kind is encoded as the first character of the weight name,
+        # e.g. "L-C4-v2" -> "L", "G-upright" -> "G". All current checkpoints follow this
+        # convention intentionally so that new variants only need a new URL entry.
         model: DeDoDe = cls(
             detector_model=detector_weights[0],  # type: ignore[arg-type]
             descriptor_model=descriptor_weights[0],  # type: ignore[arg-type]
             amp_dtype=amp_dtype,
         )
         model.detector.load_state_dict(
-            torch.hub.load_state_dict_from_url(urls["detector"][detector_weights], map_location=torch.device("cpu"))
+            load_state_dict_from_url(urls["detector"][detector_weights], map_location=torch.device("cpu"))
         )
         model.descriptor.load_state_dict(
-            torch.hub.load_state_dict_from_url(urls["descriptor"][descriptor_weights], map_location=torch.device("cpu"))
+            load_state_dict_from_url(urls["descriptor"][descriptor_weights], map_location=torch.device("cpu"))
         )
         model.eval()
         return model

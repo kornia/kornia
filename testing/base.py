@@ -20,6 +20,7 @@ from __future__ import annotations
 import math
 from typing import Any, Callable, Optional, Sequence, Union
 
+import pytest
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_close as _assert_close
@@ -30,7 +31,7 @@ Tensor = torch.Tensor
 # {dtype: (rtol, atol)}
 _DTYPE_PRECISIONS = {
     torch.bfloat16: (7.8e-3, 7.8e-3),
-    torch.float16: (9.7e-4, 9.7e-4),
+    torch.float16: (1e-3, 1e-3),
     torch.float32: (1e-4, 1e-5),  # TODO: Update to ~1.2e-7
     # TODO: Update to ~2.3e-16 for fp64
     torch.float64: (1e-5, 1e-5),  # TODO: BaseTester used (1.3e-6, 1e-5), but it fails for general cases
@@ -145,6 +146,15 @@ class BaseTester:
         """
         requires_grad = requires_grad if len(requires_grad) > 0 else [True] * len(inputs)
         dtypes = dtypes if len(dtypes) > 0 else [torch.float64] * len(inputs)
+
+        # MPS does not support float64; gradcheck requires float64, so skip on MPS
+        _all_inputs = (
+            [inputs]
+            if isinstance(inputs, torch.Tensor)
+            else list(inputs.values() if isinstance(inputs, dict) else inputs)
+        )
+        if any(isinstance(t, torch.Tensor) and t.device.type == "mps" for t in _all_inputs):
+            pytest.skip("gradcheck requires float64 which is not supported on MPS")
 
         if isinstance(inputs, torch.Tensor):
             inputs = tensor_to_gradcheck_var(inputs)

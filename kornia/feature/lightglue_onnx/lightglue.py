@@ -91,6 +91,14 @@ class OnnxLightGlue:
         self.session = ort.InferenceSession(weights, providers=providers)
 
     def __call__(self, data: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
+        """Run the ONNX LightGlue matcher.
+
+        Args:
+            data: Dictionary containing image features, keypoints, descriptors, and image sizes for matching.
+
+        Returns:
+            Dictionary containing ONNX LightGlue matches and matching scores.
+        """
         return self.forward(data)
 
     def forward(self, data: dict[str, dict[str, torch.Tensor]]) -> dict[str, torch.Tensor]:
@@ -176,12 +184,30 @@ class OnnxLightGlue:
         self.session.run_with_iobinding(binding)
 
         matches, mscores = binding.get_outputs()
+        # Prefer DLPack-based conversion when available for zero-copy transfer between them
+        # The fallback path uses NumPy, which incurs a device-to-host copy and is slower.
 
-        # TODO: The following is an unnecessary copy. Replace with a better solution when torch supports
-        # constructing a torch.Tensor from a data pointer, or when ORT supports converting to torch torch.Tensor.
-        # https://github.com/microsoft/onnxruntime/issues/15963
-        outputs = {
-            "matches": torch.from_dlpack(matches.numpy()).to(self.device),
-            "scores": torch.from_dlpack(mscores.numpy()).to(self.device),
-        }
+        # ORT's io_binding.get_outputs() returns Python-level OrtValue wrappers.
+        # The DLPack protocol (__dlpack__ + __dlpack_device__) is only available on
+        # the underlying pybind11 C object (_ortvalue), not the Python wrapper itself.
+        # We use getattr to handle both current ORT (needs ._ortvalue) and future ORT
+        # versions that may expose __dlpack__ directly on the wrapper.
+        # Both outputs must support the full protocol before taking the zero-copy path.
+        _m = getattr(matches, "_ortvalue", matches)
+        _s = getattr(mscores, "_ortvalue", mscores)
+        if (
+            hasattr(_m, "__dlpack__")
+            and hasattr(_m, "__dlpack_device__")
+            and hasattr(_s, "__dlpack__")
+            and hasattr(_s, "__dlpack_device__")
+        ):
+            outputs = {
+                "matches": torch.from_dlpack(_m),
+                "scores": torch.from_dlpack(_s),
+            }
+        else:
+            outputs = {
+                "matches": torch.from_numpy(matches.numpy()).to(self.device),
+                "scores": torch.from_numpy(mscores.numpy()).to(self.device),
+            }
         return outputs

@@ -64,12 +64,6 @@ from testing.base import assert_close
     ],
 )
 def test_extract_device_dtype(tensor_list, out_device, out_dtype, will_throw_error):
-    # TODO: include the warning in another way - possibly loggers.
-    # Add GPU tests when GPU testing available
-    # if torch.cuda.is_available():
-    #     import warnings
-    #     warnings.warn("Add GPU tests.")
-
     if will_throw_error:
         with pytest.raises(DeviceError):
             _extract_device_dtype(tensor_list)

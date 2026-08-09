@@ -194,6 +194,21 @@ class ExtractTensorPatches(nn.Module):
         self.allow_auto_padding: bool = allow_auto_padding
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Extract sliding-window patches from a batched image tensor.
+
+        Args:
+            input: Input tensor with shape :math:`(B, C, H, W)`, where:
+                - ``B`` is the batch size (number of images),
+                - ``C`` is the number of channels,
+                - ``H`` is height,
+                - ``W`` is width.
+
+        Returns:
+            A tensor containing stacked patches with shape
+            :math:`(B, N, C, H_{out}, W_{out})`, where:
+            - ``N`` is the number of extracted windows per image,
+            - ``H_{out}`` and ``W_{out}`` are patch height and patch width.
+        """
         return extract_tensor_patches(
             input,
             self.window_size,
@@ -287,6 +302,19 @@ class CombineTensorPatches(nn.Module):
         self.allow_auto_unpadding: bool = allow_auto_unpadding
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Reconstruct full images from extracted patches.
+
+        Args:
+            input: Patch tensor with shape :math:`(B, N, C, H_{out}, W_{out})`, where:
+                - ``B`` is the batch size,
+                - ``N`` is the number of patches,
+                - ``C`` is the number of channels,
+                - ``H_{out}`` and ``W_{out}`` are patch height and width.
+
+        Returns:
+            A reconstructed tensor with shape :math:`(B, C, H, W)`, where ``H``
+            and ``W`` correspond to ``original_size`` after optional unpadding.
+        """
         return combine_tensor_patches(
             input,
             self.original_size,

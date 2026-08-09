@@ -107,6 +107,17 @@ class AEPE(nn.Module):
         self.reduction: str = reduction
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Compute average endpoint error between vector fields.
+
+        Args:
+            input: Predicted vector field with shape :math:`(B, H, W, 2)`.
+            target: Target vector field with the same shape as ``input``.
+
+        Returns:
+            Endpoint-error tensor reduced according to ``self.reduction``.
+            The endpoint error is the Euclidean distance between predicted and
+            target vectors at each spatial location.
+        """
         return aepe(input, target, self.reduction)
 
 

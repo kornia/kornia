@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from torch import float16, float32, float64
@@ -48,7 +48,7 @@ class AugmentationBase2D(_AugmentationBase):
 
     def validate_tensor(self, input: torch.Tensor) -> None:
         """Check if the input torch.Tensor is formatted as expected."""
-        _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
+        _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
         if len(input.shape) != 4:
             raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")
 
@@ -56,7 +56,7 @@ class AugmentationBase2D(_AugmentationBase):
         self, input: torch.Tensor, *, shape: Optional[torch.Tensor] = None, match_channel: bool = True
     ) -> torch.Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
-        _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
+        _validate_input_dtype(input, accepted_dtypes=[torch.bfloat16, float16, float32, float64])
 
         if shape is None:
             return _transform_input(input)
@@ -81,10 +81,19 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
     """
 
-    _transform_matrix: Optional[torch.Tensor]
+    _transform_matrix: Optional[torch.Tensor] = None
+    # Set True on subclasses whose ``apply_transform`` ignores the transform matrix (e.g. flips):
+    # the image output never reads it, so building it every forward is pure overhead. When True,
+    # ``apply_func`` defers the matrix and ``transform_matrix`` computes it on first access.
+    _compute_matrix_lazily: bool = False
+    _lazy_matrix_args: Optional[Tuple[torch.Tensor, Dict[str, torch.Tensor], Dict[str, Any]]] = None
 
     @property
     def transform_matrix(self) -> Optional[torch.Tensor]:
+        if self._transform_matrix is None and self._lazy_matrix_args is not None:
+            in_tensor, params, flags = self._lazy_matrix_args
+            self._transform_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
+            self._lazy_matrix_args = None
         return self._transform_matrix
 
     def identity_matrix(self, input: torch.Tensor) -> torch.Tensor:
@@ -101,22 +110,35 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     ) -> torch.Tensor:
         """Generate transformation matrices with the given input and param settings."""
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = torch.atleast_1d(batch_prob > 0.5)
 
         in_tensor = self.transform_tensor(input)
-        if not to_apply.any():
-            trans_matrix = self.identity_matrix(in_tensor)
-        elif to_apply.all():
-            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
-        else:
-            trans_matrix_A = self.identity_matrix(in_tensor)
-            trans_matrix_B = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
 
+        trans_matrix_applied = self.compute_transformation(in_tensor, params=params, flags=flags)
+
+        if self.p == 1.0 and self.p_batch == 1.0:
+            # Always applied (static probabilities): the blend selects the computed matrix
+            # everywhere, so it equals `trans_matrix_applied`. Skip building the identity and
+            # the `where` — this is a hot per-call cost (~40% of a flip's forward is the matrix
+            # path) that the image output never needs. Mirrors the `transform_inputs` fast path.
+            trans_matrix = trans_matrix_applied
             if is_autocast_enabled():
-                trans_matrix_A = trans_matrix_A.type(input.dtype)
-                trans_matrix_B = trans_matrix_B.type(input.dtype)
+                trans_matrix = trans_matrix.type(input.dtype)
+            return trans_matrix
 
-            trans_matrix = trans_matrix_A.index_put((to_apply,), trans_matrix_B)
+        trans_matrix_identity = self.identity_matrix(in_tensor)
+
+        if is_autocast_enabled():
+            trans_matrix_applied = trans_matrix_applied.type(input.dtype)
+            trans_matrix_identity = trans_matrix_identity.type(input.dtype)
+
+        # If batch sizes line up, do the where-blend. Otherwise (e.g. VideoSequential
+        # passes B-sized batch_prob into a B*T-sized input) fall back to all-or-nothing.
+        if trans_matrix_applied.shape[0] == to_apply.shape[0] == trans_matrix_identity.shape[0]:
+            to_apply_expanded = to_apply.view(-1, *([1] * (trans_matrix_applied.dim() - 1)))
+            trans_matrix = torch.where(to_apply_expanded, trans_matrix_applied, trans_matrix_identity)
+        else:
+            trans_matrix = trans_matrix_applied if bool(to_apply.any()) else trans_matrix_identity
 
         return trans_matrix
 
@@ -171,8 +193,15 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         if flags is None:
             flags = self.flags
 
+        if self._compute_matrix_lazily:
+            # apply_transform ignores the matrix for these ops, so don't build it here; defer to
+            # the first `.transform_matrix` access (e.g. AugmentationSequential propagating to
+            # boxes/keypoints/masks). A standalone flip that never reads the matrix skips it.
+            self._commit_state(transform_matrix=None, lazy_matrix_args=(in_tensor, params, flags))
+            return self.transform_inputs(in_tensor, params, flags, None)
+
         trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
         output = self.transform_inputs(in_tensor, params, flags, trans_matrix)
-        self._transform_matrix = trans_matrix
+        self._commit_state(transform_matrix=trans_matrix, lazy_matrix_args=None)
 
         return output

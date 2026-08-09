@@ -22,14 +22,22 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url, load_state_dict_from_url
 from kornia.core.utils import is_mps_tensor_safe
 
-urls: Dict[str, str] = {}
-urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth"
-urls["liberty_aug"] = (
-    "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth"
-)
-urls["hardnet8v2"] = "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt"
+urls: Dict[str, str | list[str]] = {}
+urls["hardnet++"] = [
+    hf_url("hardnet", "HardNetPP.pth"),
+    "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth",
+]
+urls["liberty_aug"] = [
+    hf_url("hardnet", "checkpoint_liberty_with_aug.pth"),
+    "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth",
+]
+urls["hardnet8v2"] = [
+    hf_url("hardnet", "hardnet8v2.pt"),
+    "http://cmp.felk.cvut.cz/~mishkdmy/hardnet8v2.pt",
+]
 
 
 class HardNet(nn.Module):
@@ -85,7 +93,7 @@ class HardNet(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["liberty_aug"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["liberty_aug"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
         self.eval()
 
@@ -103,6 +111,14 @@ class HardNet(nn.Module):
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute HardNet descriptors for normalized 32x32 patches.
+
+        Args:
+            input: Grayscale patch tensor of shape :math:`(B, 1, 32, 32)`.
+
+        Returns:
+            L2-normalized descriptor tensor with shape :math:`(B, 128)`.
+        """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)
@@ -169,12 +185,17 @@ class HardNet8(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["hardnet8v2"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["hardnet8v2"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
     @staticmethod
     def weights_init(m: object) -> None:
+        """Initialize convolutional layers for HardNet8.
+
+        Args:
+            m: Module instance passed by ``nn.Module.apply``.
+        """
         if isinstance(m, nn.Conv2d):
             nn.init.orthogonal_(m.weight.data, gain=0.6)
             if m.bias is not None:
@@ -194,6 +215,14 @@ class HardNet8(nn.Module):
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute HardNet8 descriptors with PCA projection.
+
+        Args:
+            input: Grayscale patch tensor of shape :math:`(B, 1, 32, 32)`.
+
+        Returns:
+            L2-normalized descriptor tensor after learned PCA projection.
+        """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x_norm: torch.Tensor = self._normalize_input(input)
         x_features: torch.Tensor = self.features(x_norm)

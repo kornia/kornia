@@ -39,8 +39,9 @@ def sample_keypoints(
         local_density = F.conv2d(local_density_x, weights[..., None], padding=(51 // 2, 0))[:, 0]
         scoremap = scoremap * (local_density + 1e-8) ** (-1 / 2)
     grid = get_grid(B, H, W, device=device).reshape(B, H * W, 2)
-    inds = torch.topk(scoremap.reshape(B, H * W), k=num_samples).indices  # type: ignore
-    kps = torch.gather(grid, dim=1, index=inds[..., None].expand(B, num_samples, 2))  # type: ignore
+    num_samples = min(num_samples, H * W) if num_samples is not None else H * W  # type: ignore
+    inds = torch.topk(scoremap.reshape(B, H * W), k=num_samples).indices
+    kps = torch.gather(grid, dim=1, index=inds[..., None].expand(B, num_samples, 2))
     if return_scoremap:
         return kps, torch.gather(scoremap.reshape(B, H * W), dim=1, index=inds)
     return kps

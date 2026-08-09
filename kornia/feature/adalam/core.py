@@ -92,7 +92,8 @@ def select_seeds(
     scores1: Confidence scores on the putative_matches. Usually holds Lowe's ratio scores.
     fnn12: Matches between keypoints of I_1 and I_2.
            The i-th entry of fnn12 is j if and only if keypoint k_i in image I_1 is matched to keypoint k_j in image I_2
-    mnn: A mask indicating which putative matches are also mutual nearest neighbors. See documentation on 'force_seed_mnn' in the DEFAULT_CONFIG.
+    mnn: A mask indicating which putative matches are also mutual nearest neighbors. See documentation on
+    'force_seed_mnn' in the DEFAULT_CONFIG.
          If None, it disables the mutual nearest neighbor filtering on seed point selection.
          Expected a bool torch.Tensor with shape (num_keypoints_in_source_image,)
 
@@ -102,7 +103,7 @@ def select_seeds(
         im1seeds: Keypoint index of chosen seeds in image I_1
         im2seeds: Keypoint index of chosen seeds in image I_2
 
-    """  # noqa: E501
+    """
     im1neighmap = dist1 < R1**2  # (n1, n1)
     # find out who scores higher than whom
     im1scorescomp = scores1.unsqueeze(1) > scores1.unsqueeze(0)  # (n1, n1)

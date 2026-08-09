@@ -21,7 +21,13 @@ import torch
 from torch.distributions import Bernoulli, Beta, Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _adapted_sampling, _common_param_check, _joint_range_check
+from kornia.augmentation.utils import (
+    _adapted_rsampling,
+    _adapted_sampling,
+    _check_positive_int_or_traced,
+    _common_param_check,
+    _joint_range_check,
+)
 from kornia.core.utils import _extract_device_dtype
 from kornia.geometry.bbox import bbox_generator
 
@@ -101,8 +107,8 @@ class CutmixGenerator(RandomGeneratorBase):
         height = batch_shape[-2]
         width = batch_shape[-1]
 
-        if not (isinstance(height, int) and height > 0 and isinstance(width, int) and width > 0):
-            raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
+        _check_positive_int_or_traced(height, "height")
+        _check_positive_int_or_traced(width, "width")
         _device, _dtype = _extract_device_dtype([self.beta, self.cut_size])
         _common_param_check(batch_size, same_on_batch)
 

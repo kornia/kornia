@@ -63,6 +63,7 @@ class RANSAC(nn.Module):
         max_lo_iters: int = 5,
         score_type: str = "ransac",
         prosac_sampling: bool = False,
+        seed: Optional[int] = None,
     ) -> None:
         """Initialize the RANSAC estimator.
 
@@ -76,6 +77,7 @@ class RANSAC(nn.Module):
             max_lo_iters: number of local optimization (polishing) iterations.
             score_type: scoring method to use: "ransac" or "msac".
             prosac_sampling: whether to use PROSAC sampling instead of random sampling.
+            seed: optional random seed for reproducible results. If None, uses global random state.
 
         """
         super().__init__()
@@ -96,6 +98,7 @@ class RANSAC(nn.Module):
         self.max_lo_iters = max_lo_iters
         self.model_type = model_type
         self.prosac_sampling = prosac_sampling
+        self.seed = seed
 
         self.error_fn: Callable[..., torch.Tensor]
         self.minimal_solver: Callable[..., torch.Tensor]
@@ -154,7 +157,12 @@ class RANSAC(nn.Module):
         """
         if device is None:
             device = torch.device("cpu")
-        rand = torch.rand(batch_size, pop_size, device=device)
+        if self.seed is not None:
+            generator = torch.Generator(device=device)
+            generator.manual_seed(self.seed + iteration)
+            rand = torch.rand(batch_size, pop_size, device=device, generator=generator)
+        else:
+            rand = torch.rand(batch_size, pop_size, device=device)
         _, out = rand.topk(k=sample_size, dim=1)
         return out
 

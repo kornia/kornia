@@ -21,11 +21,21 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.download import hf_url, load_state_dict_from_url
 
-urls: Dict[str, str] = {}
-urls["liberty"] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"  # pylint: disable
-urls["notredame"] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params"  # pylint: disable
-urls["yosemite"] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params"  # pylint: disable
+urls: Dict[str, str | list[str]] = {}
+urls["liberty"] = [
+    hf_url("tfeat", "tfeat-liberty.params"),
+    "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params",
+]  # pylint: disable
+urls["notredame"] = [
+    hf_url("tfeat", "tfeat-notredame.params"),
+    "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params",
+]  # pylint: disable
+urls["yosemite"] = [
+    hf_url("tfeat", "tfeat-yosemite.params"),
+    "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params",
+]  # pylint: disable
 
 
 class TFeat(nn.Module):
@@ -67,11 +77,19 @@ class TFeat(nn.Module):
         self.descr = nn.Sequential(nn.Linear(64 * 8 * 8, 128), nn.Tanh())
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
+            pretrained_dict = load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        """Compute TFeat descriptors for grayscale 32x32 patches.
+
+        Args:
+            input: Input tensor with shape :math:`(B, 1, 32, 32)`.
+
+        Returns:
+            Descriptor tensor with shape :math:`(B, 128)`.
+        """
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])
         x = self.features(input)
         x = x.view(x.size(0), -1)

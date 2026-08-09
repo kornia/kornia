@@ -32,6 +32,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK
+from kornia.core.download import load_state_dict_from_url
 
 __all__ = ["VisionTransformer"]
 
@@ -242,9 +243,30 @@ class VisionTransformer(nn.Module):
 
     @property
     def encoder_results(self) -> list[torch.Tensor]:
+        """Return intermediate outputs captured by the transformer encoder.
+
+        Returns:
+            List of tensors produced by the encoder blocks. Each tensor stores
+            token embeddings for a layer, typically shaped :math:`(B, N, D)`,
+            where :math:`B` is batch size, :math:`N` is token count, and
+            :math:`D` is embedding dimension.
+        """
         return self.encoder.results
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Encode an image batch into Vision Transformer token embeddings.
+
+        Args:
+            x: Image tensor with shape :math:`(B, C, H, W)`, where
+                :math:`B` is batch size, :math:`C` must match
+                ``self.in_channels``, and :math:`H` and :math:`W` are expected
+                to match ``self.image_size``.
+
+        Returns:
+            Normalized token embedding tensor produced by patch embedding and
+            the transformer encoder. The output shape follows the encoder
+            layout, usually :math:`(B, N, D)`.
+        """
         if not isinstance(x, torch.Tensor):
             raise TypeError(f"Input x type is not a torch.Tensor. Got: {type(x)}")
 
@@ -299,7 +321,7 @@ class VisionTransformer(nn.Module):
 
         if pretrained:
             url = _get_weight_url(variant)
-            state_dict = torch.hub.load_state_dict_from_url(url)
+            state_dict = load_state_dict_from_url(url)
             model.load_state_dict(state_dict)
 
         return model

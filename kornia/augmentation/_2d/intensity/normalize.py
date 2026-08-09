@@ -81,4 +81,11 @@ class Normalize(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return normalize(input, flags["mean"], flags["std"])
+        mean: Tensor = flags["mean"]
+        std: Tensor = flags["std"]
+        if torch.onnx.is_in_onnx_export():
+            if mean.dim() == 1:
+                mean = mean.view(1, -1)
+            if std.dim() == 1:
+                std = std.view(1, -1)
+        return normalize(input, mean, std)
