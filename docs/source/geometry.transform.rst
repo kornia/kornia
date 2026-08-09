@@ -72,8 +72,17 @@ Crop operators
 
 .. autofunction:: crop_by_indices
 .. autofunction:: crop_by_boxes
+.. autofunction:: crop_by_transform_mat
 .. autofunction:: center_crop
 .. autofunction:: crop_and_resize
+
+Crop operators (3D)
+--------------------
+
+.. autofunction:: crop_by_boxes3d
+.. autofunction:: crop_by_transform_mat3d
+.. autofunction:: center_crop3d
+.. autofunction:: crop_and_resize3d
 
 Module
 ------
@@ -95,6 +104,7 @@ Module
 .. autoclass:: Affine
 .. autoclass:: BaseWarper
 .. autoclass:: HomographyWarper
+.. autoclass:: CenterCrop2D
 
 
 Image registration
