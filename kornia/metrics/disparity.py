@@ -51,13 +51,17 @@ def _check_disparity_inputs(
 
 def _reduce_disparity_error(error: torch.Tensor, valid_mask: Optional[torch.Tensor], reduction: str) -> torch.Tensor:
     """Reduce a per-pixel error map over the valid pixels according to ``reduction``."""
+    if valid_mask is not None:
+        # Zeroing the invalid pixels keeps the shape static. Indexing with the mask would make the
+        # output shape depend on the mask values, which torch.compile cannot trace in a full graph.
+        error = torch.where(valid_mask, error, torch.zeros_like(error))
+
     if reduction == "mean":
-        error = error.mean() if valid_mask is None else error[valid_mask].mean()
+        error = error.mean() if valid_mask is None else error.sum() / valid_mask.sum()
     elif reduction == "sum":
-        error = error.sum() if valid_mask is None else error[valid_mask].sum()
+        error = error.sum()
     elif reduction == "none":
-        if valid_mask is not None:
-            error = torch.where(valid_mask, error, torch.zeros_like(error))
+        pass
     else:
         raise NotImplementedError("Invalid reduction option.")
 
@@ -220,3 +224,70 @@ def mean_bad_pixel_error(
     mask = _check_disparity_inputs(input, target, valid_mask)
     bad = ((input - target).abs() > threshold).to(input.dtype)
     return _reduce_disparity_error(bad, mask, reduction)
+
+
+def kitti_d1_error(
+    input: torch.Tensor,
+    target: torch.Tensor,
+    abs_threshold: float = 3.0,
+    rel_threshold: float = 0.05,
+    valid_mask: Optional[torch.Tensor] = None,
+    reduction: str = "mean",
+) -> torch.Tensor:
+    r"""Compute the KITTI D1 error between two disparity maps.
+
+    A pixel is considered an outlier when its absolute disparity error exceeds ``abs_threshold``
+    **and** its relative disparity error exceeds ``rel_threshold``. Given predicted and ground truth
+    disparity maps :math:`D` and :math:`D^{gt}` with valid pixels :math:`\mathcal{V}`, the metric is:
+
+    .. math::
+
+        \text{D1}(D, D^{gt}) = \frac{1}{|\mathcal{V}|}\sum_{p \in \mathcal{V}}
+        \left[|D_{p} - D^{gt}_{p}| > \tau_{abs} \;\wedge\;
+        \frac{|D_{p} - D^{gt}_{p}|}{|D^{gt}_{p}|} > \tau_{rel}\right]
+
+    This is the outlier ratio reported by the KITTI 2015 stereo benchmark, expressed as a fraction
+    in :math:`[0, 1]` instead of a percentage. Unlike :func:`mean_bad_pixel_error`, the additional
+    relative criterion keeps large disparities from being penalised for errors that are small
+    compared to their magnitude.
+
+    Args:
+        input: the predicted disparity map with arbitrary shape :math:`(*)`.
+        target: the ground truth disparity map with the same shape as ``input``.
+        abs_threshold: the absolute disparity error above which a pixel may be an outlier.
+        rel_threshold: the relative disparity error above which a pixel may be an outlier.
+        valid_mask: optional mask broadcastable to the shape of ``input``, where nonzero
+            (``True``) values mark the pixels to evaluate. Non-boolean masks are converted
+            to boolean. If ``None``, all pixels are evaluated.
+        reduction: specifies the reduction to apply to the output:
+            ``'none'`` | ``'mean'`` | ``'sum'``. ``'mean'``: the fraction of outliers among
+            the valid pixels, ``'sum'``: the number of outliers among the valid pixels,
+            ``'none'``: no reduction will be applied and the per-pixel outlier map is
+            returned, with masked-out positions set to zero.
+
+    Return:
+        the computed metric as a scalar, or the per-pixel outlier map if ``reduction='none'``.
+
+    Note:
+        If ``valid_mask`` selects no pixels, ``'mean'`` reduction returns ``nan``.
+
+    Note:
+        Pixels with a zero ground truth disparity yield a non-finite relative error. Because both
+        criteria must hold, such pixels are classified by ``abs_threshold`` alone and the output
+        stays finite. KITTI marks these pixels as invalid, so prefer passing ``valid_mask``.
+
+    Examples:
+        >>> input = torch.tensor([1.0, 5.0, 104.0, 20.0])
+        >>> target = torch.tensor([1.0, 1.0, 100.0, 10.0])
+        >>> kitti_d1_error(input, target)
+        tensor(0.5000)
+
+    Reference:
+        M. Menze and A. Geiger. Object Scene Flow for Autonomous Vehicles. CVPR 2015.
+        https://www.cvlibs.net/datasets/kitti/eval_scene_flow.php?benchmark=stereo
+
+    """
+    mask = _check_disparity_inputs(input, target, valid_mask)
+    error = (input - target).abs()
+    outlier = ((error > abs_threshold) & (error / target.abs() > rel_threshold)).to(input.dtype)
+    return _reduce_disparity_error(outlier, mask, reduction)
