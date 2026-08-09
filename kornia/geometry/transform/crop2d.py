@@ -311,8 +311,10 @@ def crop_by_transform_mat(
     Convention:
         - input: :math:`(B, C, H, W)`; ``out_size`` is ``(h, w)``
         - ``transform`` is the source→destination **pixel** transform, accepted as
-          either :math:`(B, 2, 3)` affine or :math:`(B, 3, 3)` homogeneous — for the
-          homogeneous form only the top two rows are used (see :func:`warp_affine`);
+          either :math:`(B, 2, 3)` affine or :math:`(B, 3, 3)` homogeneous; dispatch is
+          by shape — :math:`(B, 2, 3)` takes the cheaper :func:`warp_affine` path,
+          while :math:`(B, 3, 3)` takes :func:`warp_perspective` and uses the **full**
+          matrix, so a non-trivial third (projective) row changes the output;
           :class:`CenterCrop2D` itself calls this with a :math:`(B, 2, 3)` transform
         - align_corners: ``True`` by default
         - padding_mode: ``'zeros'`` by default
