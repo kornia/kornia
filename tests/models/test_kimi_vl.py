@@ -62,14 +62,19 @@ class TestKimiVLBuilder(BaseTester):
     def test_from_pretrained_hf(self, config):
         expected = KimiVLBuilder.from_config(config)
         with (
-            patch("torch.hub.load_state_dict_from_url", return_value=expected.state_dict()) as mock_download,
+            patch.object(kimi_vl_builder, "_download_weights", return_value=expected.state_dict()) as mock_download,
             patch.object(kimi_vl_builder, "_kimi_vl_a3b_instruct_config", return_value=config),
         ):
-            actual = KimiVLBuilder.from_pretrained_hf()
+            actual = KimiVLBuilder.from_pretrained_hf(cache_dir="cache")
 
         assert isinstance(actual, KimiVLModel)
         assert actual.config is config
-        mock_download.assert_called_once_with(kimi_vl_builder._KIMI_VL_A3B_INSTRUCT_URL, map_location="cpu")
+        mock_download.assert_called_once_with(kimi_vl_builder._KIMI_VL_A3B_INSTRUCT_REPO_ID, "cache")
+
+    def test_pretrained_config_matches_checkpoint_grid(self):
+        config = kimi_vl_builder._kimi_vl_a3b_instruct_config()
+        # The published checkpoint stores the original 64x64 pos-embed grid.
+        assert config.vision_config.image_size // config.vision_config.patch_size == 64
 
 
 class TestKimiVLModel(BaseTester):

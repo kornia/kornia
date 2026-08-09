@@ -94,7 +94,10 @@ class KimiVLConfig:
 def _kimi_vl_a3b_instruct_config() -> KimiVLConfig:
     """Return the configuration for the supported pretrained Kimi-VL-A3B-Instruct model."""
     vision_config = MoonViTConfig(
-        image_size=336,
+        # 896 / 14 = 64 patches per side, matching the original checkpoint's
+        # native 64x64 positional-embedding grid (interpolated at runtime for
+        # other input resolutions).
+        image_size=896,
         patch_size=14,
         num_channels=3,
         hidden_size=1152,
