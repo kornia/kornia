@@ -100,7 +100,7 @@ def save_pointcloud_ply_binary(filename: str, pointcloud: torch.Tensor) -> None:
         header = [
             "ply\n",
             "format binary_little_endian 1.0\n",
-            "comment arraiy generated\n",
+            "comment kornia generated\n",
             f"element vertex {valid_count}\n",
             "property double x\n",
             "property double y\n",
